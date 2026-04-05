@@ -102,6 +102,7 @@ class JobEnum(str, Enum):
     gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
     user = 'user'  # user guesses
     xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
+    orca_neb = 'orca_neb'
 
 
 class JobTypeEnum(str, Enum):
@@ -662,6 +663,32 @@ class JobAdapter(ABC):
         else:
             self.run_time = None
 
+    @staticmethod
+    def _rotate_csv_if_needed(csv_path: str, max_lines: int = 10000, line_count: Optional[int] = None) -> None:
+        """
+        Rotate a CSV file if it reaches or exceeds ``max_lines`` lines (including the header).
+        The archived file is renamed with a timestamp suffix in the same directory.
+        A fresh file (with headers) will be created by the caller as needed.
+
+        Args:
+            csv_path (str): The path to the CSV file.
+            max_lines (int): The maximum number of lines before rotation is triggered.
+            line_count (int, optional): Pre-computed line count to avoid re-reading the file.
+        """
+        if not os.path.isfile(csv_path):
+            return
+        if line_count is None:
+            with open(csv_path, 'r') as f:
+                line_count = sum(1 for _ in f)
+        if line_count >= max_lines:
+            local_time = datetime.datetime.now().strftime("%d_%m_%y")
+            base, ext = os.path.splitext(csv_path)
+            archive_path = f"{base}.old.{local_time}{ext}"
+            try:
+                os.rename(csv_path, archive_path)
+            except FileNotFoundError:
+                pass  # Another process already rotated the file.
+
     def _set_job_number(self):
         """
         Used as the entry number in the database, as well as the job name on the server.
@@ -686,12 +713,16 @@ class JobAdapter(ABC):
                 writer.writerow(row)
         with open(csv_path, 'r') as f:
             reader = csv.reader(f, dialect='excel')
+            line_count = 0
             job_num = 0
             for _ in reader:
+                line_count += 1
                 job_num += 1
                 if job_num == 100000:
                     job_num = 0
             self.job_num = job_num
+        # Rotate after counting to avoid a second full read of the file.
+        self._rotate_csv_if_needed(csv_path, max_lines=10000, line_count=line_count)
         # 2. Set other related attributes job_name and job_server_name.
         self.job_server_name = self.job_server_name or 'a' + str(self.job_num)
         if self.conformer is not None and self.job_name is None:
@@ -728,6 +759,7 @@ class JobAdapter(ABC):
                 self.determine_job_status()
             local_arc_path_ = local_arc_path if os.path.isdir(local_arc_path) else ARC_PATH
             csv_path = os.path.join(local_arc_path_, 'completed_jobs.csv')
+            self._rotate_csv_if_needed(csv_path)
             if os.path.isfile(csv_path):
                 # check that this is the updated version
                 with open(csv_path, 'r') as f:

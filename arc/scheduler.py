@@ -582,9 +582,9 @@ class Scheduler(object):
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             # This is a successfully completed tsg job. It may have resulted in several TSGuesses.
                             self.end_job(job=job, label=label, job_name=job_name)
-                            if job.local_path_to_output_file.endswith('.yml'):
+                            if job.local_path_to_output_file.endswith('.yml') or job.local_path_to_output_file.endswith('.log'):
                                 for rxn in job.reactions:
-                                    rxn.ts_species.process_completed_tsg_queue_jobs(yml_path=job.local_path_to_output_file)
+                                    rxn.ts_species.process_completed_tsg_queue_jobs(path=job.local_path_to_output_file)
                             # Just terminated a tsg job.
                             # Are there additional tsg jobs currently running for this species?
                             for spec_jobs in job_list:
@@ -1185,6 +1185,9 @@ class Scheduler(object):
                 else:
                     self.run_composite_job(label)
                 self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
+                self.species_dict[label].successful_methods = [self.species_dict[label].ts_guesses[0].method]
+                if getattr(self.species_dict[label].ts_guesses[0], 'log_path', None):
+                    self.output[label]['paths']['neb'] = self.species_dict[label].ts_guesses[0].log_path
 
     def run_opt_job(self, label: str, fine: bool = False):
         """
@@ -2203,6 +2206,8 @@ class Scheduler(object):
                     self.species_dict[label].initial_xyz = tsg.opt_xyz
                     self.species_dict[label].final_xyz = None
                     self.species_dict[label].ts_guesses_exhausted = False
+                    if getattr(tsg, 'log_path', None):
+                        self.output[label]['paths']['neb'] = tsg.log_path
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
@@ -2365,6 +2370,8 @@ class Scheduler(object):
                     and not job.level.method_type == 'wavefunction' \
                     and self.species_dict[label].irc_label is None:
                 # Run opt again using a finer grid.
+                # Store the coarse opt path before it gets overwritten by the fine opt.
+                self.output[label]['paths']['geo_coarse'] = job.local_path_to_output_file
                 # Save the optimized geometry as ``initial_xyz``, since trsh looks there.
                 if multi_species:
                     for spc in self.species_list:
@@ -2457,6 +2464,8 @@ class Scheduler(object):
                 raise SchedulerError('Called check_freq_job with no output file')
             vibfreqs = parser.parse_frequencies(log_file_path=str(job.local_path_to_output_file))
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
+            if freq_ok and vibfreqs is not None:
+                self.species_dict[label].freqs = [float(f) for f in vibfreqs]
             if freq_ok:
                 # Copy the frequency file to the species / TS output folder.
                 folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
@@ -2526,7 +2535,6 @@ class Scheduler(object):
                 return False
             else:
                 self.output[label]['job_types']['freq'] = True
-                self.output[label]['paths']['geo'] = job.local_path_to_output_file
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
                 if not self.testing:
                     # Update restart dictionary and save the yaml restart file:
@@ -2557,7 +2565,6 @@ class Scheduler(object):
                 logger.info(f'TS {label} has exactly one imaginary frequency: {neg_freqs[0]}')
                 self.output[label]['info'] += f'Imaginary frequency: {neg_freqs[0] if len(neg_freqs) == 1 else neg_freqs}; '
                 self.output[label]['job_types']['freq'] = True
-                self.output[label]['paths']['geo'] = job.local_path_to_output_file
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
                 plotter.save_conformers_file(
                     project_directory=self.project_directory,
@@ -2608,6 +2615,14 @@ class Scheduler(object):
                     logger.info(f'TS {rxn.ts_species.label} of reaction {rxn.label} did not pass the E0 check.\n'
                                 f'Searching for a better TS conformer...\n')
                     self.switch_ts(rxn.ts_label)
+                    if self.species_dict[rxn.ts_label].ts_guesses_exhausted \
+                            or self.species_dict[rxn.ts_label].chosen_ts is None:
+                        logger.warning(f'Could not find a valid TS conformer for {rxn.ts_label} '
+                                       f'that passes the E0 check. Marking as unconverged.')
+                        self.output[rxn.ts_label]['convergence'] = False
+                        # Restore E0 failure flag — switch_ts resets ts_checks via populate_ts_checks().
+                        # check_all_done reads this to avoid overwriting convergence back to True.
+                        self.species_dict[rxn.ts_label].ts_checks['E0'] = False
 
     def switch_ts(self, label: str):
         """
@@ -3032,18 +3047,25 @@ class Scheduler(object):
         """
         all_converged = True
         if label in self.output and not self.output[label]['convergence']:
-            for job_type, spawn_job_type in self.job_types.items():
-                if spawn_job_type and not self.output[label]['job_types'][job_type] \
-                        and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conf_opt'])
-                                 or (self.species_dict[label].number_of_atoms == 1
-                                     and job_type in ['conf_opt', 'opt', 'fine', 'freq', 'rotors', 'bde'])
-                                 or job_type == 'bde' and self.species_dict[label].bdes is None
-                                 or job_type == 'conf_opt'
-                                 or job_type == 'irc'
-                                 or job_type == 'tsg'):
-                    logger.debug(f'Species {label} did not converge.')
-                    all_converged = False
-                    break
+            # A TS that failed the E0 check should stay unconverged even if all jobs succeeded.
+            if self.species_dict[label].is_ts \
+                    and getattr(self.species_dict[label], 'ts_checks', {}).get('E0') is False \
+                    and (self.species_dict[label].ts_guesses_exhausted
+                         or self.species_dict[label].chosen_ts is None):
+                all_converged = False
+            else:
+                for job_type, spawn_job_type in self.job_types.items():
+                    if spawn_job_type and not self.output[label]['job_types'][job_type] \
+                            and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conf_opt'])
+                                     or (self.species_dict[label].number_of_atoms == 1
+                                         and job_type in ['conf_opt', 'opt', 'fine', 'freq', 'rotors', 'bde'])
+                                     or job_type == 'bde' and self.species_dict[label].bdes is None
+                                     or job_type == 'conf_opt'
+                                     or job_type == 'irc'
+                                     or job_type == 'tsg'):
+                        logger.debug(f'Species {label} did not converge.')
+                        all_converged = False
+                        break
         if label in self.output and all_converged:
             self.output[label]['convergence'] = True
             if self.species_dict[label].is_ts:
@@ -3715,12 +3737,15 @@ class Scheduler(object):
                         self.output_multi_spc[species.multi_species] = dict()
                     if 'paths' not in self.output[species.label]:
                         self.output[species.label]['paths'] = dict()
-                    path_keys = ['geo', 'freq', 'sp', 'composite']
+                    path_keys = ['geo', 'geo_coarse', 'freq', 'sp', 'composite']
                     for key in path_keys:
                         if key not in self.output[species.label]['paths']:
                             self.output[species.label]['paths'][key] = ''
-                    if 'irc' not in self.output[species.label]['paths'] and species.is_ts:
-                        self.output[species.label]['paths']['irc'] = list()
+                    if species.is_ts:
+                        if 'irc' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['irc'] = list()
+                        if 'neb' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['neb'] = ''
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:

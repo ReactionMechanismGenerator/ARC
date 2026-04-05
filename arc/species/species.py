@@ -489,6 +489,7 @@ class ARCSpecies(object):
                                f'xyz coordinates only. For better thermodynamic properties, provide bond corrections.')
 
             self.neg_freqs_trshed = list()
+            self.freqs = None  # harmonic vibrational frequencies in cm⁻¹, set after a successful freq job
 
         if self.charge is None:
             self.charge = 0
@@ -741,6 +742,8 @@ class ARCSpecies(object):
             species_dict['original_label'] = self.original_label
         if self.e_elect is not None:
             species_dict['e_elect'] = self.e_elect
+        if self.freqs is not None:
+            species_dict['freqs'] = self.freqs
         if self.fragments is not None:
             species_dict['fragments'] = self.fragments
         if self.e0 is not None:
@@ -832,6 +835,7 @@ class ARCSpecies(object):
         self.original_label = species_dict['original_label'] if 'original_label' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
         self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
+        self.freqs = species_dict.get('freqs')
         self.e0 = species_dict['e0'] if 'e0' in species_dict else None
         self.tsg_spawned = species_dict['tsg_spawned'] if 'tsg_spawned' in species_dict else False
         self.active = species_dict['active'] if 'active' in species_dict else None
@@ -1567,24 +1571,37 @@ class ARCSpecies(object):
                 cluster_tsgs.append(tsg)
         self.ts_guesses = cluster_tsgs
 
-    def process_completed_tsg_queue_jobs(self, yml_path: str):
+    def process_completed_tsg_queue_jobs(self, path: str):
         """
         Process YAML files which are the output of running a TS guess job in the queue.
 
         Args:
-            yml_path (str): The path to the output YAML file.
+            path (str): The path to the output file.
         """
-        if not isinstance(yml_path, str) or not os.path.isfile(yml_path):
+        if not isinstance(path, str) or not os.path.isfile(path):
             return None
-        tsg_list = read_yaml_file(yml_path)
-        if not isinstance(tsg_list, list) or not all(isinstance(tsg, dict) for tsg in tsg_list):
-            return None
-        tsgs = [TSGuess(ts_dict=tsg_dict) for tsg_dict in tsg_list]
-        for tsg in tsgs:
+        if path.endswith('.log'):
+            xyz = parse_geometry(path)
+            tsg = TSGuess(method='orca_neb',
+                          success=True,
+                          xyz=xyz,
+                          log_path=path,
+                          )
             if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
                 if tsg.index is None:
                     tsg.index = len(self.ts_guesses)
                 self.ts_guesses.append(tsg)
+        elif path.endswith('.yml') or path.endswith('.yaml'):
+            yml_path = path
+            tsg_list = read_yaml_file(yml_path)
+            if not isinstance(tsg_list, list) or not all(isinstance(tsg, dict) for tsg in tsg_list):
+                return None
+            tsgs = [TSGuess(ts_dict=tsg_dict) for tsg_dict in tsg_list]
+            for tsg in tsgs:
+                if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
+                    if tsg.index is None:
+                        tsg.index = len(self.ts_guesses)
+                    self.ts_guesses.append(tsg)
         self.cluster_tsgs()
 
     def mol_from_xyz(self,
@@ -2188,6 +2205,7 @@ class TSGuess(object):
         energy (float, optional): Relative energy of all TS conformers in kJ/mol.
         t0 (datetime.datetime, optional): Initial time of spawning the guess job.
         execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.
+        log_path (str, optional): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
         project_directory (str, optional): The path to the project directory.
 
     Attributes:
@@ -2212,6 +2230,7 @@ class TSGuess(object):
         successful_normal_mode (bool): Whether a normal mode check was successful.
         errors (str): Problems experienced with this TSGuess. Used for logging.
         cluster (List[int]): Indices of TSGuess object instances clustered together.
+        log_path (str): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
     """
 
     def __init__(self,
@@ -2229,6 +2248,7 @@ class TSGuess(object):
                  ts_dict: Optional[dict] = None,
                  energy: Optional[float] = None,
                  cluster: Optional[List[int]] = None,
+                 log_path: Optional[str] = None,
                  project_directory: Optional[str] = None,
                  ):
 
@@ -2251,6 +2271,7 @@ class TSGuess(object):
             self.success = success
             self.energy = energy
             self.cluster = cluster
+            self.log_path = log_path
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
@@ -2356,6 +2377,8 @@ class TSGuess(object):
                 ts_dict['family'] = self.family
             if self.errors:
                 ts_dict['errors'] = self.errors
+            if self.log_path is not None:
+                ts_dict['log_path'] = self.log_path
         return ts_dict
 
     def from_dict(self, ts_dict: dict):
@@ -2391,6 +2414,7 @@ class TSGuess(object):
             self.success = self.success if self.success is not None else True
             self.execution_time = datetime.timedelta(seconds=0)
         self.family = ts_dict['family'] if 'family' in ts_dict else None
+        self.log_path = ts_dict['log_path'] if 'log_path' in ts_dict else None
         self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
 
     def process_xyz(self,
@@ -2484,6 +2508,9 @@ class ThermoData(object):
                  Tmax=None,
                  data=None,
                  comment='',
+                 nasa_low=None,
+                 nasa_high=None,
+                 cp_data=None,
                  ):
         """
         Args:
@@ -2497,6 +2524,9 @@ class ThermoData(object):
             Tmax (tuple): Maximum temperature as (value, units)
             data (str): the thermo data block from the RMG library
             comment (str): Additional comments or description
+            nasa_low (dict): Low-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
+            nasa_high (dict): High-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
+            cp_data (list): Tabulated Cp: list of {temperature_k, cp_j_mol_k} dicts.
         """
         self.H298 = H298
         self.S298 = S298
@@ -2508,6 +2538,9 @@ class ThermoData(object):
         self.Tmax = Tmax
         self.data = data
         self.comment = comment
+        self.nasa_low = nasa_low
+        self.nasa_high = nasa_high
+        self.cp_data = cp_data
 
     def __repr__(self):
         """
@@ -2540,7 +2573,27 @@ class ThermoData(object):
         """
         return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
                              self.Cp0, self.CpInf, self.Tmin, self.Tmax,
-                             self.comment))
+                             self.data, self.comment,
+                             self.nasa_low, self.nasa_high, self.cp_data))
+
+    def update(self, data: dict):
+        """
+        Update attributes from a dictionary.
+
+        Handles both top-level keys (H298, S298, nasa_low, ...) and the nested
+        'thermo_data' sub-dict produced by parse_thermo_block(), which carries
+        Tdata, Cpdata, Tmin, Tmax, Cp0, CpInf.
+
+        Args:
+            data (dict): Mapping of attribute names to values.
+        """
+        for key, value in data.items():
+            if key == 'thermo_data' and isinstance(value, dict):
+                for sub_key, sub_value in value.items():
+                    if hasattr(self, sub_key):
+                        setattr(self, sub_key, sub_value)
+            elif hasattr(self, key):
+                setattr(self, key, value)
 
 
 class TransportData(object):

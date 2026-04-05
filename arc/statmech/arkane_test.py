@@ -7,16 +7,31 @@ This module contains unit tests for ARC's statmech.arkane module
 
 import os
 import shutil
+import tempfile
 import unittest
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH
+from arc.exceptions import InputError
 from arc.level import Level
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
 from arc.statmech.arkane import ArkaneAdapter
-from arc.statmech.arkane import _level_to_str, _section_contains_key, get_arkane_model_chemistry
-from arc.imports import settings
+from arc.statmech.arkane import (
+    _all_available_years,
+    _available_years_for_level,
+    _extract_section,
+    _find_best_across_files,
+    _find_best_level_key_for_sp_level,
+    _get_qm_corrections_files,
+    _level_to_str,
+    _normalize_name,
+    _parse_lot_params,
+    _split_method_year,
+    _warn_no_match,
+    get_arkane_model_chemistry,
+)
+from unittest.mock import patch
 
 
 class TestEnumerationClasses(unittest.TestCase):
@@ -134,26 +149,8 @@ class TestArkaneAdapter(unittest.TestCase):
                          "LevelOfTheory(method='b3lyp',basis='631g(d)',software='gaussian')")
         self.assertEqual(_level_to_str(Level(method='CCSD(T)-F12', basis='cc-pVTZ-F12')),
                          "LevelOfTheory(method='ccsd(t)f12',basis='ccpvtzf12',software='molpro')")
-
-    def test_section_contains_key(self):
-        """Test the _section_contains_key function"""
-        rmg_db_path = settings.get('RMG_DB_PATH')
-        file_path = os.path.join(rmg_db_path, 'input', 'quantum_corrections', 'data.py')
-        if not os.path.isfile(file_path):
-            file_path = os.path.join(rmg_db_path, 'quantum_corrections', 'data.py')
-        self.assertTrue(os.path.isfile(file_path), f'RMG quantum corrections file not found at {file_path}')
-        self.assertTrue(_section_contains_key(file_path=file_path,
-                                              section_start="atom_energies = {",
-                                              section_end="pbac = {",
-                                              target="LevelOfTheory(method='b97d32023',basis='def2tzvp',software='gaussian')"))
-        self.assertTrue(_section_contains_key(file_path=file_path,
-                                              section_start="atom_energies = {",
-                                              section_end="pbac = {",
-                                              target="LevelOfTheory(method='ccsd(t)f12',basis='ccpvtzf12',software='molpro')"))
-        self.assertFalse(_section_contains_key(file_path=file_path,
-                                               section_start="atom_energies = {",
-                                               section_end="pbac = {",
-                                               target="LevelOfTheory(method=imaginary',basis='basis',software='ess')"))
+        self.assertEqual(_level_to_str(Level(method='b97d3', basis='def2tzvp', software='gaussian', year=2023)),
+                         "LevelOfTheory(method='b97d32023',basis='def2tzvp',software='gaussian')")
 
     def test_get_arkane_model_chemistry(self):
         """Test the get_arkane_model_chemistry function"""
@@ -162,7 +159,222 @@ class TestArkaneAdapter(unittest.TestCase):
                          "LevelOfTheory(method='ccsd(t)f12',basis='ccpvtzf12',software='molpro')")
         self.assertEqual(get_arkane_model_chemistry(sp_level=Level(method='CBS-QB3'),
                                                     freq_scale_factor=1.0),
-                         "LevelOfTheory(method='cbs-qb3',software='gaussian')")
+                         "LevelOfTheory(method='cbsqb3',software='gaussian')")
+
+    def test_get_arkane_model_chemistry_year_not_found(self):
+        """Test warnings when a requested year is not found in the Arkane database."""
+        level = Level(method='b97d3', basis='def2tzvp', software='gaussian', year=2099)
+        with self.assertLogs('arc', level='WARNING') as cm:
+            model_chemistry = get_arkane_model_chemistry(sp_level=level, freq_scale_factor=1.0)
+        self.assertIsNone(model_chemistry)
+        self.assertTrue(any('available years' in msg for msg in cm.output))
+
+    def test_get_arkane_model_chemistry_latest_year(self):
+        """Test selecting the latest available year when no year is specified."""
+        model_chemistry = get_arkane_model_chemistry(sp_level=Level(method='CBS-QB3'),
+                                                     freq_scale_factor=1.0)
+        self.assertEqual(model_chemistry, "LevelOfTheory(method='cbsqb3',software='gaussian')")
+
+    def test_level_helpers(self):
+        """Test helper functions for method/basis/year parsing."""
+        self.assertEqual(_normalize_name("DLPNO-CCSD(T)-F12"), "dlpnoccsd(t)f12")
+        self.assertEqual(_normalize_name("dlpnoccsd(t)f122023"), "dlpnoccsd(t)f122023")
+
+        base, year = _split_method_year("dlpnoccsd(t)f122023")
+        self.assertEqual(base, "dlpnoccsd(t)f12")
+        self.assertEqual(year, 2023)
+        base, year = _split_method_year("dlpnoccsd(t)f12")
+        self.assertEqual(base, "dlpnoccsd(t)f12")
+        self.assertIsNone(year)
+
+        self.assertEqual(_normalize_name("cc-pVTZ-F12"), "ccpvtzf12")
+        self.assertEqual(_normalize_name("ccpvtz f12"), "ccpvtzf12")
+        self.assertIsNone(_normalize_name(None))
+
+        params = _parse_lot_params(
+            "LevelOfTheory(method='dlpnoccsd(t)f122023',basis='ccpvtzf12',software='orca')"
+        )
+        self.assertEqual(params["method"], "dlpnoccsd(t)f122023")
+        self.assertEqual(params["basis"], "ccpvtzf12")
+        self.assertEqual(params["software"], "orca")
+
+    def test_level_key_selection(self):
+        """Test matching of LevelOfTheory keys by year and no-year preference."""
+        section = '\n'.join([
+            'atom_energies = {',
+            "    \"LevelOfTheory(method='cbsqb3',software='gaussian')\": {},",
+            "    \"LevelOfTheory(method='cbsqb32023',software='gaussian')\": {},",
+            "}",
+            "pbac = {",
+        ])
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
+            f.write(section)
+            path = f.name
+        try:
+            level = Level(method="CBS-QB3", software="gaussian")
+            best = _find_best_level_key_for_sp_level(level, path, "atom_energies = {", "pbac = {")
+            self.assertEqual(best, "LevelOfTheory(method='cbsqb3',software='gaussian')")
+
+            level_year = Level(method="CBS-QB3", software="gaussian", year=2023)
+            best_year = _find_best_level_key_for_sp_level(level_year, path, "atom_energies = {", "pbac = {")
+            self.assertEqual(best_year, "LevelOfTheory(method='cbsqb32023',software='gaussian')")
+
+            years = _available_years_for_level(level, path, "atom_energies = {", "pbac = {")
+            self.assertEqual(years, [None, 2023])
+        finally:
+            os.remove(path)
+
+    def test_conflicting_year_spec(self):
+        """Test conflicting year in method suffix vs explicit year."""
+        section = '\n'.join([
+            'atom_energies = {',
+            "    \"LevelOfTheory(method='b97d32023',software='gaussian')\": {},",
+            "}",
+            "pbac = {",
+        ])
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
+            f.write(section)
+            path = f.name
+        try:
+            level = Level(method="b97d32023", software="gaussian", year=2022)
+            with self.assertRaises(InputError):
+                _find_best_level_key_for_sp_level(level, path, "atom_energies = {", "pbac = {")
+        finally:
+            os.remove(path)
+
+    def test_qm_corrections_file_path(self):
+        """Test quantum corrections files are read from the RMG database path."""
+        with tempfile.TemporaryDirectory() as rmg_root:
+            rmg_qc = os.path.join(rmg_root, 'input', 'quantum_corrections', 'data.py')
+            os.makedirs(os.path.dirname(rmg_qc), exist_ok=True)
+            with open(rmg_qc, 'w') as f:
+                f.write('# rmg qc\n')
+
+            with patch('arc.statmech.arkane.RMG_DB_PATH', rmg_root):
+                paths = _get_qm_corrections_files()
+                self.assertTrue(paths)
+                self.assertEqual(paths[0], rmg_qc)
+
+    def test_get_arkane_model_chemistry_from_qm_file(self):
+        """Test reading LevelOfTheory keys from a quantum corrections file."""
+        section = '\n'.join([
+            'atom_energies = {',
+            "    \"LevelOfTheory(method='cbsqb3',software='gaussian')\": {},",
+            "}",
+            "pbac = {",
+        ])
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
+            f.write(section)
+            path = f.name
+        try:
+            with patch('arc.statmech.arkane._get_qm_corrections_files', return_value=[path]):
+                model_chemistry = get_arkane_model_chemistry(
+                    sp_level=Level(method='CBS-QB3'),
+                    freq_scale_factor=1.0,
+                )
+            self.assertEqual(model_chemistry, "LevelOfTheory(method='cbsqb3',software='gaussian')")
+        finally:
+            os.remove(path)
+
+    def test_extract_section_eof(self):
+        """Test _extract_section with section_end=None reads to EOF."""
+        content = "header\nfreq_dict = {\n    key: val,\n}\ntrailer\n"
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".py") as f:
+            f.write(content)
+            path = f.name
+        try:
+            section = _extract_section(path, "freq_dict = {", None)
+            self.assertIn("key: val", section)
+            self.assertIn("trailer", section)
+            # With an explicit end marker, trailer is excluded
+            section_bounded = _extract_section(path, "freq_dict = {", "}")
+            self.assertNotIn("trailer", section_bounded)
+        finally:
+            os.remove(path)
+
+    def test_find_best_across_files(self):
+        """Test multi-file search returns first match without overwriting."""
+        file1_content = '\n'.join([
+            'atom_energies = {',
+            "    \"LevelOfTheory(method='b3lyp',basis='631g(d)',software='gaussian')\": {},",
+            '}',
+            'pbac = {',
+        ])
+        file2_content = '\n'.join([
+            'atom_energies = {',
+            "    \"LevelOfTheory(method='wb97xd',basis='def2tzvp',software='gaussian')\": {},",
+            '}',
+            'pbac = {',
+        ])
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f1, \
+             tempfile.NamedTemporaryFile(mode="w+", delete=False) as f2:
+            f1.write(file1_content)
+            f2.write(file2_content)
+            path1, path2 = f1.name, f2.name
+        try:
+            # b3lyp is only in file1 — should be found
+            level_b3 = Level(method='B3LYP', basis='6-31G(d)', software='gaussian')
+            result = _find_best_across_files(level_b3, [path1, path2], "atom_energies = {", "pbac = {")
+            self.assertIn("b3lyp", result)
+            # wb97xd is only in file2 — should still be found
+            level_wb = Level(method='wB97X-D', basis='def2-TZVP', software='gaussian')
+            result = _find_best_across_files(level_wb, [path1, path2], "atom_energies = {", "pbac = {")
+            self.assertIn("wb97xd", result)
+            # imaginary method — not in either file
+            level_fake = Level(method='fake', basis='fake')
+            result = _find_best_across_files(level_fake, [path1, path2], "atom_energies = {", "pbac = {")
+            self.assertIsNone(result)
+        finally:
+            os.remove(path1)
+            os.remove(path2)
+
+    def test_all_available_years_aggregates(self):
+        """Test _all_available_years aggregates across files."""
+        file1 = '\n'.join([
+            'atom_energies = {',
+            "    \"LevelOfTheory(method='b97d3',basis='def2tzvp',software='gaussian')\": {},",
+            '}',
+            'pbac = {',
+        ])
+        file2 = '\n'.join([
+            'atom_energies = {',
+            "    \"LevelOfTheory(method='b97d32023',basis='def2tzvp',software='gaussian')\": {},",
+            '}',
+            'pbac = {',
+        ])
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f1, \
+             tempfile.NamedTemporaryFile(mode="w+", delete=False) as f2:
+            f1.write(file1)
+            f2.write(file2)
+            path1, path2 = f1.name, f2.name
+        try:
+            level = Level(method='b97d3', basis='def2tzvp', software='gaussian')
+            years = _all_available_years(level, [path1, path2], "atom_energies = {", "pbac = {")
+            self.assertIn(None, years)
+            self.assertIn(2023, years)
+        finally:
+            os.remove(path1)
+            os.remove(path2)
+
+    def test_warn_no_match_logs(self):
+        """Test _warn_no_match emits a warning with available years."""
+        file_content = '\n'.join([
+            'atom_energies = {',
+            "    \"LevelOfTheory(method='b97d32023',basis='def2tzvp',software='gaussian')\": {},",
+            '}',
+            'pbac = {',
+        ])
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
+            f.write(file_content)
+            path = f.name
+        try:
+            level = Level(method='b97d3', basis='def2tzvp', software='gaussian', year=2099)
+            with self.assertLogs('arc', level='WARNING') as cm:
+                _warn_no_match(level, [path], "atom_energies = {", "pbac = {", label="AEC")
+            self.assertTrue(any('year 2099' in msg for msg in cm.output))
+            self.assertTrue(any('2023' in msg for msg in cm.output))
+        finally:
+            os.remove(path)
 
     def test_generate_arkane_input(self):
         """Test generating Arkane input"""
@@ -194,6 +406,167 @@ class TestArkaneAdapter(unittest.TestCase):
         """
         for folder in ['arkane_tests_delete', 'arkane_input_tests_delete']:
             shutil.rmtree(os.path.join(ARC_TESTING_PATH, folder), ignore_errors=True)
+
+
+class TestArkaneOutputParsing(unittest.TestCase):
+    """Tests for parsing functions that read Arkane output.py content."""
+
+    def test_parse_e0(self):
+        """Test parse_e0 extracts E0 from conformer blocks."""
+        from arc.statmech.arkane import parse_e0
+        content = """
+conformer(
+    label = 'CH4',
+    E0 = (-88.8458, 'kJ/mol'),
+    modes = [NonlinearRotor(symmetry=12)],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+"""
+        self.assertAlmostEqual(parse_e0('CH4', content), -88.8458)
+        self.assertIsNone(parse_e0('missing_species', content))
+
+    def test_parse_e0_positive(self):
+        from arc.statmech.arkane import parse_e0
+        content = "conformer(label='CHO', E0=(44.0971, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)"
+        self.assertAlmostEqual(parse_e0('CHO', content), 44.0971)
+
+    def test_parse_conformer_statmech(self):
+        """Test extraction of external_symmetry and optical_isomers."""
+        from arc.statmech.arkane import _parse_conformer_statmech
+        from unittest.mock import MagicMock
+        content = """
+conformer(
+    label = 'H2O',
+    E0 = (-200.0, 'kJ/mol'),
+    modes = [
+        NonlinearRotor(
+            inertia = ([1.0, 2.0, 3.0], 'amu*angstrom^2'),
+            symmetry = 2,
+        ),
+    ],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+"""
+        spc = MagicMock()
+        spc.label = 'H2O'
+        spc.optical_isomers = None
+        spc.external_symmetry = None
+        _parse_conformer_statmech(spc, content)
+        self.assertEqual(spc.optical_isomers, 1)
+        self.assertEqual(spc.external_symmetry, 2)
+
+    def test_parse_conformer_statmech_linear(self):
+        """Test with LinearRotor."""
+        from arc.statmech.arkane import _parse_conformer_statmech
+        from unittest.mock import MagicMock
+        content = """
+conformer(
+    label = 'CO2',
+    E0 = (-100.0, 'kJ/mol'),
+    modes = [LinearRotor(inertia=(44.0, 'amu*angstrom^2'), symmetry=2)],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+"""
+        spc = MagicMock()
+        spc.label = 'CO2'
+        spc.optical_isomers = None
+        spc.external_symmetry = None
+        _parse_conformer_statmech(spc, content)
+        self.assertEqual(spc.external_symmetry, 2)
+        self.assertEqual(spc.optical_isomers, 1)
+
+    def test_parse_reaction_kinetics_with_uncertainties(self):
+        """Test that dA, dn, dEa, n_data_points are parsed from the comment."""
+        from arc.statmech.arkane import parse_reaction_kinetics
+        from unittest.mock import MagicMock
+        content = """
+conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)
+
+kinetics(
+    label = 'A + B <=> C + D',
+    kinetics = Arrhenius(
+        A = (1.2e10, 'cm^3/(mol*s)'),
+        n = 2.5,
+        Ea = (45.6, 'kJ/mol'),
+        T0 = (1, 'K'),
+        Tmin = (300, 'K'),
+        Tmax = (3000, 'K'),
+        comment = 'Fitted to 50 data points; dA = *|/ 1.48, dn = +|- 0.05, dEa = +|- 0.29 kJ/mol',
+    ),
+)
+"""
+        rxn = MagicMock()
+        rxn.label = 'A + B <=> C + D'
+        rxn.ts_species = MagicMock()
+        rxn.ts_species.label = 'TS0'
+        rxn.ts_species.e0 = None
+        parse_reaction_kinetics(rxn, content)
+        self.assertIsNotNone(rxn.kinetics)
+        self.assertAlmostEqual(rxn.kinetics['A'][0], 1.2e10)
+        self.assertAlmostEqual(rxn.kinetics['n'], 2.5)
+        self.assertAlmostEqual(rxn.kinetics['Ea'][0], 45.6)
+        self.assertAlmostEqual(rxn.kinetics['dA'], 1.48)
+        self.assertAlmostEqual(rxn.kinetics['dn'], 0.05)
+        self.assertAlmostEqual(rxn.kinetics['dEa'], 0.29)
+        self.assertEqual(rxn.kinetics['dEa_units'], 'kJ/mol')
+        self.assertEqual(rxn.kinetics['n_data_points'], 50)
+
+    def test_parse_reaction_kinetics_no_comment(self):
+        """Kinetics without a comment should still parse A, n, Ea."""
+        from arc.statmech.arkane import parse_reaction_kinetics
+        from unittest.mock import MagicMock
+        content = """
+conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)
+
+kinetics(
+    label = 'X <=> Y',
+    kinetics = Arrhenius(
+        A = (5.0, 's^-1'),
+        n = 1.0,
+        Ea = (20.0, 'kJ/mol'),
+        T0 = (1, 'K'),
+        Tmin = (300, 'K'),
+        Tmax = (2000, 'K'),
+    ),
+)
+"""
+        rxn = MagicMock()
+        rxn.label = 'X <=> Y'
+        rxn.ts_species = MagicMock()
+        rxn.ts_species.label = 'TS0'
+        rxn.ts_species.e0 = None
+        parse_reaction_kinetics(rxn, content)
+        self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
+        self.assertAlmostEqual(rxn.kinetics['n'], 1.0)
+        self.assertNotIn('dA', rxn.kinetics)
+
+    def test_parse_thermo_data_block_scalars_are_float(self):
+        """Verify Tmin, Tmax, H298, S298 are parsed as floats, not strings."""
+        from arc.statmech.arkane import parse_thermo_data_block
+        block = """
+            H298 = (-108.9, 'kJ/mol'),
+            S298 = (218.4, 'J/(mol*K)'),
+            Tmin = (10.0, 'K'),
+            Tmax = (3000.0, 'K'),
+        """
+        result = parse_thermo_data_block(block)
+        self.assertIsInstance(result['Tmin'], float)
+        self.assertIsInstance(result['Tmax'], float)
+        self.assertAlmostEqual(result['Tmin'], 10.0)
+        self.assertAlmostEqual(result['Tmax'], 3000.0)
+
+    def test_find_scalar_word_boundary(self):
+        """The ``n`` parameter must not match ``Tmin`` or substrings in the comment."""
+        import re
+        # Simulate find_scalar with word boundary
+        arr_block = "A = (1.0, 's^-1'), n = 2.5, Ea = (30.0, 'kJ/mol'), Tmin = (300, 'K')"
+        pat = rf"\bn\s*=\s*([-+]?[\d.eE+-]+)"
+        m = re.search(pat, arr_block)
+        self.assertIsNotNone(m)
+        self.assertAlmostEqual(float(m.group(1)), 2.5)
 
 
 if __name__ == '__main__':

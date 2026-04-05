@@ -88,13 +88,14 @@ global_ess_settings = {
     'xtb_gsm': 'local',
     'torchani': 'local',
     'openbabel': 'local',
+    'orca_neb': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
 supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
-ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm', 'crest']
+ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb', 'crest']
 
 # List here job types to execute by default
 default_job_types = {'conf_opt': True,        # defaults to True if not specified
@@ -168,6 +169,7 @@ input_filenames = {'cfour': 'ZMAT',
                    'molpro': 'input.in',
                    'onedmin': 'input.in',
                    'orca': 'input.in',
+                   'orca_neb': 'input.in',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
                    'xtb': 'input.sh',
@@ -180,6 +182,7 @@ output_filenames = {'cfour': 'output.out',
                     'molpro': 'input.out',
                     'onedmin': 'output.out',
                     'orca': 'input.log',
+                    'orca_neb': 'input.log',
                     'qchem': 'output.out',
                     'terachem': 'output.out',
                     'torchani': 'output.yml',
@@ -251,6 +254,14 @@ xtb_gsm_settings = {'sm_type': 'GSM',
                     'product_limit': 100.0,
                     'ts_final_type': 1,
                     'nnodes': 15,
+                    }
+
+orca_neb_settings = {'keyword': {
+                        'interpolation': 'IDPP',
+                        'nnodes': 15,
+                        'preopt': 'true',
+                    },
+                    'level': 'wb97xd/def2tzvp',
                     }
 
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)

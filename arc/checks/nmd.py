@@ -15,9 +15,14 @@ from arc.species.vectors import calculate_distance, VectorsError
 if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
     from arc.reaction import ARCReaction
-    from rmgpy.molecule.molecule import Molecule
+    from arc.molecule.molecule import Molecule
 
 logger = get_logger()
+
+# Module-level constants for NMD validation
+SIGMA_THRESHOLD = 3.0
+STD_FLOOR = 1e-4
+DIRECTIONALITY_MIN_DELTA = 0.005
 
 
 def analyze_ts_normal_mode_displacement(reaction: 'ARCReaction',
@@ -80,13 +85,73 @@ def analyze_ts_normal_mode_displacement(reaction: 'ARCReaction',
     return False
 
 
+def check_bond_directionality(formed_bonds: List[Tuple[int, int]],
+                              broken_bonds: List[Tuple[int, int]],
+                              xyzs: Tuple[dict, dict],
+                              min_delta: float = DIRECTIONALITY_MIN_DELTA,
+                              ) -> bool:
+    """
+    Check that formed and broken bonds move in opposite directions along the normal mode.
+
+    For a valid TS mode, formed bonds should shorten in one displacement direction
+    while broken bonds should lengthen in the same direction (and vice versa).
+    Only bonds with ``|delta| > min_delta`` are checked to avoid false failures from numerical noise.
+
+    Args:
+        formed_bonds (List[Tuple[int, int]]): The bonds that are formed in the reaction.
+        broken_bonds (List[Tuple[int, int]]): The bonds that are broken in the reaction.
+        xyzs (Tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
+        min_delta (float): Minimum absolute signed difference for a bond to participate in the check.
+
+    Returns:
+        bool: Whether the bond directionality is consistent with a reactive mode.
+    """
+    if not formed_bonds and not broken_bonds:
+        return True
+
+    def _get_signed_deltas(bonds):
+        deltas = []
+        for bond in bonds:
+            # Use unweighted distances for directionality to use the min_delta threshold.
+            d1 = get_bond_length_in_reaction(bond=bond, xyz=xyzs[0], weights=None)
+            d2 = get_bond_length_in_reaction(bond=bond, xyz=xyzs[1], weights=None)
+            if d1 is None or d2 is None:
+                continue
+            delta = d1 - d2
+            if abs(delta) > min_delta:
+                deltas.append(delta)
+        return deltas
+
+    deltas_formed = _get_signed_deltas(formed_bonds)
+    deltas_broken = _get_signed_deltas(broken_bonds)
+
+    if not deltas_formed and not deltas_broken:
+        logger.debug('check_bond_directionality: no bonds exceeded min_delta threshold; '
+                     'returning True (vacuously consistent).')
+
+    # Check internal consistency: all formed bonds must move in the same direction
+    if deltas_formed and not all(np.sign(d) == np.sign(deltas_formed[0]) for d in deltas_formed):
+        return False
+
+    # Check internal consistency: all broken bonds must move in the same direction
+    if deltas_broken and not all(np.sign(d) == np.sign(deltas_broken[0]) for d in deltas_broken):
+        return False
+
+    # Check that formed and broken bonds move in opposite directions
+    if deltas_formed and deltas_broken:
+        if np.sign(deltas_formed[0]) == np.sign(deltas_broken[0]):
+            return False
+
+    return True
+
+
 def is_nmd_correct_for_any_mapping(reaction: 'ARCReaction',
                                    xyzs: Tuple[dict, dict],
                                    formed_bonds: List[Tuple[int, int]],
                                    broken_bonds: List[Tuple[int, int]],
                                    changed_bonds: List[Tuple[int, int]],
                                    r_eq_atoms: List[List[int]],
-                                   weights: np.array,
+                                   weights: Optional[np.ndarray],
                                    amplitude: float,
                                    ) -> bool:
     """
@@ -111,32 +176,60 @@ def is_nmd_correct_for_any_mapping(reaction: 'ARCReaction',
                                                               r_eq_atoms=r_eq_atoms,
                                                               )
     for eq_formed_bonds, eq_broken_bonds, eq_changed_bonds in modified_bond_grand_list:
-        reactive_bonds_diffs, report = get_bond_length_changes(bonds=eq_formed_bonds + eq_broken_bonds + eq_changed_bonds,
-                                                       xyzs=xyzs,
-                                                       weights=weights,
-                                                       amplitude=amplitude,
-                                                       return_none_if_change_is_insignificant=True,
-                                                       considered_reactive=True,
-                                                       )
-        if reactive_bonds_diffs is None:
+        if not check_bond_directionality(formed_bonds=eq_formed_bonds,
+                                         broken_bonds=eq_broken_bonds,
+                                         xyzs=xyzs):
             continue
+
+        primary_bonds = eq_formed_bonds + eq_broken_bonds
+        is_isomerization = not primary_bonds and bool(eq_changed_bonds)
+
+        if is_isomerization:
+            check_bonds = eq_changed_bonds
+        elif primary_bonds:
+            check_bonds = primary_bonds
+        else:
+            continue
+
+        check_diffs, report = get_bond_length_changes(bonds=check_bonds,
+                                                      xyzs=xyzs,
+                                                      weights=weights,
+                                                      amplitude=amplitude,
+                                                      return_none_if_change_is_insignificant=True,
+                                                      considered_reactive=True,
+                                                      )
+        if check_diffs is None or len(check_diffs) == 0:
+            continue
+
         r_bonds, _ = reaction.get_bonds(r_bonds_only=True)
-        non_reactive_bonds = list()
-        for bond in r_bonds:
-            if bond not in eq_formed_bonds and bond not in eq_broken_bonds and bond not in eq_changed_bonds:
-                non_reactive_bonds.append(bond)
+        reactive_bonds = set(eq_formed_bonds) | set(eq_broken_bonds) | set(eq_changed_bonds)
+        non_reactive_bonds = [bond for bond in r_bonds if bond not in reactive_bonds]
         baseline, std = get_bond_length_changes_baseline_and_std(non_reactive_bonds=non_reactive_bonds,
                                                                  xyzs=xyzs,
                                                                  weights=weights,
                                                                  )
+
+        min_check_diff = float(np.min(check_diffs))
+
         if baseline is None:
+            # Small molecule case: Get UNWEIGHTED changes to compare against a physical distance
+            unweighted_diffs, _ = get_bond_length_changes(
+                bonds=check_bonds,
+                xyzs=xyzs,
+                weights=None,
+                amplitude=amplitude,
+                return_none_if_change_is_insignificant=False
+            )
+            if unweighted_diffs is not None and len(unweighted_diffs) > 0:
+                # For small molecules without a baseline, check that the minimum reactive
+                # bond-length change exceeds 10% of the displacement amplitude.
+                if np.min(unweighted_diffs) > 0.1 * amplitude:
+                    return True
             continue
 
-        min_reactive_bond_diff = np.min(reactive_bonds_diffs)
-        std = std or max(min_reactive_bond_diff * 1e-2, 1e-8)
-        sigma = (min_reactive_bond_diff - baseline) / std
-        if sigma > 2.5:
-            # print(f'V {report} {baseline[0]:.2e} {std:.2e} {sigma[0]:.2e}')  # left for debugging
+        std = max(std, STD_FLOOR)
+        sigma = (min_check_diff - baseline) / std
+        if sigma > SIGMA_THRESHOLD:
             return True
     return False
 
@@ -285,27 +378,31 @@ def get_bond_length_changes_baseline_and_std(non_reactive_bonds: List[Tuple[int,
                                              weights: Optional[np.array] = None,
                                              ) -> Tuple[Optional[float], Optional[float]]:
     """
-    Get the baseline for bond length change of all non-reactive bonds.
+    Get the baseline and spread of bond length changes for non-reactive bonds using robust statistics.
+
+    Uses the median as the baseline and MAD (median absolute deviation) scaled by 1.4826
+    as the spread estimator, which is robust against outliers from floppy rotors.
 
     Todo:
         When we have a comprehensive list of atom maps, we can pass the reaction and the atom map number to use, and do:
             non_reactive_bonds = set(r_bonds) & set(p_bonds)
 
     Args:
-        non_reactive_bonds (Set[Tuple[int, int]]): The non-reactive bonds.
+        non_reactive_bonds (List[Tuple[int, int]]): The non-reactive bonds.
         xyzs (Tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
         weights (np.array): The weights for the atoms.
 
     Returns:
-        Tuple[float, float]:
-            - The max baseline of bond length differences for non-reactive bonds.
-            - The standard deviation of bond length differences for non-reactive bonds.
+        Tuple[Optional[float], Optional[float]]:
+            - The median baseline of bond length differences for non-reactive bonds.
+            - The MAD-based spread estimate of bond length differences for non-reactive bonds.
     """
     diffs, _ = get_bond_length_changes(bonds=non_reactive_bonds, xyzs=xyzs, weights=weights)
-    if diffs is None:
+    if diffs is None or len(diffs) == 0:
         return None, None
-    baseline = sum(diffs) / len(diffs)
-    std = np.std(diffs)
+    baseline = float(np.median(diffs))
+    mad = float(np.median(np.abs(diffs - baseline)))
+    std = mad * 1.4826  # scale factor for consistency with normal distribution
     return baseline, std
 
 
@@ -343,8 +440,9 @@ def get_bond_length_changes(bonds: Union[List[Tuple[int, int]], Set[Tuple[int, i
         if r_bond_length is None or p_bond_length is None:
             continue
         diff = abs(r_bond_length - p_bond_length)
-        if amplitude is not None and return_none_if_change_is_insignificant \
-                and abs(diff * amplitude / r_bond_length) < 0.05 and abs(diff * amplitude / p_bond_length) < 0.05:
+        if return_none_if_change_is_insignificant \
+                and abs(diff / r_bond_length) < 0.05 \
+                and abs(diff / p_bond_length) < 0.05:
             return None, None
         diffs.append(diff)
         if considered_reactive:

@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout ARC
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: ARC
 
@@ -88,12 +88,17 @@ jobs:
       - name: Compile ARC molecule
         shell: micromamba-shell {0}
         working-directory: ARC
+        env:
+          ARC_COVERAGE: 1
         run: |
           make compile
 
       - name: Run Unit Tests
         shell: micromamba-shell {0}
         working-directory: ARC
+        env:
+          ARC_COVERAGE: 1
+          CYTHON_TRACE: 1
         run: |
           echo "Running Unit Tests..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
@@ -102,16 +107,19 @@ jobs:
       - name: Run Functional Tests
         shell: micromamba-shell {0}
         working-directory: ${{ github.workspace }}/ARC
+        env:
+          ARC_COVERAGE: 1
+          CYTHON_TRACE: 1
         run: |
           echo "Running Functional Tests from $(pwd)..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
-          pytest functional/ -ra -vv -n auto
+          pytest functional/ --cov --cov-append --cov-report=xml -ra -vv -n auto
 
       - name: Upload coverage data
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ARC/coverage.xml
+          files: ARC/coverage.xml
           flags: unittests,functionaltests
           name: codecov-umbrella
           verbose: true

@@ -344,6 +344,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         atom_energies = f'\natomEnergies = {aec_dict[self.sp_level.simple()]}' \
             if self.sp_level.simple() in aec_dict else ''
 
+        if not model_chemistry and not atom_energies:
+            logger.warning(f'SP level {self.sp_level} is not recognized by Arkane and has no AEC entry in ARC. '
+                           f'Atom and bond energy corrections will be DISABLED for this Arkane run. '
+                           f'Thermo and kinetics results will lack these corrections.')
+
         freq_scale_factor = f'\nfrequencyScaleFactor = {self.freq_scale_factor}' \
             if self.freq_scale_factor is not None else ''
         if self.reactions is not None:
@@ -359,8 +364,8 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             atom_energies=atom_energies,
             freq_scale_factor=freq_scale_factor,
             use_hindered_rotors=True if not skip_rotors else False,
-            use_aec=True,
-            use_bac=True if self.bac_type is not None else False,
+            use_aec=bool(model_chemistry or atom_energies),
+            use_bac=True if self.bac_type is not None and bool(model_chemistry or atom_energies) else False,
             bac_type=self.bac_type,
             species_list=species_list,
             ts_list=ts_list,
@@ -484,6 +489,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     spc.thermo.H298 = content[lbl]['H298']
                     spc.thermo.S298 = content[lbl]['S298']
                     spc.thermo.data = content[lbl]['data']
+                    spc.thermo.nasa_low = content[lbl].get('nasa_low')
+                    spc.thermo.nasa_high = content[lbl].get('nasa_high')
+                    spc.thermo.cp_data = content[lbl].get('cp_data')
 
                     line = (
                         f"   {lbl:<{label_width}}  "
@@ -504,6 +512,14 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
         for rxn in self.reactions:
             parse_reaction_kinetics(rxn, output_content)
+
+        # Parse conformer statmech (external_symmetry, optical_isomers) for all
+        # species involved in the kinetics — the thermo path handles this via
+        # parse_species_thermo, but kinetics-only runs skip thermo entirely.
+        for species in self.species:
+            _parse_conformer_statmech(species, output_content)
+        for rxn in self.reactions:
+            _parse_conformer_statmech(rxn.ts_species, output_content)
 
 
 def run_arkane(statmech_dir: str) -> bool:
@@ -545,7 +561,8 @@ fi' '''
         ignorable_phrases = [
             "Open Babel Warning",
             "Accepted unusual valence",
-            "=============================="
+            "==============================",
+            "pjrt_executable.cc",
         ]
 
         real_errors = []
@@ -653,14 +670,15 @@ def create_statmech_dir(calcs_directory: str,
     return statmech_dir
 
 
-def _extract_section(file_path: str, section_start: str, section_end: str) -> Optional[str]:
+def _extract_section(file_path: str, section_start: str, section_end: Optional[str] = None) -> Optional[str]:
     """
     Extract a section from a file between section_start and section_end.
 
     Args:
         file_path (str): Path to the file to read.
         section_start (str): String marking the start of the section.
-        section_end (str): String marking the end of the section.
+        section_end (Optional[str]): String marking the end of the section.
+                                     If ``None``, reads to the end of the file.
 
     Returns:
         Optional[str]: Extracted section as string, or None if not found.
@@ -672,35 +690,281 @@ def _extract_section(file_path: str, section_start: str, section_end: str) -> Op
     start_idx = text.find(section_start)
     if start_idx == -1:
         return None
+    if section_end is None:
+        return text[start_idx:]
     end_idx = text.find(section_end, start_idx + len(section_start))
     if end_idx == -1:
         return None
     return text[start_idx:end_idx + len(section_end)]
 
 
-def _section_contains_key(file_path: str, section_start: str, section_end: str, target: str) -> bool:
+
+def _get_qm_corrections_files() -> List[str]:
     """
-    Check if the target string appears in a section with flexible attribute handling.
+    Return quantum corrections data.py paths from the RMG database.
+    """
+    candidates = [
+        os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py'),
+        os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py'),
+    ]
+    existing = [path for path in candidates if os.path.isfile(path)]
+    if not existing:
+        raise InputError(
+            "Could not locate Arkane quantum corrections data.py. "
+            f"Checked: {', '.join(candidates)}. "
+            "Please set RMG_DB_PATH to a valid RMG database."
+        )
+    return existing
 
-    Args:
-        file_path (str): Path to the file.
-        section_start (str): Section start marker.
-        section_end (str): Section end marker.
-        target (str): String to search for.
 
-    Returns:
-        bool: True if target found, False otherwise.
+def _normalize_name(name: Optional[str]) -> Optional[str]:
+    """
+    Normalize a method or basis name for comparison:
+      - lowercase
+      - remove hyphens and spaces
+
+    Examples:
+        "DLPNO-CCSD(T)-F12" -> "dlpnoccsd(t)f12"
+        "cc-pVTZ-F12"       -> "ccpvtzf12"
+    """
+    if name is None:
+        return None
+    return name.replace('-', '').replace(' ', '').lower()
+
+
+def _split_method_year(method_norm: str) -> tuple:
+    """
+    Split a normalized method into (base_method, year).
+
+    Examples:
+        "dlpnoccsd(t)f122023" -> ("dlpnoccsd(t)f12", 2023)
+        "dlpnoccsd(t)f12"     -> ("dlpnoccsd(t)f12", None)
+    """
+    m = re.match(r"^(.*?)(\d{4})$", method_norm)
+    if not m:
+        return method_norm, None
+    base, year_str = m.groups()
+    return base, int(year_str)
+
+
+def _parse_lot_params(lot_str: str) -> dict:
+    """
+    Parse method, basis, and software from a LevelOfTheory(...) string.
+
+    Example lot_str:
+        "LevelOfTheory(method='dlpnoccsd(t)f122023',basis='ccpvtzf12',software='orca')"
+    """
+    params = {'method': None, 'basis': None, 'software': None}
+    for key in params.keys():
+        m = re.search(rf"{key}='([^']+)'", lot_str)
+        if m:
+            params[key] = m.group(1)
+    return params
+
+
+def _iter_level_keys_from_section(file_path: str,
+                                  section_start: str,
+                                  section_end: Optional[str] = None) -> List[str]:
+    """
+    Return all LevelOfTheory(...) key strings that appear as dictionary keys
+    in a given section of data.py.
+
+    These look like:
+        "LevelOfTheory(method='...',basis='...',software='...')" : { ... }
     """
     section = _extract_section(file_path, section_start, section_end)
     if section is None:
-        return False
-    if target in section:  # Check for exact match first
-        return True
-    if 'software=' in target:  # Check for partial match without software
-        no_software = re.sub(r",\s*software='[^']*'", '', target)
-        if no_software in section:
-            return True
-    return False
+        return []
+
+    # Match things like: "LevelOfTheory(...)" : { ... }
+    pattern = r'"(LevelOfTheory\([^"]*\))"\s*:'
+    return re.findall(pattern, section, flags=re.DOTALL)
+
+
+def _available_years_for_level(level: "Level",
+                               file_path: str,
+                               section_start: str,
+                               section_end: Optional[str] = None) -> List[Optional[int]]:
+    """
+    Return a sorted list of available year suffixes for a given Level in a section.
+    """
+    if level is None or level.method is None:
+        return []
+
+    target_method_norm = _normalize_name(level.method)
+    target_base, _ = _split_method_year(target_method_norm)
+    target_basis_norm = _normalize_name(level.basis)
+    target_software = level.software.lower() if level.software else None
+
+    years = set()
+    for lot_str in _iter_level_keys_from_section(file_path, section_start, section_end):
+        params = _parse_lot_params(lot_str)
+        cand_method = params.get('method')
+        cand_basis = params.get('basis')
+        cand_sw = params.get('software')
+
+        if cand_method is None:
+            continue
+
+        cand_method_norm = _normalize_name(cand_method)
+        cand_base, cand_year = _split_method_year(cand_method_norm)
+
+        if cand_base != target_base:
+            continue
+        if target_basis_norm is not None:
+            cand_basis_norm = _normalize_name(cand_basis)
+            if cand_basis_norm != target_basis_norm:
+                continue
+        if target_software is not None and cand_sw is not None:
+            if cand_sw.lower() != target_software:
+                continue
+
+        years.add(cand_year)
+
+    # Sort with None first to represent "no year suffix"
+    return sorted(years, key=lambda y: (-1 if y is None else y))
+
+
+def _format_years(years: List[Optional[int]]) -> str:
+    """
+    Format a list of years for logging.
+    """
+    if not years:
+        return "none"
+    return ", ".join("none" if y is None else str(y) for y in years)
+
+
+def _find_best_across_files(level: "Level",
+                            qm_corr_files: List[str],
+                            section_start: str,
+                            section_end: Optional[str],
+                            ) -> Optional[str]:
+    """
+    Search all quantum-corrections files for the best matching LevelOfTheory key.
+
+    Returns the first match found, preserving file priority order.
+    """
+    for qm_corr_file in qm_corr_files:
+        result = _find_best_level_key_for_sp_level(level, qm_corr_file, section_start, section_end)
+        if result is not None:
+            return result
+    return None
+
+
+def _all_available_years(level: "Level",
+                         qm_corr_files: List[str],
+                         section_start: str,
+                         section_end: Optional[str],
+                         ) -> List[Optional[int]]:
+    """
+    Aggregate available year suffixes for a Level across all quantum-corrections files.
+    """
+    years = set()
+    for qm_corr_file in qm_corr_files:
+        years.update(_available_years_for_level(level, qm_corr_file, section_start, section_end))
+    return sorted(years, key=lambda y: (-1 if y is None else y))
+
+
+def _warn_no_match(level: "Level",
+                   qm_corr_files: List[str],
+                   section_start: str,
+                   section_end: Optional[str],
+                   label: str = "AEC",
+                   ) -> None:
+    """
+    Log a warning when no matching LevelOfTheory key was found, listing available years.
+    """
+    years = _all_available_years(level, qm_corr_files, section_start, section_end)
+    if level.year is not None:
+        logger.warning(
+            f"No Arkane {label} entry found for year {level.year} at {level.simple()}; "
+            f"available years: {_format_years(years)}"
+        )
+    elif years:
+        logger.warning(
+            f"No Arkane {label} entry found for {level.simple()} without a year; "
+            f"available years: {_format_years(years)}. "
+            f"Specify a year to select a matching entry."
+        )
+
+
+def _find_best_level_key_for_sp_level(level: "Level",
+                                      file_path: str,
+                                      section_start: str,
+                                      section_end: Optional[str] = None) -> Optional[str]:
+    """
+    Given an ARC Level and a data.py section, find the LevelOfTheory(...) key string
+    that best matches the level's method/basis, allowing:
+      - hyphen-insensitive comparison
+      - an optional 4-digit year suffix in Arkane's method
+    and choose the *no-year* entry when no year is specified.
+    """
+    if level is None or level.method is None:
+        return None
+
+    target_method_norm = _normalize_name(level.method)
+    target_base, method_year = _split_method_year(target_method_norm)
+    explicit_year = level.year
+    if explicit_year is not None and method_year is not None and explicit_year != method_year:
+        raise InputError(
+            f"Conflicting year specifications for level '{level}': "
+            f"explicit year={explicit_year}, method suffix year={method_year}. "
+            "Please remove the year suffix from the method name or update the 'year' attribute to match."
+        )
+    target_year = explicit_year if explicit_year is not None else method_year
+    target_basis_norm = _normalize_name(level.basis)
+    target_software = level.software.lower() if level.software else None
+
+    best_key = None
+    best_year = None
+
+    for lot_str in _iter_level_keys_from_section(file_path, section_start, section_end):
+        params = _parse_lot_params(lot_str)
+        cand_method = params.get('method')
+        cand_basis = params.get('basis')
+        cand_sw = params.get('software')
+
+        if cand_method is None:
+            continue
+
+        cand_method_norm = _normalize_name(cand_method)
+        cand_base, cand_year = _split_method_year(cand_method_norm)
+
+        # method base must match
+        if cand_base != target_base:
+            continue
+
+        # basis must match (normalized), if we have one
+        if target_basis_norm is not None:
+            cand_basis_norm = _normalize_name(cand_basis)
+            if cand_basis_norm != target_basis_norm:
+                continue
+
+        # Software matching: if BOTH user and DB specify software, they must agree.
+        # If either side omits software the entry still passes, so a user without a
+        # software preference matches the first qualifying entry in file order.
+        if target_software is not None and cand_sw is not None:
+            if cand_sw.lower() != target_software:
+                continue
+
+        # Exact year requested: take the first candidate with that year.
+        # Earlier filters already ensured method/basis/software match.
+        if target_year is not None:
+            if cand_year != target_year:
+                continue
+            best_key = lot_str
+            break
+
+        # No target year specified: prefer no-year entry; if absent, pick latest year.
+        if cand_year is None:
+            best_key = lot_str
+            break
+
+        if best_year is None or cand_year > best_year:
+            best_year = cand_year
+            best_key = lot_str
+
+    return best_key
 
 
 def _level_to_str(level: 'Level') -> str:
@@ -713,12 +977,16 @@ def _level_to_str(level: 'Level') -> str:
     Returns:
         str: LevelOfTheory string representation.
     """
-    parts = [f"method='{level.method}'"]
+    method = _normalize_name(level.method)
+    if level.year is not None and not method.endswith(str(level.year)):
+        method = f"{method}{level.year}"
+
+    parts = [f"method='{method}'"]
     if level.basis:
-        parts.append(f"basis='{level.basis}'")
+        parts.append(f"basis='{_normalize_name(level.basis)}'")
     if level.software:
-        parts.append(f"software='{level.software}'")
-    return f"LevelOfTheory({','.join(parts)})".replace('-','')
+        parts.append(f"software='{level.software.lower()}'")
+    return f"LevelOfTheory({','.join(parts)})".replace('-', '')
 
 
 def get_arkane_model_chemistry(sp_level: 'Level',
@@ -728,6 +996,17 @@ def get_arkane_model_chemistry(sp_level: 'Level',
     """
     Get Arkane model chemistry string with database validation.
 
+    Reads quantum_corrections/data.py as plain text, searches for
+    LevelOfTheory(...) keys, and matches:
+      - method:   ignoring hyphens and optional 4-digit year suffix
+      - basis:    ignoring hyphens and spaces
+
+    When a year is explicitly specified in the Level, only entries with that exact
+    year are matched. If no year is specified and an entry without a year exists,
+    that entry is used. Only when no year is specified and no no-year entry exists,
+    if multiple entries differ only by year, the one with the *latest* year is
+    chosen.
+
     Args:
         sp_level (Level): Level of theory for energy.
         freq_level (Optional[Level]): Level of theory for frequencies.
@@ -736,52 +1015,41 @@ def get_arkane_model_chemistry(sp_level: 'Level',
     Returns:
         Optional[str]: Arkane-compatible model chemistry string.
     """
-    if sp_level.method_type == 'composite':
-        return f"LevelOfTheory(method='{sp_level.method}',software='gaussian')"
+    qm_corr_files = _get_qm_corrections_files()
 
-    qm_corr_file = os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py')
-    if not os.path.isfile(qm_corr_file):
-        qm_corr_file = os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py')
+    aec_start = "atom_energies = {"
+    aec_end = "pbac = {"
+    freq_start = "freq_dict = {"
+    freq_end = None  # freq_dict is the last section in data.py; read to EOF
 
-    atom_energies_start = "atom_energies = {"
-    atom_energies_end = "pbac = {"
-    freq_dict_start = "freq_dict = {"
-    freq_dict_end = "}"
-
-    sp_repr = _level_to_str(sp_level)
-    quoted_sp_repr = f'"{sp_repr}"'
-
-    if freq_scale_factor is not None:
-        found = _section_contains_key(file_path=qm_corr_file,
-                                      section_start=atom_energies_start,
-                                      section_end=atom_energies_end,
-                                      target=quoted_sp_repr)
-        if not found:
+    # Composite methods and user-supplied freq_scale_factor both only need an AEC entry.
+    if sp_level.method_type == 'composite' or freq_scale_factor is not None:
+        best_energy = _find_best_across_files(sp_level, qm_corr_files, aec_start, aec_end)
+        if best_energy is None:
+            _warn_no_match(sp_level, qm_corr_files, aec_start, aec_end, label="AEC")
             return None
-        return sp_repr
+        return best_energy
 
+    # CompositeLevelOfTheory: need both energy (AEC) and frequency entries.
     if freq_level is None:
         raise ValueError("freq_level required when freq_scale_factor isn't provided")
 
-    freq_repr = _level_to_str(freq_level)
-    quoted_freq_repr = f'"{freq_repr}"'
+    best_energy = _find_best_across_files(sp_level, qm_corr_files, aec_start, aec_end)
+    best_freq = _find_best_across_files(freq_level, qm_corr_files, freq_start, freq_end)
 
-    found_sp = _section_contains_key(file_path=qm_corr_file,
-                                     section_start=atom_energies_start,
-                                     section_end=atom_energies_end,
-                                     target=quoted_sp_repr)
-    found_freq = _section_contains_key(file_path=qm_corr_file,
-                                       section_start=freq_dict_start,
-                                       section_end=freq_dict_end,
-                                       target=quoted_freq_repr)
-
-    if not found_sp or not found_freq:
+    if best_energy is None or best_freq is None:
+        if best_energy is None:
+            _warn_no_match(sp_level, qm_corr_files, aec_start, aec_end, label="AEC")
+        if best_freq is None:
+            _warn_no_match(freq_level, qm_corr_files, freq_start, freq_end, label="frequency correction")
         return None
 
-    return (f"CompositeLevelOfTheory(\n"
-            f"    freq={freq_repr},\n"
-            f"    energy={sp_repr}\n"
-            f")")
+    return (
+        "CompositeLevelOfTheory(\n"
+        f"    freq={best_freq},\n"
+        f"    energy={best_energy}\n"
+        ")"
+    )
 
 
 def check_arkane_bacs(sp_level: 'Level',
@@ -791,45 +1059,56 @@ def check_arkane_bacs(sp_level: 'Level',
     """
     Check that Arkane has AECs and BACs for the given sp level of theory.
 
+    Uses plain-text parsing of quantum_corrections/data.py, matching LevelOfTheory
+    keys by method base (ignore hyphens + optional year) and basis (normalized),
+    picking the latest year where multiple exist.
+
     Args:
         sp_level (Level): Level of theory for energy.
-        bac_type (str): Type of bond additivity correction ('p' for Petersson, 'm' for Melius)
+        bac_type (str): Type of bond additivity correction ('p' for Petersson, 'm' for Melius).
         raise_error (bool): Whether to raise an error if AECs or BACs are missing.
 
     Returns:
         bool: True if both AECs and BACs are available, False otherwise.
     """
-    qm_corr_file = os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py')
-    if not os.path.isfile(qm_corr_file):
-        qm_corr_file = os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py')
+    qm_corr_files = _get_qm_corrections_files()
 
-    atom_energies_start = "atom_energies = {"
-    atom_energies_end = "pbac = {"
+    aec_start = "atom_energies = {"
+    aec_end = "pbac = {"
     if bac_type.lower() == 'm':
-        bac_section_start = "mbac = {"
-        bac_section_end = "freq_dict ="
+        bac_start = "mbac = {"
+        bac_end = "freq_dict ="
     else:
-        bac_section_start = "pbac = {"
-        bac_section_end = "mbac = {"
+        bac_start = "pbac = {"
+        bac_end = "mbac = {"
 
-    sp_repr = _level_to_str(sp_level)
-    quoted_sp_repr = f'"{sp_repr}"'
+    best_aec_key = _find_best_across_files(sp_level, qm_corr_files, aec_start, aec_end)
+    best_bac_key = _find_best_across_files(sp_level, qm_corr_files, bac_start, bac_end)
 
-    has_aec = _section_contains_key(
-        file_path=qm_corr_file,
-        section_start=atom_energies_start,
-        section_end=atom_energies_end,
-        target=quoted_sp_repr,
-    )
-    has_bac = _section_contains_key(
-        file_path=qm_corr_file,
-        section_start=bac_section_start,
-        section_end=bac_section_end,
-        target=quoted_sp_repr,
-    )
+    has_aec = best_aec_key is not None
+    has_bac = best_bac_key is not None
     has_encorr = bool(has_aec and has_bac)
+
     if not has_encorr:
-        mssg = f"Arkane does not have the required energy corrections for {sp_repr} (AEC: {has_aec}, BAC: {has_bac})"
+        repr_level = best_aec_key if best_aec_key is not None else _level_to_str(sp_level)
+        year_note = ""
+        aec_years = _all_available_years(sp_level, qm_corr_files, aec_start, aec_end)
+        bac_years = _all_available_years(sp_level, qm_corr_files, bac_start, bac_end)
+        if sp_level.year is not None:
+            year_note = (
+                f" Available AEC years: {_format_years(aec_years)}; "
+                f"available BAC years: {_format_years(bac_years)}."
+            )
+        elif aec_years or bac_years:
+            year_note = (
+                f" Available AEC years: {_format_years(aec_years)}; "
+                f"available BAC years: {_format_years(bac_years)}. "
+                f"Specify a year to select a matching entry."
+            )
+        mssg = (
+            f"Arkane does not have the required energy corrections for {repr_level} "
+            f"(AEC: {has_aec}, BAC: {has_bac}).{year_note}"
+        )
         if raise_error:
             raise ValueError(mssg)
         else:
@@ -843,6 +1122,8 @@ def parse_species_thermo(species, output_content: str) -> None:
     e0 = parse_e0(species.label, output_content)
     if e0 is not None:
         species.e0 = e0
+    # Parse statmech properties from the conformer block
+    _parse_conformer_statmech(species, output_content)
     # Parse thermo data
     thermo_match = re.search(
         rf"thermo\(\s*label\s*=\s*['\"]{re.escape(species.label)}['\"].*?thermo\s*=\s*ThermoData\((.*?)\)\s*\)",
@@ -904,7 +1185,7 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
         return None
 
     def find_scalar(key):
-        pat = rf"{key}\s*=\s*([-+]?[\d.eE+-]+)"
+        pat = rf"\b{key}\s*=\s*([-+]?[\d.eE+-]+)"
         m = re.search(pat, arr_block)
         return float(m.group(1)) if m else None
 
@@ -916,8 +1197,61 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
     kinetics["Tmax"] = find_tuple("Tmax")
     m_comment = re.search(r"comment\s*=\s*['\"](.*?)['\"]", arr_block, re.DOTALL)
     if m_comment:
-        kinetics["comment"] = m_comment.group(1).strip()
+        comment = m_comment.group(1).strip()
+        kinetics["comment"] = comment
+        # Parse uncertainties and fit metadata from the comment string.
+        # Format: "Fitted to 50 data points; dA = *|/ 1.48466, dn = +|- 0.0514738, dEa = +|- 0.294364 kJ/mol"
+        m_npts = re.search(r'Fitted to (\d+) data points', comment)
+        if m_npts:
+            kinetics['n_data_points'] = int(m_npts.group(1))
+        m_da = re.search(r'dA\s*=\s*\*\|/\s*([\d.eE+-]+)', comment)
+        if m_da:
+            kinetics['dA'] = float(m_da.group(1))
+        m_dn = re.search(r'dn\s*=\s*\+\|-\s*([\d.eE+-]+)', comment)
+        if m_dn:
+            kinetics['dn'] = float(m_dn.group(1))
+        m_dea = re.search(r'dEa\s*=\s*\+\|-\s*([\d.eE+-]+)\s*(kJ/mol)?', comment)
+        if m_dea:
+            kinetics['dEa'] = float(m_dea.group(1))
+            kinetics['dEa_units'] = m_dea.group(2) or 'kJ/mol'
     reaction.kinetics = kinetics
+
+
+def _parse_conformer_statmech(species, content: str) -> None:
+    """
+    Parse external_symmetry and optical_isomers from the Arkane conformer block.
+
+    These live inside the conformer's modes list, e.g.::
+
+        NonlinearRotor(symmetry=2, ...)
+        optical_isomers = 1,
+    """
+    label = species.label
+    # Find the start of the conformer block, then use balanced-paren matching
+    # to find the full block (regex `.*?)` fails because of nested parens).
+    start_pattern = rf"conformer\(\s*label\s*=\s*['\"]{re.escape(label)}['\"]"
+    m_start = re.search(start_pattern, content, re.DOTALL)
+    if not m_start:
+        return
+    idx = m_start.start() + len('conformer(')
+    depth = 1
+    while idx < len(content) and depth > 0:
+        if content[idx] == '(':
+            depth += 1
+        elif content[idx] == ')':
+            depth -= 1
+        idx += 1
+    if depth != 0:
+        return
+    block = content[m_start.start():idx]
+    # optical_isomers
+    oi_match = re.search(r'optical_isomers\s*=\s*(\d+)', block)
+    if oi_match and species.optical_isomers is None:
+        species.optical_isomers = int(oi_match.group(1))
+    # external_symmetry from NonlinearRotor or LinearRotor
+    sym_match = re.search(r'(?:NonlinearRotor|LinearRotor)\s*\(.*?symmetry\s*=\s*(\d+)', block, re.DOTALL)
+    if sym_match and species.external_symmetry is None:
+        species.external_symmetry = int(sym_match.group(1))
 
 
 def parse_e0(label: str, content: str) -> float | None:
@@ -978,10 +1312,13 @@ def parse_thermo_data_block(block: str) -> dict:
             if key in ['Tdata', 'Cpdata']:  # Handle list values
                 try:
                     value = eval(value_str, {'__builtins__': None}, {})
-                except ValueError:
+                except (ValueError, SyntaxError, TypeError, NameError):
                     value = value_str
             else:  # Handle scalar values
-                value = value_str
+                try:
+                    value = float(value_str)
+                except (ValueError, TypeError):
+                    value = value_str
             thermo_data[key] = value
     return thermo_data
 

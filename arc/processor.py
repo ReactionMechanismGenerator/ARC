@@ -21,6 +21,16 @@ KINETICS_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_kinetics.py
 EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 4.184e+3}
 
 
+def resolve_neb_level(ts_adapters: list) -> Optional[Level]:
+    """Determine the NEB level of theory if NEB was a configured TS adapter."""
+    if ts_adapters and 'orca_neb' in (a.lower() for a in ts_adapters):
+        orca_neb_settings = settings.get('orca_neb_settings', {})
+        neb_level_repr = orca_neb_settings.get('level')
+        if neb_level_repr:
+            return Level(repr=neb_level_repr)
+    return None
+
+
 def process_arc_project(thermo_adapter: str,
                         kinetics_adapter: str,
                         project: str,

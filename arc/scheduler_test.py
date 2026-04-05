@@ -281,7 +281,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                             'opt': False,
                                             'orbitals': False,
                                             'sp': False},
-                              'paths': {'composite': '', 'freq': '', 'geo': '', 'sp': ''},
+                              'paths': {'composite': '', 'freq': '', 'geo': '', 'geo_coarse': '', 'sp': ''},
                               'restart': '', 'warnings': ''}
         initialized_output_dict = {'C2H6': empty_species_dict,
                                    'CtripCO': empty_species_dict,
@@ -693,7 +693,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                             )
         job_1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_nC3H7-iC3H7.out')
         check_ts(reaction=rxn, verbose=True, job=job_1, checks=['NMD'])
-        self.assertEqual(rxn.ts_species.ts_checks, {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': False, 'warnings': ''})
+        self.assertEqual(rxn.ts_species.ts_checks, {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': True, 'warnings': ''})
 
     def test_save_e_elect(self):
         """Test the save_e_elect() method."""
