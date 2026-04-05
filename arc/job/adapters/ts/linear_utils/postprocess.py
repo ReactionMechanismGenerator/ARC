@@ -182,13 +182,6 @@ def orient_h_on_reactive_centers(xyz: dict,
     for heavy_idx, partners in reactive_partners.items():
         if symbols[heavy_idx] == 'H':
             continue
-        # Only apply to terminal CH₂/CH₃ groups (≤1 heavy-atom neighbour) —
-        # internal CH groups on sp3 centres have tetrahedral geometry where
-        # flipping would be wrong.
-        n_heavy_nbr = sum(1 for nbr in mol.atoms[heavy_idx].bonds
-                          if symbols[atom_to_idx[nbr]] != 'H')
-        if n_heavy_nbr > 1:
-            continue
         # Find H substituents bonded to this heavy atom in the reactant.
         h_indices = []
         for nbr in mol.atoms[heavy_idx].bonds:
@@ -198,8 +191,12 @@ def orient_h_on_reactive_centers(xyz: dict,
         if not h_indices:
             continue
 
-        # Compute the reactive direction: average vector toward partners.
-        heavy_partners = [p for p in partners if symbols[p] != 'H']
+        # Compute the reactive direction: only toward partners that are direct
+        # graph neighbours.  Distant partners (e.g. the acceptor in H-migration)
+        # should not influence the orientation of non-migrating H atoms.
+        bonded_indices = {atom_to_idx[nbr] for nbr in mol.atoms[heavy_idx].bonds}
+        heavy_partners = [p for p in partners
+                          if symbols[p] != 'H' and p in bonded_indices]
         if not heavy_partners:
             continue
         reactive_dir = np.zeros(3)
@@ -225,10 +222,27 @@ def orient_h_on_reactive_centers(xyz: dict,
             continue
         h_avg /= h_avg_norm
 
-        # If H atoms strongly point toward the reactive direction (positive dot),
-        # reflect them through the perpendicular plane.
+        # Check if H atoms point toward the reactive direction.
+        # For terminal groups (≤1 heavy neighbour): flip when the average
+        # strongly points toward the partner (dot > 0.5).
+        # For internal groups (≥2 heavy neighbours): only flip when ALL H's
+        # individually point toward the reactive partner — a single misplaced H
+        # in a tetrahedral group should not trigger a full flip.
+        n_heavy_nbr = sum(1 for nbr in mol.atoms[heavy_idx].bonds
+                          if symbols[atom_to_idx[nbr]] != 'H')
         dot = float(np.dot(h_avg, reactive_dir))
-        if dot > 0.5:  # H's clearly on the wrong side
+        if n_heavy_nbr <= 1:
+            should_flip = dot > 0.5
+        else:
+            # Internal centre: require ALL H's to have positive dot.
+            per_h_dots = []
+            for hi in h_indices:
+                v = coords[hi] - coords[heavy_idx]
+                d = float(np.linalg.norm(v))
+                if d > 1e-6:
+                    per_h_dots.append(float(np.dot(v / d, reactive_dir)))
+            should_flip = len(per_h_dots) >= 2 and all(d > 0.1 for d in per_h_dots)
+        if should_flip:
             for hi in h_indices:
                 v = coords[hi] - coords[heavy_idx]
                 proj = np.dot(v, reactive_dir) * reactive_dir
@@ -237,6 +251,99 @@ def orient_h_on_reactive_centers(xyz: dict,
     new_xyz = dict(xyz)
     new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
     return new_xyz
+
+
+def has_broken_nonreactive_bond(xyz: dict,
+                                mol: 'Molecule',
+                                reactive_bonds: Set[Tuple[int, int]],
+                                max_stretch_ratio: float = 1.3,
+                                ) -> bool:
+    """
+    Return ``True`` if any non-reactive bond is stretched beyond
+    *max_stretch_ratio* × its single-bond length.
+
+    A TS guess should preserve the connectivity of non-reactive bonds.
+    When a non-reactive bond is excessively stretched, the guess is
+    likely a failed interpolation that ripped the molecule apart.
+
+    Args:
+        xyz: TS guess XYZ dictionary.
+        mol: Reactant molecule providing bond topology.
+        reactive_bonds: Set of (i, j) tuples (sorted) for bonds that break
+            or form — these are expected to stretch and are exempt.
+        max_stretch_ratio: Maximum allowed bond length as a fraction of SBL.
+            Default 1.3 (30% stretch).
+
+    Returns:
+        ``True`` if a non-reactive bond is over-stretched.
+    """
+    symbols = xyz['symbols']
+    coords_arr = np.array(xyz['coords'], dtype=float)
+    atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+    # Exempt bonds involving atoms within 2 hops of the reactive centre —
+    # Z-mat interpolation naturally distorts nearby bonds.
+    reactive_atoms = set()
+    for a, b in reactive_bonds:
+        reactive_atoms.update((a, b))
+    near_reactive: Set[int] = set(reactive_atoms)
+    for ra in reactive_atoms:
+        for nbr in mol.atoms[ra].bonds:
+            ni = atom_to_idx[nbr]
+            near_reactive.add(ni)
+            for nbr2 in mol.atoms[ni].bonds:
+                near_reactive.add(atom_to_idx[nbr2])
+    for atom in mol.atoms:
+        ia = atom_to_idx[atom]
+        for nbr in atom.bonds:
+            ib = atom_to_idx[nbr]
+            if ib <= ia:
+                continue
+            key = (ia, ib)
+            if key in reactive_bonds:
+                continue
+            if ia in near_reactive or ib in near_reactive:
+                continue
+            sbl = get_single_bond_length(symbols[ia], symbols[ib]) or 1.5
+            d = float(np.linalg.norm(coords_arr[ia] - coords_arr[ib]))
+            if d > sbl * max_stretch_ratio:
+                return True
+    return False
+
+
+def has_close_h_pair_on_same_parent(xyz: dict,
+                                    mol: 'Molecule',
+                                    min_hh_dist: float = 1.2,
+                                    ) -> bool:
+    """
+    Return ``True`` if any two H atoms bonded to the same heavy atom are
+    closer than *min_hh_dist*.
+
+    Two H atoms on the same carbon should be ~1.75 Å apart (tetrahedral) or
+    ~1.73 Å (trigonal planar).  Distances below 1.2 Å indicate a collapsed
+    or unphysical H arrangement from failed Z-matrix interpolation.
+
+    Args:
+        xyz: XYZ coordinate dictionary.
+        mol: Reactant molecule providing bond topology.
+        min_hh_dist: Minimum acceptable H-H distance (Å). Default 1.2.
+
+    Returns:
+        ``True`` if a close H pair is detected.
+    """
+    symbols = xyz['symbols']
+    coords_arr = np.array(xyz['coords'], dtype=float)
+    atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+    for atom in mol.atoms:
+        ia = atom_to_idx[atom]
+        if symbols[ia] == 'H':
+            continue
+        h_list = [atom_to_idx[nbr] for nbr in atom.bonds if symbols[atom_to_idx[nbr]] == 'H']
+        for i in range(len(h_list)):
+            for j in range(i + 1, len(h_list)):
+                d = float(np.linalg.norm(coords_arr[h_list[i]] - coords_arr[h_list[j]]))
+                if d < min_hh_dist:
+                    return True
+    return False
 
 
 # ---------------------------------------------------------------------------

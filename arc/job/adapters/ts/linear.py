@@ -191,6 +191,8 @@ if TYPE_CHECKING:
 from arc.job.adapters.ts.linear_utils.math_zmat import get_r_constraints, get_weight_grid
 from arc.job.adapters.ts.linear_utils.postprocess import (
     adjust_reactive_bond_distances,
+    has_broken_nonreactive_bond,
+    has_close_h_pair_on_same_parent,
     has_excessive_backbone_drift,
     orient_h_on_reactive_centers,
     postprocess_ts_guess,
@@ -2689,7 +2691,9 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     return True
             return False
         unique = [xyz for xyz in unique
-                  if not colliding_atoms(xyz) and not _has_bivalent_h(xyz)]
+                  if not colliding_atoms(xyz) and not _has_bivalent_h(xyz)
+                  and (not changing_all
+                       or not has_broken_nonreactive_bond(xyz, r_mol, changing_all))]
 
     # Cap: keep at most 5 guesses to avoid flooding downstream DFT.
     if len(unique) > 5:
