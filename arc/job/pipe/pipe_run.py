@@ -214,11 +214,7 @@ class PipeRun:
         server = servers_dict.get('local', {})
         queue, _ = next(iter(server.get('queues', {}).items()), ('', None))
         engine = self.tasks[0].engine if self.tasks else ''
-        engine_env = pipe_settings.get('env_setup', {}).get(engine, {})
-        if isinstance(engine_env, dict):
-            env_setup = '\n'.join(engine_env.values())
-        else:
-            env_setup = engine_env  # backward compat: plain string
+        env_setup = pipe_settings.get('env_setup', {}).get(engine, '')
         content = pipe_submit[template_key].format(
             name=f'pipe_{self.run_id}',
             max_task_num=array_size,

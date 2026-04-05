@@ -261,7 +261,12 @@ def _run_adapter(spec: TaskSpec, scratch_dir: str, job_type: str, **extra_kwargs
         testing=False,
         **extra_kwargs,
     )
-    job.execute()
+    original_dir = os.getcwd()
+    try:
+        os.chdir(job.local_path)
+        job.execute()
+    finally:
+        os.chdir(original_dir)
     output_file = getattr(job, 'local_path_to_output_file', None)
     if output_file and not os.path.isfile(output_file):
         raise RuntimeError(f'{spec.engine} produced no output file at {output_file}. '
