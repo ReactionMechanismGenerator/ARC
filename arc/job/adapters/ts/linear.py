@@ -192,6 +192,7 @@ from arc.job.adapters.ts.linear_utils.math_zmat import get_r_constraints, get_we
 from arc.job.adapters.ts.linear_utils.postprocess import (
     adjust_reactive_bond_distances,
     has_excessive_backbone_drift,
+    orient_h_on_reactive_centers,
     postprocess_ts_guess,
     validate_ts_guess,
 )
@@ -2669,6 +2670,10 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         # Adjust reactive-bond distances toward TS-like values using the recipe.
         if all_breaking or all_forming:
             unique = [adjust_reactive_bond_distances(xyz, r_mol, all_breaking, all_forming)
+                      for xyz in unique]
+        # Orient H atoms on reactive centres away from forming/breaking bonds.
+        if all_breaking or all_forming:
+            unique = [orient_h_on_reactive_centers(xyz, r_mol, all_breaking, all_forming)
                       for xyz in unique]
         # Final collision and bivalent-H filter after all post-processing.
         def _has_bivalent_h(xyz_dict: dict) -> bool:
