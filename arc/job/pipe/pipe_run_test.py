@@ -159,8 +159,8 @@ class TestPipeRunWriteSubmitScript(unittest.TestCase):
         path = run.write_submit_script()
         with open(path) as f:
             content = f.read()
-        self.assertIn('#PBS -t 1-8', content)
-        self.assertIn('WORKER_ID=$PBS_ARRAYID', content)
+        self.assertIn('#PBS -J 1-8', content)
+        self.assertIn('WORKER_ID="$PBS_ARRAY_INDEX"', content)
 
     def test_htcondor_content(self):
         run = self._make_run('htcondor', max_workers=12, n_tasks=12)

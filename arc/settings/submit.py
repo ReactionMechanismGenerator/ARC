@@ -50,6 +50,7 @@ incore_commands = {
 pipe_submit = {
     'slurm': """#!/bin/bash -l
 #SBATCH -J {name}
+#SBATCH -p {queue}
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --mem={memory}
@@ -57,30 +58,33 @@ pipe_submit = {
 #SBATCH -o {pipe_root}/out_%a.txt
 #SBATCH -e {pipe_root}/err_%a.txt
 
+{env_setup}
 WORKER_ID=$SLURM_ARRAY_TASK_ID
 
 {python_exe} -m arc.scripts.pipe_worker --pipe_root {pipe_root} --worker_id $WORKER_ID
 """,
     'pbs': """#!/bin/bash -l
 #PBS -N {name}
+#PBS -q {queue}
 #PBS -l ncpus={cpus}
 #PBS -l mem={memory}mb
-#PBS -t 1-{max_task_num}
-#PBS -o {pipe_root}/out_$PBS_ARRAYID.txt
-#PBS -e {pipe_root}/err_$PBS_ARRAYID.txt
+#PBS -J 1-{max_task_num}
 
-WORKER_ID=$PBS_ARRAYID
+{env_setup}
+WORKER_ID="$PBS_ARRAY_INDEX"
 
-{python_exe} -m arc.scripts.pipe_worker --pipe_root {pipe_root} --worker_id $WORKER_ID
+{python_exe} -m arc.scripts.pipe_worker --pipe_root {pipe_root} --worker_id "$WORKER_ID"
 """,
     'sge': """#!/bin/bash -l
 #$ -N {name}
+#$ -q {queue}
 #$ -pe smp {cpus}
 #$ -l h_vmem={memory}M
 #$ -t 1-{max_task_num}
 #$ -o {pipe_root}/out_$SGE_TASK_ID.txt
 #$ -e {pipe_root}/err_$SGE_TASK_ID.txt
 
+{env_setup}
 WORKER_ID=$SGE_TASK_ID
 
 {python_exe} -m arc.scripts.pipe_worker --pipe_root {pipe_root} --worker_id $WORKER_ID
