@@ -1133,8 +1133,20 @@ def interpolate_addition(rxn: 'ARCReaction',
             not _family_name and len(multi_species) >= 3):
         ts_family = build_xy_elimination_ts(uni_xyz, uni_mol)
         if ts_family is not None:
-            logger.debug(f'Linear addition (rxn={rxn.label}): used XY_elimination dedicated builder.')
-            return [ts_family]
+            is_valid, reason = validate_ts_guess(
+                ts_family, set(), [], uni_mol,
+                label=f'rxn={rxn.label}, XY_elimination')
+            if is_valid:
+                if existing_xyzs and any(almost_equal_coords(ts_family, e) for e in existing_xyzs):
+                    logger.debug(f'Linear addition (rxn={rxn.label}): XY_elimination '
+                                 f'guess is a duplicate of existing, skipping.')
+                else:
+                    logger.debug(f'Linear addition (rxn={rxn.label}): used XY_elimination '
+                                 f'dedicated builder.')
+                    return [ts_family]
+            else:
+                logger.debug(f'Linear addition (rxn={rxn.label}): XY_elimination '
+                             f'guess rejected — {reason}.')
 
     # Build a set of bonds present in the unimolecular species' graph (used
     # by both the template-guided path and the fragmentation fallback).
@@ -1345,9 +1357,16 @@ def interpolate_addition(rxn: 'ARCReaction',
             if len(split_in_uni) >= 2 and cross_in_uni:
                 ts_conc = build_concerted_ts(uni_xyz, uni_mol, split_in_uni, cross_in_uni, weight)
                 if ts_conc is not None:
-                    ts_xyzs.append(ts_conc)
-                    logger.debug(f'Linear addition (rxn={rxn.label}): used concerted-TS builder '
-                                 f'(split={split_in_uni}, cross={cross_in_uni}).')
+                    is_valid_conc, reason_conc = validate_ts_guess(
+                        ts_conc, set(), split_in_uni, uni_mol,
+                        label=f'rxn={rxn.label}, concerted')
+                    if is_valid_conc:
+                        ts_xyzs.append(ts_conc)
+                        logger.debug(f'Linear addition (rxn={rxn.label}): used concerted-TS builder '
+                                     f'(split={split_in_uni}, cross={cross_in_uni}).')
+                    else:
+                        logger.debug(f'Linear addition (rxn={rxn.label}): concerted guess '
+                                     f'rejected — {reason_conc}.')
 
     # ----- SN2-like supplement: ring-close then stretch leaving group -----
     # For reactions where a bond breaks and a bond forms at the same pivot
@@ -1633,7 +1652,15 @@ def interpolate_addition(rxn: 'ARCReaction',
         used_concerted = False
         if cross_bonds_frag and len(cut) >= 2:
             ts_conc = build_concerted_ts(uni_xyz, uni_mol, cut, cross_bonds_frag, weight)
-            if ts_conc is not None and not colliding_atoms(ts_conc):
+            if ts_conc is not None:
+                is_valid_conc, reason_conc = validate_ts_guess(
+                    ts_conc, set(), cut, uni_mol,
+                    label=f'rxn={rxn.label}, frag-concerted')
+                if not is_valid_conc:
+                    logger.debug(f'Linear addition (rxn={rxn.label}, frag-fallback): '
+                                 f'concerted guess rejected — {reason_conc}.')
+                    ts_conc = None
+            if ts_conc is not None:
                 ts_xyzs.append(ts_conc)
                 used_concerted = True
                 logger.debug(f'Linear addition (rxn={rxn.label}, frag-fallback): '
@@ -1918,8 +1945,10 @@ def _strategy_direct_contraction(ctx: _PathContext) -> _StrategyResult:
     atom moved partway toward its partner.  This preserves the existing
     ring/backbone and avoids Z-mat interpolation artifacts (bivalent H's).
 
-    Fires before Z-mat interpolation.  Dominant: halts the pipeline on
-    success to prevent the Z-mat path from producing artifacts.
+    Fires before Z-mat interpolation.  Supplementary: does NOT halt the
+    pipeline, allowing Z-mat to run in parallel.  Direct contraction is a
+    useful starting guess but cannot capture pericyclic or conformational
+    changes, so the Z-mat path should always get a chance.
     """
     if ctx.bb or not ctx.fb:
         return _StrategyResult()
@@ -2105,6 +2134,11 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         return []
 
     ts_xyzs: List[dict] = list()
+    # Per-guess bond metadata: parallel list of (bb, fb) tuples.
+    # Each guess carries the specific breaking/forming bonds from the path
+    # that generated it, so post-processing uses path-local bonds, not a
+    # union of all paths.
+    _guess_bonds: List[Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]] = list()
     r_xyz = rxn.r_species[0].get_xyz()
     r_mol = rxn.r_species[0].mol
     # Defer the expensive global atom map computation: only compute when
@@ -2225,6 +2259,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             result = strategy(ctx)
             if result.guesses:
                 ts_xyzs.extend(result.guesses)
+                _guess_bonds.extend([(list(ctx.bb), list(ctx.fb))] * len(result.guesses))
             if result.halt:
                 break
 
@@ -2290,6 +2325,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                           'coords': tuple(tuple(row) for row in r_coords_dc)}
                 if not colliding_atoms(ts_dc):
                     ts_xyzs.append(ts_dc)
+                    _guess_bonds.append((list(bb_dc), list(fb_dc)))
                     logger.debug(f'Linear (rxn={rxn.label}): direct-contraction from recipe '
                                  f'(mover={mover}, target={target_dc}).')
             if ts_xyzs:
@@ -2524,6 +2560,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                                         family=fam)
                                     if ok:
                                         ts_xyzs.append(rc_try)
+                                        _guess_bonds.append((list(bb), list(fb)))
                                         used_ring_closure = True
                                         break
 
@@ -2569,6 +2606,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                                   'coords': tuple(tuple(row) for row in r_coords_dc)}
                         if not colliding_atoms(ts_dc):
                             ts_xyzs.append(ts_dc)
+                            _guess_bonds.append((list(bb), list(fb)))
                             logger.debug(f'Linear (rxn={rxn.label}): trivial-fallback direct-contraction '
                                          f'(mover={mover}, target={target}).')
 
@@ -2591,6 +2629,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                             ts_r, r_xyz_na, max_mean_heavy_disp=3.0,
                             reactive_indices=reactive_xyz_indices):
                         ts_xyzs.append(ts_r)
+                        _guess_bonds.append((list(bb), list(fb)))
                     elif ts_r is not None:
                         logger.debug(f'Linear (rxn={rxn.label}, trivial, w={weight}, type=R): '
                                      f'discarded — excessive backbone drift from anchor.')
@@ -2607,13 +2646,13 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                             ts_p, op_xyz_na, max_mean_heavy_disp=3.0,
                             reactive_indices=reactive_xyz_indices):
                         ts_xyzs.append(ts_p)
+                        _guess_bonds.append((list(bb), list(fb)))
                     elif ts_p is not None:
                         logger.debug(f'Linear (rxn={rxn.label}, trivial, w={weight}, type=P): '
                                      f'discarded — excessive backbone drift from anchor.')
 
-    # Collect all forming/breaking bonds across paths for post-processing.
-    all_forming: List[Tuple[int, int]] = []
-    all_breaking: List[Tuple[int, int]] = []
+    # Collect the union of all path bonds for ring-repair (which is legitimately global)
+    # and for the non-reactive-bond filter (which needs the full reactive-bond set).
     changing_all: Set[Tuple[int, int]] = set()
     for pd in rxn.product_dicts:
         rl = pd.get('r_label_map')
@@ -2621,8 +2660,6 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             bb_i, fb_i = rxn.get_expected_changing_bonds(r_label_dict=rl)
             for b in list(bb_i or []) + list(fb_i or []):
                 changing_all.add((min(b), max(b)))
-            all_forming.extend(fb_i or [])
-            all_breaking.extend(bb_i or [])
     reactive_all: Set[int] = set()
     for b in changing_all:
         reactive_all.update(b)
@@ -2637,6 +2674,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
     #      same backbone with H on opposite sides).
     prior: List[dict] = list(existing_xyzs or [])
     unique: List[dict] = []
+    unique_bonds: List[Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]] = []
 
     def _heavy_atoms_match(xyz1: dict, xyz2: dict, tol: float = 0.05) -> bool:
         """Return True if all heavy-atom coordinates match within *tol* Å."""
@@ -2647,35 +2685,32 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                 return False
         return True
 
-    for xyz in ts_xyzs:
+    for idx, xyz in enumerate(ts_xyzs):
         if colliding_atoms(xyz):
             continue
         if any(almost_equal_coords(xyz, other) or _heavy_atoms_match(xyz, other)
                for other in unique + prior):
             continue
         unique.append(xyz)
+        unique_bonds.append(_guess_bonds[idx] if idx < len(_guess_bonds) else ([], []))
 
     if unique:
-        # Repair ring bonds broken by Z-matrix interpolation.
+        # Repair ring bonds broken by Z-matrix interpolation (global — uses all rings).
         if _ring_sets:
             unique = [_fix_broken_ring_bonds(xyz, r_mol, _ring_sets, reactive_all, changing_all)
                       for xyz in unique]
-        # Reflect H atoms that project into forming-bond paths (blocking ring closure).
-        if all_forming:
-            unique = [_clear_forming_bond_path(xyz, r_mol, all_forming)
-                      for xyz in unique]
+        # Path-local post-processing: each guess uses only its own path's bonds.
+        for k in range(len(unique)):
+            g_bb, g_fb = unique_bonds[k]
+            if g_fb:
+                unique[k] = _clear_forming_bond_path(unique[k], r_mol, g_fb)
+            if g_bb or g_fb:
+                unique[k] = adjust_reactive_bond_distances(unique[k], r_mol, g_bb, g_fb)
+                unique[k] = orient_h_on_reactive_centers(unique[k], r_mol, g_bb, g_fb)
         # Build the 4-membered ring TS motif for Intra_RH_Add patterns
         # (stretch X-H, stretch Y=Z, move H toward Y).
         if _fallback_fb is not None and _fallback_bb is not None and _fallback_changed is not None:
             unique = [_fix_rh_add_motif(xyz, r_mol, _fallback_fb, _fallback_bb, _fallback_changed)
-                      for xyz in unique]
-        # Adjust reactive-bond distances toward TS-like values using the recipe.
-        if all_breaking or all_forming:
-            unique = [adjust_reactive_bond_distances(xyz, r_mol, all_breaking, all_forming)
-                      for xyz in unique]
-        # Orient H atoms on reactive centres away from forming/breaking bonds.
-        if all_breaking or all_forming:
-            unique = [orient_h_on_reactive_centers(xyz, r_mol, all_breaking, all_forming)
                       for xyz in unique]
         # Final collision and bivalent-H filter after all post-processing.
         def _has_bivalent_h(xyz_dict: dict) -> bool:

@@ -14,9 +14,14 @@ from arc.molecule.molecule import Molecule
 
 _MASS_NUMBER = {'H': 1, 'C': 12, 'N': 14, 'O': 16, 'S': 32}
 
+from arc.species import ARCSpecies
+
 from arc.job.adapters.ts.linear_utils.isomerization import (
     backbone_atom_map,
     get_near_attack_xyz,
+    get_path_length,
+    build_4center_interchange_ts,
+    generate_zmat_branch,
     path_has_cumulated_bonds,
     ring_closure_xyz,
 )
@@ -294,6 +299,327 @@ class TestRingClosureXyz(unittest.TestCase):
             self.butadiene_xyz, self.butadiene_mol,
             forming_bond=(c0, c1), target_distance=2.3)
         self.assertIsNone(result)
+
+
+class TestGetPathLength(unittest.TestCase):
+    """Tests for the get_path_length function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_same_atom_returns_zero(self):
+        """Path from an atom to itself is 0."""
+        mol = Molecule().from_smiles('CC')
+        self.assertEqual(get_path_length(mol, 0, 0), 0)
+
+    def test_adjacent_atoms_returns_one(self):
+        """Two bonded atoms have path length 1."""
+        mol = Molecule().from_smiles('CC')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        result = get_path_length(mol, c_idx[0], c_idx[1])
+        self.assertEqual(result, 1)
+
+    def test_linear_chain_propane(self):
+        """Path length across a 3-carbon chain is 2."""
+        mol = Molecule().from_smiles('CCC')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        result = get_path_length(mol, c_idx[0], c_idx[2])
+        self.assertEqual(result, 2)
+
+    def test_longer_chain_butane(self):
+        """Path length across a 4-carbon chain is 3."""
+        mol = Molecule().from_smiles('CCCC')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        result = get_path_length(mol, c_idx[0], c_idx[3])
+        self.assertEqual(result, 3)
+
+    def test_branched_molecule(self):
+        """Branched molecule: shortest path through backbone."""
+        mol = Molecule().from_smiles('CC(C)C')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        # All terminal carbons are 2 bonds from each other (through center)
+        # Find the central C (bonded to 3 carbons)
+        atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+        center = None
+        terminals = []
+        for ci in c_idx:
+            c_nbr = sum(1 for nbr in mol.atoms[ci].bonds if nbr.symbol == 'C')
+            if c_nbr == 3:
+                center = ci
+            else:
+                terminals.append(ci)
+        if center is not None and len(terminals) >= 2:
+            self.assertEqual(get_path_length(mol, terminals[0], terminals[1]), 2)
+            self.assertEqual(get_path_length(mol, terminals[0], center), 1)
+
+    def test_h_to_heavy_atom(self):
+        """Path from H to a heavy atom through the bond graph."""
+        mol = Molecule().from_smiles('CCC')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        h_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'H']
+        # H bonded to C0 → path to C2 goes through C0-C1-C2 = 3 bonds
+        atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+        h_on_c0 = None
+        for hi in h_idx:
+            for nbr in mol.atoms[hi].bonds:
+                if atom_to_idx[nbr] == c_idx[0]:
+                    h_on_c0 = hi
+                    break
+            if h_on_c0 is not None:
+                break
+        if h_on_c0 is not None:
+            result = get_path_length(mol, h_on_c0, c_idx[2])
+            self.assertEqual(result, 3)
+
+    def test_ring_molecule_shortest_path(self):
+        """In cyclohexane, the shortest path between opposite atoms is 3."""
+        mol = Molecule().from_smiles('C1CCCCC1')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        # In a 6-membered ring, the maximum shortest path is 3
+        result = get_path_length(mol, c_idx[0], c_idx[3])
+        self.assertEqual(result, 3)
+
+
+class TestBuild4CenterInterchangeTs(unittest.TestCase):
+    """Tests for the build_4center_interchange_ts function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_wrong_bond_count_returns_none(self):
+        """Fewer than 2 breaking/forming bonds returns None."""
+        mol = Molecule().from_smiles('CC')
+        symbols = tuple(a.symbol for a in mol.atoms)
+        coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(len(symbols)))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+            'coords': coords,
+        }
+        result = build_4center_interchange_ts(xyz, mol, bb=[(0, 1)], fb=[(0, 1)])
+        self.assertIsNone(result)
+
+    def test_more_than_4_reactive_atoms_returns_none(self):
+        """More than 4 unique reactive atoms returns None."""
+        mol = Molecule().from_smiles('CCCCC')
+        symbols = tuple(a.symbol for a in mol.atoms)
+        coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(len(symbols)))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+            'coords': coords,
+        }
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        # 5 unique reactive atoms
+        result = build_4center_interchange_ts(
+            xyz, mol,
+            bb=[(c_idx[0], c_idx[1]), (c_idx[2], c_idx[3])],
+            fb=[(c_idx[0], c_idx[3]), (c_idx[1], c_idx[4])])
+        self.assertIsNone(result)
+
+    def test_valid_4center_pattern(self):
+        """A proper 4-center interchange with 4 reactive atoms returns a valid dict or None."""
+        # 1,2-XY interchange on ethane-like: X-C1-C2-Y → Y-C1-C2-X
+        # Use chlorofluoroethane: FCH2CH2Cl → ClCH2CH2F
+        # Simplified: just use C-C with two H substituents as migrants
+        spc = ARCSpecies(label='R', smiles='CC')
+        mol = spc.mol
+        symbols = tuple(a.symbol for a in mol.atoms)
+        n = len(symbols)
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        h_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'H']
+
+        # Build coordinates
+        coords_list = []
+        for i, atom in enumerate(mol.atoms):
+            if atom.symbol == 'C':
+                coords_list.append((c_idx.index(i) * 1.54, 0.0, 0.0))
+            else:
+                bonded_c = None
+                for nbr in atom.bonds.keys():
+                    if nbr.symbol == 'C':
+                        bonded_c = mol.atoms.index(nbr)
+                        break
+                c_rank = c_idx.index(bonded_c) if bonded_c is not None else 0
+                h_list = [j for j, a2 in enumerate(mol.atoms)
+                          if a2.symbol == 'H'
+                          and mol.has_bond(a2, mol.atoms[bonded_c])]
+                h_rank = h_list.index(i) if i in h_list else 0
+                coords_list.append((c_rank * 1.54, 1.09 * ((-1) ** h_rank), 0.5 * (h_rank // 2)))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+            'coords': tuple(tuple(c) for c in coords_list),
+        }
+
+        # Find H atoms bonded to each C
+        atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+        h_on_c0 = [atom_to_idx[nbr] for nbr in mol.atoms[c_idx[0]].bonds
+                    if nbr.symbol == 'H']
+        h_on_c1 = [atom_to_idx[nbr] for nbr in mol.atoms[c_idx[1]].bonds
+                    if nbr.symbol == 'H']
+
+        if len(h_on_c0) >= 1 and len(h_on_c1) >= 1:
+            m1, m2 = h_on_c0[0], h_on_c1[0]
+            # bb: H1 leaves C0, H2 leaves C1
+            # fb: H1 goes to C1, H2 goes to C0
+            bb = [(m1, c_idx[0]), (m2, c_idx[1])]
+            fb = [(m1, c_idx[1]), (m2, c_idx[0])]
+            result = build_4center_interchange_ts(xyz, mol, bb=bb, fb=fb, weight=0.5, label='test')
+            # May be None if no center pair is found or validation fails, but should not raise
+            if result is not None:
+                self.assertIn('symbols', result)
+                self.assertIn('coords', result)
+                self.assertEqual(len(result['coords']), n)
+
+
+class TestGenerateZmatBranch(unittest.TestCase):
+    """Tests for the generate_zmat_branch function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+        # Build a propane molecule with proper 3D coordinates for Z-matrix generation
+        cls.propane_spc = ARCSpecies(label='propane', smiles='CCC', xyz={
+            'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
+            'coords': (
+                (-1.267, -0.259, 0.000),
+                (0.000, 0.587, 0.000),
+                (1.267, -0.259, 0.000),
+                (-2.148, 0.393, 0.000),
+                (-1.267, -0.904, 0.882),
+                (-1.267, -0.904, -0.882),
+                (0.000, 1.232, 0.882),
+                (0.000, 1.232, -0.882),
+                (2.148, 0.393, 0.000),
+                (1.267, -0.904, 0.882),
+                (1.267, -0.904, -0.882),
+            ),
+        })
+        cls.propane_mol = cls.propane_spc.mol
+        cls.propane_xyz = cls.propane_spc.get_xyz()
+
+    def test_generate_zmat_branch_returns_dict_or_none(self):
+        """Z-mat branch generation returns a dict or None."""
+        # Use propane as both anchor and target (identity test)
+        result = generate_zmat_branch(
+            anchor_xyz=self.propane_xyz,
+            anchor_mol=self.propane_mol,
+            target_xyz=self.propane_xyz,
+            weight=0.5,
+            reactive_xyz_indices=set(),
+            anchors=None,
+            constraints=None,
+            r_mol=self.propane_mol,
+            forming_bonds=[],
+            breaking_bonds=[],
+            label='test',
+            skip_postprocess=True,
+        )
+        if result is not None:
+            self.assertIn('symbols', result)
+            self.assertIn('coords', result)
+            self.assertEqual(len(result['coords']), len(self.propane_xyz['coords']))
+
+    def test_generate_zmat_branch_preserves_atom_count(self):
+        """Output has the same number of atoms as input."""
+        result = generate_zmat_branch(
+            anchor_xyz=self.propane_xyz,
+            anchor_mol=self.propane_mol,
+            target_xyz=self.propane_xyz,
+            weight=0.0,
+            reactive_xyz_indices=set(),
+            anchors=None,
+            constraints=None,
+            r_mol=self.propane_mol,
+            forming_bonds=[],
+            breaking_bonds=[],
+            label='test',
+            skip_postprocess=True,
+        )
+        if result is not None:
+            self.assertEqual(len(result['symbols']), len(self.propane_xyz['symbols']))
+
+    def test_generate_zmat_branch_weight_zero_close_to_anchor(self):
+        """At weight=0, the result should be a reasonable geometry (Z-mat round trip)."""
+        result = generate_zmat_branch(
+            anchor_xyz=self.propane_xyz,
+            anchor_mol=self.propane_mol,
+            target_xyz=self.propane_xyz,
+            weight=0.0,
+            reactive_xyz_indices=set(),
+            anchors=None,
+            constraints=None,
+            r_mol=self.propane_mol,
+            forming_bonds=[],
+            breaking_bonds=[],
+            label='test',
+            skip_postprocess=True,
+        )
+        if result is not None:
+            anchor_coords = np.array(self.propane_xyz['coords'])
+            result_coords = np.array(result['coords'])
+            # Z-mat round-trip plus postprocessing can shift H atoms; use a
+            # generous tolerance that still rejects completely broken geometries.
+            rmsd = np.sqrt(np.mean(np.sum((anchor_coords - result_coords) ** 2, axis=1)))
+            self.assertLess(rmsd, 5.0)
+
+    def test_generate_zmat_branch_with_h_migration_family(self):
+        """With H-migration family, the pipeline runs without error."""
+        # Ethanol-like: C-C-O with H migration
+        spc = ARCSpecies(label='ethanol', smiles='CCO', xyz={
+            'symbols': ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 16, 1, 1, 1, 1, 1, 1),
+            'coords': (
+                (-1.168, -0.211, 0.000),
+                (0.138, 0.545, 0.000),
+                (1.210, -0.383, 0.000),
+                (-2.027, 0.463, 0.000),
+                (-1.168, -0.855, 0.882),
+                (-1.168, -0.855, -0.882),
+                (0.138, 1.189, 0.882),
+                (0.138, 1.189, -0.882),
+                (2.053, 0.091, 0.000),
+            ),
+        })
+        mol = spc.mol
+        xyz = spc.get_xyz()
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        o_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'O']
+        h_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'H']
+
+        # Simulate H migration: pick an H on C, form bond to O
+        atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+        h_on_c0 = [atom_to_idx[nbr] for nbr in mol.atoms[c_idx[0]].bonds
+                    if nbr.symbol == 'H']
+        if h_on_c0 and o_idx:
+            forming = [(h_on_c0[0], o_idx[0])]
+            breaking = [(h_on_c0[0], c_idx[0])]
+            reactive = {h_on_c0[0], o_idx[0], c_idx[0]}
+            result = generate_zmat_branch(
+                anchor_xyz=xyz,
+                anchor_mol=mol,
+                target_xyz=xyz,
+                weight=0.5,
+                reactive_xyz_indices=reactive,
+                anchors=None,
+                constraints=None,
+                r_mol=mol,
+                forming_bonds=forming,
+                breaking_bonds=breaking,
+                label='test_hmig',
+                family='intra_H_migration',
+            )
+            # May be None if validation rejects it, but should not raise
+            if result is not None:
+                self.assertEqual(len(result['coords']), len(xyz['coords']))
 
 
 if __name__ == '__main__':

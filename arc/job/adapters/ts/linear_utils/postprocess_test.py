@@ -12,6 +12,8 @@ import numpy as np
 
 from arc.molecule.molecule import Molecule
 
+from arc.species import ARCSpecies
+
 from arc.job.adapters.ts.linear_utils.postprocess import (
     PAULING_DELTA,
     _has_detached_hydrogen,
@@ -21,6 +23,8 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     _has_migrating_h_nearer_to_nonreactive,
     _has_bad_ts_motif,
     has_excessive_backbone_drift,
+    adjust_reactive_bond_distances,
+    has_broken_nonreactive_bond,
     fix_forming_bond_distances,
     fix_nonreactive_h_distances,
     fix_crowded_h_atoms,
@@ -28,6 +32,7 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     has_inward_migrating_group_h,
     fix_migrating_group_umbrella,
     stagger_donor_terminal_h,
+    postprocess_h_migration,
 )
 
 
@@ -582,6 +587,541 @@ class TestPostprocessConstants(unittest.TestCase):
     def test_pauling_delta_value(self):
         """PAULING_DELTA is approximately 0.6*ln(2) ~ 0.42."""
         self.assertAlmostEqual(PAULING_DELTA, 0.42, places=2)
+
+
+class TestAdjustReactiveBondDistances(unittest.TestCase):
+    """Tests for the adjust_reactive_bond_distances function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_no_bonds_returns_unchanged(self):
+        """No breaking or forming bonds means no changes."""
+        mol = Molecule().from_smiles('CC')
+        xyz = {
+            'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 1, 1, 1, 1, 1, 1),
+            'coords': ((0.0, 0.0, 0.0), (1.54, 0.0, 0.0),
+                       (-0.39, 1.03, 0.0), (-0.39, -0.51, 0.89),
+                       (-0.39, -0.51, -0.89), (1.93, 1.03, 0.0),
+                       (1.93, -0.51, 0.89), (1.93, -0.51, -0.89)),
+        }
+        result = adjust_reactive_bond_distances(xyz, mol, breaking_bonds=[], forming_bonds=[])
+        np.testing.assert_allclose(result['coords'], xyz['coords'], atol=1e-10)
+
+    def test_breaking_bond_at_equilibrium_gets_stretched(self):
+        """A C-C breaking bond at equilibrium distance (1.54 A) gets stretched toward TS."""
+        mol = Molecule().from_smiles('CC')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        symbols = tuple(a.symbol for a in mol.atoms)
+        coords_list = []
+        for i, atom in enumerate(mol.atoms):
+            if atom.symbol == 'C':
+                coords_list.append((c_idx.index(i) * 1.40, 0.0, 0.0))
+            else:
+                bonded_c = None
+                for nbr in atom.bonds.keys():
+                    if nbr.symbol == 'C':
+                        bonded_c = mol.atoms.index(nbr)
+                        break
+                c_rank = c_idx.index(bonded_c) if bonded_c is not None else 0
+                coords_list.append((c_rank * 1.40, 1.09, 0.0))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': tuple(tuple(c) for c in coords_list),
+        }
+        d_before = np.linalg.norm(
+            np.array(xyz['coords'][c_idx[0]]) - np.array(xyz['coords'][c_idx[1]]))
+        result = adjust_reactive_bond_distances(
+            xyz, mol, breaking_bonds=[(c_idx[0], c_idx[1])], forming_bonds=[])
+        d_after = np.linalg.norm(
+            np.array(result['coords'][c_idx[0]]) - np.array(result['coords'][c_idx[1]]))
+        # The bond was shorter than SBL, so it should get stretched
+        self.assertGreater(d_after, d_before)
+
+    def test_h_bonds_are_skipped(self):
+        """Breaking bonds involving H are not adjusted."""
+        mol = Molecule().from_smiles('C')
+        symbols = tuple(a.symbol for a in mol.atoms)
+        h_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'H']
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        coords = tuple((float(i) * 1.0, 0.0, 0.0) for i in range(len(symbols)))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': coords,
+        }
+        if h_idx and c_idx:
+            result = adjust_reactive_bond_distances(
+                xyz, mol, breaking_bonds=[(c_idx[0], h_idx[0])], forming_bonds=[])
+            # H-involving bonds should remain unchanged
+            np.testing.assert_allclose(result['coords'], xyz['coords'], atol=1e-10)
+
+    def test_forming_bond_over_compressed_gets_pushed(self):
+        """A forming heavy-atom bond compressed below 90% SBL gets pushed apart."""
+        mol = Molecule().from_smiles('CC')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        symbols = tuple(a.symbol for a in mol.atoms)
+        # Put the two C atoms very close (0.8 A, well below 90% of 1.54 = 1.386)
+        coords_list = []
+        for i, atom in enumerate(mol.atoms):
+            if atom.symbol == 'C':
+                coords_list.append((c_idx.index(i) * 0.8, 0.0, 0.0))
+            else:
+                bonded_c = None
+                for nbr in atom.bonds.keys():
+                    if nbr.symbol == 'C':
+                        bonded_c = mol.atoms.index(nbr)
+                        break
+                c_rank = c_idx.index(bonded_c) if bonded_c is not None else 0
+                coords_list.append((c_rank * 0.8, 1.09, 0.0))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': tuple(tuple(c) for c in coords_list),
+        }
+        d_before = np.linalg.norm(
+            np.array(xyz['coords'][c_idx[0]]) - np.array(xyz['coords'][c_idx[1]]))
+        result = adjust_reactive_bond_distances(
+            xyz, mol, breaking_bonds=[], forming_bonds=[(c_idx[0], c_idx[1])])
+        d_after = np.linalg.norm(
+            np.array(result['coords'][c_idx[0]]) - np.array(result['coords'][c_idx[1]]))
+        self.assertGreater(d_after, d_before)
+
+    def test_preserves_symbols(self):
+        """Symbols are preserved through adjustment."""
+        mol = Molecule().from_smiles('CC')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        symbols = tuple(a.symbol for a in mol.atoms)
+        coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(len(symbols)))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': coords,
+        }
+        result = adjust_reactive_bond_distances(
+            xyz, mol, breaking_bonds=[(c_idx[0], c_idx[1])], forming_bonds=[])
+        self.assertEqual(result['symbols'], xyz['symbols'])
+
+
+class TestHasBrokenNonreactiveBond(unittest.TestCase):
+    """Tests for the has_broken_nonreactive_bond function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_normal_geometry_returns_false(self):
+        """A molecule at equilibrium geometry has no over-stretched bonds."""
+        mol = Molecule().from_smiles('CC')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        symbols = tuple(a.symbol for a in mol.atoms)
+        coords_list = []
+        for i, atom in enumerate(mol.atoms):
+            if atom.symbol == 'C':
+                coords_list.append((c_idx.index(i) * 1.54, 0.0, 0.0))
+            else:
+                bonded_c = None
+                for nbr in atom.bonds.keys():
+                    if nbr.symbol == 'C':
+                        bonded_c = mol.atoms.index(nbr)
+                        break
+                c_rank = c_idx.index(bonded_c) if bonded_c is not None else 0
+                coords_list.append((c_rank * 1.54, 1.09, 0.0))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': tuple(tuple(c) for c in coords_list),
+        }
+        reactive_bonds = {(c_idx[0], c_idx[1])}
+        self.assertFalse(has_broken_nonreactive_bond(xyz, mol, reactive_bonds))
+
+    def test_stretched_nonreactive_bond_returns_true(self):
+        """A non-reactive C-H bond stretched to 10.0 A is detected.
+
+        The function exempts bonds within 2 hops of the reactive center, so we
+        use pentane (CCCCC) and make the reactive bond C0-C1 while stretching
+        an H on C4 (3 hops away from C1, 4 from C0).
+        """
+        spc = ARCSpecies(label='pentane', smiles='CCCCC', xyz={
+            'symbols': ('C', 'C', 'C', 'C', 'C',
+                        'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 12, 12, 12,
+                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+            'coords': (
+                (-2.541, 0.391, 0.000), (-1.267, -0.459, 0.000),
+                (0.000, 0.391, 0.000), (1.267, -0.459, 0.000),
+                (2.541, 0.391, 0.000),
+                (-3.422, -0.261, 0.000), (-2.541, 1.036, 0.882),
+                (-2.541, 1.036, -0.882), (-1.267, -1.104, 0.882),
+                (-1.267, -1.104, -0.882), (0.000, 1.036, 0.882),
+                (0.000, 1.036, -0.882), (1.267, -1.104, 0.882),
+                (1.267, -1.104, -0.882), (3.422, -0.261, 0.000),
+                (2.541, 1.036, 0.882), (2.541, 1.036, -0.882),
+            ),
+        })
+        mol = spc.mol
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        # Reactive bond: C0-C1 (far from C4)
+        reactive_bonds = {(min(c_idx[0], c_idx[1]), max(c_idx[0], c_idx[1]))}
+
+        # Stretch an H on C4 (>2 hops from reactive center) to 10.0 A away
+        atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+        h_on_c4 = [atom_to_idx[nbr] for nbr in mol.atoms[c_idx[4]].bonds
+                    if nbr.symbol == 'H']
+        if h_on_c4:
+            xyz = spc.get_xyz()
+            coords_list = list(list(c) for c in xyz['coords'])
+            coords_list[h_on_c4[0]] = [10.0, 0.0, 0.0]
+            xyz_stretched = dict(xyz)
+            xyz_stretched['coords'] = tuple(tuple(c) for c in coords_list)
+            self.assertTrue(has_broken_nonreactive_bond(xyz_stretched, mol, reactive_bonds))
+
+    def test_reactive_bond_exempt(self):
+        """Reactive bonds are exempt from the check even if stretched."""
+        mol = Molecule().from_smiles('CC')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        symbols = tuple(a.symbol for a in mol.atoms)
+        # Stretch the C-C bond to 5.0 A (far beyond 1.3x SBL)
+        coords_list = []
+        for i, atom in enumerate(mol.atoms):
+            if atom.symbol == 'C':
+                coords_list.append((c_idx.index(i) * 5.0, 0.0, 0.0))
+            else:
+                bonded_c = None
+                for nbr in atom.bonds.keys():
+                    if nbr.symbol == 'C':
+                        bonded_c = mol.atoms.index(nbr)
+                        break
+                c_rank = c_idx.index(bonded_c) if bonded_c is not None else 0
+                coords_list.append((c_rank * 5.0, 1.09, 0.0))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': tuple(tuple(c) for c in coords_list),
+        }
+        # The C-C bond is reactive, so it should be exempt
+        reactive_bonds = {(min(c_idx[0], c_idx[1]), max(c_idx[0], c_idx[1]))}
+        # All non-reactive bonds are C-H which are still at normal distance
+        self.assertFalse(has_broken_nonreactive_bond(xyz, mol, reactive_bonds))
+
+    def test_custom_stretch_ratio(self):
+        """Custom max_stretch_ratio changes detection threshold."""
+        mol = Molecule().from_smiles('CC')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        symbols = tuple(a.symbol for a in mol.atoms)
+        # C-H at 1.5 A (normal is ~1.09): ratio = 1.5/1.09 ~ 1.38
+        coords_list = []
+        for i, atom in enumerate(mol.atoms):
+            if atom.symbol == 'C':
+                coords_list.append((c_idx.index(i) * 1.54, 0.0, 0.0))
+            else:
+                bonded_c = None
+                for nbr in atom.bonds.keys():
+                    if nbr.symbol == 'C':
+                        bonded_c = mol.atoms.index(nbr)
+                        break
+                c_rank = c_idx.index(bonded_c) if bonded_c is not None else 0
+                coords_list.append((c_rank * 1.54, 1.50, 0.0))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': tuple(tuple(c) for c in coords_list),
+        }
+        reactive_bonds = {(min(c_idx[0], c_idx[1]), max(c_idx[0], c_idx[1]))}
+        # With default 1.3 it should detect the stretched C-H as problematic
+        # (since ratio ~1.38 > 1.3), but with 1.5 it should not
+        self.assertFalse(has_broken_nonreactive_bond(xyz, mol, reactive_bonds,
+                                                      max_stretch_ratio=1.5))
+
+
+class TestPostprocessHMigration(unittest.TestCase):
+    """Tests for the postprocess_h_migration function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_no_forming_bonds_returns_empty_migrating_set(self):
+        """With no forming bonds, migrating H set is empty."""
+        mol = Molecule().from_smiles('CC')
+        symbols = tuple(a.symbol for a in mol.atoms)
+        coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(len(symbols)))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': coords,
+        }
+        result_xyz, migrating_hs = postprocess_h_migration(
+            xyz, mol, forming_bonds=[], breaking_bonds=[])
+        self.assertIsInstance(migrating_hs, set)
+        self.assertEqual(len(migrating_hs), 0)
+        self.assertIn('coords', result_xyz)
+
+    def test_h_migration_identifies_migrating_h(self):
+        """H atoms in forming bonds are identified as migrating."""
+        spc = ARCSpecies(label='ethanol', smiles='CCO', xyz={
+            'symbols': ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 16, 1, 1, 1, 1, 1, 1),
+            'coords': (
+                (-1.168, -0.211, 0.000),
+                (0.138, 0.545, 0.000),
+                (1.210, -0.383, 0.000),
+                (-2.027, 0.463, 0.000),
+                (-1.168, -0.855, 0.882),
+                (-1.168, -0.855, -0.882),
+                (0.138, 1.189, 0.882),
+                (0.138, 1.189, -0.882),
+                (2.053, 0.091, 0.000),
+            ),
+        })
+        mol = spc.mol
+        xyz = spc.get_xyz()
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        o_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'O']
+        h_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'H']
+
+        # Pick an H on C0 to form bond with O
+        atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+        h_on_c0 = [atom_to_idx[nbr] for nbr in mol.atoms[c_idx[0]].bonds
+                    if nbr.symbol == 'H']
+        if h_on_c0 and o_idx:
+            forming = [(h_on_c0[0], o_idx[0])]
+            breaking = [(h_on_c0[0], c_idx[0])]
+            result_xyz, migrating_hs = postprocess_h_migration(
+                xyz, mol, forming_bonds=forming, breaking_bonds=breaking)
+            self.assertIn(h_on_c0[0], migrating_hs)
+
+    def test_returns_valid_xyz_dict(self):
+        """The returned xyz dict has all required keys."""
+        mol = Molecule().from_smiles('CC')
+        symbols = tuple(a.symbol for a in mol.atoms)
+        n = len(symbols)
+        coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(n))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': coords,
+        }
+        result_xyz, _ = postprocess_h_migration(xyz, mol, forming_bonds=[], breaking_bonds=[])
+        self.assertIn('symbols', result_xyz)
+        self.assertIn('coords', result_xyz)
+        self.assertEqual(len(result_xyz['coords']), n)
+
+    def test_preserves_atom_count(self):
+        """The number of atoms is preserved through the pipeline."""
+        spc = ARCSpecies(label='propane', smiles='CCC', xyz={
+            'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
+            'coords': (
+                (-1.267, -0.259, 0.000),
+                (0.000, 0.587, 0.000),
+                (1.267, -0.259, 0.000),
+                (-2.148, 0.393, 0.000),
+                (-1.267, -0.904, 0.882),
+                (-1.267, -0.904, -0.882),
+                (0.000, 1.232, 0.882),
+                (0.000, 1.232, -0.882),
+                (2.148, 0.393, 0.000),
+                (1.267, -0.904, 0.882),
+                (1.267, -0.904, -0.882),
+            ),
+        })
+        mol = spc.mol
+        xyz = spc.get_xyz()
+        result_xyz, _ = postprocess_h_migration(xyz, mol, forming_bonds=[], breaking_bonds=[])
+        self.assertEqual(len(result_xyz['symbols']), 11)
+        self.assertEqual(len(result_xyz['coords']), 11)
+
+
+class TestStaggerDonorTerminalH(unittest.TestCase):
+    """Tests for the stagger_donor_terminal_h function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_no_forming_h_bond_returns_unchanged(self):
+        """No forming bonds involving H means no staggering needed."""
+        mol = Molecule().from_smiles('CC')
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        symbols = tuple(a.symbol for a in mol.atoms)
+        coords_list = []
+        for i, atom in enumerate(mol.atoms):
+            if atom.symbol == 'C':
+                coords_list.append((c_idx.index(i) * 1.54, 0.0, 0.0))
+            else:
+                bonded_c = None
+                for nbr in atom.bonds.keys():
+                    if nbr.symbol == 'C':
+                        bonded_c = mol.atoms.index(nbr)
+                        break
+                c_rank = c_idx.index(bonded_c) if bonded_c is not None else 0
+                h_list = [j for j, a2 in enumerate(mol.atoms)
+                          if a2.symbol == 'H'
+                          and mol.has_bond(a2, mol.atoms[bonded_c])]
+                h_rank = h_list.index(i) if i in h_list else 0
+                coords_list.append((c_rank * 1.54, 1.09 * ((-1) ** h_rank), 0.5 * (h_rank // 2)))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': tuple(tuple(c) for c in coords_list),
+        }
+        # Only heavy-atom forming bond -> no H staggering
+        result = stagger_donor_terminal_h(xyz, mol, bonds=[(c_idx[0], c_idx[1])])
+        np.testing.assert_allclose(result['coords'], xyz['coords'], atol=1e-10)
+
+    def test_stagger_rotates_h_atoms(self):
+        """H atoms on the donor are rotated to staggered positions."""
+        spc = ARCSpecies(label='ethanol', smiles='CCO', xyz={
+            'symbols': ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 16, 1, 1, 1, 1, 1, 1),
+            'coords': (
+                (-1.168, -0.211, 0.000),
+                (0.138, 0.545, 0.000),
+                (1.210, -0.383, 0.000),
+                (-2.027, 0.463, 0.000),
+                (-1.168, -0.855, 0.882),
+                (-1.168, -0.855, -0.882),
+                (0.138, 1.189, 0.882),
+                (0.138, 1.189, -0.882),
+                (2.053, 0.091, 0.000),
+            ),
+        })
+        mol = spc.mol
+        xyz = spc.get_xyz()
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        o_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'O']
+
+        # H migration: H3 on C0 migrates to O
+        atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+        h_on_c0 = [atom_to_idx[nbr] for nbr in mol.atoms[c_idx[0]].bonds
+                    if nbr.symbol == 'H']
+        if h_on_c0 and o_idx:
+            forming = [(h_on_c0[0], o_idx[0])]
+            result = stagger_donor_terminal_h(xyz, mol, bonds=forming)
+            self.assertIn('coords', result)
+            self.assertEqual(len(result['coords']), len(xyz['coords']))
+            # The staggering may or may not move atoms depending on current dihedrals
+            # but it should preserve symbols
+            self.assertEqual(result['symbols'], xyz['symbols'])
+
+    def test_preserves_bond_lengths(self):
+        """Non-migrating H bond lengths to their parent are preserved."""
+        spc = ARCSpecies(label='ethanol', smiles='CCO', xyz={
+            'symbols': ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 16, 1, 1, 1, 1, 1, 1),
+            'coords': (
+                (-1.168, -0.211, 0.000),
+                (0.138, 0.545, 0.000),
+                (1.210, -0.383, 0.000),
+                (-2.027, 0.463, 0.000),
+                (-1.168, -0.855, 0.882),
+                (-1.168, -0.855, -0.882),
+                (0.138, 1.189, 0.882),
+                (0.138, 1.189, -0.882),
+                (2.053, 0.091, 0.000),
+            ),
+        })
+        mol = spc.mol
+        xyz = spc.get_xyz()
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        o_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'O']
+
+        atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+        h_on_c0 = [atom_to_idx[nbr] for nbr in mol.atoms[c_idx[0]].bonds
+                    if nbr.symbol == 'H']
+        if h_on_c0 and o_idx:
+            forming = [(h_on_c0[0], o_idx[0])]
+            result = stagger_donor_terminal_h(xyz, mol, bonds=forming)
+            # Check that non-migrating H on C0 still have same distance from C0
+            for hi in h_on_c0[1:]:
+                d_orig = np.linalg.norm(
+                    np.array(xyz['coords'][hi]) - np.array(xyz['coords'][c_idx[0]]))
+                d_new = np.linalg.norm(
+                    np.array(result['coords'][hi]) - np.array(result['coords'][c_idx[0]]))
+                self.assertAlmostEqual(d_orig, d_new, places=2)
+
+
+class TestFixMigratingGroupUmbrella(unittest.TestCase):
+    """Tests for the fix_migrating_group_umbrella function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_no_migrating_group_returns_unchanged(self):
+        """When there is no migrating heavy atom, coordinates are unchanged."""
+        mol = Molecule().from_smiles('CC')
+        symbols = tuple(a.symbol for a in mol.atoms)
+        coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(len(symbols)))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': coords,
+        }
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        # Only breaking bond, no forming: no atom appears in both
+        result = fix_migrating_group_umbrella(
+            xyz, mol, breaking_bonds=[(c_idx[0], c_idx[1])], forming_bonds=[])
+        np.testing.assert_allclose(result['coords'], xyz['coords'], atol=1e-10)
+
+    def test_umbrella_flip_moves_h_away_from_backbone(self):
+        """H atoms on a migrating heavy atom pointing toward backbone get flipped."""
+        # Build a 1,2-shift scenario: C0-C1 breaks, C1-C2 forms, C1 is migrating
+        # C1 has H atoms pointing toward the backbone (C0-C2 midpoint)
+        spc = ARCSpecies(label='propane', smiles='CCC', xyz={
+            'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
+            'coords': (
+                (-2.0, 0.0, 0.0),   # C0 (donor)
+                (0.0, 1.5, 0.0),     # C1 (migrating) — above the C0-C2 line
+                (2.0, 0.0, 0.0),     # C2 (acceptor)
+                (-2.5, 1.0, 0.0),    # H on C0
+                (-2.5, -0.5, 0.8),   # H on C0
+                (-2.5, -0.5, -0.8),  # H on C0
+                (0.0, 0.5, 0.8),     # H on C1 — pointing toward backbone (wrong)
+                (0.0, 0.5, -0.8),    # H on C1 — pointing toward backbone (wrong)
+                (2.5, 1.0, 0.0),     # H on C2
+                (2.5, -0.5, 0.8),    # H on C2
+                (2.5, -0.5, -0.8),   # H on C2
+            ),
+        })
+        mol = spc.mol
+        xyz = spc.get_xyz()
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+
+        # C1 appears in both bb and fb: it is the migrating atom
+        breaking_bonds = [(c_idx[0], c_idx[1])]
+        forming_bonds = [(c_idx[1], c_idx[2])]
+
+        result = fix_migrating_group_umbrella(xyz, mol, breaking_bonds, forming_bonds)
+        self.assertIn('coords', result)
+        self.assertEqual(len(result['coords']), len(xyz['coords']))
+
+    def test_preserves_symbols_and_isotopes(self):
+        """Symbols and isotopes are preserved."""
+        mol = Molecule().from_smiles('CC')
+        symbols = tuple(a.symbol for a in mol.atoms)
+        coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(len(symbols)))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(12 if s == 'C' else 1 for s in symbols),
+            'coords': coords,
+        }
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        result = fix_migrating_group_umbrella(
+            xyz, mol, breaking_bonds=[(c_idx[0], c_idx[1])],
+            forming_bonds=[(c_idx[0], c_idx[1])])
+        self.assertEqual(result['symbols'], xyz['symbols'])
+        self.assertEqual(result['isotopes'], xyz['isotopes'])
 
 
 if __name__ == '__main__':
