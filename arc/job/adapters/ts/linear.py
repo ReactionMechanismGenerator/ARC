@@ -249,8 +249,26 @@ class _PathContext:
 @dataclass
 class _StrategyResult:
     """Result of a TS-building strategy."""
-    guesses: List[dict] = field(default_factory=list)
+    guesses: List['GuessRecord'] = field(default_factory=list)
     halt: bool = False
+
+
+@dataclass
+class GuessRecord:
+    """A TS guess with its provenance metadata.
+
+    Carries the XYZ geometry together with the path-specific bonds,
+    strategy label, and optional validation anchors through the entire
+    pipeline — eliminating parallel arrays and making per-guess
+    post-processing safe.
+    """
+    xyz: dict
+    bb: List[Tuple[int, int]] = field(default_factory=list)
+    fb: List[Tuple[int, int]] = field(default_factory=list)
+    family: Optional[str] = None
+    strategy: str = 'unknown'
+    anchor_xyz: Optional[dict] = None
+    reactive_indices: Optional[Set[int]] = None
 
 
 class LinearAdapter(JobAdapter):
@@ -1827,7 +1845,10 @@ def _strategy_ring_scission(ctx: _PathContext) -> _StrategyResult:
     ts = _build_ring_scission_ts(rc, ctx.bb, ctx.weight)
     if ts is not None and not colliding_atoms(ts):
         logger.debug(f'Linear ({ctx.label}): used ring-scission builder.')
-        return _StrategyResult(guesses=[ts], halt=True)
+        return _StrategyResult(guesses=[GuessRecord(xyz=ts, bb=list(ctx.bb), fb=list(ctx.fb),
+                                                    family=ctx.family, strategy='ring_scission',
+                                                    anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices)],
+                               halt=True)
     return _StrategyResult()
 
 
@@ -1889,7 +1910,9 @@ def _strategy_ring_closure(ctx: _PathContext) -> _StrategyResult:
             rc_xyz, migrating_hs, list(ctx.fb), ctx.r_mol,
             label=f'{ctx.label}, ring-closure', family=ctx.family)
         if is_valid:
-            guesses.append(rc_xyz)
+            guesses.append(GuessRecord(xyz=rc_xyz, bb=list(ctx.bb), fb=list(ctx.fb),
+                                       family=ctx.family, strategy='ring_closure',
+                                       anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices))
             used = True
     return _StrategyResult(guesses=guesses, halt=used)
 
@@ -1911,8 +1934,12 @@ def _strategy_zmat_interpolation(ctx: _PathContext) -> _StrategyResult:
         anchors=ctx.anchors, constraints=ctx.constraints, r_mol=ctx.r_mol,
         forming_bonds=forming_bonds_list, breaking_bonds=breaking_bonds_list,
         label=f'{ctx.label}, type=R', family=ctx.family, r_label_map=ctx.r_label_map)
+    _mk = lambda xyz, strat: GuessRecord(xyz=xyz, bb=breaking_bonds_list, fb=forming_bonds_list,
+                                          family=ctx.family, strategy=strat,
+                                          anchor_xyz=ctx.r_xyz,
+                                          reactive_indices=ctx.reactive_xyz_indices)
     if ts_r is not None:
-        guesses.append(ts_r)
+        guesses.append(_mk(ts_r, 'zmat_R'))
 
     # Type P: product-topology Z-matrix chimera
     ts_p = generate_zmat_branch(
@@ -1922,7 +1949,7 @@ def _strategy_zmat_interpolation(ctx: _PathContext) -> _StrategyResult:
         forming_bonds=forming_bonds_list, breaking_bonds=breaking_bonds_list,
         label=f'{ctx.label}, type=P', family=ctx.family, r_label_map=ctx.r_label_map)
     if ts_p is not None:
-        guesses.append(ts_p)
+        guesses.append(_mk(ts_p, 'zmat_P'))
 
     # 4-center interchange fallback: when both Z-mat branches fail.
     if ts_r is None and ts_p is None:
@@ -1931,7 +1958,7 @@ def _strategy_zmat_interpolation(ctx: _PathContext) -> _StrategyResult:
             bb=breaking_bonds_list, fb=forming_bonds_list,
             weight=ctx.weight, label=ctx.label)
         if ts_4c is not None:
-            guesses.append(ts_4c)
+            guesses.append(_mk(ts_4c, '4center'))
             logger.debug(f'Linear ({ctx.label}): used 4-center interchange builder.')
 
     return _StrategyResult(guesses=guesses, halt=False)
@@ -2011,7 +2038,9 @@ def _strategy_direct_contraction(ctx: _PathContext) -> _StrategyResult:
         ts_dc = {'symbols': ctx.r_xyz['symbols'], 'isotopes': ctx.r_xyz['isotopes'],
                   'coords': tuple(tuple(row) for row in coords_dc)}
         if not colliding_atoms(ts_dc):
-            guesses.append(ts_dc)
+            guesses.append(GuessRecord(xyz=ts_dc, bb=list(ctx.bb), fb=list(ctx.fb),
+                                       family=ctx.family, strategy='direct_contraction',
+                                       anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices))
             logger.debug(f'Linear ({ctx.label}): used direct-contraction builder '
                          f'(mover={mover}, target={target}, d={site_dist:.2f}→{site_dist-float(np.linalg.norm(shift)):.2f}).')
     return _StrategyResult(guesses=guesses, halt=False)
@@ -2068,7 +2097,10 @@ def _strategy_3center_shift(ctx: _PathContext) -> _StrategyResult:
     if ts_3c is not None and not colliding_atoms(ts_3c):
         logger.debug(f'Linear ({ctx.label}): used 3-center shift builder '
                      f'(pivot={pivot}, n_heavy={n_heavy_pivot}).')
-        return _StrategyResult(guesses=[ts_3c], halt=False)
+        return _StrategyResult(guesses=[GuessRecord(xyz=ts_3c, bb=list(ctx.bb), fb=list(ctx.fb),
+                                                    family=ctx.family, strategy='3center_shift',
+                                                    anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices)],
+                               halt=False)
     return _StrategyResult()
 
 
@@ -2133,12 +2165,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                      f'1 product species (got {len(rxn.r_species)} and {len(rxn.p_species)}).')
         return []
 
-    ts_xyzs: List[dict] = list()
-    # Per-guess bond metadata: parallel list of (bb, fb) tuples.
-    # Each guess carries the specific breaking/forming bonds from the path
-    # that generated it, so post-processing uses path-local bonds, not a
-    # union of all paths.
-    _guess_bonds: List[Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]] = list()
+    ts_xyzs: List[GuessRecord] = list()
     r_xyz = rxn.r_species[0].get_xyz()
     r_mol = rxn.r_species[0].mol
     # Defer the expensive global atom map computation: only compute when
@@ -2259,7 +2286,6 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             result = strategy(ctx)
             if result.guesses:
                 ts_xyzs.extend(result.guesses)
-                _guess_bonds.extend([(list(ctx.bb), list(ctx.fb))] * len(result.guesses))
             if result.halt:
                 break
 
@@ -2324,8 +2350,8 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                 ts_dc = {'symbols': r_xyz['symbols'], 'isotopes': r_xyz['isotopes'],
                           'coords': tuple(tuple(row) for row in r_coords_dc)}
                 if not colliding_atoms(ts_dc):
-                    ts_xyzs.append(ts_dc)
-                    _guess_bonds.append((list(bb_dc), list(fb_dc)))
+                    ts_xyzs.append(GuessRecord(xyz=ts_dc, bb=list(bb_dc), fb=list(fb_dc),
+                                               strategy='direct_contraction_supplement'))
                     logger.debug(f'Linear (rxn={rxn.label}): direct-contraction from recipe '
                                  f'(mover={mover}, target={target_dc}).')
             if ts_xyzs:
@@ -2559,8 +2585,9 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                                         label=f'rxn={rxn.label}, trivial, ring-closure',
                                         family=fam)
                                     if ok:
-                                        ts_xyzs.append(rc_try)
-                                        _guess_bonds.append((list(bb), list(fb)))
+                                        ts_xyzs.append(GuessRecord(
+                                            xyz=rc_try, bb=list(bb), fb=list(fb),
+                                            strategy='ring_closure_fallback'))
                                         used_ring_closure = True
                                         break
 
@@ -2605,8 +2632,9 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                         ts_dc = {'symbols': r_xyz['symbols'], 'isotopes': r_xyz['isotopes'],
                                   'coords': tuple(tuple(row) for row in r_coords_dc)}
                         if not colliding_atoms(ts_dc):
-                            ts_xyzs.append(ts_dc)
-                            _guess_bonds.append((list(bb), list(fb)))
+                            ts_xyzs.append(GuessRecord(
+                                xyz=ts_dc, bb=list(bb), fb=list(fb),
+                                strategy='direct_contraction_fallback'))
                             logger.debug(f'Linear (rxn={rxn.label}): trivial-fallback direct-contraction '
                                          f'(mover={mover}, target={target}).')
 
@@ -2628,8 +2656,9 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     if ts_r is not None and not has_excessive_backbone_drift(
                             ts_r, r_xyz_na, max_mean_heavy_disp=3.0,
                             reactive_indices=reactive_xyz_indices):
-                        ts_xyzs.append(ts_r)
-                        _guess_bonds.append((list(bb), list(fb)))
+                        ts_xyzs.append(GuessRecord(
+                            xyz=ts_r, bb=list(bb), fb=list(fb),
+                            strategy='zmat_R_fallback'))
                     elif ts_r is not None:
                         logger.debug(f'Linear (rxn={rxn.label}, trivial, w={weight}, type=R): '
                                      f'discarded — excessive backbone drift from anchor.')
@@ -2645,8 +2674,9 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     if ts_p is not None and not has_excessive_backbone_drift(
                             ts_p, op_xyz_na, max_mean_heavy_disp=3.0,
                             reactive_indices=reactive_xyz_indices):
-                        ts_xyzs.append(ts_p)
-                        _guess_bonds.append((list(bb), list(fb)))
+                        ts_xyzs.append(GuessRecord(
+                            xyz=ts_p, bb=list(bb), fb=list(fb),
+                            strategy='zmat_P_fallback'))
                     elif ts_p is not None:
                         logger.debug(f'Linear (rxn={rxn.label}, trivial, w={weight}, type=P): '
                                      f'discarded — excessive backbone drift from anchor.')
@@ -2673,8 +2703,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
     #      (e.g. two chirality-preserving H-migration paths that produce the
     #      same backbone with H on opposite sides).
     prior: List[dict] = list(existing_xyzs or [])
-    unique: List[dict] = []
-    unique_bonds: List[Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]] = []
+    unique: List[GuessRecord] = []
 
     def _heavy_atoms_match(xyz1: dict, xyz2: dict, tol: float = 0.05) -> bool:
         """Return True if all heavy-atom coordinates match within *tol* Å."""
@@ -2685,33 +2714,36 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                 return False
         return True
 
-    for idx, xyz in enumerate(ts_xyzs):
+    for rec in ts_xyzs:
+        xyz = rec.xyz if isinstance(rec, GuessRecord) else rec
         if colliding_atoms(xyz):
             continue
+        prior_xyzs = [r.xyz if isinstance(r, GuessRecord) else r for r in unique] + prior
         if any(almost_equal_coords(xyz, other) or _heavy_atoms_match(xyz, other)
-               for other in unique + prior):
+               for other in prior_xyzs):
             continue
-        unique.append(xyz)
-        unique_bonds.append(_guess_bonds[idx] if idx < len(_guess_bonds) else ([], []))
+        if isinstance(rec, GuessRecord):
+            unique.append(rec)
+        else:
+            unique.append(GuessRecord(xyz=xyz, strategy='unknown'))
 
     if unique:
         # Repair ring bonds broken by Z-matrix interpolation (global — uses all rings).
         if _ring_sets:
-            unique = [_fix_broken_ring_bonds(xyz, r_mol, _ring_sets, reactive_all, changing_all)
-                      for xyz in unique]
+            for rec in unique:
+                rec.xyz = _fix_broken_ring_bonds(rec.xyz, r_mol, _ring_sets, reactive_all, changing_all)
         # Path-local post-processing: each guess uses only its own path's bonds.
-        for k in range(len(unique)):
-            g_bb, g_fb = unique_bonds[k]
-            if g_fb:
-                unique[k] = _clear_forming_bond_path(unique[k], r_mol, g_fb)
-            if g_bb or g_fb:
-                unique[k] = adjust_reactive_bond_distances(unique[k], r_mol, g_bb, g_fb)
-                unique[k] = orient_h_on_reactive_centers(unique[k], r_mol, g_bb, g_fb)
+        for rec in unique:
+            if rec.fb:
+                rec.xyz = _clear_forming_bond_path(rec.xyz, r_mol, rec.fb)
+            if rec.bb or rec.fb:
+                rec.xyz = adjust_reactive_bond_distances(rec.xyz, r_mol, rec.bb, rec.fb)
+                rec.xyz = orient_h_on_reactive_centers(rec.xyz, r_mol, rec.bb, rec.fb)
         # Build the 4-membered ring TS motif for Intra_RH_Add patterns
         # (stretch X-H, stretch Y=Z, move H toward Y).
         if _fallback_fb is not None and _fallback_bb is not None and _fallback_changed is not None:
-            unique = [_fix_rh_add_motif(xyz, r_mol, _fallback_fb, _fallback_bb, _fallback_changed)
-                      for xyz in unique]
+            for rec in unique:
+                rec.xyz = _fix_rh_add_motif(rec.xyz, r_mol, _fallback_fb, _fallback_bb, _fallback_changed)
         # Final collision and bivalent-H filter after all post-processing.
         def _has_bivalent_h(xyz_dict: dict) -> bool:
             """Return True if any H is within tight bonding distance of 2+ heavy atoms."""
@@ -2725,17 +2757,22 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                 if n_close >= 2:
                     return True
             return False
-        unique = [xyz for xyz in unique
-                  if not colliding_atoms(xyz) and not _has_bivalent_h(xyz)
+        unique = [rec for rec in unique
+                  if not colliding_atoms(rec.xyz) and not _has_bivalent_h(rec.xyz)
                   and (not changing_all
-                       or not has_broken_nonreactive_bond(xyz, r_mol, changing_all))]
+                       or not has_broken_nonreactive_bond(rec.xyz, r_mol, changing_all))]
 
     # Cap: keep at most 5 guesses to avoid flooding downstream DFT.
     if len(unique) > 5:
         logger.debug(f'Linear (rxn={rxn.label}): capping {len(unique)} guesses to 5.')
         unique = unique[:5]
 
-    return unique
+    # Log the strategy provenance of each surviving guess (review point 17).
+    for i, rec in enumerate(unique):
+        logger.debug(f'Linear (rxn={rxn.label}): guess {i} from strategy={rec.strategy}')
+
+    # Return plain xyz dicts (strip GuessRecord wrapper).
+    return [rec.xyz for rec in unique]
 
 
 register_job_adapter('linear', LinearAdapter)

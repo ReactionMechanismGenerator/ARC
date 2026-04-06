@@ -17,6 +17,10 @@ from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 import numpy as np
 
 from arc.common import get_single_bond_length
+from arc.job.adapters.ts.linear_utils.geom_utils import (
+    dihedral_deg,
+    rotate_atoms,
+)
 
 if TYPE_CHECKING:
     from rmgpy.molecule.molecule import Molecule
@@ -27,25 +31,15 @@ PAULING_DELTA: float = 0.42
 
 
 # ---------------------------------------------------------------------------
-# Geometry helpers
+# Geometry helpers (thin wrappers over geom_utils where possible)
 # ---------------------------------------------------------------------------
 
 def _dihedral_angle(coords: np.ndarray, a: int, b: int, c: int, d: int) -> float:
-    """Return the dihedral angle A-B-C-D in degrees (-180, 180]."""
-    b1 = coords[b] - coords[a]
-    b2 = coords[c] - coords[b]
-    b3 = coords[d] - coords[c]
-    n1 = np.cross(b1, b2)
-    n2 = np.cross(b2, b3)
-    n1_norm = np.linalg.norm(n1)
-    n2_norm = np.linalg.norm(n2)
-    if n1_norm < 1e-10 or n2_norm < 1e-10:
-        return 0.0
-    n1 /= n1_norm
-    n2 /= n2_norm
-    b2_unit = b2 / max(np.linalg.norm(b2), 1e-10)
-    m1 = np.cross(n1, b2_unit)
-    return float(np.degrees(np.arctan2(np.dot(m1, n2), np.dot(n1, n2))))
+    """Return the dihedral angle A-B-C-D in degrees (-180, 180].
+
+    Delegates to :func:`geom_utils.dihedral_deg`.
+    """
+    return dihedral_deg(coords[a], coords[b], coords[c], coords[d])
 
 
 def _rotate_fragment(coords: np.ndarray,
@@ -54,23 +48,18 @@ def _rotate_fragment(coords: np.ndarray,
                      angle_deg: float,
                      moving_atoms: Set[int],
                      ) -> np.ndarray:
-    """Rotate *moving_atoms* by *angle_deg* around the axis origin→end."""
+    """Rotate *moving_atoms* by *angle_deg* around the axis origin→end.
+
+    Delegates to :func:`geom_utils.rotate_atoms`.
+    """
     axis = coords[axis_end] - coords[axis_origin]
     axis_len = float(np.linalg.norm(axis))
     if axis_len < 1e-10:
         return coords
-    axis /= axis_len
-    angle_rad = np.radians(angle_deg)
-    cos_a = np.cos(angle_rad)
-    sin_a = np.sin(angle_rad)
-    # Rodrigues' rotation
     new_coords = coords.copy()
-    for idx in moving_atoms:
-        v = coords[idx] - coords[axis_origin]
-        v_rot = (v * cos_a
-                 + np.cross(axis, v) * sin_a
-                 + axis * np.dot(axis, v) * (1.0 - cos_a))
-        new_coords[idx] = coords[axis_origin] + v_rot
+    rotate_atoms(new_coords, origin=coords[axis_origin],
+                 axis=axis / axis_len, indices=moving_atoms,
+                 angle=np.radians(angle_deg))
     return new_coords
 
 
@@ -130,7 +119,9 @@ def build_xy_elimination_ts(uni_xyz: dict,
 
     1. **Identify ring atoms** from the molecular graph:
        Ccarb (has =O and -OH), Ooh (-OH oxygen), Hoh (H on Ooh),
-       Cβ (C bonded to Ccarb), Cα (C bonded to Cβ), Hα (H on Cα).
+       Cβ (C bonded to Ccarb), Cα (C bonded to Cβ), Hα (H on Cα
+       whose dihedral Hα-Cα-Cβ-Ccarb is closest to 0°, i.e., most
+       eclipsed with the carboxyl — this is the H in the ring plane).
     2. **Rotate dihedrals** to fold the chain into a ring:
        - Cα-Cβ-Ccarb-Ooh → 0° (bring hydroxyl syn to Cα)
        - Cβ-Ccarb-Ooh-Hoh → 0° (fold Hoh toward Cα)
@@ -205,14 +196,16 @@ def build_xy_elimination_ts(uni_xyz: dict,
         return None
     c_alpha = c_alpha_candidates[0]
 
-    # Find H_alpha: pick the H on C_alpha whose dihedral Hα-Cα-Cβ-Ccarb is closest to ±60°.
+    # Find H_alpha: pick the H on C_alpha whose dihedral Hα-Cα-Cβ-Ccarb is
+    # closest to 0° (eclipsed with Ccarb).  This is the H that will end up
+    # in the 6-membered ring plane after the folding rotations.
     h_alpha_candidates = [j for j in adj[c_alpha] if symbols[j] == 'H']
     if not h_alpha_candidates:
         return None
 
     coords = np.array(uni_xyz['coords'], dtype=float)
 
-    # Pick the H_alpha with the smallest |dihedral| (closest to gauche).
+    # Pick the H_alpha with the smallest |dihedral| (closest to eclipsed).
     best_h = None
     best_abs_dih = 999.0
     for h_cand in h_alpha_candidates:
