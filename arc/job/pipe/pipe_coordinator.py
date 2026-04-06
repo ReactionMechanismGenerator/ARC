@@ -15,7 +15,10 @@ from arc.common import get_logger
 from arc.imports import settings
 
 from arc.job.pipe.pipe_run import PipeRun, ingest_completed_task
-from arc.job.pipe.pipe_state import PipeRunState, TaskState, TaskSpec, read_task_state
+from arc.job.pipe.pipe_state import (
+    TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
+    TaskStateRecord, read_task_state,
+)
 
 if TYPE_CHECKING:
     from arc.scheduler import Scheduler
@@ -189,8 +192,13 @@ class PipeCoordinator:
         Dispatches by task_family. One broken task does not abort
         ingestion of remaining tasks. After all per-task ingestion,
         triggers family-specific post-processing (e.g., selecting
-        the best conformer and spawning the next job).
+        the best conformer and spawning the next job) — but only if
+        no tasks were ejected to the Scheduler for troubleshooting.
+        Ejected tasks will complete through the Scheduler's normal
+        pipeline, and the Scheduler's main loop will trigger the
+        next workflow steps when all conformer jobs are done.
         """
+        ejected_count = 0
         for spec in pipe.tasks:
             try:
                 state = read_task_state(pipe.pipe_root, spec.task_id)
@@ -202,13 +210,21 @@ class PipeCoordinator:
                 ingest_completed_task(pipe.run_id, pipe.pipe_root, spec, state,
                                       self.sched.species_dict, self.sched.output)
             elif state.status == TaskState.FAILED_TERMINAL.value:
-                logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
-                             f'failed terminally (failure_class={state.failure_class}). '
-                             f'Manual troubleshooting required.')
+                if state.failure_class == 'ess_error':
+                    self._eject_to_scheduler(pipe, spec, state)
+                    ejected_count += 1
+                else:
+                    logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                                 f'failed terminally (failure_class={state.failure_class}). '
+                                 f'Manual troubleshooting required.')
             elif state.status == TaskState.CANCELLED.value:
                 logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                                f'was cancelled.')
-        self._post_ingest_pipe_run(pipe)
+        if ejected_count > 0:
+            logger.info(f'Pipe run {pipe.run_id}: {ejected_count} task(s) ejected to Scheduler '
+                        f'for troubleshooting. Deferring post-ingestion workflow.')
+        else:
+            self._post_ingest_pipe_run(pipe)
 
     def _post_ingest_pipe_run(self, pipe: PipeRun) -> None:
         """
@@ -287,3 +303,44 @@ class PipeCoordinator:
                 self.sched.run_opt_job(label, fine=self.sched.fine_only)
             else:
                 self.sched.run_composite_job(label)
+
+    def _eject_to_scheduler(self, pipe: 'PipeRun', spec: TaskSpec,
+                            state: 'TaskStateRecord') -> None:
+        """
+        Eject a failed pipe task to the Scheduler as an individual job.
+
+        Translates the TaskSpec back into a ``Scheduler.run_job()`` call so that
+        the Scheduler's existing ``troubleshoot_ess()`` pipeline handles it.
+        """
+        label = spec.owner_key
+        if label not in self.sched.species_dict:
+            logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                           f'species "{label}" not in species_dict, cannot eject.')
+            return
+        job_type = TASK_FAMILY_TO_JOB_TYPE.get(spec.task_family)
+        if job_type is None:
+            logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                           f'unknown task_family "{spec.task_family}", cannot eject.')
+            return
+        payload = spec.input_payload or {}
+        meta = spec.ingestion_metadata or {}
+        kwargs = {
+            'job_type': job_type,
+            'label': label,
+            'level_of_theory': spec.level,
+            'job_adapter': spec.engine,
+            'xyz': payload.get('xyz'),
+            'conformer': meta.get('conformer_index'),
+        }
+        if spec.task_family == 'irc':
+            kwargs['irc_direction'] = meta.get('irc_direction')
+        elif spec.task_family == 'rotor_scan_1d':
+            kwargs['rotor_index'] = meta.get('rotor_index')
+            kwargs['torsions'] = payload.get('torsions')
+        try:
+            logger.info(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                        f'ejecting to Scheduler as individual {job_type} job for {label}.')
+            self.sched.run_job(**kwargs)
+        except Exception:
+            logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                         f'failed to eject to Scheduler.', exc_info=True)

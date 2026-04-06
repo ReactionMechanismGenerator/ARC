@@ -94,11 +94,35 @@ def claim_task(pipe_root: str, worker_id: str):
     return None, None, None
 
 
+def _parse_ess_error(attempt_dir: str, spec) -> Optional[dict]:
+    """
+    Parse ESS error info from the output file in an attempt directory.
+    Returns a dict with 'status', 'keywords', 'error', 'line', or None.
+    """
+    from arc.job.trsh import determine_ess_status
+    from arc.job.pipe.pipe_state import TASK_FAMILY_TO_JOB_TYPE
+    try:
+        output_file = _find_canonical_output(attempt_dir, spec.engine)
+        if output_file is None or not os.path.isfile(output_file):
+            return None
+        job_type = TASK_FAMILY_TO_JOB_TYPE.get(spec.task_family, 'opt')
+        status, keywords, error, line = determine_ess_status(
+            output_path=output_file, species_label=spec.owner_key,
+            job_type=job_type, software=spec.engine)
+        return {'status': status, 'keywords': keywords, 'error': error, 'line': line}
+    except Exception:
+        return None
+
+
 def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
              worker_id: str, claim_token: str) -> None:
     """
     Execute a claimed task: transition to RUNNING, dispatch by task_family,
     copy outputs, write result.json, and mark COMPLETED or FAILED.
+
+    Detects ESS-level errors (non-convergence) even when the adapter returns
+    without exception. Saves ESS error diagnostics into result.json for
+    downstream troubleshooting decisions.
     """
     attempt_dir = get_task_attempt_dir(pipe_root, task_id, state.attempt_index)
     os.makedirs(attempt_dir, exist_ok=True)
@@ -119,8 +143,32 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
         _copy_outputs(scratch_dir, attempt_dir)
         ended_at = time.time()
         result['ended_at'] = ended_at
-        result['status'] = 'COMPLETED'
         result['canonical_output_path'] = _find_canonical_output(attempt_dir, spec.engine)
+
+        # Check ESS convergence even when no Python exception was raised.
+        ess_info = _parse_ess_error(attempt_dir, spec)
+        if ess_info and ess_info['status'] != 'done':
+            # ESS ran but did not converge — treat as ESS failure.
+            result['status'] = 'FAILED'
+            result['failure_class'] = 'ess_error'
+            result['parser_summary'] = ess_info
+            write_result_json(attempt_dir, result)
+            logger.warning(f'Task {task_id}: ESS did not converge '
+                           f'(keywords={ess_info["keywords"]})')
+            if not _verify_ownership(pipe_root, task_id, worker_id, claim_token):
+                return
+            try:
+                current_state = read_task_state(pipe_root, task_id)
+                target = TaskState.FAILED_RETRYABLE \
+                    if current_state.attempt_index + 1 < current_state.max_attempts \
+                    else TaskState.FAILED_TERMINAL
+                update_task_state(pipe_root, task_id, new_status=target,
+                                  ended_at=ended_at, failure_class='ess_error')
+            except (ValueError, TimeoutError) as exc:
+                logger.warning(f'Task {task_id}: could not mark failed ({exc}).')
+            return
+
+        result['status'] = 'COMPLETED'
         write_result_json(attempt_dir, result)
         if not _verify_ownership(pipe_root, task_id, worker_id, claim_token):
             return
@@ -139,6 +187,13 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
         result['ended_at'] = ended_at
         result['status'] = 'FAILED'
         result['failure_class'] = failure_class
+        # Try to parse ESS error info even on exception path.
+        ess_info = _parse_ess_error(attempt_dir, spec)
+        if ess_info:
+            result['parser_summary'] = ess_info
+            if ess_info['status'] != 'done':
+                result['failure_class'] = 'ess_error'
+                failure_class = 'ess_error'
         write_result_json(attempt_dir, result)
         if not _verify_ownership(pipe_root, task_id, worker_id, claim_token):
             return
