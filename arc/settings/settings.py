@@ -316,6 +316,7 @@ pipe_settings = {
     'env_setup': {},           # Engine-specific shell setup commands, e.g.,
                                # {'gaussian': 'source /usr/local/g09/setup.sh',
                                #  'orca': 'source /usr/local/orca-5.0.4/setup.sh && source /usr/local/openmpi-4.1.1/setup.sh'}
+    'scratch_base': '',        # Base directory for worker scratch (e.g., '/gtmp'). Leave empty for system default.
 }
 
 # Criteria for identification of imaginary frequencies for transition states.

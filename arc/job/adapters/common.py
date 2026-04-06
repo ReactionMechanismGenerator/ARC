@@ -525,7 +525,7 @@ def which(command: Union[str, list],
     command = [command] if isinstance(command, str) else command
     ans = None
     for comm in command:
-        ans = shutil.which(comm, mode=os.F_OK | os.X_OK, path=lenv["PATH"] + lenv["PYTHONPATH"])
+        ans = shutil.which(comm, mode=os.F_OK | os.X_OK, path=lenv["PATH"] + os.pathsep + lenv["PYTHONPATH"])
         if ans:
             break
 

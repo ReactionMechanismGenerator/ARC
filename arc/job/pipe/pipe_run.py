@@ -215,6 +215,10 @@ class PipeRun:
         queue, _ = next(iter(server.get('queues', {}).items()), ('', None))
         engine = self.tasks[0].engine if self.tasks else ''
         env_setup = pipe_settings.get('env_setup', {}).get(engine, '')
+        scratch_base = pipe_settings.get('scratch_base', '')
+        if scratch_base:
+            scratch_export = f'export TMPDIR="{scratch_base}/$PBS_JOBID"\nmkdir -p "$TMPDIR"'
+            env_setup = f'{env_setup}\n{scratch_export}' if env_setup else scratch_export
         content = pipe_submit[template_key].format(
             name=f'pipe_{self.run_id}',
             max_task_num=array_size,
@@ -361,8 +365,12 @@ class PipeRun:
         # Only flag resubmission for genuinely retried tasks (attempt_index > 0).
         # Fresh PENDING tasks (attempt_index == 0) are waiting for the initial
         # submission's workers to start — don't resubmit for those.
+        # After a resubmission, allow a grace period for workers to start before
+        # flagging again (prevents duplicate submissions).
         active_after_retry = counts[TaskState.CLAIMED.value] + counts[TaskState.RUNNING.value]
-        if retried_pending > 0 and active_after_retry == 0:
+        resubmit_grace = 120  # seconds
+        time_since_submit = (now - self.submitted_at) if self.submitted_at else float('inf')
+        if retried_pending > 0 and active_after_retry == 0 and time_since_submit > resubmit_grace:
             self._needs_resubmission = True
             logger.info(f'Pipe run {self.run_id}: {retried_pending} retried tasks '
                         f'need workers. Resubmission needed.')
