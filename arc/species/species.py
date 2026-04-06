@@ -1569,7 +1569,11 @@ class ARCSpecies(object):
             else:
                 tsg.cluster = [tsg.index]
                 cluster_tsgs.append(tsg)
+        n_before = len([tsg for tsg in self.ts_guesses])
         self.ts_guesses = cluster_tsgs
+        if len(cluster_tsgs) < n_before:
+            logger.info(f'Clustered {n_before} TS guesses for {self.label} '
+                        f'into {len(cluster_tsgs)} unique conformers.')
 
     def process_completed_tsg_queue_jobs(self, path: str):
         """
