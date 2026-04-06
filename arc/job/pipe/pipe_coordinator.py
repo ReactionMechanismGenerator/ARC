@@ -15,7 +15,10 @@ from arc.common import get_logger
 from arc.imports import settings
 
 from arc.job.pipe.pipe_run import PipeRun, ingest_completed_task
-from arc.job.pipe.pipe_state import PipeRunState, TaskState, TaskSpec, read_task_state
+from arc.job.pipe.pipe_state import (
+    TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
+    TaskStateRecord, read_task_state,
+)
 
 if TYPE_CHECKING:
     from arc.scheduler import Scheduler
@@ -44,6 +47,7 @@ class PipeCoordinator:
         self.sched = sched
         self.active_pipes: Dict[str, PipeRun] = {}
         self._pipe_poll_failures: Dict[str, int] = {}
+        self._last_pipe_summary: Dict[str, str] = {}
 
     def should_use_pipe(self, tasks: List[TaskSpec]) -> bool:
         """
@@ -100,7 +104,7 @@ class PipeCoordinator:
             return pipe
         try:
             job_status, job_id = pipe.submit_to_scheduler()
-            if job_status == 'submitted' and job_id:
+            if job_id and job_status in ('submitted', 'running'):
                 pipe.scheduler_job_id = job_id
                 pipe.status = PipeRunState.SUBMITTED
                 pipe.submitted_at = time.time()
@@ -154,12 +158,14 @@ class PipeCoordinator:
                 continue
             self._pipe_poll_failures.pop(run_id, None)
             summary = ', '.join(f'{state}: {n}' for state, n in sorted(counts.items()) if n > 0)
-            logger.info(f'Pipe run {run_id}: {summary}')
+            if summary != self._last_pipe_summary.get(run_id):
+                logger.info(f'Pipe run {run_id}: {summary}')
+                self._last_pipe_summary[run_id] = summary
             if pipe.needs_resubmission:
                 logger.info(f'Pipe run {run_id}: resubmitting to pick up retried tasks.')
                 try:
                     job_status, job_id = pipe.submit_to_scheduler()
-                    if job_status == 'submitted' and job_id:
+                    if job_id and job_status in ('submitted', 'running'):
                         pipe.scheduler_job_id = job_id
                         pipe.status = PipeRunState.SUBMITTED
                         pipe.submitted_at = time.time()
@@ -184,8 +190,15 @@ class PipeCoordinator:
         Ingest results from a terminal pipe run.
 
         Dispatches by task_family. One broken task does not abort
-        ingestion of remaining tasks.
+        ingestion of remaining tasks. After all per-task ingestion,
+        triggers family-specific post-processing (e.g., selecting
+        the best conformer and spawning the next job) — but only if
+        no tasks were ejected to the Scheduler for troubleshooting.
+        Ejected tasks will complete through the Scheduler's normal
+        pipeline, and the Scheduler's main loop will trigger the
+        next workflow steps when all conformer jobs are done.
         """
+        ejected_count = 0
         for spec in pipe.tasks:
             try:
                 state = read_task_state(pipe.pipe_root, spec.task_id)
@@ -197,9 +210,149 @@ class PipeCoordinator:
                 ingest_completed_task(pipe.run_id, pipe.pipe_root, spec, state,
                                       self.sched.species_dict, self.sched.output)
             elif state.status == TaskState.FAILED_TERMINAL.value:
-                logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
-                             f'failed terminally (failure_class={state.failure_class}). '
-                             f'Manual troubleshooting required.')
+                if state.failure_class == 'ess_error':
+                    self._eject_to_scheduler(pipe, spec, state)
+                    ejected_count += 1
+                else:
+                    logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                                 f'failed terminally (failure_class={state.failure_class}). '
+                                 f'Manual troubleshooting required.')
             elif state.status == TaskState.CANCELLED.value:
                 logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                                f'was cancelled.')
+        if ejected_count > 0:
+            logger.info(f'Pipe run {pipe.run_id}: {ejected_count} task(s) ejected to Scheduler '
+                        f'for troubleshooting. Deferring post-ingestion workflow.')
+        else:
+            self._post_ingest_pipe_run(pipe)
+
+    def _post_ingest_pipe_run(self, pipe: PipeRun) -> None:
+        """
+        Trigger family-specific post-processing after all tasks in a pipe run
+        have been individually ingested.
+
+        Families requiring post-processing:
+          - ts_opt: determine best TS conformer, then run opt job
+          - conf_opt: determine most stable conformer, then run opt job
+          - conf_sp: determine most stable conformer (sp_flag), then run opt job
+
+        Other families (species_sp, species_freq, irc, rotor_scan_1d) are
+        leaf jobs with no batch-level post-processing.
+        """
+        if not pipe.tasks:
+            return
+        task_family = pipe.tasks[0].task_family
+        label = pipe.tasks[0].owner_key
+        if not label or label not in self.sched.species_dict:
+            return
+        if task_family == 'ts_opt':
+            self._post_ingest_ts_opt(label)
+        elif task_family == 'conf_opt':
+            self._post_ingest_conf_opt(label)
+        elif task_family == 'conf_sp':
+            self._post_ingest_conf_sp(label)
+
+    def _post_ingest_ts_opt(self, label: str) -> None:
+        """After all TS opt tasks, pick the best conformer and run proper opt."""
+        ts_species = self.sched.species_dict[label]
+        if not ts_species.is_ts:
+            logger.warning(f'_post_ingest_ts_opt called for non-TS species {label}, skipping.')
+            return
+        if all(tsg.energy is None for tsg in ts_species.ts_guesses):
+            logger.error(f'No ts_opt task converged for TS {label}.')
+            return
+        logger.info(f'\nConformer jobs for {label} successfully terminated (pipe mode).\n')
+        try:
+            self.sched.determine_most_likely_ts_conformer(label)
+        except Exception:
+            logger.error(f'Failed to determine most likely TS conformer for {label}.', exc_info=True)
+            return
+        if ts_species.initial_xyz is not None:
+            if not self.sched.composite_method:
+                self.sched.run_opt_job(label, fine=self.sched.fine_only)
+            else:
+                self.sched.run_composite_job(label)
+
+    def _post_ingest_conf_opt(self, label: str) -> None:
+        """After all conformer opt tasks, pick the best conformer and run opt."""
+        logger.info(f'\nConformer opt jobs for {label} successfully terminated (pipe mode).\n')
+        try:
+            if self.sched.species_dict[label].is_ts:
+                self.sched.determine_most_likely_ts_conformer(label)
+            else:
+                self.sched.determine_most_stable_conformer(label, sp_flag=False)
+        except Exception:
+            logger.error(f'Failed to determine most stable conformer for {label}.', exc_info=True)
+            return
+        if self.sched.species_dict[label].initial_xyz is not None:
+            if not self.sched.composite_method:
+                self.sched.run_opt_job(label, fine=self.sched.fine_only)
+            else:
+                self.sched.run_composite_job(label)
+
+    def _post_ingest_conf_sp(self, label: str) -> None:
+        """After all conformer SP tasks, pick the best conformer and run opt."""
+        logger.info(f'\nConformer SP jobs for {label} successfully terminated (pipe mode).\n')
+        try:
+            self.sched.determine_most_stable_conformer(label, sp_flag=True)
+        except Exception:
+            logger.error(f'Failed to determine most stable conformer for {label}.', exc_info=True)
+            return
+        if self.sched.species_dict[label].initial_xyz is not None:
+            if not self.sched.composite_method:
+                self.sched.run_opt_job(label, fine=self.sched.fine_only)
+            else:
+                self.sched.run_composite_job(label)
+
+    def _eject_to_scheduler(self, pipe: 'PipeRun', spec: TaskSpec,
+                            state: 'TaskStateRecord') -> None:
+        """
+        Eject a failed pipe task to the Scheduler as an individual job.
+
+        Translates the TaskSpec back into a ``Scheduler.run_job()`` call so that
+        the Scheduler's existing ``troubleshoot_ess()`` pipeline handles it.
+        """
+        label = spec.owner_key
+        if label not in self.sched.species_dict:
+            logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                           f'species "{label}" not in species_dict, cannot eject.')
+            return
+        # Map task_family to the Scheduler's job_type. Note: ts_opt pipe tasks
+        # are TS conformer optimizations (at the guess level), not proper-level
+        # optimizations. The Scheduler uses 'conf_opt' for these, not 'opt'.
+        family_to_sched_job_type = {
+            'ts_opt': 'conf_opt',
+            'conf_opt': 'conf_opt',
+            'conf_sp': 'conf_sp',
+            'species_sp': 'sp',
+            'species_freq': 'freq',
+            'irc': 'irc',
+            'rotor_scan_1d': 'scan',
+        }
+        job_type = family_to_sched_job_type.get(spec.task_family)
+        if job_type is None:
+            logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                           f'unknown task_family "{spec.task_family}", cannot eject.')
+            return
+        payload = spec.input_payload or {}
+        meta = spec.ingestion_metadata or {}
+        kwargs = {
+            'job_type': job_type,
+            'label': label,
+            'level_of_theory': spec.level,
+            'job_adapter': spec.engine,
+            'xyz': payload.get('xyz'),
+            'conformer': meta.get('conformer_index'),
+        }
+        if spec.task_family == 'irc':
+            kwargs['irc_direction'] = meta.get('irc_direction')
+        elif spec.task_family == 'rotor_scan_1d':
+            kwargs['rotor_index'] = meta.get('rotor_index')
+            kwargs['torsions'] = payload.get('torsions')
+        try:
+            logger.info(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                        f'ejecting to Scheduler as individual {job_type} job for {label}.')
+            self.sched.run_job(**kwargs)
+        except Exception:
+            logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                         f'failed to eject to Scheduler.', exc_info=True)
