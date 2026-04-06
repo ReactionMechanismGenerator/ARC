@@ -211,6 +211,14 @@ class PipeRun:
                 f'No pipe submit template for cluster software: {self.cluster_software}. '
                 f'Available templates: {list(pipe_submit.keys())}')
         cpus, memory_mb, array_size = self._submission_resources()
+        server = servers_dict.get('local', {})
+        queue, _ = next(iter(server.get('queues', {}).items()), ('', None))
+        engine = self.tasks[0].engine if self.tasks else ''
+        env_setup = pipe_settings.get('env_setup', {}).get(engine, '')
+        scratch_base = pipe_settings.get('scratch_base', '')
+        if scratch_base:
+            scratch_export = f'export TMPDIR="{scratch_base}/${{PBS_JOBID%%[*}}/$PBS_ARRAY_INDEX"\nmkdir -p "$TMPDIR"'
+            env_setup = f'{env_setup}\n{scratch_export}' if env_setup else scratch_export
         content = pipe_submit[template_key].format(
             name=f'pipe_{self.run_id}',
             max_task_num=array_size,
@@ -218,6 +226,8 @@ class PipeRun:
             python_exe=sys.executable,
             cpus=cpus,
             memory=memory_mb,
+            queue=queue,
+            env_setup=env_setup,
         )
         filename = 'submit.sub' if self.cluster_software == 'htcondor' else 'submit.sh'
         submit_path = os.path.join(self.pipe_root, filename)
@@ -283,6 +293,7 @@ class PipeRun:
 
         now = time.time()
         counts: Dict[str, int] = {s.value: 0 for s in TaskState}
+        retried_pending = 0  # PENDING tasks with attempt_index > 0 (genuinely retried)
         task_ids = sorted(os.listdir(tasks_dir))
 
         for task_id in task_ids:
@@ -305,6 +316,8 @@ class PipeRun:
                 except (ValueError, TimeoutError) as e:
                     logger.debug(f'Could not mark task {task_id} as ORPHANED '
                                  f'(another process may be handling it): {e}')
+            if current == TaskState.PENDING and state.attempt_index > 0:
+                retried_pending += 1
             counts[current.value] += 1
 
         active_workers = counts[TaskState.CLAIMED.value] + counts[TaskState.RUNNING.value]
@@ -323,7 +336,11 @@ class PipeRun:
                 if current not in (TaskState.FAILED_RETRYABLE, TaskState.ORPHANED):
                     continue
                 try:
-                    if state.attempt_index + 1 < state.max_attempts:
+                    # Don't blind-retry deterministic ESS errors (e.g., MaxOptCycles, SCF).
+                    # These need troubleshooting with modified input, not identical retries.
+                    # They'll be ejected to the Scheduler as individual jobs at ingestion time.
+                    is_ess_error = state.failure_class == 'ess_error'
+                    if state.attempt_index + 1 < state.max_attempts and not is_ess_error:
                         update_task_state(self.pipe_root, task_id,
                                           new_status=TaskState.PENDING,
                                           attempt_index=state.attempt_index + 1,
@@ -333,6 +350,7 @@ class PipeRun:
                                           failure_class=None, retry_disposition=None)
                         counts[current.value] -= 1
                         counts[TaskState.PENDING.value] += 1
+                        retried_pending += 1
                     else:
                         ended = state.ended_at or now
                         update_task_state(self.pipe_root, task_id,
@@ -344,13 +362,18 @@ class PipeRun:
                     logger.debug(f'Could not promote task {task_id} to FAILED_TERMINAL '
                                  f'(lock contention or concurrent state change): {e}')
 
-        # If retries were scheduled but no workers remain, flag for resubmission.
-        pending_after_retry = counts[TaskState.PENDING.value]
+        # Only flag resubmission for genuinely retried tasks (attempt_index > 0).
+        # Fresh PENDING tasks (attempt_index == 0) are waiting for the initial
+        # submission's workers to start — don't resubmit for those.
+        # After a resubmission, allow a grace period for workers to start before
+        # flagging again (prevents duplicate submissions).
         active_after_retry = counts[TaskState.CLAIMED.value] + counts[TaskState.RUNNING.value]
-        if pending_after_retry > 0 and active_after_retry == 0:
+        resubmit_grace = 120  # seconds
+        time_since_submit = (now - self.submitted_at) if self.submitted_at else float('inf')
+        if retried_pending > 0 and active_after_retry == 0 and time_since_submit > resubmit_grace:
             self._needs_resubmission = True
-            logger.info(f'Pipe run {self.run_id}: {pending_after_retry} retryable tasks reset '
-                        f'to PENDING but no workers remain. Resubmission needed.')
+            logger.info(f'Pipe run {self.run_id}: {retried_pending} retried tasks '
+                        f'need workers. Resubmission needed.')
         else:
             self._needs_resubmission = False
 
@@ -435,6 +458,29 @@ def find_output_file(attempt_dir: str, engine: str, task_id: str = '') -> Option
     return None
 
 
+def _check_ess_convergence(pipe_run_id: str, spec: TaskSpec, output_file: str, label: str) -> bool:
+    """
+    Check whether an ESS job converged by inspecting the output file.
+
+    Returns ``True`` if the job converged (status == 'done'), ``False`` otherwise.
+    Families that don't run ESS (e.g., ts_guess_batch_method) should skip this check.
+    """
+    from arc.job.trsh import determine_ess_status
+    try:
+        status, keywords, error, line = determine_ess_status(
+            output_path=output_file, species_label=label,
+            job_type='opt', software=spec.engine)
+    except Exception as e:
+        logger.warning(f'Pipe run {pipe_run_id}, task {spec.task_id}: '
+                       f'could not determine ESS status: {type(e).__name__}: {e}')
+        return False
+    if status != 'done':
+        logger.warning(f'Pipe run {pipe_run_id}, task {spec.task_id}: '
+                       f'ESS job did not converge (status={status}, keywords={keywords}). Skipping.')
+        return False
+    return True
+
+
 def ingest_completed_task(pipe_run_id: str, pipe_root: str, spec: TaskSpec,
                           state: 'TaskStateRecord', species_dict: dict,
                           output: dict) -> None:
@@ -487,6 +533,8 @@ def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, confor
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
             return
+        if not _check_ess_convergence(run_id, spec, output_file, label):
+            return
         xyz = parser.parse_geometry(log_file_path=output_file)
         e_elect = parser.parse_e_elect(log_file_path=output_file)
     except Exception as e:
@@ -506,6 +554,8 @@ def _ingest_conf_sp(run_id, pipe_root, spec, state, species_dict, label, conform
     try:
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
+            return
+        if not _check_ess_convergence(run_id, spec, output_file, label):
             return
         e_elect = parser.parse_e_elect(log_file_path=output_file)
     except Exception as e:
@@ -538,9 +588,16 @@ def _ingest_ts_guess_batch(run_id, pipe_root, spec, state, species_dict, label):
 
 
 def _ingest_ts_opt(run_id, pipe_root, spec, state, species_dict, label):
+    """Ingest a completed ts_opt task: update the matching TSGuess's opt_xyz and energy."""
     if label not in species_dict:
         logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '
                        f'TS species "{label}" not in species_dict, skipping.')
+        return
+    meta = spec.ingestion_metadata or {}
+    conformer_index = meta.get('conformer_index')
+    if conformer_index is None:
+        logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '
+                       f'missing conformer_index in ingestion_metadata, skipping.')
         return
     attempt_dir = get_task_attempt_dir(pipe_root, spec.task_id, state.attempt_index)
     ts_species = species_dict[label]
@@ -548,16 +605,25 @@ def _ingest_ts_opt(run_id, pipe_root, spec, state, species_dict, label):
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
             return
+        if not _check_ess_convergence(run_id, spec, output_file, label):
+            return
         xyz = parser.parse_geometry(log_file_path=output_file)
         e_elect = parser.parse_e_elect(log_file_path=output_file)
     except Exception as e:
         logger.error(f'Pipe run {run_id}, task {spec.task_id}: '
                      f'parsing failed for {attempt_dir}: {type(e).__name__}: {e}')
         return
-    if xyz is not None:
-        ts_species.final_xyz = xyz
-    if e_elect is not None:
-        ts_species.e_elect = e_elect
+    for tsg in ts_species.ts_guesses:
+        if getattr(tsg, 'conformer_index', None) == conformer_index:
+            if xyz is not None:
+                tsg.opt_xyz = xyz
+            if e_elect is not None:
+                tsg.energy = e_elect
+            tsg.index = conformer_index
+            break
+    else:
+        logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '
+                       f'no TSGuess with conformer_index={conformer_index} for {label}.')
 
 
 def _ingest_species_sp(run_id, pipe_root, spec, state, species_dict, label):
@@ -570,6 +636,8 @@ def _ingest_species_sp(run_id, pipe_root, spec, state, species_dict, label):
     try:
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
+            return
+        if not _check_ess_convergence(run_id, spec, output_file, label):
             return
         e_elect = parser.parse_e_elect(log_file_path=output_file)
     except Exception as e:
@@ -592,7 +660,7 @@ def _ingest_species_freq(run_id, pipe_root, spec, state, species_dict, label, ou
         logger.error(f'Pipe run {run_id}, task {spec.task_id}: '
                      f'output lookup failed: {type(e).__name__}: {e}')
         return
-    if output_file is not None:
+    if output_file is not None and _check_ess_convergence(run_id, spec, output_file, label):
         if label not in output:
             output[label] = {'paths': {}}
         elif 'paths' not in output[label]:
@@ -612,7 +680,7 @@ def _ingest_irc(run_id, pipe_root, spec, state, species_dict, label, output):
         logger.error(f'Pipe run {run_id}, task {spec.task_id}: '
                      f'output lookup failed: {type(e).__name__}: {e}')
         return
-    if output_file is not None:
+    if output_file is not None and _check_ess_convergence(run_id, spec, output_file, label):
         if label not in output:
             output[label] = {'paths': {'irc': []}}
         elif 'paths' not in output[label]:
@@ -635,6 +703,8 @@ def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):
                      f'output lookup failed: {type(e).__name__}: {e}')
         return
     if output_file is None:
+        return
+    if not _check_ess_convergence(run_id, spec, output_file, label):
         return
     meta = spec.ingestion_metadata or {}
     rotor_index = meta.get('rotor_index')
