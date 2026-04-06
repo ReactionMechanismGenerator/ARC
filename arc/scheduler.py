@@ -821,7 +821,8 @@ class Scheduler(object):
             t = time.time() - self.report_time
             if t > 3600 and (self.running_jobs or self.active_pipes):
                 self.report_time = time.time()
-                logger.info(f'Currently running jobs:\n{pprint.pformat(self.running_jobs)}')
+                if self.running_jobs:
+                    logger.info(f'Currently running jobs:\n{pprint.pformat(self.running_jobs)}')
                 if self.active_pipes:
                     logger.info(f'Active pipe runs: {list(self.active_pipes.keys())}')
 
@@ -2321,8 +2322,11 @@ class Scheduler(object):
                     execution_time = execution_time[:execution_time.index('.') + 2] \
                         if '.' in execution_time else execution_time
                     aux = f' {tsg.errors}.' if tsg.errors else '.'
+                    methods_str = tsg.method
+                    if tsg.method_sources and len(tsg.method_sources) > 1:
+                        methods_str += f' (also: {", ".join(m for m in tsg.method_sources if m != tsg.method)})'
                     logger.info(f'TS guess {tsg.index:2} for {label}. '
-                                f'Method: {tsg.method:10}, '
+                                f'Method: {methods_str}, '
                                 f'relative energy: {tsg.energy:8.2f} kJ/mol, '
                                 f'guess ex time: {execution_time}{im_freqs}'
                                 f'{aux}')
