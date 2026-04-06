@@ -217,7 +217,7 @@ class PipeRun:
         env_setup = pipe_settings.get('env_setup', {}).get(engine, '')
         scratch_base = pipe_settings.get('scratch_base', '')
         if scratch_base:
-            scratch_export = f'export TMPDIR="{scratch_base}/$PBS_JOBID"\nmkdir -p "$TMPDIR"'
+            scratch_export = f'export TMPDIR="{scratch_base}/${{PBS_JOBID%%[*}}/$PBS_ARRAY_INDEX"\nmkdir -p "$TMPDIR"'
             env_setup = f'{env_setup}\n{scratch_export}' if env_setup else scratch_export
         content = pipe_submit[template_key].format(
             name=f'pipe_{self.run_id}',
