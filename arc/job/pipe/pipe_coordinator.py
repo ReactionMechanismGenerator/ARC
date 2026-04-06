@@ -44,6 +44,7 @@ class PipeCoordinator:
         self.sched = sched
         self.active_pipes: Dict[str, PipeRun] = {}
         self._pipe_poll_failures: Dict[str, int] = {}
+        self._last_pipe_summary: Dict[str, str] = {}
 
     def should_use_pipe(self, tasks: List[TaskSpec]) -> bool:
         """
@@ -100,7 +101,7 @@ class PipeCoordinator:
             return pipe
         try:
             job_status, job_id = pipe.submit_to_scheduler()
-            if job_status == 'submitted' and job_id:
+            if job_id and job_status in ('submitted', 'running'):
                 pipe.scheduler_job_id = job_id
                 pipe.status = PipeRunState.SUBMITTED
                 pipe.submitted_at = time.time()
@@ -154,12 +155,14 @@ class PipeCoordinator:
                 continue
             self._pipe_poll_failures.pop(run_id, None)
             summary = ', '.join(f'{state}: {n}' for state, n in sorted(counts.items()) if n > 0)
-            logger.info(f'Pipe run {run_id}: {summary}')
+            if summary != self._last_pipe_summary.get(run_id):
+                logger.info(f'Pipe run {run_id}: {summary}')
+                self._last_pipe_summary[run_id] = summary
             if pipe.needs_resubmission:
                 logger.info(f'Pipe run {run_id}: resubmitting to pick up retried tasks.')
                 try:
                     job_status, job_id = pipe.submit_to_scheduler()
-                    if job_status == 'submitted' and job_id:
+                    if job_id and job_status in ('submitted', 'running'):
                         pipe.scheduler_job_id = job_id
                         pipe.status = PipeRunState.SUBMITTED
                         pipe.submitted_at = time.time()
@@ -184,7 +187,9 @@ class PipeCoordinator:
         Ingest results from a terminal pipe run.
 
         Dispatches by task_family. One broken task does not abort
-        ingestion of remaining tasks.
+        ingestion of remaining tasks. After all per-task ingestion,
+        triggers family-specific post-processing (e.g., selecting
+        the best conformer and spawning the next job).
         """
         for spec in pipe.tasks:
             try:
@@ -203,3 +208,82 @@ class PipeCoordinator:
             elif state.status == TaskState.CANCELLED.value:
                 logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                                f'was cancelled.')
+        self._post_ingest_pipe_run(pipe)
+
+    def _post_ingest_pipe_run(self, pipe: PipeRun) -> None:
+        """
+        Trigger family-specific post-processing after all tasks in a pipe run
+        have been individually ingested.
+
+        Families requiring post-processing:
+          - ts_opt: determine best TS conformer, then run opt job
+          - conf_opt: determine most stable conformer, then run opt job
+          - conf_sp: determine most stable conformer (sp_flag), then run opt job
+
+        Other families (species_sp, species_freq, irc, rotor_scan_1d) are
+        leaf jobs with no batch-level post-processing.
+        """
+        if not pipe.tasks:
+            return
+        task_family = pipe.tasks[0].task_family
+        label = pipe.tasks[0].owner_key
+        if not label or label not in self.sched.species_dict:
+            return
+        if task_family == 'ts_opt':
+            self._post_ingest_ts_opt(label)
+        elif task_family == 'conf_opt':
+            self._post_ingest_conf_opt(label)
+        elif task_family == 'conf_sp':
+            self._post_ingest_conf_sp(label)
+
+    def _post_ingest_ts_opt(self, label: str) -> None:
+        """After all TS opt tasks, pick the best conformer and run proper opt."""
+        ts_species = self.sched.species_dict[label]
+        if not ts_species.is_ts:
+            logger.warning(f'_post_ingest_ts_opt called for non-TS species {label}, skipping.')
+            return
+        if all(tsg.energy is None for tsg in ts_species.ts_guesses):
+            logger.error(f'No ts_opt task converged for TS {label}.')
+            return
+        logger.info(f'\nConformer jobs for {label} successfully terminated (pipe mode).\n')
+        try:
+            self.sched.determine_most_likely_ts_conformer(label)
+        except Exception:
+            logger.error(f'Failed to determine most likely TS conformer for {label}.', exc_info=True)
+            return
+        if ts_species.initial_xyz is not None:
+            if not self.sched.composite_method:
+                self.sched.run_opt_job(label, fine=self.sched.fine_only)
+            else:
+                self.sched.run_composite_job(label)
+
+    def _post_ingest_conf_opt(self, label: str) -> None:
+        """After all conformer opt tasks, pick the best conformer and run opt."""
+        logger.info(f'\nConformer opt jobs for {label} successfully terminated (pipe mode).\n')
+        try:
+            if self.sched.species_dict[label].is_ts:
+                self.sched.determine_most_likely_ts_conformer(label)
+            else:
+                self.sched.determine_most_stable_conformer(label, sp_flag=False)
+        except Exception:
+            logger.error(f'Failed to determine most stable conformer for {label}.', exc_info=True)
+            return
+        if self.sched.species_dict[label].initial_xyz is not None:
+            if not self.sched.composite_method:
+                self.sched.run_opt_job(label, fine=self.sched.fine_only)
+            else:
+                self.sched.run_composite_job(label)
+
+    def _post_ingest_conf_sp(self, label: str) -> None:
+        """After all conformer SP tasks, pick the best conformer and run opt."""
+        logger.info(f'\nConformer SP jobs for {label} successfully terminated (pipe mode).\n')
+        try:
+            self.sched.determine_most_stable_conformer(label, sp_flag=True)
+        except Exception:
+            logger.error(f'Failed to determine most stable conformer for {label}.', exc_info=True)
+            return
+        if self.sched.species_dict[label].initial_xyz is not None:
+            if not self.sched.composite_method:
+                self.sched.run_opt_job(label, fine=self.sched.fine_only)
+            else:
+                self.sched.run_composite_job(label)

@@ -387,7 +387,9 @@ class TestIngestPipeResults(unittest.TestCase):
         mock_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                     'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.47), (0.0, -0.76, -0.47))}
         with patch('arc.job.pipe.pipe_run.parser.parse_geometry', return_value=mock_xyz), \
-             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5):
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5), \
+             patch.object(self.sched, 'determine_most_stable_conformer'), \
+             patch.object(self.sched, 'run_opt_job'):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         species = self.sched.species_dict['H2O']
         self.assertEqual(species.conformers[2], mock_xyz)
@@ -451,7 +453,9 @@ class TestIngestPipeResults(unittest.TestCase):
         mock_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                     'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.47), (0.0, -0.76, -0.47))}
         with patch('arc.job.pipe.pipe_run.parser.parse_geometry', return_value=mock_xyz), \
-             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5):
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5), \
+             patch.object(self.sched, 'determine_most_stable_conformer'), \
+             patch.object(self.sched, 'run_opt_job'):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         species = self.sched.species_dict['H2O']
         self.assertEqual(species.conformers[1], mock_xyz)
@@ -478,7 +482,9 @@ class TestIngestPipeResults(unittest.TestCase):
             return mock_xyz
 
         with patch('arc.job.pipe.pipe_run.parser.parse_geometry', side_effect=mock_parse_geometry), \
-             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-10.0):
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-10.0), \
+             patch.object(self.sched, 'determine_most_stable_conformer'), \
+             patch.object(self.sched, 'run_opt_job'):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         species = self.sched.species_dict['H2O']
         self.assertEqual(species.conformers[0], mock_xyz)
@@ -589,8 +595,16 @@ class TestTsIngestion(unittest.TestCase):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_ts_opt_ingestion_updates_species(self):
-        """ts_opt ingestion sets final_xyz and e_elect on the TS species."""
-        ts_label = 'H2O'  # reusing existing species as TS proxy
+        """ts_opt ingestion updates the matching TSGuess's opt_xyz and energy."""
+        from arc.species.species import TSGuess
+        ts_label = 'H2O'
+        species = self.sched.species_dict[ts_label]
+        species.is_ts = True
+        tsg = TSGuess(method='heuristics', index=0)
+        tsg.success = True
+        tsg.conformer_index = 0
+        species.ts_guesses = [tsg]
+
         task = _make_task_spec('ts_opt_task', task_family='ts_opt',
                                species_label=ts_label, conformer_index=0)
         pipe = PipeRun(project_directory=self.tmpdir, run_id='ts_opt_ingest',
@@ -606,11 +620,14 @@ class TestTsIngestion(unittest.TestCase):
         mock_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                     'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.47), (0.0, -0.76, -0.47))}
         with patch('arc.job.pipe.pipe_run.parser.parse_geometry', return_value=mock_xyz), \
-             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-50.0):
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-50.0), \
+             patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')), \
+             patch.object(self.sched, 'determine_most_likely_ts_conformer'), \
+             patch.object(self.sched, 'run_opt_job'):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
-        species = self.sched.species_dict[ts_label]
-        self.assertEqual(species.final_xyz, mock_xyz)
-        self.assertAlmostEqual(species.e_elect, -50.0)
+        self.assertEqual(tsg.opt_xyz, mock_xyz)
+        self.assertAlmostEqual(tsg.energy, -50.0)
+        self.assertEqual(tsg.index, 0)
 
     def test_ts_guess_batch_ingestion_calls_process(self):
         """ts_guess_batch_method ingestion calls process_completed_tsg_queue_jobs."""
@@ -703,7 +720,9 @@ class TestConfOptIngestionSemantics(unittest.TestCase):
         mock_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                     'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.47), (0.0, -0.76, -0.47))}
         with patch('arc.job.pipe.pipe_run.parser.parse_geometry', return_value=mock_xyz), \
-             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5):
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5), \
+             patch.object(self.sched, 'determine_most_stable_conformer'), \
+             patch.object(self.sched, 'run_opt_job'):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         species = self.sched.species_dict['H2O']
         # Both geometry and energy must be updated (ARC uses opt-level energy for ranking)

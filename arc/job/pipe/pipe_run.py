@@ -544,9 +544,17 @@ def _ingest_ts_guess_batch(run_id, pipe_root, spec, state, species_dict, label):
 
 
 def _ingest_ts_opt(run_id, pipe_root, spec, state, species_dict, label):
+    """Ingest a completed ts_opt task: update the matching TSGuess's opt_xyz and energy."""
+    from arc.job.trsh import determine_ess_status
     if label not in species_dict:
         logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '
                        f'TS species "{label}" not in species_dict, skipping.')
+        return
+    meta = spec.ingestion_metadata or {}
+    conformer_index = meta.get('conformer_index')
+    if conformer_index is None:
+        logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '
+                       f'missing conformer_index in ingestion_metadata, skipping.')
         return
     attempt_dir = get_task_attempt_dir(pipe_root, spec.task_id, state.attempt_index)
     ts_species = species_dict[label]
@@ -554,16 +562,31 @@ def _ingest_ts_opt(run_id, pipe_root, spec, state, species_dict, label):
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
             return
+        ess_status, keywords, error, line = determine_ess_status(
+            output_path=output_file, species_label=label,
+            job_type='opt', software=spec.engine)
+        if ess_status != 'done':
+            logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '
+                           f'optimization did not converge (status={ess_status}, '
+                           f'keywords={keywords}). Skipping.')
+            return
         xyz = parser.parse_geometry(log_file_path=output_file)
         e_elect = parser.parse_e_elect(log_file_path=output_file)
     except Exception as e:
         logger.error(f'Pipe run {run_id}, task {spec.task_id}: '
                      f'parsing failed for {attempt_dir}: {type(e).__name__}: {e}')
         return
-    if xyz is not None:
-        ts_species.final_xyz = xyz
-    if e_elect is not None:
-        ts_species.e_elect = e_elect
+    for tsg in ts_species.ts_guesses:
+        if getattr(tsg, 'conformer_index', None) == conformer_index:
+            if xyz is not None:
+                tsg.opt_xyz = xyz
+            if e_elect is not None:
+                tsg.energy = e_elect
+            tsg.index = conformer_index
+            break
+    else:
+        logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '
+                       f'no TSGuess with conformer_index={conformer_index} for {label}.')
 
 
 def _ingest_species_sp(run_id, pipe_root, spec, state, species_dict, label):
