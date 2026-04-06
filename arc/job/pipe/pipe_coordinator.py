@@ -317,7 +317,19 @@ class PipeCoordinator:
             logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                            f'species "{label}" not in species_dict, cannot eject.')
             return
-        job_type = TASK_FAMILY_TO_JOB_TYPE.get(spec.task_family)
+        # Map task_family to the Scheduler's job_type. Note: ts_opt pipe tasks
+        # are TS conformer optimizations (at the guess level), not proper-level
+        # optimizations. The Scheduler uses 'conf_opt' for these, not 'opt'.
+        family_to_sched_job_type = {
+            'ts_opt': 'conf_opt',
+            'conf_opt': 'conf_opt',
+            'conf_sp': 'conf_sp',
+            'species_sp': 'sp',
+            'species_freq': 'freq',
+            'irc': 'irc',
+            'rotor_scan_1d': 'scan',
+        }
+        job_type = family_to_sched_job_type.get(spec.task_family)
         if job_type is None:
             logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                            f'unknown task_family "{spec.task_family}", cannot eject.')

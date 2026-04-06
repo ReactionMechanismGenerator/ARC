@@ -94,6 +94,20 @@ def claim_task(pipe_root: str, worker_id: str):
     return None, None, None
 
 
+# ESS error keywords that are transient/infrastructure-related and worth retrying
+# with identical input (e.g., on a different node). All other ESS errors are
+# deterministic and should be ejected to the Scheduler for troubleshooting.
+_TRANSIENT_ESS_KEYWORDS = {'NoOutput', 'ServerTimeLimit', 'DiskSpace'}
+
+
+def _is_deterministic_ess_error(ess_info: dict) -> bool:
+    """Return True if the ESS error is deterministic (same input will always fail)."""
+    if not ess_info or ess_info['status'] == 'done':
+        return False
+    keywords = set(ess_info.get('keywords', []))
+    return not keywords.issubset(_TRANSIENT_ESS_KEYWORDS)
+
+
 def _parse_ess_error(attempt_dir: str, spec) -> Optional[dict]:
     """
     Parse ESS error info from the output file in an attempt directory.
@@ -148,13 +162,17 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
         # Check ESS convergence even when no Python exception was raised.
         ess_info = _parse_ess_error(attempt_dir, spec)
         if ess_info and ess_info['status'] != 'done':
-            # ESS ran but did not converge — treat as ESS failure.
+            # Distinguish deterministic ESS errors (need troubleshooting) from
+            # transient failures (NoOutput, ServerTimeLimit — worth retrying as-is).
+            is_deterministic = _is_deterministic_ess_error(ess_info)
+            fc = 'ess_error' if is_deterministic else 'transient_ess'
             result['status'] = 'FAILED'
-            result['failure_class'] = 'ess_error'
+            result['failure_class'] = fc
             result['parser_summary'] = ess_info
             write_result_json(attempt_dir, result)
             logger.warning(f'Task {task_id}: ESS did not converge '
-                           f'(keywords={ess_info["keywords"]})')
+                           f'(keywords={ess_info["keywords"]}, '
+                           f'{"deterministic" if is_deterministic else "transient"})')
             if not _verify_ownership(pipe_root, task_id, worker_id, claim_token):
                 return
             try:
@@ -163,7 +181,7 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
                     if current_state.attempt_index + 1 < current_state.max_attempts \
                     else TaskState.FAILED_TERMINAL
                 update_task_state(pipe_root, task_id, new_status=target,
-                                  ended_at=ended_at, failure_class='ess_error')
+                                  ended_at=ended_at, failure_class=fc)
             except (ValueError, TimeoutError) as exc:
                 logger.warning(f'Task {task_id}: could not mark failed ({exc}).')
             return
@@ -191,7 +209,7 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
         ess_info = _parse_ess_error(attempt_dir, spec)
         if ess_info:
             result['parser_summary'] = ess_info
-            if ess_info['status'] != 'done':
+            if ess_info['status'] != 'done' and _is_deterministic_ess_error(ess_info):
                 result['failure_class'] = 'ess_error'
                 failure_class = 'ess_error'
         write_result_json(attempt_dir, result)
