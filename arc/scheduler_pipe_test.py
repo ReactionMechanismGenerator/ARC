@@ -387,7 +387,10 @@ class TestIngestPipeResults(unittest.TestCase):
         mock_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                     'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.47), (0.0, -0.76, -0.47))}
         with patch('arc.job.pipe.pipe_run.parser.parse_geometry', return_value=mock_xyz), \
-             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5):
+             patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')), \
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5), \
+             patch.object(self.sched, 'determine_most_stable_conformer'), \
+             patch.object(self.sched, 'run_opt_job'):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         species = self.sched.species_dict['H2O']
         self.assertEqual(species.conformers[2], mock_xyz)
@@ -404,7 +407,8 @@ class TestIngestPipeResults(unittest.TestCase):
         update_task_state(pipe.pipe_root, 'task_fail', new_status=TaskState.RUNNING, started_at=now)
         update_task_state(pipe.pipe_root, 'task_fail', new_status=TaskState.FAILED_TERMINAL,
                           ended_at=now, failure_class='oom')
-        self.sched.pipe_coordinator.ingest_pipe_results(pipe)
+        with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+            self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         self.assertIsNone(self.sched.species_dict['H2O'].conformers[0])
 
     def test_ingest_cancelled_task_logged(self):
@@ -415,14 +419,16 @@ class TestIngestPipeResults(unittest.TestCase):
         now = time.time()
         update_task_state(pipe.pipe_root, 'task_cancel', new_status=TaskState.CANCELLED, ended_at=now)
         with patch('arc.job.pipe.pipe_coordinator.logger') as mock_logger:
-            self.sched.pipe_coordinator.ingest_pipe_results(pipe)
+            with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+                self.sched.pipe_coordinator.ingest_pipe_results(pipe)
             warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
             self.assertTrue(any('cancelled' in c.lower() for c in warning_calls))
 
     def test_ingest_skips_unknown_species(self):
         pipe, _ = self._make_pipe_with_completed_task(
             task_id='task_unknown', species_label='NONEXISTENT', conformer_index=0)
-        self.sched.pipe_coordinator.ingest_pipe_results(pipe)
+        with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+            self.sched.pipe_coordinator.ingest_pipe_results(pipe)
 
     def test_ingest_missing_conformer_index(self):
         """conf_opt task with empty ingestion_metadata is skipped with warning."""
@@ -434,7 +440,8 @@ class TestIngestPipeResults(unittest.TestCase):
         pipe.stage()
         _complete_task(pipe.pipe_root, 'task_no_idx')
         with patch('arc.job.pipe.pipe_run.logger') as mock_logger:
-            self.sched.pipe_coordinator.ingest_pipe_results(pipe)
+            with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+                self.sched.pipe_coordinator.ingest_pipe_results(pipe)
             warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
             self.assertTrue(any('conformer_index' in c for c in warning_calls))
 
@@ -451,7 +458,10 @@ class TestIngestPipeResults(unittest.TestCase):
         mock_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                     'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.47), (0.0, -0.76, -0.47))}
         with patch('arc.job.pipe.pipe_run.parser.parse_geometry', return_value=mock_xyz), \
-             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5):
+             patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')), \
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5), \
+             patch.object(self.sched, 'determine_most_stable_conformer'), \
+             patch.object(self.sched, 'run_opt_job'):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         species = self.sched.species_dict['H2O']
         self.assertEqual(species.conformers[1], mock_xyz)
@@ -478,7 +488,10 @@ class TestIngestPipeResults(unittest.TestCase):
             return mock_xyz
 
         with patch('arc.job.pipe.pipe_run.parser.parse_geometry', side_effect=mock_parse_geometry), \
-             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-10.0):
+             patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')), \
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-10.0), \
+             patch.object(self.sched, 'determine_most_stable_conformer'), \
+             patch.object(self.sched, 'run_opt_job'):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         species = self.sched.species_dict['H2O']
         self.assertEqual(species.conformers[0], mock_xyz)
@@ -512,7 +525,8 @@ class TestConfSpIngestion(unittest.TestCase):
         species = self.sched.species_dict['H2O']
         species.conformers[1] = {'symbols': ('O',), 'coords': ((0, 0, 0),)}  # pre-existing geometry
 
-        with patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-99.9):
+        with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')), \
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-99.9):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
 
         # Energy updated
@@ -589,8 +603,16 @@ class TestTsIngestion(unittest.TestCase):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_ts_opt_ingestion_updates_species(self):
-        """ts_opt ingestion sets final_xyz and e_elect on the TS species."""
-        ts_label = 'H2O'  # reusing existing species as TS proxy
+        """ts_opt ingestion updates the matching TSGuess's opt_xyz and energy."""
+        from arc.species.species import TSGuess
+        ts_label = 'H2O'
+        species = self.sched.species_dict[ts_label]
+        species.is_ts = True
+        tsg = TSGuess(method='heuristics', index=0)
+        tsg.success = True
+        tsg.conformer_index = 0
+        species.ts_guesses = [tsg]
+
         task = _make_task_spec('ts_opt_task', task_family='ts_opt',
                                species_label=ts_label, conformer_index=0)
         pipe = PipeRun(project_directory=self.tmpdir, run_id='ts_opt_ingest',
@@ -606,11 +628,14 @@ class TestTsIngestion(unittest.TestCase):
         mock_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                     'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.47), (0.0, -0.76, -0.47))}
         with patch('arc.job.pipe.pipe_run.parser.parse_geometry', return_value=mock_xyz), \
-             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-50.0):
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-50.0), \
+             patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')), \
+             patch.object(self.sched, 'determine_most_likely_ts_conformer'), \
+             patch.object(self.sched, 'run_opt_job'):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
-        species = self.sched.species_dict[ts_label]
-        self.assertEqual(species.final_xyz, mock_xyz)
-        self.assertAlmostEqual(species.e_elect, -50.0)
+        self.assertEqual(tsg.opt_xyz, mock_xyz)
+        self.assertAlmostEqual(tsg.energy, -50.0)
+        self.assertEqual(tsg.index, 0)
 
     def test_ts_guess_batch_ingestion_calls_process(self):
         """ts_guess_batch_method ingestion calls process_completed_tsg_queue_jobs."""
@@ -629,7 +654,8 @@ class TestTsIngestion(unittest.TestCase):
 
         species = self.sched.species_dict[ts_label]
         with patch.object(species, 'process_completed_tsg_queue_jobs') as mock_process:
-            self.sched.pipe_coordinator.ingest_pipe_results(pipe)
+            with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+                self.sched.pipe_coordinator.ingest_pipe_results(pipe)
             mock_process.assert_called_once()
 
     def test_ts_not_mixed_with_conformer(self):
@@ -703,7 +729,10 @@ class TestConfOptIngestionSemantics(unittest.TestCase):
         mock_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                     'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.47), (0.0, -0.76, -0.47))}
         with patch('arc.job.pipe.pipe_run.parser.parse_geometry', return_value=mock_xyz), \
-             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5):
+             patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')), \
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-75.5), \
+             patch.object(self.sched, 'determine_most_stable_conformer'), \
+             patch.object(self.sched, 'run_opt_job'):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         species = self.sched.species_dict['H2O']
         # Both geometry and energy must be updated (ARC uses opt-level energy for ranking)
@@ -733,7 +762,8 @@ class TestSpeciesSpIngestion(unittest.TestCase):
         with open(os.path.join(calcs_dir, 'output.yml'), 'w') as f:
             f.write('dummy')
 
-        with patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-76.1):
+        with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')), \
+             patch('arc.job.pipe.pipe_run.parser.parse_e_elect', return_value=-76.1):
             self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         self.assertAlmostEqual(self.sched.species_dict['H2O'].e_elect, -76.1)
 
@@ -761,7 +791,8 @@ class TestSpeciesFreqIngestion(unittest.TestCase):
         with open(output_path, 'w') as f:
             f.write('dummy')
 
-        self.sched.pipe_coordinator.ingest_pipe_results(pipe)
+        with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+            self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         self.assertEqual(self.sched.output['H2O']['paths']['freq'], output_path)
 
 
@@ -788,7 +819,8 @@ class TestIrcIngestion(unittest.TestCase):
         with open(output_path, 'w') as f:
             f.write('dummy')
 
-        self.sched.pipe_coordinator.ingest_pipe_results(pipe)
+        with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+            self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         self.assertIn(output_path, self.sched.output['H2O']['paths']['irc'])
 
 
@@ -884,7 +916,8 @@ class TestRotorScan1dIngestion(unittest.TestCase):
         with open(output_path, 'w') as f:
             f.write('dummy')
 
-        self.sched.pipe_coordinator.ingest_pipe_results(pipe)
+        with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+            self.sched.pipe_coordinator.ingest_pipe_results(pipe)
         self.assertEqual(species.rotors_dict[0]['scan_path'], output_path)
 
     def test_scan_ingestion_missing_rotor_slot(self):
@@ -905,7 +938,8 @@ class TestRotorScan1dIngestion(unittest.TestCase):
             f.write('dummy')
 
         with patch('arc.job.pipe.pipe_run.logger') as mock_logger:
-            self.sched.pipe_coordinator.ingest_pipe_results(pipe)
+            with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+                self.sched.pipe_coordinator.ingest_pipe_results(pipe)
             warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
             self.assertTrue(any('rotor_index=0' in c and 'not found' in c for c in warning_calls))
 
@@ -928,7 +962,8 @@ class TestRotorScan1dIngestion(unittest.TestCase):
             f.write('dummy')
 
         with patch('arc.job.pipe.pipe_run.logger') as mock_logger:
-            self.sched.pipe_coordinator.ingest_pipe_results(pipe)
+            with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+                self.sched.pipe_coordinator.ingest_pipe_results(pipe)
             warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
             self.assertTrue(any('no valid rotors_dict' in c for c in warning_calls))
 
@@ -990,8 +1025,18 @@ class TestResubmissionLifecycle(unittest.TestCase):
         """After successful resubmission, pipe status should be SUBMITTED."""
         tasks = [_make_task_spec(f'task_{i}') for i in range(3)]
         pipe = self.sched.pipe_coordinator.submit_pipe_run('resub_test', tasks)
-        # Simulate needs_resubmission condition
-        pipe._needs_resubmission = True
+        # Simulate retried tasks (attempt_index > 0) so reconcile flags resubmission
+        for task_id in ['task_0', 'task_1', 'task_2']:
+            now = time.time()
+            update_task_state(pipe.pipe_root, task_id, new_status=TaskState.CLAIMED,
+                              claimed_by='w', claim_token='t', claimed_at=now, lease_expires_at=now + 300)
+            update_task_state(pipe.pipe_root, task_id, new_status=TaskState.RUNNING, started_at=now)
+            update_task_state(pipe.pipe_root, task_id, new_status=TaskState.FAILED_RETRYABLE,
+                              ended_at=now, failure_class='test')
+            update_task_state(pipe.pipe_root, task_id, new_status=TaskState.PENDING,
+                              attempt_index=1, claimed_by=None, claim_token=None,
+                              claimed_at=None, lease_expires_at=None,
+                              started_at=None, ended_at=None, failure_class=None)
         pipe.status = PipeRunState.RECONCILING
         # Mock submit_to_scheduler to succeed
         with patch.object(pipe, 'submit_to_scheduler', return_value=('submitted', '12345')):
@@ -1145,7 +1190,8 @@ class TestFreqIrcIngestionSafety(unittest.TestCase):
             os.makedirs(calcs_dir, exist_ok=True)
             with open(os.path.join(calcs_dir, 'output.yml'), 'w') as f:
                 f.write('freq output')
-            _ingest_species_freq('run1', pipe_root, spec, state, species_dict, 'H2O', output)
+            with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+                _ingest_species_freq('run1', pipe_root, spec, state, species_dict, 'H2O', output)
             self.assertIn('H2O', output)
             self.assertIn('freq', output['H2O']['paths'])
         finally:
@@ -1169,7 +1215,8 @@ class TestFreqIrcIngestionSafety(unittest.TestCase):
             os.makedirs(calcs_dir, exist_ok=True)
             with open(os.path.join(calcs_dir, 'output.yml'), 'w') as f:
                 f.write('irc output')
-            _ingest_irc('run1', pipe_root, spec, state, species_dict, 'TS_H2O', output)
+            with patch('arc.job.trsh.determine_ess_status', return_value=('done', [], '', '')):
+                _ingest_irc('run1', pipe_root, spec, state, species_dict, 'TS_H2O', output)
             self.assertIn('TS_H2O', output)
             self.assertIn('irc', output['TS_H2O']['paths'])
             self.assertEqual(len(output['TS_H2O']['paths']['irc']), 1)
