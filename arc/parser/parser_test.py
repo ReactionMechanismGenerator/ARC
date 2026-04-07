@@ -480,18 +480,18 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertIsInstance(xyz_1, dict)
         self.assertEqual(len(xyz_1['symbols']), 53)
 
-        path_2 = os.path.join(ARC_TESTING_PATH, 'opt', 'xtb_opt_1.out')  # Turbomol format
+        path_2 = os.path.join(ARC_TESTING_PATH, 'opt', 'xtb_opt_1.out')  # Turbomol format ($coord is in Bohr)
         xyz_2 = parser.parse_geometry(log_file_path=path_2)
         expected_xyz_2 = {'symbols': ('C', 'C', 'C', 'O', 'H', 'H', 'H', 'H'),
                           'isotopes': (12, 12, 12, 16, 1, 1, 1, 1),
-                          'coords': ((-2.1908361683609, -0.0875055545944093, -0.712358508847116),
-                                     (-0.170663821576948, -0.721009080780027, 0.6339514359292),
-                                     (2.27150340995404, 0.539200343733434, 0.305747355748416),
-                                     (4.16185183882216, 0.0456870795397582, 1.46958543963615),
-                                     (-2.10906550336131, 1.39281538085596, -2.11159862590894),
-                                     (-3.98822887666127, -1.01150815322938, -0.474092464462499),
-                                     (-0.230883305078883, -2.20128348308961, 2.04098984698359),
-                                     (2.25632242626311, 2.04360346756428, -1.15222446018155))}
+                          'coords': ((-1.1593401110647, -0.0463059268636, -0.3769637386362),
+                                     (-0.0903113691106, -0.3815414223399, 0.3354725190107),
+                                     (1.2020273599692, 0.2853324202958, 0.1617944684729),
+                                     (2.2023562705124, 0.0241765516896, 0.7776708141903),
+                                     (-1.1160689558722, 0.7370458647952, -1.1174094260626),
+                                     (-2.110478992265, -0.5352668500015, -0.2508788280669),
+                                     (-0.1221781347317, -1.1648685897309, 1.0800448842572),
+                                     (1.1939939325626, 1.0814279521553, -0.6097306831655))}
         self.assertTrue(almost_equal_coords(xyz_2, expected_xyz_2))
 
         path_3 = os.path.join(ARC_TESTING_PATH, 'opt', 'xtb_opt_2.out')  # SDF format
@@ -732,10 +732,12 @@ H      -1.69381305    0.40788834    0.90078104"""
                                       8.397974544321187, 7.071194090611243, 5.214457982623571, 3.4362612986915337,
                                       1.958199294316728, 0.8766536693692615, 0.22504856466548517,
                                       0.0004629911018128041])
+        # Length-matched: 44 energies -> 44 angles (step = 360/(n+1) = 8 deg)
+        self.assertEqual(len(angles_3), len(energies_3))
         self.assertEqual(angles_3, [0.0, 8.0, 16.0, 24.0, 32.0, 40.0, 48.0, 56.0, 64.0, 72.0, 80.0, 88.0, 96.0,
                                     104.0, 112.0, 120.0, 128.0, 136.0, 144.0, 152.0, 160.0, 168.0, 176.0, 184.0, 192.0,
                                     200.0, 208.0, 216.0, 224.0, 232.0, 240.0, 248.0, 256.0, 264.0, 272.0, 280.0, 288.0,
-                                    296.0, 304.0, 312.0, 320.0, 328.0, 336.0, 344.0, 352.0])
+                                    296.0, 304.0, 312.0, 320.0, 328.0, 336.0, 344.0])
         
         path_4 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'orca', 'cc.txt')
         energies_4, angles_4 = parser.parse_1d_scan_energies(log_file_path=path_4)
@@ -999,6 +1001,81 @@ H      -1.69381305    0.40788834    0.90078104"""
                                            species=ARCSpecies(label='N', is_ts=False,
                                                               xyz="""N      0.0   0.0    0.0"""))
         self.assertEqual(active, {'e_o': (5, 4), 'occ': [3, 1, 1, 0, 1, 0, 0, 0], 'closed': [1, 0, 0, 0, 0, 0, 0, 0]})
+
+    # ----- xTB-specific improvements -----
+
+    def test_xtb_logfile_contains_errors(self):
+        """xTB error detection should return None for clean files."""
+        from arc.parser.adapters.xtb import XTBParser
+        clean_path = os.path.join(ARC_TESTING_PATH, 'sp', 'NCC_xTB.out')
+        adapter = XTBParser(log_file_path=clean_path)
+        self.assertIsNone(adapter.logfile_contains_errors())
+
+    def test_xtb_parse_e_elect_avoids_false_match(self):
+        """parse_e_elect should not match 'total energy gain' lines from optimization deltas.
+
+        The CO2_xtb.out file contains both 'total energy gain : -0.1724555 Eh' (delta)
+        and ':: total energy -10.308452243026 Eh' (final). The parser must return the
+        final value, not the delta.
+        """
+        from arc.constants import E_h_kJmol
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'CO2_xtb.out')
+        e_elect = parser.parse_e_elect(path)
+        self.assertAlmostEqual(e_elect, -10.308452243026 * E_h_kJmol, places=3)
+        # Make sure we did NOT pick up the delta value
+        delta_value = -0.1724555 * E_h_kJmol  # ~-452 kJ/mol
+        self.assertNotAlmostEqual(e_elect, delta_value, places=1)
+
+    def test_xtb_parse_frequencies_takes_last_block(self):
+        """parse_frequencies should return the LAST eigval block.
+
+        TS_NH2+N2H3_xtb.out prints frequencies twice. Both blocks should be identical;
+        if the parser stops after the first block, it would still get the right values,
+        but using the last block is more robust against truncated/duplicate blocks.
+        """
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_NH2+N2H3_xtb.out')
+        freqs = parser.parse_frequencies(log_file_path=path)
+        self.assertIsNotNone(freqs)
+        # Imaginary frequency should be the first non-zero one
+        self.assertAlmostEqual(freqs[0], -781.89, places=1)
+        # Last frequency
+        self.assertAlmostEqual(freqs[-1], 3467.59, places=1)
+        # 24 modes total (3*8 - 6 = 18 + 6 zero = 24, but only 18 non-zero in TS)
+        self.assertEqual(len(freqs), 18)
+
+    def test_xtb_parse_zpe_correction_regex(self):
+        """parse_zpe_correction uses regex to find ZPE in scientific notation safely."""
+        from arc.constants import E_h_kJmol
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_NH2+N2H3_xtb.out')
+        zpe = parser.parse_zpe_correction(log_file_path=path)
+        self.assertIsNotNone(zpe)
+        self.assertAlmostEqual(zpe, 0.056690417480 * E_h_kJmol, places=3)
+
+    def test_xtb_parse_1d_scan_energies_length_match(self):
+        """Energies and angles returned by parse_1d_scan_energies must have matching lengths."""
+        path = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'xtb_1', 'output.out')
+        energies, angles = parser.parse_1d_scan_energies(log_file_path=path)
+        self.assertIsNotNone(energies)
+        self.assertIsNotNone(angles)
+        self.assertEqual(len(energies), len(angles))
+        # First angle = 0, all angles strictly increasing
+        self.assertEqual(angles[0], 0.0)
+        for i in range(1, len(angles)):
+            self.assertGreater(angles[i], angles[i - 1])
+        # All angles should be in [0, 360)
+        self.assertLess(angles[-1], 360.0)
+
+    def test_xtb_parse_geometry_resets_on_new_block(self):
+        """parse_geometry should not accumulate atoms across multiple geometry blocks.
+
+        For CO2_xtb.out (Turbomol $coord with 3 atoms), the parser should return
+        exactly 3 atoms, not 6 or more even if the file mentions multiple blocks.
+        """
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'CO2_xtb.out')
+        xyz = parser.parse_geometry(log_file_path=path)
+        self.assertIsNotNone(xyz)
+        self.assertEqual(len(xyz['symbols']), 3)
+        self.assertEqual(xyz['symbols'], ('O', 'C', 'O'))
 
 
     def test_parse_opt_steps(self):
