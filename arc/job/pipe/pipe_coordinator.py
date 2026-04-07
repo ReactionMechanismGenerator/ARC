@@ -113,6 +113,29 @@ class PipeCoordinator:
                     max_idx = max(max_idx, int(suffix))
         return os.path.join(base_dir, f'{prefix}_{max_idx + 1}')
 
+    @staticmethod
+    def _write_task_summary(pipe: PipeRun) -> None:
+        """Write a task_summary.txt mapping each task to its worker and outcome."""
+        tasks_dir = os.path.join(pipe.pipe_root, 'tasks')
+        if not os.path.isdir(tasks_dir):
+            return
+        lines = [f'{"Task":<30} {"Worker":<8} {"Status":<20} {"Failure Class"}']
+        lines.append('-' * 80)
+        for task_id in sorted(os.listdir(tasks_dir)):
+            try:
+                state = read_task_state(pipe.pipe_root, task_id)
+                worker = state.claimed_by or '?'
+                status = state.status
+                fc = state.failure_class or ''
+            except (FileNotFoundError, ValueError, KeyError):
+                worker, status, fc = '?', '?', ''
+            lines.append(f'{task_id:<30} {worker:<8} {status:<20} {fc}')
+        try:
+            with open(os.path.join(pipe.pipe_root, 'task_summary.txt'), 'w') as f:
+                f.write('\n'.join(lines) + '\n')
+        except OSError:
+            pass
+
     def submit_pipe_run(self, run_id: str, tasks: List[TaskSpec],
                         cluster_software: str = 'slurm') -> PipeRun:
         """
@@ -238,6 +261,8 @@ class PipeCoordinator:
         pipeline, and the Scheduler's main loop will trigger the
         next workflow steps when all conformer jobs are done.
         """
+        # Write a task summary mapping tasks to workers and outcomes.
+        self._write_task_summary(pipe)
         ejected_count = 0
         for spec in pipe.tasks:
             try:
