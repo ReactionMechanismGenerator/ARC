@@ -199,7 +199,10 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     validate_ts_guess,
 )
 from arc.job.adapters.ts.linear_utils.path_spec import (
+    PathChemistry,
     ReactionPathSpec,
+    classify_path_chemistry,
+    score_guess_against_path_spec,
     validate_guess_against_path_spec,
 )
 from arc.job.adapters.ts.linear_utils.isomerization import (
@@ -2835,6 +2838,41 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                 logger.debug(f'Linear (rxn={rxn.label}, strategy={rec.strategy}): '
                              f'rejected by path-spec wrapper — {reason}')
         unique = validated_unique
+
+    # Phase 2 triage upgrade:
+    # 1) Score every surviving guess against its path-spec (lower = better).
+    # 2) Sort the survivors ascending by score.
+    # 3) Run a SECOND deduplication pass using the same two-tier
+    #    (almost_equal_coords + heavy-atom-only) similarity logic, keeping the
+    #    best-scoring representative of each duplicate cluster.
+    # 4) Then apply the existing cap-to-5 policy.
+    if unique:
+        scored: List[Tuple[float, GuessRecord]] = []
+        for rec in unique:
+            if rec.path_spec is not None:
+                try:
+                    symbols = tuple(rec.xyz['symbols'])
+                    chemistry = classify_path_chemistry(rec.path_spec, r_mol, symbols)
+                    s = score_guess_against_path_spec(
+                        rec.path_spec, rec.xyz, r_mol, symbols, chemistry)
+                except Exception:
+                    s = float('inf')
+            else:
+                s = float('inf')
+            scored.append((s, rec))
+        scored.sort(key=lambda t: t[0])
+
+        # Second dedup pass — keep the best-scoring representative of each
+        # cluster.  Reuses the same two-tier similarity convention from the
+        # first dedup above.
+        deduped: List[GuessRecord] = []
+        for _, rec in scored:
+            if any(almost_equal_coords(rec.xyz, prev.xyz)
+                   or _heavy_atoms_match(rec.xyz, prev.xyz)
+                   for prev in deduped):
+                continue
+            deduped.append(rec)
+        unique = deduped
 
     # Cap: keep at most 5 guesses to avoid flooding downstream DFT.
     if len(unique) > 5:

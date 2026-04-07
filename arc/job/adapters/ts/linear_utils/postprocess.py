@@ -1775,6 +1775,7 @@ def validate_ts_guess(xyz: dict,
                        family: Optional[str] = None,
                        anchor_xyz: Optional[dict] = None,
                        reactive_indices: Optional[Set[int]] = None,
+                       chemistry: Optional[str] = None,
                        ) -> Tuple[bool, str]:
     """
     Run generic rejection filters, then family-specific filters.
@@ -1782,6 +1783,14 @@ def validate_ts_guess(xyz: dict,
     Generic filters (collisions, detached H, fragment count, backbone drift)
     are always applied.  Family-specific filters are applied only if a handler
     is registered in :data:`FAMILY_VALIDATORS`.
+
+    The optional ``chemistry`` argument carries a coarse-grained
+    :class:`~arc.job.adapters.ts.linear_utils.path_spec.PathChemistry` value
+    (passed as the enum's ``.value`` string to avoid a circular import).
+    When ``chemistry == 'h_transfer'``, the H-migration validator is applied
+    *regardless* of the family-string lookup in :data:`FAMILY_VALIDATORS`.
+    Other chemistries fall through to the existing family-string dispatch,
+    leaving the dict and builder routing untouched.
 
     Args:
         xyz: Postprocessed TS guess XYZ dictionary.
@@ -1797,6 +1806,8 @@ def validate_ts_guess(xyz: dict,
             far are rejected.
         reactive_indices: Atom indices involved in forming/breaking bonds,
             excluded from the backbone drift check.
+        chemistry: Optional ``PathChemistry`` value (string).  Used to
+            override family-string dispatch for H-transfer chemistries.
 
     Returns:
         Tuple of (is_valid, rejection_reason).  ``reason`` is an empty string
@@ -1816,7 +1827,14 @@ def validate_ts_guess(xyz: dict,
             reactive_indices=reactive_indices):
         reason = 'excessive backbone drift from anchor'
     else:
-        family_validator = FAMILY_VALIDATORS.get(family)
+        # Phase 2 dispatch: H-transfer chemistry always uses the H-migration
+        # validator regardless of family string.  All other chemistries fall
+        # back to the existing family-string lookup so prior behavior is
+        # preserved.
+        if chemistry == 'h_transfer':
+            family_validator = validate_h_migration
+        else:
+            family_validator = FAMILY_VALIDATORS.get(family)
         if family_validator is not None:
             is_valid, reason = family_validator(xyz, migrating_hs, forming_bonds, r_mol, label)
             if not is_valid:

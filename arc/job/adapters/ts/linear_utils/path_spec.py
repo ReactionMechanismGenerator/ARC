@@ -26,6 +26,7 @@ metadata and centralizes orchestration validation.
 
 from collections import deque
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 
 import numpy as np
@@ -35,6 +36,9 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     PAULING_DELTA,
     validate_ts_guess,
 )
+
+
+HETERO_HEAVY_ATOMS: Set[str] = {'N', 'O', 'S', 'P'}
 
 if TYPE_CHECKING:
     from rmgpy.molecule.molecule import Molecule
@@ -502,6 +506,532 @@ def has_recipe_channel_mismatch(
 
 
 # ---------------------------------------------------------------------------
+# Path chemistry classification
+# ---------------------------------------------------------------------------
+
+
+class PathChemistry(Enum):
+    """Coarse-grained chemistry buckets used for validator and scorer routing.
+
+    The classification is intentionally derived from the path-local
+    :class:`ReactionPathSpec` (and reactant atom symbols) only — it does NOT
+    use family strings.  This makes the buckets robust to RMG family naming
+    drift and lets the orchestration apply consistent validation/triage
+    behavior across families that share the same underlying chemistry.
+    """
+
+    SUBSTITUTION_LIKE = 'substitution_like'
+    H_TRANSFER = 'h_transfer'
+    NON_H_GROUP_SHIFT = 'non_h_group_shift'
+    CONCERTED_HETERO_REARRANGEMENT = 'concerted_hetero_rearrangement'
+    CYCLOADDITION_OR_RING_CLOSURE = 'cycloaddition_or_ring_closure'
+    GENERIC = 'generic'
+
+
+def _heavy_forming_bonds(
+    forming_bonds: List[CanonicalBond],
+    symbols: Tuple[str, ...],
+) -> List[CanonicalBond]:
+    """Return forming bonds whose endpoints are both heavy (non-H) atoms."""
+    heavy: List[CanonicalBond] = []
+    for i, j in forming_bonds:
+        if 0 <= i < len(symbols) and 0 <= j < len(symbols):
+            if symbols[i] != 'H' and symbols[j] != 'H':
+                heavy.append((i, j))
+    return heavy
+
+
+def _shared_atoms_between_bb_and_fb(
+    breaking_bonds: List[CanonicalBond],
+    forming_bonds: List[CanonicalBond],
+) -> Set[int]:
+    """Return atom indices that participate in both a breaking and a forming bond."""
+    bb_atoms: Set[int] = set()
+    for a, b in breaking_bonds:
+        bb_atoms.update((a, b))
+    fb_atoms: Set[int] = set()
+    for a, b in forming_bonds:
+        fb_atoms.update((a, b))
+    return bb_atoms & fb_atoms
+
+
+def classify_path_chemistry(
+    path_spec: ReactionPathSpec,
+    r_mol: Optional['Molecule'],
+    symbols: Tuple[str, ...],
+) -> PathChemistry:
+    """Classify *path_spec* into a coarse-grained chemistry bucket.
+
+    The rules are evaluated in this exact order; the first matching rule wins:
+
+    1. **SUBSTITUTION_LIKE** — exactly one breaking bond, exactly one forming
+       bond, and exactly one atom shared between the two bonds, and that
+       shared atom is not a hydrogen.  This captures classical SN2-like
+       substitutions where a single non-H atom is the pivot.
+    2. **H_TRANSFER** — any atom shared between a breaking and a forming
+       bond is a hydrogen.  This captures every reaction where an H atom
+       walks between two heavy atoms (intra/inter H-migration, ene, RH-add).
+    3. **NON_H_GROUP_SHIFT** — any atom shared between a breaking and a
+       forming bond is a heavy atom (e.g. 1,2-shift of C/S/halogen).
+    4. **CONCERTED_HETERO_REARRANGEMENT** — at least two breaking bonds,
+       at least two forming bonds, and at least two heavy reactive atoms
+       are heteroatoms (N/O/S/P).  This captures Korcek-like and many
+       elimination/cycloreversion patterns built around heteroatom cores.
+    5. **CYCLOADDITION_OR_RING_CLOSURE** — at least one heavy-heavy
+       forming bond.  This catches Diels–Alder, exo/endo cyclisations,
+       and most ring-forming additions.
+    6. **GENERIC** — anything else.
+
+    Args:
+        path_spec: The :class:`ReactionPathSpec` describing the channel.
+        r_mol: Reactant molecule (currently unused; reserved for future
+            adjacency-based refinements).
+        symbols: Tuple of atom symbols indexed compatibly with the bonds
+            in *path_spec*.
+
+    Returns:
+        The matching :class:`PathChemistry` bucket.
+    """
+    bb = list(path_spec.breaking_bonds)
+    fb = list(path_spec.forming_bonds)
+    shared = _shared_atoms_between_bb_and_fb(bb, fb)
+
+    # Rule 1: SUBSTITUTION_LIKE
+    if len(bb) == 1 and len(fb) == 1 and len(shared) == 1:
+        shared_atom = next(iter(shared))
+        if 0 <= shared_atom < len(symbols) and symbols[shared_atom] != 'H':
+            return PathChemistry.SUBSTITUTION_LIKE
+
+    # Rule 2: H_TRANSFER (any shared atom is H)
+    if shared and any(0 <= a < len(symbols) and symbols[a] == 'H' for a in shared):
+        return PathChemistry.H_TRANSFER
+
+    # Rule 3: NON_H_GROUP_SHIFT (any shared atom is non-H)
+    if shared and any(0 <= a < len(symbols) and symbols[a] != 'H' for a in shared):
+        return PathChemistry.NON_H_GROUP_SHIFT
+
+    # Rule 4: CONCERTED_HETERO_REARRANGEMENT
+    if len(bb) >= 2 and len(fb) >= 2:
+        reactive_heavy_hetero: Set[int] = set()
+        for a, b in bb + fb:
+            for idx in (a, b):
+                if 0 <= idx < len(symbols) and symbols[idx] in HETERO_HEAVY_ATOMS:
+                    reactive_heavy_hetero.add(idx)
+        if len(reactive_heavy_hetero) >= 2:
+            return PathChemistry.CONCERTED_HETERO_REARRANGEMENT
+
+    # Rule 5: CYCLOADDITION_OR_RING_CLOSURE
+    heavy_fb = _heavy_forming_bonds(fb, symbols)
+    if len(heavy_fb) >= 1:
+        return PathChemistry.CYCLOADDITION_OR_RING_CLOSURE
+
+    # Rule 6: GENERIC fallback
+    return PathChemistry.GENERIC
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 validation sub-checks
+# ---------------------------------------------------------------------------
+
+
+def has_bad_changed_bond_length(
+    path_spec: ReactionPathSpec,
+    xyz: dict,
+    symbols: Tuple[str, ...],
+) -> Tuple[bool, str]:
+    """Reject guesses with bond-order-changed bonds far from their target distance.
+
+    For each bond in :attr:`ReactionPathSpec.changed_bonds`, the target
+    distance is obtained from :func:`get_ts_target_distance` (role
+    ``'changed'``).  Bonds with no resolvable target are skipped.  The
+    rejection thresholds are:
+
+    * 0.20 Å when at least one endpoint is hydrogen
+    * 0.25 Å when both endpoints are heavy atoms
+
+    Args:
+        path_spec: Path-local spec.
+        xyz: TS guess XYZ dict.
+        symbols: Atom symbols indexed compatibly with the bonds.
+
+    Returns:
+        ``(True, reason)`` if any changed bond is out of tolerance,
+        otherwise ``(False, '')``.
+    """
+    if xyz is None or not path_spec.changed_bonds:
+        return False, ''
+    coords = np.asarray(xyz['coords'], dtype=float)
+
+    # Frontier atoms — those participating in any breaking/forming bond.
+    # A "changed" bond that shares an endpoint with the breaking/forming
+    # frontier AND has a substantial bond-order shift is itself part of
+    # the electronic restructuring.  Linear interpolation is not a
+    # reliable target for those frontier bonds, so we treat them as
+    # having "no reliable target" and skip them — same documented
+    # exemption as the `Skip bonds with no target` rule.
+    frontier_atoms: Set[int] = set()
+    for a, b in list(path_spec.breaking_bonds) + list(path_spec.forming_bonds):
+        frontier_atoms.update((a, b))
+
+    for i, j in path_spec.changed_bonds:
+        if i >= len(coords) or j >= len(coords):
+            continue
+        d_r = path_spec.ref_dist_r.get((i, j))
+        d_p = path_spec.ref_dist_p.get((i, j))
+        bo_r = path_spec.bond_order_r.get((i, j))
+        bo_p = path_spec.bond_order_p.get((i, j))
+        # Skip frontier-adjacent changed bonds with non-trivial BO shift.
+        if (i in frontier_atoms or j in frontier_atoms) and (
+                bo_r is not None and bo_p is not None
+                and abs(float(bo_r) - float(bo_p)) >= 0.5):
+            continue
+        try:
+            target = get_ts_target_distance(
+                bond=(i, j),
+                role='changed',
+                symbols=symbols,
+                d_r=d_r,
+                d_p=d_p,
+                bo_r=bo_r,
+                bo_p=bo_p,
+                weight=path_spec.weight,
+                family=path_spec.family,
+            )
+        except (ValueError, IndexError):
+            continue
+        if target is None:
+            continue
+        d = float(np.linalg.norm(coords[i] - coords[j]))
+        h_involved = (symbols[i] == 'H' or symbols[j] == 'H')
+        tol = 0.20 if h_involved else 0.25
+        if abs(d - target) > tol:
+            return True, (f'bad-changed-bond: {symbols[i]}{i}-{symbols[j]}{j}'
+                          f'={d:.3f} target={target:.3f} tol={tol:.2f}')
+    return False, ''
+
+
+def has_bad_unchanged_near_core_bond(
+    path_spec: ReactionPathSpec,
+    xyz: dict,
+    symbols: Tuple[str, ...],
+) -> Tuple[bool, str]:
+    """Reject guesses where an unchanged near-core bond drifts too far.
+
+    For each bond in :attr:`ReactionPathSpec.unchanged_near_core_bonds`,
+    use the stored reactant reference distance if available, otherwise
+    fall back to :func:`get_ts_target_distance` (role
+    ``'unchanged_near_core'``).  Reject the guess if the actual distance
+    is below ``0.82 × target`` or above ``1.25 × target``.
+
+    Args:
+        path_spec: Path-local spec.
+        xyz: TS guess XYZ dict.
+        symbols: Atom symbols indexed compatibly with the bonds.
+
+    Returns:
+        ``(True, reason)`` if any unchanged near-core bond is out of
+        tolerance, otherwise ``(False, '')``.
+    """
+    if xyz is None or not path_spec.unchanged_near_core_bonds:
+        return False, ''
+    coords = np.asarray(xyz['coords'], dtype=float)
+    for i, j in path_spec.unchanged_near_core_bonds:
+        if i >= len(coords) or j >= len(coords):
+            continue
+        target = path_spec.ref_dist_r.get((i, j))
+        if target is None:
+            try:
+                target = get_ts_target_distance(
+                    bond=(i, j),
+                    role='unchanged_near_core',
+                    symbols=symbols,
+                    d_r=None,
+                    weight=path_spec.weight,
+                    family=path_spec.family,
+                )
+            except (ValueError, IndexError):
+                continue
+        if target is None or target <= 0.0:
+            continue
+        d = float(np.linalg.norm(coords[i] - coords[j]))
+        if d < 0.82 * target or d > 1.25 * target:
+            return True, (f'bad-unchanged-near-core: {symbols[i]}{i}-{symbols[j]}{j}'
+                          f'={d:.3f} ref={target:.3f}')
+    return False, ''
+
+
+def has_inward_blocking_h_on_forming_axis(
+    path_spec: ReactionPathSpec,
+    xyz: dict,
+    r_mol: Optional['Molecule'],
+    symbols: Tuple[str, ...],
+    chemistry: PathChemistry,
+) -> Tuple[bool, str]:
+    """Reject guesses where a non-reactive H blocks a heavy-heavy forming axis.
+
+    Only active when *chemistry* is :attr:`PathChemistry.CYCLOADDITION_OR_RING_CLOSURE`
+    or :attr:`PathChemistry.SUBSTITUTION_LIKE`.
+
+    For each heavy-heavy forming bond ``(a, b)``, scan non-reactive
+    hydrogens attached (graph-bonded) to either endpoint.  An H is
+    considered "inward-blocking" if both:
+
+    * The angle ``∠(H, endpoint, opposite_endpoint) < 85°`` (it points
+      across the forming axis)
+    * The distance ``d(H, opposite_endpoint) < 1.60 Å`` (it intrudes
+      into the forming pocket)
+
+    Args:
+        path_spec: Path-local spec.
+        xyz: TS guess XYZ dict.
+        r_mol: Reactant molecule (used for graph adjacency).
+        symbols: Atom symbols indexed compatibly with the bonds.
+        chemistry: Pre-computed :class:`PathChemistry` bucket.
+
+    Returns:
+        ``(True, reason)`` if a blocking H is found, otherwise
+        ``(False, '')``.
+    """
+    if chemistry not in (PathChemistry.CYCLOADDITION_OR_RING_CLOSURE,
+                         PathChemistry.SUBSTITUTION_LIKE):
+        return False, ''
+    if xyz is None or r_mol is None:
+        return False, ''
+    heavy_fb = _heavy_forming_bonds(list(path_spec.forming_bonds), symbols)
+    if not heavy_fb:
+        return False, ''
+
+    coords = np.asarray(xyz['coords'], dtype=float)
+    adj = _build_adjacency(r_mol)
+    reactive = set(path_spec.reactive_atoms)
+
+    for a, b in heavy_fb:
+        for ep, opp in ((a, b), (b, a)):
+            for nbr in adj.get(ep, ()):
+                if nbr == opp:
+                    continue
+                if nbr >= len(symbols) or symbols[nbr] != 'H':
+                    continue
+                if nbr in reactive:
+                    continue
+                vec_h = coords[nbr] - coords[ep]
+                vec_op = coords[opp] - coords[ep]
+                norm_h = float(np.linalg.norm(vec_h))
+                norm_op = float(np.linalg.norm(vec_op))
+                if norm_h < 1e-6 or norm_op < 1e-6:
+                    continue
+                cos_theta = float(np.dot(vec_h, vec_op) / (norm_h * norm_op))
+                cos_theta = max(-1.0, min(1.0, cos_theta))
+                angle_deg = float(np.degrees(np.arccos(cos_theta)))
+                d_h_opp = float(np.linalg.norm(coords[nbr] - coords[opp]))
+                if angle_deg < 85.0 and d_h_opp < 1.60:
+                    return True, (f'inward-blocking-H: H{nbr} on {symbols[ep]}{ep} '
+                                  f'angle={angle_deg:.1f} d(H,{symbols[opp]}{opp})'
+                                  f'={d_h_opp:.3f}')
+    return False, ''
+
+
+def has_bad_reactive_core_planarity(
+    path_spec: ReactionPathSpec,
+    xyz: dict,
+    symbols: Tuple[str, ...],
+    chemistry: PathChemistry,
+) -> Tuple[bool, str]:
+    """Reject concerted hetero rearrangements where the reactive core is non-planar.
+
+    Only active when *chemistry* is
+    :attr:`PathChemistry.CONCERTED_HETERO_REARRANGEMENT`.
+
+    Collects all heavy reactive-core atoms (those participating in any
+    breaking/forming/changed bond, excluding H), then SVD-fits the best
+    plane to their coordinates.  Rejects the guess if the RMS distance
+    from that plane exceeds 0.35 Å.  When the SVD itself fails (e.g.
+    due to a degenerate geometry), the guess is rejected.
+
+    Args:
+        path_spec: Path-local spec.
+        xyz: TS guess XYZ dict.
+        symbols: Atom symbols indexed compatibly with the bonds.
+        chemistry: Pre-computed :class:`PathChemistry` bucket.
+
+    Returns:
+        ``(True, reason)`` if the reactive core deviates from planarity
+        too strongly, otherwise ``(False, '')``.
+    """
+    if chemistry != PathChemistry.CONCERTED_HETERO_REARRANGEMENT:
+        return False, ''
+    if xyz is None:
+        return False, ''
+    core_atoms: Set[int] = set()
+    for a, b in (list(path_spec.breaking_bonds)
+                 + list(path_spec.forming_bonds)
+                 + list(path_spec.changed_bonds)):
+        for idx in (a, b):
+            if 0 <= idx < len(symbols) and symbols[idx] != 'H':
+                core_atoms.add(idx)
+    if len(core_atoms) < 4:
+        return False, ''
+    coords = np.asarray(xyz['coords'], dtype=float)
+    try:
+        pts = np.array([coords[i] for i in sorted(core_atoms)], dtype=float)
+        centroid = pts.mean(axis=0)
+        centered = pts - centroid
+        _, _, vh = np.linalg.svd(centered, full_matrices=False)
+        normal = vh[-1]
+        proj = np.dot(centered, normal)
+        rms = float(np.sqrt(np.mean(proj * proj)))
+    except Exception:
+        # Treat SVD failure as a rejection — the geometry is degenerate
+        # enough that the planarity test cannot be applied.
+        return True, 'reactive-core-planarity: SVD failed'
+    if rms > 0.35:
+        return True, f'reactive-core-non-planar: rms={rms:.3f}'
+    return False, ''
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 path-spec scoring
+# ---------------------------------------------------------------------------
+
+
+def score_guess_against_path_spec(
+    path_spec: ReactionPathSpec,
+    xyz: dict,
+    r_mol: Optional['Molecule'],
+    symbols: Tuple[str, ...],
+    chemistry: Optional[PathChemistry] = None,
+) -> float:
+    """Compute a path-spec fidelity score for *xyz* (lower = better).
+
+    The score sums per-bond deviations from role-aware target distances
+    and adds fixed penalties for the planarity and inward-blocking-H
+    sub-checks.  No family-specific weighting is applied.
+
+    Per-bond contributions::
+
+        breaking            : abs(d - target) / 0.35
+        forming             : abs(d - target) / 0.35
+        changed (H-involved): abs(d - target) / 0.20
+        changed (heavy)     : abs(d - target) / 0.25
+        unchanged_near_core : abs(d - target) / 0.20
+
+    Penalty contributions::
+
+        +5.0 if has_inward_blocking_h_on_forming_axis returns True
+        +5.0 if has_bad_reactive_core_planarity returns True
+
+    Args:
+        path_spec: Path-local spec to score against.
+        xyz: TS guess XYZ dict.
+        r_mol: Reactant molecule (needed for the inward-blocking-H check).
+        symbols: Atom symbols indexed compatibly with the bonds.
+        chemistry: Pre-computed :class:`PathChemistry` bucket.  If ``None``,
+            the function classifies internally.
+
+    Returns:
+        A non-negative float; lower is better.
+    """
+    if xyz is None:
+        return float('inf')
+    coords = np.asarray(xyz['coords'], dtype=float)
+    if chemistry is None:
+        chemistry = classify_path_chemistry(path_spec, r_mol, symbols)
+
+    score = 0.0
+
+    def _bond_dist(i: int, j: int) -> Optional[float]:
+        if i >= len(coords) or j >= len(coords):
+            return None
+        return float(np.linalg.norm(coords[i] - coords[j]))
+
+    # Breaking bonds
+    for i, j in path_spec.breaking_bonds:
+        d = _bond_dist(i, j)
+        if d is None:
+            continue
+        try:
+            target = get_ts_target_distance(
+                bond=(i, j), role='breaking', symbols=symbols,
+                d_r=path_spec.ref_dist_r.get((i, j)),
+                d_p=path_spec.ref_dist_p.get((i, j)),
+                bo_r=path_spec.bond_order_r.get((i, j)),
+                bo_p=path_spec.bond_order_p.get((i, j)),
+                weight=path_spec.weight, family=path_spec.family)
+        except (ValueError, IndexError):
+            continue
+        score += abs(d - target) / 0.35
+
+    # Forming bonds
+    for i, j in path_spec.forming_bonds:
+        d = _bond_dist(i, j)
+        if d is None:
+            continue
+        try:
+            target = get_ts_target_distance(
+                bond=(i, j), role='forming', symbols=symbols,
+                d_r=path_spec.ref_dist_r.get((i, j)),
+                d_p=path_spec.ref_dist_p.get((i, j)),
+                bo_r=path_spec.bond_order_r.get((i, j)),
+                bo_p=path_spec.bond_order_p.get((i, j)),
+                weight=path_spec.weight, family=path_spec.family)
+        except (ValueError, IndexError):
+            continue
+        score += abs(d - target) / 0.35
+
+    # Changed bonds
+    for i, j in path_spec.changed_bonds:
+        d = _bond_dist(i, j)
+        if d is None:
+            continue
+        try:
+            target = get_ts_target_distance(
+                bond=(i, j), role='changed', symbols=symbols,
+                d_r=path_spec.ref_dist_r.get((i, j)),
+                d_p=path_spec.ref_dist_p.get((i, j)),
+                bo_r=path_spec.bond_order_r.get((i, j)),
+                bo_p=path_spec.bond_order_p.get((i, j)),
+                weight=path_spec.weight, family=path_spec.family)
+        except (ValueError, IndexError):
+            continue
+        if target is None:
+            continue
+        h_involved = (symbols[i] == 'H' or symbols[j] == 'H')
+        denom = 0.20 if h_involved else 0.25
+        score += abs(d - target) / denom
+
+    # Unchanged near-core bonds
+    for i, j in path_spec.unchanged_near_core_bonds:
+        d = _bond_dist(i, j)
+        if d is None:
+            continue
+        target = path_spec.ref_dist_r.get((i, j))
+        if target is None:
+            try:
+                target = get_ts_target_distance(
+                    bond=(i, j), role='unchanged_near_core', symbols=symbols,
+                    d_r=None, weight=path_spec.weight, family=path_spec.family)
+            except (ValueError, IndexError):
+                continue
+        if target is None or target <= 0.0:
+            continue
+        score += abs(d - target) / 0.20
+
+    # Inward-blocking H penalty
+    blocked, _ = has_inward_blocking_h_on_forming_axis(
+        path_spec, xyz, r_mol, symbols, chemistry)
+    if blocked:
+        score += 5.0
+
+    # Reactive-core planarity penalty
+    nonplanar, _ = has_bad_reactive_core_planarity(
+        path_spec, xyz, symbols, chemistry)
+    if nonplanar:
+        score += 5.0
+
+    return float(score)
+
+
+# ---------------------------------------------------------------------------
 # Centralized validation wrapper
 # ---------------------------------------------------------------------------
 
@@ -558,6 +1088,20 @@ def validate_guess_against_path_spec(
         migrating_hs = set()
     effective_family = family if family is not None else path_spec.family
 
+    # Pre-compute the path chemistry once — it is used by both the generic
+    # validator dispatch (H_TRANSFER routing) and the new sub-checks.
+    if xyz is not None and 'symbols' in xyz:
+        symbols = tuple(xyz['symbols'])
+    elif r_mol is not None:
+        symbols = tuple(a.element.symbol for a in r_mol.atoms)
+    else:
+        symbols = tuple()
+
+    try:
+        chemistry = classify_path_chemistry(path_spec, r_mol, symbols)
+    except Exception:
+        chemistry = PathChemistry.GENERIC
+
     # 1. Generic validation (collisions, detached atoms, fragments,
     #    family-specific motif filters).  By default we DO NOT pass anchor
     #    arguments — that preserves Phase 0 orchestration behavior.
@@ -578,13 +1122,31 @@ def validate_guess_against_path_spec(
         family=effective_family,
         anchor_xyz=anchor_kwarg,
         reactive_indices=reactive_kwarg,
+        chemistry=chemistry.value if chemistry is not None else None,
     )
     if not ok_generic:
         return False, reason_generic
 
-    # 2. Path-local recipe channel mismatch.
+    # 2. Path-local recipe channel mismatch (Phase 1 guard, retained).
     mismatch, reason_mismatch = has_recipe_channel_mismatch(path_spec, xyz, r_mol)
     if mismatch:
         return False, f'recipe-mismatch:{reason_mismatch}'
+
+    # 3. Phase 2 sub-checks: changed-bond length, unchanged-near-core,
+    #    inward-blocking H, and reactive-core planarity.
+    bad, reason = has_bad_changed_bond_length(path_spec, xyz, symbols)
+    if bad:
+        return False, f'phase2:{reason}'
+    bad, reason = has_bad_unchanged_near_core_bond(path_spec, xyz, symbols)
+    if bad:
+        return False, f'phase2:{reason}'
+    bad, reason = has_inward_blocking_h_on_forming_axis(
+        path_spec, xyz, r_mol, symbols, chemistry)
+    if bad:
+        return False, f'phase2:{reason}'
+    bad, reason = has_bad_reactive_core_planarity(
+        path_spec, xyz, symbols, chemistry)
+    if bad:
+        return False, f'phase2:{reason}'
 
     return True, ''
