@@ -8,6 +8,7 @@ This module owns the lifecycle of pipe runs once they are created.
 Family-specific task planning lives in ``pipe_planner.py``.
 """
 
+import os
 import time
 from typing import TYPE_CHECKING, Dict, List
 
@@ -75,17 +76,43 @@ class PipeCoordinator:
                    and t.required_memory_mb == ref.required_memory_mb
                    for t in tasks[1:])
 
+    def _handle_existing_pipe_root(self, pipe_root: str, run_id: str) -> None:
+        """
+        Archive a pre-existing pipe_root directory before staging a new run.
+
+        Always archives — there is no reliable signal in the current ARC
+        architecture to distinguish a fresh start from a restart
+        (restart_dict is always set).
+        """
+        if not os.path.isdir(pipe_root):
+            return
+        self._archive_pipe_root(pipe_root, run_id)
+
+    def _archive_pipe_root(self, pipe_root: str, run_id: str) -> None:
+        """Move an old pipe_root directory to log_and_restart_archive/."""
+        import datetime
+        import shutil
+        archive_dir = os.path.join(self.sched.project_directory, 'log_and_restart_archive')
+        os.makedirs(archive_dir, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime('%H%M%S_%b%d_%Y')
+        dest = os.path.join(archive_dir, f'pipe_{run_id}.old.{timestamp}')
+        logger.info(f'Pipe run {run_id}: archiving old directory to {dest}')
+        shutil.move(pipe_root, dest)
+
     def submit_pipe_run(self, run_id: str, tasks: List[TaskSpec],
                         cluster_software: str = 'slurm') -> PipeRun:
         """
         Create, stage, and register a new pipe run.
 
-        Attempts to write a submit script and submit the array job.
-        On submission failure, the run is still registered as STAGED.
+        If the pipe_root already exists on disk:
+          - On restart with an active run: resumes it via register_pipe_run_from_dir.
+          - Otherwise: archives the old directory and creates a fresh run.
 
         Returns:
             PipeRun: The created pipe run.
         """
+        pipe_root = os.path.join(self.sched.project_directory, 'runs', 'pipe_' + run_id)
+        self._handle_existing_pipe_root(pipe_root, run_id)
         pipe = PipeRun(
             project_directory=self.sched.project_directory,
             run_id=run_id,
