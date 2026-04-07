@@ -1195,5 +1195,429 @@ class TestFinalizeTsGuesses(unittest.TestCase):
                                    places=6)
 
 
+# ---------------------------------------------------------------------------
+# Phase 3a: addition pipeline path-spec wiring
+# ---------------------------------------------------------------------------
+
+
+class TestPhase3aAdditionPathSpec(unittest.TestCase):
+    """Phase 3a — verify the addition pipeline now carries
+    :class:`ReactionPathSpec` metadata through :class:`GuessRecord`
+    objects and routes validation through
+    :func:`validate_guess_against_path_spec`."""
+
+    def _make_addition_rxn(self):
+        """A small concerted dissociation: CCN ⇌ C=C + NH3.
+
+        Coordinates copied from
+        ``linear_test.py::test_interpolate_1_3_nh3_elimination`` so the
+        same template-guided guesses get produced.
+        """
+        from arc.species import ARCSpecies
+        from arc.reaction import ARCReaction
+        r_xyz = """C       1.14981017    0.04138987   -0.06722786
+C      -0.25415691   -0.17696939    0.46881798
+N      -0.38312147    0.39227542    1.80366803
+H       1.89791609   -0.44343932    0.56909864
+H       1.38984772    1.10839783   -0.12647258
+H       1.23928774   -0.38052643   -1.07342059
+H      -0.98187243    0.29596310   -0.19835733
+H      -0.47689047   -1.24854874    0.50220986
+H       0.27600194   -0.06032721    2.43576220
+H      -1.31312338    0.19118810    2.16873833"""
+        p1_xyz = """C      -0.63422754   -0.20894058   -0.01346068
+C       0.63422754    0.20894058    0.01346068
+H      -1.30426171   -0.01843680    0.81903872
+H      -1.02752125   -0.74974821   -0.86852786
+H       1.02752125    0.74974821    0.86852786
+H       1.30426171    0.01843680   -0.81903872"""
+        p2_xyz = """N       0.00064924   -0.00099698    0.29559292
+H      -0.41786606    0.84210396   -0.09477452
+H      -0.52039228   -0.78225292   -0.10002797
+H       0.93760911   -0.05885406   -0.10079043"""
+        r = ARCSpecies(label='R', smiles='CCN', xyz=r_xyz)
+        p1 = ARCSpecies(label='P1', smiles='C=C', xyz=p1_xyz)
+        p2 = ARCSpecies(label='P2', smiles='N', xyz=p2_xyz)
+        return r, p1, p2, ARCReaction(r_species=[r], p_species=[p1, p2])
+
+    # ---- Phase 3a #2: template-guided spec construction ----------------
+
+    def test_build_addition_path_spec_template_guided(self):
+        """The shared addition path-spec helper builds a populated
+        :class:`ReactionPathSpec` for a template-guided cut, using the
+        Phase 1 :meth:`ReactionPathSpec.build` machinery (no hand-rolled
+        bond-shell logic)."""
+        from arc.job.adapters.ts.linear import _build_addition_path_spec
+        r, _, _, rxn = self._make_addition_rxn()
+        uni_xyz = r.get_xyz()
+        spec = _build_addition_path_spec(
+            uni_mol=r.mol,
+            uni_xyz=uni_xyz,
+            breaking_bonds=[(1, 2)],
+            forming_bonds=[],
+            weight=0.5,
+            family='1,3_NH3_elimination',
+            label='test',
+        )
+        self.assertIsNotNone(spec)
+        self.assertEqual(spec.breaking_bonds, [(1, 2)])
+        self.assertEqual(spec.forming_bonds, [])
+        # Phase 1 derivation populates these reactant-side fields.
+        self.assertIn((1, 2), spec.ref_dist_r)
+        self.assertIsNotNone(spec.ref_dist_r[(1, 2)])
+        self.assertIn((1, 2), spec.bond_order_r)
+        self.assertIsNotNone(spec.bond_order_r[(1, 2)])
+        # The unchanged-near-core list comes from the Phase 1 BFS shell
+        # over the reactant graph: it should be non-empty (the C-N
+        # frontier has plenty of one-shell neighbors), and should NOT
+        # contain the breaking bond itself.
+        self.assertGreater(len(spec.unchanged_near_core_bonds), 0)
+        self.assertNotIn((1, 2), spec.unchanged_near_core_bonds)
+        # Conservative: no changed_bonds when mapped_p_mol is None.
+        self.assertEqual(spec.changed_bonds, [])
+        # The reactive-atom set must include both endpoints.
+        self.assertIn(1, spec.reactive_atoms)
+        self.assertIn(2, spec.reactive_atoms)
+        self.assertEqual(spec.weight, 0.5)
+        self.assertEqual(spec.family, '1,3_NH3_elimination')
+
+    # ---- Phase 3a #3: fragmentation-fallback minimal spec --------------
+
+    def test_build_addition_path_spec_fallback_minimal(self):
+        """For a fragmentation cut without forming bonds, the spec must
+        be deterministic, valid, and conservative."""
+        from arc.job.adapters.ts.linear import _build_addition_path_spec
+        r, _, _, _ = self._make_addition_rxn()
+        spec = _build_addition_path_spec(
+            uni_mol=r.mol,
+            uni_xyz=r.get_xyz(),
+            breaking_bonds=[(1, 2)],
+            forming_bonds=None,  # exercise explicit None handling
+            weight=0.5,
+            family=None,
+            label='test',
+        )
+        self.assertIsNotNone(spec)
+        self.assertEqual(spec.breaking_bonds, [(1, 2)])
+        self.assertEqual(spec.forming_bonds, [])
+        self.assertEqual(spec.changed_bonds, [])
+        self.assertGreater(len(spec.unchanged_near_core_bonds), 0)
+        # Reactant-side metadata is populated...
+        self.assertIsNotNone(spec.ref_dist_r.get((1, 2)))
+        self.assertIsNotNone(spec.bond_order_r.get((1, 2)))
+        # ...and product-side metadata is genuinely None (no op_xyz / mapped_p_mol).
+        self.assertIsNone(spec.ref_dist_p.get((1, 2)))
+        self.assertIsNone(spec.bond_order_p.get((1, 2)))
+
+    def test_build_addition_path_spec_with_cross_bonds(self):
+        """Cross bonds are passed through into ``forming_bonds``."""
+        from arc.job.adapters.ts.linear import _build_addition_path_spec
+        r, _, _, _ = self._make_addition_rxn()
+        spec = _build_addition_path_spec(
+            uni_mol=r.mol,
+            uni_xyz=r.get_xyz(),
+            breaking_bonds=[(1, 2)],
+            forming_bonds=[(0, 1)],
+            weight=0.5,
+            family='test',
+            label='test',
+        )
+        self.assertIsNotNone(spec)
+        self.assertEqual(spec.breaking_bonds, [(1, 2)])
+        self.assertEqual(spec.forming_bonds, [(0, 1)])
+
+    # ---- Phase 3a #1: addition guesses are GuessRecord -----------------
+
+    def _make_simple_dissociation_rxn(self):
+        """Propyl radical → methyl + ethylene.
+
+        A pure C-C dissociation with no H migration, so the addition
+        pipeline produces at least one non-degraded record carrying a
+        real :class:`ReactionPathSpec`.
+        """
+        from arc.species import ARCSpecies
+        from arc.reaction import ARCReaction
+        r = ARCSpecies(label='propyl', smiles='[CH2]CC')
+        p1 = ARCSpecies(label='methyl', smiles='[CH3]')
+        p2 = ARCSpecies(label='ethylene', smiles='C=C')
+        return ARCReaction(r_species=[r], p_species=[p1, p2])
+
+    def test_interpolate_addition_uses_guess_records_internally(self):
+        """A live ``interpolate_addition`` run produces guesses that
+        round-trip through ``_finalize_ts_guesses``.  We trace the
+        finalizer call and confirm that it sees ``GuessRecord``-shaped
+        inputs and that at least one carries a real
+        :class:`ReactionPathSpec`."""
+        from arc.job.adapters.ts import linear as L
+        rxn = self._make_simple_dissociation_rxn()
+        captured: list = []
+        original = L._finalize_ts_guesses
+
+        def _trace(ts_xyzs, path_spec, rxn, r_mol):
+            captured.append(list(ts_xyzs))
+            return original(ts_xyzs, path_spec=path_spec, rxn=rxn, r_mol=r_mol)
+
+        L._finalize_ts_guesses = _trace
+        try:
+            L.interpolate_addition(rxn, weight=0.5)
+        finally:
+            L._finalize_ts_guesses = original
+
+        self.assertEqual(len(captured), 1, 'finalizer should be called once')
+        records = captured[0]
+        self.assertGreater(len(records), 0, 'expected at least one record')
+        for rec in records:
+            self.assertIsInstance(rec, L.GuessRecord)
+        # At least one of the surviving records should carry a real
+        # ReactionPathSpec.  (Branches that involve H migration
+        # deliberately strip the spec into degraded mode; pure C-C
+        # dissociation preserves it.)
+        with_spec = [rec for rec in records if rec.path_spec is not None]
+        self.assertGreater(
+            len(with_spec), 0,
+            'expected at least one record carrying a ReactionPathSpec')
+
+    # ---- Phase 3a #4: addition validation routing ---------------------
+
+    def test_addition_validation_routes_through_wrapper(self):
+        """When ``stretch_bond`` is called with a ``path_spec``, it
+        routes validation through
+        :func:`validate_guess_against_path_spec` rather than the legacy
+        :func:`validate_ts_guess`."""
+        from arc.job.adapters.ts.linear_utils import addition as A
+        r, _, _, _ = self._make_addition_rxn()
+        from arc.job.adapters.ts.linear_utils.path_spec import ReactionPathSpec
+        spec = ReactionPathSpec.build(
+            r_mol=r.mol,
+            mapped_p_mol=None,
+            breaking_bonds=[(1, 2)],
+            forming_bonds=[],
+            r_xyz=r.get_xyz(),
+            weight=0.5,
+        )
+        calls = {'wrapper': 0, 'legacy': 0}
+        original_wrapper = A.validate_guess_against_path_spec
+        original_legacy = A.validate_ts_guess
+
+        def _fake_wrapper(*args, **kwargs):
+            calls['wrapper'] += 1
+            return original_wrapper(*args, **kwargs)
+
+        def _fake_legacy(*args, **kwargs):
+            calls['legacy'] += 1
+            return original_legacy(*args, **kwargs)
+
+        A.validate_guess_against_path_spec = _fake_wrapper
+        A.validate_ts_guess = _fake_legacy
+        try:
+            A.stretch_bond(
+                uni_xyz=r.get_xyz(),
+                uni_mol=r.mol,
+                split_bonds=[(1, 2)],
+                cross_bonds=None,
+                weight=0.5,
+                label='test',
+                path_spec=spec,
+            )
+        finally:
+            A.validate_guess_against_path_spec = original_wrapper
+            A.validate_ts_guess = original_legacy
+
+        # The wrapper must have been invoked at least once.
+        self.assertGreaterEqual(calls['wrapper'], 1)
+
+    def test_addition_validation_falls_back_when_no_path_spec(self):
+        """``stretch_bond`` with ``path_spec=None`` MUST use the legacy
+        ``validate_ts_guess`` path so degraded mode never crashes."""
+        from arc.job.adapters.ts.linear_utils import addition as A
+        r, _, _, _ = self._make_addition_rxn()
+        calls = {'wrapper': 0, 'legacy': 0}
+        original_wrapper = A.validate_guess_against_path_spec
+        original_legacy = A.validate_ts_guess
+
+        def _fake_wrapper(*args, **kwargs):
+            calls['wrapper'] += 1
+            return original_wrapper(*args, **kwargs)
+
+        def _fake_legacy(*args, **kwargs):
+            calls['legacy'] += 1
+            return original_legacy(*args, **kwargs)
+
+        A.validate_guess_against_path_spec = _fake_wrapper
+        A.validate_ts_guess = _fake_legacy
+        try:
+            A.stretch_bond(
+                uni_xyz=r.get_xyz(),
+                uni_mol=r.mol,
+                split_bonds=[(1, 2)],
+                cross_bonds=None,
+                weight=0.5,
+                label='test',
+                path_spec=None,
+            )
+        finally:
+            A.validate_guess_against_path_spec = original_wrapper
+            A.validate_ts_guess = original_legacy
+
+        self.assertEqual(calls['wrapper'], 0)
+        self.assertGreaterEqual(calls['legacy'], 1)
+
+    # ---- Phase 3a #5: invalid guess rejection via wrapper -------------
+
+    def test_addition_wrapper_rejects_snapped_unchanged_near_core(self):
+        """A fallback addition guess whose unchanged-near-core bond is
+        stretched far beyond ``1.25 × sbl`` must be rejected by the
+        Phase 2 wrapper when used inside the addition validation
+        gateway."""
+        from arc.job.adapters.ts.linear import _validate_addition_guess
+        from arc.job.adapters.ts.linear_utils.path_spec import ReactionPathSpec
+        from arc.species import ARCSpecies
+        prop = ARCSpecies(label='propyl', smiles='CC[CH2]')
+        spec = ReactionPathSpec.build(
+            r_mol=prop.mol,
+            mapped_p_mol=None,
+            breaking_bonds=[(0, 1)],
+            forming_bonds=[],
+            r_xyz=prop.get_xyz(),
+            weight=0.5,
+        )
+        # Take the propyl XYZ and pull one heavy atom far away so an
+        # unchanged_near_core bond is "snapped".
+        coords = list(map(list, prop.get_xyz()['coords']))
+        coords[2][0] += 5.0
+        bad_xyz = {
+            'symbols': prop.get_xyz()['symbols'],
+            'isotopes': prop.get_xyz().get(
+                'isotopes', tuple(0 for _ in coords)),
+            'coords': tuple(tuple(row) for row in coords),
+        }
+        ok, reason = _validate_addition_guess(
+            xyz=bad_xyz,
+            path_spec=spec,
+            uni_mol=prop.mol,
+            forming_bonds=[],
+            label='snapped-test',
+        )
+        # The wrapper rejects via one of: recipe-mismatch (snapped
+        # spectator), phase2: (Phase 2 sub-checks), or one of the
+        # standard generic gates ("detached", "fragments", "colliding").
+        self.assertFalse(ok)
+        self.assertTrue(
+            any(token in reason for token in (
+                'recipe-mismatch', 'phase2', 'detached',
+                'colliding', 'fragment',
+            )),
+            f'expected wrapper rejection reason, got: {reason!r}',
+        )
+
+    # ---- Phase 3a #6: finite-score integration -------------------------
+
+    def test_addition_record_with_path_spec_gets_finite_score(self):
+        """A :class:`GuessRecord` carrying a real
+        :class:`ReactionPathSpec` receives a finite (non-+inf) score
+        when scored via ``score_guess_against_path_spec``, and round-
+        trips through :func:`_finalize_ts_guesses` cleanly."""
+        from arc.job.adapters.ts.linear import (
+            GuessRecord, _build_addition_path_spec, _finalize_ts_guesses,
+            classify_path_chemistry, score_guess_against_path_spec,
+        )
+        r, _, _, rxn = self._make_addition_rxn()
+        spec = _build_addition_path_spec(
+            uni_mol=r.mol,
+            uni_xyz=r.get_xyz(),
+            breaking_bonds=[(1, 2)],
+            forming_bonds=[],
+            weight=0.5,
+            family='test',
+            label='test',
+        )
+        rec = GuessRecord(
+            xyz=r.get_xyz(),
+            bb=[(1, 2)],
+            fb=[],
+            family='test',
+            strategy='test',
+            path_spec=spec,
+        )
+        symbols = tuple(r.get_xyz()['symbols'])
+        chemistry = classify_path_chemistry(spec, r.mol, symbols)
+        score = score_guess_against_path_spec(spec, rec.xyz, r.mol, symbols, chemistry)
+        self.assertNotEqual(score, float('inf'),
+                            'addition guess with valid path_spec must score finitely')
+        out = _finalize_ts_guesses(
+            [rec], path_spec=None, rxn=rxn, r_mol=r.mol)
+        self.assertEqual(len(out), 1)
+
+    # ---- Phase 3a #7: partial-spec fallback stability ------------------
+
+    def test_partial_spec_validation_does_not_crash(self):
+        """A spec with no product-side metadata must validate without
+        raising, regardless of whether it accepts or rejects."""
+        from arc.job.adapters.ts.linear_utils.path_spec import (
+            ReactionPathSpec, validate_guess_against_path_spec,
+        )
+        from arc.species import ARCSpecies
+        prop = ARCSpecies(label='propyl', smiles='CC[CH2]')
+        spec = ReactionPathSpec.build(
+            r_mol=prop.mol,
+            mapped_p_mol=None,
+            breaking_bonds=[(0, 1)],
+            forming_bonds=[],
+            r_xyz=prop.get_xyz(),
+            weight=0.5,
+        )
+        result = validate_guess_against_path_spec(
+            xyz=prop.get_xyz(),
+            path_spec=spec,
+            r_mol=prop.mol,
+            label='partial-test',
+        )
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], bool)
+        self.assertIsInstance(result[1], str)
+
+    def test_partial_spec_scoring_does_not_crash(self):
+        """Scoring on a spec with no product-side metadata must return
+        a deterministic finite (or +inf) value, never raise."""
+        from arc.job.adapters.ts.linear import (
+            classify_path_chemistry, score_guess_against_path_spec,
+        )
+        from arc.job.adapters.ts.linear_utils.path_spec import ReactionPathSpec
+        from arc.species import ARCSpecies
+        prop = ARCSpecies(label='propyl', smiles='CC[CH2]')
+        spec = ReactionPathSpec.build(
+            r_mol=prop.mol,
+            mapped_p_mol=None,
+            breaking_bonds=[(0, 1)],
+            forming_bonds=[],
+            r_xyz=prop.get_xyz(),
+            weight=0.5,
+        )
+        symbols = tuple(prop.get_xyz()['symbols'])
+        chemistry = classify_path_chemistry(spec, prop.mol, symbols)
+        score = score_guess_against_path_spec(
+            spec, prop.get_xyz(), prop.mol, symbols, chemistry)
+        # Deterministic and not NaN.
+        self.assertEqual(score, score)
+        self.assertLess(score, float('inf'))
+
+    def test_addition_path_spec_helper_returns_none_on_failure(self):
+        """``_build_addition_path_spec`` swallows builder exceptions
+        and returns ``None`` so the caller can degrade gracefully."""
+        from arc.job.adapters.ts.linear import _build_addition_path_spec
+        spec = _build_addition_path_spec(
+            uni_mol=None,
+            uni_xyz={'symbols': ('C',), 'isotopes': (12,),
+                      'coords': ((0.0, 0.0, 0.0),)},
+            breaking_bonds=[(0, 0)],
+            forming_bonds=[],
+            weight=0.5,
+            family=None,
+            label='test',
+        )
+        self.assertIsNone(spec)
+
+
 if __name__ == '__main__':
     unittest.main()

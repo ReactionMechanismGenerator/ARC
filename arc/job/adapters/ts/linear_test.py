@@ -1592,7 +1592,13 @@ H       1.87659808    3.60554649    0.40980601
 H       2.27586518    3.91304280    2.85564919
 H       0.70988426    4.69809127    3.02214828
 H       1.98588747    5.47639445    2.05549614"""
-        self.assertTrue(almost_equal_coords(ts_xyzs[1], str_to_xyz(expected_ts_1)))
+        # Phase 3a: addition guesses now carry real ReactionPathSpec
+        # metadata, so the strict (score, original_index) sort can
+        # reorder them by score.  The expected geometry survives but
+        # may land at a different index, so we only require that it
+        # appears somewhere in the result list.
+        expected = str_to_xyz(expected_ts_1)
+        self.assertTrue(any(almost_equal_coords(ts, expected) for ts in ts_xyzs))
 
     def test_interpolate_1_3_insertion_rsr(self):
         """Test the interpolate_isomerization() function for 1,3_Insertion_RSR: H2S + C=C=O <=> C=C(S)O"""
@@ -2236,7 +2242,12 @@ H      -1.11137750   -1.95191402    0.41425051
 H       1.32375058   -0.33941053    1.87641330
 H       2.00384339   -0.96703474    0.76011708
 H       1.10969504    1.91861349   -2.73820257"""
-        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
+        # Phase 3a: addition guesses are now scored, so the strict
+        # (score, original_index) sort may demote/promote this
+        # particular guess.  Require the expected geometry somewhere
+        # in the result list rather than at a fixed position.
+        expected = str_to_xyz(expected_ts_0)
+        self.assertTrue(any(almost_equal_coords(ts, expected) for ts in ts_xyzs))
 
     def test_interpolate_cyclic_thioether_formation(self):  # TODO: fix CH2-backbone bond length
         """Test the interpolate_isomerization() function for Cyclic_Thioether_Formation: [CH2]C(=C)SOC <=> C=C1CS1 + CH3O"""
@@ -2288,7 +2299,9 @@ H      -1.54945959   -1.47262047    1.17293411
 H       2.03320901    2.61402200   -2.25413461
 H       1.58243982    3.96815090   -1.21381101
 H       1.79851918    2.36874413   -0.49754808"""
-        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
+        # Phase 3a: order-agnostic — see Cyclic_Ether_Formation note above.
+        expected = str_to_xyz(expected_ts_0)
+        self.assertTrue(any(almost_equal_coords(ts, expected) for ts in ts_xyzs))
 
     def test_interpolate_cyclopentadiene_scission(self):  # todo: not amazing
         """Test the interpolate_isomerization() function for Cyclopentadiene_scission: C1=CC2CC2=C1 <=> [C]1C=CC=CC1"""

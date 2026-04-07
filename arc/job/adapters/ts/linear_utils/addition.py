@@ -17,6 +17,10 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     PAULING_DELTA,
     validate_ts_guess,
 )
+from arc.job.adapters.ts.linear_utils.path_spec import (
+    ReactionPathSpec,
+    validate_guess_against_path_spec,
+)
 from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
 
 if TYPE_CHECKING:
@@ -24,6 +28,44 @@ if TYPE_CHECKING:
 
 
 logger = get_logger()
+
+
+def _validate_addition_xyz(ts_xyz: dict,
+                            uni_mol: 'Molecule',
+                            split_bonds: List[Tuple[int, int]],
+                            label: str,
+                            path_spec: Optional['ReactionPathSpec'] = None,
+                            ) -> Tuple[bool, str]:
+    """Phase 3a: addition-side validation gateway used by leaf builders.
+
+    When a :class:`ReactionPathSpec` is supplied, validation is routed
+    through :func:`validate_guess_against_path_spec` so addition guesses
+    receive the same Phase 1+2 path-spec checks as isomerization.  When
+    the spec is ``None`` (degraded mode — e.g. dedicated motif builders
+    with no per-bond metadata), the legacy
+    :func:`validate_ts_guess` path is used so behavior never regresses
+    below the pre-Phase-3a baseline.
+
+    Args:
+        ts_xyz: Built TS guess XYZ dict.
+        uni_mol: The unimolecular RMG Molecule (always available here).
+        split_bonds: Forming-bond indices for the legacy fallback path.
+        label: Logging label.
+        path_spec: Optional :class:`ReactionPathSpec` for the guess.
+
+    Returns:
+        ``(is_valid, reason)`` matching the existing validator contract.
+    """
+    if path_spec is not None:
+        return validate_guess_against_path_spec(
+            xyz=ts_xyz,
+            path_spec=path_spec,
+            r_mol=uni_mol,
+            family=path_spec.family,
+            reactive_indices=set(path_spec.reactive_atoms),
+            label=label,
+        )
+    return validate_ts_guess(ts_xyz, set(), split_bonds, uni_mol, label=label)
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +582,7 @@ def stretch_bond(uni_xyz: dict,
                   cross_bonds: Optional[List[Tuple[int, int]]] = None,
                   weight: float = 0.5,
                   label: str = '',
+                  path_spec: Optional['ReactionPathSpec'] = None,
                   ) -> Optional[dict]:
     """
     Create a TS guess by stretching specified bonds in the unimolecular species.
@@ -560,6 +603,10 @@ def stretch_bond(uni_xyz: dict,
             across different fragments (used for insertion-ring detection).
         weight (float): Interpolation weight (0=reactant-like, 1=product-like).
         label (str): Logging label.
+        path_spec (ReactionPathSpec, optional): Phase 3a path-spec; when
+            provided, validation is routed through
+            :func:`validate_guess_against_path_spec`.  When ``None`` the
+            legacy :func:`validate_ts_guess` is used (degraded mode).
 
     Returns:
         Optional[dict]: TS guess XYZ, or None if validation fails.
@@ -601,7 +648,9 @@ def stretch_bond(uni_xyz: dict,
 
     # --- 3-membered insertion ring pattern ---
     if len(fragments) >= 3 and cross_bonds:
-        result = try_insertion_ring(uni_xyz, uni_mol, fragments, split_bonds, cross_bonds, weight, n_atoms)
+        result = try_insertion_ring(uni_xyz, uni_mol, fragments, split_bonds,
+                                    cross_bonds, weight, n_atoms,
+                                    path_spec=path_spec)
         if result is not None:
             return result
 
@@ -670,7 +719,8 @@ def stretch_bond(uni_xyz: dict,
     # split_bonds are passed as forming_bonds: for addition the TS "forms"
     # the bonds that are being stretched apart, so both names refer to the
     # same bond set from the TS perspective.
-    is_valid, reason = validate_ts_guess(ts_xyz, set(), split_bonds, uni_mol, label=label)
+    is_valid, reason = _validate_addition_xyz(
+        ts_xyz, uni_mol, split_bonds, label=label, path_spec=path_spec)
     if not is_valid:
         logger.debug(f'Linear addition ({label}): rejected — {reason}.')
         return None
@@ -685,6 +735,7 @@ def try_insertion_ring(uni_xyz: dict,
                         cross_bonds: List[Tuple[int, int]],
                         weight: float,
                         n_atoms: int,
+                        path_spec: Optional['ReactionPathSpec'] = None,
                         ) -> Optional[dict]:
     """
     Attempt to build a 3-membered insertion-ring TS geometry.
@@ -702,6 +753,9 @@ def try_insertion_ring(uni_xyz: dict,
         cross_bonds (List[Tuple[int, int]]): Bonds connecting atoms across fragments.
         weight (float): Interpolation weight.
         n_atoms (int): Total number of atoms.
+        path_spec (ReactionPathSpec, optional): Phase 3a path-spec; when
+            provided, validation routes through
+            :func:`validate_guess_against_path_spec`.
 
     Returns:
         Optional[dict]: TS guess XYZ, or None if the pattern doesn't apply.
@@ -812,7 +866,8 @@ def try_insertion_ring(uni_xyz: dict,
         'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
         'coords': tuple(tuple(float(c) for c in row) for row in ts_coords),
     }
-    is_valid, reason = validate_ts_guess(ts_xyz, set(), split_bonds, uni_mol, label='insertion-ring')
+    is_valid, reason = _validate_addition_xyz(
+        ts_xyz, uni_mol, split_bonds, label='insertion-ring', path_spec=path_spec)
     if not is_valid:
         logger.debug(f'Linear (insertion-ring): rejected — {reason}.')
         return None

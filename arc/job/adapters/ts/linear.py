@@ -167,6 +167,7 @@ to work without modification.
 """
 
 import datetime
+import math
 from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
@@ -404,15 +405,17 @@ def _finalize_ts_guesses(ts_xyzs: List,
     #
     # Convention: collapse two records when EITHER
     #   (a) ``almost_equal_coords`` returns True (full-XYZ identity), OR
-    #   (b) ``_heavy_atoms_match`` returns True AND the candidate's
-    #       score is strictly worse than the already-kept representative.
+    #   (b) ``_heavy_atoms_match`` returns True AND BOTH scores are
+    #       finite AND the candidate's score is strictly worse than the
+    #       already-kept representative.
     #
     # Rule (b) preserves the score-priority contract — "keep best-scoring
     # representative of each cluster" — while protecting genuinely
-    # distinct H-migration variants in the addition pipeline (where two
-    # guesses with the same heavy-atom backbone but different migrating-H
-    # positions are chemically meaningful and therefore tied at score
-    # ``+inf`` because addition guesses do not yet carry path_specs).
+    # distinct variants whose quality cannot be compared.  Phase 3a
+    # added the BOTH-finite requirement: an addition guess in degraded
+    # mode (``score == +inf``) carries no information about whether it
+    # is "worse" than a finitely-scored sibling, so we must not collapse
+    # the pair on the basis of an unknown comparison.
     deduped_pairs: List[Tuple[float, GuessRecord]] = []
     for score, _, rec in scored:
         collapsed = False
@@ -420,7 +423,9 @@ def _finalize_ts_guesses(ts_xyzs: List,
             if almost_equal_coords(rec.xyz, prev.xyz):
                 collapsed = True
                 break
-            if score > prev_score and _heavy_atoms_match(rec.xyz, prev.xyz):
+            if (math.isfinite(score) and math.isfinite(prev_score)
+                    and score > prev_score
+                    and _heavy_atoms_match(rec.xyz, prev.xyz)):
                 collapsed = True
                 break
         if collapsed:
@@ -1307,7 +1312,10 @@ def interpolate_addition(rxn: 'ARCReaction',
     uni_xyz = uni_species.get_xyz()
     uni_mol = uni_species.mol
 
-    ts_xyzs: List[dict] = []
+    # Phase 3a: addition guesses are now carried as GuessRecord objects
+    # so they can transport ReactionPathSpec metadata through the shared
+    # finalizer for real finite scoring.
+    ts_records: List[GuessRecord] = []
     seen_split_sets: Set[frozenset] = set()
     verified_guess_count: int = 0
 
@@ -1325,8 +1333,12 @@ def interpolate_addition(rxn: 'ARCReaction',
             not _family_name and len(multi_species) >= 3):
         ts_family = build_xy_elimination_ts(uni_xyz, uni_mol)
         if ts_family is not None:
-            is_valid, reason = validate_ts_guess(
-                ts_family, set(), [], uni_mol,
+            # XY-elimination is a dedicated motif builder; we don't have
+            # explicit per-bond metadata for it, so degraded validation
+            # via _validate_addition_guess(path_spec=None) is used.
+            is_valid, reason = _validate_addition_guess(
+                ts_family, path_spec=None, uni_mol=uni_mol,
+                forming_bonds=[],
                 label=f'rxn={rxn.label}, XY_elimination')
             if is_valid:
                 if existing_xyzs and any(almost_equal_coords(ts_family, e) for e in existing_xyzs):
@@ -1384,6 +1396,19 @@ def interpolate_addition(rxn: 'ARCReaction',
         if sb_key in seen_split_sets:
             continue
         seen_split_sets.add(sb_key)
+
+        # Phase 3a: build the per-path ReactionPathSpec via the Phase 1
+        # machinery.  This is shared by all guesses produced from this
+        # template-guided cut so the finalizer can score them.
+        template_path_spec = _build_addition_path_spec(
+            uni_mol=uni_mol,
+            uni_xyz=uni_xyz,
+            breaking_bonds=split_bonds,
+            forming_bonds=cross_bonds,
+            weight=weight,
+            family=_family_name or rxn.family,
+            label=f'rxn={rxn.label}, path={i}',
+        )
 
         # ---- Verify fragments via subgraph isomorphism ----
         frag_map = map_and_verify_fragments(
@@ -1448,10 +1473,23 @@ def interpolate_addition(rxn: 'ARCReaction',
             if bases[0] is not uni_xyz:
                 bases.append(uni_xyz)
 
+            # Phase 3a: stretch_bond is a leaf builder.  The
+            # path-spec wrapper's recipe-channel and
+            # unchanged-near-core checks can be too strict for the
+            # *intermediate* geometries this builder produces — e.g.
+            # ring-contracted bases from apply_intra_frag_contraction
+            # may transiently stretch an adjacent C=C bond by a few
+            # hundredths of an Å, and the pre-migration geometry has
+            # the would-be-formed bond unformed by design.  We let the
+            # leaf builder use the legacy validator internally
+            # (path_spec=None) and attach the spec only at the
+            # GuessRecord, where the finalizer can score it without
+            # over-rejecting.
             for base_xyz in bases:
                 ts_xyz = stretch_bond(base_xyz, uni_mol, split_bonds,
                                        cross_bonds, weight,
-                                       label=f'rxn={rxn.label}, path={i}')
+                                       label=f'rxn={rxn.label}, path={i}',
+                                       path_spec=None)
                 if ts_xyz is not None and migrating_atoms:
                     # stretch_bond only moves the smallest fragment (often
                     # just the migrating atom).  When there are 3+ fragments,
@@ -1480,16 +1518,37 @@ def interpolate_addition(rxn: 'ARCReaction',
                     ts_xyz = migrate_verified_atoms(
                         ts_xyz, uni_mol, migrating_atoms, core,
                         large_prod_atoms, weight, cross_bonds=cross_bonds)
-                    is_valid, reason = validate_ts_guess(
-                        ts_xyz, set(), split_bonds, uni_mol,
+                    # Phase 3a: post-migration changes the bond topology
+                    # in ways that the path-spec (built from split_bonds
+                    # only) does not capture — migrating-H bonds appear
+                    # "snapped" to the unchanged_near_core check even
+                    # though they are physically in transit.  Validate
+                    # in degraded mode here, and also strip the path-spec
+                    # from the resulting GuessRecord so the finalizer
+                    # does not over-penalize migration variants.  This
+                    # is the documented "truly incomplete fallback spec"
+                    # case from the Phase 3a directive.
+                    is_valid, reason = _validate_addition_guess(
+                        ts_xyz, path_spec=None, uni_mol=uni_mol,
+                        forming_bonds=split_bonds,
                         label=f'rxn={rxn.label}, path={i}-post-migrate')
                     if not is_valid:
                         logger.debug(
                             f'Linear addition (rxn={rxn.label}, path={i}): '
                             f'post-migration rejected — {reason}.')
                         continue
+                    record_path_spec = None  # degraded
+                else:
+                    record_path_spec = template_path_spec
                 if ts_xyz is not None:
-                    ts_xyzs.append(ts_xyz)
+                    ts_records.append(GuessRecord(
+                        xyz=ts_xyz,
+                        bb=list(split_bonds),
+                        fb=list(cross_bonds),
+                        family=_family_name or rxn.family,
+                        strategy='template_guided',
+                        path_spec=record_path_spec,
+                    ))
                     verified_guess_count += 1
         else:
             # Fragment verification failed — fall back to direct stretch.
@@ -1499,9 +1558,17 @@ def interpolate_addition(rxn: 'ARCReaction',
             # simple additions where no intra-fragment contraction is needed).
             ts_xyz = stretch_bond(uni_xyz, uni_mol, split_bonds,
                                    cross_bonds, weight,
-                                   label=f'rxn={rxn.label}, path={i}-fallback')
+                                   label=f'rxn={rxn.label}, path={i}-fallback',
+                                   path_spec=None)
             if ts_xyz is not None:
-                ts_xyzs.append(ts_xyz)
+                ts_records.append(GuessRecord(
+                    xyz=ts_xyz,
+                    bb=list(split_bonds),
+                    fb=list(cross_bonds),
+                    family=_family_name or rxn.family,
+                    strategy='template_fallback_direct',
+                    path_spec=template_path_spec,
+                ))
             # Also try ring contraction then stretch for reactions that need
             # it (e.g. cyclic ether formation).
             ring_xyzs = apply_intra_frag_contraction(
@@ -1510,13 +1577,22 @@ def interpolate_addition(rxn: 'ARCReaction',
             for ring_xyz in ring_xyzs:
                 ts_xyz = stretch_bond(ring_xyz, uni_mol, split_bonds,
                                        cross_bonds, weight,
-                                       label=f'rxn={rxn.label}, path={i}-fallback')
+                                       label=f'rxn={rxn.label}, path={i}-fallback',
+                                       path_spec=None)
                 if ts_xyz is not None:
-                    is_valid, reason = validate_ts_guess(
-                        ts_xyz, set(), split_bonds, uni_mol,
+                    is_valid, reason = _validate_addition_guess(
+                        ts_xyz, path_spec=template_path_spec, uni_mol=uni_mol,
+                        forming_bonds=split_bonds,
                         label=f'rxn={rxn.label}, path={i}-fallback-contracted')
                     if is_valid:
-                        ts_xyzs.append(ts_xyz)
+                        ts_records.append(GuessRecord(
+                            xyz=ts_xyz,
+                            bb=list(split_bonds),
+                            fb=list(cross_bonds),
+                            family=_family_name or rxn.family,
+                            strategy='template_fallback_contracted',
+                            path_spec=template_path_spec,
+                        ))
 
     # ----- Concerted multi-bond supplement -----
     # For reactions with 3+ products and multiple split/cross bonds (e.g.
@@ -1549,11 +1625,25 @@ def interpolate_addition(rxn: 'ARCReaction',
             if len(split_in_uni) >= 2 and cross_in_uni:
                 ts_conc = build_concerted_ts(uni_xyz, uni_mol, split_in_uni, cross_in_uni, weight)
                 if ts_conc is not None:
-                    is_valid_conc, reason_conc = validate_ts_guess(
-                        ts_conc, set(), split_in_uni, uni_mol,
+                    concerted_path_spec = _build_addition_path_spec(
+                        uni_mol=uni_mol, uni_xyz=uni_xyz,
+                        breaking_bonds=split_in_uni,
+                        forming_bonds=cross_in_uni,
+                        weight=weight, family=_family_name or rxn.family,
+                        label=f'rxn={rxn.label}, concerted')
+                    is_valid_conc, reason_conc = _validate_addition_guess(
+                        ts_conc, path_spec=concerted_path_spec, uni_mol=uni_mol,
+                        forming_bonds=split_in_uni,
                         label=f'rxn={rxn.label}, concerted')
                     if is_valid_conc:
-                        ts_xyzs.append(ts_conc)
+                        ts_records.append(GuessRecord(
+                            xyz=ts_conc,
+                            bb=list(split_in_uni),
+                            fb=list(cross_in_uni),
+                            family=_family_name or rxn.family,
+                            strategy='concerted',
+                            path_spec=concerted_path_spec,
+                        ))
                         logger.debug(f'Linear addition (rxn={rxn.label}): used concerted-TS builder '
                                      f'(split={split_in_uni}, cross={cross_in_uni}).')
                     else:
@@ -1671,7 +1761,20 @@ def interpolate_addition(rxn: 'ARCReaction',
         ts_sn2 = {'symbols': uni_xyz['symbols'], 'isotopes': uni_xyz['isotopes'],
                    'coords': tuple(tuple(row) for row in sn2_coords)}
         if not colliding_atoms(ts_sn2):
-            ts_xyzs.append(ts_sn2)
+            sn2_path_spec = _build_addition_path_spec(
+                uni_mol=uni_mol, uni_xyz=uni_xyz,
+                breaking_bonds=list(bb_sn2),
+                forming_bonds=list(fb_sn2),
+                weight=weight, family=_family_name or rxn.family,
+                label=f'rxn={rxn.label}, SN2')
+            ts_records.append(GuessRecord(
+                xyz=ts_sn2,
+                bb=list(bb_sn2),
+                fb=list(fb_sn2),
+                family=_family_name or rxn.family,
+                strategy='sn2_like',
+                path_spec=sn2_path_spec,
+            ))
             logger.debug(f'Linear (rxn={rxn.label}): used SN2-like builder '
                          f'(pivot={pivot}, leaving={bb_other}, attacking={fb_other}).')
             break
@@ -1837,6 +1940,16 @@ def interpolate_addition(rxn: 'ARCReaction',
                     if cross_bonds_frag:
                         break
 
+        # Phase 3a: build conservative minimal ReactionPathSpec for this
+        # fragmentation cut.  ``breaking_bonds = cut``, ``forming_bonds =
+        # cross_bonds_frag or []``, no product-side metadata.
+        cut_path_spec = _build_addition_path_spec(
+            uni_mol=uni_mol, uni_xyz=uni_xyz,
+            breaking_bonds=cut,
+            forming_bonds=cross_bonds_frag,
+            weight=weight, family=_family_name or rxn.family,
+            label=f'rxn={rxn.label}, frag-fallback')
+
         # Try concerted builder when cross bonds are detected.
         # When it succeeds, skip the stretch_bond fallback for this cut —
         # the concerted geometry is strictly better than fragment-stretching
@@ -1845,15 +1958,23 @@ def interpolate_addition(rxn: 'ARCReaction',
         if cross_bonds_frag and len(cut) >= 2:
             ts_conc = build_concerted_ts(uni_xyz, uni_mol, cut, cross_bonds_frag, weight)
             if ts_conc is not None:
-                is_valid_conc, reason_conc = validate_ts_guess(
-                    ts_conc, set(), cut, uni_mol,
+                is_valid_conc, reason_conc = _validate_addition_guess(
+                    ts_conc, path_spec=cut_path_spec, uni_mol=uni_mol,
+                    forming_bonds=cut,
                     label=f'rxn={rxn.label}, frag-concerted')
                 if not is_valid_conc:
                     logger.debug(f'Linear addition (rxn={rxn.label}, frag-fallback): '
                                  f'concerted guess rejected — {reason_conc}.')
                     ts_conc = None
             if ts_conc is not None:
-                ts_xyzs.append(ts_conc)
+                ts_records.append(GuessRecord(
+                    xyz=ts_conc,
+                    bb=list(cut),
+                    fb=list(cross_bonds_frag),
+                    family=_family_name or rxn.family,
+                    strategy='frag_concerted',
+                    path_spec=cut_path_spec,
+                ))
                 used_concerted = True
                 logger.debug(f'Linear addition (rxn={rxn.label}, frag-fallback): '
                              f'used concerted-TS builder (split={cut}, '
@@ -1869,39 +1990,57 @@ def interpolate_addition(rxn: 'ARCReaction',
         for ring_xyz in ring_xyzs:
             ts_xyz = stretch_bond(ring_xyz, uni_mol, cut, cross_bonds=None,
                                    weight=weight,
-                                   label=f'rxn={rxn.label}, frag-fallback')
+                                   label=f'rxn={rxn.label}, frag-fallback',
+                                   path_spec=cut_path_spec)
             if ts_xyz is not None:
                 ts_xyz = migrate_h_between_fragments(
                     ts_xyz, uni_mol, cut, multi_species, weight)
-                is_valid, reason = validate_ts_guess(
-                    ts_xyz, set(), cut, uni_mol,
+                # Phase 3a: ``migrate_h_between_fragments`` shifts H
+                # atoms whose old/new bonds are not represented in the
+                # ``cut`` set.  As with the template-guided post-migrate
+                # branch above, we use degraded validation here and
+                # also strip the path-spec from the resulting record so
+                # the finalizer does not over-penalize the genuine
+                # migration variants.
+                is_valid, reason = _validate_addition_guess(
+                    ts_xyz, path_spec=None, uni_mol=uni_mol,
+                    forming_bonds=cut,
                     label=f'rxn={rxn.label}, frag-fallback-post-migrate')
                 if not is_valid:
                     logger.debug(f'Linear (rxn={rxn.label}, frag-fallback): '
                                  f'post-migration guess rejected — {reason}.')
                     continue
-                ts_xyzs.append(ts_xyz)
+                ts_records.append(GuessRecord(
+                    xyz=ts_xyz,
+                    bb=list(cut),
+                    fb=[],
+                    family=_family_name or rxn.family,
+                    strategy='frag_fallback',
+                    path_spec=None,  # degraded — migration not captured
+                ))
 
     # First-pass deduplication against existing_xyzs (cross-weight cache)
     # using exact-coord similarity, the convention this pipeline has used
     # since before Phase 2.  Heavy-only matching is left to the second
     # pass inside the shared finalizer below.
     prior: List[dict] = list(existing_xyzs or [])
-    pre_unique: List[dict] = []
-    for xyz_candidate in ts_xyzs:
-        if colliding_atoms(xyz_candidate):
+    pre_unique: List[GuessRecord] = []
+    for rec in ts_records:
+        if colliding_atoms(rec.xyz):
             continue
-        if not any(almost_equal_coords(xyz_candidate, u)
-                   for u in pre_unique + prior):
-            pre_unique.append(xyz_candidate)
+        if any(almost_equal_coords(rec.xyz, prev.xyz) for prev in pre_unique):
+            continue
+        if any(almost_equal_coords(rec.xyz, e) for e in prior):
+            continue
+        pre_unique.append(rec)
 
-    # Phase 2b — route through the shared finalizer.  Addition guesses
-    # currently do not carry per-path :class:`ReactionPathSpec` metadata,
-    # so the function-level ``path_spec`` defaults to None.  In that case
-    # the finalizer's score collapses to +inf for every guess, the strict
-    # ``(score, original_index)`` sort degenerates to a stable preservation
-    # of the input order, and the second-pass two-tier dedup + cap-to-5
-    # are still applied — exactly matching the isomerization pipeline.
+    # Phase 3a — addition guesses now carry their per-path
+    # :class:`ReactionPathSpec` directly on each :class:`GuessRecord`,
+    # so the shared finalizer assigns real finite scores via
+    # :func:`score_guess_against_path_spec` whenever metadata is
+    # available.  Records whose path-spec construction failed
+    # (degraded mode) gracefully fall back to ``+inf`` scoring per
+    # the Phase 2b contract.
     return _finalize_ts_guesses(pre_unique, path_spec=None, rxn=rxn, r_mol=uni_mol)
 
 
@@ -1934,6 +2073,112 @@ def _reactive_heavy_atoms_share_ring(bonds_to_check: list,
             if ha in ring_set and hb in ring_set:
                 return True
     return False
+
+
+def _build_addition_path_spec(uni_mol: 'Molecule',
+                               uni_xyz: dict,
+                               breaking_bonds: List[Tuple[int, int]],
+                               forming_bonds: Optional[List[Tuple[int, int]]],
+                               weight: float,
+                               family: Optional[str],
+                               label: str,
+                               ) -> Optional['ReactionPathSpec']:
+    """Phase 3a: build a conservative addition-side ReactionPathSpec.
+
+    This is a thin wrapper around the Phase 1
+    :meth:`ReactionPathSpec.build` factory, applied to the unimolecular
+    side of an addition/dissociation reaction.  No second-style spec
+    construction is hand-rolled here — the caller passes path-local
+    bonds and the helper threads them into the existing Phase 1
+    machinery.
+
+    Both template-guided and fragmentation-fallback addition paths use
+    this helper.  Because addition reactions decompose the unimolecular
+    species into multiple product fragments, there is no single
+    "ordered/mapped product Molecule" in unimolecular atom ordering, so
+    ``mapped_p_mol`` is always passed as ``None``.  As documented in
+    :meth:`ReactionPathSpec.build`, that yields a deterministic spec
+    with:
+
+      * empty ``changed_bonds`` (we do NOT guess them in addition mode),
+      * ``unchanged_near_core_bonds`` populated by the Phase 1 graph
+        shell helper from the reactant graph,
+      * ``ref_dist_r`` / ``bond_order_r`` populated from the
+        unimolecular geometry and graph,
+      * ``ref_dist_p`` / ``bond_order_p`` left as ``None`` (genuinely
+        unavailable in this pipeline).
+
+    Args:
+        uni_mol: The unimolecular RMG Molecule (defines atom ordering).
+        uni_xyz: Unimolecular reactant XYZ dict.
+        breaking_bonds: Bonds being broken (template ``split_bonds``
+            for Strategy 1, or fragmentation cuts for Strategy 2), in
+            unimolecular atom ordering.
+        forming_bonds: Bonds being formed (template ``cross_bonds`` or
+            ``[]``), in unimolecular atom ordering.
+        weight: Interpolation weight passed through to the spec.
+        family: RMG reaction family name (may be ``None``).
+        label: Logging label.
+
+    Returns:
+        A populated :class:`ReactionPathSpec` on success, or ``None``
+        if the underlying Phase 1 builder raised — preserving the
+        Phase 2b degraded-mode contract.
+    """
+    fb_list = list(forming_bonds or [])
+    try:
+        return ReactionPathSpec.build(
+            r_mol=uni_mol,
+            mapped_p_mol=None,
+            breaking_bonds=list(breaking_bonds),
+            forming_bonds=fb_list,
+            r_xyz=uni_xyz,
+            op_xyz=None,
+            weight=weight,
+            family=family,
+        )
+    except Exception as e:
+        logger.debug(f'Linear addition ({label}): _build_addition_path_spec failed '
+                     f'({type(e).__name__}: {e}); proceeding without path_spec.')
+        return None
+
+
+def _validate_addition_guess(xyz: dict,
+                              path_spec: Optional['ReactionPathSpec'],
+                              uni_mol: 'Molecule',
+                              forming_bonds: List[Tuple[int, int]],
+                              label: str,
+                              ) -> Tuple[bool, str]:
+    """Phase 3a: addition-side validation gateway.
+
+    Routes addition validation through the Phase 2 wrapper
+    :func:`validate_guess_against_path_spec` whenever a path-spec is
+    available.  When path-spec construction failed (degraded mode),
+    falls back to the legacy :func:`validate_ts_guess` so coverage
+    never regresses below the pre-Phase-3a baseline.
+
+    Args:
+        xyz: TS guess XYZ dict produced by an addition-side builder.
+        path_spec: The :class:`ReactionPathSpec` for this guess, or
+            ``None`` in degraded mode.
+        uni_mol: The unimolecular RMG Molecule.
+        forming_bonds: Forming bonds for the legacy fallback path
+            (only used when ``path_spec is None``).
+        label: Logging label for the validator.
+
+    Returns:
+        ``(is_valid, reason)`` matching the existing validator contract.
+    """
+    if path_spec is not None:
+        return validate_guess_against_path_spec(
+            xyz=xyz,
+            path_spec=path_spec,
+            r_mol=uni_mol,
+            family=path_spec.family,
+            reactive_indices=set(path_spec.reactive_atoms),
+            label=label,
+        )
+    return validate_ts_guess(xyz, set(), list(forming_bonds or []), uni_mol, label=label)
 
 
 def _build_path_context(r_xyz: dict, r_mol: 'Molecule', op_xyz: dict,
