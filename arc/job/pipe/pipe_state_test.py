@@ -345,7 +345,7 @@ class TestFailedEssState(unittest.TestCase):
             update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.RUNNING, started_at=now)
             update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.FAILED_ESS,
                               ended_at=now, failure_class='ess_error')
-            counts = pipe.reconcile()
+            pipe.reconcile()
             from arc.job.pipe.pipe_state import PipeRunState
             self.assertIn(pipe.status, (PipeRunState.COMPLETED_PARTIAL, PipeRunState.COMPLETED))
         finally:
