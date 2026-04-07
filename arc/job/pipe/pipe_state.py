@@ -32,12 +32,39 @@ from typing import Dict, Optional, Tuple, Union
 
 
 class TaskState(str, Enum):
-    """States for an individual task within a pipe run."""
+    """
+    States for an individual task within a pipe run.
+
+    Lifecycle::
+
+        PENDING ──► CLAIMED ──► RUNNING ──► COMPLETED
+                        │           │
+                        │           ├──► FAILED_RETRYABLE ──► PENDING (retry)
+                        │           │                     └──► FAILED_TERMINAL
+                        │           ├──► FAILED_ESS ──► (ejected to Scheduler)
+                        │           └──► ORPHANED ──► PENDING (retry)
+                        └──► ORPHANED
+
+    PENDING:            Awaiting a worker. Fresh tasks start here (attempt_index=0).
+                        Retried tasks return here with attempt_index incremented.
+    CLAIMED:            A worker has claimed this task (file-locked).
+    RUNNING:            The worker is executing the ESS adapter.
+    COMPLETED:          ESS ran and converged successfully. Results ready for ingestion.
+    FAILED_RETRYABLE:   Transient failure (node crash, NoOutput, disk issue).
+                        Will be retried with identical input on a different node.
+    FAILED_ESS:         Deterministic ESS error (SCF, MaxOptCycles, InternalCoordinateError).
+                        Blind retry won't help — ejected to Scheduler for troubleshooting
+                        with modified input (different algorithm, keywords, etc.).
+    FAILED_TERMINAL:    Exhausted all retry attempts. No further action by pipe system.
+    ORPHANED:           Worker lease expired (likely killed by PBS). Reset to PENDING.
+    CANCELLED:          Manually cancelled. Terminal state.
+    """
     PENDING = 'PENDING'
     CLAIMED = 'CLAIMED'
     RUNNING = 'RUNNING'
     COMPLETED = 'COMPLETED'
     FAILED_RETRYABLE = 'FAILED_RETRYABLE'
+    FAILED_ESS = 'FAILED_ESS'
     FAILED_TERMINAL = 'FAILED_TERMINAL'
     ORPHANED = 'ORPHANED'
     CANCELLED = 'CANCELLED'
@@ -85,10 +112,11 @@ TASK_FAMILY_TO_JOB_TYPE = {
 TASK_TRANSITIONS: Dict[TaskState, Tuple[TaskState, ...]] = {
     TaskState.PENDING: (TaskState.CLAIMED, TaskState.CANCELLED),
     TaskState.CLAIMED: (TaskState.RUNNING, TaskState.ORPHANED, TaskState.CANCELLED),
-    TaskState.RUNNING: (TaskState.COMPLETED, TaskState.FAILED_RETRYABLE,
+    TaskState.RUNNING: (TaskState.COMPLETED, TaskState.FAILED_RETRYABLE, TaskState.FAILED_ESS,
                         TaskState.FAILED_TERMINAL, TaskState.ORPHANED, TaskState.CANCELLED),
     TaskState.COMPLETED: (),
     TaskState.FAILED_RETRYABLE: (TaskState.PENDING, TaskState.FAILED_TERMINAL),
+    TaskState.FAILED_ESS: (),  # Terminal within pipe — ejected to Scheduler for troubleshooting.
     TaskState.FAILED_TERMINAL: (),
     TaskState.ORPHANED: (TaskState.PENDING, TaskState.FAILED_TERMINAL),
     TaskState.CANCELLED: (),

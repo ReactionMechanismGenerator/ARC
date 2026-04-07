@@ -947,11 +947,31 @@ Below that threshold, ARC uses its normal per-job submission path.
 
 - Pipe executes only ready "leaf" jobs. All quality checks, troubleshooting,
   and downstream decision-making remain in ARC's main scheduler.
-- Failed tasks are retried automatically (configurable).
-  If a task exhausts its retry budget, it is marked as terminally failed
-  and reported to the scheduler for manual review.
+- Failed tasks are classified and handled automatically (see task states below).
 - Each array worker verifies task ownership before writing results,
   preventing stale workers from overwriting state after lease expiration.
+
+**Task states:**
+
+Each pipe task has a state that is reported in the ARC log
+(e.g., ``Pipe run TS0_ts_opt: COMPLETED: 30, FAILED_ESS: 2, RUNNING: 8``).
+The states are:
+
+- ``PENDING`` — Waiting for a worker to claim it. Fresh tasks start here.
+  Retried tasks return here with an incremented attempt index.
+- ``CLAIMED`` — A worker has claimed this task via file lock.
+- ``RUNNING`` — The worker is executing the ESS (e.g., Gaussian, Orca).
+- ``COMPLETED`` — ESS converged successfully. Results will be ingested.
+- ``FAILED_RETRYABLE`` — Transient failure (node crash, no output, disk issue).
+  The pipe will retry this task on a different node with the same input.
+- ``FAILED_ESS`` — Deterministic ESS convergence error (e.g., SCF failure,
+  max optimization cycles, internal coordinate error). Retrying with the
+  same input will produce the same failure. The task is ejected to the
+  Scheduler as an individual job for troubleshooting with modified input.
+- ``FAILED_TERMINAL`` — Exhausted all retry attempts. No further automatic action.
+- ``ORPHANED`` — Worker lease expired (e.g., killed by PBS walltime).
+  Will be reset to ``PENDING`` for retry.
+- ``CANCELLED`` — Manually cancelled. Terminal state.
 
 **Configuration:**
 
@@ -964,6 +984,9 @@ Pipe mode is configured via ``pipe_settings`` in ``arc/settings/settings.py``
         'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
         'max_attempts': 3,         # Retry budget per task before terminal failure.
         'lease_duration_s': 86400, # Worker lease duration in seconds (default 24h).
+        'env_setup': {},           # Engine-specific shell setup commands, e.g.,
+                                   # {'gaussian': 'source /usr/local/g09/setup.sh'}
+        'scratch_base': '',        # Base directory for worker scratch (e.g., '/gtmp').
     }
 
 **Submit scripts:**

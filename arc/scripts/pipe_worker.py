@@ -162,12 +162,9 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
         # Check ESS convergence even when no Python exception was raised.
         ess_info = _parse_ess_error(attempt_dir, spec)
         if ess_info and ess_info['status'] != 'done':
-            # Distinguish deterministic ESS errors (need troubleshooting) from
-            # transient failures (NoOutput, ServerTimeLimit — worth retrying as-is).
             is_deterministic = _is_deterministic_ess_error(ess_info)
-            fc = 'ess_error' if is_deterministic else 'transient_ess'
             result['status'] = 'FAILED'
-            result['failure_class'] = fc
+            result['failure_class'] = 'ess_error' if is_deterministic else 'transient'
             result['parser_summary'] = ess_info
             write_result_json(attempt_dir, result)
             logger.warning(f'Task {task_id}: ESS did not converge '
@@ -176,12 +173,15 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
             if not _verify_ownership(pipe_root, task_id, worker_id, claim_token):
                 return
             try:
-                current_state = read_task_state(pipe_root, task_id)
-                target = TaskState.FAILED_RETRYABLE \
-                    if current_state.attempt_index + 1 < current_state.max_attempts \
-                    else TaskState.FAILED_TERMINAL
+                if is_deterministic:
+                    target = TaskState.FAILED_ESS
+                else:
+                    current_state = read_task_state(pipe_root, task_id)
+                    target = TaskState.FAILED_RETRYABLE \
+                        if current_state.attempt_index + 1 < current_state.max_attempts \
+                        else TaskState.FAILED_TERMINAL
                 update_task_state(pipe_root, task_id, new_status=target,
-                                  ended_at=ended_at, failure_class=fc)
+                                  ended_at=ended_at, failure_class=result['failure_class'])
             except (ValueError, TimeoutError) as exc:
                 logger.warning(f'Task {task_id}: could not mark failed ({exc}).')
             return
@@ -206,19 +206,23 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
         result['status'] = 'FAILED'
         result['failure_class'] = failure_class
         # Try to parse ESS error info even on exception path.
+        is_deterministic_ess = False
         ess_info = _parse_ess_error(attempt_dir, spec)
         if ess_info:
             result['parser_summary'] = ess_info
             if ess_info['status'] != 'done' and _is_deterministic_ess_error(ess_info):
                 result['failure_class'] = 'ess_error'
-                failure_class = 'ess_error'
+                is_deterministic_ess = True
         write_result_json(attempt_dir, result)
         if not _verify_ownership(pipe_root, task_id, worker_id, claim_token):
             return
         try:
-            current_state = read_task_state(pipe_root, task_id)
-            target = TaskState.FAILED_RETRYABLE if current_state.attempt_index + 1 < current_state.max_attempts \
-                else TaskState.FAILED_TERMINAL
+            if is_deterministic_ess:
+                target = TaskState.FAILED_ESS
+            else:
+                current_state = read_task_state(pipe_root, task_id)
+                target = TaskState.FAILED_RETRYABLE if current_state.attempt_index + 1 < current_state.max_attempts \
+                    else TaskState.FAILED_TERMINAL
             update_task_state(pipe_root, task_id, new_status=target,
                               ended_at=ended_at, failure_class=failure_class)
         except (ValueError, TimeoutError) as e:

@@ -336,11 +336,9 @@ class PipeRun:
                 if current not in (TaskState.FAILED_RETRYABLE, TaskState.ORPHANED):
                     continue
                 try:
-                    # Don't blind-retry deterministic ESS errors (e.g., MaxOptCycles, SCF).
-                    # These need troubleshooting with modified input, not identical retries.
-                    # They'll be ejected to the Scheduler as individual jobs at ingestion time.
-                    is_ess_error = state.failure_class == 'ess_error'
-                    if state.attempt_index + 1 < state.max_attempts and not is_ess_error:
+                    # FAILED_ESS tasks are handled separately (ejected to Scheduler).
+                    # Only FAILED_RETRYABLE and ORPHANED reach here.
+                    if state.attempt_index + 1 < state.max_attempts:
                         update_task_state(self.pipe_root, task_id,
                                           new_status=TaskState.PENDING,
                                           attempt_index=state.attempt_index + 1,
@@ -378,11 +376,14 @@ class PipeRun:
             self._needs_resubmission = False
 
         terminal = (counts[TaskState.COMPLETED.value]
+                    + counts[TaskState.FAILED_ESS.value]
                     + counts[TaskState.FAILED_TERMINAL.value]
                     + counts[TaskState.CANCELLED.value])
 
         if total > 0 and terminal == total:
-            failed = counts[TaskState.FAILED_TERMINAL.value] + counts[TaskState.CANCELLED.value]
+            failed = (counts[TaskState.FAILED_ESS.value]
+                      + counts[TaskState.FAILED_TERMINAL.value]
+                      + counts[TaskState.CANCELLED.value])
             if failed > 0:
                 self.status = PipeRunState.COMPLETED_PARTIAL
             else:
