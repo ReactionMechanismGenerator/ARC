@@ -633,8 +633,10 @@ class Scheduler(object):
                                     break
                             # Just terminated a conformer job.
                             # Are there additional conformer jobs currently running for this species?
+                            # Note: end_job already removed the current job from running_jobs,
+                            # so we don't need to exclude job_name.
                             for spec_jobs in job_list:
-                                if ('conf_opt' in spec_jobs or 'conf_sp' in spec_jobs) and spec_jobs != job_name:
+                                if 'conf_opt' in spec_jobs or 'conf_sp' in spec_jobs:
                                     break
                             else:
                                 # All conformer jobs terminated.
@@ -663,7 +665,7 @@ class Scheduler(object):
                             # Just terminated a tsg job.
                             # Are there additional tsg jobs currently running for this species?
                             for spec_jobs in job_list:
-                                if 'tsg' in spec_jobs and spec_jobs != job_name:
+                                if 'tsg' in spec_jobs:
                                     break
                             else:
                                 # All tsg jobs terminated. Spawn confs.
@@ -3602,11 +3604,17 @@ class Scheduler(object):
                          cpu_cores=cpu_cores,
                          shift=shift,
                          )
-        elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted:
+        elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted \
+                and conformer is None:
+            # Only switch TS guess when a full optimization fails, not when a single
+            # conformer search job fails. Other conformers may still be running.
             logger.info(f'TS {label} did not converge. '
                         f'Status is:\n{self.species_dict[label].ts_checks}\n'
                         f'Searching for a better TS conformer...')
             self.switch_ts(label=label)
+        elif conformer is not None and couldnt_trsh:
+            logger.warning(f'Could not troubleshoot conformer {conformer} for {label}. '
+                           f'Abandoning this conformer; waiting for others to finish.')
 
         self.save_restart_dict()
 
