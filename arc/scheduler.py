@@ -809,6 +809,8 @@ class Scheduler(object):
                         or label in self._pending_pipe_freq
                         or any(lbl == label for lbl, _ in self._pending_pipe_irc)
                         or label in self._pending_pipe_conf_sp
+                        or any(label in {t.owner_key for t in p.tasks}
+                               for p in self.active_pipes.values())
                     )
                     if not has_pending_pipe_work:
                         self.check_all_done(label)
