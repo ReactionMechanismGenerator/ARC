@@ -10,7 +10,7 @@ import shutil
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from arc.imports import settings
 from arc.job.pipe.pipe_state import (
@@ -1409,6 +1409,374 @@ class TestFlushPendingPipeConfSp(unittest.TestCase):
             with patch.object(self.sched, 'run_sp_job') as mock_sp:
                 self.sched._flush_pending_pipe_conf_sp()
         mock_sp.assert_not_called()  # {3,4} - {3,4,99} = empty
+
+
+class TestDeterministicEssError(unittest.TestCase):
+    """Tests for _is_deterministic_ess_error from pipe_worker."""
+
+    def setUp(self):
+        from arc.scripts.pipe_worker import _is_deterministic_ess_error
+        self._is_deterministic = _is_deterministic_ess_error
+
+    def test_deterministic_max_opt_cycles(self):
+        """MaxOptCycles + GL9999 is deterministic (not transient)."""
+        ess_info = {'status': 'errored', 'keywords': ['MaxOptCycles', 'GL9999']}
+        self.assertTrue(self._is_deterministic(ess_info))
+
+    def test_transient_no_output(self):
+        """NoOutput alone is transient — retry may succeed on a different node."""
+        ess_info = {'status': 'errored', 'keywords': ['NoOutput']}
+        self.assertFalse(self._is_deterministic(ess_info))
+
+    def test_transient_server_time_limit(self):
+        """ServerTimeLimit is transient — the job simply ran out of wall time."""
+        ess_info = {'status': 'errored', 'keywords': ['ServerTimeLimit']}
+        self.assertFalse(self._is_deterministic(ess_info))
+
+    def test_deterministic_scf_gl502(self):
+        """SCF + GL502 is deterministic — SCF convergence failure won't fix itself."""
+        ess_info = {'status': 'errored', 'keywords': ['SCF', 'GL502']}
+        self.assertTrue(self._is_deterministic(ess_info))
+
+    def test_not_error_when_done(self):
+        """A 'done' status is not an error at all."""
+        ess_info = {'status': 'done', 'keywords': []}
+        self.assertFalse(self._is_deterministic(ess_info))
+
+    def test_empty_keywords(self):
+        """Empty keywords with no status should return False."""
+        self.assertFalse(self._is_deterministic({}))
+        self.assertFalse(self._is_deterministic(None))
+
+    def test_mixed_transient_and_deterministic(self):
+        """If any keyword is NOT transient, the error is deterministic."""
+        ess_info = {'status': 'errored', 'keywords': ['NoOutput', 'SCF']}
+        self.assertTrue(self._is_deterministic(ess_info))
+
+    def test_all_transient_keywords(self):
+        """All three transient keywords together should still be transient."""
+        ess_info = {'status': 'errored', 'keywords': ['NoOutput', 'ServerTimeLimit', 'DiskSpace']}
+        self.assertFalse(self._is_deterministic(ess_info))
+
+
+class TestEjectToScheduler(unittest.TestCase):
+    """Tests for PipeCoordinator._eject_to_scheduler."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_eject_test_')
+        self.sched = _make_scheduler(self.tmpdir)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _make_spec_and_state(self, task_family, species_label='H2O'):
+        spec = _make_task_spec('eject_task', task_family=task_family,
+                               species_label=species_label)
+        from arc.job.pipe.pipe_state import TaskStateRecord
+        state = TaskStateRecord(status=TaskState.FAILED_ESS.value,
+                                attempt_index=0, max_attempts=3,
+                                failure_class='ess_error')
+        return spec, state
+
+    def test_ts_opt_ejected_as_conf_opt(self):
+        """ts_opt tasks are TS conformer optimizations; ejected as conf_opt, not opt."""
+        spec, state = self._make_spec_and_state('ts_opt')
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='eject_ts',
+                       tasks=[spec], cluster_software='slurm')
+        pipe.stage()
+        with patch.object(self.sched, 'run_job') as mock_run:
+            self.sched.pipe_coordinator._eject_to_scheduler(pipe, spec, state)
+        mock_run.assert_called_once()
+        kwargs = mock_run.call_args.kwargs
+        self.assertEqual(kwargs['job_type'], 'conf_opt')
+        self.assertEqual(kwargs['label'], 'H2O')
+
+    def test_conf_opt_ejected_as_conf_opt(self):
+        """conf_opt tasks are ejected as conf_opt."""
+        spec, state = self._make_spec_and_state('conf_opt')
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='eject_conf',
+                       tasks=[spec], cluster_software='slurm')
+        pipe.stage()
+        with patch.object(self.sched, 'run_job') as mock_run:
+            self.sched.pipe_coordinator._eject_to_scheduler(pipe, spec, state)
+        kwargs = mock_run.call_args.kwargs
+        self.assertEqual(kwargs['job_type'], 'conf_opt')
+
+    def test_species_sp_ejected_as_sp(self):
+        """species_sp tasks are ejected as sp."""
+        spec, state = self._make_spec_and_state('species_sp')
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='eject_sp',
+                       tasks=[spec], cluster_software='slurm')
+        pipe.stage()
+        with patch.object(self.sched, 'run_job') as mock_run:
+            self.sched.pipe_coordinator._eject_to_scheduler(pipe, spec, state)
+        kwargs = mock_run.call_args.kwargs
+        self.assertEqual(kwargs['job_type'], 'sp')
+
+    def test_unknown_species_warns_no_crash(self):
+        """Unknown species in species_dict is handled with a warning, no crash."""
+        spec, state = self._make_spec_and_state('conf_opt', species_label='NONEXISTENT')
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='eject_unknown',
+                       tasks=[spec], cluster_software='slurm')
+        pipe.stage()
+        with patch('arc.job.pipe.pipe_coordinator.logger') as mock_logger:
+            # Should not raise
+            self.sched.pipe_coordinator._eject_to_scheduler(pipe, spec, state)
+            warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+            self.assertTrue(any('NONEXISTENT' in c and 'not in species_dict' in c
+                                for c in warning_calls))
+
+    def test_eject_passes_correct_kwargs(self):
+        """Verify the full set of kwargs passed to run_job."""
+        spec, state = self._make_spec_and_state('species_freq')
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='eject_freq',
+                       tasks=[spec], cluster_software='slurm')
+        pipe.stage()
+        with patch.object(self.sched, 'run_job') as mock_run:
+            self.sched.pipe_coordinator._eject_to_scheduler(pipe, spec, state)
+        kwargs = mock_run.call_args.kwargs
+        self.assertEqual(kwargs['job_type'], 'freq')
+        self.assertEqual(kwargs['label'], 'H2O')
+        self.assertEqual(kwargs['job_adapter'], 'mockter')
+        self.assertIn('level_of_theory', kwargs)
+        self.assertIn('xyz', kwargs)
+
+    def test_irc_eject_passes_direction(self):
+        """IRC ejection should include irc_direction kwarg."""
+        spec, state = self._make_spec_and_state('irc')
+        spec.ingestion_metadata = {'irc_direction': 'reverse'}
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='eject_irc',
+                       tasks=[spec], cluster_software='slurm')
+        pipe.stage()
+        with patch.object(self.sched, 'run_job') as mock_run:
+            self.sched.pipe_coordinator._eject_to_scheduler(pipe, spec, state)
+        kwargs = mock_run.call_args.kwargs
+        self.assertEqual(kwargs['job_type'], 'irc')
+        self.assertEqual(kwargs['irc_direction'], 'reverse')
+
+
+class TestFailedEssState(unittest.TestCase):
+    """Tests that FAILED_ESS is a valid TaskState with correct transition rules."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_failedess_test_')
+        self.sched = _make_scheduler(self.tmpdir)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_running_to_failed_ess_transition(self):
+        """Can transition from RUNNING to FAILED_ESS."""
+        from arc.job.pipe.pipe_state import TASK_TRANSITIONS
+        self.assertIn(TaskState.FAILED_ESS, TASK_TRANSITIONS[TaskState.RUNNING])
+
+    def test_failed_ess_is_terminal(self):
+        """FAILED_ESS has no outgoing transitions (terminal within pipe)."""
+        from arc.job.pipe.pipe_state import TASK_TRANSITIONS
+        self.assertEqual(TASK_TRANSITIONS[TaskState.FAILED_ESS], ())
+
+    def test_failed_ess_counts_as_terminal_in_reconcile(self):
+        """FAILED_ESS tasks are counted as terminal in reconcile's completion check."""
+        tasks = [_make_task_spec(f'task_{i}') for i in range(3)]
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='ess_term_test',
+                       tasks=tasks, cluster_software='slurm')
+        pipe.stage()
+        now = time.time()
+        # Complete task_0 normally
+        _complete_task(pipe.pipe_root, 'task_0')
+        # Drive task_1 to FAILED_ESS
+        update_task_state(pipe.pipe_root, 'task_1', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 'task_1', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 'task_1', new_status=TaskState.FAILED_ESS,
+                          ended_at=now, failure_class='ess_error')
+        # Drive task_2 to FAILED_TERMINAL
+        update_task_state(pipe.pipe_root, 'task_2', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 'task_2', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 'task_2', new_status=TaskState.FAILED_TERMINAL,
+                          ended_at=now, failure_class='oom')
+        # All 3 tasks are terminal — reconcile should mark the run as complete
+        counts = pipe.reconcile()
+        self.assertEqual(counts[TaskState.COMPLETED.value], 1)
+        self.assertEqual(counts[TaskState.FAILED_ESS.value], 1)
+        self.assertEqual(counts[TaskState.FAILED_TERMINAL.value], 1)
+        self.assertEqual(pipe.status, PipeRunState.COMPLETED_PARTIAL)
+
+    def test_failed_ess_not_retried_by_reconcile(self):
+        """FAILED_ESS tasks are NOT retried by reconcile (only FAILED_RETRYABLE and ORPHANED are)."""
+        tasks = [_make_task_spec('task_ess')]
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='ess_noretry',
+                       tasks=tasks, cluster_software='slurm')
+        pipe.stage()
+        now = time.time()
+        update_task_state(pipe.pipe_root, 'task_ess', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 'task_ess', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 'task_ess', new_status=TaskState.FAILED_ESS,
+                          ended_at=now, failure_class='ess_error')
+        counts = pipe.reconcile()
+        # Should remain FAILED_ESS, not promoted to PENDING
+        self.assertEqual(counts[TaskState.FAILED_ESS.value], 1)
+        self.assertEqual(counts.get(TaskState.PENDING.value, 0), 0)
+
+    def test_update_task_state_rejects_invalid_transition_from_failed_ess(self):
+        """Attempting to transition out of FAILED_ESS should raise ValueError."""
+        tasks = [_make_task_spec('task_locked')]
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='ess_locked',
+                       tasks=tasks, cluster_software='slurm')
+        pipe.stage()
+        now = time.time()
+        update_task_state(pipe.pipe_root, 'task_locked', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 'task_locked', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 'task_locked', new_status=TaskState.FAILED_ESS,
+                          ended_at=now, failure_class='ess_error')
+        with self.assertRaises(ValueError):
+            update_task_state(pipe.pipe_root, 'task_locked', new_status=TaskState.PENDING)
+
+    def test_ingest_ejects_failed_ess_task(self):
+        """During ingestion, FAILED_ESS tasks are ejected to Scheduler."""
+        task = _make_task_spec('task_eject', species_label='H2O', conformer_index=0)
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='eject_ingest',
+                       tasks=[task], cluster_software='slurm')
+        pipe.stage()
+        now = time.time()
+        update_task_state(pipe.pipe_root, 'task_eject', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 'task_eject', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 'task_eject', new_status=TaskState.FAILED_ESS,
+                          ended_at=now, failure_class='ess_error')
+        with patch.object(self.sched.pipe_coordinator, '_eject_to_scheduler') as mock_eject:
+            self.sched.pipe_coordinator.ingest_pipe_results(pipe)
+        mock_eject.assert_called_once()
+        call_args = mock_eject.call_args
+        self.assertEqual(call_args[0][1].task_id, 'task_eject')
+
+
+class TestDeterministicEssError(unittest.TestCase):
+    """Tests for _is_deterministic_ess_error classification."""
+
+    def test_max_opt_cycles_is_deterministic(self):
+        from arc.scripts.pipe_worker import _is_deterministic_ess_error
+        info = {'status': 'errored', 'keywords': ['MaxOptCycles', 'GL9999']}
+        self.assertTrue(_is_deterministic_ess_error(info))
+
+    def test_scf_is_deterministic(self):
+        from arc.scripts.pipe_worker import _is_deterministic_ess_error
+        info = {'status': 'errored', 'keywords': ['SCF', 'GL502']}
+        self.assertTrue(_is_deterministic_ess_error(info))
+
+    def test_internal_coord_is_deterministic(self):
+        from arc.scripts.pipe_worker import _is_deterministic_ess_error
+        info = {'status': 'errored', 'keywords': ['InternalCoordinateError', 'GL103']}
+        self.assertTrue(_is_deterministic_ess_error(info))
+
+    def test_no_output_is_transient(self):
+        from arc.scripts.pipe_worker import _is_deterministic_ess_error
+        info = {'status': 'errored', 'keywords': ['NoOutput']}
+        self.assertFalse(_is_deterministic_ess_error(info))
+
+    def test_server_time_limit_is_transient(self):
+        from arc.scripts.pipe_worker import _is_deterministic_ess_error
+        info = {'status': 'errored', 'keywords': ['ServerTimeLimit']}
+        self.assertFalse(_is_deterministic_ess_error(info))
+
+    def test_disk_space_is_transient(self):
+        from arc.scripts.pipe_worker import _is_deterministic_ess_error
+        info = {'status': 'errored', 'keywords': ['DiskSpace']}
+        self.assertFalse(_is_deterministic_ess_error(info))
+
+    def test_done_status_is_not_error(self):
+        from arc.scripts.pipe_worker import _is_deterministic_ess_error
+        info = {'status': 'done', 'keywords': []}
+        self.assertFalse(_is_deterministic_ess_error(info))
+
+    def test_empty_keywords_is_not_deterministic(self):
+        from arc.scripts.pipe_worker import _is_deterministic_ess_error
+        info = {'status': 'errored', 'keywords': []}
+        self.assertFalse(_is_deterministic_ess_error(info))
+
+    def test_none_input(self):
+        from arc.scripts.pipe_worker import _is_deterministic_ess_error
+        self.assertFalse(_is_deterministic_ess_error(None))
+
+
+class TestFailedEssState(unittest.TestCase):
+    """Tests for the FAILED_ESS task state."""
+
+    def test_running_to_failed_ess_is_valid(self):
+        from arc.job.pipe.pipe_state import TASK_TRANSITIONS
+        self.assertIn(TaskState.FAILED_ESS, TASK_TRANSITIONS[TaskState.RUNNING])
+
+    def test_failed_ess_is_terminal(self):
+        from arc.job.pipe.pipe_state import TASK_TRANSITIONS
+        self.assertEqual(TASK_TRANSITIONS[TaskState.FAILED_ESS], ())
+
+    def test_failed_ess_counts_as_terminal_in_reconcile(self):
+        """FAILED_ESS tasks should count toward the terminal total so the pipe run completes."""
+        tmpdir = tempfile.mkdtemp(prefix='pipe_ess_state_')
+        try:
+            task = _make_task_spec('t_ess', species_label='H2O', conformer_index=0)
+            pipe = PipeRun(project_directory=tmpdir, run_id='ess_test',
+                           tasks=[task], cluster_software='slurm',
+                           pipe_root=os.path.join(tmpdir, 'calcs', 'pipe_test_0'))
+            pipe.stage()
+            now = time.time()
+            update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.CLAIMED,
+                              claimed_by='w', claim_token='t', claimed_at=now, lease_expires_at=now+300)
+            update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.RUNNING, started_at=now)
+            update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.FAILED_ESS,
+                              ended_at=now, failure_class='ess_error')
+            counts = pipe.reconcile()
+            self.assertEqual(counts[TaskState.FAILED_ESS.value], 1)
+            self.assertIn(pipe.status, (PipeRunState.COMPLETED_PARTIAL, PipeRunState.COMPLETED))
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+class TestEjectToSchedulerJobType(unittest.TestCase):
+    """Tests for _eject_to_scheduler job type mapping."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_eject_test_')
+        self.sched = _make_scheduler(self.tmpdir)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_ts_opt_ejects_as_conf_opt(self):
+        """ts_opt tasks should be ejected as conf_opt, not opt."""
+        from arc.job.pipe.pipe_coordinator import PipeCoordinator
+        coord = self.sched.pipe_coordinator
+        task = _make_task_spec('t_ts', task_family='ts_opt', species_label='H2O', conformer_index=0)
+        state = type('MockState', (), {'failure_class': 'ess_error'})()
+        pipe = MagicMock()
+        pipe.run_id = 'test'
+        with patch.object(self.sched, 'run_job') as mock_run:
+            coord._eject_to_scheduler(pipe, task, state)
+            mock_run.assert_called_once()
+            kwargs = mock_run.call_args[1]
+            self.assertEqual(kwargs['job_type'], 'conf_opt')
+
+    def test_species_sp_ejects_as_sp(self):
+        task = _make_task_spec('t_sp', task_family='species_sp', species_label='H2O')
+        state = type('MockState', (), {'failure_class': 'ess_error'})()
+        pipe = MagicMock()
+        pipe.run_id = 'test'
+        with patch.object(self.sched, 'run_job') as mock_run:
+            self.sched.pipe_coordinator._eject_to_scheduler(pipe, task, state)
+            kwargs = mock_run.call_args[1]
+            self.assertEqual(kwargs['job_type'], 'sp')
+
+    def test_unknown_species_warns(self):
+        task = _make_task_spec('t_bad', task_family='ts_opt', species_label='NONEXISTENT')
+        task.owner_key = 'NONEXISTENT'
+        state = type('MockState', (), {'failure_class': 'ess_error'})()
+        pipe = MagicMock()
+        pipe.run_id = 'test'
+        # Should not crash, just warn.
+        self.sched.pipe_coordinator._eject_to_scheduler(pipe, task, state)
 
 
 if __name__ == '__main__':

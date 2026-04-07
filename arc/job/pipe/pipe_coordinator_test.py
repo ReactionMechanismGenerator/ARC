@@ -232,5 +232,250 @@ class TestIngestPipeResults(unittest.TestCase):
         self.coord.ingest_pipe_results(pipe)  # should not raise
 
 
+class TestComputePipeRoot(unittest.TestCase):
+    """Tests for PipeCoordinator._compute_pipe_root()."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_root_')
+        self.sched = _make_mock_sched(self.tmpdir)
+        self.coord = PipeCoordinator(self.sched)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_ts_species_path(self):
+        """A TS species gets path under calcs/TSs/<label>/pipe_<family>_0/."""
+        ts_spc = ARCSpecies(label='TS0', is_ts=True, xyz={'symbols': ('H',), 'isotopes': (1,),
+                            'coords': ((0.0, 0.0, 0.0),)})
+        self.sched.species_dict['TS0'] = ts_spc
+        task = TaskSpec(
+            task_id='t_ts', task_family='ts_opt', owner_type='species',
+            owner_key='TS0', input_fingerprint='fp_ts', engine='mockter',
+            level={'method': 'mock', 'basis': 'mock'},
+            required_cores=4, required_memory_mb=2048,
+            input_payload={}, ingestion_metadata={},
+        )
+        root = self.coord._compute_pipe_root('run_ts', [task])
+        expected = os.path.join(self.tmpdir, 'calcs', 'TSs', 'TS0', 'pipe_ts_opt_0')
+        self.assertEqual(root, expected)
+
+    def test_non_ts_species_path(self):
+        """A non-TS species gets path under calcs/Species/<label>/pipe_<family>_0/."""
+        task = _make_spec('t_sp', task_family='conf_opt', species_label='H2O')
+        root = self.coord._compute_pipe_root('run_sp', [task])
+        expected = os.path.join(self.tmpdir, 'calcs', 'Species', 'H2O', 'pipe_conf_opt_0')
+        self.assertEqual(root, expected)
+
+    def test_cross_species_batch_path(self):
+        """Cross-species batch (multiple owner_keys) gets calcs/batches/pipe_<run_id>_0/."""
+        task_a = _make_spec('t_a', species_label='H2O')
+        task_b = _make_spec('t_b', species_label='CH4')
+        root = self.coord._compute_pipe_root('batch_42', [task_a, task_b])
+        expected = os.path.join(self.tmpdir, 'calcs', 'batches', 'pipe_batch_42_0')
+        self.assertEqual(root, expected)
+
+    def test_auto_increment_existing_dirs(self):
+        """If pipe_ts_opt_0 already exists, next one is pipe_ts_opt_1."""
+        ts_spc = ARCSpecies(label='TS1', is_ts=True, xyz={'symbols': ('H',), 'isotopes': (1,),
+                            'coords': ((0.0, 0.0, 0.0),)})
+        self.sched.species_dict['TS1'] = ts_spc
+        task = TaskSpec(
+            task_id='t_inc', task_family='ts_opt', owner_type='species',
+            owner_key='TS1', input_fingerprint='fp_inc', engine='mockter',
+            level={'method': 'mock', 'basis': 'mock'},
+            required_cores=4, required_memory_mb=2048,
+            input_payload={}, ingestion_metadata={},
+        )
+        # Create the first directory manually
+        first_dir = os.path.join(self.tmpdir, 'calcs', 'TSs', 'TS1', 'pipe_ts_opt_0')
+        os.makedirs(first_dir)
+        root = self.coord._compute_pipe_root('run_inc', [task])
+        expected = os.path.join(self.tmpdir, 'calcs', 'TSs', 'TS1', 'pipe_ts_opt_1')
+        self.assertEqual(root, expected)
+
+
+class TestNextIndexedDir(unittest.TestCase):
+    """Tests for PipeCoordinator._next_indexed_dir()."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_idx_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_returns_prefix_0_when_parent_does_not_exist(self):
+        """Returns prefix_0 when the parent directory doesn't exist."""
+        nonexistent = os.path.join(self.tmpdir, 'no_such_dir')
+        result = PipeCoordinator._next_indexed_dir(nonexistent, 'pipe_opt')
+        self.assertEqual(result, os.path.join(nonexistent, 'pipe_opt_0'))
+
+    def test_returns_prefix_0_when_parent_is_empty(self):
+        """Returns prefix_0 when parent dir exists but is empty."""
+        empty_dir = os.path.join(self.tmpdir, 'empty')
+        os.makedirs(empty_dir)
+        result = PipeCoordinator._next_indexed_dir(empty_dir, 'pipe_opt')
+        self.assertEqual(result, os.path.join(empty_dir, 'pipe_opt_0'))
+
+    def test_returns_prefix_2_when_0_and_1_exist(self):
+        """Returns prefix_2 when prefix_0 and prefix_1 already exist."""
+        base = os.path.join(self.tmpdir, 'base')
+        os.makedirs(os.path.join(base, 'pipe_opt_0'))
+        os.makedirs(os.path.join(base, 'pipe_opt_1'))
+        result = PipeCoordinator._next_indexed_dir(base, 'pipe_opt')
+        self.assertEqual(result, os.path.join(base, 'pipe_opt_2'))
+
+    def test_ignores_non_matching_entries(self):
+        """Non-matching entries in the directory are ignored."""
+        base = os.path.join(self.tmpdir, 'mixed')
+        os.makedirs(os.path.join(base, 'pipe_opt_0'))
+        os.makedirs(os.path.join(base, 'other_dir'))
+        os.makedirs(os.path.join(base, 'pipe_opt_notanumber'))
+        # Also create a file (not a directory) with a matching name pattern
+        with open(os.path.join(base, 'pipe_opt_5'), 'w') as f:
+            f.write('not a dir')
+        result = PipeCoordinator._next_indexed_dir(base, 'pipe_opt')
+        self.assertEqual(result, os.path.join(base, 'pipe_opt_1'))
+
+
+class TestWriteTaskSummary(unittest.TestCase):
+    """Tests for PipeCoordinator._write_task_summary()."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_summary_')
+        self.sched = _make_mock_sched(self.tmpdir)
+        self.coord = PipeCoordinator(self.sched)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_creates_task_summary_file(self):
+        """Creates a task_summary.txt in pipe_root."""
+        tasks = [_make_spec('t_sum_0'), _make_spec('t_sum_1')]
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='run_summary',
+                       tasks=tasks, cluster_software='slurm')
+        pipe.stage()
+        _complete_task(pipe.pipe_root, 't_sum_0')
+        _complete_task(pipe.pipe_root, 't_sum_1')
+        PipeCoordinator._write_task_summary(pipe)
+        summary_path = os.path.join(pipe.pipe_root, 'task_summary.txt')
+        self.assertTrue(os.path.isfile(summary_path))
+
+    def test_summary_contains_task_info(self):
+        """Summary contains task names, worker IDs, and status."""
+        tasks = [_make_spec('t_info')]
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='run_info',
+                       tasks=tasks, cluster_software='slurm')
+        pipe.stage()
+        now = time.time()
+        update_task_state(pipe.pipe_root, 't_info', new_status=TaskState.CLAIMED,
+                          claimed_by='worker-7', claim_token='tok',
+                          claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 't_info', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 't_info', new_status=TaskState.COMPLETED, ended_at=now)
+        PipeCoordinator._write_task_summary(pipe)
+        summary_path = os.path.join(pipe.pipe_root, 'task_summary.txt')
+        with open(summary_path, 'r') as f:
+            content = f.read()
+        self.assertIn('t_info', content)
+        self.assertIn('worker-7', content)
+        self.assertIn('COMPLETED', content)
+
+    def test_summary_handles_missing_state_files(self):
+        """Handles missing state files gracefully (shows '?' placeholders)."""
+        tasks = [_make_spec('t_broken')]
+        pipe = PipeRun(project_directory=self.tmpdir, run_id='run_broken',
+                       tasks=tasks, cluster_software='slurm')
+        pipe.stage()
+        # Remove state.json to simulate corruption
+        os.remove(os.path.join(pipe.pipe_root, 'tasks', 't_broken', 'state.json'))
+        PipeCoordinator._write_task_summary(pipe)
+        summary_path = os.path.join(pipe.pipe_root, 'task_summary.txt')
+        self.assertTrue(os.path.isfile(summary_path))
+        with open(summary_path, 'r') as f:
+            content = f.read()
+        self.assertIn('t_broken', content)
+        self.assertIn('?', content)
+
+
+class TestComputePipeRoot(unittest.TestCase):
+    """Tests for PipeCoordinator._compute_pipe_root()."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_root_test_')
+        self.sched = _make_mock_sched(self.tmpdir)
+        # Add a TS species.
+        ts_spc = MagicMock()
+        ts_spc.is_ts = True
+        self.sched.species_dict['TS0'] = ts_spc
+        self.sched.species_dict['H2O'].is_ts = False
+        self.coord = PipeCoordinator(self.sched)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_ts_species_path(self):
+        tasks = [TaskSpec(task_id='t0', task_family='ts_opt', owner_type='species',
+                          owner_key='TS0', input_fingerprint='fp', engine='gaussian',
+                          level={'method': 'm'}, required_cores=1, required_memory_mb=1024,
+                          input_payload={}, ingestion_metadata={})]
+        result = self.coord._compute_pipe_root('TS0_ts_opt', tasks)
+        self.assertIn(os.path.join('calcs', 'TSs', 'TS0', 'pipe_ts_opt_0'), result)
+
+    def test_non_ts_species_path(self):
+        tasks = [_make_spec('t0', task_family='conf_opt', species_label='H2O')]
+        result = self.coord._compute_pipe_root('H2O_conf_opt', tasks)
+        self.assertIn(os.path.join('calcs', 'Species', 'H2O', 'pipe_conf_opt_0'), result)
+
+    def test_cross_species_batch(self):
+        t1 = _make_spec('t0', species_label='H2O')
+        t2 = TaskSpec(task_id='t1', task_family='conf_opt', owner_type='species',
+                      owner_key='CH4', input_fingerprint='fp', engine='mockter',
+                      level={'method': 'm'}, required_cores=1, required_memory_mb=1024,
+                      input_payload={}, ingestion_metadata={})
+        result = self.coord._compute_pipe_root('species_sp_batch', [t1, t2])
+        self.assertIn(os.path.join('calcs', 'batches', 'pipe_species_sp_batch_0'), result)
+
+    def test_auto_increment(self):
+        tasks = [_make_spec('t0', task_family='conf_opt', species_label='H2O')]
+        # Create existing pipe_conf_opt_0 directory.
+        existing = os.path.join(self.tmpdir, 'calcs', 'Species', 'H2O', 'pipe_conf_opt_0')
+        os.makedirs(existing)
+        result = self.coord._compute_pipe_root('H2O_conf_opt', tasks)
+        self.assertIn('pipe_conf_opt_1', result)
+
+
+class TestNextIndexedDir(unittest.TestCase):
+    """Tests for PipeCoordinator._next_indexed_dir()."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_idx_test_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_nonexistent_parent(self):
+        result = PipeCoordinator._next_indexed_dir('/nonexistent/path', 'pipe_opt')
+        self.assertTrue(result.endswith('pipe_opt_0'))
+
+    def test_empty_parent(self):
+        result = PipeCoordinator._next_indexed_dir(self.tmpdir, 'pipe_opt')
+        self.assertTrue(result.endswith('pipe_opt_0'))
+
+    def test_increments_past_existing(self):
+        os.makedirs(os.path.join(self.tmpdir, 'pipe_opt_0'))
+        os.makedirs(os.path.join(self.tmpdir, 'pipe_opt_1'))
+        result = PipeCoordinator._next_indexed_dir(self.tmpdir, 'pipe_opt')
+        self.assertTrue(result.endswith('pipe_opt_2'))
+
+    def test_ignores_non_matching(self):
+        os.makedirs(os.path.join(self.tmpdir, 'pipe_opt_0'))
+        os.makedirs(os.path.join(self.tmpdir, 'other_dir'))
+        # Create a file (not a directory) with matching prefix.
+        with open(os.path.join(self.tmpdir, 'pipe_opt_5'), 'w') as f:
+            f.write('not a dir')
+        result = PipeCoordinator._next_indexed_dir(self.tmpdir, 'pipe_opt')
+        self.assertTrue(result.endswith('pipe_opt_1'))
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
