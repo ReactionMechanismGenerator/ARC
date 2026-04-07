@@ -2841,14 +2841,20 @@ def interpolate_isomerization(rxn: 'ARCReaction',
 
     # Phase 2 triage upgrade:
     # 1) Score every surviving guess against its path-spec (lower = better).
-    # 2) Sort the survivors ascending by score.
+    # 2) Sort the survivors ascending by score.  We sort by a *bucketed*
+    #    score (rounded down to a 1.0-wide bucket) and then by the original
+    #    enumeration order, so that small differences in score (well below
+    #    one Pauling-delta) do NOT reorder otherwise-equivalent guesses.
+    #    This keeps the order stable across guesses of comparable quality
+    #    while still demoting clearly worse guesses (e.g. those carrying
+    #    the +5 planarity / inward-blocking-H penalties).
     # 3) Run a SECOND deduplication pass using the same two-tier
-    #    (almost_equal_coords + heavy-atom-only) similarity logic, keeping the
-    #    best-scoring representative of each duplicate cluster.
+    #    (almost_equal_coords + heavy-atom-only) similarity logic, keeping
+    #    the best-scoring representative of each duplicate cluster.
     # 4) Then apply the existing cap-to-5 policy.
     if unique:
-        scored: List[Tuple[float, GuessRecord]] = []
-        for rec in unique:
+        scored: List[Tuple[float, int, GuessRecord]] = []
+        for orig_idx, rec in enumerate(unique):
             if rec.path_spec is not None:
                 try:
                     symbols = tuple(rec.xyz['symbols'])
@@ -2859,14 +2865,21 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     s = float('inf')
             else:
                 s = float('inf')
-            scored.append((s, rec))
-        scored.sort(key=lambda t: t[0])
+            scored.append((s, orig_idx, rec))
+        def _bucket_key(t: Tuple[float, int, GuessRecord]) -> Tuple[float, int]:
+            score = t[0]
+            bucket = score if not np.isfinite(score) else float(int(score))
+            return (bucket, t[1])
+        scored.sort(key=_bucket_key)
 
         # Second dedup pass — keep the best-scoring representative of each
         # cluster.  Reuses the same two-tier similarity convention from the
-        # first dedup above.
+        # first dedup above.  Iterating in (bucket, orig_idx) order means
+        # ties are broken by the pre-Phase-2 input order, so this dedup
+        # cannot reorder otherwise-equivalent guesses.
+        unique = [t[2] for t in scored]
         deduped: List[GuessRecord] = []
-        for _, rec in scored:
+        for rec in unique:
             if any(almost_equal_coords(rec.xyz, prev.xyz)
                    or _heavy_atoms_match(rec.xyz, prev.xyz)
                    for prev in deduped):
