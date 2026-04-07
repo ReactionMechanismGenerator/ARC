@@ -959,5 +959,241 @@ class TestOrchestrationTriage(unittest.TestCase):
         self.assertTrue(hasattr(linear, 'PathChemistry'))
 
 
+# ---------------------------------------------------------------------------
+# Phase 2b: tightened frontier exemption — strict 2-condition rule
+# ---------------------------------------------------------------------------
+
+
+class TestTightenedFrontierExemption(unittest.TestCase):
+    """The frontier exemption must require BOTH a non-trivial bond-order
+    shift AND direct topological adjacency to a breaking/forming bond."""
+
+    def _xyz_chain(self, n_atoms: int) -> dict:
+        """A linear chain of *n_atoms* C atoms spaced 2.0 Å apart on the x axis."""
+        coords = tuple((2.0 * i, 0.0, 0.0) for i in range(n_atoms))
+        return {
+            'symbols': tuple('C' for _ in range(n_atoms)),
+            'isotopes': tuple(12 for _ in range(n_atoms)),
+            'coords': coords,
+        }
+
+    def test_adjacent_changed_bond_with_bo_shift_is_exempt(self):
+        """Changed bond at (1,2) sharing atom 1 with breaking bond (0,1)
+        and BO shift 0.5 → exempt (no rejection even though distance is wrong)."""
+        spec = ReactionPathSpec(
+            breaking_bonds=[(0, 1)],
+            changed_bonds=[(1, 2)],
+            ref_dist_r={(1, 2): 1.50},
+            ref_dist_p={(1, 2): 1.40},
+            bond_order_r={(1, 2): 1.0},
+            bond_order_p={(1, 2): 1.5},
+        )
+        xyz = self._xyz_chain(3)  # bond (1,2) at 2.0 Å — way outside tol
+        bad, reason = has_bad_changed_bond_length(spec, xyz, symbols=('C', 'C', 'C'))
+        self.assertFalse(bad, f'Frontier-adjacent bond should be exempt, got: {reason}')
+
+    def test_isolated_changed_bond_with_bo_shift_is_validated(self):
+        """Changed bond at (4,5) — disjoint from breaking bond (0,1) — and
+        BO shift 1.0 → MUST be validated and rejected because distance ≠ target."""
+        spec = ReactionPathSpec(
+            breaking_bonds=[(0, 1)],
+            changed_bonds=[(4, 5)],
+            ref_dist_r={(4, 5): 1.50},
+            ref_dist_p={(4, 5): 1.20},
+            bond_order_r={(4, 5): 1.0},
+            bond_order_p={(4, 5): 2.0},
+        )
+        xyz = self._xyz_chain(6)  # bond (4,5) at 2.0 Å — far from target ~1.35
+        bad, reason = has_bad_changed_bond_length(spec, xyz, symbols=tuple('C' * 6))
+        self.assertTrue(bad, 'Isolated changed bond must NOT be exempt; got pass')
+        self.assertIn('bad-changed-bond', reason)
+
+    def test_adjacent_changed_bond_without_bo_shift_is_validated(self):
+        """Changed bond at (1,2) shares an atom with breaking bond (0,1) but
+        the BO shift is below 0.5 → exemption does NOT apply, must validate."""
+        spec = ReactionPathSpec(
+            breaking_bonds=[(0, 1)],
+            changed_bonds=[(1, 2)],
+            ref_dist_r={(1, 2): 1.50},
+            ref_dist_p={(1, 2): 1.45},
+            bond_order_r={(1, 2): 1.0},
+            bond_order_p={(1, 2): 1.2},  # shift = 0.2 < 0.5
+        )
+        xyz = self._xyz_chain(3)  # bond at 2.0 Å — far from target ~1.475
+        bad, reason = has_bad_changed_bond_length(spec, xyz, symbols=('C', 'C', 'C'))
+        self.assertTrue(bad, 'Sub-threshold BO shift must NOT be exempt; got pass')
+        self.assertIn('bad-changed-bond', reason)
+
+    def test_adjacency_via_forming_bond_also_qualifies(self):
+        """Adjacency check considers BOTH breaking and forming bonds."""
+        spec = ReactionPathSpec(
+            breaking_bonds=[],
+            forming_bonds=[(0, 1)],
+            changed_bonds=[(1, 2)],
+            ref_dist_r={(1, 2): 1.50},
+            ref_dist_p={(1, 2): 1.34},
+            bond_order_r={(1, 2): 1.0},
+            bond_order_p={(1, 2): 2.0},
+        )
+        xyz = self._xyz_chain(3)
+        bad, _ = has_bad_changed_bond_length(spec, xyz, symbols=('C', 'C', 'C'))
+        self.assertFalse(bad, 'Forming-bond adjacency must also qualify for exemption')
+
+
+# ---------------------------------------------------------------------------
+# Phase 2b: shared finalizer — stable sort, dedup, cap
+# ---------------------------------------------------------------------------
+
+
+class TestFinalizeTsGuesses(unittest.TestCase):
+    """End-to-end coverage of the unified _finalize_ts_guesses helper."""
+
+    def _make_record(self, label: str, score_offset: float = 0.0):
+        """Build a ``GuessRecord`` whose XYZ has a unique heavy-atom
+        signature so the dedup pass leaves it intact."""
+        from arc.job.adapters.ts.linear import GuessRecord
+        # Use a 1-C chain offset along z so each guess is heavy-atom-distinct.
+        # Encoding the score offset directly in the z coordinate gives us a
+        # ready-made knob for nudging the score in tests below.
+        xyz = {
+            'symbols': ('C',),
+            'isotopes': (12,),
+            'coords': ((0.0, 0.0, score_offset),),
+        }
+        return GuessRecord(xyz=xyz, strategy=label)
+
+    def test_finalizer_caps_to_5(self):
+        """Pass 10 distinct guesses, expect 5 returned."""
+        from arc.job.adapters.ts.linear import _finalize_ts_guesses
+
+        class _StubRxn:
+            label = 'stub'
+
+        records = [self._make_record(f'g{i}', score_offset=0.05 * i)
+                   for i in range(10)]
+        out = _finalize_ts_guesses(records, path_spec=None,
+                                    rxn=_StubRxn(), r_mol=None)
+        self.assertEqual(len(out), 5)
+
+    def test_finalizer_strict_stable_sort_preserves_input_order_on_score_tie(self):
+        """Three guesses A, B, C with A and C tied at the same score
+        (and B with a different score).  After the sort, A must precede C."""
+        from arc.job.adapters.ts.linear import (
+            GuessRecord, _finalize_ts_guesses,
+        )
+
+        # Build three distinct heavy-atom XYZs so dedup keeps all three.
+        def _xyz(z):
+            return {
+                'symbols': ('C',),
+                'isotopes': (12,),
+                'coords': ((0.0, 0.0, float(z)),),
+            }
+        rec_a = GuessRecord(xyz=_xyz(0.0), strategy='A')
+        rec_b = GuessRecord(xyz=_xyz(5.0), strategy='B')
+        rec_c = GuessRecord(xyz=_xyz(10.0), strategy='C')
+
+        # Patch the score function: A and C tie at 1.5, B at 2.0.
+        from arc.job.adapters.ts import linear as L
+        scores_by_strategy = {'A': 1.5, 'B': 2.0, 'C': 1.5}
+        original_score = L.score_guess_against_path_spec
+
+        def _fake_score(path_spec, xyz, r_mol, symbols, chemistry=None):
+            for r in (rec_a, rec_b, rec_c):
+                if r.xyz['coords'][0] == xyz['coords'][0]:
+                    return scores_by_strategy[r.strategy]
+            return float('inf')
+
+        # Inject a trivial path_spec into each record so the finalizer
+        # actually invokes the (patched) scorer.
+        from arc.job.adapters.ts.linear_utils.path_spec import ReactionPathSpec
+        trivial_spec = ReactionPathSpec()
+        for r in (rec_a, rec_b, rec_c):
+            r.path_spec = trivial_spec
+
+        class _StubRxn:
+            label = 'stub'
+
+        L.score_guess_against_path_spec = _fake_score
+        try:
+            out = _finalize_ts_guesses(
+                [rec_a, rec_b, rec_c], path_spec=None,
+                rxn=_StubRxn(), r_mol=None)
+        finally:
+            L.score_guess_against_path_spec = original_score
+
+        # Expected order: A (1.5, idx 0), C (1.5, idx 2), B (2.0, idx 1).
+        self.assertEqual(len(out), 3)
+        self.assertEqual(out[0]['coords'][0][2], 0.0)   # A
+        self.assertEqual(out[1]['coords'][0][2], 10.0)  # C
+        self.assertEqual(out[2]['coords'][0][2], 5.0)   # B
+
+    def test_finalizer_accepts_raw_dicts(self):
+        """Plain XYZ dicts (no GuessRecord wrapper) must be wrapped and processed."""
+        from arc.job.adapters.ts.linear import _finalize_ts_guesses
+
+        class _StubRxn:
+            label = 'stub'
+
+        raw_xyzs = [
+            {'symbols': ('C',), 'isotopes': (12,),
+             'coords': ((0.0, 0.0, float(i)),)}
+            for i in range(3)
+        ]
+        out = _finalize_ts_guesses(raw_xyzs, path_spec=None,
+                                    rxn=_StubRxn(), r_mol=None)
+        self.assertEqual(len(out), 3)
+        self.assertEqual(out[0]['coords'][0][2], 0.0)
+        self.assertEqual(out[2]['coords'][0][2], 2.0)
+
+    def test_finalizer_filters_colliding_atoms(self):
+        """Guesses with atomic collisions must be removed before sorting."""
+        from arc.job.adapters.ts.linear import _finalize_ts_guesses
+
+        class _StubRxn:
+            label = 'stub'
+
+        good = {
+            'symbols': ('C', 'C'),
+            'isotopes': (12, 12),
+            'coords': ((0.0, 0.0, 0.0), (1.5, 0.0, 0.0)),
+        }
+        bad = {
+            'symbols': ('C', 'C'),
+            'isotopes': (12, 12),
+            'coords': ((0.0, 0.0, 0.0), (0.05, 0.0, 0.0)),  # 0.05 Å apart
+        }
+        out = _finalize_ts_guesses([bad, good], path_spec=None,
+                                    rxn=_StubRxn(), r_mol=None)
+        self.assertEqual(len(out), 1)
+        self.assertAlmostEqual(out[0]['coords'][1][0], 1.5, places=6)
+
+    def test_finalizer_addition_pipeline_routing(self):
+        """Mock-test of the spec example: 10 valid addition guesses route
+        through the finalizer, get sorted, deduped, and capped to 5."""
+        from arc.job.adapters.ts.linear import _finalize_ts_guesses
+
+        class _StubRxn:
+            label = 'stub'
+
+        # 10 heavy-atom-distinct guesses (no path_spec → all score = inf).
+        # Spacing of 0.10 Å between neighbors safely exceeds the 0.05 Å
+        # heavy-atom-match tolerance, so dedup leaves all 10 alone.
+        guesses = [
+            {'symbols': ('C', 'O'),
+             'isotopes': (12, 16),
+             'coords': ((0.0, 0.0, 0.0), (1.4 + 0.10 * i, 0.0, 0.0))}
+            for i in range(10)
+        ]
+        out = _finalize_ts_guesses(guesses, path_spec=None,
+                                    rxn=_StubRxn(), r_mol=None)
+        self.assertEqual(len(out), 5)
+        # Stable preservation: with all-equal scores, original order survives,
+        # then cap-to-5 keeps the first 5 entries.
+        for k in range(5):
+            self.assertAlmostEqual(out[k]['coords'][1][0], 1.4 + 0.10 * k,
+                                   places=6)
+
+
 if __name__ == '__main__':
     unittest.main()

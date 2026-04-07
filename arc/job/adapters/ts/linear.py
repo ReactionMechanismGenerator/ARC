@@ -280,6 +280,171 @@ class GuessRecord:
     path_spec: Optional['ReactionPathSpec'] = None
 
 
+# ---------------------------------------------------------------------------
+# Phase 2b: shared triage finalizer
+# ---------------------------------------------------------------------------
+
+
+def _heavy_atoms_match(xyz1: dict, xyz2: dict, tol: float = 0.05) -> bool:
+    """Return True if all heavy-atom (non-H) coordinates match within ``tol`` Å.
+
+    The two-tier dedup convention used throughout the linear adapter:
+    ``almost_equal_coords`` for full-XYZ identity, plus this heavy-atom-only
+    matcher for collapsing guesses that differ only in H placement.
+    """
+    c1 = np.array(xyz1['coords'], dtype=float)
+    c2 = np.array(xyz2['coords'], dtype=float)
+    sym1 = xyz1['symbols']
+    if len(sym1) != len(c2):
+        return False
+    for i, sym in enumerate(sym1):
+        if sym != 'H' and float(np.linalg.norm(c1[i] - c2[i])) > tol:
+            return False
+    return True
+
+
+def _finalize_ts_guesses(ts_xyzs: List,
+                          path_spec: Optional['ReactionPathSpec'],
+                          rxn: 'ARCReaction',
+                          r_mol: 'Molecule',
+                          ) -> List[dict]:
+    """Phase 2b shared triage finalizer for both interpolate pipelines.
+
+    This function takes a list of already-validated TS guesses (either as
+    :class:`GuessRecord` instances or as raw XYZ dicts) and applies the
+    final Phase 2 triage stack:
+
+    1. **Drop colliding-atom guesses** as a defensive last-mile filter.
+    2. **Score** each surviving guess against its path-spec via
+       :func:`score_guess_against_path_spec` (lower is better).  Guesses
+       without a path-spec receive ``+inf`` so they sink to the end.
+    3. **Sort** by a strict ``(score, original_index)`` tuple key.  Python's
+       ``list.sort`` is stable; the explicit original-index tiebreaker
+       guarantees a fully deterministic order even across implementations,
+       and replaces the Phase 2a "1.0-wide bucket" hack.
+    4. **Second deduplication pass** with the same two-tier
+       (``almost_equal_coords`` ∪ heavy-atom-only) similarity convention
+       used by the first pass.  Iterating in sorted order means the
+       best-scoring representative of each cluster wins.
+    5. **Cap to 5** to avoid flooding downstream DFT.
+
+    The helper accepts both pipelines' guess shapes:
+
+    * ``interpolate_isomerization`` passes a list of :class:`GuessRecord`
+      that already carry per-path :class:`ReactionPathSpec` metadata.  In
+      that case the ``path_spec`` keyword argument is typically ``None``
+      because each guess carries its own.
+    * ``interpolate_addition`` currently passes raw XYZ dicts and a single
+      reaction-level ``path_spec`` (or ``None``).  Plain dicts are wrapped
+      in trivial :class:`GuessRecord` instances and the function-level
+      ``path_spec`` is injected when no per-guess path-spec is available.
+
+    Args:
+        ts_xyzs: List of :class:`GuessRecord` or raw XYZ dicts.  Items are
+            expected to have already passed Phase 1/2 validation.
+        path_spec: Optional fallback :class:`ReactionPathSpec` used when a
+            guess does not carry its own.  May be ``None``.
+        rxn: The reaction (used only for log labels).
+        r_mol: Reactant molecule (used by the chemistry classifier and the
+            scoring routine).
+
+    Returns:
+        A list of plain XYZ dicts in deterministic, capped, deduplicated
+        order — the same shape both pipelines have always returned.
+    """
+    if not ts_xyzs:
+        return []
+
+    # Wrap raw dicts in GuessRecord and inject the function-level fallback
+    # path_spec when a guess does not already carry one.  We deliberately
+    # do NOT overwrite a guess that already has its own per-path spec.
+    records: List[GuessRecord] = []
+    for item in ts_xyzs:
+        if isinstance(item, GuessRecord):
+            rec = item
+        else:
+            rec = GuessRecord(xyz=item, strategy='unknown')
+        if rec.path_spec is None and path_spec is not None:
+            rec.path_spec = path_spec
+        records.append(rec)
+
+    # Step 1 — drop colliding-atom guesses defensively.
+    records = [rec for rec in records if not colliding_atoms(rec.xyz)]
+    if not records:
+        return []
+
+    # Step 2 — score every surviving record.  Capture the original index
+    # so the sort tiebreaker is deterministic.
+    scored: List[Tuple[float, int, GuessRecord]] = []
+    for orig_idx, rec in enumerate(records):
+        score = float('inf')
+        if rec.path_spec is not None:
+            try:
+                symbols = tuple(rec.xyz['symbols'])
+                chemistry = classify_path_chemistry(rec.path_spec, r_mol, symbols)
+                score = score_guess_against_path_spec(
+                    rec.path_spec, rec.xyz, r_mol, symbols, chemistry)
+            except Exception:
+                score = float('inf')
+        scored.append((score, orig_idx, rec))
+
+    # Step 3 — strict (score, original_index) tuple-key stable sort.
+    # Python's list.sort is inherently stable; the explicit second key
+    # makes the deterministic order explicit and contractually testable.
+    scored.sort(key=lambda t: (t[0], t[1]))
+
+    # Step 4 — second deduplication pass.
+    #
+    # The first dedup inside :func:`interpolate_isomerization` already
+    # runs the two-tier (almost_equal + heavy-only) collapse on the
+    # pre-post-processing geometries, so any chirality-equivalent
+    # isomerization records have already been merged before they reach
+    # the finalizer.  This second pass primarily exists to catch guesses
+    # that converged onto the same final geometry during post-processing.
+    #
+    # Convention: collapse two records when EITHER
+    #   (a) ``almost_equal_coords`` returns True (full-XYZ identity), OR
+    #   (b) ``_heavy_atoms_match`` returns True AND the candidate's
+    #       score is strictly worse than the already-kept representative.
+    #
+    # Rule (b) preserves the score-priority contract — "keep best-scoring
+    # representative of each cluster" — while protecting genuinely
+    # distinct H-migration variants in the addition pipeline (where two
+    # guesses with the same heavy-atom backbone but different migrating-H
+    # positions are chemically meaningful and therefore tied at score
+    # ``+inf`` because addition guesses do not yet carry path_specs).
+    deduped_pairs: List[Tuple[float, GuessRecord]] = []
+    for score, _, rec in scored:
+        collapsed = False
+        for prev_score, prev in deduped_pairs:
+            if almost_equal_coords(rec.xyz, prev.xyz):
+                collapsed = True
+                break
+            if score > prev_score and _heavy_atoms_match(rec.xyz, prev.xyz):
+                collapsed = True
+                break
+        if collapsed:
+            continue
+        deduped_pairs.append((score, rec))
+    deduped: List[GuessRecord] = [rec for _, rec in deduped_pairs]
+
+    # Step 5 — cap to 5.
+    if len(deduped) > 5:
+        logger.debug(
+            f'Linear (rxn={getattr(rxn, "label", "?")}): '
+            f'capping {len(deduped)} guesses to 5.')
+        deduped = deduped[:5]
+
+    # Strategy provenance log (review point 17 — was previously inlined
+    # in interpolate_isomerization).
+    for i, rec in enumerate(deduped):
+        logger.debug(
+            f'Linear (rxn={getattr(rxn, "label", "?")}): '
+            f'guess {i} from strategy={rec.strategy}')
+
+    return [rec.xyz for rec in deduped]
+
+
 class LinearAdapter(JobAdapter):
     """
     A class for executing TS guess jobs based on linear interpolation of internal coordinate values.
@@ -1717,23 +1882,27 @@ def interpolate_addition(rxn: 'ARCReaction',
                     continue
                 ts_xyzs.append(ts_xyz)
 
-    # Deduplicate near-identical guesses (including against existing_xyzs
-    # from prior weight iterations to avoid wasting downstream DFT resources).
+    # First-pass deduplication against existing_xyzs (cross-weight cache)
+    # using exact-coord similarity, the convention this pipeline has used
+    # since before Phase 2.  Heavy-only matching is left to the second
+    # pass inside the shared finalizer below.
     prior: List[dict] = list(existing_xyzs or [])
-    unique: List[dict] = []
+    pre_unique: List[dict] = []
     for xyz_candidate in ts_xyzs:
         if colliding_atoms(xyz_candidate):
             continue
         if not any(almost_equal_coords(xyz_candidate, u)
-                   for u in unique + prior):
-            unique.append(xyz_candidate)
+                   for u in pre_unique + prior):
+            pre_unique.append(xyz_candidate)
 
-    # Cap: keep at most 5 guesses to avoid flooding downstream DFT.
-    if len(unique) > 5:
-        logger.debug(f'Linear addition (rxn={rxn.label}): capping {len(unique)} guesses to 5.')
-        unique = unique[:5]
-
-    return unique if unique else []
+    # Phase 2b — route through the shared finalizer.  Addition guesses
+    # currently do not carry per-path :class:`ReactionPathSpec` metadata,
+    # so the function-level ``path_spec`` defaults to None.  In that case
+    # the finalizer's score collapses to +inf for every guess, the strict
+    # ``(score, original_index)`` sort degenerates to a stable preservation
+    # of the input order, and the second-pass two-tier dedup + cap-to-5
+    # are still applied — exactly matching the isomerization pipeline.
+    return _finalize_ts_guesses(pre_unique, path_spec=None, rxn=rxn, r_mol=uni_mol)
 
 
 # ---------------------------------------------------------------------------
@@ -2757,15 +2926,6 @@ def interpolate_isomerization(rxn: 'ARCReaction',
     prior: List[dict] = list(existing_xyzs or [])
     unique: List[GuessRecord] = []
 
-    def _heavy_atoms_match(xyz1: dict, xyz2: dict, tol: float = 0.05) -> bool:
-        """Return True if all heavy-atom coordinates match within *tol* Å."""
-        c1 = np.array(xyz1['coords'], dtype=float)
-        c2 = np.array(xyz2['coords'], dtype=float)
-        for i, sym in enumerate(xyz1['symbols']):
-            if sym != 'H' and float(np.linalg.norm(c1[i] - c2[i])) > tol:
-                return False
-        return True
-
     for rec in ts_xyzs:
         xyz = rec.xyz if isinstance(rec, GuessRecord) else rec
         if colliding_atoms(xyz):
@@ -2839,65 +2999,12 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                              f'rejected by path-spec wrapper — {reason}')
         unique = validated_unique
 
-    # Phase 2 triage upgrade:
-    # 1) Score every surviving guess against its path-spec (lower = better).
-    # 2) Sort the survivors ascending by score.  We sort by a *bucketed*
-    #    score (rounded down to a 1.0-wide bucket) and then by the original
-    #    enumeration order, so that small differences in score (well below
-    #    one Pauling-delta) do NOT reorder otherwise-equivalent guesses.
-    #    This keeps the order stable across guesses of comparable quality
-    #    while still demoting clearly worse guesses (e.g. those carrying
-    #    the +5 planarity / inward-blocking-H penalties).
-    # 3) Run a SECOND deduplication pass using the same two-tier
-    #    (almost_equal_coords + heavy-atom-only) similarity logic, keeping
-    #    the best-scoring representative of each duplicate cluster.
-    # 4) Then apply the existing cap-to-5 policy.
-    if unique:
-        scored: List[Tuple[float, int, GuessRecord]] = []
-        for orig_idx, rec in enumerate(unique):
-            if rec.path_spec is not None:
-                try:
-                    symbols = tuple(rec.xyz['symbols'])
-                    chemistry = classify_path_chemistry(rec.path_spec, r_mol, symbols)
-                    s = score_guess_against_path_spec(
-                        rec.path_spec, rec.xyz, r_mol, symbols, chemistry)
-                except Exception:
-                    s = float('inf')
-            else:
-                s = float('inf')
-            scored.append((s, orig_idx, rec))
-        def _bucket_key(t: Tuple[float, int, GuessRecord]) -> Tuple[float, int]:
-            score = t[0]
-            bucket = score if not np.isfinite(score) else float(int(score))
-            return (bucket, t[1])
-        scored.sort(key=_bucket_key)
-
-        # Second dedup pass — keep the best-scoring representative of each
-        # cluster.  Reuses the same two-tier similarity convention from the
-        # first dedup above.  Iterating in (bucket, orig_idx) order means
-        # ties are broken by the pre-Phase-2 input order, so this dedup
-        # cannot reorder otherwise-equivalent guesses.
-        unique = [t[2] for t in scored]
-        deduped: List[GuessRecord] = []
-        for rec in unique:
-            if any(almost_equal_coords(rec.xyz, prev.xyz)
-                   or _heavy_atoms_match(rec.xyz, prev.xyz)
-                   for prev in deduped):
-                continue
-            deduped.append(rec)
-        unique = deduped
-
-    # Cap: keep at most 5 guesses to avoid flooding downstream DFT.
-    if len(unique) > 5:
-        logger.debug(f'Linear (rxn={rxn.label}): capping {len(unique)} guesses to 5.')
-        unique = unique[:5]
-
-    # Log the strategy provenance of each surviving guess (review point 17).
-    for i, rec in enumerate(unique):
-        logger.debug(f'Linear (rxn={rxn.label}): guess {i} from strategy={rec.strategy}')
-
-    # Return plain xyz dicts (strip GuessRecord wrapper).
-    return [rec.xyz for rec in unique]
+    # Phase 2b — unified triage finalizer.  Scoring, strict (score, idx)
+    # stable sort, second dedup, cap-to-5, and strategy provenance logging
+    # are all delegated to the shared :func:`_finalize_ts_guesses` helper
+    # so isomerization and addition pipelines benefit from identical
+    # triage behavior.
+    return _finalize_ts_guesses(unique, path_spec=None, rxn=rxn, r_mol=r_mol)
 
 
 register_job_adapter('linear', LinearAdapter)

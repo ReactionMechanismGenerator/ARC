@@ -662,16 +662,37 @@ def has_bad_changed_bond_length(
         return False, ''
     coords = np.asarray(xyz['coords'], dtype=float)
 
-    # Frontier atoms — those participating in any breaking/forming bond.
-    # A "changed" bond that shares an endpoint with the breaking/forming
-    # frontier AND has a substantial bond-order shift is itself part of
-    # the electronic restructuring.  Linear interpolation is not a
-    # reliable target for those frontier bonds, so we treat them as
-    # having "no reliable target" and skip them — same documented
-    # exemption as the `Skip bonds with no target` rule.
+    # Phase 2b — strict frontier exemption.
+    #
+    # A "changed" bond is exempt from the strict distance check ONLY when
+    # BOTH conditions hold:
+    #
+    #   (1) the absolute bond-order shift is at least 0.5
+    #       (the bond is undergoing real electronic restructuring), AND
+    #   (2) the bond is *directly physically adjacent* to a breaking or
+    #       forming bond — it shares at least one atom with at least one
+    #       bond in path_spec.breaking_bonds ∪ path_spec.forming_bonds.
+    #
+    # If a changed bond has a large order shift but is geometrically
+    # isolated from the reactive core (no shared atom with any
+    # breaking/forming bond), it MUST still be validated against its
+    # target distance — those are the impostor channels we want to catch.
     frontier_atoms: Set[int] = set()
     for a, b in list(path_spec.breaking_bonds) + list(path_spec.forming_bonds):
-        frontier_atoms.update((a, b))
+        frontier_atoms.update((int(a), int(b)))
+
+    def _is_frontier_exempt(bi: int, bj: int,
+                            bo_r_local: Optional[float],
+                            bo_p_local: Optional[float]) -> bool:
+        # Condition (1): non-trivial bond-order shift.
+        if bo_r_local is None or bo_p_local is None:
+            return False
+        if abs(float(bo_r_local) - float(bo_p_local)) < 0.5:
+            return False
+        # Condition (2): direct topological adjacency to a breaking/forming bond.
+        if (bi not in frontier_atoms) and (bj not in frontier_atoms):
+            return False
+        return True
 
     for i, j in path_spec.changed_bonds:
         if i >= len(coords) or j >= len(coords):
@@ -680,10 +701,8 @@ def has_bad_changed_bond_length(
         d_p = path_spec.ref_dist_p.get((i, j))
         bo_r = path_spec.bond_order_r.get((i, j))
         bo_p = path_spec.bond_order_p.get((i, j))
-        # Skip frontier-adjacent changed bonds with non-trivial BO shift.
-        if (i in frontier_atoms or j in frontier_atoms) and (
-                bo_r is not None and bo_p is not None
-                and abs(float(bo_r) - float(bo_p)) >= 0.5):
+        # Strict 2-condition frontier exemption (Phase 2b).
+        if _is_frontier_exempt(i, j, bo_r, bo_p):
             continue
         try:
             target = get_ts_target_distance(
