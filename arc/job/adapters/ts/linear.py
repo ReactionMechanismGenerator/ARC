@@ -198,6 +198,10 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     postprocess_ts_guess,
     validate_ts_guess,
 )
+from arc.job.adapters.ts.linear_utils.path_spec import (
+    ReactionPathSpec,
+    validate_guess_against_path_spec,
+)
 from arc.job.adapters.ts.linear_utils.isomerization import (
     RING_CLOSURE_THRESHOLD,
     backbone_atom_map,
@@ -244,6 +248,7 @@ class _PathContext:
     constraints: Optional[dict] = None
     r_xyz_na: Optional[dict] = None
     op_xyz_na: Optional[dict] = None
+    path_spec: Optional['ReactionPathSpec'] = None
 
 
 @dataclass
@@ -269,6 +274,7 @@ class GuessRecord:
     strategy: str = 'unknown'
     anchor_xyz: Optional[dict] = None
     reactive_indices: Optional[Set[int]] = None
+    path_spec: Optional['ReactionPathSpec'] = None
 
 
 class LinearAdapter(JobAdapter):
@@ -1821,6 +1827,25 @@ def _build_path_context(r_xyz: dict, r_mol: 'Molecule', op_xyz: dict,
     r_xyz_na = r_xyz if fb_in_ring else get_near_attack_xyz(r_xyz, r_mol, bonds=fb)
     op_xyz_na = op_xyz if bb_in_ring else get_near_attack_xyz(op_xyz, mapped_p_mol, bonds=bb)
 
+    # Build the path-local ReactionPathSpec from the path-local objects.
+    # mapped_p_mol is already in reactant atom ordering, so changed_bonds
+    # will be derived directly without an atom-map fallback.
+    try:
+        path_spec = ReactionPathSpec.build(
+            r_mol=r_mol,
+            mapped_p_mol=mapped_p_mol,
+            breaking_bonds=bb,
+            forming_bonds=fb,
+            r_xyz=r_xyz,
+            op_xyz=op_xyz,
+            weight=weight,
+            family=family,
+        )
+    except Exception as e:
+        logger.debug(f'Linear ({label}): ReactionPathSpec.build failed '
+                     f'({type(e).__name__}: {e}); proceeding without path_spec.')
+        path_spec = None
+
     return _PathContext(
         r_xyz=r_xyz, r_mol=r_mol, op_xyz=op_xyz, mapped_p_mol=mapped_p_mol,
         bb=bb, fb=fb, family=family, r_label_map=r_label_map,
@@ -1829,6 +1854,7 @@ def _build_path_context(r_xyz: dict, r_mol: 'Molecule', op_xyz: dict,
         reactive_xyz_indices=reactive_xyz_indices,
         anchors=anchors, constraints=constraints,
         r_xyz_na=r_xyz_na, op_xyz_na=op_xyz_na,
+        path_spec=path_spec,
     )
 
 def _strategy_ring_scission(ctx: _PathContext) -> _StrategyResult:
@@ -1847,7 +1873,8 @@ def _strategy_ring_scission(ctx: _PathContext) -> _StrategyResult:
         logger.debug(f'Linear ({ctx.label}): used ring-scission builder.')
         return _StrategyResult(guesses=[GuessRecord(xyz=ts, bb=list(ctx.bb), fb=list(ctx.fb),
                                                     family=ctx.family, strategy='ring_scission',
-                                                    anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices)],
+                                                    anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices,
+                                                    path_spec=ctx.path_spec)],
                                halt=True)
     return _StrategyResult()
 
@@ -1912,7 +1939,8 @@ def _strategy_ring_closure(ctx: _PathContext) -> _StrategyResult:
         if is_valid:
             guesses.append(GuessRecord(xyz=rc_xyz, bb=list(ctx.bb), fb=list(ctx.fb),
                                        family=ctx.family, strategy='ring_closure',
-                                       anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices))
+                                       anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices,
+                                       path_spec=ctx.path_spec))
             used = True
     return _StrategyResult(guesses=guesses, halt=used)
 
@@ -1937,7 +1965,8 @@ def _strategy_zmat_interpolation(ctx: _PathContext) -> _StrategyResult:
     _mk = lambda xyz, strat: GuessRecord(xyz=xyz, bb=breaking_bonds_list, fb=forming_bonds_list,
                                           family=ctx.family, strategy=strat,
                                           anchor_xyz=ctx.r_xyz,
-                                          reactive_indices=ctx.reactive_xyz_indices)
+                                          reactive_indices=ctx.reactive_xyz_indices,
+                                          path_spec=ctx.path_spec)
     if ts_r is not None:
         guesses.append(_mk(ts_r, 'zmat_R'))
 
@@ -2040,7 +2069,8 @@ def _strategy_direct_contraction(ctx: _PathContext) -> _StrategyResult:
         if not colliding_atoms(ts_dc):
             guesses.append(GuessRecord(xyz=ts_dc, bb=list(ctx.bb), fb=list(ctx.fb),
                                        family=ctx.family, strategy='direct_contraction',
-                                       anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices))
+                                       anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices,
+                                       path_spec=ctx.path_spec))
             logger.debug(f'Linear ({ctx.label}): used direct-contraction builder '
                          f'(mover={mover}, target={target}, d={site_dist:.2f}→{site_dist-float(np.linalg.norm(shift)):.2f}).')
     return _StrategyResult(guesses=guesses, halt=False)
@@ -2099,7 +2129,8 @@ def _strategy_3center_shift(ctx: _PathContext) -> _StrategyResult:
                      f'(pivot={pivot}, n_heavy={n_heavy_pivot}).')
         return _StrategyResult(guesses=[GuessRecord(xyz=ts_3c, bb=list(ctx.bb), fb=list(ctx.fb),
                                                     family=ctx.family, strategy='3center_shift',
-                                                    anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices)],
+                                                    anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices,
+                                                    path_spec=ctx.path_spec)],
                                halt=False)
     return _StrategyResult()
 
@@ -2434,12 +2465,30 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             _fallback_changed = list(changed)
 
             if bb_map is not None:
-                # Backbone map produces correct atom correspondences, so
-                # H-bond changes represent real reactive bonds (e.g. H
-                # migration) — keep them.  Also include bond-order changes
-                # (e.g. C=C → C-C) as forming bonds so the multiple bond
-                # gets stretched in the TS.
-                fb = fb + changed
+                # Backbone map produces correct atom correspondences.
+                # However, `get_formed_and_broken_bonds()` reports bonds
+                # that merely change order (single↔double) as both formed
+                # AND broken.  These inflate the reactive set and cause
+                # Z-mat constraint locks.  Filter: keep only bonds that are
+                # truly new (forming) or truly removed (breaking), not bonds
+                # that exist on both sides with different orders.
+                r_bond_set: Set[Tuple[int, int]] = set()
+                for atom in r_mol.atoms:
+                    ia = r_mol.atoms.index(atom)
+                    for nbr in atom.bonds:
+                        ib = r_mol.atoms.index(nbr)
+                        r_bond_set.add((min(ia, ib), max(ia, ib)))
+                p_bond_set: Set[Tuple[int, int]] = set()
+                for atom in p_mol.atoms:
+                    ia = p_mol.atoms.index(atom)
+                    for nbr in atom.bonds:
+                        ib = p_mol.atoms.index(nbr)
+                        p_bond_set.add((min(ia, ib), max(ia, ib)))
+                # True forming: in P but not in R.  True breaking: in R but not in P.
+                fb = [(i, j) for i, j in fb
+                      if (min(i, j), max(i, j)) not in r_bond_set]
+                bb = [(i, j) for i, j in bb
+                      if (min(i, j), max(i, j)) not in p_bond_set]
             else:
                 # The identity atom map can misassign H atoms (an H bonded
                 # to C0 in R may be bonded to C1 in P even though both H's
@@ -2761,6 +2810,31 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                   if not colliding_atoms(rec.xyz) and not _has_bivalent_h(rec.xyz)
                   and (not changing_all
                        or not has_broken_nonreactive_bond(rec.xyz, r_mol, changing_all))]
+
+        # Orchestration-level validation through the path-spec wrapper.
+        # When a guess carries a path_spec, route it through the centralized
+        # validate_guess_against_path_spec, which adds the precise Phase 1
+        # recipe-channel mismatch guard on top of the existing generic checks.
+        validated_unique: List[GuessRecord] = []
+        for rec in unique:
+            if rec.path_spec is None:
+                validated_unique.append(rec)
+                continue
+            ok, reason = validate_guess_against_path_spec(
+                xyz=rec.xyz,
+                path_spec=rec.path_spec,
+                r_mol=r_mol,
+                family=rec.family,
+                anchor_xyz=rec.anchor_xyz,
+                reactive_indices=rec.reactive_indices,
+                label=f'rxn={rxn.label}, strategy={rec.strategy}',
+            )
+            if ok:
+                validated_unique.append(rec)
+            else:
+                logger.debug(f'Linear (rxn={rxn.label}, strategy={rec.strategy}): '
+                             f'rejected by path-spec wrapper — {reason}')
+        unique = validated_unique
 
     # Cap: keep at most 5 guesses to avoid flooding downstream DFT.
     if len(unique) > 5:
