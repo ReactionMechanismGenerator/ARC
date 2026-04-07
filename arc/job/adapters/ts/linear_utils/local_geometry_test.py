@@ -233,31 +233,117 @@ class TestCleanMigratingH(unittest.TestCase):
 
 
 class TestRestoreTerminalHSymmetry(unittest.TestCase):
-    """``restore_terminal_h_symmetry`` averages H positions about the
-    parent–center axis when the center is clearly CH₂ or CH₃."""
+    """``restore_terminal_h_symmetry`` re-seats H atoms around the
+    (parent → center) axis at evenly spaced azimuth.  Phase 4c
+    rebuild: the helper now preserves each H's *original* center–H
+    distance individually instead of averaging across the group, so
+    that umbrella-inversion repairs no longer trip the legacy
+    bond-length bail-out.
+    """
 
-    def test_ch3_distorted_h_is_resymmetrized(self):
+    def test_ch3_distorted_h_preserves_per_h_bond_lengths(self):
+        """Phase 4c — each H's center–H distance is preserved exactly,
+        even when one H is displaced and the others are not."""
         sp = ARCSpecies(label='ethane', smiles='CC')
         xyz = sp.get_xyz()
         symbols = xyz['symbols']
-        # Find the first C and its H neighbors.
         c0 = next(i for i, s in enumerate(symbols) if s == 'C')
         atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
         h_neighbors = [
             atom_to_idx[nbr] for nbr in sp.mol.atoms[c0].bonds.keys()
             if nbr.element.symbol == 'H'
         ]
-        # Distort one H by ~0.02 Å (well within the bail-out tolerance).
+        # Distort one H by ~0.02 Å in the y direction.  Under the
+        # legacy averaging implementation this would have triggered the
+        # 0.05 Å bail-out's marginal regime; under Phase 4c, each H's
+        # center–C distance is preserved exactly.
         coords = list(map(list, xyz['coords']))
         coords[h_neighbors[0]][1] += 0.02
         bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        # Capture the per-H bond lengths BEFORE symmetrization.
+        c_pos_before = np.asarray(bad['coords'])[c0]
+        original_per_h_dists = {
+            h: float(np.linalg.norm(np.asarray(bad['coords'])[h] - c_pos_before))
+            for h in h_neighbors
+        }
         out = restore_terminal_h_symmetry(bad, sp.mol, c0)
         new_coords = np.asarray(out['coords'])
-        # The three H atoms around c0 should have nearly equal distances
-        # to c0 after symmetrization.
         c_pos = new_coords[c0]
-        dists = [float(np.linalg.norm(new_coords[h] - c_pos)) for h in h_neighbors]
-        self.assertAlmostEqual(max(dists) - min(dists), 0.0, places=2)
+        # Each individual H should still be at exactly its original
+        # distance from c0 (Phase 4c per-H bond-length preservation).
+        for h, original_d in original_per_h_dists.items():
+            new_d = float(np.linalg.norm(new_coords[h] - c_pos))
+            self.assertAlmostEqual(
+                new_d, original_d, places=6,
+                msg=f'H{h} bond length not preserved '
+                    f'(was {original_d:.6f}, now {new_d:.6f})')
+
+    def test_ch3_inverted_h_is_repaired(self):
+        """Phase 4c — a true umbrella-inversion case (one H angle to
+        the outward axis > 100°) must be repaired (the inverted H is
+        moved onto the outward cone) without bailing out, AND each
+        H's bond length must be preserved exactly."""
+        sp = ARCSpecies(label='ethane', smiles='CC')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        c0 = next(i for i, s in enumerate(symbols) if s == 'C')
+        c1 = next(i for i, s in enumerate(symbols) if s == 'C' and i != c0)
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        h_neighbors = [
+            atom_to_idx[nbr] for nbr in sp.mol.atoms[c0].bonds.keys()
+            if nbr.element.symbol == 'H'
+        ]
+        coords = list(map(list, xyz['coords']))
+        c0_pos = np.array(coords[c0])
+        c1_pos = np.array(coords[c1])
+        outward = c0_pos - c1_pos
+        outward /= float(np.linalg.norm(outward))
+        # Reflect one H of c0 through the perpendicular plane at c0
+        # along the outward axis — this inverts its umbrella so its
+        # angle to the outward axis becomes > 100° but its bond
+        # length to c0 is preserved (reflections preserve length).
+        h_target = h_neighbors[0]
+        h_vec = np.array(coords[h_target]) - c0_pos
+        proj = float(np.dot(h_vec, outward)) * outward
+        coords[h_target] = (np.array(coords[h_target]) - 2.0 * proj).tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        # Capture per-H bond lengths BEFORE symmetrization.
+        c_pos_before = np.asarray(bad['coords'])[c0]
+        original_per_h_dists = {
+            h: float(np.linalg.norm(np.asarray(bad['coords'])[h] - c_pos_before))
+            for h in h_neighbors
+        }
+        out = restore_terminal_h_symmetry(bad, sp.mol, c0)
+        # IMPORTANT: the helper must NOT bail out; the returned xyz
+        # must be a *new* dict with the inverted H repaired.
+        self.assertIsNot(out, bad,
+                         'symmetrizer bailed out on an inverted CH₃ — '
+                         'Phase 4c expected the per-H bond-length '
+                         'reconstruction to repair this case')
+        new_coords = np.asarray(out['coords'])
+        c_pos = new_coords[c0]
+        # Each H's bond length must be preserved exactly.
+        for h, original_d in original_per_h_dists.items():
+            new_d = float(np.linalg.norm(new_coords[h] - c_pos))
+            self.assertAlmostEqual(
+                new_d, original_d, places=6,
+                msg=f'H{h} bond length not preserved')
+        # The previously-inverted H must now sit on the OUTWARD side
+        # of the parent → center axis (positive component along
+        # ``outward``).
+        repaired_vec = new_coords[h_target] - c_pos
+        outward_component = float(np.dot(repaired_vec, outward))
+        self.assertGreater(
+            outward_component, 0.0,
+            'inverted H should have been folded back to the outward side')
+        # And no two H atoms on c0 should be unphysically close.
+        for i in range(len(h_neighbors)):
+            for j in range(i + 1, len(h_neighbors)):
+                d = float(np.linalg.norm(
+                    new_coords[h_neighbors[i]] - new_coords[h_neighbors[j]]))
+                self.assertGreater(
+                    d, 1.30,
+                    msg=f'H{h_neighbors[i]}-H{h_neighbors[j]} too close: {d:.3f}')
 
     def test_skips_non_terminal_centers(self):
         # The central C of propane has 2 heavy neighbors → not a clear terminal.
@@ -628,6 +714,64 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
         dists = [float(np.linalg.norm(new_coords[h] - c_pos))
                  for h in h_neighbors]
         self.assertLess(max(dists) - min(dists), 0.05)
+
+    def test_orchestrator_repairs_inverted_ch3_end_to_end(self):
+        """Phase 4c — pass an inverted-CH₃ ethane through the live
+        orchestrator with ``restore_symmetry=True``.  The Phase 4b
+        asymmetry detector must fire, the Phase 4c per-H bond-length
+        symmetrizer must actually repair the inversion (the previously-
+        inverted H ends up on the OUTWARD side of the parent → center
+        axis), and per-H bond lengths must be preserved exactly."""
+        sp = ARCSpecies(label='ethane', smiles='CC')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        c0 = next(i for i, s in enumerate(symbols) if s == 'C')
+        c1 = next(i for i, s in enumerate(symbols) if s == 'C' and i != c0)
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        h_neighbors = [
+            atom_to_idx[nbr] for nbr in sp.mol.atoms[c0].bonds.keys()
+            if nbr.element.symbol == 'H'
+        ]
+        coords = list(map(list, xyz['coords']))
+        c0_pos = np.array(coords[c0])
+        c1_pos = np.array(coords[c1])
+        outward = c0_pos - c1_pos
+        outward /= float(np.linalg.norm(outward))
+        h_target = h_neighbors[0]
+        h_vec = np.array(coords[h_target]) - c0_pos
+        proj = float(np.dot(h_vec, outward)) * outward
+        # Reflect to invert: bond length is preserved by reflection.
+        coords[h_target] = (np.array(coords[h_target]) - 2.0 * proj).tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        # Capture per-H bond lengths BEFORE the orchestrator runs.
+        before = np.asarray(bad['coords'], dtype=float)
+        c_pos_before = before[c0]
+        original_per_h_dists = {
+            h: float(np.linalg.norm(before[h] - c_pos_before))
+            for h in h_neighbors
+        }
+        out = apply_reactive_center_cleanup(
+            bad, sp.mol, reactive_centers={c0}, restore_symmetry=True)
+        new_coords = np.asarray(out['coords'], dtype=float)
+        # The inverted H must have moved (the asymmetry signal fired
+        # and the symmetrizer ran end-to-end).
+        self.assertFalse(
+            np.allclose(before[h_target], new_coords[h_target], atol=1e-4),
+            'inverted H should have been repaired end-to-end via the orchestrator')
+        # The repaired H must be on the OUTWARD side of the parent
+        # → center axis (positive component along ``outward``).
+        repaired_vec = new_coords[h_target] - new_coords[c0]
+        outward_component = float(np.dot(repaired_vec, outward))
+        self.assertGreater(
+            outward_component, 0.0,
+            'repaired H should be on the outward side of the parent → center axis')
+        # Per-H bond lengths must be preserved (Phase 4c contract).
+        c_pos_after = new_coords[c0]
+        for h, original_d in original_per_h_dists.items():
+            new_d = float(np.linalg.norm(new_coords[h] - c_pos_after))
+            self.assertAlmostEqual(
+                new_d, original_d, places=6,
+                msg=f'H{h} bond length not preserved after orchestrator')
 
     def test_orchestrator_distorted_ch3_does_not_touch_unrelated_atoms(self):
         """Phase 4b — even when symmetry restoration *does* fire on a

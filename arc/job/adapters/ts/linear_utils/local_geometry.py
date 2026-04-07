@@ -495,22 +495,62 @@ def restore_terminal_h_symmetry(xyz: dict,
                                   center: int,
                                   exclude_atoms: Optional[Set[int]] = None,
                                   ) -> dict:
-    """For a clearly-CH₂ or CH₃ heavy ``center``, average each H about
-    the (center, parent) axis so equivalent H atoms land symmetrically.
+    """For a clearly-CH₂ or CH₃ heavy ``center``, re-seat the H atoms
+    around the (parent → center) axis at evenly spaced azimuth while
+    **preserving each H's original distance to the center**.
 
-    The "clear" condition is: ``center`` has exactly one heavy neighbor
-    in the bond graph and exactly two or three H neighbors in the bond
-    graph (after removing ``exclude_atoms``).  When that holds, the H
-    atoms are rotated about the (parent → center) axis so that they sit
-    at evenly spaced azimuth around the axis while keeping their current
-    radial distances and along-axis offsets.
+    Phase 4c rebuild — the helper now handles true terminal CH₃
+    umbrella-inversion cases.  The previous implementation averaged
+    along-axis offsets and radial distances across all H atoms,
+    constructed a single (avg_along, avg_radial) cone, and then bailed
+    out when any new H–C distance differed from the original by more
+    than 0.05 Å.  That bail-out blocked every meaningful inversion
+    repair, because an inverted H's negative along-axis component
+    pulled ``avg_along`` toward zero and shrunk every reconstructed
+    H–C distance by far more than the legacy tolerance.
 
-    The helper is conservative:
+    The new implementation places each H *individually* on the
+    outward tetrahedral cone:
 
-    * if the center is not a clear CH₂/CH₃ → returns ``xyz`` unchanged
-    * if any per-H bond length would change by more than 0.05 Å → bails
-      and returns ``xyz`` unchanged (to avoid introducing crowding)
-    * never moves any non-H atom
+    1. The terminal eligibility check is unchanged: the center must
+       have exactly one heavy neighbor (the parent) and exactly 2 or 3
+       H neighbors after exempting ``exclude_atoms``.
+    2. For each H atom, compute three per-H quantities from the
+       *current* geometry:
+         * ``r_i``       = current ``|H_i - center|`` — the bond
+           length to preserve.
+         * ``θ_i``       = current azimuth in the (u, v) plane via
+           ``atan2(proj·v, proj·u)``, normalized to ``[0, 2π)`` — used
+           for slot assignment.
+         * ``fold_α_i``  = ``min(α_i, π − α_i)`` where ``α_i`` is the
+           angle between the outward axis and ``H_i − center`` — this
+           "folds" inverted H atoms onto their would-be outward cone
+           angle.
+    3. ``target_cone = mean(fold_α_i)``.  This preserves the original
+       group's cone chemistry (sp³ → ~70.5°, sp² → ~90°) while
+       ignoring inversion sign.
+    4. Sort H atoms by ``θ_i`` (deterministic, basis-fixed).
+    5. Pin ``offset = θ_0`` (the first sorted H's current azimuth)
+       so that the minimum-displacement target arrangement keeps the
+       first H at its current azimuth — already-azimuth-symmetric
+       groups end up at the same coordinates as the input.
+    6. For each H k in sorted order, place it at::
+
+           target_θ_k = offset + 2π·k / n_h
+           target_dir = sin(target_cone) · (cos(target_θ_k)·u
+                                            + sin(target_θ_k)·v)
+                        + cos(target_cone) · axis
+           new_pos    = center + r_i · target_dir
+
+       Because ``target_dir`` is a unit vector, ``|new_pos − center| = r_i``
+       exactly — every H's bond length is preserved by construction
+       and the legacy bail-out is no longer needed.
+
+    The repair stays strictly local: the parent atom and any atoms
+    not in the H neighbor list are read-only.  Non-H atoms are never
+    moved.  When the eligibility check fails (non-terminal centre,
+    degenerate axis, missing basis, ``r_i = 0``) the function returns
+    the original ``xyz`` unchanged.
 
     Args:
         xyz: TS guess XYZ dict.
@@ -519,7 +559,9 @@ def restore_terminal_h_symmetry(xyz: dict,
         exclude_atoms: Optional H indices to skip (e.g. migrating H).
 
     Returns:
-        New XYZ dict; on bail-out the original input is returned.
+        A new XYZ dict with the H atoms at their target azimuth slots
+        and preserved bond lengths.  On any eligibility failure the
+        original input is returned unchanged.
     """
     if xyz is None:
         return xyz
@@ -538,22 +580,11 @@ def restore_terminal_h_symmetry(xyz: dict,
     parent = heavy_nbrs[0]
     parent_pos = coords[parent]
     center_pos = coords[center]
-    axis = center_pos - parent_pos
-    axis_norm = float(np.linalg.norm(axis))
+    axis_vec = center_pos - parent_pos
+    axis_norm = float(np.linalg.norm(axis_vec))
     if axis_norm < 1e-6:
         return xyz
-    axis_hat = axis / axis_norm
-
-    # Compute each H's along-axis offset and radial distance / azimuth.
-    along: List[float] = []
-    radial: List[float] = []
-    for h in h_nbrs:
-        rel = coords[h] - center_pos
-        a = float(np.dot(rel, axis_hat))
-        perp = rel - a * axis_hat
-        r = float(np.linalg.norm(perp))
-        along.append(a)
-        radial.append(r)
+    axis_hat = axis_vec / axis_norm
 
     # Build an orthonormal basis (u, v) perpendicular to axis_hat.
     arb = np.array([1.0, 0.0, 0.0])
@@ -566,27 +597,67 @@ def restore_terminal_h_symmetry(xyz: dict,
     u = u / u_norm
     v = np.cross(axis_hat, u)
 
-    avg_along = float(np.mean(along))
-    avg_radial = float(np.mean(radial))
-    n_h = len(h_nbrs)
-
-    new_positions: List[np.ndarray] = []
-    for k in range(n_h):
-        theta = 2.0 * np.pi * k / n_h
-        new_h = center_pos + avg_along * axis_hat \
-            + avg_radial * (np.cos(theta) * u + np.sin(theta) * v)
-        new_positions.append(new_h)
-
-    # Bail out if any H would move more than 0.05 Å in bond length from
-    # its previous distance to the center (avoid introducing crowding).
-    for h, new_h in zip(h_nbrs, new_positions):
-        old_d = float(np.linalg.norm(coords[h] - center_pos))
-        new_d = float(np.linalg.norm(new_h - center_pos))
-        if abs(new_d - old_d) > 0.05:
+    # Per-H: compute current bond length, current projected azimuth,
+    # and folded outward cone angle.
+    h_data: List[Tuple[int, float, float, float]] = []
+    for h in h_nbrs:
+        rel = coords[h] - center_pos
+        r_i = float(np.linalg.norm(rel))
+        if r_i < 1e-8:
+            # H atom sits exactly on the heavy center — degenerate
+            # input we cannot reseat without losing information.
             return xyz
+        cos_alpha = float(np.dot(rel, axis_hat) / r_i)
+        cos_alpha = max(-1.0, min(1.0, cos_alpha))
+        alpha_i = float(np.arccos(cos_alpha))
+        # Fold inverted H angles back to their would-be outward
+        # equivalent so the target cone reflects "how far the H sits
+        # from the parent → center axis" without inversion sign.
+        fold_alpha = min(alpha_i, float(np.pi) - alpha_i)
+        proj_u = float(np.dot(rel, u))
+        proj_v = float(np.dot(rel, v))
+        proj_norm = float(np.sqrt(proj_u * proj_u + proj_v * proj_v))
+        if proj_norm < 1e-8:
+            # H is collinear with the axis — give it a deterministic
+            # azimuth so the slot ordering is reproducible.
+            theta_i = 0.0
+        else:
+            theta_i = float(np.arctan2(proj_v, proj_u))
+            if theta_i < 0.0:
+                theta_i += 2.0 * float(np.pi)
+        h_data.append((int(h), r_i, float(theta_i), float(fold_alpha)))
 
-    for h, new_h in zip(h_nbrs, new_positions):
-        coords[h] = new_h
+    # Target cone angle: mean of folded per-H cone angles.  When the
+    # group is already on the outward tetrahedral cone (~70.5°), this
+    # collapses to ~70.5°; when one H is inverted (alpha ~ 110°), the
+    # fold makes it ~70° and the average is still ~70.5°.
+    target_cone = float(np.mean([d[3] for d in h_data]))
+    sin_c = float(np.sin(target_cone))
+    cos_c = float(np.cos(target_cone))
+
+    # Sort H atoms by current azimuth so the slot assignment is
+    # deterministic and preserves each H's identity.
+    h_data.sort(key=lambda d: d[2])
+    n_h = len(h_data)
+
+    # Pin the first sorted H to its current azimuth — the
+    # minimum-displacement choice.  An already-azimuth-symmetric
+    # group reproduces its input slots exactly.
+    offset = h_data[0][2]
+
+    new_positions: List[Tuple[int, np.ndarray]] = []
+    for k, (h_idx, r_i, _theta, _fold) in enumerate(h_data):
+        target_azimuth = offset + 2.0 * float(np.pi) * k / n_h
+        cos_az = float(np.cos(target_azimuth))
+        sin_az = float(np.sin(target_azimuth))
+        target_dir = sin_c * (cos_az * u + sin_az * v) + cos_c * axis_hat
+        # |target_dir| = sqrt(sin²+cos²) = 1, so the bond length is
+        # exactly r_i by construction.  No bail-out needed.
+        new_pos = center_pos + r_i * target_dir
+        new_positions.append((h_idx, new_pos))
+
+    for h_idx, new_pos in new_positions:
+        coords[h_idx] = new_pos
 
     return _xyz_with_coords(xyz, coords)
 
