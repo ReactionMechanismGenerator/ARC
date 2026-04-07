@@ -60,6 +60,7 @@ class PipeRun:
                  cluster_software: str,
                  max_workers: int = 100,
                  max_attempts: int = 3,
+                 pipe_root: Optional[str] = None,
                  ):
         self.project_directory = project_directory
         self.run_id = run_id
@@ -67,7 +68,8 @@ class PipeRun:
         self.cluster_software = cluster_software
         self.max_workers = max_workers
         self.max_attempts = max_attempts
-        self.pipe_root = os.path.join(project_directory, 'runs', 'pipe_' + run_id)
+        self.pipe_root = pipe_root if pipe_root is not None \
+            else os.path.join(project_directory, 'calcs', 'pipe_' + run_id)
         self.status = PipeRunState.CREATED
         self.created_at = time.time()
         self.submitted_at = None
@@ -94,6 +96,7 @@ class PipeRun:
                 level = levels[0]
         data = {
             'run_id': self.run_id,
+            'project_directory': self.project_directory,
             'pipe_root': self.pipe_root,
             'status': self.status.value,
             'cluster_software': self.cluster_software,
@@ -134,7 +137,7 @@ class PipeRun:
                 if os.path.isfile(spec_path):
                     with open(spec_path, 'r') as f:
                         tasks.append(TaskSpec.from_dict(json.load(f)))
-        project_directory = os.path.dirname(os.path.dirname(pipe_root))
+        project_directory = data['project_directory']
         run = cls(
             project_directory=project_directory,
             run_id=data['run_id'],
@@ -142,8 +145,8 @@ class PipeRun:
             cluster_software=data['cluster_software'],
             max_workers=data.get('max_workers', 100),
             max_attempts=data.get('max_attempts', 3),
+            pipe_root=pipe_root,
         )
-        run.pipe_root = pipe_root
         run.status = PipeRunState(data['status'])
         run.created_at = data.get('created_at', 0)
         run.submitted_at = data.get('submitted_at')
