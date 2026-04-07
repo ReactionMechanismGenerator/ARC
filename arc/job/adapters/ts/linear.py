@@ -229,6 +229,7 @@ from arc.job.adapters.ts.linear_utils.addition import (
 from arc.job.adapters.ts.linear_utils.local_geometry import (
     clean_migrating_h,
     identify_h_migration_pairs,
+    infer_frag_fallback_h_migration,
     orient_h_away_from_axis,
     regularize_terminal_h_geometry,
     restore_terminal_h_symmetry,
@@ -2066,57 +2067,25 @@ def interpolate_addition(rxn: 'ARCReaction',
             ts_xyz = migrate_h_between_fragments(
                 pre_migrate_xyz, uni_mol, cut, multi_species, weight)
 
-            # Phase 3b — derive a single-H migration record by comparing
-            # pre- and post-migration H positions, then run the same
-            # local cleanup + topology enrichment pipeline as the
-            # template-guided branch.  ``migrate_h_between_fragments``
-            # heuristically chooses which H to move, so we are extra
-            # conservative here: we only enrich when EXACTLY ONE H
-            # actually moved AND its donor/acceptor are both adjacent
-            # to a split-bond endpoint (gate G7).
-            frag_migrations: List[Dict] = []
-            try:
-                pre_arr = np.asarray(pre_migrate_xyz['coords'], dtype=float)
-                post_arr = np.asarray(ts_xyz['coords'], dtype=float)
-                frag_symbols = ts_xyz['symbols']
-                moved_h: List[int] = []
-                for h in range(len(frag_symbols)):
-                    if frag_symbols[h] != 'H':
-                        continue
-                    if float(np.linalg.norm(post_arr[h] - pre_arr[h])) > 0.05:
-                        moved_h.append(h)
-                if len(moved_h) == 1:
-                    h_idx = moved_h[0]
-                    # Donor in the *reactant graph*: only heavy neighbor.
-                    donor_atom: Optional[int] = None
-                    atom_to_idx_local = {a: i for i, a in enumerate(uni_mol.atoms)}
-                    for nbr in uni_mol.atoms[h_idx].bonds.keys():
-                        ni = atom_to_idx_local[nbr]
-                        if frag_symbols[ni] != 'H':
-                            if donor_atom is not None:
-                                donor_atom = None  # ambiguous
-                                break
-                            donor_atom = ni
-                    if donor_atom is not None:
-                        # Acceptor: nearest heavy atom in the post-migrate
-                        # geometry that is *not* the donor and not already
-                        # too far away to be a TS partner.
-                        heavy_others = [
-                            i for i, s in enumerate(frag_symbols)
-                            if s != 'H' and i != donor_atom
-                        ]
-                        if heavy_others:
-                            dists = np.linalg.norm(
-                                post_arr[heavy_others] - post_arr[h_idx], axis=1)
-                            acceptor_atom = heavy_others[int(dists.argmin())]
-                            frag_migrations = [{
-                                'h_idx': int(h_idx),
-                                'donor': int(donor_atom),
-                                'acceptor': int(acceptor_atom),
-                                'source': 'frag_inferred',
-                            }]
-            except Exception:  # pragma: no cover - defensive
-                frag_migrations = []
+            # Phase 3c — strict, deterministic single-H migration
+            # inference for the frag-fallback branch.  The helper
+            # combines five trustworthy signals (S1 displacement,
+            # S2 reactant-graph adjacency, S3 split-fragment
+            # membership, S4 product composition, S5 local geometry
+            # consistency) and either returns ONE record or ``None``.
+            # When it returns ``None``, ``frag_migrations`` stays
+            # empty and the orchestration continues into degraded
+            # mode unchanged.  Multi-H and ambiguous cases are
+            # preserved degraded by design.
+            inferred = infer_frag_fallback_h_migration(
+                pre_xyz=pre_migrate_xyz,
+                post_xyz=ts_xyz,
+                uni_mol=uni_mol,
+                split_bonds=cut,
+                multi_species=multi_species,
+                label=f'rxn={rxn.label}, frag-fallback-post-migrate',
+            )
+            frag_migrations: List[Dict] = [inferred] if inferred else []
 
             # Run local cleanup + (conservative) enrichment.
             # Same NOTE as the template-guided branch:

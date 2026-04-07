@@ -1949,5 +1949,321 @@ class TestPhase3bDegradedPreservation(unittest.TestCase):
         self.assertIsInstance(out, list)
 
 
+# ---------------------------------------------------------------------------
+# Phase 3c — fragmentation-fallback finite-score promotion
+# ---------------------------------------------------------------------------
+
+
+class TestPhase3cFragFallbackPromotion(unittest.TestCase):
+    """Live ``interpolate_addition`` tests proving Phase 3c promotes
+    a trustworthy frag-fallback single-H migration to a finite score
+    while preserving degraded mode for ambiguous cases."""
+
+    def _make_co2_insertion_rxn(self):
+        from arc.species import ARCSpecies
+        from arc.reaction import ARCReaction
+        # 1,3_Insertion_CO2: a tertiary carboxylic acid → CO2 + alkene.
+        # Triggers the frag-fallback branch with a single carboxylic-
+        # acid H migrating from O to a methyl C.
+        r_xyz = """C      -2.49526563   -1.71744655   -0.05070502
+C      -1.02439736   -1.43442148   -0.09903098
+C      -0.03369873   -2.05724101    0.58071768
+C      -0.33706853   -3.21011130    1.53261903
+C      -0.85997546   -2.75301776    2.88970062
+C       1.47028993   -1.69663277    0.40874963
+C       2.07012721   -1.30878861    1.77489924
+C       1.74154080   -0.52957843   -0.56586530
+C       2.20380863   -2.91010712   -0.19503352
+O       1.73766923   -3.76432521   -0.93387645
+O       3.51955595   -2.95521685    0.10563464
+H      -3.10560600   -0.84943191    0.20522867
+H      -2.69351927   -2.49442175    0.69448241
+H      -2.82934183   -2.08783564   -1.02499122
+H      -0.78561006   -0.62690380   -0.78689260
+H       0.55596394   -3.82539962    1.69076067
+H      -1.06313426   -3.89101221    1.07201521
+H      -1.79380282   -2.19600714    2.76086637
+H      -0.14816985   -2.09644367    3.39930225
+H      -1.06676022   -3.60034589    3.54974021
+H       2.00787775   -2.13013981    2.49728135
+H       3.13273869   -1.05110182    1.68998787
+H       1.55881292   -0.43721490    2.19959957
+H       1.26204457    0.39674910   -0.22955829
+H       2.81639214   -0.32714424   -0.65140849
+H       1.38896771   -0.75762301   -1.57886997
+H       3.82821421   -3.76916475   -0.34544391"""
+        p1_xyz = """O      -1.37316735    0.24657196    0.00000000
+C      -0.00000000   -0.05081069    0.00000000
+O       1.37316735   -0.34819332    0.00000000"""
+        p2_xyz = """ C                 -2.38749724   -2.07681559   -0.24769962
+ C                 -0.91223049   -1.65569429   -0.38128430
+ C                  0.00974358   -2.13096778    0.49086589
+ C                 -0.41782495   -3.09217448    1.61552887
+ C                 -0.80439231   -2.28004191    2.86557141
+ C                  1.48500992   -1.70984460    0.35728267
+ C                  2.14707486   -1.71091779    1.74770306
+ C                  1.56241137   -0.29548780   -0.24703833
+ H                 -3.01706611   -1.28917857   -0.60570935
+ H                 -2.61083914   -2.27262544    0.78024828
+ H                 -2.55960948   -2.96124003   -0.82482247
+ H                 -0.61515337   -0.98784419   -1.16270699
+ H                  0.39428846   -3.74720075    1.85283123
+ H                 -1.25842619   -3.66927357    1.29111215
+ H                 -1.61650572   -1.62501564    2.62826906
+ H                  0.03620892   -1.70294282    3.18998814
+ H                 -1.10146915   -2.94789332    3.64699310
+ H                  2.09329593   -2.69362024    2.16758843
+ H                  3.17209758   -1.41831921    1.65488875
+ H                  1.63583722   -1.02155958    2.38670333
+ H                  1.05117373    0.39387041    0.39196194
+ H                  2.58743409   -0.00288922   -0.33985264
+ H                  1.10240521   -0.29474214   -1.21310964
+ H                  1.99624756   -2.39920281   -0.28171759"""
+        r = ARCSpecies(label='R', smiles='CC=C(CC)C(C)(C)C(=O)O', xyz=r_xyz)
+        p1 = ARCSpecies(label='P1', smiles='O=C=O', xyz=p1_xyz)
+        p2 = ARCSpecies(label='P2', smiles='CC=C(CC)C(C)C', xyz=p2_xyz)
+        return r, p1, p2, ARCReaction(r_species=[r], p_species=[p1, p2])
+
+    # ---- Phase 3c #1: inference success → finite score ---------------
+
+    def test_frag_fallback_single_h_now_carries_finite_score(self):
+        """For 1,3_Insertion_CO2, the frag-fallback branch produces
+        exactly one frag-fallback record carrying an enriched
+        :class:`ReactionPathSpec` whose ``breaking_bonds`` includes a
+        new (heavy, H) pair, and that record scores finitely."""
+        from arc.job.adapters.ts import linear as L
+        r, _, _, rxn = self._make_co2_insertion_rxn()
+        captured: list = []
+        original = L._finalize_ts_guesses
+
+        def trace(ts_xyzs, path_spec, rxn, r_mol):
+            captured.append(list(ts_xyzs))
+            return original(ts_xyzs, path_spec=path_spec, rxn=rxn, r_mol=r_mol)
+
+        L._finalize_ts_guesses = trace
+        try:
+            L.interpolate_addition(rxn, weight=0.5)
+        finally:
+            L._finalize_ts_guesses = original
+
+        records = captured[0] if captured else []
+        promoted = [
+            rec for rec in records
+            if rec.strategy == 'frag_fallback' and rec.path_spec is not None
+        ]
+        self.assertGreater(
+            len(promoted), 0,
+            'Phase 3c should promote at least one frag-fallback '
+            'single-H record to a finite-score, enriched spec.')
+        rec = promoted[0]
+        # The enriched spec must contain a (heavy, H) breaking bond
+        # — the H-side of the migration the helper inferred.
+        h_bond_present = any(
+            ('H' in (rec.xyz['symbols'][a], rec.xyz['symbols'][b])
+             and rec.xyz['symbols'][a] != rec.xyz['symbols'][b])
+            for (a, b) in rec.path_spec.breaking_bonds
+        )
+        self.assertTrue(
+            h_bond_present,
+            'enriched frag-fallback spec must include a (heavy, H) '
+            'breaking bond inferred by the Phase 3c helper.')
+        from arc.job.adapters.ts.linear import (
+            classify_path_chemistry, score_guess_against_path_spec,
+        )
+        symbols = tuple(rec.xyz['symbols'])
+        chem = classify_path_chemistry(rec.path_spec, r.mol, symbols)
+        score = score_guess_against_path_spec(
+            rec.path_spec, rec.xyz, r.mol, symbols, chem)
+        self.assertNotEqual(score, float('inf'),
+                            'enriched frag-fallback record must score finitely')
+
+    # ---- Phase 3c #2: ambiguity preservation -------------------------
+
+    def test_pure_cc_dissociation_does_not_get_h_enriched(self):
+        """Ethane → 2 CH3• is a pure C-C cleavage with NO H migration.
+        The Phase 3c helper must NOT enrich any frag-fallback record
+        with a (heavy, H) breaking bond.  Verifies that the helper
+        does not invent an H-migration topology when none exists."""
+        from arc.species import ARCSpecies
+        from arc.reaction import ARCReaction
+        from arc.job.adapters.ts import linear as L
+        r = ARCSpecies(label='ethane', smiles='CC')
+        p1 = ARCSpecies(label='P1', smiles='[CH3]')
+        p2 = ARCSpecies(label='P2', smiles='[CH3]')
+        rxn = ARCReaction(r_species=[r], p_species=[p1, p2])
+
+        captured: list = []
+        original = L._finalize_ts_guesses
+
+        def trace(ts_xyzs, path_spec, rxn, r_mol):
+            captured.append(list(ts_xyzs))
+            return original(ts_xyzs, path_spec=path_spec, rxn=rxn, r_mol=r_mol)
+
+        L._finalize_ts_guesses = trace
+        try:
+            L.interpolate_addition(rxn, weight=0.5)
+        finally:
+            L._finalize_ts_guesses = original
+
+        records = captured[0] if captured else []
+        # No frag-fallback record may carry an enriched spec whose
+        # breaking_bonds contain a (heavy, H) pair.
+        for rec in records:
+            if rec.strategy != 'frag_fallback' or rec.path_spec is None:
+                continue
+            for (a, b) in rec.path_spec.breaking_bonds:
+                ab_syms = (rec.xyz['symbols'][a], rec.xyz['symbols'][b])
+                self.assertFalse(
+                    'H' in ab_syms and ab_syms[0] != ab_syms[1],
+                    'frag-fallback enrichment fired on a case with no '
+                    'H migration.',
+                )
+
+    # ---- Phase 3c #3: no fake promotion ------------------------------
+
+    def test_helper_returns_none_for_topologically_inconsistent_input(self):
+        """A directly fed inconsistent (donor and acceptor on the same
+        fragment) input must return ``None`` from the helper, not a
+        partial enrichment."""
+        from arc.job.adapters.ts.linear_utils.local_geometry import (
+            infer_frag_fallback_h_migration,
+        )
+        from arc.species import ARCSpecies
+        sp = ARCSpecies(label='ethanol', smiles='CCO')
+        symbols = sp.get_xyz()['symbols']
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        c0 = next(i for i, s in enumerate(symbols) if s == 'C')
+        h_on_c0 = next(
+            atom_to_idx[nbr] for nbr in sp.mol.atoms[c0].bonds.keys()
+            if nbr.element.symbol == 'H'
+        )
+        coords = list(map(list, sp.get_xyz()['coords']))
+        post_coords = [list(c) for c in coords]
+        # Move the H slightly so S1 finds it; donor is C0, but with no
+        # cut at all the molecule has 1 fragment ⇒ S3 fails.
+        post_coords[h_on_c0][0] += 1.0
+        pre = {**sp.get_xyz(),
+               'coords': tuple(tuple(c) for c in coords)}
+        post = {**sp.get_xyz(),
+                'coords': tuple(tuple(c) for c in post_coords)}
+        out = infer_frag_fallback_h_migration(
+            pre_xyz=pre, post_xyz=post,
+            uni_mol=sp.mol, split_bonds=[],
+            multi_species=None, label='no-fake',
+        )
+        self.assertIsNone(out)
+
+    # ---- Phase 3c #4: template-guided stability ----------------------
+
+    def test_template_guided_finite_score_promotion_unchanged(self):
+        """Phase 3b's template-guided enrichment for ``1,3_NH3_elimination``
+        must continue to fire and produce a finite score after Phase 3c.
+        This is the regression guard for the directive's
+        'Phase 3b stability rule'."""
+        from arc.species import ARCSpecies
+        from arc.reaction import ARCReaction
+        from arc.job.adapters.ts import linear as L
+
+        r_xyz = """C       1.14981017    0.04138987   -0.06722786
+C      -0.25415691   -0.17696939    0.46881798
+N      -0.38312147    0.39227542    1.80366803
+H       1.89791609   -0.44343932    0.56909864
+H       1.38984772    1.10839783   -0.12647258
+H       1.23928774   -0.38052643   -1.07342059
+H      -0.98187243    0.29596310   -0.19835733
+H      -0.47689047   -1.24854874    0.50220986
+H       0.27600194   -0.06032721    2.43576220
+H      -1.31312338    0.19118810    2.16873833"""
+        r = ARCSpecies(label='R', smiles='CCN', xyz=r_xyz)
+        p1 = ARCSpecies(label='P1', smiles='C=C')
+        p2 = ARCSpecies(label='P2', smiles='N')
+        rxn = ARCReaction(r_species=[r], p_species=[p1, p2])
+
+        captured: list = []
+        original = L._finalize_ts_guesses
+
+        def trace(ts_xyzs, path_spec, rxn, r_mol):
+            captured.append(list(ts_xyzs))
+            return original(ts_xyzs, path_spec=path_spec, rxn=rxn, r_mol=r_mol)
+
+        L._finalize_ts_guesses = trace
+        try:
+            L.interpolate_addition(rxn, weight=0.5)
+        finally:
+            L._finalize_ts_guesses = original
+
+        records = captured[0] if captured else []
+        promoted_template = [
+            rec for rec in records
+            if rec.strategy == 'template_guided' and rec.path_spec is not None
+        ]
+        self.assertGreater(
+            len(promoted_template), 0,
+            'Phase 3b template-guided enrichment must remain stable '
+            'after Phase 3c — at least one template_guided record '
+            'should still carry a non-None ReactionPathSpec.')
+
+    # ---- Phase 3c #5: dedicated motif degraded mode unchanged --------
+
+    def test_xy_elimination_remains_degraded_after_phase3c(self):
+        """The XY-elimination dedicated motif builder is still
+        explicitly out of scope.  Verify the call still completes."""
+        from arc.species import ARCSpecies
+        from arc.reaction import ARCReaction
+        from arc.job.adapters.ts import linear as L
+        r = ARCSpecies(label='R', smiles='CCC(=O)O')
+        p1 = ARCSpecies(label='P1', smiles='C=C')
+        p2 = ARCSpecies(label='P2', smiles='[H][H]')
+        p3 = ARCSpecies(label='P3', smiles='O=C=O')
+        rxn = ARCReaction(r_species=[r], p_species=[p1, p2, p3])
+        out = L.interpolate_addition(rxn, weight=0.5)
+        self.assertIsInstance(out, list)
+
+    # ---- Phase 3c #7: cleanup-without-enrichment ---------------------
+
+    def test_cleanup_without_enrichment_preserves_degraded_mode(self):
+        """A frag-fallback single-H displacement that satisfies S1+S2
+        but is *too distorted* (S5 fails) must remain degraded.  Local
+        cleanup may still touch the geometry, but no enriched spec is
+        attached.  Verified by feeding a hand-crafted post-migration
+        XYZ where the H lies far from any plausible acceptor."""
+        from arc.job.adapters.ts.linear_utils.local_geometry import (
+            infer_frag_fallback_h_migration,
+        )
+        from arc.species import ARCSpecies
+        sp = ARCSpecies(label='ccn', smiles='CCN')
+        symbols = sp.get_xyz()['symbols']
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        c_central = None
+        for atom in sp.mol.atoms:
+            if atom.element.symbol == 'C':
+                heavy_nbrs = [
+                    n for n in atom.bonds.keys()
+                    if n.element.symbol != 'H'
+                ]
+                if len(heavy_nbrs) == 2:
+                    c_central = atom_to_idx[atom]
+                    break
+        self.assertIsNotNone(c_central)
+        h_on_c = next(
+            atom_to_idx[nbr] for nbr in sp.mol.atoms[c_central].bonds.keys()
+            if nbr.element.symbol == 'H'
+        )
+        coords = list(map(list, sp.get_xyz()['coords']))
+        post_coords = [list(c) for c in coords]
+        post_coords[h_on_c] = [50.0, 50.0, 50.0]
+        pre = {**sp.get_xyz(),
+               'coords': tuple(tuple(c) for c in coords)}
+        post = {**sp.get_xyz(),
+                'coords': tuple(tuple(c) for c in post_coords)}
+        n_idx = next(i for i, s in enumerate(symbols) if s == 'N')
+        out = infer_frag_fallback_h_migration(
+            pre_xyz=pre, post_xyz=post,
+            uni_mol=sp.mol, split_bonds=[(c_central, n_idx)],
+            multi_species=None, label='cleanup-without-enrichment',
+        )
+        self.assertIsNone(out)
+
+
 if __name__ == '__main__':
     unittest.main()
