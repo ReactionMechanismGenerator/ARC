@@ -133,8 +133,8 @@ class PipeCoordinator:
         try:
             with open(os.path.join(pipe.pipe_root, 'task_summary.txt'), 'w') as f:
                 f.write('\n'.join(lines) + '\n')
-        except OSError:
-            pass
+        except OSError as e:
+            logger.warning(f'Could not write task_summary.txt for {pipe.run_id}: {e}')
 
     def submit_pipe_run(self, run_id: str, tasks: List[TaskSpec],
                         cluster_software: str = 'slurm') -> PipeRun:
