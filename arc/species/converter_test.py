@@ -20,6 +20,7 @@ import arc.species.converter as converter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
+from arc.species.converter import order_mol_by_atom_map
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle, calculate_param
@@ -1275,6 +1276,41 @@ X      -0.52389885    0.72654241   -1.86620254"""
                                     'R_5_0': 1.093567969297245, 'R_7|8_1|1': 1.0951422141311429,
                                     'R_9_3': 0.9741224704818748}}
         self.assertTrue(_compare_zmats(zmat_8, expected_zmat_8))
+
+    def test_xyz_to_zmat(self):
+        """Check folding xyz into a zmat"""
+        h2nn = {'symbols': ('N', 'N', 'H', 'H'),
+                'isotopes': (14, 14, 1, 1),
+                'coords': ((1.3546347608168492, -0.015322539977107492, -0.015327345703300993),
+                           (-0.0986192196858452, 0.0011155018627852027, 0.0011158328655407426),
+                           (-0.6378749227822363, -0.8648316328267205, 0.0067050159766062715),
+                           (-0.6181406183487707, 0.8790386709410358, 0.007506496861156013))}
+        zmat = xyz_to_zmat(h2nn)
+        expected_zmat = {'symbols': ('N', 'N', 'H', 'H'),
+                         'coords': ((None, None, None), ('R_1_0', None, None),
+                                    ('R_2_1', 'A_2_1_0', None), ('R_3_2', 'A_3_2_0', 'D_3_2_0_1')),
+                         'vars': {'R_1_0': 1.453439904003661, 'R_2_1': 1.0201432886642632, 'A_2_1_0': 121.26532344550412,
+                                  'R_3_2': 1.7439821177668233, 'A_3_2_0': 66.26220791342335, 'D_3_2_0_1': 359.99999758516344},
+                         'map': {0: 0, 1: 1, 2: 2, 3: 3}}
+        self.assertTrue(_compare_zmats(zmat, expected_zmat))
+
+        zmat = xyz_to_zmat(h2nn, atom_order=[2, 3, 0, 1])
+        expected_zmat = {'symbols': ('H', 'H', 'N', 'N'),
+                         'coords': ((None, None, None), ('R_1_0', None, None),
+                                    ('R_2_1', 'A_2_1_0', None), ('R_3_2', 'A_3_2_0', 'D_3_2_0_1')),
+                         'vars': {'R_1_0': 1.7439821177668233, 'R_2_1': 2.166159374808962, 'A_2_1_0': 66.26220397737823,
+                                  'R_3_2': 1.453439904003661, 'A_3_2_0': 23.737787276875004, 'D_3_2_0_1': 359.99999758516344},
+                         'map': {0: 2, 1: 3, 2: 0, 3: 1}}
+        self.assertTrue(_compare_zmats(zmat, expected_zmat))
+
+        zmat = xyz_to_zmat(h2nn, atom_order=[1, 3, 2, 0])
+        expected_zmat = {'symbols': ('N', 'H', 'H', 'N'),
+                         'coords': ((None, None, None), ('R_1_0', None, None),
+                                    ('R_2_1', 'A_2_1_0', None), ('R_3_2', 'A_3_2_0', 'D_3_2_0_1')),
+                         'vars': {'R_1_0': 1.0201433470919798, 'R_2_1': 1.7439821177668233, 'A_2_1_0': 31.265321828101055,
+                                  'R_3_2': 2.1661591546787227, 'A_3_2_0': 34.99688237878201, 'D_3_2_0_1': 180.0000041826196},
+                         'map': {0: 1, 1: 3, 2: 2, 3: 0}}
+        self.assertTrue(_compare_zmats(zmat, expected_zmat))
 
     def test_zmat_to_xyz(self):
         """Check refolding a zmat into cartesian coordinates"""
@@ -4537,6 +4573,45 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         mol2 = Molecule(smiles='[N-]=[N+]=O')
         self.assertTrue(converter.check_isomorphism(mol1, mol2))
 
+    def test_order_xyz_by_atom_map(self):
+        """Test ordering xyz by atom map"""
+        xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+               'isotopes': (12, 1, 1, 1, 1),
+               'coords': ((0.0, 0.0, 0.0),
+                          (0.6300326, 0.6300326, 0.6300326),
+                          (-0.6300326, -0.6300326, 0.6300326),
+                          (-0.6300326, 0.6300326, -0.6300326),
+                          (0.6300326, -0.6300326, -0.6300326))}
+        atom_map = [4, 3, 1, 2, 0]
+        ordered_xyz = converter.order_xyz_by_atom_map(xyz, atom_map)
+        expected_xyz = {'symbols': ('H', 'H', 'H', 'H', 'C'),
+                        'isotopes': (1, 1, 1, 1, 12),
+                        'coords': ((0.6300326, -0.6300326, -0.6300326),
+                                   (-0.6300326, 0.6300326, -0.6300326),
+                                   (0.6300326, 0.6300326, 0.6300326),
+                                   (-0.6300326, -0.6300326, 0.6300326),
+                                   (0.0, 0.0, 0.0))}
+        self.assertEqual(ordered_xyz, expected_xyz)
+
+        xyz = {'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+               'isotopes': (12, 12, 12, 1, 1, 1, 1, 1, 1, 1),
+               'coords': ((-0.4073569, -0.74240205, -0.34312948), (0.38155377, -0.25604705, 0.82450968),
+                          (0.54634593, 1.25448345, 0.81064511), (0.00637731, -1.58836501, -0.88041673),
+                          (-0.98617584, -0.01198912, -0.89732723), (-1.29710684, -1.2909234, 0.08598983),
+                          (1.36955428, -0.72869684, 0.81102246), (1.06044877, 1.58846788, -0.09702437),
+                          (1.13774084, 1.57830484, 1.67308862), (-0.42424546, 1.75989927, 0.85794283))}
+        ordered_xyz = converter.order_xyz_by_atom_map(xyz, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        self.assertEqual(ordered_xyz, xyz)
+        expected_xyz = {'symbols': ('H', 'H', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'C'),
+                        'isotopes': (1, 1, 1, 1, 1, 1, 1, 12, 12, 12),
+                        'coords': ((-0.42424546, 1.75989927, 0.85794283), (1.13774084, 1.57830484, 1.67308862),
+                                   (1.06044877, 1.58846788, -0.09702437), (1.36955428, -0.72869684, 0.81102246),
+                                   (-1.29710684, -1.2909234, 0.08598983), (-0.98617584, -0.01198912, -0.89732723),
+                                   (0.00637731, -1.58836501, -0.88041673), (0.54634593, 1.25448345, 0.81064511),
+                                   (0.38155377, -0.25604705, 0.82450968), (-0.4073569, -0.74240205, -0.34312948))}
+        ordered_xyz = converter.order_xyz_by_atom_map(xyz, [9, 8, 7, 6, 5, 4, 3, 2, 1, 0])
+        self.assertEqual(ordered_xyz, expected_xyz)
+
     def test_cluster_confs_by_rmsd(self):
         """Test clustering conformers by RMSD"""
         # translation of nco_1
@@ -5030,6 +5105,92 @@ H      -1.88123946   -2.00923795    0.23313156"""
                                                         isotopes=aspirin_xyz["isotopes"])
         score = converter.kabsch(aspirin_xyz, aspirin_perturbed_xyz)
         self.assertGreater(score, 0.01)
+
+    def test_order_mol_by_atom_map_identity(self):
+        """Identity map: result matches the element ordering of a plain deep copy."""
+        mol = ARCSpecies(label='ethanol', smiles='CCO').mol
+        n = len(mol.atoms)
+        # Deep-copy gives the canonical post-copy ordering; identity map must not change it.
+        ref_symbols = [a.element.symbol for a in mol.copy(deep=True).atoms]
+        result = order_mol_by_atom_map(mol, list(range(n)))
+        result_symbols = [a.element.symbol for a in result.atoms]
+        self.assertEqual(result_symbols, ref_symbols,
+                         msg='Identity map must not alter the atom sequence relative to a plain copy.')
+
+    def test_order_mol_by_atom_map_swap_two_atoms(self):
+        """Swapping two positions in atom_map transposes those atoms in the result."""
+        mol = ARCSpecies(label='methanol', smiles='CO').mol
+        n = len(mol.atoms)
+        # Reference copy to get the stable post-copy ordering.
+        ref_symbols = [a.element.symbol for a in mol.copy(deep=True).atoms]
+        # Find a pair of positions with different element symbols.
+        pos_a, pos_b = next(
+            (i, j) for i in range(n) for j in range(i + 1, n)
+            if ref_symbols[i] != ref_symbols[j]
+        )
+        atom_map = list(range(n))
+        atom_map[pos_a], atom_map[pos_b] = atom_map[pos_b], atom_map[pos_a]
+        result = order_mol_by_atom_map(mol, atom_map)
+        self.assertEqual(result.atoms[pos_a].element.symbol, ref_symbols[pos_b],
+                         msg=f'Position {pos_a} should hold the atom from position {pos_b}.')
+        self.assertEqual(result.atoms[pos_b].element.symbol, ref_symbols[pos_a],
+                         msg=f'Position {pos_b} should hold the atom from position {pos_a}.')
+        for i in range(n):
+            if i not in (pos_a, pos_b):
+                self.assertEqual(result.atoms[i].element.symbol, ref_symbols[i])
+
+    def test_order_mol_by_atom_map_deep_copy(self):
+        """The original molecule is not modified by reordering."""
+        mol = ARCSpecies(label='methanol', smiles='CO').mol
+        original_symbols = [a.element.symbol for a in mol.atoms]
+        n = len(mol.atoms)
+        order_mol_by_atom_map(mol, list(range(n - 1, -1, -1)))  # reverse
+        after_symbols = [a.element.symbol for a in mol.atoms]
+        self.assertEqual(original_symbols, after_symbols,
+                         msg='order_mol_by_atom_map must not mutate the input molecule.')
+
+    def test_order_mol_by_atom_map_bond_topology_preserved(self):
+        """Bond connectivity survives the atom reorder."""
+        mol = ARCSpecies(label='propane', smiles='CCC').mol
+        n = len(mol.atoms)
+
+        def bond_multiset(m):
+            bonds = []
+            for atom in m.atoms:
+                for nbr in atom.bonds.keys():
+                    bonds.append(tuple(sorted([atom.element.symbol, nbr.element.symbol])))
+            return sorted(bonds)
+
+        original_bonds = bond_multiset(mol)
+        atom_map = [(i + 1) % n for i in range(n)]
+        result = order_mol_by_atom_map(mol, atom_map)
+        self.assertEqual(bond_multiset(result), original_bonds,
+                         msg='Bond multiset must be unchanged after reordering.')
+        self.assertEqual(len(result.atoms), n)
+
+    def test_order_mol_by_atom_map_length_mismatch_raises(self):
+        """ValueError is raised when atom_map length does not match mol size."""
+        mol = ARCSpecies(label='water', smiles='O').mol  # 3 atoms
+        with self.assertRaises(ValueError):
+            order_mol_by_atom_map(mol, [0, 1])  # too short
+
+    def test_order_mol_by_atom_map_out_of_range_raises(self):
+        """ValueError is raised when any atom_map index is out of range."""
+        mol = ARCSpecies(label='water', smiles='O').mol  # 3 atoms
+        with self.assertRaises(ValueError):
+            order_mol_by_atom_map(mol, [0, 1, 5])  # index 5 is out of range
+        with self.assertRaises(ValueError):
+            order_mol_by_atom_map(mol, [0, 1, -1])  # negative index
+
+    def test_order_mol_by_atom_map_full_reversal(self):
+        """A reverse map produces the reverse of the plain deep-copy atom sequence."""
+        mol = ARCSpecies(label='ethanol', smiles='CCO').mol
+        n = len(mol.atoms)
+        ref_symbols = [a.element.symbol for a in mol.copy(deep=True).atoms]
+        atom_map = list(range(n - 1, -1, -1))
+        result = order_mol_by_atom_map(mol, atom_map)
+        self.assertEqual([a.element.symbol for a in result.atoms],
+                         list(reversed(ref_symbols)))
 
     @classmethod
     def tearDownClass(cls):

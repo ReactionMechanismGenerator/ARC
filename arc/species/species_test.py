@@ -1481,6 +1481,59 @@ H      -1.69944700    0.93441600   -0.11271200"""
         self.assertEqual(mol_ids, res1_ids)
         self.assertEqual(mol_ids, res2_ids)
 
+    def test_preserving_singlet_biradical_from_adjlist_with_xyz(self):
+        """Test that a singlet biradical defined via adjlist + xyz preserves its radical sites."""
+        xyz = """C      -1.71276869   -2.14835263   -0.29600082
+C      -1.30379477   -0.91506552    0.02297736
+C       0.02166928   -0.61873233    0.53428358
+C       0.12717819    0.82647389    0.91669270
+C      -1.28264593    1.32277593    0.84036811
+C      -1.85754229    2.26155916    1.60812418
+C      -3.29934285    2.39956966    1.60188376
+C      -4.08920980    1.47079635    1.03722857
+C      -3.52758183    0.33798706    0.32703925
+C      -2.07314208    0.38964129   -0.05559628
+H      -2.71169105   -2.33428156   -0.67752001
+H      -1.05967066   -3.00703332   -0.18456792
+H       0.81708685   -1.33998293    0.63942836
+H       0.76667301    1.35549222    0.20321493
+H       0.54320924    0.92870099    1.92345007
+H      -1.28510222    2.85939041    2.30922346
+H      -3.72854139    3.24346240    2.13325690
+H      -5.17022073    1.55123850    1.09315776
+H      -4.19994276   -0.36461812   -0.14850570
+H      -1.99779884    0.76292039   -1.08682170"""
+        spc = ARCSpecies(label='birad', adjlist="""multiplicity 1
+1  C u0 p0 c0 {2,D} {11,S} {12,S}
+2  C u0 p0 c0 {1,D} {3,S} {10,S}
+3  C u1 p0 c0 {2,S} {4,S} {13,S}
+4  C u0 p0 c0 {3,S} {5,S} {14,S} {15,S}
+5  C u1 p0 c0 {4,S} {6,S} {10,S}
+6  C u0 p0 c0 {5,S} {7,D} {16,S}
+7  C u0 p0 c0 {6,D} {8,S} {17,S}
+8  C u0 p0 c0 {7,S} {9,D} {18,S}
+9  C u0 p0 c0 {8,D} {10,S} {19,S}
+10 C u0 p0 c0 {2,S} {5,S} {9,S} {20,S}
+11 H u0 p0 c0 {1,S}
+12 H u0 p0 c0 {1,S}
+13 H u0 p0 c0 {3,S}
+14 H u0 p0 c0 {4,S}
+15 H u0 p0 c0 {4,S}
+16 H u0 p0 c0 {6,S}
+17 H u0 p0 c0 {7,S}
+18 H u0 p0 c0 {8,S}
+19 H u0 p0 c0 {9,S}
+20 H u0 p0 c0 {10,S}
+""", xyz=xyz, multiplicity=1)
+        self.assertEqual(spc.multiplicity, 1)
+        self.assertEqual(spc.mol.multiplicity, 1)
+        radical_atoms = [i for i, a in enumerate(spc.mol.atoms) if a.radical_electrons > 0]
+        self.assertEqual(len(radical_atoms), 2, 'Expected two radical centers in singlet biradical')
+        self.assertTrue(all(spc.mol.atoms[i].element.symbol == 'C' for i in radical_atoms))
+        # Verify atom ordering matches xyz (first heavy atom is C at xyz index 0).
+        self.assertEqual(spc.mol.atoms[0].element.symbol, 'C')
+        self.assertEqual(spc.mol.atoms[10].element.symbol, 'H')
+
     def test_preserving_multiplicity(self):
         """Test that multiplicity is being preserved, especially when it is guessed differently from xyz"""
         multiplicity_list = [2, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 3, 2, 1]

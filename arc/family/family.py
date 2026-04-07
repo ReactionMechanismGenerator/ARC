@@ -554,6 +554,17 @@ def check_product_isomorphism(products: List['Molecule'],
     """
     prods_a = [generate_resonance_structures_safely(mol) or [mol.copy(deep=True)] for mol in products]
     prods_b = [spc.mol_list or [spc.mol] for spc in p_species]
+    # For singlet biradicals (multiplicity forced below the natural value),
+    # add a copy with the natural multiplicity so template-generated products
+    # (which use the high-spin default) can match.
+    for i, spc in enumerate(p_species):
+        n_rad = spc.mol.get_radical_count()
+        natural_mult = n_rad + 1
+        if n_rad and spc.mol.multiplicity < natural_mult:
+            aug = [m.copy(deep=True) for m in prods_b[i]]
+            for m in aug:
+                m.multiplicity = natural_mult
+            prods_b[i] = prods_b[i] + aug
     if len(prods_a) == 1:
         prod_a = prods_a[0]
         prod_b = prods_b[0]
@@ -744,7 +755,7 @@ def descent_complex_group(group: str) -> List[str]:
         List[str]: The non-complex reactant group labels, e.g.: ['Xtrirad_H', 'Xbirad_H', 'Xrad_H', 'X_H'].
     """
     if group.startswith('OR{') and group.endswith('}'):
-        group = group[3:-1].split(', ')
+        group = [g.strip() for g in group[3:-1].split(',')]
     if isinstance(group, str):
         group = [group]
     return group
@@ -789,7 +800,9 @@ def get_recipe_actions(groups_as_lines: List[str]) -> List[List[str]]:
             j = 0
             while '])' not in groups_as_lines[i + 1 + j]:
                 if "['" in groups_as_lines[i + 1 + j]:
-                    actions.append(ast.literal_eval(groups_as_lines[i + 1 + j].strip())[0])
+                    line = groups_as_lines[i + 1 + j].strip()
+                    if not line.startswith('#'):
+                        actions.append(ast.literal_eval(line)[0])
                 j += 1
             break
     return actions
