@@ -8,6 +8,7 @@ This module owns the lifecycle of pipe runs once they are created.
 Family-specific task planning lives in ``pipe_planner.py``.
 """
 
+import os
 import time
 from typing import TYPE_CHECKING, Dict, List
 
@@ -48,6 +49,7 @@ class PipeCoordinator:
         self.active_pipes: Dict[str, PipeRun] = {}
         self._pipe_poll_failures: Dict[str, int] = {}
         self._last_pipe_summary: Dict[str, str] = {}
+        self._archive_old_pipe_dirs()
 
     def should_use_pipe(self, tasks: List[TaskSpec]) -> bool:
         """
@@ -75,13 +77,35 @@ class PipeCoordinator:
                    and t.required_memory_mb == ref.required_memory_mb
                    for t in tasks[1:])
 
+    def _archive_old_pipe_dirs(self) -> None:
+        """
+        Archive all existing pipe directories from ``runs/`` at startup.
+
+        Called once from ``__init__``. Moves any ``pipe_*`` directories to
+        ``log_and_restart_archive/`` so that ``stage()`` never hits
+        ``FileExistsError`` from stale previous runs.
+        """
+        import datetime
+        import shutil
+        runs_dir = os.path.join(self.sched.project_directory, 'runs')
+        if not os.path.isdir(runs_dir):
+            return
+        archive_dir = os.path.join(self.sched.project_directory, 'log_and_restart_archive')
+        timestamp = datetime.datetime.now().strftime('%H%M%S_%b%d_%Y')
+        for entry in os.listdir(runs_dir):
+            if entry.startswith('pipe_') and os.path.isdir(os.path.join(runs_dir, entry)):
+                os.makedirs(archive_dir, exist_ok=True)
+                src = os.path.join(runs_dir, entry)
+                dest = os.path.join(archive_dir, f'{entry}.old.{timestamp}')
+                logger.info(f'Archiving old pipe directory {entry} to {dest}')
+                shutil.move(src, dest)
+
     def submit_pipe_run(self, run_id: str, tasks: List[TaskSpec],
                         cluster_software: str = 'slurm') -> PipeRun:
         """
         Create, stage, and register a new pipe run.
 
-        Attempts to write a submit script and submit the array job.
-        On submission failure, the run is still registered as STAGED.
+        Old pipe directories are archived at startup by ``_archive_old_pipe_dirs``.
 
         Returns:
             PipeRun: The created pipe run.
