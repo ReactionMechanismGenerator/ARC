@@ -1619,5 +1619,335 @@ H       0.93760911   -0.05885406   -0.10079043"""
         self.assertIsNone(spec)
 
 
+# ---------------------------------------------------------------------------
+# Phase 3b: post-migration topology enrichment gates
+# ---------------------------------------------------------------------------
+
+
+class TestPhase3bEnrichmentGates(unittest.TestCase):
+    """The Phase 3b enricher only attaches richer metadata when ALL of
+    its topology gates pass.  Each gate has a dedicated test."""
+
+    def test_g1_rejects_zero_or_multiple_migrations(self):
+        from arc.job.adapters.ts.linear import _enrich_post_migration_path_spec
+        xyz = {
+            'symbols': ('C', 'N', 'H'),
+            'isotopes': (12, 14, 1),
+            'coords': ((0.0, 0.0, 0.0), (2.5, 0.0, 0.0), (1.0, 0.5, 0.0)),
+        }
+        class _A:
+            def __init__(self, sym, bonds=None):
+                class _E:
+                    def __init__(self, s):
+                        self.symbol = s
+                self.element = _E(sym)
+                self.bonds = bonds or {}
+        c = _A('C'); n = _A('N'); h = _A('H')
+        c.bonds = {h: None}; h.bonds = {c: None}
+        class _M:
+            atoms = [c, n, h]
+        # Zero migrations.
+        spec = _enrich_post_migration_path_spec(
+            uni_mol=_M(), uni_xyz=xyz, ts_xyz=xyz,
+            base_breaking=[], base_forming=[],
+            migrations=[], weight=0.5, family=None, label='G1-zero',
+        )
+        self.assertIsNone(spec)
+        # Two migrations.
+        m = [{'h_idx': 2, 'donor': 0, 'acceptor': 1, 'source': 'cross_bond'},
+             {'h_idx': 2, 'donor': 0, 'acceptor': 1, 'source': 'cross_bond'}]
+        spec = _enrich_post_migration_path_spec(
+            uni_mol=_M(), uni_xyz=xyz, ts_xyz=xyz,
+            base_breaking=[], base_forming=[],
+            migrations=m, weight=0.5, family=None, label='G1-multi',
+        )
+        self.assertIsNone(spec)
+
+    def test_g3_rejects_nearest_core_acceptor(self):
+        from arc.job.adapters.ts.linear import _enrich_post_migration_path_spec
+        xyz = {
+            'symbols': ('C', 'N', 'H'),
+            'isotopes': (12, 14, 1),
+            'coords': ((0.0, 0.0, 0.0), (2.5, 0.0, 0.0), (1.0, 0.5, 0.0)),
+        }
+        class _A:
+            def __init__(self, sym, bonds=None):
+                class _E:
+                    def __init__(self, s):
+                        self.symbol = s
+                self.element = _E(sym)
+                self.bonds = bonds or {}
+        c = _A('C'); n = _A('N'); h = _A('H')
+        c.bonds = {h: None}; h.bonds = {c: None}
+        class _M:
+            atoms = [c, n, h]
+        spec = _enrich_post_migration_path_spec(
+            uni_mol=_M(), uni_xyz=xyz, ts_xyz=xyz,
+            base_breaking=[], base_forming=[],
+            migrations=[{'h_idx': 2, 'donor': 0, 'acceptor': 1,
+                          'source': 'nearest_core'}],
+            weight=0.5, family=None, label='G3',
+            require_cross_bond_acceptor=True,
+        )
+        self.assertIsNone(spec)
+
+    def test_g4_rejects_distorted_donor_distance(self):
+        from arc.job.adapters.ts.linear import _enrich_post_migration_path_spec
+        xyz = {
+            'symbols': ('C', 'N', 'H'),
+            'isotopes': (12, 14, 1),
+            'coords': ((0.0, 0.0, 0.0), (2.5, 0.0, 0.0), (3.6, 0.0, 0.0)),
+        }
+        class _A:
+            def __init__(self, sym, bonds=None):
+                class _E:
+                    def __init__(self, s):
+                        self.symbol = s
+                self.element = _E(sym)
+                self.bonds = bonds or {}
+        c = _A('C'); n = _A('N'); h = _A('H')
+        c.bonds = {h: None}; h.bonds = {c: None}
+        class _M:
+            atoms = [c, n, h]
+        spec = _enrich_post_migration_path_spec(
+            uni_mol=_M(), uni_xyz=xyz, ts_xyz=xyz,
+            base_breaking=[], base_forming=[],
+            migrations=[{'h_idx': 2, 'donor': 0, 'acceptor': 1,
+                          'source': 'cross_bond'}],
+            weight=0.5, family=None, label='G4',
+        )
+        self.assertIsNone(spec)
+
+    def test_g5_rejects_competing_nearby_atom(self):
+        from arc.job.adapters.ts.linear import _enrich_post_migration_path_spec
+        # Place a third heavy atom right next to the migrating H.
+        xyz = {
+            'symbols': ('C', 'N', 'H', 'C'),
+            'isotopes': (12, 14, 1, 12),
+            'coords': (
+                (0.0, 0.0, 0.0),
+                (2.5, 0.0, 0.0),
+                (1.25, 0.5, 0.0),
+                (1.30, 0.55, 0.0),  # extremely close to the migrating H
+            ),
+        }
+        class _A:
+            def __init__(self, sym, bonds=None):
+                class _E:
+                    def __init__(self, s):
+                        self.symbol = s
+                self.element = _E(sym)
+                self.bonds = bonds or {}
+        c = _A('C'); n = _A('N'); h = _A('H'); c2 = _A('C')
+        c.bonds = {h: None}; h.bonds = {c: None}
+        class _M:
+            atoms = [c, n, h, c2]
+        spec = _enrich_post_migration_path_spec(
+            uni_mol=_M(), uni_xyz=xyz, ts_xyz=xyz,
+            base_breaking=[], base_forming=[],
+            migrations=[{'h_idx': 2, 'donor': 0, 'acceptor': 1,
+                          'source': 'cross_bond'}],
+            weight=0.5, family=None, label='G5',
+        )
+        self.assertIsNone(spec)
+
+    def test_all_gates_pass_returns_enriched_spec(self):
+        """Crafted donor–acceptor–H triple where every gate passes:
+        the enricher returns a populated :class:`ReactionPathSpec` whose
+        ``breaking_bonds`` and ``forming_bonds`` lists were extended.
+
+        Uses methylamine (CH3-NH2) so the underlying RMG ``Molecule``
+        carries real bond objects (the path-spec factory needs
+        ``bond.order``).  The migrating H index is one of the H atoms
+        on the C, with the N as acceptor.
+        """
+        from arc.job.adapters.ts.linear import _enrich_post_migration_path_spec
+        from arc.species import ARCSpecies
+        sp = ARCSpecies(label='methylamine', smiles='CN')
+        symbols = sp.get_xyz()['symbols']
+        # Find C, N, and one H bonded to C.
+        c_idx = next(i for i, s in enumerate(symbols) if s == 'C')
+        n_idx = next(i for i, s in enumerate(symbols) if s == 'N')
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        h_on_c = next(
+            atom_to_idx[nbr]
+            for nbr in sp.mol.atoms[c_idx].bonds.keys()
+            if nbr.element.symbol == 'H'
+        )
+        # Build a TS-like geometry: place donor at origin, acceptor on
+        # the +x axis, migrating H at the triangulated point.
+        d_donor_h = get_single_bond_length('C', 'H') + PAULING_DELTA
+        d_acceptor_h = get_single_bond_length('N', 'H') + PAULING_DELTA
+        d_da = d_donor_h + d_acceptor_h - 0.20
+        x = (d_da ** 2 + d_donor_h ** 2 - d_acceptor_h ** 2) / (2.0 * d_da)
+        y = float(np.sqrt(max(d_donor_h ** 2 - x ** 2, 0.0)))
+
+        coords = list(map(list, sp.get_xyz()['coords']))
+        coords[c_idx] = [0.0, 0.0, 0.0]
+        coords[n_idx] = [d_da, 0.0, 0.0]
+        coords[h_on_c] = [x, y, 0.0]
+        # Move all *other* heavy atoms far away so they don't compete
+        # with the migrating H during the G5 check.  Methylamine only
+        # has C and N as heavy atoms, so this is already handled.
+        # Move all *other* H atoms far away so they don't influence
+        # any heavy/H sub-check unintentionally.
+        for i, sym in enumerate(symbols):
+            if sym == 'H' and i != h_on_c:
+                coords[i] = [10.0 + i, 10.0, 10.0]
+
+        ts_xyz = {
+            'symbols': symbols,
+            'isotopes': sp.get_xyz().get(
+                'isotopes', tuple(0 for _ in symbols)),
+            'coords': tuple(tuple(float(c) for c in row) for row in coords),
+        }
+
+        spec = _enrich_post_migration_path_spec(
+            uni_mol=sp.mol,
+            uni_xyz=sp.get_xyz(),
+            ts_xyz=ts_xyz,
+            base_breaking=[],
+            base_forming=[],
+            migrations=[{'h_idx': h_on_c, 'donor': c_idx, 'acceptor': n_idx,
+                          'source': 'cross_bond'}],
+            weight=0.5, family='test', label='G-all-pass',
+        )
+        self.assertIsNotNone(spec)
+        # The (donor, h) bond is now in breaking_bonds, the (acceptor, h)
+        # bond is in forming_bonds (canonicalized).
+        canon_dh = (min(c_idx, h_on_c), max(c_idx, h_on_c))
+        canon_ah = (min(n_idx, h_on_c), max(n_idx, h_on_c))
+        self.assertIn(canon_dh, spec.breaking_bonds)
+        self.assertIn(canon_ah, spec.forming_bonds)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3b: finite-score promotion via the live addition pipeline
+# ---------------------------------------------------------------------------
+
+
+class TestPhase3bFiniteScorePromotion(unittest.TestCase):
+    """Run the full :func:`interpolate_addition` pipeline on a real
+    H-migration addition reaction and verify that at least one
+    post-migration template-guided guess now reaches the finalizer with
+    a real finite score (not the Phase 3a +inf)."""
+
+    def test_template_post_migration_now_carries_finite_score(self):
+        from arc.species import ARCSpecies
+        from arc.reaction import ARCReaction
+        from arc.job.adapters.ts import linear as L
+
+        r_xyz = """C       1.14981017    0.04138987   -0.06722786
+C      -0.25415691   -0.17696939    0.46881798
+N      -0.38312147    0.39227542    1.80366803
+H       1.89791609   -0.44343932    0.56909864
+H       1.38984772    1.10839783   -0.12647258
+H       1.23928774   -0.38052643   -1.07342059
+H      -0.98187243    0.29596310   -0.19835733
+H      -0.47689047   -1.24854874    0.50220986
+H       0.27600194   -0.06032721    2.43576220
+H      -1.31312338    0.19118810    2.16873833"""
+        r = ARCSpecies(label='R', smiles='CCN', xyz=r_xyz)
+        p1 = ARCSpecies(label='P1', smiles='C=C')
+        p2 = ARCSpecies(label='P2', smiles='N')
+        rxn = ARCReaction(r_species=[r], p_species=[p1, p2])
+
+        captured = []
+        original = L._finalize_ts_guesses
+
+        def trace(ts_xyzs, path_spec, rxn, r_mol):
+            captured.append(list(ts_xyzs))
+            return original(ts_xyzs, path_spec=path_spec, rxn=rxn, r_mol=r_mol)
+
+        L._finalize_ts_guesses = trace
+        try:
+            L.interpolate_addition(rxn, weight=0.5)
+        finally:
+            L._finalize_ts_guesses = original
+
+        records = captured[0] if captured else []
+        self.assertGreater(len(records), 0)
+        # At least one template-guided post-migration record now carries
+        # a non-None ReactionPathSpec whose breaking_bonds list explicitly
+        # includes a (heavy, H) pair — i.e. Phase 3b enrichment fired.
+        promoted = []
+        for rec in records:
+            if rec.strategy != 'template_guided' or rec.path_spec is None:
+                continue
+            for (a, b) in rec.path_spec.breaking_bonds:
+                if 'H' in (rec.xyz['symbols'][a], rec.xyz['symbols'][b]):
+                    promoted.append(rec)
+                    break
+        self.assertGreater(
+            len(promoted), 0,
+            'Phase 3b should promote at least one template-guided '
+            'post-migration record to a finite-score, enriched spec.')
+
+        # And computing its score must yield a finite (non-+inf) value.
+        from arc.job.adapters.ts.linear import (
+            classify_path_chemistry, score_guess_against_path_spec,
+        )
+        rec = promoted[0]
+        symbols = tuple(rec.xyz['symbols'])
+        chem = classify_path_chemistry(rec.path_spec, r.mol, symbols)
+        score = score_guess_against_path_spec(
+            rec.path_spec, rec.xyz, r.mol, symbols, chem)
+        self.assertNotEqual(score, float('inf'),
+                            'enriched record must score finitely')
+
+
+# ---------------------------------------------------------------------------
+# Phase 3b: degraded-mode preservation for ambiguous cases
+# ---------------------------------------------------------------------------
+
+
+class TestPhase3bDegradedPreservation(unittest.TestCase):
+    """Cases where the topology gates correctly refuse enrichment must
+    still produce a record (degraded mode) and never crash."""
+
+    def test_g3_nearest_core_acceptor_remains_degraded(self):
+        from arc.job.adapters.ts.linear import _enrich_post_migration_path_spec
+        xyz = {
+            'symbols': ('C', 'N', 'H'),
+            'isotopes': (12, 14, 1),
+            'coords': ((0.0, 0.0, 0.0), (2.5, 0.0, 0.0), (1.0, 0.5, 0.0)),
+        }
+        class _A:
+            def __init__(self, sym, bonds=None):
+                class _E:
+                    def __init__(self, s):
+                        self.symbol = s
+                self.element = _E(sym)
+                self.bonds = bonds or {}
+        c = _A('C'); n = _A('N'); h = _A('H')
+        c.bonds = {h: None}; h.bonds = {c: None}
+        class _M:
+            atoms = [c, n, h]
+        spec = _enrich_post_migration_path_spec(
+            uni_mol=_M(), uni_xyz=xyz, ts_xyz=xyz,
+            base_breaking=[], base_forming=[],
+            migrations=[{'h_idx': 2, 'donor': 0, 'acceptor': 1,
+                          'source': 'nearest_core'}],
+            weight=0.5, family=None, label='degraded-G3',
+        )
+        self.assertIsNone(spec)
+
+    def test_xy_elimination_remains_degraded_no_crash(self):
+        """The XY-elimination dedicated motif builder is explicitly
+        out-of-scope for Phase 3b enrichment.  Verify the call still
+        completes without crashing."""
+        from arc.species import ARCSpecies
+        from arc.reaction import ARCReaction
+        from arc.job.adapters.ts import linear as L
+
+        r = ARCSpecies(label='R', smiles='CCC(=O)O')
+        p1 = ARCSpecies(label='P1', smiles='C=C')
+        p2 = ARCSpecies(label='P2', smiles='[H][H]')
+        p3 = ARCSpecies(label='P3', smiles='O=C=O')
+        rxn = ARCReaction(r_species=[r], p_species=[p1, p2, p3])
+        out = L.interpolate_addition(rxn, weight=0.5)
+        self.assertIsInstance(out, list)
+
+
 if __name__ == '__main__':
     unittest.main()

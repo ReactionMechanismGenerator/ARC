@@ -226,6 +226,13 @@ from arc.job.adapters.ts.linear_utils.addition import (
     stretch_bond,
     stretch_core_from_large,
 )
+from arc.job.adapters.ts.linear_utils.local_geometry import (
+    clean_migrating_h,
+    identify_h_migration_pairs,
+    orient_h_away_from_axis,
+    regularize_terminal_h_geometry,
+    restore_terminal_h_symmetry,
+)
 from arc.job.adapters.ts.linear_utils.families import build_xy_elimination_ts
 
 
@@ -1518,26 +1525,86 @@ def interpolate_addition(rxn: 'ARCReaction',
                     ts_xyz = migrate_verified_atoms(
                         ts_xyz, uni_mol, migrating_atoms, core,
                         large_prod_atoms, weight, cross_bonds=cross_bonds)
-                    # Phase 3a: post-migration changes the bond topology
-                    # in ways that the path-spec (built from split_bonds
-                    # only) does not capture — migrating-H bonds appear
-                    # "snapped" to the unchanged_near_core check even
-                    # though they are physically in transit.  Validate
-                    # in degraded mode here, and also strip the path-spec
-                    # from the resulting GuessRecord so the finalizer
-                    # does not over-penalize migration variants.  This
-                    # is the documented "truly incomplete fallback spec"
-                    # case from the Phase 3a directive.
-                    is_valid, reason = _validate_addition_guess(
-                        ts_xyz, path_spec=None, uni_mol=uni_mol,
-                        forming_bonds=split_bonds,
-                        label=f'rxn={rxn.label}, path={i}-post-migrate')
+
+                    # Phase 3b — local reactive-center cleanup + topology
+                    # enrichment.
+                    #
+                    # Step 1: recover the (h, donor, acceptor) records that
+                    # mirror what migrate_verified_atoms used internally.
+                    migration_records = identify_h_migration_pairs(
+                        ts_xyz, uni_mol, migrating_atoms, core,
+                        large_prod_atoms, cross_bonds=cross_bonds)
+                    # Step 2: run small local helpers per migration record.
+                    # NOTE: ``migrate_verified_atoms`` already places the
+                    # migrating H at the triangulated TS position, so we
+                    # do NOT re-call ``clean_migrating_h`` here.  The
+                    # helper remains available for direct callers and is
+                    # exercised by its own unit tests.
+                    for mig_rec in migration_records:
+                        h_idx_loc = int(mig_rec['h_idx'])
+                        d_loc = int(mig_rec['donor'])
+                        a_loc = int(mig_rec['acceptor'])
+                        # 2a — orient any non-migrating H bonded to the
+                        # donor or acceptor away from the inward blocking
+                        # pocket.
+                        ts_xyz = orient_h_away_from_axis(
+                            ts_xyz, uni_mol, d_loc, a_loc,
+                            exclude_h={h_idx_loc})
+                        # 2b — regularize terminal H bond lengths around
+                        # both endpoints (no-op when already in range).
+                        ts_xyz = regularize_terminal_h_geometry(
+                            ts_xyz, uni_mol, d_loc,
+                            exclude_atoms={h_idx_loc})
+                        ts_xyz = regularize_terminal_h_geometry(
+                            ts_xyz, uni_mol, a_loc,
+                            exclude_atoms={h_idx_loc})
+
+                    # Step 3: Phase 3b path-spec enrichment.
+                    enriched_path_spec = _enrich_post_migration_path_spec(
+                        uni_mol=uni_mol,
+                        uni_xyz=uni_xyz,
+                        ts_xyz=ts_xyz,
+                        base_breaking=split_bonds,
+                        base_forming=cross_bonds,
+                        migrations=migration_records,
+                        weight=weight,
+                        family=_family_name or rxn.family,
+                        label=f'rxn={rxn.label}, path={i}-post-migrate',
+                        require_cross_bond_acceptor=True,
+                    )
+
+                    # Step 4: validate.  Try the enriched final-stage
+                    # validator first; on failure, fall back to the
+                    # degraded builder-stage validator so legitimate
+                    # migration guesses with imperfect local geometry
+                    # still survive (just with path_spec=None).
+                    if enriched_path_spec is not None:
+                        is_valid, reason = _validate_addition_guess(
+                            ts_xyz, path_spec=enriched_path_spec,
+                            uni_mol=uni_mol, forming_bonds=split_bonds,
+                            label=f'rxn={rxn.label}, path={i}-post-migrate')
+                        if is_valid:
+                            record_path_spec = enriched_path_spec
+                        else:
+                            logger.debug(
+                                f'Linear addition (rxn={rxn.label}, path={i}): '
+                                f'enriched post-migrate validation failed '
+                                f'({reason}); falling back to degraded mode.')
+                            is_valid, reason = _validate_addition_builder_geometry(
+                                ts_xyz, uni_mol=uni_mol,
+                                label=f'rxn={rxn.label}, path={i}-post-migrate')
+                            record_path_spec = None
+                    else:
+                        is_valid, reason = _validate_addition_builder_geometry(
+                            ts_xyz, uni_mol=uni_mol,
+                            label=f'rxn={rxn.label}, path={i}-post-migrate')
+                        record_path_spec = None
+
                     if not is_valid:
                         logger.debug(
                             f'Linear addition (rxn={rxn.label}, path={i}): '
                             f'post-migration rejected — {reason}.')
                         continue
-                    record_path_spec = None  # degraded
                 else:
                     record_path_spec = template_path_spec
                 if ts_xyz is not None:
@@ -1988,36 +2055,132 @@ def interpolate_addition(rxn: 'ARCReaction',
             uni_xyz, uni_mol, cut, None, multi_species,
             weight, label=f'rxn={rxn.label}, frag-fallback')
         for ring_xyz in ring_xyzs:
-            ts_xyz = stretch_bond(ring_xyz, uni_mol, cut, cross_bonds=None,
-                                   weight=weight,
-                                   label=f'rxn={rxn.label}, frag-fallback',
-                                   path_spec=cut_path_spec)
-            if ts_xyz is not None:
-                ts_xyz = migrate_h_between_fragments(
-                    ts_xyz, uni_mol, cut, multi_species, weight)
-                # Phase 3a: ``migrate_h_between_fragments`` shifts H
-                # atoms whose old/new bonds are not represented in the
-                # ``cut`` set.  As with the template-guided post-migrate
-                # branch above, we use degraded validation here and
-                # also strip the path-spec from the resulting record so
-                # the finalizer does not over-penalize the genuine
-                # migration variants.
+            pre_migrate_xyz = stretch_bond(
+                ring_xyz, uni_mol, cut, cross_bonds=None,
+                weight=weight,
+                label=f'rxn={rxn.label}, frag-fallback',
+                path_spec=cut_path_spec)
+            if pre_migrate_xyz is None:
+                continue
+
+            ts_xyz = migrate_h_between_fragments(
+                pre_migrate_xyz, uni_mol, cut, multi_species, weight)
+
+            # Phase 3b — derive a single-H migration record by comparing
+            # pre- and post-migration H positions, then run the same
+            # local cleanup + topology enrichment pipeline as the
+            # template-guided branch.  ``migrate_h_between_fragments``
+            # heuristically chooses which H to move, so we are extra
+            # conservative here: we only enrich when EXACTLY ONE H
+            # actually moved AND its donor/acceptor are both adjacent
+            # to a split-bond endpoint (gate G7).
+            frag_migrations: List[Dict] = []
+            try:
+                pre_arr = np.asarray(pre_migrate_xyz['coords'], dtype=float)
+                post_arr = np.asarray(ts_xyz['coords'], dtype=float)
+                frag_symbols = ts_xyz['symbols']
+                moved_h: List[int] = []
+                for h in range(len(frag_symbols)):
+                    if frag_symbols[h] != 'H':
+                        continue
+                    if float(np.linalg.norm(post_arr[h] - pre_arr[h])) > 0.05:
+                        moved_h.append(h)
+                if len(moved_h) == 1:
+                    h_idx = moved_h[0]
+                    # Donor in the *reactant graph*: only heavy neighbor.
+                    donor_atom: Optional[int] = None
+                    atom_to_idx_local = {a: i for i, a in enumerate(uni_mol.atoms)}
+                    for nbr in uni_mol.atoms[h_idx].bonds.keys():
+                        ni = atom_to_idx_local[nbr]
+                        if frag_symbols[ni] != 'H':
+                            if donor_atom is not None:
+                                donor_atom = None  # ambiguous
+                                break
+                            donor_atom = ni
+                    if donor_atom is not None:
+                        # Acceptor: nearest heavy atom in the post-migrate
+                        # geometry that is *not* the donor and not already
+                        # too far away to be a TS partner.
+                        heavy_others = [
+                            i for i, s in enumerate(frag_symbols)
+                            if s != 'H' and i != donor_atom
+                        ]
+                        if heavy_others:
+                            dists = np.linalg.norm(
+                                post_arr[heavy_others] - post_arr[h_idx], axis=1)
+                            acceptor_atom = heavy_others[int(dists.argmin())]
+                            frag_migrations = [{
+                                'h_idx': int(h_idx),
+                                'donor': int(donor_atom),
+                                'acceptor': int(acceptor_atom),
+                                'source': 'frag_inferred',
+                            }]
+            except Exception:  # pragma: no cover - defensive
+                frag_migrations = []
+
+            # Run local cleanup + (conservative) enrichment.
+            # Same NOTE as the template-guided branch:
+            # ``migrate_h_between_fragments`` already triangulated the
+            # migrating H, so we do NOT re-call ``clean_migrating_h``.
+            for mig_rec in frag_migrations:
+                h_idx_loc = int(mig_rec['h_idx'])
+                d_loc = int(mig_rec['donor'])
+                a_loc = int(mig_rec['acceptor'])
+                ts_xyz = orient_h_away_from_axis(
+                    ts_xyz, uni_mol, d_loc, a_loc, exclude_h={h_idx_loc})
+                ts_xyz = regularize_terminal_h_geometry(
+                    ts_xyz, uni_mol, d_loc, exclude_atoms={h_idx_loc})
+                ts_xyz = regularize_terminal_h_geometry(
+                    ts_xyz, uni_mol, a_loc, exclude_atoms={h_idx_loc})
+
+            enriched_path_spec = _enrich_post_migration_path_spec(
+                uni_mol=uni_mol,
+                uni_xyz=uni_xyz,
+                ts_xyz=ts_xyz,
+                base_breaking=cut,
+                base_forming=[],
+                migrations=frag_migrations,
+                weight=weight,
+                family=_family_name or rxn.family,
+                label=f'rxn={rxn.label}, frag-fallback-post-migrate',
+                require_cross_bond_acceptor=False,
+                require_split_adjacent=True,
+            )
+
+            if enriched_path_spec is not None:
                 is_valid, reason = _validate_addition_guess(
-                    ts_xyz, path_spec=None, uni_mol=uni_mol,
-                    forming_bonds=cut,
+                    ts_xyz, path_spec=enriched_path_spec,
+                    uni_mol=uni_mol, forming_bonds=cut,
                     label=f'rxn={rxn.label}, frag-fallback-post-migrate')
-                if not is_valid:
-                    logger.debug(f'Linear (rxn={rxn.label}, frag-fallback): '
-                                 f'post-migration guess rejected — {reason}.')
-                    continue
-                ts_records.append(GuessRecord(
-                    xyz=ts_xyz,
-                    bb=list(cut),
-                    fb=[],
-                    family=_family_name or rxn.family,
-                    strategy='frag_fallback',
-                    path_spec=None,  # degraded — migration not captured
-                ))
+                if is_valid:
+                    record_path_spec = enriched_path_spec
+                else:
+                    logger.debug(
+                        f'Linear (rxn={rxn.label}, frag-fallback): '
+                        f'enriched validation failed ({reason}); '
+                        f'falling back to degraded mode.')
+                    is_valid, reason = _validate_addition_builder_geometry(
+                        ts_xyz, uni_mol=uni_mol,
+                        label=f'rxn={rxn.label}, frag-fallback-post-migrate')
+                    record_path_spec = None
+            else:
+                is_valid, reason = _validate_addition_builder_geometry(
+                    ts_xyz, uni_mol=uni_mol,
+                    label=f'rxn={rxn.label}, frag-fallback-post-migrate')
+                record_path_spec = None
+
+            if not is_valid:
+                logger.debug(f'Linear (rxn={rxn.label}, frag-fallback): '
+                             f'post-migration guess rejected — {reason}.')
+                continue
+            ts_records.append(GuessRecord(
+                xyz=ts_xyz,
+                bb=list(cut),
+                fb=[],
+                family=_family_name or rxn.family,
+                strategy='frag_fallback',
+                path_spec=record_path_spec,
+            ))
 
     # First-pass deduplication against existing_xyzs (cross-weight cache)
     # using exact-coord similarity, the convention this pipeline has used
@@ -2179,6 +2342,229 @@ def _validate_addition_guess(xyz: dict,
             label=label,
         )
     return validate_ts_guess(xyz, set(), list(forming_bonds or []), uni_mol, label=label)
+
+
+def _validate_addition_builder_geometry(xyz: dict,
+                                          uni_mol: 'Molecule',
+                                          label: str,
+                                          ) -> Tuple[bool, str]:
+    """Phase 3b: explicit name for *builder-stage* permissive screening.
+
+    Builder-stage geometries (the immediate output of leaf builders such
+    as :func:`stretch_bond`, :func:`try_insertion_ring`,
+    :func:`build_concerted_ts`, and the inner output of
+    :func:`migrate_verified_atoms`) are *intermediate* — they may not
+    yet satisfy the strict path-spec checks the final-stage wrapper
+    runs.  This wrapper preserves the pre-Phase-3a permissive behavior
+    by routing through :func:`_validate_addition_guess` with
+    ``path_spec=None``, which falls back to the legacy
+    :func:`validate_ts_guess`.
+
+    Existence of this thin alias makes the builder-vs-final distinction
+    grep-able, self-documenting, and easy to ratchet later if a builder
+    starts producing path-spec-clean intermediates.
+    """
+    return _validate_addition_guess(
+        xyz=xyz, path_spec=None, uni_mol=uni_mol,
+        forming_bonds=[], label=label)
+
+
+def _enrich_post_migration_path_spec(uni_mol: 'Molecule',
+                                       uni_xyz: dict,
+                                       ts_xyz: dict,
+                                       base_breaking: List[Tuple[int, int]],
+                                       base_forming: List[Tuple[int, int]],
+                                       migrations: List[Dict],
+                                       weight: float,
+                                       family: Optional[str],
+                                       label: str,
+                                       require_cross_bond_acceptor: bool = True,
+                                       require_split_adjacent: bool = False,
+                                       ) -> Optional['ReactionPathSpec']:
+    """Phase 3b: build an enriched :class:`ReactionPathSpec` for a
+    cleaned-up post-migration addition guess — *only* when the inferred
+    migration topology is genuinely trustworthy.
+
+    The enricher applies the Phase 3b topology gates (G1-G7) and, if
+    *all* gates pass, returns a :class:`ReactionPathSpec` whose
+    ``breaking_bonds`` and ``forming_bonds`` lists are extended with the
+    inferred ``(donor, h_idx)`` and ``(acceptor, h_idx)`` H-bond pair.
+    The spec is constructed via the existing Phase 1
+    :meth:`ReactionPathSpec.build` factory — no second-style spec
+    construction is hand-rolled.
+
+    When *any* gate fails the helper returns ``None`` and the caller
+    must preserve degraded mode (``path_spec=None``) per the most
+    important Phase 3b rule.
+
+    Gates (all required):
+
+    * **G1** — exactly one migration record (single-H migration only).
+    * **G2** — donor uniquely identified as the only heavy neighbor of
+      ``h_idx`` in the reactant graph that lies in the donor side.
+    * **G3** — acceptor came from the verified ``cross_bond`` source,
+      not the ``nearest_core`` fallback.  (Disable with
+      ``require_cross_bond_acceptor=False`` only when the caller has an
+      independent equivalent guarantee.)
+    * **G4** — chemically plausible local geometry after cleanup:
+      ``0.7·sbl(D,H) ≤ d(D,H) ≤ 2.0·sbl(D,H)`` AND
+      ``0.7·sbl(A,H) ≤ d(A,H) ≤ 2.0·sbl(A,H)``.
+    * **G5** — no competing nonreactive heavy atom is closer than
+      ``0.95·sbl(Z,H)`` for any heavy ``Z ∉ {donor, acceptor}``.
+    * **G6** — donor–acceptor separation consistent with H in transit:
+      ``0.9·(sbl(D,H)+sbl(A,H)) ≤ d(D,A) ≤ 1.6·(sbl(D,H)+sbl(A,H))``.
+    * **G7** — (frag-fallback only, ``require_split_adjacent=True``)
+      donor and acceptor must each be adjacent in the reactant graph
+      to a ``base_breaking`` endpoint.
+
+    Args:
+        uni_mol: Unimolecular RMG Molecule.
+        uni_xyz: Reactant XYZ dict (used by the spec factory).
+        ts_xyz: Cleaned-up TS guess XYZ dict (the geometry the gates
+            are evaluated on).
+        base_breaking: Existing breaking bonds (template ``split_bonds``
+            or fragmentation cut).
+        base_forming: Existing forming bonds (template ``cross_bonds``
+            or empty for fragmentation).
+        migrations: Migration records from
+            :func:`identify_h_migration_pairs`.
+        weight: Interpolation weight (passed through to the factory).
+        family: RMG family string (passed through to the factory).
+        label: Logging label.
+        require_cross_bond_acceptor: Phase 3b default.  Frag-fallback
+            sets this to ``False`` only after an independent G7 check.
+        require_split_adjacent: Frag-fallback sets this to ``True``.
+
+    Returns:
+        A populated :class:`ReactionPathSpec` on success, or ``None``
+        when any gate fails.
+    """
+    if ts_xyz is None or uni_mol is None:
+        return None
+
+    # G1 — exactly one migration record.
+    if len(migrations) != 1:
+        logger.debug(f'Linear addition ({label}): enrichment skipped (G1: '
+                     f'{len(migrations)} migration records).')
+        return None
+
+    rec = migrations[0]
+    h_idx = int(rec['h_idx'])
+    donor = int(rec['donor'])
+    acceptor = int(rec['acceptor'])
+    source = rec.get('source')
+
+    coords = np.asarray(ts_xyz['coords'], dtype=float)
+    symbols = ts_xyz['symbols']
+    n_atoms = len(symbols)
+    if h_idx >= n_atoms or donor >= n_atoms or acceptor >= n_atoms:
+        return None
+    if symbols[h_idx] != 'H':
+        logger.debug(f'Linear addition ({label}): enrichment skipped (G1: '
+                     f'migrating atom {h_idx} is not H).')
+        return None
+    if donor == acceptor:
+        return None
+
+    # G2 — donor uniquely identified as a heavy neighbor in the reactant graph.
+    atom_to_idx = {atom: i for i, atom in enumerate(uni_mol.atoms)}
+    heavy_nbrs_of_h: Set[int] = set()
+    for nbr in uni_mol.atoms[h_idx].bonds.keys():
+        ni = atom_to_idx[nbr]
+        if symbols[ni] != 'H':
+            heavy_nbrs_of_h.add(ni)
+    if heavy_nbrs_of_h != {donor}:
+        logger.debug(f'Linear addition ({label}): enrichment skipped (G2: '
+                     f'donor {donor} not uniquely the heavy neighbor of H{h_idx}; '
+                     f'observed {sorted(heavy_nbrs_of_h)}).')
+        return None
+
+    # G3 — acceptor source must be cross_bond when required.
+    if require_cross_bond_acceptor and source != 'cross_bond':
+        logger.debug(f'Linear addition ({label}): enrichment skipped (G3: '
+                     f'acceptor source {source!r}, not cross_bond).')
+        return None
+
+    # G4 — donor/acceptor distances within plausible TS range.
+    sbl_dh = get_single_bond_length(symbols[donor], 'H')
+    sbl_ah = get_single_bond_length(symbols[acceptor], 'H')
+    if not sbl_dh or not sbl_ah:
+        return None
+    sbl_dh = float(sbl_dh)
+    sbl_ah = float(sbl_ah)
+    d_dh = float(np.linalg.norm(coords[donor] - coords[h_idx]))
+    d_ah = float(np.linalg.norm(coords[acceptor] - coords[h_idx]))
+    if not (0.70 * sbl_dh <= d_dh <= 2.00 * sbl_dh):
+        logger.debug(f'Linear addition ({label}): enrichment skipped (G4: '
+                     f'd(D,H)={d_dh:.3f} outside [{0.7*sbl_dh:.3f}, {2.0*sbl_dh:.3f}]).')
+        return None
+    if not (0.70 * sbl_ah <= d_ah <= 2.00 * sbl_ah):
+        logger.debug(f'Linear addition ({label}): enrichment skipped (G4: '
+                     f'd(A,H)={d_ah:.3f} outside [{0.7*sbl_ah:.3f}, {2.0*sbl_ah:.3f}]).')
+        return None
+
+    # G5 — no competing nonreactive heavy atom is closer.
+    for z in range(n_atoms):
+        if z == donor or z == acceptor or z == h_idx or symbols[z] == 'H':
+            continue
+        d_zh = float(np.linalg.norm(coords[z] - coords[h_idx]))
+        sbl_zh = get_single_bond_length(symbols[z], 'H')
+        if not sbl_zh:
+            continue
+        if d_zh < 0.95 * float(sbl_zh):
+            logger.debug(f'Linear addition ({label}): enrichment skipped (G5: '
+                         f'competing heavy atom {symbols[z]}{z} at d={d_zh:.3f} < '
+                         f'{0.95*float(sbl_zh):.3f}).')
+            return None
+
+    # G6 — donor-acceptor separation consistent with H in transit.
+    d_da = float(np.linalg.norm(coords[donor] - coords[acceptor]))
+    da_lo = 0.90 * (sbl_dh + sbl_ah)
+    da_hi = 1.60 * (sbl_dh + sbl_ah)
+    if not (da_lo <= d_da <= da_hi):
+        logger.debug(f'Linear addition ({label}): enrichment skipped (G6: '
+                     f'd(D,A)={d_da:.3f} outside [{da_lo:.3f}, {da_hi:.3f}]).')
+        return None
+
+    # G7 (frag-fallback only) — donor and acceptor must each be adjacent
+    # to a base_breaking endpoint in the reactant graph.
+    if require_split_adjacent:
+        split_atoms: Set[int] = set()
+        for a, b in base_breaking:
+            split_atoms.add(int(a))
+            split_atoms.add(int(b))
+
+        def _is_adjacent_to_split(idx: int) -> bool:
+            if idx in split_atoms:
+                return True
+            for nbr in uni_mol.atoms[idx].bonds.keys():
+                if atom_to_idx[nbr] in split_atoms:
+                    return True
+            return False
+
+        if not (_is_adjacent_to_split(donor) and _is_adjacent_to_split(acceptor)):
+            logger.debug(f'Linear addition ({label}): enrichment skipped (G7: '
+                         f'donor or acceptor not adjacent to a split-bond endpoint).')
+            return None
+
+    # All gates passed — extend bond lists and rebuild via the Phase 1 factory.
+    enriched_breaking = list(base_breaking) + [(donor, h_idx)]
+    enriched_forming = list(base_forming) + [(acceptor, h_idx)]
+    try:
+        return ReactionPathSpec.build(
+            r_mol=uni_mol,
+            mapped_p_mol=None,
+            breaking_bonds=enriched_breaking,
+            forming_bonds=enriched_forming,
+            r_xyz=uni_xyz,
+            op_xyz=None,
+            weight=weight,
+            family=family,
+        )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug(f'Linear addition ({label}): enrichment factory raised '
+                     f'({type(e).__name__}: {e}); preserving degraded mode.')
+        return None
 
 
 def _build_path_context(r_xyz: dict, r_mol: 'Molecule', op_xyz: dict,

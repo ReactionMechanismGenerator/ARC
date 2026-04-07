@@ -1672,7 +1672,13 @@ H      -0.98187243    0.29596310   -0.19835733
 H      -0.47689047   -1.24854874    0.50220986
 H       0.23766157    0.10890575    2.83260486
 H      -1.35146375    0.36042106    2.56558099"""
-        self.assertTrue(almost_equal_coords(ts_xyzs[1], str_to_xyz(expected_ts_1)))
+        # Phase 3b: equivalent H migration variants (e.g. H3 vs H4 from
+        # the same CH3) are now correctly collapsed by the heavy-only
+        # second-pass dedup once their enriched specs deliver finite
+        # scores.  The test only requires that the canonical TS appears
+        # somewhere in the result list.
+        expected = str_to_xyz(expected_ts_1)
+        self.assertTrue(any(almost_equal_coords(ts, expected) for ts in ts_xyzs))
 
     def test_interpolate_1_3_sigmatropic_rearrangement(self):  # TODO: 3 guesses, first two are wrong, 3rd one is OK, but has a C-N bond too long (1.7 vs. expected 1.5) that should not be cut in the TS
         """Test the interpolate_isomerization() function for 1,3_sigmatropic_rearrangement: c1ncc[nH]1 <=> N=CN1C=C1"""
