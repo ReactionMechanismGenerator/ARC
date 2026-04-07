@@ -994,21 +994,36 @@ def migrate_verified_atoms(ts_xyz: dict,
     core_heavy = [idx for idx in core if symbols[idx] != 'H']
 
     # Build a map from migrating atom → cross-bond partner (the acceptor).
+    # The acceptor may live in *any* product fragment, not only ``core``:
+    # families like Korcek_step2 produce intra-fragment H migrations where
+    # donor and acceptor are both in the *large* fragment.  The cross
+    # bond's heavy-atom partner is the authoritative acceptor in those
+    # cases — restricting it to ``core`` would silently misroute the H.
     cross_acceptor: Dict[int, int] = {}
     for a, b in (cross_bonds or []):
-        if a in migrating_atoms and b in core:
+        if a in migrating_atoms and symbols[b] != 'H':
             cross_acceptor[a] = b
-        elif b in migrating_atoms and a in core:
+        elif b in migrating_atoms and symbols[a] != 'H':
             cross_acceptor[b] = a
 
     for h_idx in migrating_atoms:
-        # Find donor: the heavy-atom neighbor in the reactant (should be in large_prod_atoms).
+        # Find donor: the H's heavy reactant neighbor.  Prefer one that
+        # lives in ``large_prod_atoms`` (the inter-fragment migration
+        # case), but fall back to *any* heavy reactant neighbor so that
+        # intra-large H migrations (Korcek_step2 — donor C and acceptor C
+        # are both in the same product fragment) are handled too.
         donor = None
         for nbr in uni_mol.atoms[h_idx].bonds.keys():
             nbr_idx = atom_to_idx[nbr]
             if symbols[nbr_idx] != 'H' and nbr_idx in large_prod_atoms:
                 donor = nbr_idx
                 break
+        if donor is None:
+            for nbr in uni_mol.atoms[h_idx].bonds.keys():
+                nbr_idx = atom_to_idx[nbr]
+                if symbols[nbr_idx] != 'H':
+                    donor = nbr_idx
+                    break
         if donor is None:
             continue
 

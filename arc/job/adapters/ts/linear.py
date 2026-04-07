@@ -1336,6 +1336,37 @@ def interpolate_addition(rxn: 'ARCReaction',
     uni_xyz = uni_species.get_xyz()
     uni_mol = uni_species.mol
 
+    # Recipe revisit: when ARC's default RMG family set produces no
+    # ``product_dicts`` for this reaction, retry once with the full
+    # ('all') family set before falling through to the trivial-fallback
+    # heuristics.  Several real reactions (notably Korcek_step1 and
+    # Korcek_step2 — the cyclic-peroxide → ketone+acid Criegee
+    # decomposition) live outside the default set, and their RMG
+    # recipes already contain the full action list (including any
+    # required H migration).  Without this retry the heavy-only
+    # heuristic path silently strips the H migration the recipe
+    # prescribes.  The retry is cheap (one extra family scan) and is
+    # only paid by reactions that the default scan failed to identify.
+    if not rxn.product_dicts:
+        try:
+            wider_pds = rxn.get_product_dicts(
+                rmg_family_set='all',
+                consider_rmg_families=True,
+                consider_arc_families=True,
+                discover_own_reverse_rxns_in_reverse=True,
+            )
+        except Exception as e:
+            logger.debug(f'Linear addition (rxn={rxn.label}): wider family-set '
+                         f'retry raised {type(e).__name__}: {e}; continuing without recipe.')
+            wider_pds = []
+        if wider_pds:
+            rxn.product_dicts = wider_pds
+            if rxn.family is None:
+                rxn.family = wider_pds[0]['family']
+            logger.debug(f'Linear addition (rxn={rxn.label}): wider family-set '
+                         f'retry recovered family={wider_pds[0].get("family")} '
+                         f'with {len(wider_pds)} product_dict(s).')
+
     # Phase 3a: addition guesses are now carried as GuessRecord objects
     # so they can transport ReactionPathSpec metadata through the shared
     # finalizer for real finite scoring.
@@ -1482,6 +1513,35 @@ def interpolate_addition(rxn: 'ARCReaction',
             else:
                 core = small_prod_atoms
                 migrating_atoms = set()
+
+            # ----- intra-fragment H migrations from cross_bonds -----
+            # The "small_prod - core" detection above only catches H atoms
+            # that migrate FROM the large product INTO the small product.
+            # It misses *intra-fragment* H migrations where both donor and
+            # acceptor live in the same product (e.g. Korcek_step2: the H
+            # leaving C[3] in the trioxolane lands on C[2] — both belong
+            # to the acetone fragment).  Whenever a cross bond connects an
+            # H to a heavy atom that is NOT the H's reactant heavy
+            # neighbor, the H is also migrating.  Pick those up so the
+            # downstream stretch_core_from_large + migrate_verified_atoms
+            # branch fires for them too.
+            for _ca, _cb in cross_bonds:
+                for _h_cand, _partner in ((_ca, _cb), (_cb, _ca)):
+                    if uni_xyz['symbols'][_h_cand] != 'H':
+                        continue
+                    if uni_xyz['symbols'][_partner] == 'H':
+                        # H-H cross bond (e.g. H2 elimination).  Already
+                        # handled by build_concerted_ts elsewhere; do not
+                        # reroute through migrate_verified_atoms.
+                        continue
+                    _heavy_nbr = None
+                    for _nbr in uni_mol.atoms[_h_cand].bonds.keys():
+                        _ni = atom_to_idx[_nbr]
+                        if uni_xyz['symbols'][_ni] != 'H':
+                            _heavy_nbr = _ni
+                            break
+                    if _heavy_nbr is not None and _heavy_nbr != _partner:
+                        migrating_atoms.add(_h_cand)
 
             # Apply intra-fragment ring contraction BEFORE stretching.
             # Contraction moves atoms (e.g. S toward C in cyclic thioether

@@ -6,6 +6,7 @@ This module contains unit tests of the arc.job.adapters.ts.heuristics module
 """
 
 import inspect
+import math
 import os
 import shutil
 import unittest
@@ -3493,8 +3494,19 @@ H      -2.65275729    0.85777810   -0.63272727"""
         for ts_xyz in ts_xyzs:
             self.assertFalse(colliding_atoms(ts_xyz))
 
-    def test_interpolate_korcek_step2(self):  # todo: missing H11 (0-index) migration from C3 to C2 in the TS
-        """Test the interpolate_isomerization() function for Korcek_step2: OC1CC(C)OO1 <=> CC(C)=O + OC=O"""
+    def test_interpolate_korcek_step2(self):
+        """Test the interpolate_isomerization() function for Korcek_step2:
+        OC1CC(C)OO1 <=> CC(C)=O + OC=O.
+
+        The Korcek_step2 RMG family explicitly prescribes a C-to-C
+        hydrogen migration as part of the trioxolane fragmentation
+        (the H originally bonded to the methyl-substituted ring carbon
+        ends up on what becomes a methyl group of acetone).  Korcek_step2
+        sits outside ARC's *default* RMG family set, so this test also
+        exercises the recipe-revisit fallback in ``interpolate_addition``
+        which retries with the *all* family set when the default scan
+        produces no product_dicts.
+        """
         r_xyz = """O       2.24879740   -0.60288879   -0.61333491
 C       1.57371209    0.04810206    0.45127457
 C       0.22294576   -0.58878552    0.64811736
@@ -3532,12 +3544,39 @@ H      -1.17675011   -0.82602831    0.12938360"""
         ts_xyzs = interpolate(rxn)
         _save_debug_geometries(ts_xyzs, rxn)
         self.assertGreater(len(ts_xyzs), 0)
-        self.assertGreaterEqual(len(ts_xyzs), 1)
+        # The recipe-revisit fallback should have promoted Korcek_step2
+        # into product_dicts and onto rxn.family.
+        self.assertEqual(rxn.family, 'Korcek_step2',
+                         msg=f'Expected Korcek_step2 to be detected via the wider '
+                             f'family-set retry; got rxn.family={rxn.family!r}')
+        self.assertGreaterEqual(len(rxn.product_dicts), 1)
+        # Reactant atom indices used below come from the SMILES
+        # 'OC1CC(C)OO1' canonicalisation: 0=OH O, 1=C(OH), 2=CH2,
+        # 3=C(CH3), 4=methyl C, 5=ring O, 6=ring O, 7=OH H,
+        # 8..14=carbon Hs, 11=H bonded to atom 3 (the migrating H).
         coords_0 = np.array(ts_xyzs[0]['coords'], dtype=float)
-        d_cc = float(np.linalg.norm(coords_0[1] - coords_0[2]))
-        d_oo = float(np.linalg.norm(coords_0[5] - coords_0[6]))
-        self.assertTrue(1.5 < d_cc < 2.5, msg=f'C1-C2 breaking: {d_cc:.3f}')
-        self.assertTrue(1.4 < d_oo < 2.5, msg=f'O5-O6 breaking: {d_oo:.3f}')
+        d_c1_c2  = float(np.linalg.norm(coords_0[1]  - coords_0[2]))
+        d_o5_o6  = float(np.linalg.norm(coords_0[5]  - coords_0[6]))
+        d_c3_h11 = float(np.linalg.norm(coords_0[3]  - coords_0[11]))
+        d_c2_h11 = float(np.linalg.norm(coords_0[2]  - coords_0[11]))
+        # Heavy split bonds must be partially broken (Pauling target ~ 1.92).
+        self.assertTrue(1.6 < d_c1_c2 < 2.4,
+                        msg=f'C[1]-C[2] should be stretched at the TS, got {d_c1_c2:.3f}')
+        self.assertTrue(1.6 < d_o5_o6 < 2.4,
+                        msg=f'O[5]-O[6] peroxide should be stretched at the TS, got {d_o5_o6:.3f}')
+        # The C-to-C H migration must show as a stretched donor-H bond
+        # *and* a partially formed acceptor-H bond.  Both should sit
+        # near the symmetric Pauling target (sbl_CH + 0.42 ~ 1.49 Å).
+        self.assertTrue(1.30 < d_c3_h11 < 1.95,
+                        msg=f'C[3]-H[11] (H leaving donor) should be stretched, got {d_c3_h11:.3f}')
+        self.assertTrue(1.30 < d_c2_h11 < 1.95,
+                        msg=f'C[2]-H[11] (H arriving at acceptor) should be partially '
+                            f'formed, got {d_c2_h11:.3f}')
+        # Both edges of the migration should be roughly symmetric in
+        # this isoceles 4-membered ring TS (within ~0.3 Å of each other).
+        self.assertLess(abs(d_c3_h11 - d_c2_h11), 0.30,
+                        msg=f'donor-H ({d_c3_h11:.3f}) and acceptor-H ({d_c2_h11:.3f}) '
+                            f'should be near-symmetric in the Korcek_step2 TS')
 
     def test_interpolate_r_addition_com(self):
         """Test the interpolate_isomerization() function for R_Addition_COm: [CH]=C + [C-]#[O+] <=> C=C[C]=O"""
@@ -4868,7 +4907,7 @@ H      -0.32577456   -5.73032885    1.02901611
 H      -0.88225165   -5.06025647    2.56434488"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts_0)) for ts in ts_xyzs))
 
-    def test_interpolate_intra_substitutions_isomerization(self):  # todo: wrong
+    def test_interpolate_intra_substitutions_isomerization(self):  # todo: no TS
         """Test the interpolate_isomerization() function for Intra_substitutionS_isomerization: [CH2]SSC <=> CSC[S]"""
         r_xyz = """C       2.02473594    0.05810114    0.12967514
 S       0.94173618    1.38848441   -0.00439602
@@ -4893,10 +4932,9 @@ H       1.61593633   -0.33730052   -2.83543977"""
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn, weight=0.5)
         _save_debug_geometries(ts_xyzs, rxn)
-        self.assertIsNotNone(ts_xyzs)
-        self.assertIsInstance(ts_xyzs, list)
+        self.assertTrue(len(ts_xyzs) > 0)
 
-    def test_interpolate_lone_electron_pair_bond(self):
+    def test_interpolate_lone_electron_pair_bond(self):  # todo: no TS
         """Test the interpolate_isomerization() function for lone_electron_pair_bond: NH2CH3 + O <=> CH2[NH2+][O-]"""
         r_1 = ARCSpecies(label='R1', smiles='NC')
         r_2 = ARCSpecies(label='O', smiles='[O]', multiplicity=1)
@@ -4904,7 +4942,7 @@ H       1.61593633   -0.33730052   -2.83543977"""
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn, weight=0.5)
         _save_debug_geometries(ts_xyzs, rxn)
-        self.assertIsNotNone(ts_xyzs)
+        self.assertTrue(len(ts_xyzs) > 0)
 
 
     def test_linear_adapter(self):
@@ -5079,8 +5117,6 @@ H   -2.6362   -1.0847    0.0000"""
           * Every surviving TS guess has entirely finite (non-NaN, non-Inf) coordinates.
           * No surviving guess contains colliding atoms.
         """
-        import math
-
         r_xyz = """C    3.03272979   -0.11060195   -0.24229461
 C    1.85599055   -0.34675713   -0.20247149
 C    0.41485966   -0.64142590   -0.15352412

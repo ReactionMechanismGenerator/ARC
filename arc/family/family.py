@@ -808,6 +808,82 @@ def get_recipe_actions(groups_as_lines: List[str]) -> List[List[str]]:
     return actions
 
 
+def _split_entries(groups_str: str) -> List[str]:
+    """Split a groups.py source string into the bodies of every top-level
+    ``entry(...)`` block.
+
+    A naive ``re.findall(r'entry\\((.*?)\\)', ..., re.DOTALL)`` is fooled by
+    ``)`` characters that appear inside the entry's string literals (for
+    example a ``label = "C1(R)(H)(O(OC3(OH)(R'))C2)"`` for Korcek_step2),
+    causing the entry to be truncated and downstream parsing to miss the
+    label and the group adjacency list entirely.
+
+    This helper does a small character-by-character scan that tracks
+    parenthesis depth while skipping over single-quoted, double-quoted,
+    and triple-quoted string literals.  The body returned for each entry
+    is the text between the opening ``entry(`` and the matching ``)`` —
+    exactly what the original ``re.findall`` was supposed to return.
+    """
+    bodies: List[str] = []
+    n = len(groups_str)
+    pos = 0
+    while True:
+        marker = groups_str.find('entry(', pos)
+        if marker < 0:
+            break
+        body_start = marker + len('entry(')
+        # Walk forward from body_start, tracking paren depth and skipping
+        # over string literals.  Start at depth 1 because we're already
+        # inside the outer ``entry(`` parentheses.
+        depth = 1
+        j = body_start
+        in_string: Optional[str] = None  # None | '"' | "'" | '"""' | "'''"
+        while j < n and depth > 0:
+            if in_string is None:
+                # Check for a triple-quoted string opener first.
+                triple = groups_str[j:j + 3]
+                if triple in ('"""', "'''"):
+                    in_string = triple
+                    j += 3
+                    continue
+                ch = groups_str[j]
+                if ch in ('"', "'"):
+                    in_string = ch
+                    j += 1
+                    continue
+                if ch == '(':
+                    depth += 1
+                elif ch == ')':
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            else:
+                if len(in_string) == 3:
+                    if groups_str[j:j + 3] == in_string:
+                        in_string = None
+                        j += 3
+                        continue
+                    j += 1
+                    continue
+                ch = groups_str[j]
+                if ch == '\\' and j + 1 < n:
+                    # Skip the escape and the escaped character.
+                    j += 2
+                    continue
+                if ch == in_string:
+                    in_string = None
+                    j += 1
+                    continue
+                j += 1
+        if depth != 0:
+            # Unmatched ``entry(`` — give up rather than mis-attribute.
+            break
+        bodies.append(groups_str[body_start:j])
+        pos = j + 1
+    return bodies
+
+
 def get_entries(groups_as_lines: List[str],
                 entry_labels: List[str],
                 ) -> Dict[str, str]:
@@ -822,11 +898,11 @@ def get_entries(groups_as_lines: List[str],
         Dict[str, str]: The extracted entries, keys are the labels, values are the groups.
     """
     groups_str = ''.join(groups_as_lines)
-    entries = re.findall(r'entry\((.*?)\)', groups_str, re.DOTALL)
+    entries = _split_entries(groups_str)
     specific_entries = dict()
     for i, entry in enumerate(entries):
-        label_match = re.search(r'label = "(.*?)"', entry)
-        group_match = re.search(r'group =(.*?)(?=\w+ =)', entry, re.DOTALL)
+        label_match = re.search(r'label\s*=\s*"(.*?)"', entry)
+        group_match = re.search(r'group\s*=(.*?)(?=\w+\s*=)', entry, re.DOTALL)
         if label_match is not None and group_match is not None and label_match.group(1) in entry_labels:
             specific_entries[label_match.group(1)] = clean_text(group_match.group(1))
         if i > 2000:
