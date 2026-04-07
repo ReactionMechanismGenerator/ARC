@@ -286,5 +286,71 @@ class TestUpdateTaskState(unittest.TestCase):
         self.assertEqual(len(errors), 4)
 
 
+class TestFailedEssState(unittest.TestCase):
+    """Tests for the FAILED_ESS task state."""
+
+    def test_running_to_failed_ess_is_valid(self):
+        self.assertIn(TaskState.FAILED_ESS, TASK_TRANSITIONS[TaskState.RUNNING])
+
+    def test_failed_ess_is_terminal(self):
+        self.assertEqual(TASK_TRANSITIONS[TaskState.FAILED_ESS], ())
+
+    def test_transition_out_of_failed_ess_raises(self):
+        with self.assertRaises(ValueError):
+            check_valid_transition(TaskState.FAILED_ESS, TaskState.PENDING)
+
+    def test_failed_ess_not_retried_by_reconcile(self):
+        """FAILED_ESS tasks should not be reset to PENDING by reconcile."""
+        from arc.job.pipe.pipe_run import PipeRun
+        tmpdir = tempfile.mkdtemp(prefix='pipe_ess_noretry_')
+        try:
+            spec = TaskSpec(
+                task_id='t_ess', task_family='conf_opt', owner_type='species',
+                owner_key='spc', input_fingerprint='fp', engine='mockter',
+                level={'method': 'm'}, required_cores=1, required_memory_mb=1024,
+                input_payload={}, ingestion_metadata={})
+            pipe = PipeRun(project_directory=tmpdir, run_id='noretry',
+                           tasks=[spec], cluster_software='slurm',
+                           pipe_root=os.path.join(tmpdir, 'calcs', 'pipe_test_0'))
+            pipe.stage()
+            now = time.time()
+            update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.CLAIMED,
+                              claimed_by='w', claim_token='t', claimed_at=now, lease_expires_at=now+300)
+            update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.RUNNING, started_at=now)
+            update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.FAILED_ESS,
+                              ended_at=now, failure_class='ess_error')
+            counts = pipe.reconcile()
+            self.assertEqual(counts[TaskState.FAILED_ESS.value], 1)
+            self.assertEqual(counts[TaskState.PENDING.value], 0)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_failed_ess_counts_as_terminal(self):
+        """FAILED_ESS should count toward terminal total so the pipe run completes."""
+        from arc.job.pipe.pipe_run import PipeRun
+        tmpdir = tempfile.mkdtemp(prefix='pipe_ess_terminal_')
+        try:
+            spec = TaskSpec(
+                task_id='t_ess', task_family='conf_opt', owner_type='species',
+                owner_key='spc', input_fingerprint='fp', engine='mockter',
+                level={'method': 'm'}, required_cores=1, required_memory_mb=1024,
+                input_payload={}, ingestion_metadata={})
+            pipe = PipeRun(project_directory=tmpdir, run_id='term_test',
+                           tasks=[spec], cluster_software='slurm',
+                           pipe_root=os.path.join(tmpdir, 'calcs', 'pipe_test_0'))
+            pipe.stage()
+            now = time.time()
+            update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.CLAIMED,
+                              claimed_by='w', claim_token='t', claimed_at=now, lease_expires_at=now+300)
+            update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.RUNNING, started_at=now)
+            update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.FAILED_ESS,
+                              ended_at=now, failure_class='ess_error')
+            counts = pipe.reconcile()
+            from arc.job.pipe.pipe_state import PipeRunState
+            self.assertIn(pipe.status, (PipeRunState.COMPLETED_PARTIAL, PipeRunState.COMPLETED))
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
