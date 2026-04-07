@@ -233,14 +233,13 @@ class PipeCoordinator:
             if state.status == TaskState.COMPLETED.value:
                 ingest_completed_task(pipe.run_id, pipe.pipe_root, spec, state,
                                       self.sched.species_dict, self.sched.output)
+            elif state.status == TaskState.FAILED_ESS.value:
+                self._eject_to_scheduler(pipe, spec, state)
+                ejected_count += 1
             elif state.status == TaskState.FAILED_TERMINAL.value:
-                if state.failure_class == 'ess_error':
-                    self._eject_to_scheduler(pipe, spec, state)
-                    ejected_count += 1
-                else:
-                    logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
-                                 f'failed terminally (failure_class={state.failure_class}). '
-                                 f'Manual troubleshooting required.')
+                logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                             f'failed terminally (failure_class={state.failure_class}). '
+                             f'Manual troubleshooting required.')
             elif state.status == TaskState.CANCELLED.value:
                 logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                                f'was cancelled.')
