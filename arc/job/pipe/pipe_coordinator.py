@@ -49,7 +49,6 @@ class PipeCoordinator:
         self.active_pipes: Dict[str, PipeRun] = {}
         self._pipe_poll_failures: Dict[str, int] = {}
         self._last_pipe_summary: Dict[str, str] = {}
-        self._archive_old_pipe_dirs()
 
     def should_use_pipe(self, tasks: List[TaskSpec]) -> bool:
         """
@@ -77,39 +76,55 @@ class PipeCoordinator:
                    and t.required_memory_mb == ref.required_memory_mb
                    for t in tasks[1:])
 
-    def _archive_old_pipe_dirs(self) -> None:
+    def _compute_pipe_root(self, run_id: str, tasks: List[TaskSpec]) -> str:
         """
-        Archive all existing pipe directories from ``runs/`` at startup.
+        Compute the pipe_root path under ``calcs/``, following ARC's directory convention.
 
-        Called once from ``__init__``. Moves any ``pipe_*`` directories to
-        ``log_and_restart_archive/`` so that ``stage()`` never hits
-        ``FileExistsError`` from stale previous runs.
+        Per-species runs: ``calcs/{TSs|Species}/<label>/pipe_<family>_<N>/``
+        Cross-species batches: ``calcs/batches/pipe_<run_id>_<N>/``
+        The index ``<N>`` auto-increments if a previous run directory exists.
         """
-        import datetime
-        import shutil
-        runs_dir = os.path.join(self.sched.project_directory, 'runs')
-        if not os.path.isdir(runs_dir):
-            return
-        archive_dir = os.path.join(self.sched.project_directory, 'log_and_restart_archive')
-        timestamp = datetime.datetime.now().strftime('%H%M%S_%b%d_%Y')
-        for entry in os.listdir(runs_dir):
-            if entry.startswith('pipe_') and os.path.isdir(os.path.join(runs_dir, entry)):
-                os.makedirs(archive_dir, exist_ok=True)
-                src = os.path.join(runs_dir, entry)
-                dest = os.path.join(archive_dir, f'{entry}.old.{timestamp}')
-                logger.info(f'Archiving old pipe directory {entry} to {dest}')
-                shutil.move(src, dest)
+        calcs_dir = os.path.join(self.sched.project_directory, 'calcs')
+        owner_keys = {t.owner_key for t in tasks} if tasks else set()
+        if len(owner_keys) == 1:
+            label = owner_keys.pop()
+            species = self.sched.species_dict.get(label)
+            if species is not None:
+                folder = 'TSs' if species.is_ts else 'Species'
+            else:
+                folder = 'Species'
+            base_dir = os.path.join(calcs_dir, folder, label)
+            prefix = f'pipe_{tasks[0].task_family}'
+        else:
+            base_dir = os.path.join(calcs_dir, 'batches')
+            prefix = f'pipe_{run_id}'
+        return self._next_indexed_dir(base_dir, prefix)
+
+    @staticmethod
+    def _next_indexed_dir(base_dir: str, prefix: str) -> str:
+        """Find the next available auto-incremented directory name."""
+        if not os.path.isdir(base_dir):
+            return os.path.join(base_dir, f'{prefix}_0')
+        max_idx = -1
+        for entry in os.listdir(base_dir):
+            if entry.startswith(prefix + '_') and os.path.isdir(os.path.join(base_dir, entry)):
+                suffix = entry[len(prefix) + 1:]
+                if suffix.isdigit():
+                    max_idx = max(max_idx, int(suffix))
+        return os.path.join(base_dir, f'{prefix}_{max_idx + 1}')
 
     def submit_pipe_run(self, run_id: str, tasks: List[TaskSpec],
                         cluster_software: str = 'slurm') -> PipeRun:
         """
         Create, stage, and register a new pipe run.
 
-        Old pipe directories are archived at startup by ``_archive_old_pipe_dirs``.
+        The pipe_root is placed under ``calcs/`` alongside regular job output,
+        with auto-incrementing index to avoid collisions with prior runs.
 
         Returns:
             PipeRun: The created pipe run.
         """
+        pipe_root = self._compute_pipe_root(run_id, tasks)
         pipe = PipeRun(
             project_directory=self.sched.project_directory,
             run_id=run_id,
@@ -117,6 +132,7 @@ class PipeCoordinator:
             cluster_software=cluster_software,
             max_workers=pipe_settings.get('max_workers', 100),
             max_attempts=pipe_settings.get('max_attempts', 3),
+            pipe_root=pipe_root,
         )
         pipe.stage()
         try:
