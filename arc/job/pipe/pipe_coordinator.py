@@ -49,6 +49,7 @@ class PipeCoordinator:
         self.active_pipes: Dict[str, PipeRun] = {}
         self._pipe_poll_failures: Dict[str, int] = {}
         self._last_pipe_summary: Dict[str, str] = {}
+        self._archive_old_pipe_dirs()
 
     def should_use_pipe(self, tasks: List[TaskSpec]) -> bool:
         """
@@ -76,43 +77,39 @@ class PipeCoordinator:
                    and t.required_memory_mb == ref.required_memory_mb
                    for t in tasks[1:])
 
-    def _handle_existing_pipe_root(self, pipe_root: str, run_id: str) -> None:
+    def _archive_old_pipe_dirs(self) -> None:
         """
-        Archive a pre-existing pipe_root directory before staging a new run.
+        Archive all existing pipe directories from ``runs/`` at startup.
 
-        Always archives — there is no reliable signal in the current ARC
-        architecture to distinguish a fresh start from a restart
-        (restart_dict is always set).
+        Called once from ``__init__``. Moves any ``pipe_*`` directories to
+        ``log_and_restart_archive/`` so that ``stage()`` never hits
+        ``FileExistsError`` from stale previous runs.
         """
-        if not os.path.isdir(pipe_root):
-            return
-        self._archive_pipe_root(pipe_root, run_id)
-
-    def _archive_pipe_root(self, pipe_root: str, run_id: str) -> None:
-        """Move an old pipe_root directory to log_and_restart_archive/."""
         import datetime
         import shutil
+        runs_dir = os.path.join(self.sched.project_directory, 'runs')
+        if not os.path.isdir(runs_dir):
+            return
         archive_dir = os.path.join(self.sched.project_directory, 'log_and_restart_archive')
-        os.makedirs(archive_dir, exist_ok=True)
         timestamp = datetime.datetime.now().strftime('%H%M%S_%b%d_%Y')
-        dest = os.path.join(archive_dir, f'pipe_{run_id}.old.{timestamp}')
-        logger.info(f'Pipe run {run_id}: archiving old directory to {dest}')
-        shutil.move(pipe_root, dest)
+        for entry in os.listdir(runs_dir):
+            if entry.startswith('pipe_') and os.path.isdir(os.path.join(runs_dir, entry)):
+                os.makedirs(archive_dir, exist_ok=True)
+                src = os.path.join(runs_dir, entry)
+                dest = os.path.join(archive_dir, f'{entry}.old.{timestamp}')
+                logger.info(f'Archiving old pipe directory {entry} to {dest}')
+                shutil.move(src, dest)
 
     def submit_pipe_run(self, run_id: str, tasks: List[TaskSpec],
                         cluster_software: str = 'slurm') -> PipeRun:
         """
         Create, stage, and register a new pipe run.
 
-        If the pipe_root already exists on disk:
-          - On restart with an active run: resumes it via register_pipe_run_from_dir.
-          - Otherwise: archives the old directory and creates a fresh run.
+        Old pipe directories are archived at startup by ``_archive_old_pipe_dirs``.
 
         Returns:
             PipeRun: The created pipe run.
         """
-        pipe_root = os.path.join(self.sched.project_directory, 'runs', 'pipe_' + run_id)
-        self._handle_existing_pipe_root(pipe_root, run_id)
         pipe = PipeRun(
             project_directory=self.sched.project_directory,
             run_id=run_id,

@@ -802,7 +802,14 @@ class Scheduler(object):
                             break
 
                 if not len(job_list):
-                    self.check_all_done(label)
+                    has_pending_pipe_work = (
+                        label in self._pending_pipe_sp
+                        or label in self._pending_pipe_freq
+                        or any(lbl == label for lbl, _ in self._pending_pipe_irc)
+                        or label in self._pending_pipe_conf_sp
+                    )
+                    if not has_pending_pipe_work:
+                        self.check_all_done(label)
                     if not self.running_jobs[label]:
                         # Delete the label only if it represents an empty entry.
                         del self.running_jobs[label]
