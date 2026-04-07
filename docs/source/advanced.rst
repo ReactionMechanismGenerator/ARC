@@ -989,10 +989,40 @@ Pipe mode is configured via ``pipe_settings`` in ``arc/settings/settings.py``
         'scratch_base': '',        # Base directory for worker scratch (e.g., '/gtmp').
     }
 
+**Directory structure:**
+
+Pipe runs are placed under ``calcs/`` alongside regular job output, following
+ARC's existing directory convention. A new run auto-increments its index
+(``_0``, ``_1``, ...) to avoid collisions with prior runs::
+
+    <project>/calcs/
+    ├── TSs/
+    │   └── TS0/
+    │       ├── opt_a1349/              # regular job
+    │       └── pipe_ts_opt_0/          # pipe run
+    │           ├── run.json
+    │           ├── submit.sh
+    │           └── tasks/
+    │               ├── TS0_ts_opt_0/
+    │               │   ├── spec.json
+    │               │   ├── state.json
+    │               │   └── attempts/
+    │               │       └── 0/
+    │               │           ├── calcs/
+    │               │           ├── result.json
+    │               │           └── worker.log
+    │               └── TS0_ts_opt_1/
+    │                   └── ...
+    ├── Species/
+    │   └── H2O/
+    │       ├── conf_opt_a1/            # regular job
+    │       └── pipe_conf_opt_0/        # pipe run
+    └── batches/
+        └── pipe_species_sp_batch_0/    # cross-species batch
+
 **Submit scripts:**
 
-Pipe mode generates array submit scripts under the run directory
-(``<project>/runs/pipe_<run_id>/submit.sh``).
+Pipe mode generates array submit scripts under the pipe run directory.
 The templates follow ARC's existing submit-script conventions from
 ``arc/settings/submit.py`` and support SLURM, PBS, SGE, and HTCondor.
 Users who customize their submit templates can edit the ``pipe_submit``
