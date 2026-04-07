@@ -195,6 +195,7 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     has_broken_nonreactive_bond,
     has_close_h_pair_on_same_parent,
     has_excessive_backbone_drift,
+    has_misdirected_migrating_h,
     orient_h_on_reactive_centers,
     postprocess_ts_guess,
     validate_ts_guess,
@@ -1190,6 +1191,18 @@ def _clear_forming_bond_path(xyz: dict,
     """
     import numpy as np
     coords = np.array(xyz['coords'], dtype=float)
+    # H atoms that are themselves part of a forming bond (i.e. migrating Hs)
+    # were already placed at their correct triangulated TS position by
+    # postprocess_h_migration → fix_forming_bond_distances.  Reflecting them
+    # again here would push them back away from their acceptor (the very
+    # bug this function is meant to clear for non-migrating Hs), so they
+    # are exempted from the reflection below.
+    migrating_h_indices: Set[int] = set()
+    for fa, fb in forming_bonds:
+        if xyz['symbols'][fa] == 'H':
+            migrating_h_indices.add(fa)
+        if xyz['symbols'][fb] == 'H':
+            migrating_h_indices.add(fb)
     for a, b in forming_bonds:
         # Only clear for heavy-atom forming bonds that close a ring across a
         # substantial chain (topological distance >= 4 in the reactant graph).
@@ -1197,7 +1210,6 @@ def _clear_forming_bond_path(xyz: dict,
         if xyz['symbols'][a] == 'H' or xyz['symbols'][b] == 'H':
             continue
         # BFS for topological distance between a and b in the reactant
-        from collections import deque
         visited = {a}
         queue = deque([(a, 0)])
         topo_dist = 0
@@ -1223,6 +1235,10 @@ def _clear_forming_bond_path(xyz: dict,
             for bonded_atom in atom.edges:
                 h_idx = r_mol.atoms.index(bonded_atom)
                 if xyz['symbols'][h_idx] != 'H':
+                    continue
+                if h_idx in migrating_h_indices:
+                    # Migrating H already placed by triangulation; do not
+                    # reflect it back away from its acceptor.
                     continue
                 h_vec = coords[h_idx] - coords[endpoint]
                 proj = float(np.dot(h_vec, bond_dir))
@@ -3571,6 +3587,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             return False
         unique = [rec for rec in unique
                   if not colliding_atoms(rec.xyz) and not _has_bivalent_h(rec.xyz)
+                  and not has_misdirected_migrating_h(rec.xyz, rec.fb or [])
                   and (not changing_all
                        or not has_broken_nonreactive_bond(rec.xyz, r_mol, changing_all))]
 

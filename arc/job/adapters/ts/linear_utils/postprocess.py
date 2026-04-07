@@ -384,6 +384,59 @@ def _has_detached_hydrogen(xyz: dict,
     return False
 
 
+def has_misdirected_migrating_h(xyz: dict,
+                                forming_bonds: List[Tuple[int, int]],
+                                max_factor: float = 2.0,
+                                ) -> bool:
+    """
+    Return ``True`` if any forming X-H bond places the H much farther from
+    its acceptor than the Pauling TS estimate allows.
+
+    For Intra_RH_Add and similar reactions where a hydrogen migrates onto
+    an acceptor X, the migrating H must be approaching X in the TS guess.
+    A reasonable TS has ``d(H-X) ≈ sbl(H-X) + 0.42 Å`` (the symmetric Pauling
+    estimate, ~1.4 Å for O-H and ~1.5 Å for C-H).  When the actual H-X
+    distance in the guess exceeds ``max_factor`` × that target, the H is
+    pointing **away** from the acceptor — geometrically invalid for any
+    sane TS, regardless of how reasonable the rest of the geometry looks.
+
+    This filter is independent of family detection: it operates purely on
+    the per-guess forming-bond list, so it acts as a backstop in code
+    paths (e.g. trivial-map fallback) where family-specific validators
+    are bypassed.
+
+    Only forming bonds with **exactly one** H atom are considered.
+
+    Args:
+        xyz (dict): TS guess XYZ coordinate dictionary.
+        forming_bonds (List[Tuple[int, int]]): Forming-bond ``(i, j)``
+            pairs in the same atom indexing as ``xyz``.
+        max_factor (float): Multiplier on the Pauling target above which
+            the H is treated as misdirected.  Default 2.0 → ~2.78 Å for
+            O-H and ~2.98 Å for C-H.
+
+    Returns:
+        bool: ``True`` when at least one forming H-X bond exceeds
+        ``max_factor × (sbl + PAULING_DELTA)``.
+    """
+    if not forming_bonds:
+        return False
+    coords = np.array(xyz['coords'], dtype=float)
+    symbols = xyz['symbols']
+    for a, b in forming_bonds:
+        sym_a, sym_b = symbols[a], symbols[b]
+        if (sym_a == 'H') == (sym_b == 'H'):
+            continue  # need exactly one H
+        h_idx = a if sym_a == 'H' else b
+        x_idx = b if sym_a == 'H' else a
+        sbl = get_single_bond_length(symbols[h_idx], symbols[x_idx]) or _EQ_BOND_TO_H_DEFAULT
+        target = sbl + PAULING_DELTA
+        d = float(np.linalg.norm(coords[h_idx] - coords[x_idx]))
+        if d > max_factor * target:
+            return True
+    return False
+
+
 def _has_detached_heavy_atom(xyz: dict,
                              mol: 'Molecule',
                              max_bond_stretch: float = 2.5,
