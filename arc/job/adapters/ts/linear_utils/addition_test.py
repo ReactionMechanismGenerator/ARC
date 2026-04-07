@@ -16,18 +16,20 @@ from arc.species import ARCSpecies
 _MASS_NUMBER = {'H': 1, 'C': 12, 'N': 14, 'O': 16, 'S': 32}
 
 from arc.job.adapters.ts.linear_utils.addition import (
+    _insertion_ring_extra_stretch,
+    _reposition_leaving_groups,
+    apply_intra_frag_contraction,
+    build_concerted_ts,
+    detect_intra_frag_ring_bonds,
     find_split_bonds_by_fragmentation,
     map_and_verify_fragments,
-    stretch_bond,
-    detect_intra_frag_ring_bonds,
-    apply_intra_frag_contraction,
-    _reposition_leaving_groups,
-    build_concerted_ts,
-    try_insertion_ring,
-    stretch_core_from_large,
-    migrate_verified_atoms,
     migrate_h_between_fragments,
+    migrate_verified_atoms,
+    stretch_bond,
+    stretch_core_from_large,
+    try_insertion_ring,
 )
+from arc.job.adapters.ts.linear_utils.path_spec import ReactionPathSpec
 
 
 class TestFindSplitBondsByFragmentation(unittest.TestCase):
@@ -507,6 +509,139 @@ class TestTryInsertionRing(unittest.TestCase):
             self.assertIn('symbols', result)
             self.assertIn('coords', result)
             self.assertEqual(len(result['coords']), n)
+
+
+class TestInsertionRingExtraStretch(unittest.TestCase):
+    """Phase 4a — limited family-aware insertion-ring target calibration.
+
+    The helper :func:`_insertion_ring_extra_stretch` returns the
+    family-specific positive Å delta added to *every* reactive edge of
+    the 3-membered insertion ring inside :func:`try_insertion_ring`.
+    """
+
+    def test_returns_zero_for_unknown_family(self):
+        self.assertEqual(_insertion_ring_extra_stretch(None), 0.0)
+        self.assertEqual(_insertion_ring_extra_stretch(''), 0.0)
+        self.assertEqual(_insertion_ring_extra_stretch('1,2_Insertion_CO'), 0.0)
+        self.assertEqual(_insertion_ring_extra_stretch('Diels_alder_addition'), 0.0)
+
+    def test_returns_positive_delta_for_carbene(self):
+        delta = _insertion_ring_extra_stretch('1,2_Insertion_carbene')
+        self.assertGreater(delta, 0.0)
+        # The calibration target is +0.20 Å on each edge of the
+        # insertion ring (looser, earlier TS for carbene insertions).
+        self.assertAlmostEqual(delta, 0.20, places=3)
+
+    def test_calibration_is_applied_at_builder_site(self):
+        """When ``try_insertion_ring`` is invoked with the explicit
+        ``family='1,2_Insertion_carbene'`` kwarg, the calibrated extra
+        stretch (+0.20 Å) must be added to the mobile-anchor C-C and
+        both C-H edges of the resulting 3-membered ring.  We compare
+        two runs of the *same* propane-derived 3-fragment pattern: one
+        with the carbene family, one with a non-carbene family.
+
+        The calibration site is :func:`try_insertion_ring`, which is
+        the actual builder location.  The non-calibrated run uses the
+        standard ``sbl + PAULING_DELTA`` target; the calibrated run
+        adds 0.20 Å on top of that.
+        """
+        # Use propane CCC as a 3-heavy-atom backbone with H atoms.
+        sp = ARCSpecies(label='propane', smiles='CCC')
+        symbols = sp.get_xyz()['symbols']
+        n = len(symbols)
+        c_idx = [i for i, s in enumerate(symbols) if s == 'C']
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        # Override coords so the three Cs sit linearly at 2.0 Å spacing.
+        coords = list(map(list, sp.get_xyz()['coords']))
+        for k, ci in enumerate(c_idx):
+            coords[ci] = [2.0 * k, 0.0, 0.0]
+        # Snap each H back to ~1.09 Å from its parent C, perpendicular
+        # to the chain so the synthetic geometry is collision-free.
+        for atom in sp.mol.atoms:
+            if atom.element.symbol != 'H':
+                continue
+            h_idx = atom_to_idx[atom]
+            parent = next(atom_to_idx[n_] for n_ in atom.bonds.keys()
+                          if n_.element.symbol != 'H')
+            c_rank = c_idx.index(parent)
+            # Spread the H atoms in y and z so they don't collide.
+            phase = (h_idx % 3) * 2.0 * np.pi / 3.0
+            coords[h_idx] = [2.0 * c_rank,
+                             1.09 * float(np.cos(phase)),
+                             1.09 * float(np.sin(phase))]
+        xyz = {
+            'symbols': symbols,
+            'isotopes': sp.get_xyz()['isotopes'],
+            'coords': tuple(tuple(row) for row in coords),
+        }
+        split_bonds = [(c_idx[0], c_idx[1]), (c_idx[1], c_idx[2])]
+        cross_bonds = [(c_idx[0], c_idx[2])]
+        # Build fragments without split bonds.
+        adj = {k: set() for k in range(n)}
+        for atom in sp.mol.atoms:
+            ia = atom_to_idx[atom]
+            for nbr in atom.edges:
+                adj[ia].add(atom_to_idx[nbr])
+        for a, b in split_bonds:
+            adj[a].discard(b)
+            adj[b].discard(a)
+        visited = set()
+        fragments = []
+        for start in range(n):
+            if start in visited:
+                continue
+            component = set()
+            queue = [start]
+            while queue:
+                node = queue.pop()
+                if node in visited:
+                    continue
+                visited.add(node)
+                component.add(node)
+                queue.extend(adj[node] - visited)
+            fragments.append(component)
+
+        # Run 1: explicitly NOT a carbene family.
+        result_other = try_insertion_ring(
+            xyz, sp.mol, [set(f) for f in fragments],
+            split_bonds=split_bonds,
+            cross_bonds=cross_bonds,
+            weight=0.5,
+            n_atoms=n,
+            family='1,2_Insertion_CO',
+        )
+        # Run 2: explicitly the carbene family.
+        result_carbene = try_insertion_ring(
+            xyz, sp.mol, [set(f) for f in fragments],
+            split_bonds=split_bonds,
+            cross_bonds=cross_bonds,
+            weight=0.5,
+            n_atoms=n,
+            family='1,2_Insertion_carbene',
+        )
+
+        # Both runs should produce a TS guess.
+        self.assertIsNotNone(result_other,
+                             'non-calibrated insertion-ring builder failed '
+                             'on synthetic propane geometry')
+        self.assertIsNotNone(result_carbene,
+                             'calibrated insertion-ring builder failed on '
+                             'synthetic propane geometry — the relaxed '
+                             'fragments-threshold path should accept it')
+        coords_other = np.asarray(result_other['coords'])
+        coords_carbene = np.asarray(result_carbene['coords'])
+        d_cc_other = float(np.linalg.norm(
+            coords_other[c_idx[0]] - coords_other[c_idx[2]]))
+        d_cc_carbene = float(np.linalg.norm(
+            coords_carbene[c_idx[0]] - coords_carbene[c_idx[2]]))
+        # The carbene-family run should have a *longer* mobile-anchor
+        # C-C distance by very close to the calibration delta.
+        diff = d_cc_carbene - d_cc_other
+        self.assertAlmostEqual(diff, 0.20, delta=0.05,
+                               msg=f'expected ~+0.20 Å carbene calibration, '
+                                   f'got {diff:.3f} '
+                                   f'(non-carbene={d_cc_other:.3f}, '
+                                   f'carbene={d_cc_carbene:.3f})')
 
 
 class TestStretchCoreFromLarge(unittest.TestCase):

@@ -88,7 +88,7 @@ For each reaction path (product_dict) the adapter runs the following steps:
       least one hydrogen closer than 85 % of their single-bond length is discarded.
       This catches H–H and H–heavy contacts that slip past the 60 % collision filter.
 
-    * **Detached-hydrogen filter** (``_has_detached_hydrogen``): any hydrogen more
+    * **Detached-hydrogen filter** (``has_detached_hydrogen``): any hydrogen more
       than 3.0 Å from every heavy atom → geometry discarded.
 
     * **Misoriented migrating-H filter** (``_has_misoriented_migrating_h``): rejects
@@ -228,6 +228,7 @@ from arc.job.adapters.ts.linear_utils.addition import (
     stretch_core_from_large,
 )
 from arc.job.adapters.ts.linear_utils.local_geometry import (
+    apply_reactive_center_cleanup,
     clean_migrating_h,
     identify_h_migration_pairs,
     infer_frag_fallback_h_migration,
@@ -1573,7 +1574,8 @@ def interpolate_addition(rxn: 'ARCReaction',
                 ts_xyz = stretch_bond(base_xyz, uni_mol, split_bonds,
                                        cross_bonds, weight,
                                        label=f'rxn={rxn.label}, path={i}',
-                                       path_spec=None)
+                                       path_spec=None,
+                                       family=_family_name or rxn.family)
                 if ts_xyz is not None and migrating_atoms:
                     # stretch_bond only moves the smallest fragment (often
                     # just the migrating atom).  When there are 3+ fragments,
@@ -1611,30 +1613,57 @@ def interpolate_addition(rxn: 'ARCReaction',
                     migration_records = identify_h_migration_pairs(
                         ts_xyz, uni_mol, migrating_atoms, core,
                         large_prod_atoms, cross_bonds=cross_bonds)
-                    # Step 2: run small local helpers per migration record.
-                    # NOTE: ``migrate_verified_atoms`` already places the
-                    # migrating H at the triangulated TS position, so we
-                    # do NOT re-call ``clean_migrating_h`` here.  The
-                    # helper remains available for direct callers and is
-                    # exercised by its own unit tests.
+                    # Step 2: Phase 4a — run the local reactive-center
+                    # cleanup orchestrator over the migration records.
+                    # The orchestrator composes the existing Phase 3b
+                    # helpers in a deterministic order:
+                    #   * orient spectator H atoms on donor/acceptor away
+                    #     from the donor → acceptor reaction axis,
+                    #   * regularize terminal H bond lengths on both
+                    #     endpoints (no-op when already in range),
+                    #   * restore terminal CH₂/CH₃ symmetry around donor
+                    #     and acceptor when (and only when) those centers
+                    #     are clear terminal groups.
+                    # The migrating H itself is exempted by index from
+                    # the symmetry pass so the triangulated TS position
+                    # placed by ``migrate_verified_atoms`` is preserved.
+                    # NOTE: we do NOT call ``clean_migrating_h`` from the
+                    # orchestrator on the template-guided path because
+                    # ``migrate_verified_atoms`` already triangulated the
+                    # H — passing an empty migrations list keeps that
+                    # invariant by routing through the ``reactive_centers``
+                    # branch only.
+                    # Phase 4a: route the per-pair orient pass + the donor /
+                    # acceptor reactive-center cleanup through the new shared
+                    # orchestrator.  Symmetry restoration is intentionally
+                    # NOT requested here (``restore_symmetry=False``) — the
+                    # current ``restore_terminal_h_symmetry`` rotates H atoms
+                    # to a deterministic azimuth even when the parent group
+                    # was already in a chemically reasonable orientation,
+                    # which over-rotates non-asymmetric CH₂/CH₃ groups in
+                    # geometries that the orchestration is otherwise meant
+                    # to leave alone.  Phase 4b will gate the symmetry pass
+                    # on a per-center asymmetry signal.
+                    template_centers: Set[int] = set()
+                    template_exempt_hs: Set[int] = set()
                     for mig_rec in migration_records:
-                        h_idx_loc = int(mig_rec['h_idx'])
-                        d_loc = int(mig_rec['donor'])
-                        a_loc = int(mig_rec['acceptor'])
-                        # 2a — orient any non-migrating H bonded to the
-                        # donor or acceptor away from the inward blocking
-                        # pocket.
-                        ts_xyz = orient_h_away_from_axis(
-                            ts_xyz, uni_mol, d_loc, a_loc,
-                            exclude_h={h_idx_loc})
-                        # 2b — regularize terminal H bond lengths around
-                        # both endpoints (no-op when already in range).
-                        ts_xyz = regularize_terminal_h_geometry(
-                            ts_xyz, uni_mol, d_loc,
-                            exclude_atoms={h_idx_loc})
-                        ts_xyz = regularize_terminal_h_geometry(
-                            ts_xyz, uni_mol, a_loc,
-                            exclude_atoms={h_idx_loc})
+                        template_centers.add(int(mig_rec['donor']))
+                        template_centers.add(int(mig_rec['acceptor']))
+                        template_exempt_hs.add(int(mig_rec['h_idx']))
+                    if template_centers:
+                        for mig_rec in migration_records:
+                            ts_xyz = orient_h_away_from_axis(
+                                ts_xyz, uni_mol,
+                                int(mig_rec['donor']),
+                                int(mig_rec['acceptor']),
+                                exclude_h={int(mig_rec['h_idx'])})
+                        ts_xyz = apply_reactive_center_cleanup(
+                            ts_xyz, uni_mol,
+                            migrations=None,
+                            reactive_centers=template_centers,
+                            exempt_h_indices=template_exempt_hs,
+                            restore_symmetry=False,
+                        )
 
                     # Step 3: Phase 3b path-spec enrichment.
                     enriched_path_spec = _enrich_post_migration_path_spec(
@@ -1703,7 +1732,8 @@ def interpolate_addition(rxn: 'ARCReaction',
             ts_xyz = stretch_bond(uni_xyz, uni_mol, split_bonds,
                                    cross_bonds, weight,
                                    label=f'rxn={rxn.label}, path={i}-fallback',
-                                   path_spec=None)
+                                   path_spec=None,
+                                   family=_family_name or rxn.family)
             if ts_xyz is not None:
                 ts_records.append(GuessRecord(
                     xyz=ts_xyz,
@@ -1722,7 +1752,8 @@ def interpolate_addition(rxn: 'ARCReaction',
                 ts_xyz = stretch_bond(ring_xyz, uni_mol, split_bonds,
                                        cross_bonds, weight,
                                        label=f'rxn={rxn.label}, path={i}-fallback',
-                                       path_spec=None)
+                                       path_spec=None,
+                                       family=_family_name or rxn.family)
                 if ts_xyz is not None:
                     is_valid, reason = _validate_addition_guess(
                         ts_xyz, path_spec=template_path_spec, uni_mol=uni_mol,
@@ -2136,7 +2167,8 @@ def interpolate_addition(rxn: 'ARCReaction',
                 ring_xyz, uni_mol, cut, cross_bonds=None,
                 weight=weight,
                 label=f'rxn={rxn.label}, frag-fallback',
-                path_spec=cut_path_spec)
+                path_spec=cut_path_spec,
+                family=_family_name or rxn.family)
             if pre_migrate_xyz is None:
                 continue
 
@@ -2167,16 +2199,35 @@ def interpolate_addition(rxn: 'ARCReaction',
             # Same NOTE as the template-guided branch:
             # ``migrate_h_between_fragments`` already triangulated the
             # migrating H, so we do NOT re-call ``clean_migrating_h``.
+            # Phase 4a: route the per-pair orient pass + the donor /
+            # acceptor reactive-center cleanup through the new shared
+            # orchestrator.  Behavior is unchanged for cases that
+            # previously hit the inline calls; the orchestrator
+            # additionally runs ``restore_terminal_h_symmetry`` on
+            # donor and acceptor when (and only when) those centers
+            # are clear terminal CH₂/CH₃ groups.
+            # Phase 4a: same orchestrator routing as the template-guided
+            # branch.  ``restore_symmetry=False`` keeps the symmetry pass
+            # off for now — see the matching note above.
+            frag_centers: Set[int] = set()
+            frag_exempt_hs: Set[int] = set()
             for mig_rec in frag_migrations:
                 h_idx_loc = int(mig_rec['h_idx'])
                 d_loc = int(mig_rec['donor'])
                 a_loc = int(mig_rec['acceptor'])
                 ts_xyz = orient_h_away_from_axis(
                     ts_xyz, uni_mol, d_loc, a_loc, exclude_h={h_idx_loc})
-                ts_xyz = regularize_terminal_h_geometry(
-                    ts_xyz, uni_mol, d_loc, exclude_atoms={h_idx_loc})
-                ts_xyz = regularize_terminal_h_geometry(
-                    ts_xyz, uni_mol, a_loc, exclude_atoms={h_idx_loc})
+                frag_centers.add(d_loc)
+                frag_centers.add(a_loc)
+                frag_exempt_hs.add(h_idx_loc)
+            if frag_centers:
+                ts_xyz = apply_reactive_center_cleanup(
+                    ts_xyz, uni_mol,
+                    migrations=None,
+                    reactive_centers=frag_centers,
+                    exempt_h_indices=frag_exempt_hs,
+                    restore_symmetry=False,
+                )
 
             enriched_path_spec = _enrich_post_migration_path_spec(
                 uni_mol=uni_mol,

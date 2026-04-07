@@ -410,6 +410,151 @@ def restore_terminal_h_symmetry(xyz: dict,
 
 
 # ---------------------------------------------------------------------------
+# Phase 4a — reactive-center local-geometry orchestrator
+# ---------------------------------------------------------------------------
+
+
+def apply_reactive_center_cleanup(xyz: dict,
+                                  mol: 'Molecule',
+                                  migrations: Optional[List[Dict]] = None,
+                                  reactive_centers: Optional[Set[int]] = None,
+                                  exempt_h_indices: Optional[Set[int]] = None,
+                                  weight: float = 0.5,
+                                  restore_symmetry: bool = True,
+                                  ) -> dict:
+    """Phase 4a thin orchestrator over the existing local-geometry helpers.
+
+    This composes the accepted Phase 3b/3c reactive-center helpers around
+    an explicit reactive shell.  It is **not** a global "fix everything"
+    pass — it touches only:
+
+    * the donor and acceptor heavy atoms named in *migrations* (if any),
+    * the heavy atoms in *reactive_centers* (if any), and
+    * the H atoms directly bonded to those heavy centers.
+
+    The orchestrator's *only* job is to compose existing helpers in a
+    deterministic order so that callers don't repeat the same boilerplate
+    in multiple sites.  No new geometry primitives are introduced — every
+    atomic move is delegated to one of:
+
+    * :func:`clean_migrating_h` — re-place each migrating H at its
+      donor/acceptor triangulated position (called only when the migration
+      tuple has a trustworthy donor/acceptor pair, e.g. via
+      :func:`identify_h_migration_pairs` or
+      :func:`infer_frag_fallback_h_migration`).
+    * :func:`orient_h_away_from_axis` — reflect non-migrating H atoms
+      that are blocking the donor → acceptor corridor.
+    * :func:`regularize_terminal_h_geometry` — snap any over-stretched
+      or compressed terminal H bond lengths around the donor / acceptor /
+      reactive-center heavy atoms back to ~sbl.
+    * :func:`restore_terminal_h_symmetry` — when the heavy center is a
+      *clear* terminal CH₂ or CH₃ (one heavy neighbor + 2 or 3 H
+      neighbors), reseat the H atoms at evenly spaced azimuth around the
+      (parent → center) axis.  This corrects pathologies like the
+      Korcek_step1 terminal CH₃ inversion.
+
+    The migrating H itself (when present) is always exempted from the
+    orientation, regularization, and symmetry passes so that the
+    triangulated TS placement from :func:`clean_migrating_h` is preserved.
+
+    Args:
+        xyz: Post-generation TS guess XYZ dict.  May be ``None``, in which
+            case the function returns ``None`` unchanged.
+        mol: Reactant RMG :class:`Molecule` defining the bond graph.
+        migrations: Optional iterable of dicts as produced by
+            :func:`identify_h_migration_pairs` or
+            :func:`infer_frag_fallback_h_migration`.  Each dict must
+            contain ``'h_idx'``, ``'donor'``, and ``'acceptor'`` integer
+            indices.  Other keys are ignored.
+        reactive_centers: Optional set of heavy-atom indices that are
+            reactive but are not the donor/acceptor of an H migration —
+            e.g. a CH₃ that participates in a C–C forming bond and whose
+            H geometry should be cleaned up.  These centers receive the
+            terminal-H regularization and symmetry-restoration passes
+            but are never given to :func:`clean_migrating_h` or
+            :func:`orient_h_away_from_axis` (those need explicit donor /
+            acceptor information).
+        exempt_h_indices: Optional H atom indices to exempt from the
+            terminal-H regularization and symmetry-restoration passes.
+            This is the canonical way for callers using the
+            ``reactive_centers`` branch (i.e. those that already
+            triangulated their migrating H elsewhere) to keep the
+            migrating H pinned at its TS position rather than snapping
+            it back to a normal C–H bond length.
+        weight: Interpolation weight forwarded to
+            :func:`clean_migrating_h`.  Currently unused inside that
+            helper but kept for forward-compatibility.
+        restore_symmetry: When ``False``, the symmetry-restoration pass
+            is skipped (the orchestrator becomes a strict superset of the
+            current Phase 3b inline cleanup).  Defaults to ``True``.
+
+    Returns:
+        A new XYZ dict with the local cleanups applied.  When the input
+        does not name any reactive shell, the original XYZ is returned
+        unchanged (no copies made).
+    """
+    if xyz is None:
+        return xyz
+    migration_list: List[Dict] = list(migrations or [])
+    centers_set: Set[int] = set(reactive_centers or set())
+    if not migration_list and not centers_set:
+        return xyz
+
+    n_atoms = len(xyz['symbols'])
+    migrating_h_indices: Set[int] = set(int(h) for h in (exempt_h_indices or set()))
+    cleanup_centers: Set[int] = set()
+
+    # ---- 1. Per-migration triangulation, axis clearing, terminal H
+    #         length regularization on donor and acceptor.
+    for rec in migration_list:
+        try:
+            h_idx = int(rec['h_idx'])
+            donor = int(rec['donor'])
+            acceptor = int(rec['acceptor'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (0 <= h_idx < n_atoms and 0 <= donor < n_atoms and 0 <= acceptor < n_atoms):
+            continue
+        migrating_h_indices.add(h_idx)
+        cleanup_centers.add(donor)
+        cleanup_centers.add(acceptor)
+        # 1a — re-place the migrating H at the triangulated TS position.
+        # ``clean_migrating_h`` is idempotent and depends only on the
+        # donor/acceptor positions and the bond-length lookup.
+        xyz = clean_migrating_h(xyz, mol, donor, acceptor, h_idx, weight=weight)
+        # 1b — orient any spectator H around donor/acceptor away from
+        # the (donor → acceptor) reaction axis.  The migrating H is
+        # exempted by index so triangulation is not undone.
+        xyz = orient_h_away_from_axis(
+            xyz, mol, donor, acceptor, exclude_h={h_idx})
+
+    # ---- 2. Terminal-H length regularization on every cleanup center
+    #         (donors, acceptors, and any extra reactive centers).
+    centers_set |= cleanup_centers
+    for center in sorted(centers_set):
+        if not (0 <= center < n_atoms):
+            continue
+        xyz = regularize_terminal_h_geometry(
+            xyz, mol, center, exclude_atoms=migrating_h_indices)
+
+    # ---- 3. Optional terminal CH₂/CH₃ symmetry restoration.  This is
+    #         the only step that introduces a *new* primitive into the
+    #         existing Phase 3b inline composition.  ``restore_terminal_h_symmetry``
+    #         is itself conservative — it bails out unless the center is
+    #         a clear terminal CH₂/CH₃ and bails on per-H bond length
+    #         changes > 0.05 Å — so it never moves anything in
+    #         non-terminal contexts.
+    if restore_symmetry:
+        for center in sorted(centers_set):
+            if not (0 <= center < n_atoms):
+                continue
+            xyz = restore_terminal_h_symmetry(
+                xyz, mol, center, exclude_atoms=migrating_h_indices)
+
+    return xyz
+
+
+# ---------------------------------------------------------------------------
 # Helper 5 — identify per-H migration pairs
 # ---------------------------------------------------------------------------
 

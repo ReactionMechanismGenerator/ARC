@@ -909,6 +909,228 @@ def has_bad_reactive_core_planarity(
 
 
 # ---------------------------------------------------------------------------
+# Phase 4a — narrow recipe-consistency / wrong-channel screening
+# ---------------------------------------------------------------------------
+
+
+def has_wrong_h_migration_committed(
+    path_spec: ReactionPathSpec,
+    xyz: dict,
+    r_mol: Optional['Molecule'],
+    symbols: Tuple[str, ...],
+    chemistry: PathChemistry,
+) -> Tuple[bool, str]:
+    """Reject H-transfer guesses where a *spectator* H sits much closer
+    to the intended acceptor than the *intended* migrating H.
+
+    This is a narrow Phase 4a screening rule.  It runs only when ALL
+    of the following hold:
+
+    * the path chemistry is :attr:`PathChemistry.H_TRANSFER`, AND
+    * the path-spec contains at least one forming bond with exactly
+      one H endpoint (the intended migrating H), AND
+    * the migrating H still sits close to its donor in the guess
+      (i.e. it has not yet started moving toward the acceptor).
+
+    Inside the rule, the migrating H is the H endpoint of the forming
+    bond.  The acceptor is the heavy endpoint of that same forming bond.
+    The donor is the H's *reactant* heavy neighbor.  A spectator H is
+    any other H atom in the molecule that is also bonded to a heavy
+    atom in the reactant graph (i.e. a normal C–H or X–H), excluding
+    the migrating H itself.
+
+    The guess is rejected only when **both** conditions hold for at
+    least one spectator H:
+
+    1. The spectator H's distance to the acceptor is at most
+       ``0.70 ×`` the migrating H's distance to the same acceptor —
+       a meaningful margin, not "nearest H wins".
+    2. The migrating H's distance to its donor is still close to a
+       normal bond length (``≤ 1.20 × sbl(donor, H)``), meaning the
+       intended channel has not actually engaged.
+
+    Both conditions are required so the rule does not over-fire on
+    legitimate TS geometries where the migrating H has begun moving
+    toward the acceptor and momentarily passes near a spectator H.
+
+    Args:
+        path_spec: Path-local spec.
+        xyz: TS guess XYZ dict.
+        r_mol: Reactant RMG :class:`Molecule` (used for the donor /
+            spectator graph adjacency).
+        symbols: Tuple of atom symbols.
+        chemistry: Pre-computed :class:`PathChemistry` bucket.
+
+    Returns:
+        ``(True, reason)`` if a clearly committed spectator H is
+        detected, otherwise ``(False, '')``.
+    """
+    if chemistry != PathChemistry.H_TRANSFER:
+        return False, ''
+    if xyz is None or r_mol is None:
+        return False, ''
+
+    # Identify intended (h, donor, acceptor) triples from the path spec.
+    triples: List[Tuple[int, int, int]] = []
+    adj = _build_adjacency(r_mol)
+    for a, b in path_spec.forming_bonds:
+        if 0 <= a < len(symbols) and 0 <= b < len(symbols):
+            if symbols[a] == 'H' and symbols[b] != 'H':
+                h_idx, acceptor = int(a), int(b)
+            elif symbols[b] == 'H' and symbols[a] != 'H':
+                h_idx, acceptor = int(b), int(a)
+            else:
+                continue
+            # Donor is the H's *reactant* heavy neighbor.
+            donor: Optional[int] = None
+            for nbr in adj.get(h_idx, ()):
+                if 0 <= nbr < len(symbols) and symbols[nbr] != 'H':
+                    donor = int(nbr)
+                    break
+            if donor is None or donor == acceptor:
+                continue
+            triples.append((h_idx, donor, acceptor))
+    if not triples:
+        return False, ''
+
+    coords = np.asarray(xyz['coords'], dtype=float)
+
+    for h_idx, donor, acceptor in triples:
+        if h_idx >= len(coords) or donor >= len(coords) or acceptor >= len(coords):
+            continue
+        # Condition 2 first (cheaper): the migrating H must still be
+        # near its donor.  If it has already started moving, the rule
+        # does not apply because the intended channel has engaged.
+        sbl_dh = get_single_bond_length(symbols[donor], 'H')
+        if sbl_dh is None or sbl_dh <= 0.0:
+            continue
+        d_donor_h = float(np.linalg.norm(coords[h_idx] - coords[donor]))
+        if d_donor_h > 1.20 * float(sbl_dh):
+            continue
+        d_intended_acceptor = float(np.linalg.norm(coords[h_idx] - coords[acceptor]))
+        if d_intended_acceptor < 1e-6:
+            continue
+        # Now check condition 1: any spectator H much closer to the
+        # acceptor.
+        for h_other in range(len(symbols)):
+            if h_other == h_idx:
+                continue
+            if symbols[h_other] != 'H':
+                continue
+            # Spectator H must itself be bonded to a heavy atom in the
+            # reactant graph (skip stray H, lone H, or H atoms already
+            # part of another reactive forming bond).
+            heavy_parents = [n for n in adj.get(h_other, ())
+                             if 0 <= n < len(symbols) and symbols[n] != 'H']
+            if not heavy_parents:
+                continue
+            d_spec_acceptor = float(np.linalg.norm(coords[h_other] - coords[acceptor]))
+            if d_spec_acceptor > 0.70 * d_intended_acceptor:
+                continue
+            return True, (
+                f'wrong-h-migration: spectator H{h_other} d(H,acceptor)='
+                f'{d_spec_acceptor:.3f} much closer than intended H{h_idx} '
+                f'd(H,acceptor)={d_intended_acceptor:.3f}; intended H still '
+                f'near donor d(D,H)={d_donor_h:.3f}'
+            )
+    return False, ''
+
+
+def has_committed_spectator_group(
+    path_spec: ReactionPathSpec,
+    xyz: dict,
+    r_mol: Optional['Molecule'],
+    symbols: Tuple[str, ...],
+) -> Tuple[bool, str]:
+    """Reject guesses where a spectator heavy atom is committed to a
+    reactive site it does not appear in the path-spec for.
+
+    This is a narrow Phase 4a screening rule.  It is **opt-in by
+    family** — the check only runs for an explicit allowlist of
+    families where the failure pattern is already known to occur:
+
+    * ``1,3_Insertion_ROR``: the wrong CH₃ commits to the wrong
+      carbonyl C, generating an impostor with a near-bond-length
+      contact between a spectator heavy atom and a reactive site.
+    * Reverse-template ``R_Addition_MultipleBond``: a wrong radical
+      addition target attaches in the reverse direction.
+
+    The rule rejects only when a heavy non-reactive atom has formed an
+    obviously committed local contact (distance below ``0.85 × sbl``)
+    with a heavy atom that is already an endpoint of one of the
+    reactive bonds in the path-spec but is not its expected partner
+    according to the spec.
+
+    Args:
+        path_spec: Path-local spec.
+        xyz: TS guess XYZ dict.
+        r_mol: Reactant RMG :class:`Molecule`.
+        symbols: Tuple of atom symbols.
+
+    Returns:
+        ``(True, reason)`` if a clearly committed spectator heavy
+        atom is detected, otherwise ``(False, '')``.
+    """
+    family = path_spec.family or ''
+    # Strict, opt-in family allowlist.
+    if family not in ('1,3_Insertion_ROR', 'R_Addition_MultipleBond'):
+        return False, ''
+    if xyz is None or r_mol is None:
+        return False, ''
+
+    coords = np.asarray(xyz['coords'], dtype=float)
+    reactive = set(int(i) for i in path_spec.reactive_atoms)
+    if not reactive:
+        return False, ''
+
+    # Heavy reactive endpoints we care about — the union over all
+    # forming-bond and breaking-bond endpoints, restricted to heavy
+    # atoms.
+    heavy_reactive_endpoints: Set[int] = set()
+    for a, b in (list(path_spec.forming_bonds)
+                 + list(path_spec.breaking_bonds)):
+        for idx in (a, b):
+            if 0 <= idx < len(symbols) and symbols[idx] != 'H':
+                heavy_reactive_endpoints.add(int(idx))
+    if not heavy_reactive_endpoints:
+        return False, ''
+
+    # The set of "approved" heavy partners for each reactive endpoint —
+    # i.e. the heavy atoms that the path-spec actually says it should
+    # form/break a bond with.
+    approved_partners: Dict[int, Set[int]] = {ep: set()
+                                              for ep in heavy_reactive_endpoints}
+    for a, b in (list(path_spec.forming_bonds)
+                 + list(path_spec.breaking_bonds)):
+        if a in heavy_reactive_endpoints and 0 <= b < len(symbols) and symbols[b] != 'H':
+            approved_partners[int(a)].add(int(b))
+        if b in heavy_reactive_endpoints and 0 <= a < len(symbols) and symbols[a] != 'H':
+            approved_partners[int(b)].add(int(a))
+
+    n_atoms = len(symbols)
+    for ep in sorted(heavy_reactive_endpoints):
+        if ep >= len(coords):
+            continue
+        approved = approved_partners[ep]
+        for k in range(n_atoms):
+            if k == ep or k in reactive or k in approved:
+                continue
+            if symbols[k] == 'H':
+                continue
+            sbl = get_single_bond_length(symbols[ep], symbols[k])
+            if sbl is None or sbl <= 0.0:
+                continue
+            d = float(np.linalg.norm(coords[ep] - coords[k]))
+            if d < 0.85 * float(sbl):
+                return True, (
+                    f'committed-spectator: {symbols[k]}{k} '
+                    f'd(spectator,{symbols[ep]}{ep})={d:.3f} < 0.85*sbl='
+                    f'{0.85 * float(sbl):.3f}; family={family!r}'
+                )
+    return False, ''
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 path-spec scoring
 # ---------------------------------------------------------------------------
 
@@ -1167,5 +1389,20 @@ def validate_guess_against_path_spec(
         path_spec, xyz, symbols, chemistry)
     if bad:
         return False, f'phase2:{reason}'
+
+    # 4. Phase 4a narrow recipe-consistency / wrong-channel screening.
+    #    These are strictly additive and only fire on opt-in cases:
+    #    * has_wrong_h_migration_committed: only when chemistry is
+    #      H_TRANSFER and a path-spec migrating H is named.
+    #    * has_committed_spectator_group: only for an explicit family
+    #      allowlist (1,3_Insertion_ROR, R_Addition_MultipleBond).
+    bad, reason = has_wrong_h_migration_committed(
+        path_spec, xyz, r_mol, symbols, chemistry)
+    if bad:
+        return False, f'phase4a:{reason}'
+    bad, reason = has_committed_spectator_group(
+        path_spec, xyz, r_mol, symbols)
+    if bad:
+        return False, f'phase4a:{reason}'
 
     return True, ''

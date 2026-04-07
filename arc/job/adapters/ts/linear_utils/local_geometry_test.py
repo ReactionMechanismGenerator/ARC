@@ -11,6 +11,7 @@ from arc.common import get_single_bond_length
 from arc.species import ARCSpecies
 
 from arc.job.adapters.ts.linear_utils.local_geometry import (
+    apply_reactive_center_cleanup,
     clean_migrating_h,
     identify_h_migration_pairs,
     orient_h_away_from_axis,
@@ -290,6 +291,172 @@ class TestRestoreTerminalHSymmetry(unittest.TestCase):
             for j in range(i + 1, len(h_idxs)):
                 d = float(np.linalg.norm(coords[h_idxs[i]] - coords[h_idxs[j]]))
                 self.assertGreater(d, 1.50)
+
+
+class TestApplyReactiveCenterCleanup(unittest.TestCase):
+    """Phase 4a thin orchestrator over the existing local-geometry helpers.
+
+    These tests demonstrate that the orchestrator:
+    * is a no-op when nothing is requested,
+    * routes a migration triple through ``clean_migrating_h`` +
+      ``orient_h_away_from_axis`` + ``regularize_terminal_h_geometry``,
+    * runs ``restore_terminal_h_symmetry`` on each named reactive center
+      (and respects the existing terminal-CH₂/CH₃ gating),
+    * leaves unrelated atoms in the molecule untouched.
+    """
+
+    def test_no_op_when_no_targets(self):
+        sp = ARCSpecies(label='ethane', smiles='CC')
+        xyz = sp.get_xyz()
+        out = apply_reactive_center_cleanup(xyz, sp.mol)
+        self.assertIs(out, xyz)
+        out_none = apply_reactive_center_cleanup(
+            xyz, sp.mol, migrations=[], reactive_centers=set())
+        self.assertIs(out_none, xyz)
+
+    def test_orchestrator_repositions_migrating_h(self):
+        """Given a (donor, acceptor, h_idx) record where the H is sitting
+        at its donor-side bond length, the orchestrator triangulates it
+        to the symmetric Pauling TS position between donor and acceptor."""
+        # Use methylamine (CH3-NH2) — atom 0 is C (donor), atom 1 is N
+        # (acceptor), pick one of C's H atoms as the migrating H.  Then
+        # override the geometry to make the H sit on the C-N axis at
+        # a normal C-H bond length (1.10 Å).
+        sp = ARCSpecies(label='MA', smiles='CN')
+        symbols = sp.get_xyz()['symbols']
+        c_idx = next(i for i, s in enumerate(symbols) if s == 'C')
+        n_idx = next(i for i, s in enumerate(symbols) if s == 'N')
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        h_on_c = next(
+            atom_to_idx[nbr] for nbr in sp.mol.atoms[c_idx].bonds.keys()
+            if nbr.element.symbol == 'H'
+        )
+        # Build a synthetic geometry that lays C, N, and the chosen H
+        # in a straight line: C at origin, N at +x = 3.0, the H at
+        # +x = 1.10 (still bonded to C in the graph).
+        coords = np.zeros((len(symbols), 3))
+        coords[c_idx] = (0.0, 0.0, 0.0)
+        coords[n_idx] = (2.50, 0.0, 0.0)
+        coords[h_on_c] = (1.10, 0.10, 0.0)
+        # Park the other atoms far enough away that they don't matter.
+        for k in range(len(symbols)):
+            if k in (c_idx, n_idx, h_on_c):
+                continue
+            coords[k] = (10.0 + k, 10.0, 10.0)
+        synthetic = {'symbols': symbols, 'isotopes': sp.get_xyz()['isotopes'],
+                     'coords': tuple(tuple(row) for row in coords)}
+        out = apply_reactive_center_cleanup(
+            synthetic, sp.mol,
+            migrations=[{'h_idx': h_on_c, 'donor': c_idx, 'acceptor': n_idx}],
+        )
+        coords_out = np.asarray(out['coords'], dtype=float)
+        d_ch = float(np.linalg.norm(coords_out[h_on_c] - coords_out[c_idx]))
+        d_nh = float(np.linalg.norm(coords_out[h_on_c] - coords_out[n_idx]))
+        sbl_ch = float(get_single_bond_length('C', 'H'))
+        sbl_nh = float(get_single_bond_length('N', 'H'))
+        self.assertAlmostEqual(d_ch, sbl_ch + PAULING_DELTA, places=3)
+        self.assertAlmostEqual(d_nh, sbl_nh + PAULING_DELTA, places=3)
+
+    def test_orchestrator_restores_ch3_symmetry_on_reactive_center(self):
+        """When ``reactive_centers`` is supplied without migrations, the
+        orchestrator runs the terminal-H regularization + symmetry
+        restoration on each named center.  This is the Korcek_step1
+        terminal CH₃ inversion repair pathway."""
+        sp = ARCSpecies(label='ethane', smiles='CC')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        c0 = next(i for i, s in enumerate(symbols) if s == 'C')
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        h_neighbors = [
+            atom_to_idx[nbr] for nbr in sp.mol.atoms[c0].bonds.keys()
+            if nbr.element.symbol == 'H'
+        ]
+        # Distort one H by ~0.02 Å (within the bail-out tolerance).
+        coords = list(map(list, xyz['coords']))
+        coords[h_neighbors[0]][1] += 0.02
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        out = apply_reactive_center_cleanup(
+            bad, sp.mol, reactive_centers={c0})
+        new_coords = np.asarray(out['coords'])
+        c_pos = new_coords[c0]
+        dists = [float(np.linalg.norm(new_coords[h] - c_pos))
+                 for h in h_neighbors]
+        # All three H atoms should now be near-equidistant from C.
+        self.assertAlmostEqual(max(dists) - min(dists), 0.0, places=2)
+
+    def test_orchestrator_does_not_touch_unrelated_atoms(self):
+        """When the orchestrator is given one explicit reactive center,
+        atoms not in the immediate first shell of that center are not
+        moved at all (no whole-molecule churn)."""
+        sp = ARCSpecies(label='propane', smiles='CCC')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        # The middle C has 2 heavy neighbors → ``restore_terminal_h_symmetry``
+        # bails out, and ``regularize_terminal_h_geometry`` is a no-op when
+        # the H bond lengths are already in range.  Pick a *terminal* C
+        # so the orchestrator IS allowed to act on it; verify that the
+        # atoms in the OTHER terminal group are unchanged.
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        terminal_cs = []
+        for atom in sp.mol.atoms:
+            if atom.element.symbol == 'C':
+                heavy_nbrs = sum(1 for n in atom.bonds.keys()
+                                 if n.element.symbol != 'H')
+                if heavy_nbrs == 1:
+                    terminal_cs.append(atom_to_idx[atom])
+        self.assertEqual(len(terminal_cs), 2)
+        c_target = terminal_cs[0]
+        c_other = terminal_cs[1]
+        coords_before = np.asarray(xyz['coords']).copy()
+        out = apply_reactive_center_cleanup(
+            xyz, sp.mol, reactive_centers={c_target})
+        coords_after = np.asarray(out['coords'])
+        # The OTHER terminal C and its 3 H atoms must be untouched.
+        other_h_idxs = [
+            atom_to_idx[nbr] for nbr in sp.mol.atoms[c_other].bonds.keys()
+            if nbr.element.symbol == 'H'
+        ]
+        for idx in [c_other] + other_h_idxs:
+            self.assertTrue(
+                np.allclose(coords_before[idx], coords_after[idx], atol=1e-9),
+                msg=f'atom {idx} ({symbols[idx]}) moved when it should not have',
+            )
+
+    def test_orchestrator_skips_migrating_h_in_symmetry_pass(self):
+        """The migrating H should never be re-symmetrized — it has been
+        intentionally placed at the triangulated TS position by
+        ``clean_migrating_h`` and the symmetry pass would otherwise drag
+        it back to a normal C–H bond length."""
+        sp = ARCSpecies(label='MA', smiles='CN')
+        symbols = sp.get_xyz()['symbols']
+        c_idx = next(i for i, s in enumerate(symbols) if s == 'C')
+        n_idx = next(i for i, s in enumerate(symbols) if s == 'N')
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        h_on_c = next(
+            atom_to_idx[nbr] for nbr in sp.mol.atoms[c_idx].bonds.keys()
+            if nbr.element.symbol == 'H'
+        )
+        # Build a synthetic colinear geometry — same as the previous test.
+        coords = np.zeros((len(symbols), 3))
+        coords[c_idx] = (0.0, 0.0, 0.0)
+        coords[n_idx] = (2.50, 0.0, 0.0)
+        coords[h_on_c] = (1.10, 0.10, 0.0)
+        for k in range(len(symbols)):
+            if k in (c_idx, n_idx, h_on_c):
+                continue
+            coords[k] = (10.0 + k, 10.0, 10.0)
+        synthetic = {'symbols': symbols, 'isotopes': sp.get_xyz()['isotopes'],
+                     'coords': tuple(tuple(row) for row in coords)}
+        out = apply_reactive_center_cleanup(
+            synthetic, sp.mol,
+            migrations=[{'h_idx': h_on_c, 'donor': c_idx, 'acceptor': n_idx}],
+        )
+        coords_out = np.asarray(out['coords'], dtype=float)
+        d_ch = float(np.linalg.norm(coords_out[h_on_c] - coords_out[c_idx]))
+        sbl_ch = float(get_single_bond_length('C', 'H'))
+        # The migrating H must have moved away from its original 1.10 Å
+        # bond length toward the Pauling TS distance (~1.51 Å).
+        self.assertGreater(d_ch, sbl_ch + 0.10)
 
 
 class TestIdentifyHMigrationPairs(unittest.TestCase):

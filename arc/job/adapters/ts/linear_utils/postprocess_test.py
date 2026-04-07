@@ -16,9 +16,9 @@ from arc.species import ARCSpecies
 
 from arc.job.adapters.ts.linear_utils.postprocess import (
     PAULING_DELTA,
-    _has_detached_hydrogen,
+    has_detached_hydrogen,
     _has_h_close_contact,
-    _has_too_many_fragments,
+    has_too_many_fragments,
     _has_misoriented_migrating_h,
     _has_migrating_h_nearer_to_nonreactive,
     _has_bad_ts_motif,
@@ -102,59 +102,59 @@ class TestRejectionFilters(unittest.TestCase):
         }
 
     # ------------------------------------------------------------------
-    # _has_detached_hydrogen
+    # has_detached_hydrogen
     # ------------------------------------------------------------------
-    def test_has_detached_hydrogen_false_compact(self):
+    def testhas_detached_hydrogen_false_compact(self):
         """Compact water has no detached hydrogens."""
-        self.assertFalse(_has_detached_hydrogen(self.water_xyz))
+        self.assertFalse(has_detached_hydrogen(self.water_xyz))
 
-    def test_has_detached_hydrogen_true(self):
+    def testhas_detached_hydrogen_true(self):
         """Water with H at 10 A has a detached hydrogen."""
-        self.assertTrue(_has_detached_hydrogen(self.water_detached_h))
+        self.assertTrue(has_detached_hydrogen(self.water_detached_h))
 
-    def test_has_detached_hydrogen_custom_threshold(self):
+    def testhas_detached_hydrogen_custom_threshold(self):
         """Custom threshold can make a moderately distant H count as detached."""
         xyz = {
             'symbols': ('C', 'H'),
             'isotopes': (12, 1),
             'coords': ((0.0, 0.0, 0.0), (2.5, 0.0, 0.0)),
         }
-        self.assertFalse(_has_detached_hydrogen(xyz, max_h_heavy_dist=3.0))
-        self.assertTrue(_has_detached_hydrogen(xyz, max_h_heavy_dist=2.0))
+        self.assertFalse(has_detached_hydrogen(xyz, max_h_heavy_dist=3.0))
+        self.assertTrue(has_detached_hydrogen(xyz, max_h_heavy_dist=2.0))
 
-    def test_has_detached_hydrogen_exempt_indices(self):
+    def testhas_detached_hydrogen_exempt_indices(self):
         """Exempt indices are skipped."""
-        self.assertFalse(_has_detached_hydrogen(self.water_detached_h,
+        self.assertFalse(has_detached_hydrogen(self.water_detached_h,
                                                  exempt_indices={2}))
 
-    def test_has_detached_hydrogen_no_heavy_atoms(self):
+    def testhas_detached_hydrogen_no_heavy_atoms(self):
         """An H-only molecule returns False (no heavy atoms to measure against)."""
         h2 = {'symbols': ('H', 'H'), 'isotopes': (1, 1),
                'coords': ((0.0, 0.0, 0.0), (0.74, 0.0, 0.0))}
-        self.assertFalse(_has_detached_hydrogen(h2))
+        self.assertFalse(has_detached_hydrogen(h2))
 
     # ------------------------------------------------------------------
-    # _has_too_many_fragments
+    # has_too_many_fragments
     # ------------------------------------------------------------------
-    def test_has_too_many_fragments_false_single_atom(self):
+    def testhas_too_many_fragments_false_single_atom(self):
         """A single atom is one fragment."""
-        self.assertFalse(_has_too_many_fragments(self.single_atom))
+        self.assertFalse(has_too_many_fragments(self.single_atom))
 
-    def test_has_too_many_fragments_false_compact(self):
+    def testhas_too_many_fragments_false_compact(self):
         """Compact water is one fragment."""
-        self.assertFalse(_has_too_many_fragments(self.water_xyz))
+        self.assertFalse(has_too_many_fragments(self.water_xyz))
 
-    def test_has_too_many_fragments_false_two_fragments(self):
+    def testhas_too_many_fragments_false_two_fragments(self):
         """Two fragments is acceptable for a TS."""
-        self.assertFalse(_has_too_many_fragments(self.two_fragments))
+        self.assertFalse(has_too_many_fragments(self.two_fragments))
 
-    def test_has_too_many_fragments_true(self):
+    def testhas_too_many_fragments_true(self):
         """Three well-separated groups are detected."""
-        self.assertTrue(_has_too_many_fragments(self.three_fragments))
+        self.assertTrue(has_too_many_fragments(self.three_fragments))
 
-    def test_has_too_many_fragments_custom_thresholds(self):
+    def testhas_too_many_fragments_custom_thresholds(self):
         """Increasing the thresholds can merge fragments."""
-        self.assertFalse(_has_too_many_fragments(self.three_fragments,
+        self.assertFalse(has_too_many_fragments(self.three_fragments,
                                                   max_heavy_heavy=25.0,
                                                   max_heavy_h=25.0))
 

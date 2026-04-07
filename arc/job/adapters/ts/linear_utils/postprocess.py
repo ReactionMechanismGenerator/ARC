@@ -350,10 +350,10 @@ def has_close_h_pair_on_same_parent(xyz: dict,
 # Rejection filters
 # ---------------------------------------------------------------------------
 
-def _has_detached_hydrogen(xyz: dict,
-                           max_h_heavy_dist: float = 3.0,
-                           exempt_indices: Optional[Set[int]] = None,
-                           ) -> bool:
+def has_detached_hydrogen(xyz: dict,
+                          max_h_heavy_dist: float = 3.0,
+                          exempt_indices: Optional[Set[int]] = None,
+                          ) -> bool:
     """
     Return ``True`` if any hydrogen in *xyz* is farther than *max_h_heavy_dist* Å
     from every heavy atom. Such geometries indicate that a C–H (or N–H / O–H)
@@ -446,7 +446,7 @@ def _has_detached_heavy_atom(xyz: dict,
     Return ``True`` if any heavy atom is farther than *max_bond_stretch* Å
     from **all** of its graph-bonded neighbours.
 
-    Unlike :func:`_has_too_many_fragments` (distance-based adjacency), this
+    Unlike :func:`has_too_many_fragments` (distance-based adjacency), this
     check uses the molecular graph so it catches atoms that drifted far from
     their actual bonded partners but happen to be close to unrelated atoms.
 
@@ -479,10 +479,10 @@ def _has_detached_heavy_atom(xyz: dict,
     return False
 
 
-def _has_too_many_fragments(xyz: dict,
-                            max_heavy_heavy: float = 2.0,
-                            max_heavy_h: float = 1.5,
-                            ) -> bool:
+def has_too_many_fragments(xyz: dict,
+                           max_heavy_heavy: float = 2.0,
+                           max_heavy_h: float = 1.5,
+                           ) -> bool:
     """
     Return ``True`` if the geometry has three or more distance-based
     fragments.
@@ -1868,9 +1868,9 @@ def validate_ts_guess(xyz: dict,
     """
     if colliding_atoms(xyz):
         reason = 'colliding atoms'
-    elif _has_detached_hydrogen(xyz, max_h_heavy_dist=3.0):
+    elif has_detached_hydrogen(xyz, max_h_heavy_dist=3.0):
         reason = 'detached hydrogen'
-    elif _has_too_many_fragments(xyz):
+    elif has_too_many_fragments(xyz):
         reason = 'too many fragments (3+)'
     elif _has_detached_heavy_atom(xyz, r_mol, max_bond_stretch=2.5,
                                   exempt_indices=reactive_indices):

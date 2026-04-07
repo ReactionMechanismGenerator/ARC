@@ -27,8 +27,10 @@ from arc.job.adapters.ts.linear_utils.path_spec import (
     has_bad_changed_bond_length,
     has_bad_reactive_core_planarity,
     has_bad_unchanged_near_core_bond,
+    has_committed_spectator_group,
     has_inward_blocking_h_on_forming_axis,
     has_recipe_channel_mismatch,
+    has_wrong_h_migration_committed,
     score_guess_against_path_spec,
     validate_guess_against_path_spec,
 )
@@ -830,6 +832,194 @@ class TestHasBadReactiveCorePlanarity(unittest.TestCase):
             chemistry=PathChemistry.CONCERTED_HETERO_REARRANGEMENT)
         self.assertTrue(bad)
         self.assertIn('reactive-core', reason)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4a: narrow recipe-consistency / wrong-channel screening
+# ---------------------------------------------------------------------------
+
+
+class TestHasWrongHMigrationCommitted(unittest.TestCase):
+    """``has_wrong_h_migration_committed`` rejects only when:
+
+    1. chemistry is H_TRANSFER, AND
+    2. the path-spec names a migrating H, AND
+    3. the named migrating H still sits near its donor (≤ 1.20 × sbl), AND
+    4. a spectator H is at most 0.70 × of the named migrating H's
+       distance to the named acceptor.
+    """
+
+    def setUp(self):
+        # Use propane as a backbone with a clear migrating-H story:
+        # propane = C0-C1-C2 with an H on each carbon.
+        self.sp = ARCSpecies(label='propane', smiles='CCC')
+        self.symbols = self.sp.get_xyz()['symbols']
+        self.atom_to_idx = {a: i for i, a in enumerate(self.sp.mol.atoms)}
+        # Pick the two terminal C atoms.
+        terminal_cs = [
+            self.atom_to_idx[a] for a in self.sp.mol.atoms
+            if a.element.symbol == 'C'
+            and sum(1 for n in a.bonds.keys() if n.element.symbol != 'H') == 1
+        ]
+        self.c_donor, self.c_acceptor = terminal_cs[0], terminal_cs[1]
+        # Pick one H bonded to c_donor as the intended migrating H.
+        self.h_intended = next(
+            self.atom_to_idx[n] for n in self.sp.mol.atoms[self.c_donor].bonds.keys()
+            if n.element.symbol == 'H'
+        )
+        # Pick one H bonded to c_acceptor as the spectator H.
+        self.h_spectator = next(
+            self.atom_to_idx[n] for n in self.sp.mol.atoms[self.c_acceptor].bonds.keys()
+            if n.element.symbol == 'H'
+        )
+
+    def _make_spec(self):
+        # Path-spec: the forming bond is (h_intended, c_acceptor) — that's
+        # the recipe's "this H is migrating to this acceptor".
+        return ReactionPathSpec(
+            breaking_bonds=[(self.c_donor, self.h_intended)],
+            forming_bonds=[(self.c_acceptor, self.h_intended)],
+            family='intra_H_migration',
+        )
+
+    def test_no_op_when_chemistry_is_not_h_transfer(self):
+        spec = self._make_spec()
+        xyz = self.sp.get_xyz()
+        bad, _ = has_wrong_h_migration_committed(
+            spec, xyz, self.sp.mol, self.symbols,
+            chemistry=PathChemistry.GENERIC)
+        self.assertFalse(bad)
+
+    def test_no_op_when_intended_h_already_moved(self):
+        """If the named migrating H has already moved off the donor
+        (d > 1.20 × sbl), the rule does not fire even if a spectator
+        is closer to the acceptor — the channel has engaged."""
+        spec = self._make_spec()
+        coords = np.asarray(self.sp.get_xyz()['coords'], dtype=float).copy()
+        # Move the intended H far from the donor.
+        donor_pos = coords[self.c_donor]
+        acceptor_pos = coords[self.c_acceptor]
+        # Place at the midpoint between donor and acceptor.
+        coords[self.h_intended] = 0.5 * (donor_pos + acceptor_pos)
+        xyz = {**self.sp.get_xyz(),
+               'coords': tuple(tuple(row) for row in coords)}
+        bad, _ = has_wrong_h_migration_committed(
+            spec, xyz, self.sp.mol, self.symbols,
+            chemistry=PathChemistry.H_TRANSFER)
+        self.assertFalse(bad)
+
+    def test_rejects_when_spectator_h_is_committed(self):
+        """A spectator H bonded to the acceptor C trivially sits at
+        ~1.09 Å from the acceptor.  When the intended migrating H is
+        still near its donor (d ~ 1.09 Å), the spectator's d/intended
+        ratio is ~ 1.09 / d_intended_acceptor.  In propane the
+        intended H to the acceptor is several Å away, so the rule
+        should fire."""
+        spec = self._make_spec()
+        xyz = self.sp.get_xyz()
+        bad, reason = has_wrong_h_migration_committed(
+            spec, xyz, self.sp.mol, self.symbols,
+            chemistry=PathChemistry.H_TRANSFER)
+        self.assertTrue(bad)
+        self.assertIn('wrong-h-migration', reason)
+        self.assertIn(f'H{self.h_spectator}', reason)
+
+    def test_no_op_when_no_h_in_forming_bond(self):
+        """A forming bond between two heavy atoms is not subject to
+        this check — there is no migrating H to test."""
+        spec = ReactionPathSpec(
+            breaking_bonds=[(self.c_donor, self.c_acceptor)],
+            forming_bonds=[(self.c_donor, self.c_acceptor)],
+            family='generic',
+        )
+        xyz = self.sp.get_xyz()
+        bad, _ = has_wrong_h_migration_committed(
+            spec, xyz, self.sp.mol, self.symbols,
+            chemistry=PathChemistry.H_TRANSFER)
+        self.assertFalse(bad)
+
+
+class TestHasCommittedSpectatorGroup(unittest.TestCase):
+    """``has_committed_spectator_group`` rejects only for an explicit
+    family allowlist when a spectator heavy atom has formed a near-
+    bond-length contact with a reactive endpoint that is not its
+    expected partner."""
+
+    def _xyz_two_carbons(self, d_ca: float, d_spectator: float):
+        """Build a 4-atom xyz: C0 (reactive), C1 (reactive partner),
+        C2 (a far spectator), C3 (the spectator committed to C0 at
+        ``d_spectator`` — placed perpendicular to the C0-C1 axis so it
+        is not also close to C1)."""
+        return {
+            'symbols': ('C', 'C', 'C', 'C'),
+            'isotopes': (12, 12, 12, 12),
+            'coords': (
+                (0.0, 0.0, 0.0),                  # C0
+                (d_ca, 0.0, 0.0),                 # C1 (reactive partner)
+                (10.0, 0.0, 0.0),                 # C2 (spectator far away)
+                (0.0, d_spectator, 0.0),          # C3 (spectator perpendicular to C0)
+            ),
+        }
+
+    def test_no_op_for_unrelated_family(self):
+        spec = ReactionPathSpec(
+            breaking_bonds=[(0, 1)],
+            forming_bonds=[(0, 1)],
+            reactive_atoms={0, 1},
+            family='intra_H_migration',
+        )
+        xyz = self._xyz_two_carbons(d_ca=2.0, d_spectator=1.0)
+        # Build a tiny propane mol — only used for n_atoms / adj API.
+        mol = ARCSpecies(label='butane', smiles='CCCC').mol
+        bad, _ = has_committed_spectator_group(
+            spec, xyz, mol, symbols=('C', 'C', 'C', 'C'))
+        self.assertFalse(bad)
+
+    def test_rejects_for_allowlisted_family_when_committed(self):
+        # Family is on the allowlist; spectator C3 sits at 1.0 Å from
+        # reactive endpoint C0 — well below 0.85 × sbl(C, C) = 1.275 Å.
+        spec = ReactionPathSpec(
+            breaking_bonds=[(0, 1)],
+            forming_bonds=[(0, 1)],
+            reactive_atoms={0, 1},
+            family='1,3_Insertion_ROR',
+        )
+        xyz = self._xyz_two_carbons(d_ca=2.0, d_spectator=1.0)
+        mol = ARCSpecies(label='butane', smiles='CCCC').mol
+        bad, reason = has_committed_spectator_group(
+            spec, xyz, mol, symbols=('C', 'C', 'C', 'C'))
+        self.assertTrue(bad)
+        self.assertIn('committed-spectator', reason)
+        self.assertIn('1,3_Insertion_ROR', reason)
+
+    def test_no_op_when_distance_is_just_long_enough(self):
+        # Spectator at d = 1.40 Å — above 0.85 × sbl(C,C) = 1.275 Å.
+        spec = ReactionPathSpec(
+            breaking_bonds=[(0, 1)],
+            forming_bonds=[(0, 1)],
+            reactive_atoms={0, 1},
+            family='1,3_Insertion_ROR',
+        )
+        xyz = self._xyz_two_carbons(d_ca=2.0, d_spectator=1.40)
+        mol = ARCSpecies(label='butane', smiles='CCCC').mol
+        bad, _ = has_committed_spectator_group(
+            spec, xyz, mol, symbols=('C', 'C', 'C', 'C'))
+        self.assertFalse(bad)
+
+    def test_no_op_when_spectator_is_already_an_approved_partner(self):
+        # The spectator atom IS in the path-spec as a reactive partner —
+        # so it is not a spectator at all.
+        spec = ReactionPathSpec(
+            breaking_bonds=[(0, 1), (0, 3)],
+            forming_bonds=[(0, 1), (0, 3)],
+            reactive_atoms={0, 1, 3},
+            family='1,3_Insertion_ROR',
+        )
+        xyz = self._xyz_two_carbons(d_ca=2.0, d_spectator=1.0)
+        mol = ARCSpecies(label='butane', smiles='CCCC').mol
+        bad, _ = has_committed_spectator_group(
+            spec, xyz, mol, symbols=('C', 'C', 'C', 'C'))
+        self.assertFalse(bad)
 
 
 # ---------------------------------------------------------------------------
