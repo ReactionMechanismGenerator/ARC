@@ -23,21 +23,21 @@ jobs:
           path: ARC
 
       - name: Clean Ubuntu Image
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@v1.3.1
         with:
           tool-cache: true
           android: true
           dotnet: true
           haskell: true
           large-packages: true
-          swap-storage: true
+          swap-storage: false
 
       - name: Set up micromamba (arc_env)
         uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: arc_env
           environment-file: ARC/environment.yml
-          cache-environment: true
+          cache-environment: false
           cache-downloads: true
           generate-run-shell: true
 
