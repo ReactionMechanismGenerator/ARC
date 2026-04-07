@@ -14,6 +14,7 @@ from arc.job.adapters.ts.linear_utils.local_geometry import (
     apply_reactive_center_cleanup,
     clean_migrating_h,
     identify_h_migration_pairs,
+    is_terminal_group_asymmetric,
     orient_h_away_from_axis,
     regularize_terminal_h_geometry,
     restore_terminal_h_symmetry,
@@ -293,6 +294,180 @@ class TestRestoreTerminalHSymmetry(unittest.TestCase):
                 self.assertGreater(d, 1.50)
 
 
+class TestIsTerminalGroupAsymmetric(unittest.TestCase):
+    """Phase 4b — pure detector for unphysically distorted terminal CH₂/CH₃.
+
+    Returns ``True`` only when an umbrella inversion (any H angle to
+    the parent → center axis exceeds 100°) OR an azimuthal distortion
+    (CH₃ cyclic spacings deviate from 120° by more than the threshold,
+    or CH₂ smaller cyclic separation drops below 80°) is present.
+    Returns ``False`` for already-good geometries so the symmetry
+    restorer leaves them alone.
+    """
+
+    @staticmethod
+    def _build_axial_ch3(theta_radians):
+        """Construct an XYZ for a model -CH₃ group with explicit per-H
+        azimuth angles around a fixed parent → center axis.
+
+        Atom layout:
+            0: parent (X) at (0, 0, 0)
+            1: center (C) at (0, 0, 1.54)         — outward axis is +z
+            2..2+n_h: H atoms placed at azimuth ``theta_radians`` around +z
+        """
+        n_h = len(theta_radians)
+        # Standard outward C–H direction relative to the +z axis is at
+        # 70.5° from +z (the supplement of the tetrahedral 109.5° H–C–C
+        # angle).  Place each H on that cone at the chosen azimuth.
+        cone_angle = np.deg2rad(70.5)
+        sin_c = float(np.sin(cone_angle))
+        cos_c = float(np.cos(cone_angle))
+        center = np.array([0.0, 0.0, 1.54])
+        symbols = ['C', 'C'] + ['H'] * n_h
+        coords = [(0.0, 0.0, 0.0), tuple(center)]
+        for theta in theta_radians:
+            h = center + np.array([sin_c * np.cos(theta),
+                                   sin_c * np.sin(theta),
+                                   cos_c])
+            coords.append(tuple(h))
+        return {
+            'symbols': tuple(symbols),
+            'isotopes': (12, 12) + (1,) * n_h,
+            'coords': tuple(coords),
+        }, 1, 0, list(range(2, 2 + n_h))
+
+    def test_ideal_ch3_is_not_asymmetric(self):
+        """An ideal CH₃ with H atoms at 0°, 120°, 240° passes."""
+        xyz, c, p, hs = self._build_axial_ch3(
+            [0.0, 2.0 * np.pi / 3.0, 4.0 * np.pi / 3.0])
+        self.assertFalse(is_terminal_group_asymmetric(
+            xyz, center_idx=c, parent_idx=p, h_indices=hs))
+
+    def test_inverted_ch3_umbrella_is_asymmetric(self):
+        """An H angle to the outward axis exceeding 100° (the inverted
+        umbrella case) is rejected."""
+        # Build a CH₃ but flip ONE H to point back toward the parent by
+        # placing it on the *inverted* cone (z < 0 below the center).
+        n_h = 3
+        thetas = [0.0, 2.0 * np.pi / 3.0, 4.0 * np.pi / 3.0]
+        cone_angle = np.deg2rad(70.5)
+        center = np.array([0.0, 0.0, 1.54])
+        coords = [(0.0, 0.0, 0.0), tuple(center)]
+        for k, theta in enumerate(thetas):
+            sin_c = float(np.sin(cone_angle))
+            if k == 0:
+                # Inverted: place this H on the -z side of the center.
+                cos_c = -float(np.cos(cone_angle))  # negative z component
+            else:
+                cos_c = float(np.cos(cone_angle))
+            h = center + np.array([sin_c * np.cos(theta),
+                                   sin_c * np.sin(theta),
+                                   cos_c])
+            coords.append(tuple(h))
+        xyz = {
+            'symbols': ('C', 'C', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 1, 1, 1),
+            'coords': tuple(coords),
+        }
+        self.assertTrue(is_terminal_group_asymmetric(
+            xyz, center_idx=1, parent_idx=0, h_indices=[2, 3, 4]))
+
+    def test_ch3_azimuthal_distortion_is_asymmetric(self):
+        """A CH₃ where one H is bent far enough that the cyclic spacings
+        deviate from 120° by more than the default threshold (20°) is
+        rejected."""
+        # Place H atoms at 0°, 120°, 240° + 50°  = 290°.  Cyclic
+        # spacings become 120°, 170°, 70° → max deviation 50° > 20°.
+        thetas = [0.0,
+                  2.0 * np.pi / 3.0,
+                  4.0 * np.pi / 3.0 + np.deg2rad(50.0)]
+        xyz, c, p, hs = self._build_axial_ch3(thetas)
+        self.assertTrue(is_terminal_group_asymmetric(
+            xyz, center_idx=c, parent_idx=p, h_indices=hs))
+
+    def test_ch3_small_distortion_is_not_asymmetric(self):
+        """A CH₃ with H atoms only ~10° away from ideal must NOT trip
+        the detector — the threshold (20°) gives a comfortable margin
+        so RDKit/force-field geometries pass through unchanged."""
+        thetas = [0.0,
+                  2.0 * np.pi / 3.0 + np.deg2rad(10.0),
+                  4.0 * np.pi / 3.0 - np.deg2rad(5.0)]
+        xyz, c, p, hs = self._build_axial_ch3(thetas)
+        self.assertFalse(is_terminal_group_asymmetric(
+            xyz, center_idx=c, parent_idx=p, h_indices=hs))
+
+    def test_ch2_squeezed_is_asymmetric(self):
+        """A CH₂ whose two H projected azimuths are squeezed to ~60°
+        (smaller cyclic separation < 80°) is rejected."""
+        thetas = [0.0, np.deg2rad(60.0)]
+        xyz, c, p, hs = self._build_axial_ch3(thetas)
+        # Update symbols / isotopes for the 2-H case.
+        new_symbols = ('C', 'C', 'H', 'H')
+        new_iso = (12, 12, 1, 1)
+        xyz = {
+            'symbols': new_symbols,
+            'isotopes': new_iso,
+            'coords': xyz['coords'],
+        }
+        self.assertTrue(is_terminal_group_asymmetric(
+            xyz, center_idx=c, parent_idx=p, h_indices=hs))
+
+    def test_ch2_outward_pair_is_not_asymmetric(self):
+        """A CH₂ with the two H projected azimuths roughly opposite
+        (~180° apart) is *not* rejected — that's the normal terminal
+        =CH₂ geometry."""
+        thetas = [0.0, np.pi]
+        xyz, c, p, hs = self._build_axial_ch3(thetas)
+        xyz = {
+            'symbols': ('C', 'C', 'H', 'H'),
+            'isotopes': (12, 12, 1, 1),
+            'coords': xyz['coords'],
+        }
+        self.assertFalse(is_terminal_group_asymmetric(
+            xyz, center_idx=c, parent_idx=p, h_indices=hs))
+
+    def test_non_terminal_h_count_returns_false(self):
+        """Passing fewer than 2 or more than 3 H indices is treated as
+        'not eligible' and returns False without throwing."""
+        xyz, c, p, hs = self._build_axial_ch3(
+            [0.0, 2.0 * np.pi / 3.0, 4.0 * np.pi / 3.0])
+        # Single H (not a CH₂/CH₃ shape) → False.
+        self.assertFalse(is_terminal_group_asymmetric(
+            xyz, center_idx=c, parent_idx=p, h_indices=[hs[0]]))
+        # 4 H atoms (CH₄ shape) → False.
+        self.assertFalse(is_terminal_group_asymmetric(
+            xyz, center_idx=c, parent_idx=p, h_indices=hs + [hs[0]]))
+
+    def test_degenerate_axis_returns_false(self):
+        """When parent and center share the same coordinates, the axis
+        is degenerate; the function returns False (no opinion)."""
+        xyz = {
+            'symbols': ('C', 'C', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 1, 1, 1),
+            'coords': ((0.0, 0.0, 0.0),
+                       (0.0, 0.0, 0.0),  # parent ≡ center
+                       (1.0, 0.0, 0.0),
+                       (-0.5, 0.866, 0.0),
+                       (-0.5, -0.866, 0.0)),
+        }
+        self.assertFalse(is_terminal_group_asymmetric(
+            xyz, center_idx=1, parent_idx=0, h_indices=[2, 3, 4]))
+
+    def test_threshold_is_tunable(self):
+        """A wider threshold lets larger distortions pass."""
+        thetas = [0.0,
+                  2.0 * np.pi / 3.0,
+                  4.0 * np.pi / 3.0 + np.deg2rad(25.0)]
+        xyz, c, p, hs = self._build_axial_ch3(thetas)
+        # Default threshold (20°) → asymmetric.
+        self.assertTrue(is_terminal_group_asymmetric(
+            xyz, center_idx=c, parent_idx=p, h_indices=hs))
+        # Wider threshold (40°) → no longer asymmetric.
+        self.assertFalse(is_terminal_group_asymmetric(
+            xyz, center_idx=c, parent_idx=p, h_indices=hs,
+            threshold_deg=40.0))
+
+
 class TestApplyReactiveCenterCleanup(unittest.TestCase):
     """Phase 4a thin orchestrator over the existing local-geometry helpers.
 
@@ -357,11 +532,17 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
         self.assertAlmostEqual(d_ch, sbl_ch + PAULING_DELTA, places=3)
         self.assertAlmostEqual(d_nh, sbl_nh + PAULING_DELTA, places=3)
 
-    def test_orchestrator_restores_ch3_symmetry_on_reactive_center(self):
-        """When ``reactive_centers`` is supplied without migrations, the
-        orchestrator runs the terminal-H regularization + symmetry
-        restoration on each named center.  This is the Korcek_step1
-        terminal CH₃ inversion repair pathway."""
+    def test_orchestrator_does_not_rotate_already_symmetric_ch3(self):
+        """Phase 4b regression guard.  When the named reactive center is
+        an already-symmetric terminal CH₃, the orchestrator's symmetry
+        restoration must NOT fire (the asymmetry detector returns False)
+        and the H atoms must end up byte-for-byte where they started.
+
+        This is the test that the Phase 4a wiring (which always called
+        ``restore_terminal_h_symmetry`` at this site) failed because
+        the unconditional rotation churned coordinates of already-good
+        groups.
+        """
         sp = ARCSpecies(label='ethane', smiles='CC')
         xyz = sp.get_xyz()
         symbols = xyz['symbols']
@@ -371,18 +552,121 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
             atom_to_idx[nbr] for nbr in sp.mol.atoms[c0].bonds.keys()
             if nbr.element.symbol == 'H'
         ]
-        # Distort one H by ~0.02 Å (within the bail-out tolerance).
-        coords = list(map(list, xyz['coords']))
-        coords[h_neighbors[0]][1] += 0.02
-        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        before = np.asarray(xyz['coords'], dtype=float).copy()
         out = apply_reactive_center_cleanup(
-            bad, sp.mol, reactive_centers={c0})
-        new_coords = np.asarray(out['coords'])
+            xyz, sp.mol, reactive_centers={c0}, restore_symmetry=True)
+        after = np.asarray(out['coords'], dtype=float)
+        for h in h_neighbors:
+            self.assertTrue(
+                np.allclose(before[h], after[h], atol=1e-9),
+                msg=f'H{h} moved on an already-symmetric CH₃ '
+                    f'(asymmetry detector should have returned False)',
+            )
+
+    def test_orchestrator_restores_azimuthally_distorted_ch3_when_signaled(self):
+        """Phase 4b — when the orchestrator is given a CH₃ whose H
+        atoms are azimuthally distorted (cyclic spacings around the
+        parent → center axis deviate from 120° by more than the
+        detector threshold), the asymmetry detector returns True and
+        ``restore_terminal_h_symmetry`` is invoked.
+
+        We use azimuthal-only distortion (rotation of one H around the
+        outward axis) so that all per-H bond lengths to the parent C
+        are preserved — that keeps the symmetrizer's 0.05 Å bond-length
+        bail-out from firing.  This isolates the test to the
+        "asymmetry signal triggers restoration" pathway specifically.
+        """
+        sp = ARCSpecies(label='ethane', smiles='CC')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        c0 = next(i for i, s in enumerate(symbols) if s == 'C')
+        c1 = next(i for i, s in enumerate(symbols) if s == 'C' and i != c0)
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        h_neighbors = [
+            atom_to_idx[nbr] for nbr in sp.mol.atoms[c0].bonds.keys()
+            if nbr.element.symbol == 'H'
+        ]
+        coords = list(map(list, xyz['coords']))
+        # Build the outward axis (c0 → away from c1).
+        c0_pos = np.array(coords[c0])
+        c1_pos = np.array(coords[c1])
+        axis = c0_pos - c1_pos
+        axis /= float(np.linalg.norm(axis))
+        # Rotate ONE H of c0 by +50° around the axis (Rodrigues rotation)
+        # — this preserves its bond length to c0 but breaks the 120°
+        # azimuthal symmetry, which the detector should pick up.
+        h_target = h_neighbors[0]
+        h_vec = np.array(coords[h_target]) - c0_pos
+        theta_rad = np.deg2rad(50.0)
+        cos_t, sin_t = float(np.cos(theta_rad)), float(np.sin(theta_rad))
+        rotated = (h_vec * cos_t
+                   + np.cross(axis, h_vec) * sin_t
+                   + axis * float(np.dot(axis, h_vec)) * (1.0 - cos_t))
+        coords[h_target] = (c0_pos + rotated).tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        # Sanity: the bond length is preserved.
+        self.assertAlmostEqual(
+            float(np.linalg.norm(np.array(coords[h_target]) - c0_pos)),
+            float(np.linalg.norm(np.array(xyz['coords'][h_target]) - c0_pos)),
+            places=6,
+        )
+        out = apply_reactive_center_cleanup(
+            bad, sp.mol, reactive_centers={c0}, restore_symmetry=True)
+        new_coords = np.asarray(out['coords'], dtype=float)
+        # The orchestrator should have re-symmetrized: at least one H
+        # of c0 must have moved relative to the distorted input.
+        moved = any(
+            not np.allclose(np.array(coords[h]), new_coords[h], atol=1e-6)
+            for h in h_neighbors
+        )
+        self.assertTrue(
+            moved,
+            'orchestrator should have re-symmetrized the azimuthally distorted CH₃')
+        # And the resulting H–C bond lengths should still all be ~equal
+        # (symmetry restoration preserves bond length within 0.05 Å).
         c_pos = new_coords[c0]
         dists = [float(np.linalg.norm(new_coords[h] - c_pos))
                  for h in h_neighbors]
-        # All three H atoms should now be near-equidistant from C.
-        self.assertAlmostEqual(max(dists) - min(dists), 0.0, places=2)
+        self.assertLess(max(dists) - min(dists), 0.05)
+
+    def test_orchestrator_distorted_ch3_does_not_touch_unrelated_atoms(self):
+        """Phase 4b — even when symmetry restoration *does* fire on a
+        distorted center, atoms outside the immediate first shell of
+        that center are not moved at all (no whole-molecule churn)."""
+        sp = ARCSpecies(label='ethane', smiles='CC')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        c0 = next(i for i, s in enumerate(symbols) if s == 'C')
+        c1 = next(i for i, s in enumerate(symbols) if s == 'C' and i != c0)
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        h_on_c1 = [
+            atom_to_idx[nbr] for nbr in sp.mol.atoms[c1].bonds.keys()
+            if nbr.element.symbol == 'H'
+        ]
+        h_on_c0 = [
+            atom_to_idx[nbr] for nbr in sp.mol.atoms[c0].bonds.keys()
+            if nbr.element.symbol == 'H'
+        ]
+        coords = list(map(list, xyz['coords']))
+        # Invert one H on c0 so the asymmetry detector fires there.
+        c0_pos = np.array(coords[c0])
+        c1_pos = np.array(coords[c1])
+        outward = c0_pos - c1_pos
+        outward /= float(np.linalg.norm(outward))
+        h_vec = np.array(coords[h_on_c0[0]]) - c0_pos
+        proj = float(np.dot(h_vec, outward)) * outward
+        coords[h_on_c0[0]] = (np.array(coords[h_on_c0[0]]) - 2.0 * proj).tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        before = np.asarray(bad['coords'], dtype=float).copy()
+        out = apply_reactive_center_cleanup(
+            bad, sp.mol, reactive_centers={c0}, restore_symmetry=True)
+        after = np.asarray(out['coords'], dtype=float)
+        # The other terminal C and its 3 H atoms must be untouched.
+        for idx in [c1] + h_on_c1:
+            self.assertTrue(
+                np.allclose(before[idx], after[idx], atol=1e-9),
+                msg=f'atom {idx} ({symbols[idx]}) moved when it should not have',
+            )
 
     def test_orchestrator_does_not_touch_unrelated_atoms(self):
         """When the orchestrator is given one explicit reactive center,

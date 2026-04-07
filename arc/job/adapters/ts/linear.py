@@ -1634,16 +1634,15 @@ def interpolate_addition(rxn: 'ARCReaction',
                     # invariant by routing through the ``reactive_centers``
                     # branch only.
                     # Phase 4a: route the per-pair orient pass + the donor /
-                    # acceptor reactive-center cleanup through the new shared
-                    # orchestrator.  Symmetry restoration is intentionally
-                    # NOT requested here (``restore_symmetry=False``) — the
-                    # current ``restore_terminal_h_symmetry`` rotates H atoms
-                    # to a deterministic azimuth even when the parent group
-                    # was already in a chemically reasonable orientation,
-                    # which over-rotates non-asymmetric CH₂/CH₃ groups in
-                    # geometries that the orchestration is otherwise meant
-                    # to leave alone.  Phase 4b will gate the symmetry pass
-                    # on a per-center asymmetry signal.
+                    # acceptor reactive-center cleanup through the shared
+                    # orchestrator.
+                    # Phase 4b: symmetry restoration is now requested
+                    # (``restore_symmetry=True``) and the orchestrator
+                    # internally gates each candidate terminal CH₂/CH₃
+                    # on :func:`is_terminal_group_asymmetric` so that
+                    # already-good groups are left untouched and only
+                    # truly distorted / inverted terminal groups get
+                    # re-symmetrized.
                     template_centers: Set[int] = set()
                     template_exempt_hs: Set[int] = set()
                     for mig_rec in migration_records:
@@ -1662,7 +1661,7 @@ def interpolate_addition(rxn: 'ARCReaction',
                             migrations=None,
                             reactive_centers=template_centers,
                             exempt_h_indices=template_exempt_hs,
-                            restore_symmetry=False,
+                            restore_symmetry=True,
                         )
 
                     # Step 3: Phase 3b path-spec enrichment.
@@ -2200,15 +2199,14 @@ def interpolate_addition(rxn: 'ARCReaction',
             # ``migrate_h_between_fragments`` already triangulated the
             # migrating H, so we do NOT re-call ``clean_migrating_h``.
             # Phase 4a: route the per-pair orient pass + the donor /
-            # acceptor reactive-center cleanup through the new shared
-            # orchestrator.  Behavior is unchanged for cases that
-            # previously hit the inline calls; the orchestrator
-            # additionally runs ``restore_terminal_h_symmetry`` on
-            # donor and acceptor when (and only when) those centers
-            # are clear terminal CH₂/CH₃ groups.
-            # Phase 4a: same orchestrator routing as the template-guided
-            # branch.  ``restore_symmetry=False`` keeps the symmetry pass
-            # off for now — see the matching note above.
+            # acceptor reactive-center cleanup through the shared
+            # orchestrator.
+            # Phase 4b: symmetry restoration is now requested
+            # (``restore_symmetry=True``) and the orchestrator
+            # internally gates each candidate terminal CH₂/CH₃ on
+            # :func:`is_terminal_group_asymmetric` so that already-good
+            # groups are left untouched and only truly distorted /
+            # inverted terminal groups get re-symmetrized.
             frag_centers: Set[int] = set()
             frag_exempt_hs: Set[int] = set()
             for mig_rec in frag_migrations:
@@ -2226,7 +2224,7 @@ def interpolate_addition(rxn: 'ARCReaction',
                     migrations=None,
                     reactive_centers=frag_centers,
                     exempt_h_indices=frag_exempt_hs,
-                    restore_symmetry=False,
+                    restore_symmetry=True,
                 )
 
             enriched_path_spec = _enrich_post_migration_path_spec(
