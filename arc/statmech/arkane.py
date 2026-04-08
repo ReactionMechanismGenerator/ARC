@@ -886,6 +886,10 @@ def _warn_no_match(level: "Level",
             f"available years: {_format_years(years)}. "
             f"Specify a year to select a matching entry."
         )
+    else:
+        logger.warning(
+            f"No Arkane {label} entry found for {level.simple()} in the RMG database."
+        )
 
 
 def _find_best_level_key_for_sp_level(level: "Level",
@@ -1063,7 +1067,11 @@ def check_arkane_aec(sp_level: 'Level') -> bool:
     Returns:
         bool: True if AEC is available, False otherwise.
     """
-    qm_corr_files = _get_qm_corrections_files()
+    try:
+        qm_corr_files = _get_qm_corrections_files()
+    except InputError as e:
+        logger.warning(f'Could not load Arkane quantum corrections data: {e}')
+        return False
     aec_start = "atom_energies = {"
     aec_end = "pbac = {"
     best_aec_key = _find_best_across_files(sp_level, qm_corr_files, aec_start, aec_end)
@@ -1071,8 +1079,6 @@ def check_arkane_aec(sp_level: 'Level') -> bool:
         logger.info(f'Arkane atom energy corrections (AEC) matched for {best_aec_key} (BAC disabled)')
     else:
         _warn_no_match(sp_level, qm_corr_files, aec_start, aec_end, label="AEC")
-        logger.warning(f'Arkane has no atom energy corrections (AEC) for {_level_to_str(sp_level)}. '
-                       f'Energy corrections will be disabled.')
     return best_aec_key is not None
 
 
@@ -1095,7 +1101,11 @@ def check_arkane_bacs(sp_level: 'Level',
     Returns:
         bool: True if both AECs and BACs are available, False otherwise.
     """
-    qm_corr_files = _get_qm_corrections_files()
+    try:
+        qm_corr_files = _get_qm_corrections_files()
+    except InputError as e:
+        logger.warning(f'Could not load Arkane quantum corrections data: {e}')
+        return False
 
     aec_start = "atom_energies = {"
     aec_end = "pbac = {"
@@ -1137,7 +1147,7 @@ def check_arkane_bacs(sp_level: 'Level',
             )
         elif has_bac and not has_aec:
             mssg = (
-                f"Arkane bond additivity corrections (BAC) matched for {_level_to_str(sp_level)}, "
+                f"Arkane {bac_type.upper()}BAC matched for {best_bac_key}, "
                 f"but atom energy corrections (AEC) were NOT found in the RMG database. "
                 f"Energy corrections will be disabled.{year_note}"
             )

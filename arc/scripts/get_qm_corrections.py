@@ -50,7 +50,7 @@ def main(input_path, output_path):
 
     # Support both old format (single matched_key) and new format (separate aec_key/bac_key)
     aec_key = params.get('aec_key') or params.get('matched_key')
-    bac_key = params.get('bac_key')
+    bac_key = params.get('bac_key') or params.get('matched_key')
 
     if aec_key:
         lot = _lot_from_string(aec_key)
