@@ -14,9 +14,11 @@ from arc.job.adapters.ts.linear_utils.local_geometry import (
     apply_reactive_center_cleanup,
     clean_migrating_h,
     identify_h_migration_pairs,
+    is_internal_reactive_ch2_misoriented,
     is_terminal_group_asymmetric,
     orient_h_away_from_axis,
     regularize_terminal_h_geometry,
+    repair_internal_reactive_ch2,
     restore_terminal_h_symmetry,
 )
 from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA
@@ -885,6 +887,516 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
         # The migrating H must have moved away from its original 1.10 Å
         # bond length toward the Pauling TS distance (~1.51 Å).
         self.assertGreater(d_ch, sbl_ch + 0.10)
+
+
+class TestIsInternalReactiveCh2Misoriented(unittest.TestCase):
+    """Phase 4d — pure detector for misoriented internal CH₂ shells.
+
+    Returns ``True`` only when the internal CH₂ shell at ``center_idx``
+    fails one of the three local rules (squeezed H–C–H, heavy-corridor
+    crowding, or sp³ plane violation).  Returns ``False`` for already-
+    good internal CH₂ shells and for non-eligible centers (terminal,
+    wrong H count, missing/degenerate frame).
+    """
+
+    @staticmethod
+    def _propane_middle_ch2():
+        """Return ``(sp, xyz, middle_c, heavy_nbrs, h_nbrs)`` for the
+        middle CH₂ of propane.  This is the canonical *good* internal
+        CH₂ shell used as the baseline geometry for these tests."""
+        sp = ARCSpecies(label='propane', smiles='CCC')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        middle_c = None
+        for atom in sp.mol.atoms:
+            if atom.element.symbol != 'C':
+                continue
+            heavy = [n for n in atom.bonds.keys() if n.element.symbol != 'H']
+            if len(heavy) == 2:
+                middle_c = atom_to_idx[atom]
+                break
+        assert middle_c is not None
+        middle_atom = sp.mol.atoms[middle_c]
+        heavy_nbrs = [atom_to_idx[n] for n in middle_atom.bonds.keys()
+                      if n.element.symbol != 'H']
+        h_nbrs = [atom_to_idx[n] for n in middle_atom.bonds.keys()
+                  if n.element.symbol == 'H']
+        return sp, xyz, middle_c, heavy_nbrs, h_nbrs
+
+    def test_well_oriented_internal_ch2_returns_false(self):
+        """A fresh propane middle CH₂ is a healthy sp³ shell."""
+        _, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        self.assertFalse(
+            is_internal_reactive_ch2_misoriented(
+                xyz, center_idx=middle_c,
+                heavy_nbr_indices=heavy_nbrs,
+                h_indices=h_nbrs))
+
+    def test_squeezed_h_arrangement_returns_true(self):
+        """Two H atoms squeezed into a small H–C–H angle (Rule A)."""
+        _, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        coords = list(map(list, xyz['coords']))
+        c_pos = np.array(coords[middle_c])
+        h0_pos = np.array(coords[h_nbrs[0]])
+        h1_pos = np.array(coords[h_nbrs[1]])
+        # Move both H atoms onto the same direction (the average of the
+        # two H directions), preserving each one's bond length.
+        d0 = h0_pos - c_pos
+        d1 = h1_pos - c_pos
+        r0 = float(np.linalg.norm(d0))
+        r1 = float(np.linalg.norm(d1))
+        avg = (d0 / r0) + (d1 / r1)
+        avg_norm = float(np.linalg.norm(avg))
+        self.assertGreater(avg_norm, 1e-6)
+        avg_hat = avg / avg_norm
+        # Tilt them very slightly off the shared direction so they are
+        # not literally on top of each other but still squeezed.
+        # H0 ← c + r0 · normalize(avg_hat + 0.05 · perp)
+        # H1 ← c + r1 · normalize(avg_hat - 0.05 · perp)
+        perp = np.cross(avg_hat, np.array([1.0, 0.0, 0.0]))
+        if float(np.linalg.norm(perp)) < 1e-3:
+            perp = np.cross(avg_hat, np.array([0.0, 1.0, 0.0]))
+        perp = perp / float(np.linalg.norm(perp))
+        new_dir_0 = avg_hat + 0.05 * perp
+        new_dir_0 /= float(np.linalg.norm(new_dir_0))
+        new_dir_1 = avg_hat - 0.05 * perp
+        new_dir_1 /= float(np.linalg.norm(new_dir_1))
+        coords[h_nbrs[0]] = (c_pos + r0 * new_dir_0).tolist()
+        coords[h_nbrs[1]] = (c_pos + r1 * new_dir_1).tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        self.assertTrue(
+            is_internal_reactive_ch2_misoriented(
+                bad, center_idx=middle_c,
+                heavy_nbr_indices=heavy_nbrs,
+                h_indices=h_nbrs))
+
+    def test_corridor_crowding_returns_true(self):
+        """Both H atoms pushed into the heavy-corridor side (Rule B).
+
+        Reflect each H through the center along the heavy-corridor
+        bisector ŵ.  Reflection preserves bond length but flips the
+        sign of the projection onto ŵ — so an originally back-side
+        H (proj_w < 0) becomes a forbidden front-side H (proj_w > 0).
+        """
+        _, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        coords_arr = np.asarray(xyz['coords'], dtype=float)
+        c_pos = coords_arr[middle_c]
+        a = coords_arr[heavy_nbrs[0]]
+        b = coords_arr[heavy_nbrs[1]]
+        v_a = a - c_pos
+        v_b = b - c_pos
+        va_hat = v_a / float(np.linalg.norm(v_a))
+        vb_hat = v_b / float(np.linalg.norm(v_b))
+        w_raw = va_hat + vb_hat
+        w_hat = w_raw / float(np.linalg.norm(w_raw))
+        coords = list(map(list, xyz['coords']))
+        for h in h_nbrs:
+            h_vec = coords_arr[h] - c_pos
+            proj = float(np.dot(h_vec, w_hat))
+            # Reflect: subtract twice the projection along w_hat.
+            new_h = coords_arr[h] - 2.0 * proj * w_hat
+            # Now move that H so its projection on w_hat is *positive*
+            # by another step (push deeper into the corridor).
+            extra_along_w = 0.4 * w_hat
+            new_h = new_h + extra_along_w
+            coords[h] = new_h.tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        self.assertTrue(
+            is_internal_reactive_ch2_misoriented(
+                bad, center_idx=middle_c,
+                heavy_nbr_indices=heavy_nbrs,
+                h_indices=h_nbrs))
+
+    def test_same_side_plane_violation_returns_true(self):
+        """Both H atoms on the same side of the heavy plane (Rule C)."""
+        _, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        coords_arr = np.asarray(xyz['coords'], dtype=float)
+        c_pos = coords_arr[middle_c]
+        a = coords_arr[heavy_nbrs[0]]
+        b = coords_arr[heavy_nbrs[1]]
+        v_a = a - c_pos
+        v_b = b - c_pos
+        n_raw = np.cross(v_a, v_b)
+        n_hat = n_raw / float(np.linalg.norm(n_raw))
+        # Identify which H is on the negative side and reflect it
+        # through the plane.  The reflected H now sits on the same
+        # (positive) side as the other H.
+        signs = []
+        for h in h_nbrs:
+            h_vec = coords_arr[h] - c_pos
+            signs.append(float(np.dot(h_vec, n_hat)))
+        # Find the H with the smaller (more negative) projection.
+        flip_h = h_nbrs[0] if signs[0] < signs[1] else h_nbrs[1]
+        coords = list(map(list, xyz['coords']))
+        flip_vec = coords_arr[flip_h] - c_pos
+        proj_n = float(np.dot(flip_vec, n_hat))
+        new_h = coords_arr[flip_h] - 2.0 * proj_n * n_hat
+        coords[flip_h] = new_h.tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        self.assertTrue(
+            is_internal_reactive_ch2_misoriented(
+                bad, center_idx=middle_c,
+                heavy_nbr_indices=heavy_nbrs,
+                h_indices=h_nbrs))
+
+    def test_terminal_center_is_not_eligible(self):
+        """Terminal CH₃ centers must NOT be evaluated by this detector
+        (only 1 heavy neighbor — terminal centers go through the
+        Phase 4b/4c pathway)."""
+        sp = ARCSpecies(label='propane', smiles='CCC')
+        xyz = sp.get_xyz()
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        terminal_c = None
+        terminal_atom = None
+        for atom in sp.mol.atoms:
+            if atom.element.symbol != 'C':
+                continue
+            heavy = [n for n in atom.bonds.keys() if n.element.symbol != 'H']
+            if len(heavy) == 1:
+                terminal_c = atom_to_idx[atom]
+                terminal_atom = atom
+                break
+        self.assertIsNotNone(terminal_c)
+        heavy_nbrs = [atom_to_idx[n] for n in terminal_atom.bonds.keys()
+                      if n.element.symbol != 'H']
+        h_nbrs = [atom_to_idx[n] for n in terminal_atom.bonds.keys()
+                  if n.element.symbol == 'H']
+        # 1 heavy neighbor → ineligible
+        self.assertFalse(
+            is_internal_reactive_ch2_misoriented(
+                xyz, center_idx=terminal_c,
+                heavy_nbr_indices=heavy_nbrs,
+                h_indices=h_nbrs))
+
+    def test_wrong_h_count_is_not_eligible(self):
+        """A center with the wrong number of H atoms is ineligible."""
+        _, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        # Pass only one H — ineligible.
+        self.assertFalse(
+            is_internal_reactive_ch2_misoriented(
+                xyz, center_idx=middle_c,
+                heavy_nbr_indices=heavy_nbrs,
+                h_indices=h_nbrs[:1]))
+
+    def test_collinear_heavy_neighbors_is_not_eligible(self):
+        """If the two heavy neighbors are collinear with the center, the
+        heavy plane is undefined and the detector returns False."""
+        _, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        coords = list(map(list, xyz['coords']))
+        c_pos = np.array(coords[middle_c])
+        # Place both heavy neighbors anti-parallel along x.
+        coords[heavy_nbrs[0]] = (c_pos + np.array([1.5, 0.0, 0.0])).tolist()
+        coords[heavy_nbrs[1]] = (c_pos + np.array([-1.5, 0.0, 0.0])).tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        self.assertFalse(
+            is_internal_reactive_ch2_misoriented(
+                bad, center_idx=middle_c,
+                heavy_nbr_indices=heavy_nbrs,
+                h_indices=h_nbrs))
+
+
+class TestRepairInternalReactiveCh2(unittest.TestCase):
+    """Phase 4d — local repair primitive for internal CH₂ shells.
+
+    The repair must (1) act only on the H shell of the named center,
+    (2) preserve each H's original bond length to the center exactly,
+    and (3) leave heavy neighbors and unrelated atoms untouched.
+    """
+
+    @staticmethod
+    def _propane_middle_ch2():
+        sp = ARCSpecies(label='propane', smiles='CCC')
+        xyz = sp.get_xyz()
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        middle_c = None
+        for atom in sp.mol.atoms:
+            if atom.element.symbol != 'C':
+                continue
+            heavy = [n for n in atom.bonds.keys() if n.element.symbol != 'H']
+            if len(heavy) == 2:
+                middle_c = atom_to_idx[atom]
+                break
+        middle_atom = sp.mol.atoms[middle_c]
+        heavy_nbrs = [atom_to_idx[n] for n in middle_atom.bonds.keys()
+                      if n.element.symbol != 'H']
+        h_nbrs = [atom_to_idx[n] for n in middle_atom.bonds.keys()
+                  if n.element.symbol == 'H']
+        return sp, xyz, middle_c, heavy_nbrs, h_nbrs
+
+    def _build_corridor_crowded(self):
+        """Return a propane XYZ in which the middle CH₂'s two H atoms
+        have been pushed into the heavy-corridor side (the canonical
+        Rule B failure)."""
+        sp, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        coords_arr = np.asarray(xyz['coords'], dtype=float)
+        c_pos = coords_arr[middle_c]
+        a = coords_arr[heavy_nbrs[0]]
+        b = coords_arr[heavy_nbrs[1]]
+        v_a = a - c_pos
+        v_b = b - c_pos
+        va_hat = v_a / float(np.linalg.norm(v_a))
+        vb_hat = v_b / float(np.linalg.norm(v_b))
+        w_hat = (va_hat + vb_hat)
+        w_hat = w_hat / float(np.linalg.norm(w_hat))
+        coords = list(map(list, xyz['coords']))
+        # Reflect each H through the (heavy-plane) so it ends up on the
+        # forbidden +ŵ side, preserving bond length to c by reflection.
+        for h in h_nbrs:
+            h_vec = coords_arr[h] - c_pos
+            proj_w = float(np.dot(h_vec, w_hat))
+            new_h = coords_arr[h] - 2.0 * proj_w * w_hat + 0.4 * w_hat
+            coords[h] = new_h.tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        return sp, bad, middle_c, heavy_nbrs, h_nbrs
+
+    def test_repair_preserves_per_h_bond_lengths(self):
+        sp, bad, middle_c, heavy_nbrs, h_nbrs = self._build_corridor_crowded()
+        before_arr = np.asarray(bad['coords'], dtype=float)
+        c_pos_before = before_arr[middle_c]
+        original_per_h_dists = {
+            h: float(np.linalg.norm(before_arr[h] - c_pos_before))
+            for h in h_nbrs
+        }
+        out = repair_internal_reactive_ch2(
+            bad, center_idx=middle_c,
+            heavy_nbr_indices=heavy_nbrs,
+            h_indices=h_nbrs)
+        new_arr = np.asarray(out['coords'], dtype=float)
+        c_pos_after = new_arr[middle_c]
+        for h, original_d in original_per_h_dists.items():
+            new_d = float(np.linalg.norm(new_arr[h] - c_pos_after))
+            self.assertAlmostEqual(
+                new_d, original_d, places=6,
+                msg=f'H{h} bond length not preserved '
+                    f'(was {original_d:.6f}, now {new_d:.6f})')
+
+    def test_repair_leaves_unrelated_atoms_unchanged(self):
+        sp, bad, middle_c, heavy_nbrs, h_nbrs = self._build_corridor_crowded()
+        n_atoms = len(bad['symbols'])
+        before_arr = np.asarray(bad['coords'], dtype=float).copy()
+        out = repair_internal_reactive_ch2(
+            bad, center_idx=middle_c,
+            heavy_nbr_indices=heavy_nbrs,
+            h_indices=h_nbrs)
+        after_arr = np.asarray(out['coords'], dtype=float)
+        moved_set = set(h_nbrs)
+        for idx in range(n_atoms):
+            if idx in moved_set:
+                continue
+            self.assertTrue(
+                np.allclose(before_arr[idx], after_arr[idx], atol=1e-12),
+                msg=f'atom {idx} ({bad["symbols"][idx]}) moved when it '
+                    f'should have been read-only')
+
+    def test_repair_relieves_corridor_crowding(self):
+        """After repair, the detector should no longer fire on the same
+        center — the H atoms should be on the back-side of the heavy
+        corridor, not crowding the front."""
+        sp, bad, middle_c, heavy_nbrs, h_nbrs = self._build_corridor_crowded()
+        # Sanity: the input is misoriented.
+        self.assertTrue(
+            is_internal_reactive_ch2_misoriented(
+                bad, center_idx=middle_c,
+                heavy_nbr_indices=heavy_nbrs,
+                h_indices=h_nbrs))
+        out = repair_internal_reactive_ch2(
+            bad, center_idx=middle_c,
+            heavy_nbr_indices=heavy_nbrs,
+            h_indices=h_nbrs)
+        # The repaired shell should pass the detector.
+        self.assertFalse(
+            is_internal_reactive_ch2_misoriented(
+                out, center_idx=middle_c,
+                heavy_nbr_indices=heavy_nbrs,
+                h_indices=h_nbrs),
+            msg='repair did not relieve the misorientation that the '
+                'detector flagged on the input')
+        # And the H–H angle should now be roughly tetrahedral (clearly
+        # above 80°), not squeezed.
+        new_arr = np.asarray(out['coords'], dtype=float)
+        c = new_arr[middle_c]
+        d0 = new_arr[h_nbrs[0]] - c
+        d1 = new_arr[h_nbrs[1]] - c
+        cos_hch = float(np.dot(d0, d1) / (np.linalg.norm(d0) * np.linalg.norm(d1)))
+        cos_hch = max(-1.0, min(1.0, cos_hch))
+        angle = float(np.degrees(np.arccos(cos_hch)))
+        self.assertGreater(angle, 100.0)
+        self.assertLess(angle, 120.0)
+
+    def test_repair_skips_ineligible_centers(self):
+        """Wrong H count → no-op."""
+        sp, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        out = repair_internal_reactive_ch2(
+            xyz, center_idx=middle_c,
+            heavy_nbr_indices=heavy_nbrs,
+            h_indices=h_nbrs[:1])
+        self.assertIs(out, xyz)
+
+
+class TestApplyReactiveCenterCleanupInternalCh2(unittest.TestCase):
+    """Phase 4d — orchestrator-level integration of the internal CH₂
+    sibling pass.
+
+    The orchestrator should fire the new pass when ``reactive_centers``
+    names a center whose internal CH₂ shell is misoriented, and leave
+    already-good internal CH₂ shells (and unrelated atoms) byte-for-byte
+    unchanged.
+    """
+
+    @staticmethod
+    def _propane_middle_ch2():
+        sp = ARCSpecies(label='propane', smiles='CCC')
+        xyz = sp.get_xyz()
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        middle_c = None
+        for atom in sp.mol.atoms:
+            if atom.element.symbol != 'C':
+                continue
+            heavy = [n for n in atom.bonds.keys() if n.element.symbol != 'H']
+            if len(heavy) == 2:
+                middle_c = atom_to_idx[atom]
+                break
+        middle_atom = sp.mol.atoms[middle_c]
+        heavy_nbrs = [atom_to_idx[n] for n in middle_atom.bonds.keys()
+                      if n.element.symbol != 'H']
+        h_nbrs = [atom_to_idx[n] for n in middle_atom.bonds.keys()
+                  if n.element.symbol == 'H']
+        return sp, xyz, middle_c, heavy_nbrs, h_nbrs
+
+    def test_orchestrator_does_not_touch_good_internal_ch2(self):
+        """A propane middle CH₂ in a fresh geometry must be left
+        byte-for-byte unchanged by the orchestrator."""
+        sp, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        before = np.asarray(xyz['coords'], dtype=float).copy()
+        out = apply_reactive_center_cleanup(
+            xyz, sp.mol, reactive_centers={middle_c}, restore_symmetry=True)
+        after = np.asarray(out['coords'], dtype=float)
+        for h in h_nbrs:
+            self.assertTrue(
+                np.allclose(before[h], after[h], atol=1e-9),
+                msg=f'H{h} moved on a healthy internal CH₂ — Phase 4d '
+                    f'detector should have returned False')
+        # The middle C and the two heavy neighbors must also be untouched.
+        self.assertTrue(np.allclose(before[middle_c], after[middle_c], atol=1e-9))
+        for hv in heavy_nbrs:
+            self.assertTrue(np.allclose(before[hv], after[hv], atol=1e-9))
+
+    def test_orchestrator_repairs_misoriented_internal_ch2(self):
+        """A corridor-crowded internal CH₂ should be detected and
+        repaired by the orchestrator end-to-end."""
+        sp, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        coords_arr = np.asarray(xyz['coords'], dtype=float)
+        c_pos = coords_arr[middle_c]
+        a = coords_arr[heavy_nbrs[0]]
+        b = coords_arr[heavy_nbrs[1]]
+        va_hat = (a - c_pos) / float(np.linalg.norm(a - c_pos))
+        vb_hat = (b - c_pos) / float(np.linalg.norm(b - c_pos))
+        w_hat = va_hat + vb_hat
+        w_hat = w_hat / float(np.linalg.norm(w_hat))
+        coords = list(map(list, xyz['coords']))
+        for h in h_nbrs:
+            h_vec = coords_arr[h] - c_pos
+            proj_w = float(np.dot(h_vec, w_hat))
+            new_h = coords_arr[h] - 2.0 * proj_w * w_hat + 0.4 * w_hat
+            coords[h] = new_h.tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        # Capture per-H bond lengths before the orchestrator runs.
+        before_arr = np.asarray(bad['coords'], dtype=float)
+        c_pos_before = before_arr[middle_c]
+        original_per_h_dists = {
+            h: float(np.linalg.norm(before_arr[h] - c_pos_before))
+            for h in h_nbrs
+        }
+        out = apply_reactive_center_cleanup(
+            bad, sp.mol, reactive_centers={middle_c}, restore_symmetry=True)
+        new_arr = np.asarray(out['coords'], dtype=float)
+        # The H atoms should have moved away from the corridor-crowded
+        # input geometry.
+        moved = any(
+            not np.allclose(before_arr[h], new_arr[h], atol=1e-6)
+            for h in h_nbrs
+        )
+        self.assertTrue(
+            moved,
+            'orchestrator should have repaired the misoriented internal CH₂')
+        # The detector should no longer fire on the result.
+        self.assertFalse(
+            is_internal_reactive_ch2_misoriented(
+                out, center_idx=middle_c,
+                heavy_nbr_indices=heavy_nbrs,
+                h_indices=h_nbrs))
+        # Per-H bond lengths preserved.
+        c_pos_after = new_arr[middle_c]
+        for h, original_d in original_per_h_dists.items():
+            new_d = float(np.linalg.norm(new_arr[h] - c_pos_after))
+            self.assertAlmostEqual(
+                new_d, original_d, places=6,
+                msg=f'H{h} bond length not preserved through orchestrator')
+
+    def test_orchestrator_internal_ch2_does_not_touch_unrelated_atoms(self):
+        """When the internal CH₂ pass repairs a misoriented center,
+        atoms outside the {center, h0, h1} shell must be untouched."""
+        sp, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        coords_arr = np.asarray(xyz['coords'], dtype=float)
+        c_pos = coords_arr[middle_c]
+        a = coords_arr[heavy_nbrs[0]]
+        b = coords_arr[heavy_nbrs[1]]
+        va_hat = (a - c_pos) / float(np.linalg.norm(a - c_pos))
+        vb_hat = (b - c_pos) / float(np.linalg.norm(b - c_pos))
+        w_hat = va_hat + vb_hat
+        w_hat = w_hat / float(np.linalg.norm(w_hat))
+        coords = list(map(list, xyz['coords']))
+        for h in h_nbrs:
+            h_vec = coords_arr[h] - c_pos
+            proj_w = float(np.dot(h_vec, w_hat))
+            new_h = coords_arr[h] - 2.0 * proj_w * w_hat + 0.4 * w_hat
+            coords[h] = new_h.tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        before_arr = np.asarray(bad['coords'], dtype=float).copy()
+        out = apply_reactive_center_cleanup(
+            bad, sp.mol, reactive_centers={middle_c}, restore_symmetry=True)
+        after_arr = np.asarray(out['coords'], dtype=float)
+        moved_indices = set(h_nbrs)
+        n_atoms = len(bad['symbols'])
+        for idx in range(n_atoms):
+            if idx in moved_indices:
+                continue
+            self.assertTrue(
+                np.allclose(before_arr[idx], after_arr[idx], atol=1e-9),
+                msg=f'atom {idx} ({bad["symbols"][idx]}) moved when it '
+                    f'should have remained read-only')
+
+    def test_orchestrator_internal_ch2_pass_skipped_when_disabled(self):
+        """When ``restore_symmetry=False`` the internal CH₂ pass must
+        not run — Phase 4d gates the new pass on the same flag as the
+        Phase 4b/4c terminal pass to keep the orchestrator's
+        non-restoration mode behaviorally identical to Phase 4a."""
+        sp, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
+        coords_arr = np.asarray(xyz['coords'], dtype=float)
+        c_pos = coords_arr[middle_c]
+        a = coords_arr[heavy_nbrs[0]]
+        b = coords_arr[heavy_nbrs[1]]
+        va_hat = (a - c_pos) / float(np.linalg.norm(a - c_pos))
+        vb_hat = (b - c_pos) / float(np.linalg.norm(b - c_pos))
+        w_hat = va_hat + vb_hat
+        w_hat = w_hat / float(np.linalg.norm(w_hat))
+        coords = list(map(list, xyz['coords']))
+        for h in h_nbrs:
+            h_vec = coords_arr[h] - c_pos
+            proj_w = float(np.dot(h_vec, w_hat))
+            new_h = coords_arr[h] - 2.0 * proj_w * w_hat + 0.4 * w_hat
+            coords[h] = new_h.tolist()
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        before_arr = np.asarray(bad['coords'], dtype=float).copy()
+        out = apply_reactive_center_cleanup(
+            bad, sp.mol, reactive_centers={middle_c}, restore_symmetry=False)
+        after_arr = np.asarray(out['coords'], dtype=float)
+        for h in h_nbrs:
+            self.assertTrue(
+                np.allclose(before_arr[h], after_arr[h], atol=1e-9),
+                msg=f'H{h} moved while restore_symmetry=False — internal '
+                    f'CH₂ pass should be gated')
 
 
 class TestIdentifyHMigrationPairs(unittest.TestCase):

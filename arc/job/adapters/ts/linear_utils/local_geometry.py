@@ -663,6 +663,357 @@ def restore_terminal_h_symmetry(xyz: dict,
 
 
 # ---------------------------------------------------------------------------
+# Phase 4d — internal reactive CH₂ misorientation detection and repair
+# ---------------------------------------------------------------------------
+
+
+def is_internal_reactive_ch2_misoriented(xyz: dict,
+                                         center_idx: int,
+                                         heavy_nbr_indices: Sequence[int],
+                                         h_indices: Sequence[int],
+                                         threshold_deg: float = 20.0,
+                                         ) -> bool:
+    """Phase 4d — pure detector for misoriented internal reactive CH₂ centers.
+
+    This is the safety gate for Phase 4d's internal-CH₂ repair primitive.
+    It answers "should the internal-CH₂ repair touch this center?" without
+    ever moving an atom.  The detector is intentionally local: it only
+    inspects the heavy-neighbor frame around ``center_idx`` and the two
+    bonded H atoms, never global hybridization or distant atoms.
+
+    Eligibility:
+        Returns ``False`` immediately unless
+
+        * ``center_idx`` is in range,
+        * ``heavy_nbr_indices`` has exactly two distinct entries (this is
+          an *internal* center, not a terminal one — terminal CH₂/CH₃ go
+          through the Phase 4b/4c pathway instead),
+        * ``h_indices`` has exactly two distinct entries (a CH₂ shell),
+        * all referenced indices are in range and refer to distinct atoms,
+        * the local heavy-neighbor frame is non-degenerate
+          (``|v_a|`` and ``|v_b|`` are non-zero, the bisector
+          ``v̂_a + v̂_b`` is non-zero, and the cross-product
+          ``v_a × v_b`` is non-zero — i.e. the two heavy neighbors are
+          not collinear with the center).
+
+    Local heavy-neighbor frame:
+        With ``c = coords[center_idx]``, ``a = coords[heavy_nbr_a]``,
+        ``b = coords[heavy_nbr_b]``, define
+
+            v_a = a − c
+            v_b = b − c
+            v̂_a = v_a / |v_a|
+            v̂_b = v_b / |v_b|
+            ŵ   = (v̂_a + v̂_b) / |v̂_a + v̂_b|     (heavy-corridor bisector,
+                                                   pointing INTO the heavy
+                                                   side of the center)
+            n̂   = (v_a × v_b) / |v_a × v_b|       (out-of-plane normal,
+                                                   perpendicular to both
+                                                   heavy bonds)
+
+        For a healthy sp³ CH₂, the two H atoms sit roughly opposite each
+        other across the heavy plane.  Each H should have
+
+        * ``proj_w_i = (h_i − c) · ŵ`` clearly *negative* (the H sits
+          *behind* the heavy corridor, not crowding it), and
+        * ``proj_n_i = (h_i − c) · n̂`` non-trivially non-zero with
+          *opposite signs* between the two H atoms (one above, one below
+          the heavy plane).
+
+        Phase 4d flags violations of these expectations.
+
+    Detection rules — return ``True`` as soon as any rule fires:
+
+    1. **Squeezed H–C–H angle.**  If the angle between ``(h_0 − c)`` and
+       ``(h_1 − c)`` falls below ``80°`` (well below the ideal sp³
+       ``109.47°``), the two H atoms are squeezed together and the CH₂
+       shell is unphysical.
+
+    2. **Heavy-corridor crowding.**  If both H atoms have
+       ``proj_w_i / |h_i − c| > 0.30``, both H atoms are pointing
+       substantially into the same forbidden side (the heavy corridor)
+       instead of forming the back-side pair the local frame demands.
+
+    3. **sp³ plane violation.**  If both H atoms have
+       ``|proj_n_i / |h_i − c|| > 0.15`` *and* the projections share the
+       same sign, both H atoms lie on the same side of the heavy plane —
+       inconsistent with a real sp³ CH₂ shell, where the two H atoms
+       should straddle the plane on opposite sides.
+
+    All ratios use per-H bond length normalization so the thresholds are
+    distance-independent.  ``threshold_deg`` is reserved for future
+    angular-tolerance tuning; the current rules use the explicit
+    ``80°`` / ``0.30`` / ``0.15`` thresholds called out above.
+
+    Args:
+        xyz: TS guess XYZ dict — used as a *read-only* coordinate source.
+        center_idx: Heavy-atom index of the internal reactive CH₂ carbon.
+        heavy_nbr_indices: Sequence of exactly two heavy neighbor indices
+            of ``center_idx`` in the molecular graph.  The orchestrator
+            filters/derives these from the bond graph before calling.
+        h_indices: Sequence of exactly two H atom indices bonded to
+            ``center_idx``.  The orchestrator filters out exempt H atoms
+            (e.g. migrating H) before calling.
+        threshold_deg: Reserved for future angular tuning.  Currently
+            unused inside the rules; kept on the signature for API
+            symmetry with ``is_terminal_group_asymmetric``.
+
+    Returns:
+        ``True`` if the internal CH₂ shell is unphysically misoriented,
+        ``False`` otherwise (including all "not eligible" / degenerate
+        cases — the orchestrator interprets ``False`` as "leave the
+        shell alone").
+    """
+    if xyz is None:
+        return False
+    if heavy_nbr_indices is None or h_indices is None:
+        return False
+    heavy_list = [int(i) for i in heavy_nbr_indices]
+    h_list = [int(i) for i in h_indices]
+    if len(heavy_list) != 2 or len(h_list) != 2:
+        return False
+    if heavy_list[0] == heavy_list[1] or h_list[0] == h_list[1]:
+        return False
+    coords = np.asarray(xyz['coords'], dtype=float)
+    n_atoms = len(coords)
+    if not (0 <= center_idx < n_atoms):
+        return False
+    for idx in heavy_list + h_list:
+        if not (0 <= idx < n_atoms):
+            return False
+        if idx == center_idx:
+            return False
+    if set(heavy_list) & set(h_list):
+        return False
+
+    c = coords[center_idx]
+    a = coords[heavy_list[0]]
+    b = coords[heavy_list[1]]
+    v_a = a - c
+    v_b = b - c
+    n_a = float(np.linalg.norm(v_a))
+    n_b = float(np.linalg.norm(v_b))
+    if n_a < 1e-8 or n_b < 1e-8:
+        return False
+    va_hat = v_a / n_a
+    vb_hat = v_b / n_b
+    w_raw = va_hat + vb_hat
+    w_norm = float(np.linalg.norm(w_raw))
+    if w_norm < 1e-6:
+        # Heavy neighbors are anti-parallel through the center → no
+        # well-defined "heavy corridor".  Skip.
+        return False
+    w_hat = w_raw / w_norm
+    n_raw = np.cross(v_a, v_b)
+    n_norm = float(np.linalg.norm(n_raw))
+    if n_norm < 1e-6:
+        # Heavy neighbors are collinear with the center → no
+        # well-defined heavy plane.  Skip.
+        return False
+    n_hat = n_raw / n_norm
+
+    h0_vec = coords[h_list[0]] - c
+    h1_vec = coords[h_list[1]] - c
+    r0 = float(np.linalg.norm(h0_vec))
+    r1 = float(np.linalg.norm(h1_vec))
+    if r0 < 1e-8 or r1 < 1e-8:
+        # H sits exactly on the center → degenerate; let the detector
+        # signal misorientation so the repair can rebuild the shell.
+        return True
+
+    # ---- Rule A: squeezed H–C–H angle ----
+    cos_hch = float(np.dot(h0_vec, h1_vec) / (r0 * r1))
+    cos_hch = max(-1.0, min(1.0, cos_hch))
+    angle_hch_deg = float(np.degrees(np.arccos(cos_hch)))
+    if angle_hch_deg < 80.0:
+        return True
+
+    # ---- Rule B: heavy-corridor crowding ----
+    proj_w_0 = float(np.dot(h0_vec, w_hat))
+    proj_w_1 = float(np.dot(h1_vec, w_hat))
+    if (proj_w_0 / r0) > 0.30 and (proj_w_1 / r1) > 0.30:
+        return True
+
+    # ---- Rule C: sp³ plane violation ----
+    proj_n_0 = float(np.dot(h0_vec, n_hat))
+    proj_n_1 = float(np.dot(h1_vec, n_hat))
+    ratio_n_0 = proj_n_0 / r0
+    ratio_n_1 = proj_n_1 / r1
+    if (abs(ratio_n_0) > 0.15
+            and abs(ratio_n_1) > 0.15
+            and (ratio_n_0 * ratio_n_1) > 0.0):
+        return True
+
+    return False
+
+
+def repair_internal_reactive_ch2(xyz: dict,
+                                 center_idx: int,
+                                 heavy_nbr_indices: Sequence[int],
+                                 h_indices: Sequence[int],
+                                 ) -> dict:
+    """Phase 4d — local repair primitive for an internal reactive CH₂ shell.
+
+    Re-seats the two H atoms of an internal CH₂ center onto the canonical
+    sp³-tetrahedral back-side cone of the local heavy-neighbor frame
+    while *preserving each H's original center–H bond length exactly*.
+    Heavy neighbors and all atoms outside the immediate ``{center, h0,
+    h1}`` shell are read-only.
+
+    Local frame (same as :func:`is_internal_reactive_ch2_misoriented`):
+
+        v_a = a − c,                v_b = b − c
+        ŵ   = normalize(v̂_a + v̂_b)    (heavy-corridor bisector, IN side)
+        n̂   = normalize(v_a × v_b)    (heavy-plane normal)
+
+    Target H directions:
+
+        target_0_dir = α · ŵ + β · n̂
+        target_1_dir = α · ŵ − β · n̂
+
+        with α = −1/√3 ≈ −0.5774   (back of corridor — opposite side
+                                     from the heavy neighbors)
+        and  β =  √(2/3) ≈  0.8165  (out of the heavy plane, on opposite
+                                     sides for the two H atoms)
+
+    Both ``target_*_dir`` are unit vectors with cone angle ``arccos(α)
+    ≈ 109.47°`` to ``ŵ``.  Together they form an inter-H angle of
+    ``2·arccos(α/(α² + β²)¹ᐟ²)`` which collapses to the canonical sp³
+    tetrahedral ``109.47°`` between the two H atoms — the chemically
+    correct CH₂ shell.
+
+    Sticky pairing:
+        The two input H atoms are mapped onto the two target slots by
+        choosing the assignment that minimizes the total angular
+        displacement (sum of arc lengths between the input H direction
+        and its assigned target direction).  This keeps each H in the
+        slot it was already closest to, so already-good shells move the
+        least and the repair is deterministic.
+
+    Per-H bond length preservation:
+        For each input H ``h_i`` with current ``r_i = |coords[h_i] − c|``,
+        the new position is ``c + r_i · target_dir`` where ``target_dir``
+        is a unit vector.  The norm ``|new_pos − c| = r_i`` is therefore
+        preserved exactly (to floating-point tolerance) with no
+        additional bookkeeping.
+
+    Eligibility:
+        On any of the failure cases that
+        :func:`is_internal_reactive_ch2_misoriented` would also reject
+        (degenerate frame, missing indices, non-CH₂ shell, etc.) the
+        function returns the original ``xyz`` unchanged.
+
+    Args:
+        xyz: TS guess XYZ dict.
+        center_idx: Heavy-atom index of the internal CH₂ carbon.
+        heavy_nbr_indices: Sequence of exactly two heavy neighbor indices.
+        h_indices: Sequence of exactly two H atom indices bonded to
+            ``center_idx``.
+
+    Returns:
+        A new XYZ dict with the two H atoms reseated onto the canonical
+        sp³ back-side cone, with each H's bond length preserved.  When
+        the eligibility check fails the original input is returned
+        unchanged.
+    """
+    if xyz is None:
+        return xyz
+    if heavy_nbr_indices is None or h_indices is None:
+        return xyz
+    heavy_list = [int(i) for i in heavy_nbr_indices]
+    h_list = [int(i) for i in h_indices]
+    if len(heavy_list) != 2 or len(h_list) != 2:
+        return xyz
+    if heavy_list[0] == heavy_list[1] or h_list[0] == h_list[1]:
+        return xyz
+    coords = np.asarray(xyz['coords'], dtype=float).copy()
+    n_atoms = len(coords)
+    if not (0 <= center_idx < n_atoms):
+        return xyz
+    for idx in heavy_list + h_list:
+        if not (0 <= idx < n_atoms):
+            return xyz
+        if idx == center_idx:
+            return xyz
+    if set(heavy_list) & set(h_list):
+        return xyz
+
+    c = coords[center_idx]
+    a = coords[heavy_list[0]]
+    b = coords[heavy_list[1]]
+    v_a = a - c
+    v_b = b - c
+    n_a = float(np.linalg.norm(v_a))
+    n_b = float(np.linalg.norm(v_b))
+    if n_a < 1e-8 or n_b < 1e-8:
+        return xyz
+    va_hat = v_a / n_a
+    vb_hat = v_b / n_b
+    w_raw = va_hat + vb_hat
+    w_norm = float(np.linalg.norm(w_raw))
+    if w_norm < 1e-6:
+        return xyz
+    w_hat = w_raw / w_norm
+    n_raw = np.cross(v_a, v_b)
+    n_norm = float(np.linalg.norm(n_raw))
+    if n_norm < 1e-6:
+        return xyz
+    n_hat = n_raw / n_norm
+
+    # Tetrahedral back-of-corridor target directions.
+    alpha = -1.0 / float(np.sqrt(3.0))
+    beta = float(np.sqrt(2.0 / 3.0))
+    target_dirs = [
+        alpha * w_hat + beta * n_hat,
+        alpha * w_hat - beta * n_hat,
+    ]
+    # Both should already be unit vectors by construction:
+    # |alpha * w_hat + beta * n_hat|² = α² + β² = 1/3 + 2/3 = 1.
+    # Re-normalize defensively against floating-point drift.
+    for k, td in enumerate(target_dirs):
+        td_norm = float(np.linalg.norm(td))
+        if td_norm < 1e-8:
+            return xyz
+        target_dirs[k] = td / td_norm
+
+    # Per-H input data: bond length and current unit direction.
+    h_data: List[Tuple[int, float, np.ndarray]] = []
+    for h in h_list:
+        rel = coords[h] - c
+        r_i = float(np.linalg.norm(rel))
+        if r_i < 1e-8:
+            return xyz
+        h_data.append((h, r_i, rel / r_i))
+
+    # Sticky pairing: choose the assignment that minimizes the sum of
+    # arc lengths (== sum of (1 - cos θ) on the unit sphere).
+    def _arc_cost(pairing: Sequence[int]) -> float:
+        total = 0.0
+        for src_k, tgt_k in enumerate(pairing):
+            cos_t = float(np.dot(h_data[src_k][2], target_dirs[tgt_k]))
+            cos_t = max(-1.0, min(1.0, cos_t))
+            total += 1.0 - cos_t
+        return total
+
+    pairing_a = (0, 1)
+    pairing_b = (1, 0)
+    cost_a = _arc_cost(pairing_a)
+    cost_b = _arc_cost(pairing_b)
+    chosen = pairing_a if cost_a <= cost_b else pairing_b
+
+    new_positions: List[Tuple[int, np.ndarray]] = []
+    for src_k, tgt_k in enumerate(chosen):
+        h_idx, r_i, _src_dir = h_data[src_k]
+        new_pos = c + r_i * target_dirs[tgt_k]
+        new_positions.append((h_idx, new_pos))
+
+    for h_idx, new_pos in new_positions:
+        coords[h_idx] = new_pos
+
+    return _xyz_with_coords(xyz, coords)
+
+
+# ---------------------------------------------------------------------------
 # Phase 4a — reactive-center local-geometry orchestrator
 # ---------------------------------------------------------------------------
 
@@ -838,6 +1189,50 @@ def apply_reactive_center_cleanup(xyz: dict,
                 continue  # already symmetric — leave it alone
             xyz = restore_terminal_h_symmetry(
                 xyz, mol, center, exclude_atoms=migrating_h_indices)
+
+    # ---- 4. Phase 4d — internal reactive CH₂ misorientation repair.
+    #
+    #         Sibling pass to the terminal-symmetry restoration above.
+    #         The terminal pass (Phase 4b/4c) targets centers with one
+    #         heavy neighbor and 2/3 H atoms; this pass targets centers
+    #         with **two** heavy neighbors and **two** H atoms — i.e.
+    #         internal CH₂ shells, the failure cluster Phase 4d was
+    #         scoped to repair (1,2_shiftC reactive CH₂,
+    #         Intra_Diels_alder_monocyclic attacking CH₂,
+    #         Intra_R_Add_Endocyclic reactive CH₂, intra_NO2_ONO_conversion,
+    #         Intra_OH_migration internal-CH₂ misorientations).
+    #
+    #         The two pathways stay deliberately separate: this is a
+    #         second eligibility check + repair, NOT a generalization of
+    #         the terminal-group logic.  An internal CH₂ that already
+    #         passes :func:`is_internal_reactive_ch2_misoriented` is
+    #         left byte-for-byte unchanged.
+    if restore_symmetry:
+        symbols = xyz['symbols']
+        for center in sorted(centers_set):
+            if not (0 <= center < n_atoms):
+                continue
+            if symbols[center] == 'H':
+                continue
+            heavy_nbrs = _heavy_neighbors(mol, center, symbols)
+            if len(heavy_nbrs) != 2:
+                continue  # not internal — terminal centers handled above
+            h_nbrs = [h for h in _h_neighbors(mol, center, symbols)
+                      if h not in migrating_h_indices]
+            if len(h_nbrs) != 2:
+                continue  # not a CH₂ shell
+            if not is_internal_reactive_ch2_misoriented(
+                    xyz,
+                    center_idx=center,
+                    heavy_nbr_indices=heavy_nbrs,
+                    h_indices=h_nbrs):
+                continue  # internal CH₂ already well-oriented — leave it alone
+            xyz = repair_internal_reactive_ch2(
+                xyz,
+                center_idx=center,
+                heavy_nbr_indices=heavy_nbrs,
+                h_indices=h_nbrs,
+            )
 
     return xyz
 
