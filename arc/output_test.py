@@ -479,6 +479,40 @@ class TestGetEnergyCorrections(unittest.TestCase):
         aec, bac = _get_energy_corrections(lot, None)
         self.assertIsNone(bac)
 
+    def test_independent_aec_and_bac_keys(self):
+        """AEC and BAC keys should be resolved independently, not reusing the AEC key for BAC."""
+        lot = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        aec_key = "LevelOfTheory(method='wb97xd',basis='def2tzvp',software='gaussian')"
+        bac_key = "LevelOfTheory(method='wb97xd',basis='def2tzvp')"  # different key (no software)
+
+        calls = []
+        def mock_find_best(level, files, start, end):
+            calls.append(start)
+            if 'atom_energies' in start:
+                return aec_key
+            elif 'pbac' in start:
+                return bac_key
+            return None
+
+        with patch('arc.output.find_best_across_files', side_effect=mock_find_best), \
+             patch('arc.output.get_qm_corrections_files', return_value=['/fake/data.py']), \
+             patch('arc.output.execute_command', return_value=('', '')), \
+             patch('arc.output.read_yaml_file', return_value={'aec': {'H': -0.5}, 'bac': {'C-H': -0.06}}), \
+             patch('arc.output.save_yaml_file') as mock_save:
+            aec, bac = _get_energy_corrections(lot, 'p')
+
+        # Verify both sections were searched independently
+        self.assertTrue(any('atom_energies' in c for c in calls))
+        self.assertTrue(any('pbac' in c for c in calls))
+        # Verify the script received separate keys
+        save_call = mock_save.call_args
+        saved_content = save_call[1].get('content') or save_call[0][1]
+        self.assertEqual(saved_content['aec_key'], aec_key)
+        self.assertEqual(saved_content['bac_key'], bac_key)
+        # Verify results returned
+        self.assertIsNotNone(aec)
+        self.assertIsNotNone(bac)
+
 
 class TestGetTsImagFreqFromFreqs(unittest.TestCase):
     """Tests for _get_ts_imag_freq using spc.freqs as primary source."""
