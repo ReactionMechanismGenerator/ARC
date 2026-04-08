@@ -20,7 +20,7 @@ from arc.imports import settings
 from arc.job.local import execute_command
 from arc.parser.parser import parse_1d_scan_energies, parse_e_elect, parse_ess_version, parse_opt_steps, parse_zpe_correction
 from arc.species.converter import xyz_to_str
-from arc.statmech.arkane import get_arkane_model_chemistry
+from arc.statmech.arkane import _find_best_across_files, _get_qm_corrections_files
 
 
 logger = get_logger()
@@ -282,9 +282,9 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: Optional[str]) -> 
     Look up the AEC (per-atom, Hartree) and BAC (per-bond, kJ/mol) values
     that Arkane used from the RMG database for the given level of theory.
 
-    Uses ``get_arkane_model_chemistry`` to find the matched key, then calls
-    ``arc/scripts/get_qm_corrections.py`` as a subprocess to parse the
-    actual correction dicts from the RMG database.
+    Finds the AEC and BAC keys independently via fuzzy matching in their
+    respective database sections, then calls ``arc/scripts/get_qm_corrections.py``
+    as a subprocess to extract the actual correction dicts.
 
     Returns:
         (aec_dict_or_None, bac_dict_or_None)
@@ -292,12 +292,23 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: Optional[str]) -> 
     if arkane_level_of_theory is None:
         return None, None
     try:
-        matched_key = get_arkane_model_chemistry(
-            sp_level=arkane_level_of_theory,
-            freq_scale_factor=1.0,  # dummy — we only need the energy key
-        )
-        if matched_key is None:
+        qm_corr_files = _get_qm_corrections_files()
+
+        aec_start = "atom_energies = {"
+        aec_end = "pbac = {"
+        aec_key = _find_best_across_files(arkane_level_of_theory, qm_corr_files, aec_start, aec_end)
+        if aec_key is None:
             return None, None
+
+        bac_key = None
+        if bac_type in ('p', 'm'):
+            if bac_type == 'm':
+                bac_start = "mbac = {"
+                bac_end = "freq_dict ="
+            else:
+                bac_start = "pbac = {"
+                bac_end = "mbac = {"
+            bac_key = _find_best_across_files(arkane_level_of_theory, qm_corr_files, bac_start, bac_end)
 
         script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_qm_corrections.py')
         rmg_env = settings.get('RMG_ENV_NAME', 'rmg_env')
@@ -308,7 +319,8 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: Optional[str]) -> 
             os.close(fd_in)
             os.close(fd_out)
             save_yaml_file(path=tmp_in, content={
-                'matched_key': matched_key,
+                'aec_key': aec_key,
+                'bac_key': bac_key,
                 'bac_type': bac_type,
             })
 

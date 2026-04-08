@@ -1052,6 +1052,30 @@ def get_arkane_model_chemistry(sp_level: 'Level',
     )
 
 
+def check_arkane_aec(sp_level: 'Level') -> bool:
+    """
+    Check that Arkane has AEC for the given sp level of theory (no BAC check).
+    Used when bac_type is None but we still want to verify AEC availability.
+
+    Args:
+        sp_level (Level): Level of theory for energy.
+
+    Returns:
+        bool: True if AEC is available, False otherwise.
+    """
+    qm_corr_files = _get_qm_corrections_files()
+    aec_start = "atom_energies = {"
+    aec_end = "pbac = {"
+    best_aec_key = _find_best_across_files(sp_level, qm_corr_files, aec_start, aec_end)
+    if best_aec_key is not None:
+        logger.info(f'Arkane atom energy corrections (AEC) matched for {best_aec_key} (BAC disabled)')
+    else:
+        _warn_no_match(sp_level, qm_corr_files, aec_start, aec_end, label="AEC")
+        logger.warning(f'Arkane has no atom energy corrections (AEC) for {_level_to_str(sp_level)}. '
+                       f'Energy corrections will be disabled.')
+    return best_aec_key is not None
+
+
 def check_arkane_bacs(sp_level: 'Level',
                       bac_type: str = 'p',
                       raise_error: bool = False,
@@ -1105,14 +1129,29 @@ def check_arkane_bacs(sp_level: 'Level',
                 f"available BAC years: {_format_years(bac_years)}. "
                 f"Specify a year to select a matching entry."
             )
-        mssg = (
-            f"Arkane does not have the required energy corrections for {repr_level} "
-            f"(AEC: {has_aec}, BAC: {has_bac}).{year_note}"
-        )
+        if has_aec and not has_bac:
+            mssg = (
+                f"Arkane atom energy corrections (AEC) matched for {repr_level}, "
+                f"but bond additivity corrections (BAC) were NOT found in the RMG database. "
+                f"Thermo/kinetics results will use AEC but lack BAC.{year_note}"
+            )
+        elif has_bac and not has_aec:
+            mssg = (
+                f"Arkane bond additivity corrections (BAC) matched for {_level_to_str(sp_level)}, "
+                f"but atom energy corrections (AEC) were NOT found in the RMG database. "
+                f"Energy corrections will be disabled.{year_note}"
+            )
+        else:
+            mssg = (
+                f"Arkane does not have atom energy corrections (AEC) or bond additivity corrections (BAC) "
+                f"for {repr_level}.{year_note}"
+            )
         if raise_error:
             raise ValueError(mssg)
         else:
             logger.warning(mssg)
+    else:
+        logger.info(f'Arkane energy corrections matched for {best_aec_key} (AEC and {bac_type.upper()}BAC)')
     return has_encorr
 
 
