@@ -29,6 +29,8 @@ from arc.statmech.arkane import (
     _parse_lot_params,
     _split_method_year,
     _warn_no_match,
+    check_arkane_aec,
+    check_arkane_bacs,
     get_arkane_model_chemistry,
 )
 from unittest.mock import patch
@@ -567,6 +569,127 @@ kinetics(
         m = re.search(pat, arr_block)
         self.assertIsNotNone(m)
         self.assertAlmostEqual(float(m.group(1)), 2.5)
+
+
+class TestCheckArkaneCorrections(unittest.TestCase):
+    """Tests for check_arkane_aec and check_arkane_bacs logging and matching."""
+
+    def _make_data_file(self, aec_entries=None, pbac_entries=None, mbac_entries=None):
+        """Create a temporary data.py with given section entries."""
+        lines = ['atom_energies = {']
+        for entry in (aec_entries or []):
+            lines.append(f'    "{entry}": {{}},')
+        lines.append('}')
+        lines.append('pbac = {')
+        for entry in (pbac_entries or []):
+            lines.append(f'    "{entry}": {{}},')
+        lines.append('}')
+        lines.append('mbac = {')
+        for entry in (mbac_entries or []):
+            lines.append(f'    "{entry}": {{}},')
+        lines.append('}')
+        lines.append('freq_dict = {')
+        lines.append('}')
+        f = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.py')
+        f.write('\n'.join(lines))
+        f.close()
+        return f.name
+
+    def test_check_bacs_both_found_logs_info(self):
+        """When both AEC and BAC match, check_arkane_bacs should log success and return True."""
+        aec_key = "LevelOfTheory(method='b3lyp',basis='631g(d)',software='gaussian')"
+        path = self._make_data_file(aec_entries=[aec_key], pbac_entries=[aec_key])
+        try:
+            level = Level(method='B3LYP', basis='6-31G(d)', software='gaussian')
+            with patch('arc.statmech.arkane._get_qm_corrections_files', return_value=[path]):
+                with self.assertLogs('arc', level='INFO') as cm:
+                    result = check_arkane_bacs(sp_level=level, bac_type='p')
+            self.assertTrue(result)
+            self.assertTrue(any('AEC and PBAC' in msg for msg in cm.output))
+        finally:
+            os.remove(path)
+
+    def test_check_bacs_aec_only_logs_warning(self):
+        """When AEC matches but BAC doesn't, should warn about missing BAC."""
+        aec_key = "LevelOfTheory(method='dlpnoccsd(t)',basis='def2tzvp',software='orca')"
+        path = self._make_data_file(aec_entries=[aec_key], pbac_entries=[])
+        try:
+            level = Level(method='DLPNO-CCSD(T)', basis='def2-TZVP', software='orca')
+            with patch('arc.statmech.arkane._get_qm_corrections_files', return_value=[path]):
+                with self.assertLogs('arc', level='WARNING') as cm:
+                    result = check_arkane_bacs(sp_level=level, bac_type='p')
+            self.assertFalse(result)
+            self.assertTrue(any('AEC' in msg and 'BAC' in msg for msg in cm.output))
+        finally:
+            os.remove(path)
+
+    def test_check_bacs_neither_found_logs_warning(self):
+        """When neither AEC nor BAC match, should warn about both missing."""
+        path = self._make_data_file()
+        try:
+            level = Level(method='fake-method', basis='fake-basis')
+            with patch('arc.statmech.arkane._get_qm_corrections_files', return_value=[path]):
+                with self.assertLogs('arc', level='WARNING') as cm:
+                    result = check_arkane_bacs(sp_level=level, bac_type='p')
+            self.assertFalse(result)
+            self.assertTrue(any('AEC' in msg or 'BAC' in msg for msg in cm.output))
+        finally:
+            os.remove(path)
+
+    def test_check_bacs_mbac_type(self):
+        """When bac_type='m', should search the mbac section."""
+        key = "LevelOfTheory(method='b3lyp',basis='631g(d)',software='gaussian')"
+        path = self._make_data_file(aec_entries=[key], mbac_entries=[key])
+        try:
+            level = Level(method='B3LYP', basis='6-31G(d)', software='gaussian')
+            with patch('arc.statmech.arkane._get_qm_corrections_files', return_value=[path]):
+                with self.assertLogs('arc', level='INFO') as cm:
+                    result = check_arkane_bacs(sp_level=level, bac_type='m')
+            self.assertTrue(result)
+            self.assertTrue(any('MBAC' in msg for msg in cm.output))
+        finally:
+            os.remove(path)
+
+    def test_check_aec_found_logs_info(self):
+        """check_arkane_aec should log success when AEC matches."""
+        aec_key = "LevelOfTheory(method='b3lyp',basis='631g(d)',software='gaussian')"
+        path = self._make_data_file(aec_entries=[aec_key])
+        try:
+            level = Level(method='B3LYP', basis='6-31G(d)', software='gaussian')
+            with patch('arc.statmech.arkane._get_qm_corrections_files', return_value=[path]):
+                with self.assertLogs('arc', level='INFO') as cm:
+                    result = check_arkane_aec(sp_level=level)
+            self.assertTrue(result)
+            self.assertTrue(any('AEC' in msg and 'BAC disabled' in msg for msg in cm.output))
+        finally:
+            os.remove(path)
+
+    def test_check_aec_not_found_logs_warning(self):
+        """check_arkane_aec should warn when AEC doesn't match."""
+        path = self._make_data_file()
+        try:
+            level = Level(method='fake-method', basis='fake-basis')
+            with patch('arc.statmech.arkane._get_qm_corrections_files', return_value=[path]):
+                with self.assertLogs('arc', level='WARNING') as cm:
+                    result = check_arkane_aec(sp_level=level)
+            self.assertFalse(result)
+            self.assertTrue(any('AEC' in msg for msg in cm.output))
+        finally:
+            os.remove(path)
+
+    def test_check_bacs_different_aec_and_bac_keys(self):
+        """AEC and BAC can have different LevelOfTheory keys and both should match independently."""
+        aec_key = "LevelOfTheory(method='dlpnoccsd(t)2023',basis='def2tzvp',software='orca')"
+        bac_key = "LevelOfTheory(method='dlpnoccsd(t)2023',basis='def2tzvp')"
+        path = self._make_data_file(aec_entries=[aec_key], pbac_entries=[bac_key])
+        try:
+            level = Level(method='DLPNO-CCSD(T)', basis='def2-TZVP', software='orca')
+            with patch('arc.statmech.arkane._get_qm_corrections_files', return_value=[path]):
+                with self.assertLogs('arc', level='INFO') as cm:
+                    result = check_arkane_bacs(sp_level=level, bac_type='p')
+            self.assertTrue(result)
+        finally:
+            os.remove(path)
 
 
 if __name__ == '__main__':

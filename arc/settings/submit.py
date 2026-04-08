@@ -42,23 +42,61 @@ incore_commands = {
 }
 
 
-# Submission scripts for pipe.py stored as a dictionary with server as the key
+# Submission scripts for pipe_worker array jobs, keyed by cluster scheduler type.
+# These are server-independent templates. PipeRun.write_submit_script() formats
+# them with: name, max_task_num, pipe_root, python_exe, cpus, memory.
+# Legacy note: this dict was previously keyed by server name and used for the
+# old HDF5-based pipe.py design. It is now keyed by cluster scheduler type.
 pipe_submit = {
-    'local': """#!/bin/bash -l
-#SBATCH -p normal
+    'slurm': """#!/bin/bash -l
 #SBATCH -J {name}
+#SBATCH -p {queue}
 #SBATCH -N 1
 #SBATCH -n {cpus}
-#SBATCH --time={t_max}
-#SBATCH --mem-per-cpu={memory}
+#SBATCH --mem={memory}
 #SBATCH --array=1-{max_task_num}
-#SBATCH -o out.txt
-#SBATCH -e err.txt
+#SBATCH -o {pipe_root}/out_%a.txt
+#SBATCH -e {pipe_root}/err_%a.txt
 
-source activate arc_env
+{env_setup}
+WORKER_ID=$SLURM_ARRAY_TASK_ID
 
-python {arc_path}/arc/job/scripts/pipe.py {hdf5_path}
+{python_exe} -m arc.scripts.pipe_worker --pipe_root {pipe_root} --worker_id $WORKER_ID
+""",
+    'pbs': """#!/bin/bash -l
+#PBS -N {name}
+#PBS -q {queue}
+#PBS -l ncpus={cpus}
+#PBS -l mem={memory}mb
+#PBS -J 1-{max_task_num}
 
+{env_setup}
+WORKER_ID="$PBS_ARRAY_INDEX"
+
+{python_exe} -m arc.scripts.pipe_worker --pipe_root {pipe_root} --worker_id "$WORKER_ID"
+""",
+    'sge': """#!/bin/bash -l
+#$ -N {name}
+#$ -q {queue}
+#$ -pe smp {cpus}
+#$ -l h_vmem={memory}M
+#$ -t 1-{max_task_num}
+#$ -o {pipe_root}/out_$SGE_TASK_ID.txt
+#$ -e {pipe_root}/err_$SGE_TASK_ID.txt
+
+{env_setup}
+WORKER_ID=$SGE_TASK_ID
+
+{python_exe} -m arc.scripts.pipe_worker --pipe_root {pipe_root} --worker_id $WORKER_ID
+""",
+    'htcondor': """executable = {python_exe}
+arguments = -m arc.scripts.pipe_worker --pipe_root {pipe_root} --worker_id $(Process)
+request_cpus = {cpus}
+request_memory = {memory}
+output = {pipe_root}/out_$(Process).txt
+error = {pipe_root}/err_$(Process).txt
+log = {pipe_root}/condor.log
+queue {max_task_num}
 """,
 }
 

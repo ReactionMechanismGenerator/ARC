@@ -41,7 +41,7 @@ from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
-from arc.statmech.arkane import check_arkane_bacs
+from arc.statmech.arkane import check_arkane_aec, check_arkane_bacs
 from arc.utils.scale import determine_scaling_factors
 
 
@@ -1201,13 +1201,25 @@ class ARC(object):
         """
         Check that the level of theory has AEC in Arkane.
         """
+        explicitly_set = self.arkane_level_of_theory is not None
         if self.arkane_level_of_theory is None:
             self.arkane_level_of_theory = self.composite_method if self.composite_method is not None \
                 else self.sp_level if self.sp_level is not None else None
         if self.arkane_level_of_theory is None:
             logger.warning('Could not determine a level of theory to be used for Arkane!')
-        elif self.bac_type is not None:
-            check_arkane_bacs(sp_level=self.arkane_level_of_theory, bac_type=self.bac_type, raise_error=self.compute_thermo)
+        else:
+            if explicitly_set:
+                source = ''
+            elif self.composite_method is not None:
+                source = ' (from composite method)'
+            else:
+                source = ' (from sp level)'
+            logger.info(f'Arkane level of theory:{source} {self.arkane_level_of_theory}')
+            if self.bac_type is not None:
+                check_arkane_bacs(sp_level=self.arkane_level_of_theory, bac_type=self.bac_type,
+                                  raise_error=self.compute_thermo)
+            else:
+                check_arkane_aec(sp_level=self.arkane_level_of_theory)
 
     def backup_restart(self):
         """

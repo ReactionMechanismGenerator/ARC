@@ -44,24 +44,24 @@ def _lot_from_string(lot_str):
 def main(input_path, output_path):
     """Look up AEC and BAC for the given level of theory key."""
     params = read_yaml_file(input_path) or {}
-    matched_key = params.get('matched_key')
     bac_type = params.get('bac_type')
 
     result = {'aec': None, 'bac': None}
 
-    if not matched_key:
-        save_yaml_file(output_path, result)
-        return
+    # Support both old format (single matched_key) and new format (separate aec_key/bac_key)
+    aec_key = params.get('aec_key') or params.get('matched_key')
+    bac_key = params.get('bac_key') or params.get('matched_key')
 
-    lot = _lot_from_string(matched_key)
+    if aec_key:
+        lot = _lot_from_string(aec_key)
+        aec = atom_energies.get(lot)
+        if aec is not None:
+            result['aec'] = {str(k): float(v) for k, v in aec.items()}
 
-    aec = atom_energies.get(lot)
-    if aec is not None:
-        result['aec'] = {str(k): float(v) for k, v in aec.items()}
-
-    if bac_type in ('p', 'm'):
+    if bac_key and bac_type in ('p', 'm'):
+        bac_lot = _lot_from_string(bac_key)
         bac_dict = pbac if bac_type == 'p' else mbac
-        bac = bac_dict.get(lot)
+        bac = bac_dict.get(bac_lot)
         if bac is not None:
             result['bac'] = {str(k): float(v) for k, v in bac.items()}
 
