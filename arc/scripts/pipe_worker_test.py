@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 from arc.job.pipe.pipe_state import (
     TaskState,
@@ -96,6 +97,11 @@ class TestRunTask(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='pipe_run_test_')
+        # MockAdapter's output.yml is not a real ESS log, so _parse_ess_error
+        # would falsely report convergence failure. Skip it for these tests.
+        patcher = patch('arc.scripts.pipe_worker._parse_ess_error', return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -308,6 +314,9 @@ class TestWorkerLoop(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='pipe_loop_test_')
+        patcher = patch('arc.scripts.pipe_worker._parse_ess_error', return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
