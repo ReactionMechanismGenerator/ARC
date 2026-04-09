@@ -297,6 +297,7 @@ class PipeRun:
         now = time.time()
         counts: Dict[str, int] = {s.value: 0 for s in TaskState}
         retried_pending = 0  # PENDING tasks with attempt_index > 0 (genuinely retried)
+        fresh_pending = 0    # PENDING tasks with attempt_index == 0 (awaiting initial workers)
         task_ids = sorted(os.listdir(tasks_dir))
 
         for task_id in task_ids:
@@ -319,8 +320,11 @@ class PipeRun:
                 except (ValueError, TimeoutError) as e:
                     logger.debug(f'Could not mark task {task_id} as ORPHANED '
                                  f'(another process may be handling it): {e}')
-            if current == TaskState.PENDING and state.attempt_index > 0:
-                retried_pending += 1
+            if current == TaskState.PENDING:
+                if state.attempt_index > 0:
+                    retried_pending += 1
+                else:
+                    fresh_pending += 1
             counts[current.value] += 1
 
         active_workers = counts[TaskState.CLAIMED.value] + counts[TaskState.RUNNING.value]
@@ -366,16 +370,23 @@ class PipeRun:
         # Only flag resubmission for genuinely retried tasks (attempt_index > 0).
         # Fresh PENDING tasks (attempt_index == 0) are waiting for the initial
         # submission's workers to start — don't resubmit for those.
+        # Crucially: if fresh_pending > 0, scheduler workers are still queued
+        # (PBS Q state) and will claim retried tasks when they start.
         # After a resubmission, allow a grace period for workers to start before
         # flagging again (prevents duplicate submissions).
         active_after_retry = counts[TaskState.CLAIMED.value] + counts[TaskState.RUNNING.value]
         resubmit_grace = 120  # seconds
         time_since_submit = (now - self.submitted_at) if self.submitted_at else float('inf')
-        if retried_pending > 0 and active_after_retry == 0 and time_since_submit > resubmit_grace:
+        if retried_pending > 0 and active_after_retry == 0 \
+                and fresh_pending == 0 and time_since_submit > resubmit_grace:
             self._needs_resubmission = True
             logger.info(f'Pipe run {self.run_id}: {retried_pending} retried tasks '
                         f'need workers. Resubmission needed.')
         else:
+            if retried_pending > 0 and fresh_pending > 0:
+                logger.debug(f'Pipe run {self.run_id}: {retried_pending} retried tasks '
+                             f'waiting, but {fresh_pending} fresh tasks still pending — '
+                             f'scheduler workers still starting, skipping resubmission.')
             self._needs_resubmission = False
 
         terminal = (counts[TaskState.COMPLETED.value]

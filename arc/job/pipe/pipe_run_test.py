@@ -267,6 +267,116 @@ class TestPipeRunReconcile(unittest.TestCase):
         self.assertEqual(run.status, PipeRunState.COMPLETED)
 
 
+class TestPipeRunResubmission(unittest.TestCase):
+    """Tests for the resubmission guard against PBS Q-state workers."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_run_resub_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _make_run(self, n_tasks=5):
+        tasks = [_make_spec(f't{i}') for i in range(n_tasks)]
+        run = PipeRun(project_directory=self.tmpdir, run_id='resub',
+                      tasks=tasks, cluster_software='slurm', max_attempts=3)
+        run.stage()
+        run.submitted_at = time.time() - 300  # submitted 5 min ago (past grace period)
+        run.status = PipeRunState.SUBMITTED
+        return run
+
+    def _fail_retryable(self, pipe_root, task_id):
+        """Simulate a worker claiming, running, then failing a task."""
+        now = time.time()
+        update_task_state(pipe_root, task_id, new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now,
+                          lease_expires_at=now + 300)
+        update_task_state(pipe_root, task_id, new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe_root, task_id, new_status=TaskState.FAILED_RETRYABLE,
+                          ended_at=now + 1, failure_class='timeout')
+
+    def _complete_task(self, pipe_root, task_id):
+        now = time.time()
+        update_task_state(pipe_root, task_id, new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now,
+                          lease_expires_at=now + 300)
+        update_task_state(pipe_root, task_id, new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe_root, task_id, new_status=TaskState.COMPLETED, ended_at=now)
+
+    def test_no_resubmit_while_fresh_pending_exist(self):
+        """PBS Q-state workers: fresh PENDING tasks mean workers are still starting.
+        Even with retried tasks, don't resubmit — those workers will claim retried tasks too."""
+        run = self._make_run(n_tasks=5)
+        # Workers 1-3 started: t0 completed, t1 failed, t2 completed
+        # Workers 4-5 still in PBS Q state: t3, t4 are fresh PENDING
+        self._complete_task(run.pipe_root, 't0')
+        self._fail_retryable(run.pipe_root, 't1')
+        self._complete_task(run.pipe_root, 't2')
+        # t3, t4 untouched → fresh PENDING (attempt_index == 0)
+
+        run.reconcile()
+        self.assertFalse(run.needs_resubmission,
+                         'Should NOT resubmit: Q-state workers will pick up retried tasks')
+
+    def test_resubmit_when_all_workers_done_and_retried_tasks_remain(self):
+        """All original workers finished but some tasks failed and were retried.
+        No fresh PENDING → no more workers coming → must resubmit."""
+        run = self._make_run(n_tasks=3)
+        # All 3 workers started: t0 completed, t1 failed, t2 completed
+        self._complete_task(run.pipe_root, 't0')
+        self._fail_retryable(run.pipe_root, 't1')
+        self._complete_task(run.pipe_root, 't2')
+
+        run.reconcile()
+        self.assertTrue(run.needs_resubmission,
+                        'Should resubmit: no fresh pending, no active workers, retried tasks waiting')
+
+    def test_no_resubmit_within_grace_period(self):
+        """Even with retried tasks and no fresh pending, respect the grace period."""
+        run = self._make_run(n_tasks=2)
+        run.submitted_at = time.time() - 10  # only 10 seconds ago (within 120s grace)
+        self._complete_task(run.pipe_root, 't0')
+        self._fail_retryable(run.pipe_root, 't1')
+
+        run.reconcile()
+        self.assertFalse(run.needs_resubmission,
+                         'Should NOT resubmit: within grace period')
+
+    def test_no_resubmit_while_workers_still_active(self):
+        """Active workers (CLAIMED/RUNNING) means work is in progress — no resubmit."""
+        run = self._make_run(n_tasks=3)
+        self._complete_task(run.pipe_root, 't0')
+        self._fail_retryable(run.pipe_root, 't1')
+        # t2 is currently running (worker still active)
+        now = time.time()
+        update_task_state(run.pipe_root, 't2', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now,
+                          lease_expires_at=now + 300)
+        update_task_state(run.pipe_root, 't2', new_status=TaskState.RUNNING, started_at=now)
+
+        run.reconcile()
+        self.assertFalse(run.needs_resubmission,
+                         'Should NOT resubmit: worker still running')
+
+    def test_repeated_reconcile_does_not_spam_resubmissions(self):
+        """After resubmission clears the flag, fresh workers from the new batch
+        should prevent immediate re-triggering."""
+        run = self._make_run(n_tasks=2)
+        self._complete_task(run.pipe_root, 't0')
+        self._fail_retryable(run.pipe_root, 't1')
+
+        run.reconcile()
+        self.assertTrue(run.needs_resubmission)
+
+        # Simulate what poll_pipes does: reset submitted_at, clear flag
+        run._needs_resubmission = False
+        run.submitted_at = time.time()  # just resubmitted
+
+        run.reconcile()
+        self.assertFalse(run.needs_resubmission,
+                         'Should NOT resubmit again: within grace period of new submission')
+
+
 class TestPipeRunHomogeneity(unittest.TestCase):
     """Tests for PipeRun homogeneity validation."""
 
