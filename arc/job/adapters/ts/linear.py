@@ -232,6 +232,7 @@ from arc.job.adapters.ts.linear_utils.local_geometry import (
     clean_migrating_h,
     identify_h_migration_pairs,
     infer_frag_fallback_h_migration,
+    is_internal_reactive_ch2_misoriented,
     orient_h_away_from_axis,
     regularize_terminal_h_geometry,
     restore_terminal_h_symmetry,
@@ -3681,6 +3682,163 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         if _fallback_fb is not None and _fallback_bb is not None and _fallback_changed is not None:
             for rec in unique:
                 rec.xyz = _fix_rh_add_motif(rec.xyz, r_mol, _fallback_fb, _fallback_bb, _fallback_changed)
+        # Phase 4e — late local reactive-center cleanup pass.
+        #
+        # Phases 4a/4b/4c/4d added a local reactive-center cleanup
+        # orchestrator (terminal CH₂/CH₃ symmetry restoration plus
+        # internal-CH₂ sp³ repair), but the only live wiring sites for
+        # that orchestrator lived inside :func:`interpolate_addition`.
+        # The internal-CH₂ failure cluster (1,2_shiftC,
+        # Intra_R_Add_Endocyclic, Intra_RH_Add_Endocyclic,
+        # Intra_substitutions_isomerization, Intra_Diels_alder_monocyclic,
+        # Intra_OH_migration) all route through
+        # :func:`interpolate_isomerization` and therefore never reached
+        # the orchestrator at all.
+        #
+        # Phase 4e is the audit-driven coverage fix: a single, very
+        # narrowly gated late call to ``apply_reactive_center_cleanup``.
+        # The gating is intentionally strict so the existing isomerization
+        # pipeline — which already runs ``orient_h_on_reactive_centers``
+        # on the reactive heavy atoms themselves — is not perturbed for
+        # families that do not need internal-CH₂ repair:
+        #
+        #   1. The orchestrator is invoked only when the 1-bond
+        #      expansion from a reactive heavy endpoint actually brings
+        #      in an *internal* CH₂ neighbour (heavy degree 2 + H count 2
+        #      in the reactant graph).  When the expansion is empty, the
+        #      orchestrator would only see the reactive heavy endpoints
+        #      themselves — those are already handled by the existing
+        #      ``orient_h_on_reactive_centers`` call above, so the new
+        #      pass is a no-op and is skipped.
+        #
+        #   2. Any H atom appearing in a changing bond is added to
+        #      ``exempt_h_indices`` so the regularizer cannot snap a
+        #      migrating H back to a normal C–H bond length.
+        #
+        #   3. Only the 1-bond expansion CH₂ centres are passed to the
+        #      orchestrator (not the reactive heavy endpoints), so the
+        #      Phase 4b/4c terminal-group pathway and the Phase 4d
+        #      internal-CH₂ pathway only fire on the newly-exposed
+        #      neighbour atoms.  The reactive heavy endpoints continue
+        #      to be handled by the upstream helpers untouched.
+        #
+        # All actual repair gating remains inside the orchestrator: the
+        # Phase 4b/4c terminal asymmetry detector and the Phase 4d
+        # internal-CH₂ misorientation detector each enforce their own
+        # eligibility checks before mutating anything.  Already-good
+        # shells are byte-for-byte unchanged.  No new helpers, no
+        # scoring change, no broad cleanup expansion.
+        atom_to_idx_iso = {a: i for i, a in enumerate(r_mol.atoms)}
+        for rec in unique:
+            rec_bonds = list(rec.bb or []) + list(rec.fb or [])
+            if not rec_bonds:
+                continue
+            symbols_iso = rec.xyz['symbols']
+            n_atoms_iso = len(symbols_iso)
+            reactive_iso: Set[int] = set()
+            exempt_hs_iso: Set[int] = set()
+            has_heavy_heavy_change = False
+            for bond_pair in rec_bonds:
+                ai_a = int(bond_pair[0])
+                ai_b = int(bond_pair[1])
+                if not (0 <= ai_a < n_atoms_iso and 0 <= ai_b < n_atoms_iso):
+                    continue
+                if symbols_iso[ai_a] != 'H' and symbols_iso[ai_b] != 'H':
+                    has_heavy_heavy_change = True
+                for atom_idx in bond_pair:
+                    ai = int(atom_idx)
+                    if not (0 <= ai < n_atoms_iso):
+                        continue
+                    if symbols_iso[ai] == 'H':
+                        exempt_hs_iso.add(ai)
+                    else:
+                        reactive_iso.add(ai)
+            if not reactive_iso:
+                continue
+            # Skip pure H-migration reactions (all changing bonds are
+            # heavy-H).  In those cases the existing
+            # ``orient_h_on_reactive_centers`` and the H-migration
+            # postprocessor have already placed the migrating H very
+            # carefully, and any orchestrator-driven mutation around
+            # the donor / acceptor neighbourhood risks perturbing that
+            # placement.  The targeted Phase 4d failure cluster is
+            # specifically the heavy-atom-rearrangement families
+            # (1,2_shiftC, Intra_R_Add_Endocyclic,
+            # Intra_RH_Add_Endocyclic, Intra_substitutions_isomerization,
+            # Intra_Diels_alder_monocyclic) — every one of which
+            # contains at least one heavy-heavy changing bond.
+            if not has_heavy_heavy_change:
+                continue
+            # 1-bond expansion to immediate internal-CH₂ neighbours
+            # of each reactive heavy endpoint.  These are precisely
+            # the atoms that the existing ``orient_h_on_reactive_centers``
+            # cannot reach (it only operates on the endpoints
+            # themselves), and that the Phase 4d detector/repair was
+            # designed for.
+            expansion_iso: Set[int] = set()
+            for center_iso in reactive_iso:
+                if not (0 <= center_iso < len(r_mol.atoms)):
+                    continue
+                for nbr in r_mol.atoms[center_iso].bonds.keys():
+                    ni = atom_to_idx_iso[nbr]
+                    if symbols_iso[ni] == 'H':
+                        continue
+                    if ni in reactive_iso:
+                        continue
+                    nbr_heavy = sum(
+                        1 for nb in r_mol.atoms[ni].bonds.keys()
+                        if nb.element.symbol != 'H')
+                    nbr_h = sum(
+                        1 for nb in r_mol.atoms[ni].bonds.keys()
+                        if nb.element.symbol == 'H')
+                    if nbr_heavy == 2 and nbr_h == 2:
+                        expansion_iso.add(int(ni))
+            if not expansion_iso:
+                # The reactive endpoints alone would only re-trigger the
+                # upstream ``orient_h_on_reactive_centers`` work — skip
+                # the orchestrator to avoid perturbing already-stable
+                # geometries.
+                continue
+            # Final detector pre-check: only invoke the orchestrator on
+            # the subset of expansion centres that the Phase 4d
+            # internal-CH₂ detector actually flags as misoriented in
+            # this guess's geometry.  This makes the Phase 4e cleanup
+            # strictly opt-in: if every candidate centre is already
+            # well-oriented, the orchestrator is not called at all and
+            # the geometry is byte-for-byte identical to the
+            # pre-Phase-4e behaviour.
+            misoriented_iso: Set[int] = set()
+            for cand in expansion_iso:
+                if not (0 <= cand < len(r_mol.atoms)):
+                    continue
+                cand_heavy = [
+                    atom_to_idx_iso[nbr]
+                    for nbr in r_mol.atoms[cand].bonds.keys()
+                    if nbr.element.symbol != 'H'
+                ]
+                cand_h = [
+                    atom_to_idx_iso[nbr]
+                    for nbr in r_mol.atoms[cand].bonds.keys()
+                    if nbr.element.symbol == 'H'
+                    and atom_to_idx_iso[nbr] not in exempt_hs_iso
+                ]
+                if len(cand_heavy) != 2 or len(cand_h) != 2:
+                    continue
+                if is_internal_reactive_ch2_misoriented(
+                        rec.xyz,
+                        center_idx=cand,
+                        heavy_nbr_indices=cand_heavy,
+                        h_indices=cand_h):
+                    misoriented_iso.add(cand)
+            if not misoriented_iso:
+                continue
+            rec.xyz = apply_reactive_center_cleanup(
+                rec.xyz, r_mol,
+                migrations=None,
+                reactive_centers=misoriented_iso,
+                exempt_h_indices=exempt_hs_iso,
+                restore_symmetry=True,
+            )
         # Final collision and bivalent-H filter after all post-processing.
         def _has_bivalent_h(xyz_dict: dict) -> bool:
             """Return True if any H is within tight bonding distance of 2+ heavy atoms."""

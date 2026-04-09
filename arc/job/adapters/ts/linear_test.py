@@ -5280,6 +5280,455 @@ H       1.16560000    0.49640000    0.85960000"""))
         # This should return None since fragments < 2.
         self.assertIsNone(ts_xyz)
 
+    # ------------------------------------------------------------------
+    # Phase 4e — coverage-audit, wiring, and non-regression tests for
+    # the late local reactive-center cleanup pass inside
+    # ``interpolate_isomerization``.
+    # ------------------------------------------------------------------
+
+    def test_phase4e_isomerization_invokes_reactive_center_cleanup(self):
+        """Phase 4e coverage-audit regression.
+
+        Before Phase 4e, ``apply_reactive_center_cleanup`` was wired
+        only inside :func:`interpolate_addition`; isomerization-route
+        reactions never reached the orchestrator and the targeted
+        internal-CH₂ failure cluster never got the Phase 4d repair.
+
+        Phase 4e adds a single late call inside
+        :func:`interpolate_isomerization` that feeds the orchestrator
+        the heavy atoms in each guess's changing bonds, plus a
+        1-bond expansion to immediate internal-CH₂ neighbours.  The
+        wiring is *strictly opt-in*: the orchestrator is only invoked
+        when the Phase 4d internal-CH₂ misorientation detector
+        actually fires on a candidate centre.
+
+        This test traces the wiring with a real isomerization-route
+        reaction (``Intra_RH_Add_Endocyclic``: ``OCCCC=C <=>
+        C1OCCCC1``) and proves the wiring path is end-to-end
+        connected by patching the Phase 4d detector to always return
+        True.  Under that patch:
+
+          (1) the detector must be called at least once for an
+              internal CH₂ atom in the reactant graph (proving the
+              wiring identifies the correct candidate centres), and
+          (2) ``apply_reactive_center_cleanup`` must be called at
+              least once with that internal CH₂ atom in its
+              ``reactive_centers`` set (proving the wiring forwards
+              flagged centres to the orchestrator).
+
+        The test exercises the wiring with a deterministic forced
+        signal so it does not depend on the natural geometric
+        outcome of the strategy pipeline.
+        """
+        from unittest.mock import patch
+
+        r_xyz = """O      -2.82721787   -0.50660445    0.17006246
+C      -1.42423100   -0.54684140   -0.06325185
+C      -0.87209394    0.86948372    0.03307759
+C       0.61720459    0.95856824   -0.29789433
+C       1.48253511    0.23212057    0.69200350
+C       2.29552591   -0.78361542    0.37581471
+H      -3.14871804   -1.42308221    0.12085976
+H      -0.97202705   -1.20419596    0.68543030
+H      -1.25175899   -0.96687073   -1.05925336
+H      -1.43076345    1.51736264   -0.65450031
+H      -1.06765501    1.27028264    1.03611030
+H       0.78939439    0.58580466   -1.31508343
+H       0.91578668    2.01385902   -0.29802098
+H       1.44262464    0.57498713    1.72449826
+H       2.37872656   -1.15563129   -0.64063021
+H       2.90404934   -1.26413200    1.13615558"""
+        p_xyz = """C       1.49877622    0.35148592    0.11170549
+O       0.76070649    1.27450052   -0.68915109
+C      -0.59292278    1.40225747   -0.25390393
+C      -1.32229318    0.06922018   -0.35968935
+C      -0.58250938   -1.01416260    0.41788069
+C       0.89132432   -1.04279750    0.02723025
+H       1.52973169    0.71083537    1.14705425
+H       2.52718630    0.33292459   -0.26270713
+H      -1.08027028    2.14514168   -0.89325682
+H      -0.61092541    1.78620120    0.77288739
+H      -2.34982872    0.16634301    0.00594495
+H      -1.37187159   -0.22970950   -1.41399977
+H      -0.67028618   -0.81482402    1.49296781
+H      -1.04113828   -1.99160041    0.23257309
+H       1.44210014   -1.73854431    0.66873858
+H       0.97222065   -1.40727159   -1.00427440"""
+        r = ARCSpecies(label='R', smiles='OCCCC=C', xyz=r_xyz)
+        p = ARCSpecies(label='P', smiles='C1OCCCC1', xyz=p_xyz)
+        rxn = ARCReaction(r_species=[r], p_species=[p])
+
+        # Build the set of internal CH₂ atoms in the reactant graph.
+        atom_to_idx = {a: i for i, a in enumerate(r.mol.atoms)}
+        internal_ch2_atoms: set = set()
+        for atom in r.mol.atoms:
+            if atom.element.symbol == 'C':
+                heavy = sum(1 for n in atom.bonds.keys()
+                            if n.element.symbol != 'H')
+                hcount = sum(1 for n in atom.bonds.keys()
+                             if n.element.symbol == 'H')
+                if heavy == 2 and hcount == 2:
+                    internal_ch2_atoms.add(atom_to_idx[atom])
+        self.assertGreater(
+            len(internal_ch2_atoms), 0,
+            msg='reactant OCCCC=C should expose internal CH₂ atoms '
+                '(C1, C2, C3) — sanity check on the test fixture')
+
+        detector_calls = []
+
+        def _detector_force_true(xyz, center_idx, heavy_nbr_indices,
+                                 h_indices, **kwargs):
+            detector_calls.append({
+                'center_idx': int(center_idx),
+                'heavy_nbr_indices': tuple(int(i) for i in heavy_nbr_indices),
+                'h_indices': tuple(int(i) for i in h_indices),
+            })
+            return True
+
+        orchestrator_calls = []
+
+        from arc.job.adapters.ts.linear_utils import local_geometry as lg
+        real_apply = lg.apply_reactive_center_cleanup
+
+        def _spy_apply(xyz, mol, *args, **kwargs):
+            orchestrator_calls.append({
+                'reactive_centers': set(kwargs.get('reactive_centers') or set()),
+                'exempt_h_indices': set(kwargs.get('exempt_h_indices') or set()),
+            })
+            return real_apply(xyz, mol, *args, **kwargs)
+
+        # Patch BOTH the detector (used by the wiring's pre-check)
+        # AND the orchestrator (so we can record its invocation).
+        # Both helpers are imported into the ``arc.job.adapters.ts.linear``
+        # module namespace, so patch them there.
+        with patch(
+                'arc.job.adapters.ts.linear.is_internal_reactive_ch2_misoriented',
+                side_effect=_detector_force_true), \
+             patch(
+                'arc.job.adapters.ts.linear.apply_reactive_center_cleanup',
+                side_effect=_spy_apply):
+            ts_xyzs = interpolate_isomerization(rxn)
+
+        # (1) The detector must have been called at least once on an
+        #     internal CH₂ atom — proving the wiring identifies the
+        #     right candidates from the 1-bond expansion.
+        ch2_detector_calls = [
+            c for c in detector_calls
+            if c['center_idx'] in internal_ch2_atoms
+        ]
+        self.assertGreater(
+            len(ch2_detector_calls), 0,
+            msg='Phase 4e wiring did not invoke the internal-CH₂ '
+                'detector on any internal CH₂ atom for the '
+                'Intra_RH_Add_Endocyclic reaction '
+                f'(detector_calls={detector_calls}, '
+                f'expected internal CH₂ atoms={internal_ch2_atoms})')
+
+        # (2) Under the forced-True patch, at least one orchestrator
+        #     call must have happened with an internal CH₂ atom in its
+        #     reactive_centers set.
+        self.assertGreater(
+            len(orchestrator_calls), 0,
+            msg='Phase 4e wiring did not invoke apply_reactive_center_cleanup '
+                'even though the detector was forced to return True')
+        any_call_has_ch2 = any(
+            bool(call['reactive_centers'] & internal_ch2_atoms)
+            for call in orchestrator_calls
+        )
+        self.assertTrue(
+            any_call_has_ch2,
+            msg='Phase 4e wiring did not forward an internal CH₂ atom '
+                'to the orchestrator under a forced-True detector '
+                f'(reactive_centers per call: '
+                f'{[c["reactive_centers"] for c in orchestrator_calls]}, '
+                f'internal CH₂ atoms expected: {internal_ch2_atoms})')
+
+        # The interpolation must still produce at least one TS guess
+        # (the cleanup pass must not silently kill the pipeline).
+        self.assertGreater(
+            len(ts_xyzs), 0,
+            msg='Phase 4e wiring caused the isomerization pipeline to '
+                'produce zero TS guesses — the cleanup pass must be '
+                'non-destructive.')
+
+    def test_phase4e_isomerization_does_not_touch_unrelated_atoms(self):
+        """Non-regression: when Phase 4e cleanup runs on an
+        isomerization guess, it must NOT mutate atoms outside the
+        immediate first shell of the reactive heavy centres or their
+        1-bond internal-CH₂ neighbours.
+
+        This guards against accidentally broadening the cleanup to
+        unrelated atoms (the explicit "no broad cleanup expansion"
+        rule from the Phase 4e prompt).
+
+        We exercise this with the same Intra_RH_Add_Endocyclic
+        reaction used by the coverage-audit test and verify that
+        atoms more than one graph hop away from the changing bonds
+        — and that are not internal CH₂ neighbours — are unchanged
+        when we run the wired orchestrator on the surviving guesses.
+        """
+        from unittest.mock import patch
+
+        r_xyz = """O      -2.82721787   -0.50660445    0.17006246
+C      -1.42423100   -0.54684140   -0.06325185
+C      -0.87209394    0.86948372    0.03307759
+C       0.61720459    0.95856824   -0.29789433
+C       1.48253511    0.23212057    0.69200350
+C       2.29552591   -0.78361542    0.37581471
+H      -3.14871804   -1.42308221    0.12085976
+H      -0.97202705   -1.20419596    0.68543030
+H      -1.25175899   -0.96687073   -1.05925336
+H      -1.43076345    1.51736264   -0.65450031
+H      -1.06765501    1.27028264    1.03611030
+H       0.78939439    0.58580466   -1.31508343
+H       0.91578668    2.01385902   -0.29802098
+H       1.44262464    0.57498713    1.72449826
+H       2.37872656   -1.15563129   -0.64063021
+H       2.90404934   -1.26413200    1.13615558"""
+        p_xyz = """C       1.49877622    0.35148592    0.11170549
+O       0.76070649    1.27450052   -0.68915109
+C      -0.59292278    1.40225747   -0.25390393
+C      -1.32229318    0.06922018   -0.35968935
+C      -0.58250938   -1.01416260    0.41788069
+C       0.89132432   -1.04279750    0.02723025
+H       1.52973169    0.71083537    1.14705425
+H       2.52718630    0.33292459   -0.26270713
+H      -1.08027028    2.14514168   -0.89325682
+H      -0.61092541    1.78620120    0.77288739
+H      -2.34982872    0.16634301    0.00594495
+H      -1.37187159   -0.22970950   -1.41399977
+H      -0.67028618   -0.81482402    1.49296781
+H      -1.04113828   -1.99160041    0.23257309
+H       1.44210014   -1.73854431    0.66873858
+H       0.97222065   -1.40727159   -1.00427440"""
+        r = ARCSpecies(label='R', smiles='OCCCC=C', xyz=r_xyz)
+        p = ARCSpecies(label='P', smiles='C1OCCCC1', xyz=p_xyz)
+        rxn = ARCReaction(r_species=[r], p_species=[p])
+
+        # Capture every (xyz_in, xyz_out, reactive_centers) triple so we
+        # can compute exactly which atoms were touched.  Force the
+        # detector to return True so the orchestrator is guaranteed to
+        # be invoked at least once and we can verify that the call's
+        # mutations stay strictly local.
+        captured = []
+
+        from arc.job.adapters.ts.linear_utils import local_geometry as lg
+        real_apply = lg.apply_reactive_center_cleanup
+
+        def _spy_apply(xyz, mol, *args, **kwargs):
+            xyz_in_coords = np.asarray(xyz['coords'], dtype=float).copy()
+            out = real_apply(xyz, mol, *args, **kwargs)
+            xyz_out_coords = np.asarray(out['coords'], dtype=float)
+            captured.append({
+                'in': xyz_in_coords,
+                'out': xyz_out_coords,
+                'reactive_centers': set(kwargs.get('reactive_centers') or set()),
+            })
+            return out
+
+        with patch(
+                'arc.job.adapters.ts.linear.is_internal_reactive_ch2_misoriented',
+                return_value=True), \
+             patch(
+                'arc.job.adapters.ts.linear.apply_reactive_center_cleanup',
+                side_effect=_spy_apply):
+            interpolate_isomerization(rxn)
+
+        self.assertGreater(
+            len(captured), 0,
+            msg='no orchestrator calls were captured — the wiring '
+                'should have run for this isomerization reaction')
+
+        atom_to_idx = {a: i for i, a in enumerate(r.mol.atoms)}
+        for call in captured:
+            reactive = call['reactive_centers']
+            allowed_indices = set(reactive)
+            # Allow the H atoms bonded to any reactive heavy atom — those
+            # are the ones the orchestrator may legitimately reseat
+            # (terminal symmetry pass and internal-CH₂ pass both touch
+            # the immediate H shell).
+            for center in reactive:
+                if not (0 <= center < len(r.mol.atoms)):
+                    continue
+                for nbr in r.mol.atoms[center].bonds.keys():
+                    allowed_indices.add(atom_to_idx[nbr])
+            # Confirm every atom OUTSIDE that allowed set is unchanged.
+            n_atoms = call['in'].shape[0]
+            for idx in range(n_atoms):
+                if idx in allowed_indices:
+                    continue
+                self.assertTrue(
+                    np.allclose(call['in'][idx], call['out'][idx], atol=1e-9),
+                    msg=f'atom {idx} was mutated by the Phase 4e cleanup '
+                        f'pass even though it is outside the immediate '
+                        f'first shell of the reactive centres '
+                        f'{reactive}')
+
+    def test_phase4e_isomerization_wiring_is_exercised_in_production(self):
+        """Phase 4e production-path verification.
+
+        The Phase 4e wiring is strictly opt-in: it only invokes the
+        Phase 4d internal-CH₂ detector when (a) there is at least one
+        heavy-heavy changing bond on the guess, and (b) the 1-bond
+        expansion brings in a centre that satisfies the internal CH₂
+        graph condition.
+
+        This test runs a real targeted isomerization reaction
+        (``Intra_RH_Add_Endocyclic``: ``OCCCC=C <=> C1OCCCC1``)
+        WITHOUT patching anything, and confirms that the detector is
+        invoked at least once during the natural pipeline run on an
+        internal CH₂ atom in the reactant graph.  This proves that
+        Phase 4e converted the wiring from "never reaches the
+        orchestrator" to "the orchestrator's detector is naturally
+        consulted in production" for this family.
+
+        Whether the detector actually fires (and the repair runs) on
+        any individual TS guess depends on the natural interpolated
+        geometry — this test asserts only the *wiring path*, not a
+        specific repair outcome, so it remains stable across
+        downstream geometric changes.
+        """
+        from unittest.mock import patch
+
+        r_xyz = """O      -2.82721787   -0.50660445    0.17006246
+C      -1.42423100   -0.54684140   -0.06325185
+C      -0.87209394    0.86948372    0.03307759
+C       0.61720459    0.95856824   -0.29789433
+C       1.48253511    0.23212057    0.69200350
+C       2.29552591   -0.78361542    0.37581471
+H      -3.14871804   -1.42308221    0.12085976
+H      -0.97202705   -1.20419596    0.68543030
+H      -1.25175899   -0.96687073   -1.05925336
+H      -1.43076345    1.51736264   -0.65450031
+H      -1.06765501    1.27028264    1.03611030
+H       0.78939439    0.58580466   -1.31508343
+H       0.91578668    2.01385902   -0.29802098
+H       1.44262464    0.57498713    1.72449826
+H       2.37872656   -1.15563129   -0.64063021
+H       2.90404934   -1.26413200    1.13615558"""
+        p_xyz = """C       1.49877622    0.35148592    0.11170549
+O       0.76070649    1.27450052   -0.68915109
+C      -0.59292278    1.40225747   -0.25390393
+C      -1.32229318    0.06922018   -0.35968935
+C      -0.58250938   -1.01416260    0.41788069
+C       0.89132432   -1.04279750    0.02723025
+H       1.52973169    0.71083537    1.14705425
+H       2.52718630    0.33292459   -0.26270713
+H      -1.08027028    2.14514168   -0.89325682
+H      -0.61092541    1.78620120    0.77288739
+H      -2.34982872    0.16634301    0.00594495
+H      -1.37187159   -0.22970950   -1.41399977
+H      -0.67028618   -0.81482402    1.49296781
+H      -1.04113828   -1.99160041    0.23257309
+H       1.44210014   -1.73854431    0.66873858
+H       0.97222065   -1.40727159   -1.00427440"""
+        r = ARCSpecies(label='R', smiles='OCCCC=C', xyz=r_xyz)
+        p = ARCSpecies(label='P', smiles='C1OCCCC1', xyz=p_xyz)
+        rxn = ARCReaction(r_species=[r], p_species=[p])
+
+        atom_to_idx = {a: i for i, a in enumerate(r.mol.atoms)}
+        internal_ch2_atoms: set = set()
+        for atom in r.mol.atoms:
+            if atom.element.symbol == 'C':
+                heavy = sum(1 for n in atom.bonds.keys()
+                            if n.element.symbol != 'H')
+                hcount = sum(1 for n in atom.bonds.keys()
+                             if n.element.symbol == 'H')
+                if heavy == 2 and hcount == 2:
+                    internal_ch2_atoms.add(atom_to_idx[atom])
+
+        from arc.job.adapters.ts.linear_utils import local_geometry as lg
+        real_detector = lg.is_internal_reactive_ch2_misoriented
+        natural_detector_calls: list = []
+
+        def _spy_detector(xyz, center_idx, heavy_nbr_indices,
+                          h_indices, **kwargs):
+            natural_detector_calls.append(int(center_idx))
+            return real_detector(xyz, center_idx,
+                                 heavy_nbr_indices, h_indices, **kwargs)
+
+        # Spy on the detector at the wiring's import site so we observe
+        # natural invocations.  We do NOT alter the return value — the
+        # real detector decides whether to fire.
+        with patch(
+                'arc.job.adapters.ts.linear.is_internal_reactive_ch2_misoriented',
+                side_effect=_spy_detector):
+            ts_xyzs = interpolate_isomerization(rxn)
+
+        # Sanity: the pipeline still produces guesses.
+        self.assertGreater(
+            len(ts_xyzs), 0,
+            msg='Phase 4e wiring caused the isomerization pipeline to '
+                'produce zero TS guesses')
+
+        # The wiring must have invoked the detector on at least one
+        # internal CH₂ atom during the production run — proving the
+        # cleanup pathway is exercised end-to-end without monkeypatching.
+        ch2_natural_calls = [
+            idx for idx in natural_detector_calls
+            if idx in internal_ch2_atoms
+        ]
+        self.assertGreater(
+            len(ch2_natural_calls), 0,
+            msg='Phase 4e wiring did not naturally invoke the '
+                'internal-CH₂ detector for the OCCCC=C reaction — the '
+                'production-path wiring is not being exercised '
+                f'(natural detector invocations on any centre: '
+                f'{natural_detector_calls}, expected internal CH₂ '
+                f'atoms: {internal_ch2_atoms})')
+
+    def test_phase4e_already_good_isomerization_geometry_unchanged(self):
+        """Phase 4e non-regression on already-good geometries.
+
+        When Phase 4e cleanup runs on a guess whose internal CH₂
+        shells and terminal groups are already chemically reasonable,
+        the orchestrator's gates (Phase 4b/4c terminal asymmetry
+        detector + Phase 4d internal-CH₂ misorientation detector)
+        must keep the geometry byte-for-byte unchanged.
+
+        We use ``apply_reactive_center_cleanup`` directly with a
+        synthetic propane geometry that has both an internal CH₂
+        (the middle C, sp³, healthy) and a reactive endpoint
+        (one of the terminal Cs).  The orchestrator should be a no-op
+        for the entire molecule.
+        """
+        sp = ARCSpecies(label='propane', smiles='CCC')
+        xyz = sp.get_xyz()
+        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        terminal_cs = [
+            atom_to_idx[atom] for atom in sp.mol.atoms
+            if atom.element.symbol == 'C' and sum(
+                1 for n in atom.bonds.keys() if n.element.symbol != 'H') == 1
+        ]
+        middle_c = next(
+            atom_to_idx[atom] for atom in sp.mol.atoms
+            if atom.element.symbol == 'C' and sum(
+                1 for n in atom.bonds.keys() if n.element.symbol != 'H') == 2
+        )
+        # Phase 4e selection on a synthetic "C0–C1 forming bond" guess
+        # would expand from {C0} (terminal) by 1 bond to its internal-CH₂
+        # neighbour (the middle C).  Pass that exact set to the
+        # orchestrator and confirm nothing moves.
+        from arc.job.adapters.ts.linear_utils.local_geometry import (
+            apply_reactive_center_cleanup,
+        )
+        before = np.asarray(xyz['coords'], dtype=float).copy()
+        out = apply_reactive_center_cleanup(
+            xyz, sp.mol,
+            migrations=None,
+            reactive_centers={terminal_cs[0], middle_c},
+            exempt_h_indices=None,
+            restore_symmetry=True,
+        )
+        after = np.asarray(out['coords'], dtype=float)
+        self.assertEqual(before.shape, after.shape)
+        for idx in range(before.shape[0]):
+            self.assertTrue(
+                np.allclose(before[idx], after[idx], atol=1e-9),
+                msg=f'atom {idx} ({xyz["symbols"][idx]}) moved on a '
+                    f'fresh propane geometry — the Phase 4b/4c/4d '
+                    f'gates should have left it untouched')
+
     @classmethod
     def tearDownClass(cls):
         """
