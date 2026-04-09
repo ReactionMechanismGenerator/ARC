@@ -630,7 +630,13 @@ class Scheduler(object):
                                     # Accumulate for deferred pipe batching of conf_sp.
                                     self._pending_pipe_conf_sp.setdefault(label, set()).add(i)
                                 if troubleshooting_conformer:
-                                    break
+                                    # Troubleshooting was attempted. If a new job was spawned,
+                                    # break and wait for it. If troubleshooting was exhausted
+                                    # (no new conf job in running_jobs), fall through to the
+                                    # "all conformers done" check so we don't strand the species.
+                                    if any('conf_opt' in j or 'conf_sp' in j
+                                           for j in self.running_jobs.get(label, [])):
+                                        break
                             # Just terminated a conformer job.
                             # Are there additional conformer jobs currently running for this species?
                             # Note: end_job already removed the current job from running_jobs,
