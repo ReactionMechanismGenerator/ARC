@@ -256,7 +256,11 @@ from arc.job.adapters.ts.linear_utils.migration_inference import (
     identify_h_migration_pairs,
     infer_frag_fallback_h_migration,
 )
-from arc.job.adapters.ts.linear_utils.families import build_xy_elimination_ts
+from arc.job.adapters.ts.linear_utils.families import (
+    build_xy_elimination_ts,
+    build_1_3_sigmatropic_rearrangement_ts,
+    build_baeyer_villiger_step2_ts,
+)
 
 
 logger = get_logger()
@@ -1691,6 +1695,31 @@ def interpolate_addition(rxn: 'ARCReaction',
                 logger.debug(f'Linear addition (rxn={rxn.label}): XY_elimination '
                              f'guess rejected — {reason}.')
 
+    # Baeyer-Villiger_step2: concerted peroxide rearrangement.
+    # The bespoke builder produces a calibrated TS with stretched O-O
+    # and C-C distances that exceed the generic builder-stage fragment
+    # threshold.  The guess is added directly to ts_records without
+    # builder-stage validation; the downstream finalizer validates and
+    # scores it through the shared machinery.
+    if _family_name == 'Baeyer-Villiger_step2':
+        frag_cuts = find_split_bonds_by_fragmentation(uni_mol, multi_species)
+        for cut in frag_cuts:
+            ts_bv = build_baeyer_villiger_step2_ts(uni_xyz, uni_mol, cut)
+            if ts_bv is not None:
+                if existing_xyzs and any(almost_equal_coords(ts_bv, e) for e in existing_xyzs):
+                    logger.debug(f'Linear addition (rxn={rxn.label}): BV step2 '
+                                 f'guess is a duplicate of existing, skipping.')
+                else:
+                    logger.debug(f'Linear addition (rxn={rxn.label}): used '
+                                 f'Baeyer-Villiger_step2 dedicated builder.')
+                    ts_records.append(GuessRecord(
+                        xyz=ts_bv,
+                        bb=list(cut),
+                        fb=[],
+                        family=_family_name,
+                        strategy='bespoke_baeyer_villiger_step2',
+                    ))
+
     # Build a set of bonds present in the unimolecular species' graph (used
     # by both the template-guided path and the fragmentation fallback).
     atom_to_idx = {atom: idx for idx, atom in enumerate(uni_mol.atoms)}
@@ -3054,6 +3083,41 @@ def _build_path_context(r_xyz: dict, r_mol: 'Molecule', op_xyz: dict,
         path_spec=path_spec,
     )
 
+def _strategy_bespoke_family(ctx: _PathContext) -> _StrategyResult:
+    """Dispatch to a family-specific bespoke builder when available.
+
+    Currently handles:
+    * ``1,3_sigmatropic_rearrangement`` — compact sigmatropic shift TS
+      via :func:`build_1_3_sigmatropic_rearrangement_ts`.
+
+    The bespoke builder receives the reactant geometry and the
+    path-spec, and returns a TS XYZ dict or ``None`` if the motif
+    atoms cannot be identified unambiguously.  On success, the guess
+    is wrapped in a :class:`GuessRecord` and halts the strategy
+    pipeline (bespoke builders are dominant).  On ``None``, the
+    strategy returns empty and the pipeline continues to the generic
+    strategies.
+
+    This strategy only fires for the explicitly named families and
+    does not affect any other family.
+    """
+    if ctx.family == '1,3_sigmatropic_rearrangement' and ctx.bb and ctx.fb:
+        ts = build_1_3_sigmatropic_rearrangement_ts(
+            r_xyz=ctx.r_xyz, r_mol=ctx.r_mol,
+            breaking_bonds=ctx.bb, forming_bonds=ctx.fb)
+        if ts is not None and not colliding_atoms(ts):
+            logger.debug(f'Linear ({ctx.label}): used bespoke 1,3_sigmatropic builder.')
+            return _StrategyResult(
+                guesses=[GuessRecord(
+                    xyz=ts, bb=list(ctx.bb), fb=list(ctx.fb),
+                    family=ctx.family, strategy='bespoke_1_3_sigmatropic',
+                    anchor_xyz=ctx.r_xyz,
+                    reactive_indices=ctx.reactive_xyz_indices,
+                    path_spec=ctx.path_spec)],
+                halt=False)
+    return _StrategyResult()
+
+
 def _strategy_ring_scission(ctx: _PathContext) -> _StrategyResult:
     """Build TS for ring-scission reactions discovered in reverse.
 
@@ -3448,6 +3512,24 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             continue
         seen_bond_signatures.add(bond_sig)
 
+        # Bespoke family builder for 1,3_sigmatropic_rearrangement.
+        # This fires BEFORE the per-path atom map because the atom map
+        # can fail for this family (non-isomorphic mapping), while the
+        # bespoke builder only needs bb/fb and the reactant geometry.
+        if path_family == '1,3_sigmatropic_rearrangement' and bb and fb:
+            ts_sigma = build_1_3_sigmatropic_rearrangement_ts(
+                r_xyz=r_xyz, r_mol=r_mol,
+                breaking_bonds=list(bb), forming_bonds=list(fb))
+            if ts_sigma is not None and not colliding_atoms(ts_sigma):
+                logger.debug(f'Linear (rxn={rxn.label}, path={i}): used bespoke '
+                             f'1,3_sigmatropic builder.')
+                ts_xyzs.append(GuessRecord(
+                    xyz=ts_sigma,
+                    bb=list(bb), fb=list(fb),
+                    family=path_family,
+                    strategy='bespoke_1_3_sigmatropic',
+                ))
+
         # Per-path atom map: different paths may involve different equivalent atoms
         # (e.g., distinct H's in intra_H_migration), so we must not reuse the
         # global rxn.atom_map for all paths.
@@ -3506,7 +3588,8 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         )
 
         # Strategy pipeline: dominant strategies halt on success.
-        for strategy in [_strategy_ring_scission,
+        for strategy in [_strategy_bespoke_family,
+                         _strategy_ring_scission,
                          _strategy_direct_contraction,
                          _strategy_ring_closure,
                          _strategy_zmat_interpolation,

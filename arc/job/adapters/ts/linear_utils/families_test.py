@@ -17,6 +17,8 @@ from arc.job.adapters.ts.linear_utils.families import (
     _dihedral_angle,
     _rotate_fragment,
     _set_bond_distance,
+    build_1_3_sigmatropic_rearrangement_ts,
+    build_baeyer_villiger_step2_ts,
     build_xy_elimination_ts,
     PAULING_DELTA,
 )
@@ -191,6 +193,167 @@ H       1.09172878   -3.08582798    1.39221989""")
         ts = build_xy_elimination_ts(self.r_xyz, self.r.mol)
         self.assertIsNotNone(ts)
         self.assertEqual(ts['symbols'], self.r_xyz['symbols'])
+
+
+class TestBuild13SigmatropicRearrangementTS(unittest.TestCase):
+    """Unit tests for the bespoke 1,3_sigmatropic_rearrangement builder."""
+
+    def test_success_imidazole_rearrangement(self):
+        """The builder produces a non-None, non-colliding TS for the
+        imidazole → azirine sigmatropic shift (bb=[(3,4)], fb=[(1,3)])
+        with the migrating atom (C3) at calibrated TS-like distances
+        from both origin (N4) and target (N1)."""
+        from arc.species.species import colliding_atoms
+
+        r = ARCSpecies(label='R', smiles='c1ncc[nH]1', xyz=str_to_xyz(
+            """C      -0.96405208   -0.58870010   -0.35675666
+               N       0.09948347   -1.35699528   -0.30406608
+               C       1.08781769   -0.57088551    0.22943180
+               C       0.61245126    0.68985747    0.50218591
+               N      -0.70083129    0.66320502    0.12207481
+               H      -1.93870511   -0.87854432   -0.72608823
+               H       2.08729155   -0.95482079    0.38815067
+               H       1.07812779    1.57128662    0.91862266
+               H      -1.36158329    1.42559689    0.18141711"""))
+        ts = build_1_3_sigmatropic_rearrangement_ts(
+            r.get_xyz(), r.mol,
+            breaking_bonds=[(3, 4)], forming_bonds=[(1, 3)])
+        self.assertIsNotNone(ts, 'builder should return a TS for the imidazole case')
+        self.assertFalse(colliding_atoms(ts), 'TS must not have atom collisions')
+        coords = np.array(ts['coords'], dtype=float)
+
+        # Curated TS reference distances (DFT-calibrated):
+        #   breaking C3-N4: 2.243 Å
+        #   forming N1-C3:  1.850 Å
+        d_break = float(np.linalg.norm(coords[3] - coords[4]))
+        d_form = float(np.linalg.norm(coords[1] - coords[3]))
+
+        # The calibrated builder should place the migrating atom within
+        # 0.1 Å of the curated targets on both motif edges.
+        self.assertAlmostEqual(d_break, 2.24, delta=0.10,
+                               msg=f'd(C3-N4)={d_break:.3f} should be ~2.24')
+        self.assertAlmostEqual(d_form, 1.85, delta=0.10,
+                               msg=f'd(N1-C3)={d_form:.3f} should be ~1.85')
+
+        # Unchanged near-core heavy-heavy bonds must remain chemically
+        # sane (not collapsed below 0.9 Å or stretched past 3.0 Å).
+        atom_to_idx = {a: i for i, a in enumerate(r.mol.atoms)}
+        for atom in r.mol.atoms:
+            ia = atom_to_idx[atom]
+            if r.get_xyz()['symbols'][ia] == 'H':
+                continue
+            for nbr in atom.bonds.keys():
+                ib = atom_to_idx[nbr]
+                if r.get_xyz()['symbols'][ib] == 'H':
+                    continue
+                d = float(np.linalg.norm(coords[ia] - coords[ib]))
+                self.assertGreater(d, 0.9,
+                                   msg=f'bond {ia}-{ib} collapsed to {d:.3f}')
+                self.assertLess(d, 3.5,
+                                msg=f'bond {ia}-{ib} stretched to {d:.3f}')
+
+        # Atom count preserved.
+        self.assertEqual(ts['symbols'], r.get_xyz()['symbols'])
+
+    def test_returns_none_when_bb_fb_ambiguous(self):
+        """When the breaking/forming bonds don't share exactly one common
+        atom, the builder returns None (ambiguous motif)."""
+        r = ARCSpecies(label='ethane', smiles='CC')
+        # bb and fb share NO common atom → ambiguous.
+        ts = build_1_3_sigmatropic_rearrangement_ts(
+            r.get_xyz(), r.mol,
+            breaking_bonds=[(0, 2)], forming_bonds=[(1, 3)])
+        self.assertIsNone(ts)
+
+    def test_returns_none_when_multiple_bb(self):
+        """When there are two breaking bonds, the builder returns None."""
+        r = ARCSpecies(label='propane', smiles='CCC')
+        ts = build_1_3_sigmatropic_rearrangement_ts(
+            r.get_xyz(), r.mol,
+            breaking_bonds=[(0, 1), (1, 2)], forming_bonds=[(0, 2)])
+        self.assertIsNone(ts)
+
+
+class TestBuildBaeyerVilligerStep2TS(unittest.TestCase):
+    """Unit tests for the bespoke Baeyer-Villiger_step2 builder."""
+
+    def test_success_criegee_rearrangement(self):
+        """The builder produces a non-None, non-colliding TS for the
+        Criegee intermediate rearrangement with calibrated concerted-
+        core distances: O-O stretched, a C on the quaternary side
+        migrating (C-C stretched from parent), and the migrating group
+        approaching the peroxide O through which migration proceeds."""
+        from arc.species.species import colliding_atoms
+
+        r = ARCSpecies(label='R', smiles='CC(=O)OOC(C)(C)O', xyz=str_to_xyz(
+            """C       3.24017953   -0.08055947    0.04152133
+               C       1.81730016    0.01506794    0.49970693
+               O       1.40458295    0.84254301    1.30456503
+               O       1.07825167   -0.97629342   -0.09140243
+               O      -0.31730507   -0.78810723    0.32288555
+               C      -0.58258035   -1.70130366    1.39489078
+               C      -1.89563521   -1.27490637    2.04480283
+               C      -0.69557405   -3.11930934    0.84358915
+               O       0.44369603   -1.67793216    2.38179554
+               H       3.67833221   -1.01933242    0.38907841
+               H       3.81240487    0.75201385    0.46069271
+               H       3.28486711   -0.01465169   -1.04857320
+               H      -2.71999820   -1.28689033    1.32385177
+               H      -1.81855771   -0.25064710    2.42803142
+               H      -2.14921491   -1.91945835    2.89304406
+               H       0.25555438   -3.44404747    0.40665792
+               H      -1.45267433   -3.18096845    0.05484522
+               H      -0.94129844   -3.83481939    1.63561633
+               H       0.45889563   -0.75760809    2.70737582"""))
+        ts = build_baeyer_villiger_step2_ts(
+            r.get_xyz(), r.mol, split_bonds=[(3, 4)])
+        self.assertIsNotNone(ts, 'builder should return a TS for the Criegee case')
+        self.assertFalse(colliding_atoms(ts), 'TS must not have atom collisions')
+        coords = np.array(ts['coords'], dtype=float)
+
+        # Curated TS reference distances (DFT-calibrated):
+        #   O-O peroxide: 2.016 Å
+        #   C_parent-C_mig: 2.304 Å
+        #   C_mig-O_approach: 2.160 Å
+        d_oo = float(np.linalg.norm(coords[3] - coords[4]))
+        self.assertAlmostEqual(d_oo, 2.02, delta=0.15,
+                               msg=f'd(O-O)={d_oo:.3f} should be ~2.02')
+
+        # One of the C neighbors of C5 (the quaternary C at index 5)
+        # should be stretched to ~2.30 (migrating group leaving C5)
+        # and approaching O4 at ~2.16.
+        d56 = float(np.linalg.norm(coords[5] - coords[6]))
+        d57 = float(np.linalg.norm(coords[5] - coords[7]))
+        # At least one of them should be significantly stretched.
+        d_mig = max(d56, d57)
+        self.assertGreater(d_mig, 1.8,
+                           msg=f'max(d(C5-C6), d(C5-C7))={d_mig:.3f} — '
+                               f'at least one CH₃ should have migrated')
+        # The migrated one should also be close to O4 (~2.16).
+        mig_idx = 6 if d56 > d57 else 7
+        d_mig_o4 = float(np.linalg.norm(coords[mig_idx] - coords[4]))
+        self.assertAlmostEqual(d_mig_o4, 2.16, delta=0.20,
+                               msg=f'd(C_mig-O4)={d_mig_o4:.3f} should be ~2.16')
+
+        # Atom count preserved.
+        self.assertEqual(ts['symbols'], r.get_xyz()['symbols'])
+
+    def test_returns_none_without_oo_bond(self):
+        """When split_bonds contains no O-O bond, the builder returns
+        None (no peroxide motif identified)."""
+        r = ARCSpecies(label='ethane', smiles='CC')
+        ts = build_baeyer_villiger_step2_ts(
+            r.get_xyz(), r.mol, split_bonds=[(0, 1)])
+        self.assertIsNone(ts)
+
+    def test_returns_none_without_carbonyl(self):
+        """When the O-O bond is present but no adjacent C=O exists,
+        the builder returns None."""
+        r = ARCSpecies(label='hooh', smiles='OO')
+        # O-O bond exists but no adjacent carbonyl.
+        ts = build_baeyer_villiger_step2_ts(
+            r.get_xyz(), r.mol, split_bonds=[(0, 1)])
+        self.assertIsNone(ts)
 
 
 if __name__ == '__main__':
