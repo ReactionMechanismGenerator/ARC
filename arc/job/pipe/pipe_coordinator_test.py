@@ -23,6 +23,27 @@ from arc.job.pipe.pipe_state import (
 from arc.species import ARCSpecies
 
 
+_pipe_patches = []
+
+
+def setUpModule():
+    """Enable pipe mode for all tests in this module."""
+    global _pipe_patches
+    pipe_vals = {'enabled': True, 'min_tasks': 10, 'max_workers': 100,
+                 'max_attempts': 3, 'lease_duration_s': 86400}
+    p = patch.dict('arc.job.pipe.pipe_coordinator.pipe_settings', pipe_vals)
+    p.start()
+    _pipe_patches.append(p)
+
+
+def tearDownModule():
+    """Restore pipe settings."""
+    global _pipe_patches
+    for p in _pipe_patches:
+        p.stop()
+    _pipe_patches.clear()
+
+
 def _make_spec(task_id, task_family='conf_opt', engine='mockter', level=None,
                species_label='H2O', conformer_index=0, cores=4, mem=2048):
     """Helper to create a TaskSpec for testing."""
