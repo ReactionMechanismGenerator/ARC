@@ -74,11 +74,12 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot'],
                              'Singlet_Carbene_Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb'],
                              }
 
-all_families_ts_adapters = []
+all_families_ts_adapters = ['rits']
 adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
-default_incore_adapters = ['autotst', 'crest', 'gcn', 'heuristics', 'kinbot', 'openbabel', 'torchani', 'psi4', 'xtb', 'xtb_gsm']
+default_incore_adapters = ['autotst', 'crest', 'gcn', 'heuristics', 'kinbot', 'openbabel', 'psi4',
+                           'rits', 'torchani', 'xtb', 'xtb_gsm']
 
 
 def _initialize_adapter(obj: JobAdapter,
