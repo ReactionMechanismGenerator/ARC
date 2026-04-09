@@ -23,6 +23,7 @@ The Tier-2 tests are skipped automatically on CI runners that did not run
 """
 
 import importlib
+import inspect
 import math
 import os
 import shutil
@@ -38,9 +39,92 @@ from arc.job.adapters.ts.rits_ts import (RitSAdapter,
                                          process_rits_tsg,
                                          write_xyz_file,
                                          )
+from arc.plotter import save_geo
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, compare_confs
 from arc.species.species import ARCSpecies, TSGuess
+
+
+def _save_debug_geometries(ts_xyzs, rxn) -> None:
+    """Hard-coded debug helper for visualizing RitS-adapter TS guesses.
+
+    Clears ``~/Desktop/xyz/rits/`` and dumps the current reaction's
+    reactant(s), product(s), and TS guesses there as Gaussian
+    ``.gjf`` files.  An empty marker file named after the calling test
+    function (``<test_name>.txt``) is also written so it is obvious
+    which test produced the contents.
+
+    This is *for debugging only* — it is not part of any assertion or
+    correctness check.  When the directory does not exist, it is
+    created.  All errors are swallowed defensively so that calling
+    this helper from a test never makes the test crash.
+    """
+    out_dir = os.path.expanduser('~/Desktop/xyz/rits')
+    try:
+        if os.path.isdir(out_dir):
+            for entry in os.listdir(out_dir):
+                full = os.path.join(out_dir, entry)
+                if os.path.isfile(full):
+                    try:
+                        os.remove(full)
+                    except OSError:
+                        # Best-effort debug cleanup; ignore deletion failures
+                        # so a stale file does not break a test run.
+                        pass
+        else:
+            os.makedirs(out_dir, exist_ok=True)
+        # Marker file with the calling test function's name.  The
+        # ``x_`` prefix makes it sort last in the directory listing,
+        # *after* ``R_*``, ``P_*``, and ``TS_*`` files. Walk up the call
+        # stack until we hit a frame whose function starts with ``test_``,
+        # so the marker reflects the test method even when the helper is
+        # invoked from an intermediate ``_run_e2e``-style helper.
+        try:
+            for frame in inspect.stack()[1:]:
+                if frame.function.startswith('test_'):
+                    caller = frame.function
+                    break
+            else:
+                # No test_* in the stack — fall back to the immediate caller.
+                caller = inspect.stack()[1].function
+        except Exception:
+            caller = 'rits_debug'
+        try:
+            open(os.path.join(out_dir, f'x_{caller}.txt'), 'w').close()
+        except OSError:
+            # Best-effort debug marker only; never fail a test if writing
+            # the marker file fails (read-only filesystem, full disk, etc.).
+            pass
+        # Reactants.
+        for i, sp in enumerate(getattr(rxn, 'r_species', []) or []):
+            try:
+                save_geo(xyz=sp.get_xyz(), path=out_dir,
+                         filename=f'R_{i}', format_='gjf')
+            except Exception:
+                # Debug helper must remain best-effort and never fail tests.
+                pass
+        # Products.
+        for i, sp in enumerate(getattr(rxn, 'p_species', []) or []):
+            try:
+                save_geo(xyz=sp.get_xyz(), path=out_dir,
+                         filename=f'P_{i}', format_='gjf')
+            except Exception:
+                # Debug helper must remain best-effort and never fail tests.
+                pass
+        # TS guesses.
+        for i, ts in enumerate(ts_xyzs or []):
+            try:
+                save_geo(xyz=ts, path=out_dir,
+                         filename=f'TS_{i}', format_='gjf')
+            except Exception:
+                # Debug helper must remain best-effort and never fail tests.
+                pass
+    except Exception:
+        # The helper must NEVER make a test fail; swallow everything that
+        # bubbles up from the per-step blocks above (filesystem errors,
+        # missing attributes on partially-built reactions, …).
+        pass
+
 
 HAS_RITS = _rits_environment_ready()
 
@@ -775,6 +859,15 @@ class TestRitSEndToEnd(unittest.TestCase):
         )
         adapter.execute_incore()
 
+        # Dump R/P/TS geometries to ~/Desktop/xyz/rits/ for visual debugging.
+        # This must run BEFORE any assertions so the files are still produced
+        # if a test later fails. The helper swallows all exceptions internally.
+        ts_xyzs_for_debug = list()
+        if rxn.ts_species is not None:
+            ts_xyzs_for_debug = [tsg.initial_xyz for tsg in rxn.ts_species.ts_guesses
+                                 if tsg.success and tsg.initial_xyz is not None]
+        _save_debug_geometries(ts_xyzs_for_debug, rxn)
+
         # The reactant + product XYZ that ARC fed to RitS must have matching atom counts
         with open(adapter.reactant_xyz_path) as f:
             r_n = int(f.readline())
@@ -858,7 +951,7 @@ class TestRitSEndToEnd(unittest.TestCase):
             'collapsed onto a single saddle, or the dedup is mis-tuned.',
         )
 
-    def test_e2e_diels_alder(self):
+    def test_e2e_diels_alder(self):  # fails!!
         """Diels-Alder bimolecular addition (21 atoms)."""
         self._run_e2e(_build_rxn_diels_alder(),
                       label='diels_alder', expected_n_atoms=21)
@@ -891,7 +984,7 @@ class TestRitSEndToEnd(unittest.TestCase):
 
     # ----- Group A: 1<->1 isomerizations -------------------------------------
 
-    def test_e2e_vinyl_alcohol_to_acetaldehyde(self):
+    def test_e2e_vinyl_alcohol_to_acetaldehyde(self):  # not amazing, can contrast in the paper
         """Keto-enol tautomerization C2H4O (7 atoms: 2C + 4H + 1O)."""
         self._run_e2e(_build_rxn_vinyl_alcohol_to_acetaldehyde(),
                       label='vinyl_alcohol_to_acetaldehyde', expected_n_atoms=7)
@@ -901,22 +994,22 @@ class TestRitSEndToEnd(unittest.TestCase):
         self._run_e2e(_build_rxn_propenol_to_acetone(),
                       label='propenol_to_acetone', expected_n_atoms=10)
 
-    def test_e2e_cyclobutene_to_butadiene(self):
+    def test_e2e_cyclobutene_to_butadiene(self):  # not amazing, but will probably converge
         """Electrocyclic ring opening C4H6 (10 atoms)."""
         self._run_e2e(_build_rxn_cyclobutene_to_butadiene(),
                       label='cyclobutene_to_butadiene', expected_n_atoms=10)
 
-    def test_e2e_methoxy_to_hydroxymethyl(self):
+    def test_e2e_methoxy_to_hydroxymethyl(self):  # not good
         """1,2-H migration in CH3O radical (5 atoms)."""
         self._run_e2e(_build_rxn_methoxy_to_hydroxymethyl(),
                       label='methoxy_to_hydroxymethyl', expected_n_atoms=5)
 
-    def test_e2e_ethoxy_to_alpha_hydroxyethyl(self):
+    def test_e2e_ethoxy_to_alpha_hydroxyethyl(self):  # good
         """1,2-H migration in CH3CH2O radical (8 atoms)."""
         self._run_e2e(_build_rxn_ethoxy_to_alpha_hydroxyethyl(),
                       label='ethoxy_to_alpha_hydroxyethyl', expected_n_atoms=8)
 
-    def test_e2e_cyclopropane_to_propene(self):
+    def test_e2e_cyclopropane_to_propene(self):  # not good
         """Cyclopropane ring opening C3H6 (9 atoms)."""
         self._run_e2e(_build_rxn_cyclopropane_to_propene(),
                       label='cyclopropane_to_propene', expected_n_atoms=9)
