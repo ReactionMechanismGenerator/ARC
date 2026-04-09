@@ -36,7 +36,7 @@ pipelines share for path-local reasoning.  It owns:
   :func:`has_inward_blocking_h_on_forming_axis`,
   :func:`has_bad_reactive_core_planarity`,
   :func:`has_wrong_h_migration_committed`,
-  :func:`has_committed_spectator_group` — Phase 2 / Phase 4a sub-checks.
+  :func:`has_committed_spectator_group` —  /  sub-checks.
 
 **Scoring and orchestration entry points**
 
@@ -286,7 +286,7 @@ def _safe_order(bond_orders: Dict[CanonicalBond, float], i: int, j: int) -> Opti
 class ReactionPathSpec:
     """Path-local description of a single reaction channel.
 
-    This is the Phase 1 data model.  It is intentionally minimal: it captures
+    This is the data model.  It is intentionally minimal: it captures
     *what* changes between reactant and product for one specific path, in a
     deterministic, canonical-keyed form, without any chemistry policy.
 
@@ -500,7 +500,7 @@ def get_ts_target_distance(
 
     if role == 'breaking':
         # Same semantics already used by adjust_reactive_bond_distances:
-        # stretch breaking bonds toward sbl + Pauling delta.  When the
+        # stretch breaking bonds toward sbl + Pauling delta. When the
         # family has a builder-side calibration, mirror it here so the
         # scorer judges the same target as the builder produced.
         return float(sbl + PAULING_DELTA + insertion_ring_extra_stretch(family))
@@ -512,7 +512,7 @@ def get_ts_target_distance(
         return float(sbl + PAULING_DELTA + insertion_ring_extra_stretch(family))
 
     if role == 'changed':
-        # Bond exists on both sides but its order changes.  Linear interpolation
+        # Bond exists on both sides but its order changes. Linear interpolation
         # is the conservative, well-defined choice.
         if d_r is not None and d_p is not None:
             w = max(0.0, min(1.0, float(weight)))
@@ -521,7 +521,7 @@ def get_ts_target_distance(
             return float(d_r)
         if d_p is not None:
             return float(d_p)
-        # Conservative fallback: a single-bond length.  Documented and tested.
+        # Conservative fallback: a single-bond length. Documented and tested.
         return float(sbl)
 
     # role == 'unchanged_near_core'
@@ -541,7 +541,7 @@ def has_recipe_channel_mismatch(
 ) -> Tuple[bool, str]:
     """Return ``(True, reason)`` if *xyz* violates the recipe channel.
 
-    Phase 1 implements the exact, conservative checks specified in the
+     implements the exact, conservative checks specified in the
     handoff:
 
     1. **Failed to break** — any bond in ``path_spec.breaking_bonds`` whose
@@ -715,7 +715,7 @@ def classify_path_chemistry(
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 validation sub-checks
+# validation sub-checks
 # ---------------------------------------------------------------------------
 
 
@@ -747,16 +747,16 @@ def has_bad_changed_bond_length(
         return False, ''
     coords = np.asarray(xyz['coords'], dtype=float)
 
-    # Phase 2b — strict frontier exemption.
+    # strict frontier exemption.
     #
     # A "changed" bond is exempt from the strict distance check ONLY when
     # BOTH conditions hold:
     #
-    #   (1) the absolute bond-order shift is at least 0.5
-    #       (the bond is undergoing real electronic restructuring), AND
-    #   (2) the bond is *directly physically adjacent* to a breaking or
-    #       forming bond — it shares at least one atom with at least one
-    #       bond in path_spec.breaking_bonds ∪ path_spec.forming_bonds.
+    # (1) the absolute bond-order shift is at least 0.5
+    # (the bond is undergoing real electronic restructuring), AND
+    # (2) the bond is *directly physically adjacent* to a breaking or
+    # forming bond — it shares at least one atom with at least one
+    # bond in path_spec.breaking_bonds ∪ path_spec.forming_bonds.
     #
     # If a changed bond has a large order shift but is geometrically
     # isolated from the reactive core (no shared atom with any
@@ -786,7 +786,7 @@ def has_bad_changed_bond_length(
         d_p = path_spec.ref_dist_p.get((i, j))
         bo_r = path_spec.bond_order_r.get((i, j))
         bo_p = path_spec.bond_order_p.get((i, j))
-        # Strict 2-condition frontier exemption (Phase 2b).
+        # Strict 2-condition frontier exemption.
         if _is_frontier_exempt(i, j, bo_r, bo_p):
             continue
         try:
@@ -994,7 +994,7 @@ def has_bad_reactive_core_planarity(
 
 
 # ---------------------------------------------------------------------------
-# Phase 4a — narrow recipe-consistency / wrong-channel screening
+# narrow recipe-consistency / wrong-channel screening
 # ---------------------------------------------------------------------------
 
 
@@ -1008,7 +1008,7 @@ def has_wrong_h_migration_committed(
     """Reject H-transfer guesses where a *spectator* H sits much closer
     to the intended acceptor than the *intended* migrating H.
 
-    This is a narrow Phase 4a screening rule.  It runs only when ALL
+    This is a narrow  screening rule.  It runs only when ALL
     of the following hold:
 
     * the path chemistry is :attr:`PathChemistry.H_TRANSFER`, AND
@@ -1084,7 +1084,7 @@ def has_wrong_h_migration_committed(
         if h_idx >= len(coords) or donor >= len(coords) or acceptor >= len(coords):
             continue
         # Condition 2 first (cheaper): the migrating H must still be
-        # near its donor.  If it has already started moving, the rule
+        # near its donor. If it has already started moving, the rule
         # does not apply because the intended channel has engaged.
         sbl_dh = get_single_bond_length(symbols[donor], 'H')
         if sbl_dh is None or sbl_dh <= 0.0:
@@ -1130,7 +1130,7 @@ def has_committed_spectator_group(
     """Reject guesses where a spectator heavy atom is committed to a
     reactive site it does not appear in the path-spec for.
 
-    This is a narrow Phase 4a screening rule.  It is **opt-in by
+    This is a narrow  screening rule.  It is **opt-in by
     family** — the check only runs for an explicit allowlist of
     families where the failure pattern is already known to occur:
 
@@ -1216,7 +1216,7 @@ def has_committed_spectator_group(
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 path-spec scoring
+# path-spec scoring
 # ---------------------------------------------------------------------------
 
 
@@ -1380,15 +1380,15 @@ def validate_guess_against_path_spec(
     :func:`has_recipe_channel_mismatch` guard.  Both checks are gating —
     failing either rejects the guess.
 
-    Phase 1 behavior:
+     behavior:
         By default (``strict_generic=False``) the wrapper does NOT pass
         ``anchor_xyz`` / ``reactive_indices`` into the generic validator.
         That keeps the orchestration's prior behavior intact and ensures
-        the only new gate added in Phase 1 is
+        the only new gate added in  is
         :func:`has_recipe_channel_mismatch`.  Setting ``strict_generic=True``
         opts in to the strongest sanity checks (backbone-drift screening
         relative to ``anchor_xyz``, etc.) — that capability is intentionally
-        deferred to Phase 2.
+        deferred to .
 
     Args:
         xyz: TS guess XYZ dict.
@@ -1429,8 +1429,8 @@ def validate_guess_against_path_spec(
         chemistry = PathChemistry.GENERIC
 
     # 1. Generic validation (collisions, detached atoms, fragments,
-    #    family-specific motif filters).  By default we DO NOT pass anchor
-    #    arguments — that preserves Phase 0 orchestration behavior.
+    # family-specific motif filters). By default we DO NOT pass anchor
+    # arguments — that preserves the legacy orchestration behavior.
     if strict_generic:
         anchor_kwarg = anchor_xyz
         reactive_kwarg = (reactive_indices if reactive_indices is not None
@@ -1453,42 +1453,42 @@ def validate_guess_against_path_spec(
     if not ok_generic:
         return False, reason_generic
 
-    # 2. Path-local recipe channel mismatch (Phase 1 guard, retained).
+    # 2. Path-local recipe channel mismatch ( guard, retained).
     mismatch, reason_mismatch = has_recipe_channel_mismatch(path_spec, xyz, r_mol)
     if mismatch:
         return False, f'recipe-mismatch:{reason_mismatch}'
 
-    # 3. Phase 2 sub-checks: changed-bond length, unchanged-near-core,
-    #    inward-blocking H, and reactive-core planarity.
+    # 3. sub-checks: changed-bond length, unchanged-near-core,
+    # inward-blocking H, and reactive-core planarity.
     bad, reason = has_bad_changed_bond_length(path_spec, xyz, symbols)
     if bad:
-        return False, f'phase2:{reason}'
+        return False, f'path-spec-check:{reason}'
     bad, reason = has_bad_unchanged_near_core_bond(path_spec, xyz, symbols)
     if bad:
-        return False, f'phase2:{reason}'
+        return False, f'path-spec-check:{reason}'
     bad, reason = has_inward_blocking_h_on_forming_axis(
         path_spec, xyz, r_mol, symbols, chemistry)
     if bad:
-        return False, f'phase2:{reason}'
+        return False, f'path-spec-check:{reason}'
     bad, reason = has_bad_reactive_core_planarity(
         path_spec, xyz, symbols, chemistry)
     if bad:
-        return False, f'phase2:{reason}'
+        return False, f'path-spec-check:{reason}'
 
-    # 4. Phase 4a narrow recipe-consistency / wrong-channel screening.
-    #    These are strictly additive and only fire on opt-in cases:
-    #    * has_wrong_h_migration_committed: only when chemistry is
-    #      H_TRANSFER and a path-spec migrating H is named.
-    #    * has_committed_spectator_group: only for an explicit family
-    #      allowlist (1,3_Insertion_ROR, R_Addition_MultipleBond).
+    # 4. narrow recipe-consistency / wrong-channel screening.
+    # These are strictly additive and only fire on opt-in cases:
+    # * has_wrong_h_migration_committed: only when chemistry is
+    # H_TRANSFER and a path-spec migrating H is named.
+    # * has_committed_spectator_group: only for an explicit family
+    # allowlist (1,3_Insertion_ROR, R_Addition_MultipleBond).
     bad, reason = has_wrong_h_migration_committed(
         path_spec, xyz, r_mol, symbols, chemistry)
     if bad:
-        return False, f'phase4a:{reason}'
+        return False, f'recipe-screen:{reason}'
     bad, reason = has_committed_spectator_group(
         path_spec, xyz, r_mol, symbols)
     if bad:
-        return False, f'phase4a:{reason}'
+        return False, f'recipe-screen:{reason}'
 
     return True, ''
 
@@ -1520,12 +1520,12 @@ def validate_addition_guess(xyz: dict,
     Routing:
 
     * When ``path_spec is not None``, route through
-      :func:`validate_guess_against_path_spec` so the guess receives the
-      same Phase 1+2+4a checks as isomerization.
+      :func:`validate_guess_against_path_spec` so the guess receives
+      the same path-spec validation gateway checks as isomerization.
     * When ``path_spec is None`` (degraded mode — dedicated motif
       builders, builder-stage screening, frag-fallback intermediates),
-      fall back to the legacy :func:`validate_ts_guess` so coverage
-      never regresses below the pre-Phase-3a baseline.
+      fall back to the legacy :func:`validate_ts_guess` so degraded-mode
+      coverage is preserved.
 
     Args:
         xyz: TS guess XYZ dict.

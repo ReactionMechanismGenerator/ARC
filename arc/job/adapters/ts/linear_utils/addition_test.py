@@ -512,7 +512,7 @@ class TestTryInsertionRing(unittest.TestCase):
 
 
 class TestInsertionRingExtraStretch(unittest.TestCase):
-    """Phase 4a — limited family-aware insertion-ring target calibration.
+    """limited family-aware insertion-ring target calibration.
 
     The helper :func:`_insertion_ring_extra_stretch` returns the
     family-specific positive Å delta added to *every* reactive edge of

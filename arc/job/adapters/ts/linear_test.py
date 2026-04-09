@@ -1,8 +1,32 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
-"""
-This module contains unit tests of the arc.job.adapters.ts.heuristics module
+"""Integration / regression tests for the linear TS-guess adapter.
+
+This file owns the large per-family integration suite for
+:mod:`arc.job.adapters.ts.linear` — tests that exercise the full
+``interpolate``, ``interpolate_isomerization``, ``interpolate_addition``,
+and ``LinearAdapter`` pipelines on real reactant/product XYZ inputs
+and assert that the produced TS guesses match curated expected
+geometries (or family-specific quality invariants).
+
+Companion test files:
+
+* ``linear_invariants_test.py`` — production-path invariant
+  mini-suite (carbene consistency, terminal-group cleanup invariant,
+  isomerization H-migration invariant, frag-fallback structural
+  invariant, degraded-mode smoke test).
+* ``linear_debug_dump_test.py`` — quarantine tests for the
+  developer-only ``_save_debug_geometries`` helper, which is inert
+  by default and only writes anything when the
+  ``ARC_LINEAR_DEBUG_DUMP`` environment variable is set.
+
+The unit / helper test suites for the supporting modules
+(``addition``, ``isomerization``, ``local_geometry``,
+``migration_inference``, ``path_spec``, ``postprocess``,
+``families``, ``geom_utils``, ``math_zmat``) live alongside their
+respective implementations under
+``arc/job/adapters/ts/linear_utils/``.
 """
 
 import inspect
@@ -48,33 +72,31 @@ from arc.species.species import ARCSpecies, colliding_atoms
 
 
 # ---------------------------------------------------------------------------
-# Developer-only debug dump (quarantined behind an environment variable)
+# Developer-only debug dump (opt-in via environment variable)
 # ---------------------------------------------------------------------------
 #
 # ``_save_debug_geometries`` is a developer-only helper that dumps a test's
 # reactant(s), product(s), and TS guesses into ``~/Desktop/xyz/linear/`` as
-# Gaussian ``.gjf`` files for visual inspection.  Cleanup-phase change:
-# the helper is now **inert by default**.  Existing call sites in this file
-# remain so individual tests can opt in by setting the environment variable
-# ``ARC_LINEAR_DEBUG_DUMP=1`` before running pytest.  In normal CI / committed
-# test runs the helper short-circuits before touching the filesystem.
+# Gaussian ``.gjf`` files for visual inspection.  It is **inert by default**:
+# the helper short-circuits unless the environment variable
+# ``ARC_LINEAR_DEBUG_DUMP`` is set to a non-empty, non-``"0"`` value.  Its
+# inert-by-default contract is verified in
+# ``arc/job/adapters/ts/linear_debug_dump_test.py``.
+#
+# The ~70 inline call sites that previously littered every integration test
+# in this file have been removed because they were dead code by default.  To
+# debug a single test interactively, add a manual
+# ``_save_debug_geometries(ts_xyzs, rxn)`` line to that test, set
+# ``ARC_LINEAR_DEBUG_DUMP=1`` in the shell, and run pytest.
 _LINEAR_DEBUG_DUMP_ENV = 'ARC_LINEAR_DEBUG_DUMP'
 
 
 def _save_debug_geometries(ts_xyzs, rxn) -> None:
     """Optionally dump current reaction TS guesses for visual inspection.
 
-    The helper is **inert by default**.  It only writes anything when the
-    environment variable ``ARC_LINEAR_DEBUG_DUMP`` is set to a non-empty,
-    non-``"0"`` value before running the test.  This keeps the committed
-    test path free of any side effect on the developer's home directory
-    while still letting an interactive debugging session opt in.
-
-    When enabled, the helper clears ``~/Desktop/xyz/linear/`` and dumps
-    the current reaction's reactant(s), product(s), and TS guesses there
-    as Gaussian ``.gjf`` files, plus an empty marker file named after
-    the calling test function.  All errors are swallowed defensively so
-    that the helper never makes a test crash.
+    See the module-level "Developer-only debug dump" comment for the
+    contract and opt-in instructions.  The helper is inert in committed
+    test runs and only writes when ``ARC_LINEAR_DEBUG_DUMP`` is set.
     """
     enabled_raw = os.environ.get(_LINEAR_DEBUG_DUMP_ENV, '')
     if not enabled_raw or enabled_raw.strip() in ('', '0', 'false', 'False'):
@@ -1669,7 +1691,7 @@ H       1.87659808    3.60554649    0.40980601
 H       2.27586518    3.91304280    2.85564919
 H       0.70988426    4.69809127    3.02214828
 H       1.98588747    5.47639445    2.05549614"""
-        # Phase 3a: addition guesses now carry real ReactionPathSpec
+        # addition guesses now carry real ReactionPathSpec
         # metadata, so the strict (score, original_index) sort can
         # reorder them by score.  The expected geometry survives but
         # may land at a different index, so we only require that it
@@ -2308,7 +2330,7 @@ H      -1.11137750   -1.95191402    0.41425051
 H       1.32375058   -0.33941053    1.87641330
 H       2.00384339   -0.96703474    0.76011708
 H       1.10969504    1.91861349   -2.73820257"""
-        # Phase 3a: addition guesses are now scored, so the strict
+        # addition guesses are now scored, so the strict
         # (score, original_index) sort may demote/promote this
         # particular guess.  Require the expected geometry somewhere
         # in the result list rather than at a fixed position.
@@ -2363,7 +2385,7 @@ H      -1.54945959   -1.47262047    1.17293411
 H       2.03320901    2.61402200   -2.25413461
 H       1.58243982    3.96815090   -1.21381101
 H       1.79851918    2.36874413   -0.49754808"""
-        # Phase 3a: order-agnostic — see Cyclic_Ether_Formation note above.
+        # order-agnostic — see Cyclic_Ether_Formation note above.
         expected = str_to_xyz(expected_ts_0)
         self.assertTrue(any(almost_equal_coords(ts, expected) for ts in ts_xyzs))
 
@@ -2697,7 +2719,7 @@ H       0.12683471    1.63121728   -1.25714261
 H       0.12683547    1.63121836    1.20425265
 H       0.20572116   -1.65450578    0.91825928
 H       0.06119390   -0.46186762    2.19355797"""
-        # Phase 2b: the strict (score, original_index) sort can demote this
+        # the strict (score, original_index) sort can demote this
         # particular guess by ~0.08 score units relative to its sibling, so
         # we only require that it appears somewhere in the surviving set.
         expected = str_to_xyz(expected_ts_0)
@@ -4657,7 +4679,7 @@ H      -0.62733484    0.15066940    0.73251771
 H       0.90078526    1.93825430    1.60091555
 H      -0.61868901    1.96936702    2.51207703
 H       0.82596935    1.24150783    3.22846954"""
-        # Phase 1 path-spec wrapper now rejects guesses where the non-reactive
+        #  path-spec wrapper now rejects guesses where the non-reactive
         # C3-C4 bond is stretched beyond 1.25 × SBL (snapped spectator).  Only
         # the chemically correct 3-center shift guess survives, at index 0.
         self.assertGreaterEqual(len(ts_xyzs), 1)
@@ -5299,31 +5321,28 @@ H       1.16560000    0.49640000    0.85960000"""))
         self.assertIsNone(ts_xyz)
 
     # ------------------------------------------------------------------
-    # Phase 4e — coverage-audit, wiring, and non-regression tests for
+    # coverage-audit, wiring, and non-regression tests for
     # the late local reactive-center cleanup pass inside
     # ``interpolate_isomerization``.
     # ------------------------------------------------------------------
 
-    def test_phase4e_isomerization_invokes_reactive_center_cleanup(self):
-        """Phase 4e coverage-audit regression.
+    def test_isomerization_late_cleanup_invokes_reactive_center_orchestrator(self):
+        """Coverage-audit regression for the isomerization late cleanup.
 
-        Before Phase 4e, ``apply_reactive_center_cleanup`` was wired
-        only inside :func:`interpolate_addition`; isomerization-route
-        reactions never reached the orchestrator and the targeted
-        internal-CH₂ failure cluster never got the Phase 4d repair.
-
-        Phase 4e adds a single late call inside
+        ``apply_reactive_center_cleanup`` is wired into both
+        :func:`interpolate_addition` and :func:`interpolate_isomerization`.
+        The isomerization wiring is the late call inside
         :func:`interpolate_isomerization` that feeds the orchestrator
-        the heavy atoms in each guess's changing bonds, plus a
-        1-bond expansion to immediate internal-CH₂ neighbours.  The
-        wiring is *strictly opt-in*: the orchestrator is only invoked
-        when the Phase 4d internal-CH₂ misorientation detector
+        the heavy atoms in each guess's changing bonds, plus a one-bond
+        expansion to immediate internal-CH₂ neighbours.  The wiring is
+        *strictly opt-in*: the orchestrator is only invoked
+        when the internal-CH₂ misorientation detector
         actually fires on a candidate centre.
 
         This test traces the wiring with a real isomerization-route
         reaction (``Intra_RH_Add_Endocyclic``: ``OCCCC=C <=>
         C1OCCCC1``) and proves the wiring path is end-to-end
-        connected by patching the Phase 4d detector to always return
+        connected by patching the detector to always return
         True.  Under that patch:
 
           (1) the detector must be called at least once for an
@@ -5436,7 +5455,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
         ]
         self.assertGreater(
             len(ch2_detector_calls), 0,
-            msg='Phase 4e wiring did not invoke the internal-CH₂ '
+            msg=' wiring did not invoke the internal-CH₂ '
                 'detector on any internal CH₂ atom for the '
                 'Intra_RH_Add_Endocyclic reaction '
                 f'(detector_calls={detector_calls}, '
@@ -5447,7 +5466,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
         #     reactive_centers set.
         self.assertGreater(
             len(orchestrator_calls), 0,
-            msg='Phase 4e wiring did not invoke apply_reactive_center_cleanup '
+            msg=' wiring did not invoke apply_reactive_center_cleanup '
                 'even though the detector was forced to return True')
         any_call_has_ch2 = any(
             bool(call['reactive_centers'] & internal_ch2_atoms)
@@ -5455,7 +5474,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
         )
         self.assertTrue(
             any_call_has_ch2,
-            msg='Phase 4e wiring did not forward an internal CH₂ atom '
+            msg=' wiring did not forward an internal CH₂ atom '
                 'to the orchestrator under a forced-True detector '
                 f'(reactive_centers per call: '
                 f'{[c["reactive_centers"] for c in orchestrator_calls]}, '
@@ -5465,19 +5484,19 @@ H       0.97222065   -1.40727159   -1.00427440"""
         # (the cleanup pass must not silently kill the pipeline).
         self.assertGreater(
             len(ts_xyzs), 0,
-            msg='Phase 4e wiring caused the isomerization pipeline to '
+            msg=' wiring caused the isomerization pipeline to '
                 'produce zero TS guesses — the cleanup pass must be '
                 'non-destructive.')
 
-    def test_phase4e_isomerization_does_not_touch_unrelated_atoms(self):
-        """Non-regression: when Phase 4e cleanup runs on an
+    def test_isomerization_late_cleanup_does_not_touch_unrelated_atoms(self):
+        """Non-regression: when  cleanup runs on an
         isomerization guess, it must NOT mutate atoms outside the
         immediate first shell of the reactive heavy centres or their
         1-bond internal-CH₂ neighbours.
 
         This guards against accidentally broadening the cleanup to
         unrelated atoms (the explicit "no broad cleanup expansion"
-        rule from the Phase 4e prompt).
+        rule from the prompt).
 
         We exercise this with the same Intra_RH_Add_Endocyclic
         reaction used by the coverage-audit test and verify that
@@ -5577,17 +5596,17 @@ H       0.97222065   -1.40727159   -1.00427440"""
                     continue
                 self.assertTrue(
                     np.allclose(call['in'][idx], call['out'][idx], atol=1e-9),
-                    msg=f'atom {idx} was mutated by the Phase 4e cleanup '
+                    msg=f'atom {idx} was mutated by the cleanup '
                         f'pass even though it is outside the immediate '
                         f'first shell of the reactive centres '
                         f'{reactive}')
 
-    def test_phase4e_isomerization_wiring_is_exercised_in_production(self):
-        """Phase 4e production-path verification.
+    def test_isomerization_late_cleanup_is_exercised_in_production(self):
+        """Production-path verification of the isomerization late cleanup.
 
-        The Phase 4e wiring is strictly opt-in: it only invokes the
-        Phase 4d internal-CH₂ detector when (a) there is at least one
-        heavy-heavy changing bond on the guess, and (b) the 1-bond
+        The late-cleanup wiring is strictly opt-in: it only invokes the
+        internal-CH₂ detector when (a) there is at least one
+        heavy-heavy changing bond on the guess, and (b) the one-bond
         expansion brings in a centre that satisfies the internal CH₂
         graph condition.
 
@@ -5596,7 +5615,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
         WITHOUT patching anything, and confirms that the detector is
         invoked at least once during the natural pipeline run on an
         internal CH₂ atom in the reactant graph.  This proves that
-        Phase 4e converted the wiring from "never reaches the
+         converted the wiring from "never reaches the
         orchestrator" to "the orchestrator's detector is naturally
         consulted in production" for this family.
 
@@ -5676,7 +5695,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
         # Sanity: the pipeline still produces guesses.
         self.assertGreater(
             len(ts_xyzs), 0,
-            msg='Phase 4e wiring caused the isomerization pipeline to '
+            msg=' wiring caused the isomerization pipeline to '
                 'produce zero TS guesses')
 
         # The wiring must have invoked the detector on at least one
@@ -5688,21 +5707,21 @@ H       0.97222065   -1.40727159   -1.00427440"""
         ]
         self.assertGreater(
             len(ch2_natural_calls), 0,
-            msg='Phase 4e wiring did not naturally invoke the '
+            msg=' wiring did not naturally invoke the '
                 'internal-CH₂ detector for the OCCCC=C reaction — the '
                 'production-path wiring is not being exercised '
                 f'(natural detector invocations on any centre: '
                 f'{natural_detector_calls}, expected internal CH₂ '
                 f'atoms: {internal_ch2_atoms})')
 
-    def test_phase4e_already_good_isomerization_geometry_unchanged(self):
-        """Phase 4e non-regression on already-good geometries.
+    def test_already_good_isomerization_geometry_unchanged_by_late_cleanup(self):
+        """Non-regression on already-good geometries.
 
-        When Phase 4e cleanup runs on a guess whose internal CH₂
+        When the late cleanup runs on a guess whose internal CH₂
         shells and terminal groups are already chemically reasonable,
-        the orchestrator's gates (Phase 4b/4c terminal asymmetry
-        detector + Phase 4d internal-CH₂ misorientation detector)
-        must keep the geometry byte-for-byte unchanged.
+        the orchestrator's gates (terminal-group asymmetry detector
+        + internal-CH₂ misorientation detector) must keep the geometry
+        byte-for-byte unchanged.
 
         We use ``apply_reactive_center_cleanup`` directly with a
         synthetic propane geometry that has both an internal CH₂
@@ -5723,7 +5742,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
             if atom.element.symbol == 'C' and sum(
                 1 for n in atom.bonds.keys() if n.element.symbol != 'H') == 2
         )
-        # Phase 4e selection on a synthetic "C0–C1 forming bond" guess
+        #  selection on a synthetic "C0–C1 forming bond" guess
         # would expand from {C0} (terminal) by 1 bond to its internal-CH₂
         # neighbour (the middle C).  Pass that exact set to the
         # orchestrator and confirm nothing moves.
@@ -5744,8 +5763,8 @@ H       0.97222065   -1.40727159   -1.00427440"""
             self.assertTrue(
                 np.allclose(before[idx], after[idx], atol=1e-9),
                 msg=f'atom {idx} ({xyz["symbols"][idx]}) moved on a '
-                    f'fresh propane geometry — the Phase 4b/4c/4d '
-                    f'gates should have left it untouched')
+                    f'fresh propane geometry — the local-geometry '
+                    f'orchestrator gates should have left it untouched')
 
     @classmethod
     def tearDownClass(cls):
@@ -5756,293 +5775,8 @@ H       0.97222065   -1.40727159   -1.00427440"""
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_linear'), ignore_errors=True)
 
 
-class TestProductionPathInvariants(unittest.TestCase):
-    """Cleanup-phase invariant mini-suite for representative production
-    paths.
-
-    These tests use *invariant-style* assertions instead of brittle
-    exact-coordinate / exact-list-position checks: they assert
-    chemistry / path properties that any chemically valid TS guess
-    must satisfy, and they survive small downstream geometric changes
-    that do not affect the chemistry of the guess.
-
-    The mini-suite covers:
-
-    * one isomerization H-migration (intra_H_migration)
-    * one addition frag-fallback H-migration
-    * one insertion-ring family (1,2_Insertion_carbene)
-    * one terminal-group cleanup case
-    * one deliberately degraded-mode case (no path-spec)
-    """
-
-    @staticmethod
-    def _migrating_h_well_placed(ts_xyz, donor_idx, acceptor_idx, h_idx,
-                                  d_low_factor=0.85, d_high_factor=1.40):
-        """Return True iff the migrating H sits at a chemically
-        reasonable distance from BOTH donor and acceptor (i.e. inside
-        the donor-acceptor envelope, not snapped fully to either side).
-
-        ``d_low_factor`` and ``d_high_factor`` are multipliers on the
-        single-bond length and define the acceptable range for both
-        d(donor, H) and d(acceptor, H).
-        """
-        coords = np.array(ts_xyz['coords'], dtype=float)
-        symbols = ts_xyz['symbols']
-        sbl_dh = float(get_single_bond_length(symbols[donor_idx], 'H'))
-        sbl_ah = float(get_single_bond_length(symbols[acceptor_idx], 'H'))
-        d_dh = float(np.linalg.norm(coords[h_idx] - coords[donor_idx]))
-        d_ah = float(np.linalg.norm(coords[h_idx] - coords[acceptor_idx]))
-        return (sbl_dh * d_low_factor <= d_dh <= sbl_dh * d_high_factor
-                and sbl_ah * d_low_factor <= d_ah <= sbl_ah * d_high_factor)
-
-    def test_invariant_isomerization_h_migration(self):
-        """Production path: an intra-H-migration isomerization
-        produces at least one TS where the migrating H is in the
-        donor-acceptor envelope and the geometry has no atom
-        collisions."""
-        from arc.species import ARCSpecies
-        from arc.reaction import ARCReaction
-        r = ARCSpecies(label='R', smiles='C[CH2]')
-        p = ARCSpecies(label='P', smiles='[CH2]C')
-        r_xyz = """C       0.00000    0.00000    0.00000
-C       1.50000    0.00000    0.00000
-H      -0.51000    0.88000    0.34000
-H      -0.51000   -0.88000    0.34000
-H      -0.51000    0.00000   -1.02000
-H       2.01000    0.88000    0.34000
-H       2.01000   -0.88000    0.34000"""
-        # Use the SMILES-derived geometry rather than a hand-crafted one
-        # to avoid bond-graph mismatches.
-        r = ARCSpecies(label='R', smiles='C[CH2]')
-        p = ARCSpecies(label='P', smiles='[CH2]C')
-        rxn = ARCReaction(r_species=[r], p_species=[p])
-        ts_xyzs = interpolate_isomerization(rxn, weight=0.5)
-        # Trivial-symmetry reaction; the pipeline may legitimately
-        # return zero or more guesses.  Either outcome is acceptable —
-        # the invariant is "no collisions in any guess that *is*
-        # produced", not "must produce at least one".
-        if not ts_xyzs:
-            self.skipTest('Symmetric H-migration produced no guesses '
-                          '— invariant is vacuously satisfied.')
-        for ts in ts_xyzs:
-            self.assertFalse(
-                colliding_atoms(ts),
-                msg=f'collision in production-path TS guess:\n{xyz_to_str(ts)}')
-
-    def test_invariant_terminal_group_cleanup_unchanged_for_clean_input(self):
-        """Production path: when an already-clean ethane is passed
-        through the orchestrator with one of its terminal carbons as
-        a reactive_center, the orchestrator's Phase 4b/4c gates leave
-        the geometry byte-for-byte unchanged.  This is the
-        terminal-group cleanup invariant."""
-        from arc.species import ARCSpecies
-        from arc.job.adapters.ts.linear_utils.local_geometry import (
-            apply_reactive_center_cleanup,
-        )
-        sp = ARCSpecies(label='ethane', smiles='CC')
-        xyz = sp.get_xyz()
-        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
-        terminal_c = next(
-            atom_to_idx[atom] for atom in sp.mol.atoms
-            if atom.element.symbol == 'C')
-        before = np.asarray(xyz['coords'], dtype=float).copy()
-        out = apply_reactive_center_cleanup(
-            xyz, sp.mol,
-            migrations=None,
-            reactive_centers={terminal_c},
-            exempt_h_indices=None,
-            restore_symmetry=True,
-        )
-        after = np.asarray(out['coords'], dtype=float)
-        self.assertTrue(
-            np.allclose(before, after, atol=1e-9),
-            msg='clean ethane terminal CH₃ should be untouched by the '
-                'Phase 4b/4c orchestrator gates')
-
-    def test_invariant_carbene_target_consistency(self):
-        """Production-path consistency invariant: the scorer's
-        ``get_ts_target_distance`` and the builder's
-        ``addition._insertion_ring_extra_stretch`` produce numerically
-        identical targets for ``1,2_Insertion_carbene`` on a forming
-        C–C bond.
-
-        Before the cleanup phase the builder applied a +0.20 Å carbene
-        calibration but ``get_ts_target_distance`` ignored its
-        ``family`` parameter, producing a guaranteed mismatch every
-        time the scorer evaluated a carbene insertion guess.  This
-        invariant test would have caught that mismatch directly.
-        """
-        from arc.job.adapters.ts.linear_utils import addition as A
-        from arc.job.adapters.ts.linear_utils.path_spec import (
-            PAULING_DELTA,
-            get_ts_target_distance,
-            insertion_ring_extra_stretch,
-        )
-        symbols = ('C', 'C')
-        sbl = float(get_single_bond_length('C', 'C'))
-
-        # The scorer-side target the validator and finalizer use.
-        scorer_target = get_ts_target_distance(
-            bond=(0, 1), role='forming', symbols=symbols,
-            family='1,2_Insertion_carbene')
-        # The builder-side target the insertion-ring builder produces.
-        builder_extra = A._insertion_ring_extra_stretch('1,2_Insertion_carbene')
-        builder_target = sbl + PAULING_DELTA + builder_extra
-        # And the canonical helper.
-        canonical_extra = insertion_ring_extra_stretch('1,2_Insertion_carbene')
-
-        self.assertAlmostEqual(scorer_target, builder_target, places=6,
-                                msg=f'scorer target {scorer_target:.4f} != '
-                                    f'builder target {builder_target:.4f}')
-        self.assertAlmostEqual(builder_extra, canonical_extra, places=6,
-                                msg='builder and canonical extra-stretch '
-                                    'helpers must agree')
-        # The pre-cleanup baseline (un-calibrated) target.
-        baseline_target = sbl + PAULING_DELTA
-        # The cleanup-phase fix must produce a strictly different
-        # target from the baseline on the carbene family.
-        self.assertGreater(
-            scorer_target - baseline_target, 0.10,
-            msg=f'cleanup-phase carbene calibration is not active in the '
-                f'scorer (scorer={scorer_target:.4f}, '
-                f'baseline={baseline_target:.4f})')
-
-    def test_invariant_degraded_mode_no_path_spec_does_not_crash(self):
-        """Deliberately degraded-mode invariant: validating an addition
-        guess via the canonical gateway with ``path_spec=None`` must
-        return a ``(bool, str)`` tuple and never raise."""
-        from arc.species import ARCSpecies
-        from arc.job.adapters.ts.linear_utils.path_spec import (
-            validate_addition_guess,
-        )
-        sp = ARCSpecies(label='ethane', smiles='CC')
-        ok, reason = validate_addition_guess(
-            xyz=sp.get_xyz(),
-            uni_mol=sp.mol,
-            forming_bonds=[(0, 1)],
-            label='degraded-mode-invariant',
-            path_spec=None,
-        )
-        self.assertIsInstance(ok, bool)
-        self.assertIsInstance(reason, str)
-
-    def test_invariant_addition_frag_fallback_h_migration_shape(self):
-        """Production path / structural invariant: the
-        ``infer_frag_fallback_h_migration`` helper either returns
-        ``None`` or returns a deterministic 4-key record dict with
-        valid integer indices, never a partially-populated dict.
-
-        This is the frag-fallback H-migration *structural* invariant
-        the cleanup phase preserved across the extraction of the
-        helper into :mod:`migration_inference`.  We do NOT assert a
-        specific chemistry outcome — only that the contract shape is
-        intact.
-        """
-        from arc.species import ARCSpecies
-        from arc.job.adapters.ts.linear_utils.migration_inference import (
-            infer_frag_fallback_h_migration,
-        )
-
-        sp = ARCSpecies(label='MA', smiles='CN')
-        xyz = sp.get_xyz()
-        symbols = xyz['symbols']
-        atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
-        c_idx = next(i for i, s in enumerate(symbols) if s == 'C')
-        n_idx = next(i for i, s in enumerate(symbols) if s == 'N')
-        h_on_c = next(
-            atom_to_idx[nbr] for nbr in sp.mol.atoms[c_idx].bonds.keys()
-            if nbr.element.symbol == 'H'
-        )
-        pre_coords = np.array(xyz['coords'], dtype=float).copy()
-        post_coords = pre_coords.copy()
-        post_coords[h_on_c] = (post_coords[c_idx] + post_coords[n_idx]) * 0.5
-        pre = {**xyz, 'coords': tuple(tuple(c) for c in pre_coords)}
-        post = {**xyz, 'coords': tuple(tuple(c) for c in post_coords)}
-        rec = infer_frag_fallback_h_migration(
-            pre_xyz=pre, post_xyz=post,
-            uni_mol=sp.mol, split_bonds=[(c_idx, n_idx)],
-            multi_species=None, label='invariant-frag-fallback')
-        # The helper must return either ``None`` or a complete 4-key
-        # record dict.  Partial records are explicitly forbidden by
-        # the helper's contract.
-        if rec is None:
-            return
-        self.assertIsInstance(rec, dict)
-        for key in ('h_idx', 'donor', 'acceptor', 'source'):
-            self.assertIn(
-                key, rec,
-                msg=f'frag-fallback record is missing required key {key!r}')
-        self.assertIsInstance(rec['h_idx'], int)
-        self.assertIsInstance(rec['donor'], int)
-        self.assertIsInstance(rec['acceptor'], int)
-        self.assertIsInstance(rec['source'], str)
-        # h_idx must point to an H atom; donor and acceptor must point
-        # to heavy atoms.
-        self.assertEqual(symbols[rec['h_idx']], 'H')
-        self.assertNotEqual(symbols[rec['donor']], 'H')
-        self.assertNotEqual(symbols[rec['acceptor']], 'H')
-
-
-class TestDebugDumpQuarantine(unittest.TestCase):
-    """Cleanup-phase: prove ``_save_debug_geometries`` is inert by
-    default and only writes anything when explicitly opted in via the
-    ``ARC_LINEAR_DEBUG_DUMP`` environment variable.
-    """
-
-    def test_debug_dump_is_inert_by_default(self):
-        """Calling ``_save_debug_geometries`` without the env var set
-        must not touch the filesystem.
-
-        We assert this by patching ``save_geo`` to record any call;
-        when the helper is correctly inert, no call should be made.
-        """
-        from unittest.mock import patch
-        from arc.species import ARCSpecies
-        from arc.reaction import ARCReaction
-        sp_r = ARCSpecies(label='R', smiles='CC')
-        sp_p = ARCSpecies(label='P', smiles='CC')
-        rxn = ARCReaction(r_species=[sp_r], p_species=[sp_p])
-        ts_dummy = sp_r.get_xyz()
-        # Make sure the env var is *not* set.
-        env_was = os.environ.pop('ARC_LINEAR_DEBUG_DUMP', None)
-        try:
-            with patch(
-                    'arc.job.adapters.ts.linear_test.save_geo') as save_mock:
-                _save_debug_geometries([ts_dummy], rxn)
-            self.assertEqual(
-                save_mock.call_count, 0,
-                msg='_save_debug_geometries should be inert when '
-                    'ARC_LINEAR_DEBUG_DUMP is unset, but save_geo was '
-                    f'called {save_mock.call_count} times')
-        finally:
-            if env_was is not None:
-                os.environ['ARC_LINEAR_DEBUG_DUMP'] = env_was
-
-    def test_debug_dump_is_inert_when_env_is_zero_or_false(self):
-        """Setting the env var to ``"0"``, ``"false"`` or empty must
-        also keep the helper inert."""
-        from unittest.mock import patch
-        from arc.species import ARCSpecies
-        from arc.reaction import ARCReaction
-        sp_r = ARCSpecies(label='R', smiles='CC')
-        sp_p = ARCSpecies(label='P', smiles='CC')
-        rxn = ARCReaction(r_species=[sp_r], p_species=[sp_p])
-        ts_dummy = sp_r.get_xyz()
-        env_was = os.environ.pop('ARC_LINEAR_DEBUG_DUMP', None)
-        try:
-            for value in ('0', '', 'false', 'False'):
-                os.environ['ARC_LINEAR_DEBUG_DUMP'] = value
-                with patch(
-                        'arc.job.adapters.ts.linear_test.save_geo') as save_mock:
-                    _save_debug_geometries([ts_dummy], rxn)
-                self.assertEqual(
-                    save_mock.call_count, 0,
-                    msg=f'helper should be inert for env value {value!r}, '
-                        f'but save_geo was called {save_mock.call_count} times')
-        finally:
-            os.environ.pop('ARC_LINEAR_DEBUG_DUMP', None)
-            if env_was is not None:
-                os.environ['ARC_LINEAR_DEBUG_DUMP'] = env_was
+# ``TestProductionPathInvariants`` and ``TestDebugDumpQuarantine``
+# live in ``linear_invariants_test.py`` and ``linear_debug_dump_test.py``.
 
 
 if __name__ == '__main__':

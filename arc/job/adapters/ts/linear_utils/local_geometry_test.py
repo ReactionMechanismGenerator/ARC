@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
-"""Phase 3b unit tests for local reactive-center geometry helpers."""
+"""Unit tests for local reactive-center geometry helpers."""
 
 import unittest
 
@@ -236,7 +236,7 @@ class TestCleanMigratingH(unittest.TestCase):
 
 class TestRestoreTerminalHSymmetry(unittest.TestCase):
     """``restore_terminal_h_symmetry`` re-seats H atoms around the
-    (parent → center) axis at evenly spaced azimuth.  Phase 4c
+    (parent → center) axis at evenly spaced azimuth.  
     rebuild: the helper now preserves each H's *original* center–H
     distance individually instead of averaging across the group, so
     that umbrella-inversion repairs no longer trip the legacy
@@ -244,7 +244,7 @@ class TestRestoreTerminalHSymmetry(unittest.TestCase):
     """
 
     def test_ch3_distorted_h_preserves_per_h_bond_lengths(self):
-        """Phase 4c — each H's center–H distance is preserved exactly,
+        """each H's center–H distance is preserved exactly,
         even when one H is displaced and the others are not."""
         sp = ARCSpecies(label='ethane', smiles='CC')
         xyz = sp.get_xyz()
@@ -257,7 +257,7 @@ class TestRestoreTerminalHSymmetry(unittest.TestCase):
         ]
         # Distort one H by ~0.02 Å in the y direction.  Under the
         # legacy averaging implementation this would have triggered the
-        # 0.05 Å bail-out's marginal regime; under Phase 4c, each H's
+        # 0.05 Å bail-out's marginal regime; under , each H's
         # center–C distance is preserved exactly.
         coords = list(map(list, xyz['coords']))
         coords[h_neighbors[0]][1] += 0.02
@@ -272,7 +272,7 @@ class TestRestoreTerminalHSymmetry(unittest.TestCase):
         new_coords = np.asarray(out['coords'])
         c_pos = new_coords[c0]
         # Each individual H should still be at exactly its original
-        # distance from c0 (Phase 4c per-H bond-length preservation).
+        # distance from c0 ( per-H bond-length preservation).
         for h, original_d in original_per_h_dists.items():
             new_d = float(np.linalg.norm(new_coords[h] - c_pos))
             self.assertAlmostEqual(
@@ -281,7 +281,7 @@ class TestRestoreTerminalHSymmetry(unittest.TestCase):
                     f'(was {original_d:.6f}, now {new_d:.6f})')
 
     def test_ch3_inverted_h_is_repaired(self):
-        """Phase 4c — a true umbrella-inversion case (one H angle to
+        """a true umbrella-inversion case (one H angle to
         the outward axis > 100°) must be repaired (the inverted H is
         moved onto the outward cone) without bailing out, AND each
         H's bond length must be preserved exactly."""
@@ -320,7 +320,7 @@ class TestRestoreTerminalHSymmetry(unittest.TestCase):
         # must be a *new* dict with the inverted H repaired.
         self.assertIsNot(out, bad,
                          'symmetrizer bailed out on an inverted CH₃ — '
-                         'Phase 4c expected the per-H bond-length '
+                         ' expected the per-H bond-length '
                          'reconstruction to repair this case')
         new_coords = np.asarray(out['coords'])
         c_pos = new_coords[c0]
@@ -383,7 +383,7 @@ class TestRestoreTerminalHSymmetry(unittest.TestCase):
 
 
 class TestIsTerminalGroupAsymmetric(unittest.TestCase):
-    """Phase 4b — pure detector for unphysically distorted terminal CH₂/CH₃.
+    """pure detector for unphysically distorted terminal CH₂/CH₃.
 
     Returns ``True`` only when an umbrella inversion (any H angle to
     the parent → center axis exceeds 100°) OR an azimuthal distortion
@@ -557,7 +557,7 @@ class TestIsTerminalGroupAsymmetric(unittest.TestCase):
 
 
 class TestApplyReactiveCenterCleanup(unittest.TestCase):
-    """Phase 4a thin orchestrator over the existing local-geometry helpers.
+    """Thin orchestrator over the existing local-geometry helpers.
 
     These tests demonstrate that the orchestrator:
     * is a no-op when nothing is requested,
@@ -621,14 +621,17 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
         self.assertAlmostEqual(d_nh, sbl_nh + PAULING_DELTA, places=3)
 
     def test_orchestrator_does_not_rotate_already_symmetric_ch3(self):
-        """Phase 4b regression guard.  When the named reactive center is
-        an already-symmetric terminal CH₃, the orchestrator's symmetry
-        restoration must NOT fire (the asymmetry detector returns False)
-        and the H atoms must end up byte-for-byte where they started.
+        """Regression guard for already-symmetric terminal CH₃.
 
-        This is the test that the Phase 4a wiring (which always called
-        ``restore_terminal_h_symmetry`` at this site) failed because
-        the unconditional rotation churned coordinates of already-good
+        When the named reactive center is an already-symmetric terminal
+        CH₃, the orchestrator's symmetry restoration must NOT fire (the
+        asymmetry detector returns False) and the H atoms must end up
+        byte-for-byte where they started.
+
+        Earlier wiring that always called
+        ``restore_terminal_h_symmetry`` at this site churned the
+        coordinates of already-good groups; this test guards against
+        that regression by exercising the asymmetry-gated
         groups.
         """
         sp = ARCSpecies(label='ethane', smiles='CC')
@@ -652,7 +655,7 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
             )
 
     def test_orchestrator_restores_azimuthally_distorted_ch3_when_signaled(self):
-        """Phase 4b — when the orchestrator is given a CH₃ whose H
+        """when the orchestrator is given a CH₃ whose H
         atoms are azimuthally distorted (cyclic spacings around the
         parent → center axis deviate from 120° by more than the
         detector threshold), the asymmetry detector returns True and
@@ -718,9 +721,9 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
         self.assertLess(max(dists) - min(dists), 0.05)
 
     def test_orchestrator_repairs_inverted_ch3_end_to_end(self):
-        """Phase 4c — pass an inverted-CH₃ ethane through the live
-        orchestrator with ``restore_symmetry=True``.  The Phase 4b
-        asymmetry detector must fire, the Phase 4c per-H bond-length
+        """pass an inverted-CH₃ ethane through the live
+        orchestrator with ``restore_symmetry=True``.  The 
+        asymmetry detector must fire, the per-H bond-length
         symmetrizer must actually repair the inversion (the previously-
         inverted H ends up on the OUTWARD side of the parent → center
         axis), and per-H bond lengths must be preserved exactly."""
@@ -767,7 +770,7 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
         self.assertGreater(
             outward_component, 0.0,
             'repaired H should be on the outward side of the parent → center axis')
-        # Per-H bond lengths must be preserved (Phase 4c contract).
+        # Per-H bond lengths must be preserved ( contract).
         c_pos_after = new_coords[c0]
         for h, original_d in original_per_h_dists.items():
             new_d = float(np.linalg.norm(new_coords[h] - c_pos_after))
@@ -776,7 +779,7 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
                 msg=f'H{h} bond length not preserved after orchestrator')
 
     def test_orchestrator_distorted_ch3_does_not_touch_unrelated_atoms(self):
-        """Phase 4b — even when symmetry restoration *does* fire on a
+        """even when symmetry restoration *does* fire on a
         distorted center, atoms outside the immediate first shell of
         that center are not moved at all (no whole-molecule churn)."""
         sp = ARCSpecies(label='ethane', smiles='CC')
@@ -890,7 +893,7 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
 
 
 class TestIsInternalReactiveCh2Misoriented(unittest.TestCase):
-    """Phase 4d — pure detector for misoriented internal CH₂ shells.
+    """pure detector for misoriented internal CH₂ shells.
 
     Returns ``True`` only when the internal CH₂ shell at ``center_idx``
     fails one of the three local rules (squeezed H–C–H, heavy-corridor
@@ -932,6 +935,19 @@ class TestIsInternalReactiveCh2Misoriented(unittest.TestCase):
                 xyz, center_idx=middle_c,
                 heavy_nbr_indices=heavy_nbrs,
                 h_indices=h_nbrs))
+
+    def test_signature_has_no_threshold_parameter(self):
+        """``threshold_deg`` was removed because it was never wired
+        into the rule logic.  Guard the cleanup so the misleading knob
+        is not silently re-introduced.
+        """
+        import inspect
+        sig = inspect.signature(is_internal_reactive_ch2_misoriented)
+        self.assertNotIn(
+            'threshold_deg', sig.parameters,
+            msg='is_internal_reactive_ch2_misoriented must not expose '
+                'a threshold_deg parameter — the rules use hard-coded '
+                'thresholds (80°, 0.30, 0.15) by design')
 
     def test_squeezed_h_arrangement_returns_true(self):
         """Two H atoms squeezed into a small H–C–H angle (Rule A)."""
@@ -1043,7 +1059,7 @@ class TestIsInternalReactiveCh2Misoriented(unittest.TestCase):
     def test_terminal_center_is_not_eligible(self):
         """Terminal CH₃ centers must NOT be evaluated by this detector
         (only 1 heavy neighbor — terminal centers go through the
-        Phase 4b/4c pathway)."""
+        the terminal-group orchestrator pathway)."""
         sp = ARCSpecies(label='propane', smiles='CCC')
         xyz = sp.get_xyz()
         atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
@@ -1097,7 +1113,7 @@ class TestIsInternalReactiveCh2Misoriented(unittest.TestCase):
 
 
 class TestRepairInternalReactiveCh2(unittest.TestCase):
-    """Phase 4d — local repair primitive for internal CH₂ shells.
+    """local repair primitive for internal CH₂ shells.
 
     The repair must (1) act only on the H shell of the named center,
     (2) preserve each H's original bond length to the center exactly,
@@ -1235,7 +1251,7 @@ class TestRepairInternalReactiveCh2(unittest.TestCase):
 
 
 class TestApplyReactiveCenterCleanupInternalCh2(unittest.TestCase):
-    """Phase 4d — orchestrator-level integration of the internal CH₂
+    """orchestrator-level integration of the internal CH₂
     sibling pass.
 
     The orchestrator should fire the new pass when ``reactive_centers``
@@ -1275,7 +1291,7 @@ class TestApplyReactiveCenterCleanupInternalCh2(unittest.TestCase):
         for h in h_nbrs:
             self.assertTrue(
                 np.allclose(before[h], after[h], atol=1e-9),
-                msg=f'H{h} moved on a healthy internal CH₂ — Phase 4d '
+                msg=f'H{h} moved on a healthy internal CH₂ —  '
                     f'detector should have returned False')
         # The middle C and the two heavy neighbors must also be untouched.
         self.assertTrue(np.allclose(before[middle_c], after[middle_c], atol=1e-9))
@@ -1369,9 +1385,11 @@ class TestApplyReactiveCenterCleanupInternalCh2(unittest.TestCase):
 
     def test_orchestrator_internal_ch2_pass_skipped_when_disabled(self):
         """When ``restore_symmetry=False`` the internal CH₂ pass must
-        not run — Phase 4d gates the new pass on the same flag as the
-        Phase 4b/4c terminal pass to keep the orchestrator's
-        non-restoration mode behaviorally identical to Phase 4a."""
+        not run.  The internal-CH₂ pass is gated on the same flag as
+        the terminal-group symmetry-restoration pass so the
+        orchestrator's non-restoration mode is byte-for-byte
+        identical to the original.
+        """
         sp, xyz, middle_c, heavy_nbrs, h_nbrs = self._propane_middle_ch2()
         coords_arr = np.asarray(xyz['coords'], dtype=float)
         c_pos = coords_arr[middle_c]
@@ -1473,7 +1491,7 @@ class TestIdentifyHMigrationPairs(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 3c — fragmentation-fallback single-H inference
+# fragmentation-fallback single-H inference
 # ---------------------------------------------------------------------------
 
 
@@ -1522,7 +1540,7 @@ class TestInferFragFallbackHMigration(unittest.TestCase):
 
     def test_s1_two_h_moved_returns_none(self):
         """Two H atoms displaced ⇒ S1 fails ⇒ ``None`` (no multi-H
-        enrichment in Phase 3c)."""
+        enrichment in )."""
         from arc.job.adapters.ts.linear_utils.local_geometry import (
             infer_frag_fallback_h_migration,
         )

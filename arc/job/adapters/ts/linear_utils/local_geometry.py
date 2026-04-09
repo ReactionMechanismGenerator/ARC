@@ -19,15 +19,14 @@ Helper categories:
   position.
 * **Terminal CH₂/CH₃ asymmetry detection and repair** —
   :func:`is_terminal_group_asymmetric` and
-  :func:`restore_terminal_h_symmetry` (the Phase 4b/4c pathway).
-  Detect umbrella inversion and azimuthal distortion, then repair
-  while preserving each H's original bond length to the parent.
+  :func:`restore_terminal_h_symmetry`.  Detect umbrella inversion and
+  azimuthal distortion, then repair while preserving each H's original
+  bond length to the parent.
 * **Internal reactive CH₂ detection and repair** —
   :func:`is_internal_reactive_ch2_misoriented` and
-  :func:`repair_internal_reactive_ch2` (the Phase 4d pathway).
-  Detect heavy-corridor crowding, squeezing and sp³ plane violations
-  on internal CH₂ shells, then repair while preserving each H's
-  bond length.
+  :func:`repair_internal_reactive_ch2`.  Detect heavy-corridor
+  crowding, squeezing and sp³ plane violations on internal CH₂ shells,
+  then repair while preserving each H's bond length.
 * **Cleanup orchestrator** — :func:`apply_reactive_center_cleanup`
   composes all of the above around an explicit reactive shell
   (donors, acceptors, named reactive centers).  It is the single
@@ -42,8 +41,8 @@ Design invariants (every helper in this file follows them):
 * No global torsion scans, no whole-molecule rotation, no broad
   "fix-everything" passes.
 * Bond lengths are preserved when nothing else compels a change; the
-  Phase 4b/4c/4d repair primitives explicitly preserve each H's
-  per-atom bond length to its parent.
+  terminal-group and internal-CH₂ repair primitives explicitly
+  preserve each H's per-atom bond length to its parent.
 * Helpers are deterministic — calling them twice on the same input
   produces identical output.
 * Helpers preserve symmetry when symmetry is meaningful (CH₂/CH₃).
@@ -196,7 +195,7 @@ def orient_h_away_from_axis(xyz: dict,
     ``donor`` or ``acceptor`` and whose current geometry satisfies
     ``∠(H, parent, opposite) < 85°`` AND ``d(H, opposite) < 1.60 Å``,
     the H is reflected through the (parent, opposite) axis so it points
-    outward.  This is the same blocking condition the Phase 2 sub-check
+    outward.  This is the same blocking condition the sub-check
     :func:`has_inward_blocking_h_on_forming_axis` rejects on.
 
     The reflection moves only one H atom per call iteration; nothing
@@ -282,7 +281,7 @@ def clean_migrating_h(xyz: dict,
         acceptor: Acceptor heavy-atom index.
         h_idx: Migrating H atom index.
         weight: Currently unused; reserved for future weight-aware
-            blending.  Phase 3b places the H at the triangulated point.
+            blending.   places the H at the triangulated point.
 
     Returns:
         A new XYZ dict with the migrating H re-placed.
@@ -351,7 +350,7 @@ def is_terminal_group_asymmetric(xyz: dict,
                                  h_indices: Sequence[int],
                                  threshold_deg: float = 20.0,
                                  ) -> bool:
-    """Phase 4b — pure detector for unphysically distorted terminal CH₂/CH₃ groups.
+    """pure detector for unphysically distorted terminal CH₂/CH₃ groups.
 
     This is the safety gate for symmetry restoration: it answers
     "should the symmetrizer touch this terminal group?" without ever
@@ -536,7 +535,7 @@ def restore_terminal_h_symmetry(xyz: dict,
     around the (parent → center) axis at evenly spaced azimuth while
     **preserving each H's original distance to the center**.
 
-    Phase 4c rebuild — the helper now handles true terminal CH₃
+     rebuild — the helper now handles true terminal CH₃
     umbrella-inversion cases.  The previous implementation averaged
     along-axis offsets and radial distances across all H atoms,
     constructed a single (avg_along, avg_radial) cone, and then bailed
@@ -700,7 +699,7 @@ def restore_terminal_h_symmetry(xyz: dict,
 
 
 # ---------------------------------------------------------------------------
-# Phase 4d — internal reactive CH₂ misorientation detection and repair
+# internal reactive CH₂ misorientation detection and repair
 # ---------------------------------------------------------------------------
 
 
@@ -708,11 +707,10 @@ def is_internal_reactive_ch2_misoriented(xyz: dict,
                                          center_idx: int,
                                          heavy_nbr_indices: Sequence[int],
                                          h_indices: Sequence[int],
-                                         threshold_deg: float = 20.0,
                                          ) -> bool:
-    """Phase 4d — pure detector for misoriented internal reactive CH₂ centers.
+    """Pure detector for misoriented internal reactive CH₂ centers.
 
-    This is the safety gate for Phase 4d's internal-CH₂ repair primitive.
+    This is the safety gate for the internal-CH₂ repair primitive.
     It answers "should the internal-CH₂ repair touch this center?" without
     ever moving an atom.  The detector is intentionally local: it only
     inspects the heavy-neighbor frame around ``center_idx`` and the two
@@ -724,7 +722,7 @@ def is_internal_reactive_ch2_misoriented(xyz: dict,
         * ``center_idx`` is in range,
         * ``heavy_nbr_indices`` has exactly two distinct entries (this is
           an *internal* center, not a terminal one — terminal CH₂/CH₃ go
-          through the Phase 4b/4c pathway instead),
+          through the terminal-group orchestrator pathway instead),
         * ``h_indices`` has exactly two distinct entries (a CH₂ shell),
         * all referenced indices are in range and refer to distinct atoms,
         * the local heavy-neighbor frame is non-degenerate
@@ -757,7 +755,7 @@ def is_internal_reactive_ch2_misoriented(xyz: dict,
           *opposite signs* between the two H atoms (one above, one below
           the heavy plane).
 
-        Phase 4d flags violations of these expectations.
+         flags violations of these expectations.
 
     Detection rules — return ``True`` as soon as any rule fires:
 
@@ -778,9 +776,10 @@ def is_internal_reactive_ch2_misoriented(xyz: dict,
        should straddle the plane on opposite sides.
 
     All ratios use per-H bond length normalization so the thresholds are
-    distance-independent.  ``threshold_deg`` is reserved for future
-    angular-tolerance tuning; the current rules use the explicit
-    ``80°`` / ``0.30`` / ``0.15`` thresholds called out above.
+    distance-independent.  The three rules use the explicit
+    ``80°`` / ``0.30`` / ``0.15`` thresholds called out above; they are
+    intentionally hard-coded because the calibration is empirical and
+    should not be tuned per call site.
 
     Args:
         xyz: TS guess XYZ dict — used as a *read-only* coordinate source.
@@ -791,9 +790,6 @@ def is_internal_reactive_ch2_misoriented(xyz: dict,
         h_indices: Sequence of exactly two H atom indices bonded to
             ``center_idx``.  The orchestrator filters out exempt H atoms
             (e.g. migrating H) before calling.
-        threshold_deg: Reserved for future angular tuning.  Currently
-            unused inside the rules; kept on the signature for API
-            symmetry with ``is_terminal_group_asymmetric``.
 
     Returns:
         ``True`` if the internal CH₂ shell is unphysically misoriented,
@@ -889,7 +885,7 @@ def repair_internal_reactive_ch2(xyz: dict,
                                  heavy_nbr_indices: Sequence[int],
                                  h_indices: Sequence[int],
                                  ) -> dict:
-    """Phase 4d — local repair primitive for an internal reactive CH₂ shell.
+    """local repair primitive for an internal reactive CH₂ shell.
 
     Re-seats the two H atoms of an internal CH₂ center onto the canonical
     sp³-tetrahedral back-side cone of the local heavy-neighbor frame
@@ -1051,7 +1047,7 @@ def repair_internal_reactive_ch2(xyz: dict,
 
 
 # ---------------------------------------------------------------------------
-# Phase 4a — reactive-center local-geometry orchestrator
+# reactive-center local-geometry orchestrator
 # ---------------------------------------------------------------------------
 
 
@@ -1063,11 +1059,11 @@ def apply_reactive_center_cleanup(xyz: dict,
                                   weight: float = 0.5,
                                   restore_symmetry: bool = True,
                                   ) -> dict:
-    """Phase 4a thin orchestrator over the existing local-geometry helpers.
+    """Thin orchestrator over the existing local-geometry helpers.
 
-    This composes the accepted Phase 3b/3c reactive-center helpers around
-    an explicit reactive shell.  It is **not** a global "fix everything"
-    pass — it touches only:
+    This composes the local reactive-center helpers around an explicit
+    reactive shell.  It is **not** a global "fix everything" pass — it
+    touches only:
 
     * the donor and acceptor heavy atoms named in *migrations* (if any),
     * the heavy atoms in *reactive_centers* (if any), and
@@ -1127,7 +1123,7 @@ def apply_reactive_center_cleanup(xyz: dict,
             helper but kept for forward-compatibility.
         restore_symmetry: When ``False``, the symmetry-restoration pass
             is skipped (the orchestrator becomes a strict superset of the
-            current Phase 3b inline cleanup).  Defaults to ``True``.
+            current  inline cleanup).  Defaults to ``True``.
 
     Returns:
         A new XYZ dict with the local cleanups applied.  When the input
@@ -1179,9 +1175,9 @@ def apply_reactive_center_cleanup(xyz: dict,
             xyz, mol, center, exclude_atoms=migrating_h_indices)
 
     # ---- 3. Optional terminal CH₂/CH₃ symmetry restoration, gated by
-    #         the Phase 4b asymmetry signal.
+    #         the asymmetry signal.
     #
-    #         The previous Phase 4a wiring sites passed
+    #         The previous  wiring sites passed
     #         ``restore_symmetry=False`` because calling
     #         :func:`restore_terminal_h_symmetry` unconditionally
     #         rotates the H atoms of *any* clear terminal CH₂/CH₃ to a
@@ -1190,7 +1186,7 @@ def apply_reactive_center_cleanup(xyz: dict,
     #         coordinates of already-good geometries (e.g.
     #         ``1_3_insertion_ror``).
     #
-    #         Phase 4b adds :func:`is_terminal_group_asymmetric` as the
+    #          adds :func:`is_terminal_group_asymmetric` as the
     #         inner gate.  Restoration only fires when, for the
     #         candidate center:
     #           (a) the center is a clear terminal CH₂/CH₃ in the bond
@@ -1227,13 +1223,13 @@ def apply_reactive_center_cleanup(xyz: dict,
             xyz = restore_terminal_h_symmetry(
                 xyz, mol, center, exclude_atoms=migrating_h_indices)
 
-    # ---- 4. Phase 4d — internal reactive CH₂ misorientation repair.
+    # ---- 4. internal reactive CH₂ misorientation repair.
     #
     #         Sibling pass to the terminal-symmetry restoration above.
-    #         The terminal pass (Phase 4b/4c) targets centers with one
+    #         The terminal pass (the terminal-group orchestrator) targets centers with one
     #         heavy neighbor and 2/3 H atoms; this pass targets centers
     #         with **two** heavy neighbors and **two** H atoms — i.e.
-    #         internal CH₂ shells, the failure cluster Phase 4d was
+    #         internal CH₂ shells, the failure cluster  was
     #         scoped to repair (1,2_shiftC reactive CH₂,
     #         Intra_Diels_alder_monocyclic attacking CH₂,
     #         Intra_R_Add_Endocyclic reactive CH₂, intra_NO2_ONO_conversion,
@@ -1275,17 +1271,22 @@ def apply_reactive_center_cleanup(xyz: dict,
 
 
 # ---------------------------------------------------------------------------
-# Backwards-compatibility re-exports
+# Backwards-compatibility re-exports — DO NOT IMPORT FROM HERE IN NEW CODE
 # ---------------------------------------------------------------------------
 #
 # The migration-inference helpers (``identify_h_migration_pairs``,
 # ``infer_frag_fallback_h_migration`` and the small graph utilities they
-# depend on) used to live in this module but were extracted to
+# depend on) used to live in this module but have been extracted to
 # :mod:`arc.job.adapters.ts.linear_utils.migration_inference` so that
 # *bond-graph + displacement* logic is cleanly separated from
-# *immediate-shell* geometry logic.  Importers that previously consumed
-# the helpers from :mod:`local_geometry` keep working without churn via
-# the explicit re-export below.
+# *immediate-shell* geometry logic.  Production code in
+# :mod:`arc.job.adapters.ts.linear` imports the helpers directly from
+# the canonical module; the only consumers of the re-exports below are
+# (1) tests that validate the re-export identity itself and (2) any
+# external code paths that may still reference the old name.
+#
+# Do not import these names from this module in new code — import from
+# :mod:`arc.job.adapters.ts.linear_utils.migration_inference` instead.
 from arc.job.adapters.ts.linear_utils.migration_inference import (  # noqa: E402,F401
     identify_h_migration_pairs,
     infer_frag_fallback_h_migration,

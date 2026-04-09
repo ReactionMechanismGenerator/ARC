@@ -34,8 +34,8 @@ FamilyValidator = Callable[
     Tuple[bool, str],
 ]
 
-# Maps family names → handler functions.  Populated after the handler functions
-# are defined (see "Family handlers" section below).  Multiple families may
+# Maps family names → handler functions. Populated after the handler functions
+# are defined (see "Family handlers" section below). Multiple families may
 # point to the same handler when they share identical post-processing logic.
 FAMILY_POSTPROCESSORS: Dict[str, FamilyPostprocessor] = {}
 FAMILY_VALIDATORS: Dict[str, FamilyValidator] = {}
@@ -104,7 +104,7 @@ def adjust_reactive_bond_distances(xyz: dict,
         sbl = get_single_bond_length(symbols[a], symbols[b]) or 1.5
         d_target = sbl + PAULING_DELTA
         # Only stretch if the bond is at or below equilibrium length — meaning
-        # the interpolation completely failed to stretch it.  Well-interpolated
+        # the interpolation completely failed to stretch it. Well-interpolated
         # TSs already have some stretching and should not be modified.
         if d_cur < sbl:
             vec = coords[b] - coords[a]
@@ -192,7 +192,7 @@ def orient_h_on_reactive_centers(xyz: dict,
             continue
 
         # Compute the reactive direction: only toward partners that are direct
-        # graph neighbours.  Distant partners (e.g. the acceptor in H-migration)
+        # graph neighbours. Distant partners (e.g. the acceptor in H-migration)
         # should not influence the orientation of non-migrating H atoms.
         bonded_indices = {atom_to_idx[nbr] for nbr in mol.atoms[heavy_idx].bonds}
         heavy_partners = [p for p in partners
@@ -1880,8 +1880,8 @@ def validate_ts_guess(xyz: dict,
             reactive_indices=reactive_indices):
         reason = 'excessive backbone drift from anchor'
     else:
-        # Phase 2 dispatch: H-transfer chemistry always uses the H-migration
-        # validator regardless of family string.  All other chemistries fall
+        # dispatch: H-transfer chemistry always uses the H-migration
+        # validator regardless of family string. All other chemistries fall
         # back to the existing family-string lookup so prior behavior is
         # preserved.
         if chemistry == 'h_transfer':

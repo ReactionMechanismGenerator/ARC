@@ -27,12 +27,14 @@ from arc.job.adapters.ts.linear_utils.path_spec import (
 )
 
 
-# Backwards-compatible alias.  The canonical helper now lives in
-# :mod:`arc.job.adapters.ts.linear_utils.path_spec` so the builder and
-# the scorer/validator share the same source of truth for family-aware
-# insertion-ring target calibration.
-_insertion_ring_extra_stretch = insertion_ring_extra_stretch
 from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
+
+
+# Backwards-compatible alias for ``addition_test.py``, which still
+# imports the underscored name. Production code in this module imports
+# the canonical :func:`insertion_ring_extra_stretch` directly from
+# :mod:`arc.job.adapters.ts.linear_utils.path_spec`.
+_insertion_ring_extra_stretch = insertion_ring_extra_stretch
 
 if TYPE_CHECKING:
     from arc.molecule import Molecule
@@ -271,7 +273,7 @@ def map_and_verify_fragments(uni_mol: 'Molecule',
         return None
 
     # Fragments inherit stale connectivity values from the parent molecule,
-    # which causes ``is_isomorphic`` to reject valid matches.  Recompute them.
+    # which causes ``is_isomorphic`` to reject valid matches. Recompute them.
     for frag in fragments:
         frag.update_connectivity_values()
 
@@ -479,7 +481,7 @@ def build_concerted_ts(uni_xyz: dict,
             if key in split_targets or key in cross_targets:
                 continue
             # This is a ring bond that isn't split or cross — it may
-            # strengthen (single→double).  Shorten by 5%.
+            # strengthen (single→double). Shorten by 5%.
             sbl = get_single_bond_length(symbols[ia], symbols[ib]) or 1.5
             strengthen_targets[key] = sbl * 0.95
 
@@ -518,7 +520,7 @@ def build_concerted_ts(uni_xyz: dict,
 
     # Resolve collisions: push apart any atom pair closer than 0.7× SBL.
     # The concerted stretching can drag atoms through each other when the
-    # ring geometry is tight.  A gentle repulsive pass fixes this.
+    # ring geometry is tight. A gentle repulsive pass fixes this.
     reactive_indices = set()
     for a, b in split_bonds + cross_bonds:
         reactive_indices.update((a, b))
@@ -577,7 +579,7 @@ def stretch_bond(uni_xyz: dict,
             across different fragments (used for insertion-ring detection).
         weight (float): Interpolation weight (0=reactant-like, 1=product-like).
         label (str): Logging label.
-        path_spec (ReactionPathSpec, optional): Phase 3a path-spec; when
+        path_spec (ReactionPathSpec, optional):  path-spec; when
             provided, validation is routed through
             :func:`validate_guess_against_path_spec`.  When ``None`` the
             legacy :func:`validate_ts_guess` is used (degraded mode).
@@ -730,7 +732,7 @@ def try_insertion_ring(uni_xyz: dict,
         cross_bonds (List[Tuple[int, int]]): Bonds connecting atoms across fragments.
         weight (float): Interpolation weight.
         n_atoms (int): Total number of atoms.
-        path_spec (ReactionPathSpec, optional): Phase 3a path-spec; when
+        path_spec (ReactionPathSpec, optional):  path-spec; when
             provided, validation routes through
             :func:`validate_guess_against_path_spec`.
 
@@ -791,21 +793,25 @@ def try_insertion_ring(uni_xyz: dict,
     coords = np.array(uni_xyz['coords'], dtype=float)
     ts_coords = coords.copy()
 
-    # Phase 4a — limited family-aware insertion-ring target calibration.
+    # limited family-aware insertion-ring target calibration.
     # Highly exothermic carbene insertions have a markedly *earlier* TS
-    # than the standard ``sbl + PAULING_DELTA`` predicts.  When the
+    # than the standard ``sbl + PAULING_DELTA`` predicts. When the
     # ``family`` argument or ``path_spec.family`` identifies the family
     # as one of those calibrated cases, add a small positive Å delta to
     # *every* reactive edge of the 3-membered ring so the resulting TS
-    # is at the appropriate looser scale.  For all other families this
-    # delta is 0.0 and behavior is unchanged.  An explicit ``family``
+    # is at the appropriate looser scale. For all other families this
+    # delta is 0.0 and behavior is unchanged. An explicit ``family``
     # kwarg takes precedence — that is the canonical channel for the
     # template-guided block in :mod:`arc.job.adapters.ts.linear`, where
     # ``stretch_bond`` (the immediate caller of this function) does not
     # carry a path-spec at all.
     family_for_calibration = family if family is not None else (
         path_spec.family if path_spec is not None else None)
-    extra_stretch = _insertion_ring_extra_stretch(family_for_calibration)
+    # Canonical source of truth lives in
+    # :mod:`arc.job.adapters.ts.linear_utils.path_spec`; the
+    # ``_insertion_ring_extra_stretch`` alias below is kept only for
+    # backwards-compatibility with ``addition_test.py``.
+    extra_stretch = insertion_ring_extra_stretch(family_for_calibration)
 
     sym_mob = uni_xyz['symbols'][mobile_atom]
     sym_anch = uni_xyz['symbols'][anchor_atom]
@@ -863,13 +869,13 @@ def try_insertion_ring(uni_xyz: dict,
         xyz=ts_xyz, uni_mol=uni_mol, forming_bonds=split_bonds,
         label='insertion-ring', path_spec=path_spec)
     if not is_valid:
-        # Phase 4a: when the calibrated insertion-ring builder is in
+        # when the calibrated insertion-ring builder is in
         # use, the standard ``has_too_many_fragments`` heavy-heavy
         # threshold (2.0 Å) is just barely above the un-calibrated
-        # Pauling target.  A calibrated carbene insertion ring sits at
+        # Pauling target. A calibrated carbene insertion ring sits at
         # ~2.16 Å on its mobile-anchor C–C edge, which trips that
         # threshold even though the geometry is the textbook earlier-TS
-        # the calibration was supposed to produce.  Re-validate with a
+        # the calibration was supposed to produce. Re-validate with a
         # locally-loosened heavy-heavy threshold strictly when the
         # rejection is the fragments check AND the family is calibrated.
         # All other rejection reasons (collisions, detached H, drift,
@@ -878,7 +884,7 @@ def try_insertion_ring(uni_xyz: dict,
             relaxed_max_heavy = 2.0 + extra_stretch + 0.10
             if not has_too_many_fragments(
                     ts_xyz, max_heavy_heavy=relaxed_max_heavy):
-                # Re-run only the rest of the generic checks.  We do
+                # Re-run only the rest of the generic checks. We do
                 # NOT skip collisions or detached-H — we only widen the
                 # fragment-count threshold by the calibration delta.
                 if (not colliding_atoms(ts_xyz)
@@ -1017,7 +1023,7 @@ def migrate_verified_atoms(ts_xyz: dict,
     # Build a map from migrating atom → cross-bond partner (the acceptor).
     # The acceptor may live in *any* product fragment, not only ``core``:
     # families like Korcek_step2 produce intra-fragment H migrations where
-    # donor and acceptor are both in the *large* fragment.  The cross
+    # donor and acceptor are both in the *large* fragment. The cross
     # bond's heavy-atom partner is the authoritative acceptor in those
     # cases — restricting it to ``core`` would silently misroute the H.
     cross_acceptor: Dict[int, int] = {}
@@ -1028,7 +1034,7 @@ def migrate_verified_atoms(ts_xyz: dict,
             cross_acceptor[b] = a
 
     for h_idx in migrating_atoms:
-        # Find donor: the H's heavy reactant neighbor.  Prefer one that
+        # Find donor: the H's heavy reactant neighbor. Prefer one that
         # lives in ``large_prod_atoms`` (the inter-fragment migration
         # case), but fall back to *any* heavy reactant neighbor so that
         # intra-large H migrations (Korcek_step2 — donor C and acceptor C
@@ -1246,7 +1252,7 @@ def migrate_h_between_fragments(ts_xyz: dict,
 
         deficit_heavy_coords = ts_coords[deficit_heavy]
 
-        # Identify split-bond anchor atoms in this fragment.  In
+        # Identify split-bond anchor atoms in this fragment. In
         # insertion/elimination reactions the migrating H should come from
         # a *non-anchor* heavy atom to create a proper TS ring (e.g. O on
         # one C of ethylene and H migrating from the other C).
@@ -1286,7 +1292,7 @@ def migrate_h_between_fragments(ts_xyz: dict,
 
             # Triangulate: place H at the intersection of two spheres centred
             # on donor and acceptor with TS-like radii, choosing the point
-            # closest to the current H position.  This produces a non-collinear
+            # closest to the current H position. This produces a non-collinear
             # D-H-A geometry that avoids passing through atoms between donor
             # and acceptor (e.g. the C in a CO₂ group).
             d_pos = ts_coords[donor_heavy]
@@ -1408,7 +1414,7 @@ def _reposition_leaving_groups(xyz: dict,
         ts_target = get_single_bond_length(sym_a, sym_b) + PAULING_DELTA + extra_stretch
 
         # Only reposition when the leaving group is stranded TOO FAR from
-        # the ring anchor after closure.  When the distance is too short
+        # the ring anchor after closure. When the distance is too short
         # (leaving group followed the anchor, e.g. via centroid correction
         # in small rings), ``stretch_bond()`` downstream will stretch it
         # to the TS target — no repositioning needed here.
@@ -1517,8 +1523,8 @@ def apply_intra_frag_contraction(xyz: dict,
         split_endpoints.update(sb)
 
     # Determine whether a genuine leaving group exists by checking fragment
-    # sizes.  A small fragment (≤ 4 heavy atoms) on the far side of a split
-    # bond is treated as a leaving group (e.g. CH3 in ExoTetCyclic).  Large
+    # sizes. A small fragment (≤ 4 heavy atoms) on the far side of a split
+    # bond is treated as a leaving group (e.g. CH3 in ExoTetCyclic). Large
     # fragments (both halves of a Diels–Alder retro-fragmentation) are not.
     _MAX_LG_HEAVY = 1
     has_small_leaving_frag = False
@@ -1574,9 +1580,9 @@ def apply_intra_frag_contraction(xyz: dict,
             logger.debug(f'Linear addition ({label}): ring contraction applied for '
                          f'bond ({a},{b}), {current_dist:.2f} → {target:.2f} Å.')
             # Reposition leaving-group fragments that were stranded by ring
-            # closure.  When the ring anchor moved during closure but the
+            # closure. When the ring anchor moved during closure but the
             # leaving group stayed put, the split-bond distance can grow
-            # far beyond the TS target.  Only reposition when the leaving
+            # far beyond the TS target. Only reposition when the leaving
             # group is too FAR (stranded); when it is too close,
             # ``stretch_bond()`` downstream will handle the distance.
             if has_leaving_group:
@@ -1686,7 +1692,7 @@ def detect_intra_frag_ring_bonds(mol: 'Molecule',
         return []
 
     # Filter by element composition: only keep candidates whose ring path
-    # has the same element multiset as a product ring.  This eliminates
+    # has the same element multiset as a product ring. This eliminates
     # false positives like all-carbon paths when the product ring contains O/S.
     product_ring_elements: List[Tuple[str, ...]] = []
     for sp in multi_species:

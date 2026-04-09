@@ -4,7 +4,7 @@
 """Tests for the migration-inference helpers extracted from
 :mod:`local_geometry`.
 
-These helpers were moved during the cleanup phase out of
+These helpers were moved during the cleanup out of
 :mod:`arc.job.adapters.ts.linear_utils.local_geometry` into
 :mod:`arc.job.adapters.ts.linear_utils.migration_inference`.  The
 existing local_geometry test file already exercises the helpers via
@@ -31,7 +31,7 @@ class TestMigrationInferenceImports(unittest.TestCase):
             mi.identify_h_migration_pairs,
             msg='legacy local_geometry.identify_h_migration_pairs and the '
                 'new migration_inference.identify_h_migration_pairs must '
-                'be the SAME object after the cleanup-phase extraction')
+                'be the SAME object after the cleanup extraction')
 
     def test_infer_frag_fallback_h_migration_re_export_identity(self):
         self.assertIs(
@@ -39,7 +39,7 @@ class TestMigrationInferenceImports(unittest.TestCase):
             mi.infer_frag_fallback_h_migration,
             msg='legacy local_geometry.infer_frag_fallback_h_migration and '
                 'the new migration_inference.infer_frag_fallback_h_migration '
-                'must be the SAME object after the cleanup-phase extraction')
+                'must be the SAME object after the cleanup extraction')
 
     def test_private_helpers_re_export_identity(self):
         self.assertIs(legacy_lg._split_into_fragments,

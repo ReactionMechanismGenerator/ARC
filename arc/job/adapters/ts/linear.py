@@ -156,10 +156,26 @@ Implementation detail
 ---------------------
 Heavy-lifting utilities live in the ``linear_utils`` subpackage:
 
-- ``math_zmat``     — Z-matrix interpolation, weight/grid helpers, math utilities
-- ``postprocess``   — validation filters, geometry fixers, family dispatch
-- ``isomerization`` — near-attack conformations, ring-closure, Z-matrix branch generation
-- ``addition``      — fragment-based stretching, insertion-ring, H migration
+- ``math_zmat``           — Z-matrix interpolation, weight/grid helpers, math utilities
+- ``postprocess``         — validation filters, geometry fixers, family dispatch
+- ``isomerization``       — near-attack conformations, ring-closure, Z-matrix branch generation
+- ``addition``            — fragment-based stretching, insertion-ring, addition builders
+- ``local_geometry``      — immediate-shell geometry helpers (terminal CH₂/CH₃ and
+                            internal-CH₂ detection / repair, the
+                            ``apply_reactive_center_cleanup`` orchestrator)
+- ``migration_inference`` — graph-aware donor/acceptor inference for migrating-H records
+                            (``identify_h_migration_pairs``,
+                            ``infer_frag_fallback_h_migration``)
+- ``path_spec``           — path-local data model (``ReactionPathSpec``), role-aware
+                            target distance, scoring, and the canonical orchestration-
+                            level validation gateways
+                            (``validate_guess_against_path_spec`` and
+                            ``validate_addition_guess``)
+- ``families``            — family-specific motif builders
+
+The orchestration code in this module composes those helpers into the
+``interpolate``, ``interpolate_isomerization`` and ``interpolate_addition``
+entry points and the shared ``_finalize_ts_guesses`` triage finalizer.
 
 This module re-exports every public symbol from those subpackages so that
 existing imports (``from arc.job.adapters.ts.linear import …``) continue
@@ -231,12 +247,14 @@ from arc.job.adapters.ts.linear_utils.addition import (
 from arc.job.adapters.ts.linear_utils.local_geometry import (
     apply_reactive_center_cleanup,
     clean_migrating_h,
-    identify_h_migration_pairs,
-    infer_frag_fallback_h_migration,
     is_internal_reactive_ch2_misoriented,
     orient_h_away_from_axis,
     regularize_terminal_h_geometry,
     restore_terminal_h_symmetry,
+)
+from arc.job.adapters.ts.linear_utils.migration_inference import (
+    identify_h_migration_pairs,
+    infer_frag_fallback_h_migration,
 )
 from arc.job.adapters.ts.linear_utils.families import build_xy_elimination_ts
 
@@ -294,7 +312,7 @@ class GuessRecord:
 
 
 # ---------------------------------------------------------------------------
-# Phase 2b: shared triage finalizer
+# shared triage finalizer
 # ---------------------------------------------------------------------------
 
 
@@ -364,7 +382,7 @@ def _apply_internal_ch2_cleanup_to_isomerization_record(
        reactant graph) — without an expansion the orchestrator would
        only see endpoints already handled by
        :func:`orient_h_on_reactive_centers`.
-    3. The Phase 4d :func:`is_internal_reactive_ch2_misoriented` detector
+    3. The  :func:`is_internal_reactive_ch2_misoriented` detector
        fires on at least one expansion centre in the current TS
        geometry — when every candidate centre is already well-oriented
        the orchestrator is not called at all.
@@ -426,7 +444,7 @@ def _apply_internal_ch2_cleanup_to_isomerization_record(
     if not expansion_iso:
         return rec.xyz
     # Detector pre-check: only call the orchestrator on the subset
-    # of expansion centres that the Phase 4d detector flags as
+    # of expansion centres that the detector flags as
     # misoriented in this guess's geometry.
     misoriented_iso: Set[int] = set()
     for cand in expansion_iso:
@@ -490,16 +508,16 @@ def _postprocess_isomerization_records(unique: List['GuessRecord'],
     3. **Intra_RH_Add motif** — :func:`_fix_rh_add_motif` builds the
        4-membered ring TS motif when the trivial-fallback recorded
        fb/bb/changed sets are available.
-    4. **Phase 4e late local reactive-center cleanup** — invokes the
+    4. ** late local reactive-center cleanup** — invokes the
        :func:`apply_reactive_center_cleanup` orchestrator only for
-       records that pass the strict Phase 4e gates (heavy-heavy
-       changing bond, 1-bond CH₂ expansion, Phase 4d detector firing).
+       records that pass the strict  gates (heavy-heavy
+       changing bond, 1-bond CH₂ expansion,  detector firing).
     5. **Final filters** — drops records with collisions, bivalent-H
        pathologies, misdirected migrating H, or broken non-reactive
        bonds.
     6. **Path-spec wrapper validation** — for records carrying a
        :class:`ReactionPathSpec`, runs the centralized
-       :func:`validate_guess_against_path_spec` so the same Phase 1+2+4a
+       :func:`validate_guess_against_path_spec` so the same the path-spec validation gateway
        checks the addition pipeline uses are also enforced here.
 
     Args:
@@ -584,11 +602,11 @@ def _finalize_ts_guesses(ts_xyzs: List,
                           rxn: 'ARCReaction',
                           r_mol: 'Molecule',
                           ) -> List[dict]:
-    """Phase 2b shared triage finalizer for both interpolate pipelines.
+    """Shared triage finalizer for both interpolate pipelines.
 
     This function takes a list of already-validated TS guesses (either as
     :class:`GuessRecord` instances or as raw XYZ dicts) and applies the
-    final Phase 2 triage stack:
+    final triage stack:
 
     1. **Drop colliding-atom guesses** as a defensive last-mile filter.
     2. **Score** each surviving guess against its path-spec via
@@ -597,7 +615,7 @@ def _finalize_ts_guesses(ts_xyzs: List,
     3. **Sort** by a strict ``(score, original_index)`` tuple key.  Python's
        ``list.sort`` is stable; the explicit original-index tiebreaker
        guarantees a fully deterministic order even across implementations,
-       and replaces the Phase 2a "1.0-wide bucket" hack.
+       and replaces the  "1.0-wide bucket" hack.
     4. **Second deduplication pass** with the same two-tier
        (``almost_equal_coords`` ∪ heavy-atom-only) similarity convention
        used by the first pass.  Iterating in sorted order means the
@@ -617,7 +635,7 @@ def _finalize_ts_guesses(ts_xyzs: List,
 
     Args:
         ts_xyzs: List of :class:`GuessRecord` or raw XYZ dicts.  Items are
-            expected to have already passed Phase 1/2 validation.
+            expected to have already passed the path-spec validation gateway validation.
         path_spec: Optional fallback :class:`ReactionPathSpec` used when a
             guess does not carry its own.  May be ``None``.
         rxn: The reaction (used only for log labels).
@@ -686,7 +704,7 @@ def _finalize_ts_guesses(ts_xyzs: List,
     #
     # Rule (b) preserves the score-priority contract — "keep best-scoring
     # representative of each cluster" — while protecting genuinely
-    # distinct variants whose quality cannot be compared.  Phase 3a
+    # distinct variants whose quality cannot be compared.  
     # added the BOTH-finite requirement: an addition guess in degraded
     # mode (``score == +inf``) carries no information about whether it
     # is "worse" than a finitely-scored sibling, so we must not collapse
@@ -1633,7 +1651,7 @@ def interpolate_addition(rxn: 'ARCReaction',
                          f'retry recovered family={wider_pds[0].get("family")} '
                          f'with {len(wider_pds)} product_dict(s).')
 
-    # Phase 3a: addition guesses are now carried as GuessRecord objects
+    # addition guesses are now carried as GuessRecord objects
     # so they can transport ReactionPathSpec metadata through the shared
     # finalizer for real finite scoring.
     ts_records: List[GuessRecord] = []
@@ -1718,7 +1736,7 @@ def interpolate_addition(rxn: 'ARCReaction',
             continue
         seen_split_sets.add(sb_key)
 
-        # Phase 3a: build the per-path ReactionPathSpec via the Phase 1
+        # build the per-path ReactionPathSpec via the 
         # machinery.  This is shared by all guesses produced from this
         # template-guided cut so the finalizer can score them.
         template_path_spec = _build_addition_path_spec(
@@ -1823,7 +1841,7 @@ def interpolate_addition(rxn: 'ARCReaction',
             if bases[0] is not uni_xyz:
                 bases.append(uni_xyz)
 
-            # Phase 3a: stretch_bond is a leaf builder.  The
+            # stretch_bond is a leaf builder.  The
             # path-spec wrapper's recipe-channel and
             # unchanged-near-core checks can be too strict for the
             # *intermediate* geometries this builder produces — e.g.
@@ -1870,7 +1888,7 @@ def interpolate_addition(rxn: 'ARCReaction',
                         ts_xyz, uni_mol, migrating_atoms, core,
                         large_prod_atoms, weight, cross_bonds=cross_bonds)
 
-                    # Phase 3b — local reactive-center cleanup + topology
+                    # local reactive-center cleanup + topology
                     # enrichment.
                     #
                     # Step 1: recover the (h, donor, acceptor) records that
@@ -1878,9 +1896,9 @@ def interpolate_addition(rxn: 'ARCReaction',
                     migration_records = identify_h_migration_pairs(
                         ts_xyz, uni_mol, migrating_atoms, core,
                         large_prod_atoms, cross_bonds=cross_bonds)
-                    # Step 2: Phase 4a — run the local reactive-center
+                    # Step 2: run the local reactive-center
                     # cleanup orchestrator over the migration records.
-                    # The orchestrator composes the existing Phase 3b
+                    # The orchestrator composes the existing 
                     # helpers in a deterministic order:
                     #   * orient spectator H atoms on donor/acceptor away
                     #     from the donor → acceptor reaction axis,
@@ -1898,10 +1916,10 @@ def interpolate_addition(rxn: 'ARCReaction',
                     # H — passing an empty migrations list keeps that
                     # invariant by routing through the ``reactive_centers``
                     # branch only.
-                    # Phase 4a: route the per-pair orient pass + the donor /
+                    # route the per-pair orient pass + the donor /
                     # acceptor reactive-center cleanup through the shared
                     # orchestrator.
-                    # Phase 4b: symmetry restoration is now requested
+                    # symmetry restoration is now requested
                     # (``restore_symmetry=True``) and the orchestrator
                     # internally gates each candidate terminal CH₂/CH₃
                     # on :func:`is_terminal_group_asymmetric` so that
@@ -1929,7 +1947,7 @@ def interpolate_addition(rxn: 'ARCReaction',
                             restore_symmetry=True,
                         )
 
-                    # Step 3: Phase 3b path-spec enrichment.
+                    # Step 3:  path-spec enrichment.
                     enriched_path_spec = _enrich_post_migration_path_spec(
                         uni_mol=uni_mol,
                         uni_xyz=uni_xyz,
@@ -1943,32 +1961,19 @@ def interpolate_addition(rxn: 'ARCReaction',
                         require_cross_bond_acceptor=True,
                     )
 
-                    # Step 4: validate.  Try the enriched final-stage
-                    # validator first; on failure, fall back to the
-                    # degraded builder-stage validator so legitimate
-                    # migration guesses with imperfect local geometry
-                    # still survive (just with path_spec=None).
-                    if enriched_path_spec is not None:
-                        is_valid, reason = _validate_addition_guess(
-                            ts_xyz, path_spec=enriched_path_spec,
-                            uni_mol=uni_mol, forming_bonds=split_bonds,
-                            label=f'rxn={rxn.label}, path={i}-post-migrate')
-                        if is_valid:
-                            record_path_spec = enriched_path_spec
-                        else:
-                            logger.debug(
-                                f'Linear addition (rxn={rxn.label}, path={i}): '
-                                f'enriched post-migrate validation failed '
-                                f'({reason}); falling back to degraded mode.')
-                            is_valid, reason = _validate_addition_builder_geometry(
-                                ts_xyz, uni_mol=uni_mol,
-                                label=f'rxn={rxn.label}, path={i}-post-migrate')
-                            record_path_spec = None
-                    else:
-                        is_valid, reason = _validate_addition_builder_geometry(
-                            ts_xyz, uni_mol=uni_mol,
-                            label=f'rxn={rxn.label}, path={i}-post-migrate')
-                        record_path_spec = None
+                    # Try-enriched-then-degraded validation via the
+                    # shared post-migration helper.  Behavior is
+                    # identical to the previous inline block: attempt
+                    # the enriched final-stage validator first, fall
+                    # back to the builder-stage permissive validator
+                    # on any failure.
+                    is_valid, reason, record_path_spec = _validate_post_migration_addition_guess(
+                        ts_xyz=ts_xyz,
+                        enriched_path_spec=enriched_path_spec,
+                        uni_mol=uni_mol,
+                        forming_bonds=split_bonds,
+                        label=f'rxn={rxn.label}, path={i}-post-migrate',
+                    )
 
                     if not is_valid:
                         logger.debug(
@@ -2379,7 +2384,7 @@ def interpolate_addition(rxn: 'ARCReaction',
                     if cross_bonds_frag:
                         break
 
-        # Phase 3a: build conservative minimal ReactionPathSpec for this
+        # build conservative minimal ReactionPathSpec for this
         # fragmentation cut.  ``breaking_bonds = cut``, ``forming_bonds =
         # cross_bonds_frag or []``, no product-side metadata.
         cut_path_spec = _build_addition_path_spec(
@@ -2439,7 +2444,7 @@ def interpolate_addition(rxn: 'ARCReaction',
             ts_xyz = migrate_h_between_fragments(
                 pre_migrate_xyz, uni_mol, cut, multi_species, weight)
 
-            # Phase 3c — strict, deterministic single-H migration
+            # strict, deterministic single-H migration
             # inference for the frag-fallback branch.  The helper
             # combines five trustworthy signals (S1 displacement,
             # S2 reactant-graph adjacency, S3 split-fragment
@@ -2463,10 +2468,10 @@ def interpolate_addition(rxn: 'ARCReaction',
             # Same NOTE as the template-guided branch:
             # ``migrate_h_between_fragments`` already triangulated the
             # migrating H, so we do NOT re-call ``clean_migrating_h``.
-            # Phase 4a: route the per-pair orient pass + the donor /
+            # route the per-pair orient pass + the donor /
             # acceptor reactive-center cleanup through the shared
             # orchestrator.
-            # Phase 4b: symmetry restoration is now requested
+            # symmetry restoration is now requested
             # (``restore_symmetry=True``) and the orchestrator
             # internally gates each candidate terminal CH₂/CH₃ on
             # :func:`is_terminal_group_asymmetric` so that already-good
@@ -2506,27 +2511,16 @@ def interpolate_addition(rxn: 'ARCReaction',
                 require_split_adjacent=True,
             )
 
-            if enriched_path_spec is not None:
-                is_valid, reason = _validate_addition_guess(
-                    ts_xyz, path_spec=enriched_path_spec,
-                    uni_mol=uni_mol, forming_bonds=cut,
-                    label=f'rxn={rxn.label}, frag-fallback-post-migrate')
-                if is_valid:
-                    record_path_spec = enriched_path_spec
-                else:
-                    logger.debug(
-                        f'Linear (rxn={rxn.label}, frag-fallback): '
-                        f'enriched validation failed ({reason}); '
-                        f'falling back to degraded mode.')
-                    is_valid, reason = _validate_addition_builder_geometry(
-                        ts_xyz, uni_mol=uni_mol,
-                        label=f'rxn={rxn.label}, frag-fallback-post-migrate')
-                    record_path_spec = None
-            else:
-                is_valid, reason = _validate_addition_builder_geometry(
-                    ts_xyz, uni_mol=uni_mol,
-                    label=f'rxn={rxn.label}, frag-fallback-post-migrate')
-                record_path_spec = None
+            # Try-enriched-then-degraded validation via the shared
+            # post-migration helper.  Behavior is identical to the
+            # previous inline block.
+            is_valid, reason, record_path_spec = _validate_post_migration_addition_guess(
+                ts_xyz=ts_xyz,
+                enriched_path_spec=enriched_path_spec,
+                uni_mol=uni_mol,
+                forming_bonds=cut,
+                label=f'rxn={rxn.label}, frag-fallback-post-migrate',
+            )
 
             if not is_valid:
                 logger.debug(f'Linear (rxn={rxn.label}, frag-fallback): '
@@ -2543,7 +2537,7 @@ def interpolate_addition(rxn: 'ARCReaction',
 
     # First-pass deduplication against existing_xyzs (cross-weight cache)
     # using exact-coord similarity, the convention this pipeline has used
-    # since before Phase 2.  Heavy-only matching is left to the second
+    # since before .  Heavy-only matching is left to the second
     # pass inside the shared finalizer below.
     prior: List[dict] = list(existing_xyzs or [])
     pre_unique: List[GuessRecord] = []
@@ -2556,13 +2550,13 @@ def interpolate_addition(rxn: 'ARCReaction',
             continue
         pre_unique.append(rec)
 
-    # Phase 3a — addition guesses now carry their per-path
+    # addition guesses now carry their per-path
     # :class:`ReactionPathSpec` directly on each :class:`GuessRecord`,
     # so the shared finalizer assigns real finite scores via
     # :func:`score_guess_against_path_spec` whenever metadata is
     # available.  Records whose path-spec construction failed
     # (degraded mode) gracefully fall back to ``+inf`` scoring per
-    # the Phase 2b contract.
+    # the contract.
     return _finalize_ts_guesses(pre_unique, path_spec=None, rxn=rxn, r_mol=uni_mol)
 
 
@@ -2605,13 +2599,13 @@ def _build_addition_path_spec(uni_mol: 'Molecule',
                                family: Optional[str],
                                label: str,
                                ) -> Optional['ReactionPathSpec']:
-    """Phase 3a: build a conservative addition-side ReactionPathSpec.
+    """build a conservative addition-side ReactionPathSpec.
 
-    This is a thin wrapper around the Phase 1
+    This is a thin wrapper around the 
     :meth:`ReactionPathSpec.build` factory, applied to the unimolecular
     side of an addition/dissociation reaction.  No second-style spec
     construction is hand-rolled here — the caller passes path-local
-    bonds and the helper threads them into the existing Phase 1
+    bonds and the helper threads them into the existing 
     machinery.
 
     Both template-guided and fragmentation-fallback addition paths use
@@ -2623,7 +2617,7 @@ def _build_addition_path_spec(uni_mol: 'Molecule',
     with:
 
       * empty ``changed_bonds`` (we do NOT guess them in addition mode),
-      * ``unchanged_near_core_bonds`` populated by the Phase 1 graph
+      * ``unchanged_near_core_bonds`` populated by the graph
         shell helper from the reactant graph,
       * ``ref_dist_r`` / ``bond_order_r`` populated from the
         unimolecular geometry and graph,
@@ -2644,8 +2638,8 @@ def _build_addition_path_spec(uni_mol: 'Molecule',
 
     Returns:
         A populated :class:`ReactionPathSpec` on success, or ``None``
-        if the underlying Phase 1 builder raised — preserving the
-        Phase 2b degraded-mode contract.
+        if the underlying  builder raised — preserving the
+         degraded-mode contract.
     """
     fb_list = list(forming_bonds or [])
     try:
@@ -2675,7 +2669,7 @@ def _validate_addition_guess(xyz: dict,
 
     The single source of truth lives in :func:`path_spec.validate_addition_guess`.
     This local alias only exists so the existing ``_validate_addition_guess``
-    call sites in this module remain unchanged after the cleanup-phase
+    call sites in this module remain unchanged after the cleanup
     gateway unification — the keyword shape (``path_spec`` as a positional
     second argument) differs from the canonical helper, so wrapping is
     cheaper than rewriting every call site.
@@ -2710,6 +2704,65 @@ def _validate_addition_builder_geometry(xyz: dict,
         label=label, path_spec=None)
 
 
+def _validate_post_migration_addition_guess(
+        ts_xyz: dict,
+        enriched_path_spec: Optional['ReactionPathSpec'],
+        uni_mol: 'Molecule',
+        forming_bonds: List[Tuple[int, int]],
+        label: str,
+        ) -> Tuple[bool, str, Optional['ReactionPathSpec']]:
+    """Try-enriched-then-degraded validation for a post-migration
+    addition guess.
+
+    The two post-migration call sites in :func:`interpolate_addition`
+    (template-guided and frag-fallback) share an identical
+    "try the enriched final-stage validator first; on failure fall
+    back to the builder-stage permissive validator" pattern.  This
+    helper encapsulates that pattern in one place so both call sites
+    collapse to a single line.
+
+    Routing:
+
+    * If ``enriched_path_spec`` is non-``None``, run
+      :func:`_validate_addition_guess` with the enriched spec.
+      On success, return ``(True, '', enriched_path_spec)``.
+      On failure, log a debug message and fall through to the
+      builder-stage permissive validator.
+    * If ``enriched_path_spec`` is ``None`` *or* the enriched
+      validation failed, run :func:`_validate_addition_builder_geometry`
+      and return its result with ``record_path_spec=None`` (degraded
+      mode).
+
+    Args:
+        ts_xyz: Post-migration TS guess XYZ.
+        enriched_path_spec: Enriched path-spec from
+            :func:`_enrich_post_migration_path_spec`, or ``None`` if
+            enrichment failed / was not applicable.
+        uni_mol: Reactant molecule.
+        forming_bonds: Forming bonds for the legacy fallback path
+            (passed through to :func:`_validate_addition_guess`).
+        label: Logging label.
+
+    Returns:
+        ``(is_valid, reason, record_path_spec)`` where
+        ``record_path_spec`` is the enriched spec if and only if the
+        enriched validator passed, otherwise ``None`` (degraded mode).
+    """
+    if enriched_path_spec is not None:
+        is_valid, reason = _validate_addition_guess(
+            ts_xyz, path_spec=enriched_path_spec,
+            uni_mol=uni_mol, forming_bonds=forming_bonds,
+            label=label)
+        if is_valid:
+            return True, '', enriched_path_spec
+        logger.debug(
+            f'Linear addition ({label}): enriched post-migrate '
+            f'validation failed ({reason}); falling back to degraded mode.')
+    is_valid, reason = _validate_addition_builder_geometry(
+        ts_xyz, uni_mol=uni_mol, label=label)
+    return is_valid, reason, None
+
+
 def _enrich_post_migration_path_spec(uni_mol: 'Molecule',
                                        uni_xyz: dict,
                                        ts_xyz: dict,
@@ -2722,21 +2775,21 @@ def _enrich_post_migration_path_spec(uni_mol: 'Molecule',
                                        require_cross_bond_acceptor: bool = True,
                                        require_split_adjacent: bool = False,
                                        ) -> Optional['ReactionPathSpec']:
-    """Phase 3b: build an enriched :class:`ReactionPathSpec` for a
+    """build an enriched :class:`ReactionPathSpec` for a
     cleaned-up post-migration addition guess — *only* when the inferred
     migration topology is genuinely trustworthy.
 
-    The enricher applies the Phase 3b topology gates (G1-G7) and, if
+    The enricher applies the topology gates (G1-G7) and, if
     *all* gates pass, returns a :class:`ReactionPathSpec` whose
     ``breaking_bonds`` and ``forming_bonds`` lists are extended with the
     inferred ``(donor, h_idx)`` and ``(acceptor, h_idx)`` H-bond pair.
-    The spec is constructed via the existing Phase 1
+    The spec is constructed via the existing 
     :meth:`ReactionPathSpec.build` factory — no second-style spec
     construction is hand-rolled.
 
     When *any* gate fails the helper returns ``None`` and the caller
     must preserve degraded mode (``path_spec=None``) per the most
-    important Phase 3b rule.
+    important  rule.
 
     Gates (all required):
 
@@ -2772,7 +2825,7 @@ def _enrich_post_migration_path_spec(uni_mol: 'Molecule',
         weight: Interpolation weight (passed through to the factory).
         family: RMG family string (passed through to the factory).
         label: Logging label.
-        require_cross_bond_acceptor: Phase 3b default.  Frag-fallback
+        require_cross_bond_acceptor:  default.  Frag-fallback
             sets this to ``False`` only after an independent G7 check.
         require_split_adjacent: Frag-fallback sets this to ``True``.
 
@@ -2888,7 +2941,7 @@ def _enrich_post_migration_path_spec(uni_mol: 'Molecule',
                          f'donor or acceptor not adjacent to a split-bond endpoint).')
             return None
 
-    # All gates passed — extend bond lists and rebuild via the Phase 1 factory.
+    # All gates passed — extend bond lists and rebuild via the factory.
     enriched_breaking = list(base_breaking) + [(donor, h_idx)]
     enriched_forming = list(base_forming) + [(acceptor, h_idx)]
     try:
@@ -3923,7 +3976,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         fallback_changed=_fallback_changed,
     )
 
-    # Phase 2b — unified triage finalizer.  Scoring, strict (score, idx)
+    # unified triage finalizer.  Scoring, strict (score, idx)
     # stable sort, second dedup, cap-to-5, and strategy provenance logging
     # are all delegated to the shared :func:`_finalize_ts_guesses` helper
     # so isomerization and addition pipelines benefit from identical

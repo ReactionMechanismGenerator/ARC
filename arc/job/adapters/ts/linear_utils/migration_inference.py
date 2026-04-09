@@ -66,7 +66,7 @@ def identify_h_migration_pairs(xyz: dict,
     (``interpolate_addition``) can recover the migration topology
     *without* re-running the migration.  The output is a deterministic
     list of dicts so callers can both feed local-cleanup helpers and
-    drive Phase 3b topology gates from the same source.
+    drive  topology gates from the same source.
 
     Args:
         xyz: TS guess XYZ dict (used for the nearest-core fallback only).
@@ -331,7 +331,7 @@ def infer_frag_fallback_h_migration(pre_xyz: dict,
         return None
 
     # ---- S4: composition consistency (donor fragment has H surplus,
-    #          acceptor fragment has H deficit), when products available.
+    # acceptor fragment has H deficit), when products available.
     acceptor_frag_idx: Optional[int] = None
     if multi_species:
         try:
@@ -439,7 +439,7 @@ def infer_frag_fallback_h_migration(pre_xyz: dict,
         return None
 
     # No rival heavy atom inside the acceptor's fragment may be too
-    # close to the migrated H either.  This is the "uniquely within
+    # close to the migrated H either. This is the "uniquely within
     # its fragment" half of S5.
     if acceptor_frag_idx is not None:
         rival_atoms = [i for i in fragments[acceptor_frag_idx]

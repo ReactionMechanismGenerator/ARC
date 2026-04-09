@@ -365,7 +365,7 @@ class TestGetTsTargetDistance(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# has_recipe_channel_mismatch — exact Phase 1 thresholds
+# has_recipe_channel_mismatch — exact thresholds
 # ---------------------------------------------------------------------------
 
 class TestHasRecipeChannelMismatch(unittest.TestCase):
@@ -461,7 +461,7 @@ class TestValidateGuessAgainstPathSpec(unittest.TestCase):
         forming bond declared, and a hand-built XYZ that does not collide.
         """
         # Two H atoms placed 4 Å apart — no collisions, but forming bond is
-        # far above the 3.00 Å Phase 1 threshold.
+        # far above the 3.00 Å threshold.
         h2 = ARCSpecies(label='H2', smiles='[H][H]')
         bad_xyz = {
             'symbols': ('H', 'H'),
@@ -499,7 +499,7 @@ class TestPlumbingCentralization(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: PathChemistry classification
+# PathChemistry classification
 # ---------------------------------------------------------------------------
 
 class TestPathChemistryClassification(unittest.TestCase):
@@ -582,7 +582,7 @@ class TestPathChemistryClassification(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: changed-bond length validator
+# changed-bond length validator
 # ---------------------------------------------------------------------------
 
 class TestHasBadChangedBondLength(unittest.TestCase):
@@ -638,7 +638,7 @@ class TestHasBadChangedBondLength(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: unchanged_near_core bond validator
+# unchanged_near_core bond validator
 # ---------------------------------------------------------------------------
 
 class TestHasBadUnchangedNearCoreBond(unittest.TestCase):
@@ -694,7 +694,7 @@ class TestHasBadUnchangedNearCoreBond(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: inward-blocking-H-on-forming-axis validator
+# inward-blocking-H-on-forming-axis validator
 # ---------------------------------------------------------------------------
 
 class TestHasInwardBlockingHOnFormingAxis(unittest.TestCase):
@@ -764,7 +764,7 @@ class TestHasInwardBlockingHOnFormingAxis(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: reactive-core-planarity validator
+# reactive-core-planarity validator
 # ---------------------------------------------------------------------------
 
 class TestHasBadReactiveCorePlanarity(unittest.TestCase):
@@ -835,7 +835,7 @@ class TestHasBadReactiveCorePlanarity(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 4a: narrow recipe-consistency / wrong-channel screening
+# narrow recipe-consistency / wrong-channel screening
 # ---------------------------------------------------------------------------
 
 
@@ -1023,7 +1023,7 @@ class TestHasCommittedSpectatorGroup(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: scoring function
+# scoring function
 # ---------------------------------------------------------------------------
 
 class TestScoreGuessAgainstPathSpec(unittest.TestCase):
@@ -1090,7 +1090,7 @@ class TestScoreGuessAgainstPathSpec(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: validator dispatch — H_TRANSFER routing
+# validator dispatch — H_TRANSFER routing
 # ---------------------------------------------------------------------------
 
 class TestHTransferDispatchOverride(unittest.TestCase):
@@ -1136,13 +1136,13 @@ class TestHTransferDispatchOverride(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: orchestration triage — score-sort + second dedup
+# orchestration triage — score-sort + second dedup
 # ---------------------------------------------------------------------------
 
 class TestOrchestrationTriage(unittest.TestCase):
-    """Verify linear.py exposes the Phase 2 plumbing correctly."""
+    """Verify linear.py exposes the plumbing correctly."""
 
-    def test_linear_module_imports_phase2_helpers(self):
+    def test_linear_module_imports_path_spec_helpers(self):
         from arc.job.adapters.ts import linear
         self.assertTrue(hasattr(linear, 'classify_path_chemistry'))
         self.assertTrue(hasattr(linear, 'score_guess_against_path_spec'))
@@ -1150,7 +1150,7 @@ class TestOrchestrationTriage(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2b: tightened frontier exemption — strict 2-condition rule
+# tightened frontier exemption — strict 2-condition rule
 # ---------------------------------------------------------------------------
 
 
@@ -1231,7 +1231,7 @@ class TestTightenedFrontierExemption(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2b: shared finalizer — stable sort, dedup, cap
+# shared finalizer — stable sort, dedup, cap
 # ---------------------------------------------------------------------------
 
 
@@ -1267,7 +1267,7 @@ class TestFinalizeTsGuesses(unittest.TestCase):
 
     def test_finalizer_strict_stable_sort_preserves_input_order_on_score_tie(self):
         """Three guesses A, B, C with A and C tied at the same score
-        (and B with a different score).  After the sort, A must precede C."""
+        (and B with a different score). After the sort, A must precede C."""
         from arc.job.adapters.ts.linear import (
             GuessRecord, _finalize_ts_guesses,
         )
@@ -1386,12 +1386,12 @@ class TestFinalizeTsGuesses(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 3a: addition pipeline path-spec wiring
+# addition pipeline path-spec wiring
 # ---------------------------------------------------------------------------
 
 
-class TestPhase3aAdditionPathSpec(unittest.TestCase):
-    """Phase 3a — verify the addition pipeline now carries
+class TestAdditionPathSpec(unittest.TestCase):
+    """verify the addition pipeline now carries
     :class:`ReactionPathSpec` metadata through :class:`GuessRecord`
     objects and routes validation through
     :func:`validate_guess_against_path_spec`."""
@@ -1405,7 +1405,7 @@ class TestPhase3aAdditionPathSpec(unittest.TestCase):
         """
         from arc.species import ARCSpecies
         from arc.reaction import ARCReaction
-        r_xyz = """C       1.14981017    0.04138987   -0.06722786
+        r_xyz = """C 1.14981017 0.04138987 -0.06722786
 C      -0.25415691   -0.17696939    0.46881798
 N      -0.38312147    0.39227542    1.80366803
 H       1.89791609   -0.44343932    0.56909864
@@ -1414,28 +1414,28 @@ H       1.23928774   -0.38052643   -1.07342059
 H      -0.98187243    0.29596310   -0.19835733
 H      -0.47689047   -1.24854874    0.50220986
 H       0.27600194   -0.06032721    2.43576220
-H      -1.31312338    0.19118810    2.16873833"""
-        p1_xyz = """C      -0.63422754   -0.20894058   -0.01346068
+H -1.31312338 0.19118810 2.16873833"""
+        p1_xyz = """C -0.63422754 -0.20894058 -0.01346068
 C       0.63422754    0.20894058    0.01346068
 H      -1.30426171   -0.01843680    0.81903872
 H      -1.02752125   -0.74974821   -0.86852786
 H       1.02752125    0.74974821    0.86852786
-H       1.30426171    0.01843680   -0.81903872"""
-        p2_xyz = """N       0.00064924   -0.00099698    0.29559292
+H 1.30426171 0.01843680 -0.81903872"""
+        p2_xyz = """N 0.00064924 -0.00099698 0.29559292
 H      -0.41786606    0.84210396   -0.09477452
 H      -0.52039228   -0.78225292   -0.10002797
-H       0.93760911   -0.05885406   -0.10079043"""
+H 0.93760911 -0.05885406 -0.10079043"""
         r = ARCSpecies(label='R', smiles='CCN', xyz=r_xyz)
         p1 = ARCSpecies(label='P1', smiles='C=C', xyz=p1_xyz)
         p2 = ARCSpecies(label='P2', smiles='N', xyz=p2_xyz)
         return r, p1, p2, ARCReaction(r_species=[r], p_species=[p1, p2])
 
-    # ---- Phase 3a #2: template-guided spec construction ----------------
+    # ---- #2: template-guided spec construction ----------------
 
     def test_build_addition_path_spec_template_guided(self):
         """The shared addition path-spec helper builds a populated
         :class:`ReactionPathSpec` for a template-guided cut, using the
-        Phase 1 :meth:`ReactionPathSpec.build` machinery (no hand-rolled
+         :meth:`ReactionPathSpec.build` machinery (no hand-rolled
         bond-shell logic)."""
         from arc.job.adapters.ts.linear import _build_addition_path_spec
         r, _, _, rxn = self._make_addition_rxn()
@@ -1452,12 +1452,12 @@ H       0.93760911   -0.05885406   -0.10079043"""
         self.assertIsNotNone(spec)
         self.assertEqual(spec.breaking_bonds, [(1, 2)])
         self.assertEqual(spec.forming_bonds, [])
-        # Phase 1 derivation populates these reactant-side fields.
+        # derivation populates these reactant-side fields.
         self.assertIn((1, 2), spec.ref_dist_r)
         self.assertIsNotNone(spec.ref_dist_r[(1, 2)])
         self.assertIn((1, 2), spec.bond_order_r)
         self.assertIsNotNone(spec.bond_order_r[(1, 2)])
-        # The unchanged-near-core list comes from the Phase 1 BFS shell
+        # The unchanged-near-core list comes from the BFS shell
         # over the reactant graph: it should be non-empty (the C-N
         # frontier has plenty of one-shell neighbors), and should NOT
         # contain the breaking bond itself.
@@ -1471,7 +1471,7 @@ H       0.93760911   -0.05885406   -0.10079043"""
         self.assertEqual(spec.weight, 0.5)
         self.assertEqual(spec.family, '1,3_NH3_elimination')
 
-    # ---- Phase 3a #3: fragmentation-fallback minimal spec --------------
+    # ---- #3: fragmentation-fallback minimal spec --------------
 
     def test_build_addition_path_spec_fallback_minimal(self):
         """For a fragmentation cut without forming bonds, the spec must
@@ -1516,7 +1516,7 @@ H       0.93760911   -0.05885406   -0.10079043"""
         self.assertEqual(spec.breaking_bonds, [(1, 2)])
         self.assertEqual(spec.forming_bonds, [(0, 1)])
 
-    # ---- Phase 3a #1: addition guesses are GuessRecord -----------------
+    # ---- #1: addition guesses are GuessRecord -----------------
 
     def _make_simple_dissociation_rxn(self):
         """Propyl radical → methyl + ethylene.
@@ -1559,7 +1559,7 @@ H       0.93760911   -0.05885406   -0.10079043"""
         for rec in records:
             self.assertIsInstance(rec, L.GuessRecord)
         # At least one of the surviving records should carry a real
-        # ReactionPathSpec.  (Branches that involve H migration
+        # ReactionPathSpec. (Branches that involve H migration
         # deliberately strip the spec into degraded mode; pure C-C
         # dissociation preserves it.)
         with_spec = [rec for rec in records if rec.path_spec is not None]
@@ -1567,7 +1567,7 @@ H       0.93760911   -0.05885406   -0.10079043"""
             len(with_spec), 0,
             'expected at least one record carrying a ReactionPathSpec')
 
-    # ---- Phase 3a #4: addition validation routing ---------------------
+    # ---- #4: addition validation routing ---------------------
 
     def test_addition_validation_routes_through_wrapper(self):
         """When ``stretch_bond`` is called with a ``path_spec``, it
@@ -1587,7 +1587,7 @@ H       0.93760911   -0.05885406   -0.10079043"""
         )
         # Cleanup-phase: the addition-side validation gateway is now the
         # single canonical helper :func:`path_spec.validate_addition_guess`
-        # (re-exported into ``addition`` and ``linear``).  Use scoped
+        # (re-exported into ``addition`` and ``linear``). Use scoped
         # ``unittest.mock.patch`` against the canonical names instead of
         # the legacy direct module-attribute reassignment patching pattern.
         from unittest.mock import patch
@@ -1664,12 +1664,12 @@ H       0.93760911   -0.05885406   -0.10079043"""
         self.assertEqual(calls['wrapper'], 0)
         self.assertGreaterEqual(calls['legacy'], 1)
 
-    # ---- Phase 3a #5: invalid guess rejection via wrapper -------------
+    # ---- #5: invalid guess rejection via wrapper -------------
 
     def test_addition_wrapper_rejects_snapped_unchanged_near_core(self):
         """A fallback addition guess whose unchanged-near-core bond is
         stretched far beyond ``1.25 × sbl`` must be rejected by the
-        Phase 2 wrapper when used inside the addition validation
+         wrapper when used inside the addition validation
         gateway."""
         from arc.job.adapters.ts.linear import _validate_addition_guess
         from arc.job.adapters.ts.linear_utils.path_spec import ReactionPathSpec
@@ -1701,18 +1701,18 @@ H       0.93760911   -0.05885406   -0.10079043"""
             label='snapped-test',
         )
         # The wrapper rejects via one of: recipe-mismatch (snapped
-        # spectator), phase2: (Phase 2 sub-checks), or one of the
+        # spectator), path-spec-check (sub-checks), or one of the
         # standard generic gates ("detached", "fragments", "colliding").
         self.assertFalse(ok)
         self.assertTrue(
             any(token in reason for token in (
-                'recipe-mismatch', 'phase2', 'detached',
+                'recipe-mismatch', 'path-spec-check', 'detached',
                 'colliding', 'fragment',
             )),
             f'expected wrapper rejection reason, got: {reason!r}',
         )
 
-    # ---- Phase 3a #6: finite-score integration -------------------------
+    # ---- #6: finite-score integration -------------------------
 
     def test_addition_record_with_path_spec_gets_finite_score(self):
         """A :class:`GuessRecord` carrying a real
@@ -1750,7 +1750,7 @@ H       0.93760911   -0.05885406   -0.10079043"""
             [rec], path_spec=None, rxn=rxn, r_mol=r.mol)
         self.assertEqual(len(out), 1)
 
-    # ---- Phase 3a #7: partial-spec fallback stability ------------------
+    # ---- #7: partial-spec fallback stability ------------------
 
     def test_partial_spec_validation_does_not_crash(self):
         """A spec with no product-side metadata must validate without
@@ -1822,13 +1822,13 @@ H       0.93760911   -0.05885406   -0.10079043"""
 
 
 # ---------------------------------------------------------------------------
-# Phase 3b: post-migration topology enrichment gates
+# post-migration topology enrichment gates
 # ---------------------------------------------------------------------------
 
 
-class TestPhase3bEnrichmentGates(unittest.TestCase):
-    """The Phase 3b enricher only attaches richer metadata when ALL of
-    its topology gates pass.  Each gate has a dedicated test."""
+class TestPostMigrationEnrichmentGates(unittest.TestCase):
+    """The enricher only attaches richer metadata when ALL of
+    its topology gates pass. Each gate has a dedicated test."""
 
     def test_g1_rejects_zero_or_multiple_migrations(self):
         from arc.job.adapters.ts.linear import _enrich_post_migration_path_spec
@@ -1989,7 +1989,7 @@ class TestPhase3bEnrichmentGates(unittest.TestCase):
         coords[n_idx] = [d_da, 0.0, 0.0]
         coords[h_on_c] = [x, y, 0.0]
         # Move all *other* heavy atoms far away so they don't compete
-        # with the migrating H during the G5 check.  Methylamine only
+        # with the migrating H during the G5 check. Methylamine only
         # has C and N as heavy atoms, so this is already handled.
         # Move all *other* H atoms far away so they don't influence
         # any heavy/H sub-check unintentionally.
@@ -2024,22 +2024,22 @@ class TestPhase3bEnrichmentGates(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 3b: finite-score promotion via the live addition pipeline
+# finite-score promotion via the live addition pipeline
 # ---------------------------------------------------------------------------
 
 
-class TestPhase3bFiniteScorePromotion(unittest.TestCase):
+class TestFiniteScorePromotion(unittest.TestCase):
     """Run the full :func:`interpolate_addition` pipeline on a real
     H-migration addition reaction and verify that at least one
     post-migration template-guided guess now reaches the finalizer with
-    a real finite score (not the Phase 3a +inf)."""
+    a real finite score (not the +inf)."""
 
     def test_template_post_migration_now_carries_finite_score(self):
         from arc.species import ARCSpecies
         from arc.reaction import ARCReaction
         from arc.job.adapters.ts import linear as L
 
-        r_xyz = """C       1.14981017    0.04138987   -0.06722786
+        r_xyz = """C 1.14981017 0.04138987 -0.06722786
 C      -0.25415691   -0.17696939    0.46881798
 N      -0.38312147    0.39227542    1.80366803
 H       1.89791609   -0.44343932    0.56909864
@@ -2048,7 +2048,7 @@ H       1.23928774   -0.38052643   -1.07342059
 H      -0.98187243    0.29596310   -0.19835733
 H      -0.47689047   -1.24854874    0.50220986
 H       0.27600194   -0.06032721    2.43576220
-H      -1.31312338    0.19118810    2.16873833"""
+H -1.31312338 0.19118810 2.16873833"""
         r = ARCSpecies(label='R', smiles='CCN', xyz=r_xyz)
         p1 = ARCSpecies(label='P1', smiles='C=C')
         p2 = ARCSpecies(label='P2', smiles='N')
@@ -2071,7 +2071,7 @@ H      -1.31312338    0.19118810    2.16873833"""
         self.assertGreater(len(records), 0)
         # At least one template-guided post-migration record now carries
         # a non-None ReactionPathSpec whose breaking_bonds list explicitly
-        # includes a (heavy, H) pair — i.e. Phase 3b enrichment fired.
+        # includes a (heavy, H) pair — i.e. enrichment fired.
         promoted = []
         for rec in records:
             if rec.strategy != 'template_guided' or rec.path_spec is None:
@@ -2082,7 +2082,7 @@ H      -1.31312338    0.19118810    2.16873833"""
                     break
         self.assertGreater(
             len(promoted), 0,
-            'Phase 3b should promote at least one template-guided '
+            ' should promote at least one template-guided '
             'post-migration record to a finite-score, enriched spec.')
 
         # And computing its score must yield a finite (non-+inf) value.
@@ -2099,11 +2099,11 @@ H      -1.31312338    0.19118810    2.16873833"""
 
 
 # ---------------------------------------------------------------------------
-# Phase 3b: degraded-mode preservation for ambiguous cases
+# degraded-mode preservation for ambiguous cases
 # ---------------------------------------------------------------------------
 
 
-class TestPhase3bDegradedPreservation(unittest.TestCase):
+class TestDegradedPreservation(unittest.TestCase):
     """Cases where the topology gates correctly refuse enrichment must
     still produce a record (degraded mode) and never crash."""
 
@@ -2136,7 +2136,7 @@ class TestPhase3bDegradedPreservation(unittest.TestCase):
 
     def test_xy_elimination_remains_degraded_no_crash(self):
         """The XY-elimination dedicated motif builder is explicitly
-        out-of-scope for Phase 3b enrichment.  Verify the call still
+        out-of-scope for  enrichment.  Verify the call still
         completes without crashing."""
         from arc.species import ARCSpecies
         from arc.reaction import ARCReaction
@@ -2152,12 +2152,12 @@ class TestPhase3bDegradedPreservation(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Phase 3c — fragmentation-fallback finite-score promotion
+# fragmentation-fallback finite-score promotion
 # ---------------------------------------------------------------------------
 
 
-class TestPhase3cFragFallbackPromotion(unittest.TestCase):
-    """Live ``interpolate_addition`` tests proving Phase 3c promotes
+class TestFragFallbackPromotion(unittest.TestCase):
+    """Live ``interpolate_addition`` tests proving promotes
     a trustworthy frag-fallback single-H migration to a finite score
     while preserving degraded mode for ambiguous cases."""
 
@@ -2167,7 +2167,7 @@ class TestPhase3cFragFallbackPromotion(unittest.TestCase):
         # 1,3_Insertion_CO2: a tertiary carboxylic acid → CO2 + alkene.
         # Triggers the frag-fallback branch with a single carboxylic-
         # acid H migrating from O to a methyl C.
-        r_xyz = """C      -2.49526563   -1.71744655   -0.05070502
+        r_xyz = """C -2.49526563 -1.71744655 -0.05070502
 C      -1.02439736   -1.43442148   -0.09903098
 C      -0.03369873   -2.05724101    0.58071768
 C      -0.33706853   -3.21011130    1.53261903
@@ -2193,11 +2193,11 @@ H       1.55881292   -0.43721490    2.19959957
 H       1.26204457    0.39674910   -0.22955829
 H       2.81639214   -0.32714424   -0.65140849
 H       1.38896771   -0.75762301   -1.57886997
-H       3.82821421   -3.76916475   -0.34544391"""
-        p1_xyz = """O      -1.37316735    0.24657196    0.00000000
+H 3.82821421 -3.76916475 -0.34544391"""
+        p1_xyz = """O -1.37316735 0.24657196 0.00000000
 C      -0.00000000   -0.05081069    0.00000000
-O       1.37316735   -0.34819332    0.00000000"""
-        p2_xyz = """ C                 -2.38749724   -2.07681559   -0.24769962
+O 1.37316735 -0.34819332 0.00000000"""
+        p2_xyz = """ C -2.38749724 -2.07681559 -0.24769962
  C                 -0.91223049   -1.65569429   -0.38128430
  C                  0.00974358   -2.13096778    0.49086589
  C                 -0.41782495   -3.09217448    1.61552887
@@ -2220,13 +2220,13 @@ O       1.37316735   -0.34819332    0.00000000"""
  H                  1.05117373    0.39387041    0.39196194
  H                  2.58743409   -0.00288922   -0.33985264
  H                  1.10240521   -0.29474214   -1.21310964
- H                  1.99624756   -2.39920281   -0.28171759"""
+ H 1.99624756 -2.39920281 -0.28171759"""
         r = ARCSpecies(label='R', smiles='CC=C(CC)C(C)(C)C(=O)O', xyz=r_xyz)
         p1 = ARCSpecies(label='P1', smiles='O=C=O', xyz=p1_xyz)
         p2 = ARCSpecies(label='P2', smiles='CC=C(CC)C(C)C', xyz=p2_xyz)
         return r, p1, p2, ARCReaction(r_species=[r], p_species=[p1, p2])
 
-    # ---- Phase 3c #1: inference success → finite score ---------------
+    # ---- #1: inference success → finite score ---------------
 
     def test_frag_fallback_single_h_now_carries_finite_score(self):
         """For 1,3_Insertion_CO2, the frag-fallback branch produces
@@ -2255,7 +2255,7 @@ O       1.37316735   -0.34819332    0.00000000"""
         ]
         self.assertGreater(
             len(promoted), 0,
-            'Phase 3c should promote at least one frag-fallback '
+            ' should promote at least one frag-fallback '
             'single-H record to a finite-score, enriched spec.')
         rec = promoted[0]
         # The enriched spec must contain a (heavy, H) breaking bond
@@ -2268,7 +2268,7 @@ O       1.37316735   -0.34819332    0.00000000"""
         self.assertTrue(
             h_bond_present,
             'enriched frag-fallback spec must include a (heavy, H) '
-            'breaking bond inferred by the Phase 3c helper.')
+            'breaking bond inferred by the helper.')
         from arc.job.adapters.ts.linear import (
             classify_path_chemistry, score_guess_against_path_spec,
         )
@@ -2279,11 +2279,11 @@ O       1.37316735   -0.34819332    0.00000000"""
         self.assertNotEqual(score, float('inf'),
                             'enriched frag-fallback record must score finitely')
 
-    # ---- Phase 3c #2: ambiguity preservation -------------------------
+    # ---- #2: ambiguity preservation -------------------------
 
     def test_pure_cc_dissociation_does_not_get_h_enriched(self):
         """Ethane → 2 CH3• is a pure C-C cleavage with NO H migration.
-        The Phase 3c helper must NOT enrich any frag-fallback record
+        The  helper must NOT enrich any frag-fallback record
         with a (heavy, H) breaking bond.  Verifies that the helper
         does not invent an H-migration topology when none exists."""
         from arc.species import ARCSpecies
@@ -2321,7 +2321,7 @@ O       1.37316735   -0.34819332    0.00000000"""
                     'H migration.',
                 )
 
-    # ---- Phase 3c #3: no fake promotion ------------------------------
+    # ---- #3: no fake promotion ------------------------------
 
     def test_helper_returns_none_for_topologically_inconsistent_input(self):
         """A directly fed inconsistent (donor and acceptor on the same
@@ -2355,18 +2355,18 @@ O       1.37316735   -0.34819332    0.00000000"""
         )
         self.assertIsNone(out)
 
-    # ---- Phase 3c #4: template-guided stability ----------------------
+    # ---- #4: template-guided stability ----------------------
 
     def test_template_guided_finite_score_promotion_unchanged(self):
-        """Phase 3b's template-guided enrichment for ``1,3_NH3_elimination``
-        must continue to fire and produce a finite score after Phase 3c.
+        """the template-guided enrichment for ``1,3_NH3_elimination``
+        must continue to fire and produce a finite score after .
         This is the regression guard for the directive's
-        'Phase 3b stability rule'."""
+        ' stability rule'."""
         from arc.species import ARCSpecies
         from arc.reaction import ARCReaction
         from arc.job.adapters.ts import linear as L
 
-        r_xyz = """C       1.14981017    0.04138987   -0.06722786
+        r_xyz = """C 1.14981017 0.04138987 -0.06722786
 C      -0.25415691   -0.17696939    0.46881798
 N      -0.38312147    0.39227542    1.80366803
 H       1.89791609   -0.44343932    0.56909864
@@ -2375,7 +2375,7 @@ H       1.23928774   -0.38052643   -1.07342059
 H      -0.98187243    0.29596310   -0.19835733
 H      -0.47689047   -1.24854874    0.50220986
 H       0.27600194   -0.06032721    2.43576220
-H      -1.31312338    0.19118810    2.16873833"""
+H -1.31312338 0.19118810 2.16873833"""
         r = ARCSpecies(label='R', smiles='CCN', xyz=r_xyz)
         p1 = ARCSpecies(label='P1', smiles='C=C')
         p2 = ARCSpecies(label='P2', smiles='N')
@@ -2401,15 +2401,15 @@ H      -1.31312338    0.19118810    2.16873833"""
         ]
         self.assertGreater(
             len(promoted_template), 0,
-            'Phase 3b template-guided enrichment must remain stable '
-            'after Phase 3c — at least one template_guided record '
+            ' template-guided enrichment must remain stable '
+            'after at least one template_guided record '
             'should still carry a non-None ReactionPathSpec.')
 
-    # ---- Phase 3c #5: dedicated motif degraded mode unchanged --------
+    # ---- #5: dedicated motif degraded mode unchanged --------
 
-    def test_xy_elimination_remains_degraded_after_phase3c(self):
+    def test_xy_elimination_remains_degraded(self):
         """The XY-elimination dedicated motif builder is still
-        explicitly out of scope.  Verify the call still completes."""
+        explicitly out of scope. Verify the call still completes."""
         from arc.species import ARCSpecies
         from arc.reaction import ARCReaction
         from arc.job.adapters.ts import linear as L
@@ -2421,7 +2421,7 @@ H      -1.31312338    0.19118810    2.16873833"""
         out = L.interpolate_addition(rxn, weight=0.5)
         self.assertIsInstance(out, list)
 
-    # ---- Phase 3c #7: cleanup-without-enrichment ---------------------
+    # ---- #7: cleanup-without-enrichment ---------------------
 
     def test_cleanup_without_enrichment_preserves_degraded_mode(self):
         """A frag-fallback single-H displacement that satisfies S1+S2
@@ -2472,7 +2472,7 @@ class TestCarbeneTargetConsistency(unittest.TestCase):
     scorer/validator use the *same* family-aware target distance for
     ``1,2_Insertion_carbene``.
 
-    Before the cleanup phase, the builder applied a +0.20 Å carbene
+    Before the cleanup, the builder applied a +0.20 Å carbene
     extra stretch via :func:`addition._insertion_ring_extra_stretch`,
     but :func:`get_ts_target_distance` ignored its ``family`` parameter
     entirely.  As a result, the scorer judged carbene guesses against
@@ -2540,7 +2540,7 @@ class TestCarbeneTargetConsistency(unittest.TestCase):
         """The builder-side ``addition._insertion_ring_extra_stretch``
         alias must resolve to the canonical
         ``path_spec.insertion_ring_extra_stretch``.  This is the
-        cleanup-phase invariant that prevents the two sides from
+        cleanup invariant that prevents the two sides from
         drifting apart again."""
         from arc.job.adapters.ts.linear_utils import addition as A
         from arc.job.adapters.ts.linear_utils import path_spec as PS
