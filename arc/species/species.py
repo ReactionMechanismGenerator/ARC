@@ -1560,15 +1560,20 @@ class ARCSpecies(object):
         for tsg in self.ts_guesses:
             for cluster_tsg in cluster_tsgs:
                 if cluster_tsg.almost_equal_tsgs(tsg):
+                    logger.debug(f"Similar TSGuesses found: {tsg.index} is similar to {cluster_tsg.index}")
                     cluster_tsg.cluster.append(tsg.index)
-                    if tsg.method not in cluster_tsg.method:
-                        cluster_tsg.method += f' + {tsg.method}'
-                        cluster_tsg.execution_time = f'{cluster_tsg.execution_time} + {tsg.execution_time}'
+                    cluster_tsg.method_sources = TSGuess._normalize_method_sources(
+                        (cluster_tsg.method_sources or []) + (tsg.method_sources or [])
+                    )
                     break
             else:
                 tsg.cluster = [tsg.index]
                 cluster_tsgs.append(tsg)
+        n_before = len([tsg for tsg in self.ts_guesses])
         self.ts_guesses = cluster_tsgs
+        if len(cluster_tsgs) < n_before:
+            logger.info(f'Clustered {n_before} TS guesses for {self.label} '
+                        f'into {len(cluster_tsgs)} unique conformers.')
 
     def process_completed_tsg_queue_jobs(self, path: str):
         """
@@ -2211,6 +2216,7 @@ class TSGuess(object):
         initial_xyz (dict): The 3D coordinates guess.
         opt_xyz (dict): The 3D coordinates after optimization at the ts_guesses level.
         method (str): The method/source used for the xyz guess.
+        method_sources (List[str]): All methods/sources that produced an equivalent xyz guess.
         method_index (int): A subindex, used for cases where a single method generates several guesses.
                             Counts separately for each direction, 'F' and 'R'.
         method_direction (str): The reaction direction used for generating the guess ('F' or 'R').
@@ -2257,6 +2263,7 @@ class TSGuess(object):
             # Not reading from a dictionary
             self.index = index
             self.method = method.lower() if method is not None else 'user guess'
+            self.method_sources = self._normalize_method_sources([self.method])
             self.method_index = method_index
             self.method_direction = method_direction
             self.constraints = constraints
@@ -2314,6 +2321,22 @@ class TSGuess(object):
         """Allow setting the initial coordinate guess"""
         self._opt_xyz = check_xyz_dict(value)
 
+    @staticmethod
+    def _normalize_method_sources(method_sources: Optional[List[str]]) -> List[str]:
+        """
+        Normalize method_sources to a unique, ordered, lowercase list.
+        """
+        if not method_sources:
+            return []
+        normalized = []
+        for method in method_sources:
+            if method is None:
+                continue
+            method = method.lower()
+            if method not in normalized:
+                normalized.append(method)
+        return normalized
+
     def as_dict(self, for_report: bool = False) -> dict:
         """
         A helper function for dumping this object as a dictionary.
@@ -2327,6 +2350,8 @@ class TSGuess(object):
         """
         ts_dict = dict()
         ts_dict['method'] = self.method
+        if self.method_sources:
+            ts_dict['method_sources'] = list(self.method_sources)
         ts_dict['method_index'] = self.method_index
         if self.method_direction is not None:
             ts_dict['method_direction'] = self.method_direction
@@ -2377,6 +2402,10 @@ class TSGuess(object):
             and isinstance(ts_dict['execution_time'], str) \
             else ts_dict['execution_time'] if 'execution_time' in ts_dict else None
         self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
+        if 'method_sources' in ts_dict and isinstance(ts_dict['method_sources'], list):
+            self.method_sources = self._normalize_method_sources(ts_dict['method_sources'])
+        else:
+            self.method_sources = self._normalize_method_sources([self.method])
         self.method_index = ts_dict['method_index'] if 'method_index' in ts_dict else None
         self.method_direction = ts_dict['method_direction'] if 'method_direction' in ts_dict else None
         self.imaginary_freqs = ts_dict['imaginary_freqs'] if 'imaginary_freqs' in ts_dict else None

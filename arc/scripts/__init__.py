@@ -1,1 +1,1 @@
-import common
+from arc.scripts import common
