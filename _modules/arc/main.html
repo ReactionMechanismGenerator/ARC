@@ -125,7 +125,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.converter</span><span class="w"> </span><span class="kn">import</span> <span class="n">str_to_xyz</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.statmech.adapter</span><span class="w"> </span><span class="kn">import</span> <span class="n">StatmechEnum</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">arc.statmech.arkane</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_arkane_bacs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.statmech.arkane</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_arkane_aec</span><span class="p">,</span> <span class="n">check_arkane_bacs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.utils.scale</span><span class="w"> </span><span class="kn">import</span> <span class="n">determine_scaling_factors</span>
 
 
@@ -1328,13 +1328,26 @@
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check that the level of theory has AEC in Arkane.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">explicitly_set</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> \
                 <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">sp_level</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sp_level</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;Could not determine a level of theory to be used for Arkane!&#39;</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">check_arkane_bacs</span><span class="p">(</span><span class="n">sp_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="p">,</span> <span class="n">bac_type</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span><span class="p">,</span> <span class="n">raise_error</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compute_thermo</span><span class="p">)</span></div>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">explicitly_set</span><span class="p">:</span>
+                <span class="n">source</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">source</span> <span class="o">=</span> <span class="s1">&#39; (from composite method)&#39;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">source</span> <span class="o">=</span> <span class="s1">&#39; (from sp level)&#39;</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Arkane level of theory:</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">check_arkane_bacs</span><span class="p">(</span><span class="n">sp_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="p">,</span> <span class="n">bac_type</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span><span class="p">,</span>
+                                  <span class="n">raise_error</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compute_thermo</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">check_arkane_aec</span><span class="p">(</span><span class="n">sp_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="p">,</span>
+                                 <span class="n">raise_error</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compute_thermo</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="ARC.backup_restart">
