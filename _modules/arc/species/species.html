@@ -1705,15 +1705,20 @@
         <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">:</span>
             <span class="k">for</span> <span class="n">cluster_tsg</span> <span class="ow">in</span> <span class="n">cluster_tsgs</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">cluster_tsg</span><span class="o">.</span><span class="n">almost_equal_tsgs</span><span class="p">(</span><span class="n">tsg</span><span class="p">):</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Similar TSGuesses found: </span><span class="si">{</span><span class="n">tsg</span><span class="o">.</span><span class="n">index</span><span class="si">}</span><span class="s2"> is similar to </span><span class="si">{</span><span class="n">cluster_tsg</span><span class="o">.</span><span class="n">index</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
                     <span class="n">cluster_tsg</span><span class="o">.</span><span class="n">cluster</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tsg</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
-                    <span class="k">if</span> <span class="n">tsg</span><span class="o">.</span><span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cluster_tsg</span><span class="o">.</span><span class="n">method</span><span class="p">:</span>
-                        <span class="n">cluster_tsg</span><span class="o">.</span><span class="n">method</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39; + </span><span class="si">{</span><span class="n">tsg</span><span class="o">.</span><span class="n">method</span><span class="si">}</span><span class="s1">&#39;</span>
-                        <span class="n">cluster_tsg</span><span class="o">.</span><span class="n">execution_time</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">cluster_tsg</span><span class="o">.</span><span class="n">execution_time</span><span class="si">}</span><span class="s1"> + </span><span class="si">{</span><span class="n">tsg</span><span class="o">.</span><span class="n">execution_time</span><span class="si">}</span><span class="s1">&#39;</span>
+                    <span class="n">cluster_tsg</span><span class="o">.</span><span class="n">method_sources</span> <span class="o">=</span> <span class="n">TSGuess</span><span class="o">.</span><span class="n">_normalize_method_sources</span><span class="p">(</span>
+                        <span class="p">(</span><span class="n">cluster_tsg</span><span class="o">.</span><span class="n">method_sources</span> <span class="ow">or</span> <span class="p">[])</span> <span class="o">+</span> <span class="p">(</span><span class="n">tsg</span><span class="o">.</span><span class="n">method_sources</span> <span class="ow">or</span> <span class="p">[])</span>
+                    <span class="p">)</span>
                     <span class="k">break</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">tsg</span><span class="o">.</span><span class="n">cluster</span> <span class="o">=</span> <span class="p">[</span><span class="n">tsg</span><span class="o">.</span><span class="n">index</span><span class="p">]</span>
                 <span class="n">cluster_tsgs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tsg</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span> <span class="o">=</span> <span class="n">cluster_tsgs</span></div>
+        <span class="n">n_before</span> <span class="o">=</span> <span class="nb">len</span><span class="p">([</span><span class="n">tsg</span> <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span> <span class="o">=</span> <span class="n">cluster_tsgs</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">cluster_tsgs</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">n_before</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Clustered </span><span class="si">{</span><span class="n">n_before</span><span class="si">}</span><span class="s1"> TS guesses for </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> &#39;</span>
+                        <span class="sa">f</span><span class="s1">&#39;into </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">cluster_tsgs</span><span class="p">)</span><span class="si">}</span><span class="s1"> unique conformers.&#39;</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="ARCSpecies.process_completed_tsg_queue_jobs">
@@ -2399,6 +2404,7 @@
 <span class="sd">        initial_xyz (dict): The 3D coordinates guess.</span>
 <span class="sd">        opt_xyz (dict): The 3D coordinates after optimization at the ts_guesses level.</span>
 <span class="sd">        method (str): The method/source used for the xyz guess.</span>
+<span class="sd">        method_sources (List[str]): All methods/sources that produced an equivalent xyz guess.</span>
 <span class="sd">        method_index (int): A subindex, used for cases where a single method generates several guesses.</span>
 <span class="sd">                            Counts separately for each direction, &#39;F&#39; and &#39;R&#39;.</span>
 <span class="sd">        method_direction (str): The reaction direction used for generating the guess (&#39;F&#39; or &#39;R&#39;).</span>
@@ -2445,6 +2451,7 @@
             <span class="c1"># Not reading from a dictionary</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">index</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s1">&#39;user guess&#39;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_sources</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_method_sources</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">])</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">method_index</span> <span class="o">=</span> <span class="n">method_index</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">method_direction</span> <span class="o">=</span> <span class="n">method_direction</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">constraints</span> <span class="o">=</span> <span class="n">constraints</span>
@@ -2502,6 +2509,22 @@
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Allow setting the initial coordinate guess&quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_opt_xyz</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
 
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_normalize_method_sources</span><span class="p">(</span><span class="n">method_sources</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Normalize method_sources to a unique, ordered, lowercase list.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">method_sources</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="n">normalized</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">method_sources</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">method</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">method</span> <span class="o">=</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">normalized</span><span class="p">:</span>
+                <span class="n">normalized</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">normalized</span>
+
 <div class="viewcode-block" id="TSGuess.as_dict">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.as_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">for_report</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
@@ -2517,6 +2540,8 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">ts_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
         <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_sources</span><span class="p">:</span>
+            <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;method_sources&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">method_sources</span><span class="p">)</span>
         <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;method_index&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_index</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_direction</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;method_direction&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_direction</span>
@@ -2570,6 +2595,10 @@
             <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;execution_time&#39;</span><span class="p">],</span> <span class="nb">str</span><span class="p">)</span> \
             <span class="k">else</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;execution_time&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;execution_time&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;method&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="s1">&#39;method&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="s1">&#39;user guess&#39;</span>
+        <span class="k">if</span> <span class="s1">&#39;method_sources&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;method_sources&#39;</span><span class="p">],</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_sources</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_method_sources</span><span class="p">(</span><span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;method_sources&#39;</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_sources</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_method_sources</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">])</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">method_index</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;method_index&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;method_index&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">method_direction</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;method_direction&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;method_direction&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">imaginary_freqs</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;imaginary_freqs&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;imaginary_freqs&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="kc">None</span>

@@ -121,6 +121,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.determine_most_likely_ts_conformer"><code class="docutils literal notranslate"><span class="pre">Scheduler.determine_most_likely_ts_conformer()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.determine_most_stable_conformer"><code class="docutils literal notranslate"><span class="pre">Scheduler.determine_most_stable_conformer()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.end_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.end_job()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.flush_pending_pipe_batches"><code class="docutils literal notranslate"><span class="pre">Scheduler.flush_pending_pipe_batches()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.generate_final_ts_guess_report"><code class="docutils literal notranslate"><span class="pre">Scheduler.generate_final_ts_guess_report()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.get_completed_incore_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.get_completed_incore_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.get_server_job_ids"><code class="docutils literal notranslate"><span class="pre">Scheduler.get_server_job_ids()</span></code></a></li>
@@ -1066,6 +1067,22 @@ Save the resulting xyz as <cite>initial_xyz</cite>.</p>
 <dd class="field-odd"><p>bool</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.flush_pending_pipe_batches">
+<span class="sig-name descname"><span class="pre">flush_pending_pipe_batches</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.flush_pending_pipe_batches"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.flush_pending_pipe_batches" title="Link to this definition"></a></dt>
+<dd><p>Attempt to submit accumulated deferred pipe batches for SP, freq, IRC, and conf_sp.</p>
+<dl class="simple">
+<dt>For each family:</dt><dd><ol class="arabic simple">
+<li><p>Snapshot and clear the pending set.</p></li>
+<li><p>Ask the planner for the handled subset.</p></li>
+<li><p>Fall back to per-job submission for the unhandled remainder.</p></li>
+</ol>
+</dd>
+</dl>
+<p>Called once per main-loop iteration, after all newly-ready work has been
+discovered and before the loop sleeps.</p>
 </dd></dl>
 
 <dl class="py method">

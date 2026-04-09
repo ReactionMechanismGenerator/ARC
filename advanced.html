@@ -75,6 +75,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#use-solvent-corrections">Use solvent corrections</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#batch-delete-arc-jobs">Batch delete ARC jobs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#choose-modified-classical-arrhenius-equation-form-for-rate-coefficient-fitting">Choose modified/classical Arrhenius equation form for rate coefficient fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#pipe-mode-distributed-hpc-execution">Pipe mode (distributed HPC execution)</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
@@ -964,6 +965,106 @@ coefficients in the modified three-parameter Arrhenius equation format:</p>
 <p><img src="_images/math/65c258feec6808325490782dac7df28d797a63c8.png" alt="k(T) = A \exp \left( -\frac{E_a}{RT} \right)"/></p>
 </div><p>instructs the relevant statmech program to compute rate coefficients in the classical two-parameter Arrhenius format for
 all reactions in the same ARC project.</p>
+</section>
+<section id="pipe-mode-distributed-hpc-execution">
+<span id="pipe-mode"></span><h2>Pipe mode (distributed HPC execution)<a class="headerlink" href="#pipe-mode-distributed-hpc-execution" title="Link to this heading"></a></h2>
+<p>Pipe mode allows ARC to batch many independent jobs (e.g., conformer optimizations)
+into a single SLURM/PBS/SGE/HTCondor array allocation.
+Instead of submitting hundreds of individual cluster jobs, ARC stages all tasks on
+disk and launches a small number of array workers that claim and execute tasks from
+a shared task directory.</p>
+<p><strong>When does ARC use pipe mode?</strong></p>
+<p>ARC automatically evaluates pipe eligibility when scheduling batches of homogeneous
+jobs (same engine, level of theory, and resource requirements).
+By default, pipe mode activates when a batch has 10 or more tasks.
+Below that threshold, ARC uses its normal per-job submission path.</p>
+<p><strong>Supported job types:</strong></p>
+<ul class="simple">
+<li><p>Conformer optimization (<code class="docutils literal notranslate"><span class="pre">conf_opt</span></code>) and single-point (<code class="docutils literal notranslate"><span class="pre">conf_sp</span></code>)</p></li>
+<li><p>TS guess generation and TS optimization</p></li>
+<li><p>Species single-point, frequency, and IRC calculations</p></li>
+<li><p>1D rotor scans</p></li>
+</ul>
+<p><strong>What pipe mode does and does not do:</strong></p>
+<ul class="simple">
+<li><p>Pipe executes only ready “leaf” jobs. All quality checks, troubleshooting,
+and downstream decision-making remain in ARC’s main scheduler.</p></li>
+<li><p>Failed tasks are classified and handled automatically (see task states below).</p></li>
+<li><p>Each array worker verifies task ownership before writing results,
+preventing stale workers from overwriting state after lease expiration.</p></li>
+</ul>
+<p><strong>Task states:</strong></p>
+<p>Each pipe task has a state that is reported in the ARC log
+(e.g., <code class="docutils literal notranslate"><span class="pre">Pipe</span> <span class="pre">run</span> <span class="pre">TS0_ts_opt:</span> <span class="pre">COMPLETED:</span> <span class="pre">30,</span> <span class="pre">FAILED_ESS:</span> <span class="pre">2,</span> <span class="pre">RUNNING:</span> <span class="pre">8</span></code>).
+The states are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">PENDING</span></code> — Waiting for a worker to claim it. Fresh tasks start here.
+Retried tasks return here with an incremented attempt index.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CLAIMED</span></code> — A worker has claimed this task via file lock.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RUNNING</span></code> — The worker is executing the ESS (e.g., Gaussian, Orca).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">COMPLETED</span></code> — ESS converged successfully. Results will be ingested.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">FAILED_RETRYABLE</span></code> — Transient failure (node crash, no output, disk issue).
+The pipe will retry this task on a different node with the same input.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">FAILED_ESS</span></code> — Deterministic ESS convergence error (e.g., SCF failure,
+max optimization cycles, internal coordinate error). Retrying with the
+same input will produce the same failure. The task is ejected to the
+Scheduler as an individual job for troubleshooting with modified input.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">FAILED_TERMINAL</span></code> — Exhausted all retry attempts. No further automatic action.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ORPHANED</span></code> — Worker lease expired (e.g., killed by PBS walltime).
+Will be reset to <code class="docutils literal notranslate"><span class="pre">PENDING</span></code> for retry.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CANCELLED</span></code> — Manually cancelled. Terminal state.</p></li>
+</ul>
+<p><strong>Configuration:</strong></p>
+<p>Pipe mode is configured via <code class="docutils literal notranslate"><span class="pre">pipe_settings</span></code> in <code class="docutils literal notranslate"><span class="pre">arc/settings/settings.py</span></code>
+(or in <code class="docutils literal notranslate"><span class="pre">~/.arc/settings.py</span></code> to override per-installation):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pipe_settings</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;enabled&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>           <span class="c1"># Set to False to disable pipe mode entirely.</span>
+    <span class="s1">&#39;min_tasks&#39;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>           <span class="c1"># Minimum batch size to trigger pipe mode.</span>
+    <span class="s1">&#39;max_workers&#39;</span><span class="p">:</span> <span class="mi">100</span><span class="p">,</span>        <span class="c1"># Upper bound on array worker slots per PipeRun.</span>
+    <span class="s1">&#39;max_attempts&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>         <span class="c1"># Retry budget per task before terminal failure.</span>
+    <span class="s1">&#39;lease_duration_s&#39;</span><span class="p">:</span> <span class="mi">86400</span><span class="p">,</span> <span class="c1"># Worker lease duration in seconds (default 24h).</span>
+    <span class="s1">&#39;env_setup&#39;</span><span class="p">:</span> <span class="p">{},</span>           <span class="c1"># Engine-specific shell setup commands, e.g.,</span>
+                               <span class="c1"># {&#39;gaussian&#39;: &#39;source /usr/local/g09/setup.sh&#39;}</span>
+    <span class="s1">&#39;scratch_base&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>        <span class="c1"># Base directory for worker scratch (e.g., &#39;/gtmp&#39;).</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Directory structure:</strong></p>
+<p>Pipe runs are placed under <code class="docutils literal notranslate"><span class="pre">calcs/</span></code> alongside regular job output, following
+ARC’s existing directory convention. A new run auto-increments its index
+(<code class="docutils literal notranslate"><span class="pre">_0</span></code>, <code class="docutils literal notranslate"><span class="pre">_1</span></code>, …) to avoid collisions with prior runs:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>&lt;project&gt;/calcs/
+├── TSs/
+│   └── TS0/
+│       ├── opt_a1349/              # regular job
+│       └── pipe_ts_opt_0/          # pipe run
+│           ├── run.json
+│           ├── submit.sh
+│           └── tasks/
+│               ├── TS0_ts_opt_0/
+│               │   ├── spec.json
+│               │   ├── state.json
+│               │   └── attempts/
+│               │       └── 0/
+│               │           ├── calcs/
+│               │           ├── result.json
+│               │           └── worker.log
+│               └── TS0_ts_opt_1/
+│                   └── ...
+├── Species/
+│   └── H2O/
+│       ├── conf_opt_a1/            # regular job
+│       └── pipe_conf_opt_0/        # pipe run
+└── batches/
+    └── pipe_species_sp_batch_0/    # cross-species batch
+</pre></div>
+</div>
+<p><strong>Submit scripts:</strong></p>
+<p>Pipe mode generates array submit scripts under the pipe run directory.
+The templates follow ARC’s existing submit-script conventions from
+<code class="docutils literal notranslate"><span class="pre">arc/settings/submit.py</span></code> and support SLURM, PBS, SGE, and HTCondor.
+Users who customize their submit templates can edit the <code class="docutils literal notranslate"><span class="pre">pipe_submit</span></code>
+dictionary in <code class="docutils literal notranslate"><span class="pre">submit.py</span></code>.</p>
 </section>
 </section>
 
