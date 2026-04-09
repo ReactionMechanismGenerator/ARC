@@ -205,6 +205,7 @@ from arc.job.adapters.ts.linear_utils.path_spec import (
     ReactionPathSpec,
     classify_path_chemistry,
     score_guess_against_path_spec,
+    validate_addition_guess,
     validate_guess_against_path_spec,
 )
 from arc.job.adapters.ts.linear_utils.isomerization import (
@@ -313,6 +314,269 @@ def _heavy_atoms_match(xyz1: dict, xyz2: dict, tol: float = 0.05) -> bool:
         if sym != 'H' and float(np.linalg.norm(c1[i] - c2[i])) > tol:
             return False
     return True
+
+
+def _has_bivalent_h(xyz_dict: dict) -> bool:
+    """Return ``True`` if any H atom in *xyz_dict* is within tight bonding
+    distance of two or more heavy atoms.
+
+    Used as the final post-processing filter in
+    :func:`_postprocess_isomerization_records` to drop guesses where an
+    H atom collapsed onto two heavy atoms simultaneously (a bivalent-H
+    pathology).
+    """
+    coords_check = np.array(xyz_dict['coords'], dtype=float)
+    for h, sym in enumerate(xyz_dict['symbols']):
+        if sym != 'H':
+            continue
+        n_close = sum(1 for j, sj in enumerate(xyz_dict['symbols'])
+                      if sj != 'H' and j != h
+                      and float(np.linalg.norm(coords_check[h] - coords_check[j])) < 1.15)
+        if n_close >= 2:
+            return True
+    return False
+
+
+def _apply_internal_ch2_cleanup_to_isomerization_record(
+        rec: 'GuessRecord',
+        r_mol: 'Molecule',
+        atom_to_idx_iso: Dict,
+        ) -> dict:
+    """Apply the internal-CH₂ local reactive-center cleanup pathway to a
+    single isomerization guess record.
+
+    This is the late local reactive-center cleanup pass that the
+    isomerization pipeline runs after every other geometric corrector
+    has finished.  It composes the existing
+    :func:`apply_reactive_center_cleanup` orchestrator (which itself
+    routes through the terminal-group asymmetry detector and the
+    internal-CH₂ misorientation detector) around an opt-in selection of
+    centres derived from each guess's changing bonds.
+
+    The pass is **strictly opt-in** and runs only when ALL of:
+
+    1. The record has at least one heavy-heavy changing bond (pure
+       H-migration reactions are excluded — their migrating H is
+       carefully placed by upstream helpers and any orchestrator
+       perturbation around the donor/acceptor would risk regression).
+    2. A 1-bond expansion from any reactive heavy endpoint brings in an
+       internal CH₂ neighbour (heavy degree 2 + H count 2 in the
+       reactant graph) — without an expansion the orchestrator would
+       only see endpoints already handled by
+       :func:`orient_h_on_reactive_centers`.
+    3. The Phase 4d :func:`is_internal_reactive_ch2_misoriented` detector
+       fires on at least one expansion centre in the current TS
+       geometry — when every candidate centre is already well-oriented
+       the orchestrator is not called at all.
+
+    Args:
+        rec: The TS guess record (mutated in place: ``rec.xyz`` may
+            be replaced with a cleaned-up version).
+        r_mol: Reactant molecule.
+        atom_to_idx_iso: Pre-computed atom-to-index map for ``r_mol``.
+
+    Returns:
+        The (possibly updated) ``rec.xyz`` for the caller's convenience.
+    """
+    rec_bonds = list(rec.bb or []) + list(rec.fb or [])
+    if not rec_bonds:
+        return rec.xyz
+    symbols_iso = rec.xyz['symbols']
+    n_atoms_iso = len(symbols_iso)
+    reactive_iso: Set[int] = set()
+    exempt_hs_iso: Set[int] = set()
+    has_heavy_heavy_change = False
+    for bond_pair in rec_bonds:
+        ai_a = int(bond_pair[0])
+        ai_b = int(bond_pair[1])
+        if not (0 <= ai_a < n_atoms_iso and 0 <= ai_b < n_atoms_iso):
+            continue
+        if symbols_iso[ai_a] != 'H' and symbols_iso[ai_b] != 'H':
+            has_heavy_heavy_change = True
+        for atom_idx in bond_pair:
+            ai = int(atom_idx)
+            if not (0 <= ai < n_atoms_iso):
+                continue
+            if symbols_iso[ai] == 'H':
+                exempt_hs_iso.add(ai)
+            else:
+                reactive_iso.add(ai)
+    if not reactive_iso or not has_heavy_heavy_change:
+        return rec.xyz
+    # 1-bond expansion to immediate internal-CH₂ neighbours of each
+    # reactive heavy endpoint.
+    expansion_iso: Set[int] = set()
+    for center_iso in reactive_iso:
+        if not (0 <= center_iso < len(r_mol.atoms)):
+            continue
+        for nbr in r_mol.atoms[center_iso].bonds.keys():
+            ni = atom_to_idx_iso[nbr]
+            if symbols_iso[ni] == 'H':
+                continue
+            if ni in reactive_iso:
+                continue
+            nbr_heavy = sum(
+                1 for nb in r_mol.atoms[ni].bonds.keys()
+                if nb.element.symbol != 'H')
+            nbr_h = sum(
+                1 for nb in r_mol.atoms[ni].bonds.keys()
+                if nb.element.symbol == 'H')
+            if nbr_heavy == 2 and nbr_h == 2:
+                expansion_iso.add(int(ni))
+    if not expansion_iso:
+        return rec.xyz
+    # Detector pre-check: only call the orchestrator on the subset
+    # of expansion centres that the Phase 4d detector flags as
+    # misoriented in this guess's geometry.
+    misoriented_iso: Set[int] = set()
+    for cand in expansion_iso:
+        if not (0 <= cand < len(r_mol.atoms)):
+            continue
+        cand_heavy = [
+            atom_to_idx_iso[nbr]
+            for nbr in r_mol.atoms[cand].bonds.keys()
+            if nbr.element.symbol != 'H'
+        ]
+        cand_h = [
+            atom_to_idx_iso[nbr]
+            for nbr in r_mol.atoms[cand].bonds.keys()
+            if nbr.element.symbol == 'H'
+            and atom_to_idx_iso[nbr] not in exempt_hs_iso
+        ]
+        if len(cand_heavy) != 2 or len(cand_h) != 2:
+            continue
+        if is_internal_reactive_ch2_misoriented(
+                rec.xyz,
+                center_idx=cand,
+                heavy_nbr_indices=cand_heavy,
+                h_indices=cand_h):
+            misoriented_iso.add(cand)
+    if not misoriented_iso:
+        return rec.xyz
+    rec.xyz = apply_reactive_center_cleanup(
+        rec.xyz, r_mol,
+        migrations=None,
+        reactive_centers=misoriented_iso,
+        exempt_h_indices=exempt_hs_iso,
+        restore_symmetry=True,
+    )
+    return rec.xyz
+
+
+def _postprocess_isomerization_records(unique: List['GuessRecord'],
+                                       rxn: 'ARCReaction',
+                                       r_mol: 'Molecule',
+                                       ring_sets: List[Set[int]],
+                                       reactive_all: Set[int],
+                                       changing_all: Set[Tuple[int, int]],
+                                       fallback_fb: Optional[List[Tuple[int, int]]],
+                                       fallback_bb: Optional[List[Tuple[int, int]]],
+                                       fallback_changed: Optional[List[Tuple[int, int]]],
+                                       ) -> List['GuessRecord']:
+    """Late-stage post-processing pipeline for isomerization records.
+
+    Cleanup-phase extraction: this is the same logic that previously
+    lived inline in the ``if unique:`` block of
+    :func:`interpolate_isomerization`.  The extraction is purely
+    structural; no semantics changed.
+
+    The pipeline runs in this fixed order:
+
+    1. **Global ring repair** — :func:`_fix_broken_ring_bonds` repairs
+       ring bonds broken by Z-matrix interpolation.
+    2. **Path-local geometric correction** — for each record, repairs
+       the forming-bond path, adjusts reactive bond distances, and
+       orients spectator H atoms away from the reaction axis.
+    3. **Intra_RH_Add motif** — :func:`_fix_rh_add_motif` builds the
+       4-membered ring TS motif when the trivial-fallback recorded
+       fb/bb/changed sets are available.
+    4. **Phase 4e late local reactive-center cleanup** — invokes the
+       :func:`apply_reactive_center_cleanup` orchestrator only for
+       records that pass the strict Phase 4e gates (heavy-heavy
+       changing bond, 1-bond CH₂ expansion, Phase 4d detector firing).
+    5. **Final filters** — drops records with collisions, bivalent-H
+       pathologies, misdirected migrating H, or broken non-reactive
+       bonds.
+    6. **Path-spec wrapper validation** — for records carrying a
+       :class:`ReactionPathSpec`, runs the centralized
+       :func:`validate_guess_against_path_spec` so the same Phase 1+2+4a
+       checks the addition pipeline uses are also enforced here.
+
+    Args:
+        unique: Deduplicated records from the strategy pipeline.
+        rxn: The reaction (only used for logging labels).
+        r_mol: Reactant molecule.
+        ring_sets: SSSR sets for the reactant.
+        reactive_all: Union of all atoms in any path's changing bonds.
+        changing_all: Union of all changing bonds across all paths.
+        fallback_fb / fallback_bb / fallback_changed: Stashed bond
+            lists from the trivial-fallback branch (used by the
+            Intra_RH_Add motif fixer).  May be ``None``.
+
+    Returns:
+        The filtered, validated list of records ready for
+        :func:`_finalize_ts_guesses`.
+    """
+    if not unique:
+        return unique
+
+    # 1. Global ring repair.
+    if ring_sets:
+        for rec in unique:
+            rec.xyz = _fix_broken_ring_bonds(
+                rec.xyz, r_mol, ring_sets, reactive_all, changing_all)
+
+    # 2. Path-local post-processing.
+    for rec in unique:
+        if rec.fb:
+            rec.xyz = _clear_forming_bond_path(rec.xyz, r_mol, rec.fb)
+        if rec.bb or rec.fb:
+            rec.xyz = adjust_reactive_bond_distances(
+                rec.xyz, r_mol, rec.bb, rec.fb)
+            rec.xyz = orient_h_on_reactive_centers(
+                rec.xyz, r_mol, rec.bb, rec.fb)
+
+    # 3. Intra_RH_Add motif fix-up (only when the trivial fallback ran).
+    if fallback_fb is not None and fallback_bb is not None and fallback_changed is not None:
+        for rec in unique:
+            rec.xyz = _fix_rh_add_motif(
+                rec.xyz, r_mol, fallback_fb, fallback_bb, fallback_changed)
+
+    # 4. Late local reactive-center cleanup (internal-CH₂ pathway).
+    atom_to_idx_iso = {a: i for i, a in enumerate(r_mol.atoms)}
+    for rec in unique:
+        _apply_internal_ch2_cleanup_to_isomerization_record(
+            rec, r_mol, atom_to_idx_iso)
+
+    # 5. Final filters: collisions, bivalent-H, misdirected migrating H,
+    #    broken non-reactive bonds.
+    unique = [rec for rec in unique
+              if not colliding_atoms(rec.xyz) and not _has_bivalent_h(rec.xyz)
+              and not has_misdirected_migrating_h(rec.xyz, rec.fb or [])
+              and (not changing_all
+                   or not has_broken_nonreactive_bond(rec.xyz, r_mol, changing_all))]
+
+    # 6. Path-spec wrapper validation for records with a path_spec.
+    validated_unique: List['GuessRecord'] = []
+    for rec in unique:
+        if rec.path_spec is None:
+            validated_unique.append(rec)
+            continue
+        ok, reason = validate_guess_against_path_spec(
+            xyz=rec.xyz,
+            path_spec=rec.path_spec,
+            r_mol=r_mol,
+            family=rec.family,
+            anchor_xyz=rec.anchor_xyz,
+            reactive_indices=rec.reactive_indices,
+            label=f'rxn={rxn.label}, strategy={rec.strategy}',
+        )
+        if ok:
+            validated_unique.append(rec)
+        else:
+            logger.debug(f'Linear (rxn={rxn.label}, strategy={rec.strategy}): '
+                         f'rejected by path-spec wrapper — {reason}')
+    return validated_unique
 
 
 def _finalize_ts_guesses(ts_xyzs: List,
@@ -2407,61 +2671,43 @@ def _validate_addition_guess(xyz: dict,
                               forming_bonds: List[Tuple[int, int]],
                               label: str,
                               ) -> Tuple[bool, str]:
-    """Phase 3a: addition-side validation gateway.
+    """Thin local alias for the canonical addition-validation gateway.
 
-    Routes addition validation through the Phase 2 wrapper
-    :func:`validate_guess_against_path_spec` whenever a path-spec is
-    available.  When path-spec construction failed (degraded mode),
-    falls back to the legacy :func:`validate_ts_guess` so coverage
-    never regresses below the pre-Phase-3a baseline.
-
-    Args:
-        xyz: TS guess XYZ dict produced by an addition-side builder.
-        path_spec: The :class:`ReactionPathSpec` for this guess, or
-            ``None`` in degraded mode.
-        uni_mol: The unimolecular RMG Molecule.
-        forming_bonds: Forming bonds for the legacy fallback path
-            (only used when ``path_spec is None``).
-        label: Logging label for the validator.
-
-    Returns:
-        ``(is_valid, reason)`` matching the existing validator contract.
+    The single source of truth lives in :func:`path_spec.validate_addition_guess`.
+    This local alias only exists so the existing ``_validate_addition_guess``
+    call sites in this module remain unchanged after the cleanup-phase
+    gateway unification — the keyword shape (``path_spec`` as a positional
+    second argument) differs from the canonical helper, so wrapping is
+    cheaper than rewriting every call site.
     """
-    if path_spec is not None:
-        return validate_guess_against_path_spec(
-            xyz=xyz,
-            path_spec=path_spec,
-            r_mol=uni_mol,
-            family=path_spec.family,
-            reactive_indices=set(path_spec.reactive_atoms),
-            label=label,
-        )
-    return validate_ts_guess(xyz, set(), list(forming_bonds or []), uni_mol, label=label)
+    return validate_addition_guess(
+        xyz=xyz,
+        uni_mol=uni_mol,
+        forming_bonds=forming_bonds,
+        label=label,
+        path_spec=path_spec,
+    )
 
 
 def _validate_addition_builder_geometry(xyz: dict,
                                           uni_mol: 'Molecule',
                                           label: str,
                                           ) -> Tuple[bool, str]:
-    """Phase 3b: explicit name for *builder-stage* permissive screening.
+    """Builder-stage permissive screen — explicit grep-able alias.
 
     Builder-stage geometries (the immediate output of leaf builders such
     as :func:`stretch_bond`, :func:`try_insertion_ring`,
     :func:`build_concerted_ts`, and the inner output of
     :func:`migrate_verified_atoms`) are *intermediate* — they may not
     yet satisfy the strict path-spec checks the final-stage wrapper
-    runs.  This wrapper preserves the pre-Phase-3a permissive behavior
-    by routing through :func:`_validate_addition_guess` with
-    ``path_spec=None``, which falls back to the legacy
-    :func:`validate_ts_guess`.
-
-    Existence of this thin alias makes the builder-vs-final distinction
-    grep-able, self-documenting, and easy to ratchet later if a builder
-    starts producing path-spec-clean intermediates.
+    runs.  This alias makes the builder-vs-final distinction grep-able
+    and self-documenting; it routes through the canonical
+    :func:`path_spec.validate_addition_guess` with ``path_spec=None``,
+    which falls back to the legacy :func:`validate_ts_guess`.
     """
-    return _validate_addition_guess(
-        xyz=xyz, path_spec=None, uni_mol=uni_mol,
-        forming_bonds=[], label=label)
+    return validate_addition_guess(
+        xyz=xyz, uni_mol=uni_mol, forming_bonds=[],
+        label=label, path_spec=None)
 
 
 def _enrich_post_migration_path_spec(uni_mol: 'Molecule',
@@ -3665,223 +3911,17 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         else:
             unique.append(GuessRecord(xyz=xyz, strategy='unknown'))
 
-    if unique:
-        # Repair ring bonds broken by Z-matrix interpolation (global — uses all rings).
-        if _ring_sets:
-            for rec in unique:
-                rec.xyz = _fix_broken_ring_bonds(rec.xyz, r_mol, _ring_sets, reactive_all, changing_all)
-        # Path-local post-processing: each guess uses only its own path's bonds.
-        for rec in unique:
-            if rec.fb:
-                rec.xyz = _clear_forming_bond_path(rec.xyz, r_mol, rec.fb)
-            if rec.bb or rec.fb:
-                rec.xyz = adjust_reactive_bond_distances(rec.xyz, r_mol, rec.bb, rec.fb)
-                rec.xyz = orient_h_on_reactive_centers(rec.xyz, r_mol, rec.bb, rec.fb)
-        # Build the 4-membered ring TS motif for Intra_RH_Add patterns
-        # (stretch X-H, stretch Y=Z, move H toward Y).
-        if _fallback_fb is not None and _fallback_bb is not None and _fallback_changed is not None:
-            for rec in unique:
-                rec.xyz = _fix_rh_add_motif(rec.xyz, r_mol, _fallback_fb, _fallback_bb, _fallback_changed)
-        # Phase 4e — late local reactive-center cleanup pass.
-        #
-        # Phases 4a/4b/4c/4d added a local reactive-center cleanup
-        # orchestrator (terminal CH₂/CH₃ symmetry restoration plus
-        # internal-CH₂ sp³ repair), but the only live wiring sites for
-        # that orchestrator lived inside :func:`interpolate_addition`.
-        # The internal-CH₂ failure cluster (1,2_shiftC,
-        # Intra_R_Add_Endocyclic, Intra_RH_Add_Endocyclic,
-        # Intra_substitutions_isomerization, Intra_Diels_alder_monocyclic,
-        # Intra_OH_migration) all route through
-        # :func:`interpolate_isomerization` and therefore never reached
-        # the orchestrator at all.
-        #
-        # Phase 4e is the audit-driven coverage fix: a single, very
-        # narrowly gated late call to ``apply_reactive_center_cleanup``.
-        # The gating is intentionally strict so the existing isomerization
-        # pipeline — which already runs ``orient_h_on_reactive_centers``
-        # on the reactive heavy atoms themselves — is not perturbed for
-        # families that do not need internal-CH₂ repair:
-        #
-        #   1. The orchestrator is invoked only when the 1-bond
-        #      expansion from a reactive heavy endpoint actually brings
-        #      in an *internal* CH₂ neighbour (heavy degree 2 + H count 2
-        #      in the reactant graph).  When the expansion is empty, the
-        #      orchestrator would only see the reactive heavy endpoints
-        #      themselves — those are already handled by the existing
-        #      ``orient_h_on_reactive_centers`` call above, so the new
-        #      pass is a no-op and is skipped.
-        #
-        #   2. Any H atom appearing in a changing bond is added to
-        #      ``exempt_h_indices`` so the regularizer cannot snap a
-        #      migrating H back to a normal C–H bond length.
-        #
-        #   3. Only the 1-bond expansion CH₂ centres are passed to the
-        #      orchestrator (not the reactive heavy endpoints), so the
-        #      Phase 4b/4c terminal-group pathway and the Phase 4d
-        #      internal-CH₂ pathway only fire on the newly-exposed
-        #      neighbour atoms.  The reactive heavy endpoints continue
-        #      to be handled by the upstream helpers untouched.
-        #
-        # All actual repair gating remains inside the orchestrator: the
-        # Phase 4b/4c terminal asymmetry detector and the Phase 4d
-        # internal-CH₂ misorientation detector each enforce their own
-        # eligibility checks before mutating anything.  Already-good
-        # shells are byte-for-byte unchanged.  No new helpers, no
-        # scoring change, no broad cleanup expansion.
-        atom_to_idx_iso = {a: i for i, a in enumerate(r_mol.atoms)}
-        for rec in unique:
-            rec_bonds = list(rec.bb or []) + list(rec.fb or [])
-            if not rec_bonds:
-                continue
-            symbols_iso = rec.xyz['symbols']
-            n_atoms_iso = len(symbols_iso)
-            reactive_iso: Set[int] = set()
-            exempt_hs_iso: Set[int] = set()
-            has_heavy_heavy_change = False
-            for bond_pair in rec_bonds:
-                ai_a = int(bond_pair[0])
-                ai_b = int(bond_pair[1])
-                if not (0 <= ai_a < n_atoms_iso and 0 <= ai_b < n_atoms_iso):
-                    continue
-                if symbols_iso[ai_a] != 'H' and symbols_iso[ai_b] != 'H':
-                    has_heavy_heavy_change = True
-                for atom_idx in bond_pair:
-                    ai = int(atom_idx)
-                    if not (0 <= ai < n_atoms_iso):
-                        continue
-                    if symbols_iso[ai] == 'H':
-                        exempt_hs_iso.add(ai)
-                    else:
-                        reactive_iso.add(ai)
-            if not reactive_iso:
-                continue
-            # Skip pure H-migration reactions (all changing bonds are
-            # heavy-H).  In those cases the existing
-            # ``orient_h_on_reactive_centers`` and the H-migration
-            # postprocessor have already placed the migrating H very
-            # carefully, and any orchestrator-driven mutation around
-            # the donor / acceptor neighbourhood risks perturbing that
-            # placement.  The targeted Phase 4d failure cluster is
-            # specifically the heavy-atom-rearrangement families
-            # (1,2_shiftC, Intra_R_Add_Endocyclic,
-            # Intra_RH_Add_Endocyclic, Intra_substitutions_isomerization,
-            # Intra_Diels_alder_monocyclic) — every one of which
-            # contains at least one heavy-heavy changing bond.
-            if not has_heavy_heavy_change:
-                continue
-            # 1-bond expansion to immediate internal-CH₂ neighbours
-            # of each reactive heavy endpoint.  These are precisely
-            # the atoms that the existing ``orient_h_on_reactive_centers``
-            # cannot reach (it only operates on the endpoints
-            # themselves), and that the Phase 4d detector/repair was
-            # designed for.
-            expansion_iso: Set[int] = set()
-            for center_iso in reactive_iso:
-                if not (0 <= center_iso < len(r_mol.atoms)):
-                    continue
-                for nbr in r_mol.atoms[center_iso].bonds.keys():
-                    ni = atom_to_idx_iso[nbr]
-                    if symbols_iso[ni] == 'H':
-                        continue
-                    if ni in reactive_iso:
-                        continue
-                    nbr_heavy = sum(
-                        1 for nb in r_mol.atoms[ni].bonds.keys()
-                        if nb.element.symbol != 'H')
-                    nbr_h = sum(
-                        1 for nb in r_mol.atoms[ni].bonds.keys()
-                        if nb.element.symbol == 'H')
-                    if nbr_heavy == 2 and nbr_h == 2:
-                        expansion_iso.add(int(ni))
-            if not expansion_iso:
-                # The reactive endpoints alone would only re-trigger the
-                # upstream ``orient_h_on_reactive_centers`` work — skip
-                # the orchestrator to avoid perturbing already-stable
-                # geometries.
-                continue
-            # Final detector pre-check: only invoke the orchestrator on
-            # the subset of expansion centres that the Phase 4d
-            # internal-CH₂ detector actually flags as misoriented in
-            # this guess's geometry.  This makes the Phase 4e cleanup
-            # strictly opt-in: if every candidate centre is already
-            # well-oriented, the orchestrator is not called at all and
-            # the geometry is byte-for-byte identical to the
-            # pre-Phase-4e behaviour.
-            misoriented_iso: Set[int] = set()
-            for cand in expansion_iso:
-                if not (0 <= cand < len(r_mol.atoms)):
-                    continue
-                cand_heavy = [
-                    atom_to_idx_iso[nbr]
-                    for nbr in r_mol.atoms[cand].bonds.keys()
-                    if nbr.element.symbol != 'H'
-                ]
-                cand_h = [
-                    atom_to_idx_iso[nbr]
-                    for nbr in r_mol.atoms[cand].bonds.keys()
-                    if nbr.element.symbol == 'H'
-                    and atom_to_idx_iso[nbr] not in exempt_hs_iso
-                ]
-                if len(cand_heavy) != 2 or len(cand_h) != 2:
-                    continue
-                if is_internal_reactive_ch2_misoriented(
-                        rec.xyz,
-                        center_idx=cand,
-                        heavy_nbr_indices=cand_heavy,
-                        h_indices=cand_h):
-                    misoriented_iso.add(cand)
-            if not misoriented_iso:
-                continue
-            rec.xyz = apply_reactive_center_cleanup(
-                rec.xyz, r_mol,
-                migrations=None,
-                reactive_centers=misoriented_iso,
-                exempt_h_indices=exempt_hs_iso,
-                restore_symmetry=True,
-            )
-        # Final collision and bivalent-H filter after all post-processing.
-        def _has_bivalent_h(xyz_dict: dict) -> bool:
-            """Return True if any H is within tight bonding distance of 2+ heavy atoms."""
-            coords_check = np.array(xyz_dict['coords'], dtype=float)
-            for h, sym in enumerate(xyz_dict['symbols']):
-                if sym != 'H':
-                    continue
-                n_close = sum(1 for j, sj in enumerate(xyz_dict['symbols'])
-                              if sj != 'H' and j != h
-                              and float(np.linalg.norm(coords_check[h] - coords_check[j])) < 1.15)
-                if n_close >= 2:
-                    return True
-            return False
-        unique = [rec for rec in unique
-                  if not colliding_atoms(rec.xyz) and not _has_bivalent_h(rec.xyz)
-                  and not has_misdirected_migrating_h(rec.xyz, rec.fb or [])
-                  and (not changing_all
-                       or not has_broken_nonreactive_bond(rec.xyz, r_mol, changing_all))]
-
-        # Orchestration-level validation through the path-spec wrapper.
-        # When a guess carries a path_spec, route it through the centralized
-        # validate_guess_against_path_spec, which adds the precise Phase 1
-        # recipe-channel mismatch guard on top of the existing generic checks.
-        validated_unique: List[GuessRecord] = []
-        for rec in unique:
-            if rec.path_spec is None:
-                validated_unique.append(rec)
-                continue
-            ok, reason = validate_guess_against_path_spec(
-                xyz=rec.xyz,
-                path_spec=rec.path_spec,
-                r_mol=r_mol,
-                family=rec.family,
-                anchor_xyz=rec.anchor_xyz,
-                reactive_indices=rec.reactive_indices,
-                label=f'rxn={rxn.label}, strategy={rec.strategy}',
-            )
-            if ok:
-                validated_unique.append(rec)
-            else:
-                logger.debug(f'Linear (rxn={rxn.label}, strategy={rec.strategy}): '
-                             f'rejected by path-spec wrapper — {reason}')
-        unique = validated_unique
+    unique = _postprocess_isomerization_records(
+        unique=unique,
+        rxn=rxn,
+        r_mol=r_mol,
+        ring_sets=_ring_sets,
+        reactive_all=reactive_all,
+        changing_all=changing_all,
+        fallback_fb=_fallback_fb,
+        fallback_bb=_fallback_bb,
+        fallback_changed=_fallback_changed,
+    )
 
     # Phase 2b — unified triage finalizer.  Scoring, strict (score, idx)
     # stable sort, second dedup, cap-to-5, and strategy provenance logging

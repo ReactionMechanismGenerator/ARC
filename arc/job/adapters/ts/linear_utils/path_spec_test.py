@@ -1585,21 +1585,30 @@ H       0.93760911   -0.05885406   -0.10079043"""
             r_xyz=r.get_xyz(),
             weight=0.5,
         )
-        calls = {'wrapper': 0, 'legacy': 0}
-        original_wrapper = A.validate_guess_against_path_spec
-        original_legacy = A.validate_ts_guess
+        # Cleanup-phase: the addition-side validation gateway is now the
+        # single canonical helper :func:`path_spec.validate_addition_guess`
+        # (re-exported into ``addition`` and ``linear``).  Use scoped
+        # ``unittest.mock.patch`` against the canonical names instead of
+        # the legacy direct module-attribute reassignment patching pattern.
+        from unittest.mock import patch
+        from arc.job.adapters.ts.linear_utils import path_spec as PS
 
-        def _fake_wrapper(*args, **kwargs):
+        original_wrapper = PS.validate_guess_against_path_spec
+        original_legacy = PS.validate_ts_guess
+        calls = {'wrapper': 0, 'legacy': 0}
+
+        def _spy_wrapper(*args, **kwargs):
             calls['wrapper'] += 1
             return original_wrapper(*args, **kwargs)
 
-        def _fake_legacy(*args, **kwargs):
+        def _spy_legacy(*args, **kwargs):
             calls['legacy'] += 1
             return original_legacy(*args, **kwargs)
 
-        A.validate_guess_against_path_spec = _fake_wrapper
-        A.validate_ts_guess = _fake_legacy
-        try:
+        with patch.object(PS, 'validate_guess_against_path_spec',
+                          side_effect=_spy_wrapper), \
+             patch.object(PS, 'validate_ts_guess',
+                          side_effect=_spy_legacy):
             A.stretch_bond(
                 uni_xyz=r.get_xyz(),
                 uni_mol=r.mol,
@@ -1609,33 +1618,37 @@ H       0.93760911   -0.05885406   -0.10079043"""
                 label='test',
                 path_spec=spec,
             )
-        finally:
-            A.validate_guess_against_path_spec = original_wrapper
-            A.validate_ts_guess = original_legacy
 
-        # The wrapper must have been invoked at least once.
+        # The path-spec wrapper must have been invoked at least once.
+        # (``validate_guess_against_path_spec`` itself delegates to
+        # ``validate_ts_guess`` internally as part of its generic-checks
+        # step, so the legacy validator is allowed to be observed too.)
         self.assertGreaterEqual(calls['wrapper'], 1)
 
     def test_addition_validation_falls_back_when_no_path_spec(self):
         """``stretch_bond`` with ``path_spec=None`` MUST use the legacy
         ``validate_ts_guess`` path so degraded mode never crashes."""
         from arc.job.adapters.ts.linear_utils import addition as A
-        r, _, _, _ = self._make_addition_rxn()
-        calls = {'wrapper': 0, 'legacy': 0}
-        original_wrapper = A.validate_guess_against_path_spec
-        original_legacy = A.validate_ts_guess
+        from arc.job.adapters.ts.linear_utils import path_spec as PS
+        from unittest.mock import patch
 
-        def _fake_wrapper(*args, **kwargs):
+        r, _, _, _ = self._make_addition_rxn()
+        original_wrapper = PS.validate_guess_against_path_spec
+        original_legacy = PS.validate_ts_guess
+        calls = {'wrapper': 0, 'legacy': 0}
+
+        def _spy_wrapper(*args, **kwargs):
             calls['wrapper'] += 1
             return original_wrapper(*args, **kwargs)
 
-        def _fake_legacy(*args, **kwargs):
+        def _spy_legacy(*args, **kwargs):
             calls['legacy'] += 1
             return original_legacy(*args, **kwargs)
 
-        A.validate_guess_against_path_spec = _fake_wrapper
-        A.validate_ts_guess = _fake_legacy
-        try:
+        with patch.object(PS, 'validate_guess_against_path_spec',
+                          side_effect=_spy_wrapper), \
+             patch.object(PS, 'validate_ts_guess',
+                          side_effect=_spy_legacy):
             A.stretch_bond(
                 uni_xyz=r.get_xyz(),
                 uni_mol=r.mol,
@@ -1645,10 +1658,9 @@ H       0.93760911   -0.05885406   -0.10079043"""
                 label='test',
                 path_spec=None,
             )
-        finally:
-            A.validate_guess_against_path_spec = original_wrapper
-            A.validate_ts_guess = original_legacy
 
+        # path_spec=None must route through the legacy validator and
+        # NEVER touch the path-spec wrapper.
         self.assertEqual(calls['wrapper'], 0)
         self.assertGreaterEqual(calls['legacy'], 1)
 
@@ -2453,6 +2465,167 @@ H      -1.31312338    0.19118810    2.16873833"""
             multi_species=None, label='cleanup-without-enrichment',
         )
         self.assertIsNone(out)
+
+
+class TestCarbeneTargetConsistency(unittest.TestCase):
+    """Cleanup-phase: prove that the insertion-ring builder and the
+    scorer/validator use the *same* family-aware target distance for
+    ``1,2_Insertion_carbene``.
+
+    Before the cleanup phase, the builder applied a +0.20 Å carbene
+    extra stretch via :func:`addition._insertion_ring_extra_stretch`,
+    but :func:`get_ts_target_distance` ignored its ``family`` parameter
+    entirely.  As a result, the scorer judged carbene guesses against
+    the un-calibrated default target while the builder produced
+    geometries at the calibrated (looser) target — a guaranteed
+    mismatch every time the scorer ran on a carbene insertion guess.
+    """
+
+    def test_get_ts_target_distance_applies_carbene_calibration(self):
+        """For ``1,2_Insertion_carbene``, ``get_ts_target_distance``
+        on a ``forming`` or ``breaking`` C–C bond must equal
+        ``sbl + PAULING_DELTA + 0.20`` (the same target the builder
+        produces)."""
+        from arc.common import get_single_bond_length
+        from arc.job.adapters.ts.linear_utils.path_spec import (
+            PAULING_DELTA,
+            get_ts_target_distance,
+            insertion_ring_extra_stretch,
+        )
+        symbols = ('C', 'C')
+        sbl = float(get_single_bond_length('C', 'C'))
+        baseline = sbl + PAULING_DELTA
+        carbene_target = baseline + 0.20
+
+        # ``forming`` role for a C-C bond on the carbene family.
+        target_forming = get_ts_target_distance(
+            bond=(0, 1), role='forming', symbols=symbols,
+            family='1,2_Insertion_carbene')
+        self.assertAlmostEqual(target_forming, carbene_target, places=6)
+
+        # ``breaking`` role for the same bond.
+        target_breaking = get_ts_target_distance(
+            bond=(0, 1), role='breaking', symbols=symbols,
+            family='1,2_Insertion_carbene')
+        self.assertAlmostEqual(target_breaking, carbene_target, places=6)
+
+        # The +0.20 delta must come from the SAME helper the builder uses.
+        self.assertAlmostEqual(
+            insertion_ring_extra_stretch('1,2_Insertion_carbene'),
+            0.20, places=6)
+
+    def test_get_ts_target_distance_unaffected_for_other_families(self):
+        """Non-carbene families must NOT receive the calibration —
+        only the explicitly named carbene family triggers the +0.20 Å
+        stretch."""
+        from arc.common import get_single_bond_length
+        from arc.job.adapters.ts.linear_utils.path_spec import (
+            PAULING_DELTA,
+            get_ts_target_distance,
+        )
+        symbols = ('C', 'C')
+        baseline = float(get_single_bond_length('C', 'C')) + PAULING_DELTA
+
+        for fam in (None, '', '1,2_Insertion_CO', '1,3_Insertion_RSR',
+                    'Diels_alder_addition', 'intra_H_migration'):
+            for role in ('breaking', 'forming'):
+                target = get_ts_target_distance(
+                    bond=(0, 1), role=role, symbols=symbols, family=fam)
+                self.assertAlmostEqual(
+                    target, baseline, places=6,
+                    msg=f'family={fam!r} role={role!r} should be uncalibrated '
+                        f'(expected {baseline:.4f}, got {target:.4f})')
+
+    def test_builder_and_scorer_share_same_helper(self):
+        """The builder-side ``addition._insertion_ring_extra_stretch``
+        alias must resolve to the canonical
+        ``path_spec.insertion_ring_extra_stretch``.  This is the
+        cleanup-phase invariant that prevents the two sides from
+        drifting apart again."""
+        from arc.job.adapters.ts.linear_utils import addition as A
+        from arc.job.adapters.ts.linear_utils import path_spec as PS
+        self.assertIs(A._insertion_ring_extra_stretch,
+                      PS.insertion_ring_extra_stretch)
+        # And both call sites produce the same numerical answer for
+        # the same input.
+        for fam in (None, '1,2_Insertion_carbene', '1,2_Insertion_CO',
+                    '1,3_Insertion_RSR'):
+            self.assertEqual(
+                A._insertion_ring_extra_stretch(fam),
+                PS.insertion_ring_extra_stretch(fam),
+                msg=f'builder/scorer extra-stretch mismatch for family={fam!r}')
+
+
+class TestUnifiedAdditionGateway(unittest.TestCase):
+    """Cleanup-phase: prove the canonical
+    :func:`path_spec.validate_addition_guess` gateway exists, replaces
+    the previously-duplicated ``addition._validate_addition_xyz`` /
+    ``linear._validate_addition_guess`` pair, and routes correctly in
+    both path-spec and degraded modes.
+    """
+
+    def test_canonical_gateway_routes_through_wrapper(self):
+        from unittest.mock import patch
+        from arc.job.adapters.ts.linear_utils import path_spec as PS
+        from arc.species import ARCSpecies
+
+        sp = ARCSpecies(label='ethane', smiles='CC')
+        spec = PS.ReactionPathSpec.build(
+            r_mol=sp.mol,
+            mapped_p_mol=None,
+            breaking_bonds=[(0, 1)],
+            forming_bonds=[],
+            r_xyz=sp.get_xyz(),
+            weight=0.5,
+        )
+        with patch.object(PS, 'validate_guess_against_path_spec',
+                          return_value=(True, '')) as wrapper, \
+             patch.object(PS, 'validate_ts_guess',
+                          return_value=(True, '')) as legacy:
+            ok, _ = PS.validate_addition_guess(
+                xyz=sp.get_xyz(),
+                uni_mol=sp.mol,
+                forming_bonds=[(0, 1)],
+                label='canonical-routes-wrapper',
+                path_spec=spec,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(wrapper.call_count, 1)
+        self.assertEqual(legacy.call_count, 0)
+
+    def test_canonical_gateway_falls_back_when_no_path_spec(self):
+        from unittest.mock import patch
+        from arc.job.adapters.ts.linear_utils import path_spec as PS
+        from arc.species import ARCSpecies
+
+        sp = ARCSpecies(label='ethane', smiles='CC')
+        with patch.object(PS, 'validate_guess_against_path_spec',
+                          return_value=(True, '')) as wrapper, \
+             patch.object(PS, 'validate_ts_guess',
+                          return_value=(True, '')) as legacy:
+            ok, _ = PS.validate_addition_guess(
+                xyz=sp.get_xyz(),
+                uni_mol=sp.mol,
+                forming_bonds=[(0, 1)],
+                label='canonical-falls-back',
+                path_spec=None,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(wrapper.call_count, 0)
+        self.assertEqual(legacy.call_count, 1)
+
+    def test_addition_module_re_exports_canonical_gateway(self):
+        """The ``addition`` module must re-import the canonical gateway
+        so leaf builders share the same source of truth as ``linear``."""
+        from arc.job.adapters.ts.linear_utils import addition as A
+        from arc.job.adapters.ts.linear_utils import path_spec as PS
+        self.assertIs(A.validate_addition_guess, PS.validate_addition_guess)
+
+    def test_linear_module_re_imports_canonical_gateway(self):
+        """The ``linear`` module must re-import the canonical gateway."""
+        from arc.job.adapters.ts import linear as L
+        from arc.job.adapters.ts.linear_utils import path_spec as PS
+        self.assertIs(L.validate_addition_guess, PS.validate_addition_guess)
 
 
 if __name__ == '__main__':

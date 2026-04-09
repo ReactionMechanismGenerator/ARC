@@ -1,27 +1,62 @@
-"""
-Path-local data model and validation plumbing for the linear TS-guess adapter.
+"""Path-local data model, target geometry, scoring and validation plumbing
+for the linear TS-guess adapter.
 
-This module is the Phase 1 foundation layer.  It defines:
+This module is the foundation layer that the addition and isomerization
+pipelines share for path-local reasoning.  It owns:
+
+**Data model**
 
 * :class:`ReactionPathSpec` — a deterministic, path-local description of one
   reaction channel: which bonds break, which form, which change order, which
   unchanged near-core bonds must be preserved, plus per-bond reactant- and
   product-side reference distances and bond orders.
+* :class:`PathChemistry` and :func:`classify_path_chemistry` — coarse path
+  chemistry classification (H_TRANSFER, CYCLOADDITION_OR_RING_CLOSURE,
+  SUBSTITUTION_LIKE, GENERIC) used to dispatch sub-checks.
 
-* :func:`get_ts_target_distance` — a role-aware target distance helper used
-  by downstream geometry stages.  Roles are ``breaking``, ``forming``,
-  ``changed``, and ``unchanged_near_core``.
+**Target geometry**
 
-* :func:`has_recipe_channel_mismatch` — a precise, conservative recipe-fidelity
-  check used by the orchestration validation wrapper.
+* :func:`get_ts_target_distance` — role-aware target distance helper used by
+  downstream geometry stages.  Roles are ``breaking``, ``forming``,
+  ``changed``, and ``unchanged_near_core``.  Family-aware: when the family
+  has a builder-side calibration, the same calibration is mirrored here so
+  the scorer/validator and the builder cannot drift apart.
+* :func:`insertion_ring_extra_stretch` — single source of truth for the
+  family-specific extra stretch applied to insertion-ring TS edges
+  (currently calibrated for ``1,2_Insertion_carbene``).  Both the builder
+  in :mod:`arc.job.adapters.ts.linear_utils.addition` and
+  :func:`get_ts_target_distance` consume this helper, guaranteeing
+  consistency between the builder and the scorer.
 
+**Path-local validation gates**
+
+* :func:`has_recipe_channel_mismatch` — failed-to-break / failed-to-form /
+  snapped-spectator gates.
+* :func:`has_bad_changed_bond_length`, :func:`has_bad_unchanged_near_core_bond`,
+  :func:`has_inward_blocking_h_on_forming_axis`,
+  :func:`has_bad_reactive_core_planarity`,
+  :func:`has_wrong_h_migration_committed`,
+  :func:`has_committed_spectator_group` — Phase 2 / Phase 4a sub-checks.
+
+**Scoring and orchestration entry points**
+
+* :func:`score_guess_against_path_spec` — the analytic ``(score, +inf)`` helper
+  the unified finalizer uses to triage guesses.
 * :func:`validate_guess_against_path_spec` — the single orchestration-level
-  validation entry point.  It delegates to :func:`validate_ts_guess` for the
-  generic geometry/family checks and adds the recipe-channel mismatch guard.
+  validation entry point used by both the addition and isomerization
+  pipelines.  Composes :func:`validate_ts_guess` with all the path-local
+  sub-checks.
+* :func:`validate_addition_guess` — the single canonical addition-side
+  validation gateway shared by leaf builders in
+  :mod:`arc.job.adapters.ts.linear_utils.addition` and the orchestration
+  loop in :func:`arc.job.adapters.ts.linear.interpolate_addition`.  Routes
+  through :func:`validate_guess_against_path_spec` when a path-spec is
+  available, and falls back to :func:`validate_ts_guess` in degraded mode.
 
-The module is intentionally small and explicit.  It does NOT add new chemistry
-heuristics or change generation policies — it only formalizes path-local
-metadata and centralizes orchestration validation.
+The module is intentionally focused: it defines path-local metadata, the
+analytic target geometry helpers, and the single orchestration-level
+validation entry points.  It does NOT introduce new chemistry heuristics or
+change generation policies.
 """
 
 from collections import deque
@@ -373,6 +408,46 @@ class ReactionPathSpec:
 VALID_ROLES = ('breaking', 'forming', 'changed', 'unchanged_near_core')
 
 
+def insertion_ring_extra_stretch(family: Optional[str]) -> float:
+    """Return a non-negative Å delta to add to the standard Pauling target
+    on the reactive edges of an insertion-ring TS.
+
+    The 3-membered insertion-ring TS that
+    :func:`arc.job.adapters.ts.linear_utils.addition.try_insertion_ring`
+    builds uses a uniform ``single_bond_length + PAULING_DELTA`` target
+    on its three reactive edges (mobile-anchor C–C, mobile-mig C–H,
+    anchor-mig C–H).  For most families this is the right target, but
+    highly exothermic carbene insertions sit much *earlier* on the
+    reaction coordinate — their three reactive edges are roughly 0.20 Å
+    looser than the standard delta predicts.
+
+    This helper is the **single source of truth** for that family-aware
+    correction.  It is called by:
+
+    1. The builder (``addition.try_insertion_ring``) when constructing
+       the TS coordinates.
+    2. The scorer/validator (``get_ts_target_distance``) when judging
+       the same family's TS guess against an analytic target.
+
+    Co-locating both call sites on this helper guarantees the builder
+    and the scorer never drift apart on a calibrated family.  Currently
+    calibrated families:
+
+    * ``'1,2_Insertion_carbene'`` → ``+0.20 Å``
+
+    All other families return ``0.0``.
+
+    Args:
+        family: Reaction family name (typically ``path_spec.family``).
+
+    Returns:
+        A non-negative additional stretch in Å.  Defaults to ``0.0``.
+    """
+    if family == '1,2_Insertion_carbene':
+        return 0.20
+    return 0.0
+
+
 def get_ts_target_distance(
     bond: Tuple[int, int],
     role: str,
@@ -388,7 +463,11 @@ def get_ts_target_distance(
 
     The function is foundation plumbing.  It does NOT change chemistry policy.
     For ``breaking`` and ``forming`` it reuses the same single-bond-length +
-    Pauling-delta semantics already used in the codebase.
+    Pauling-delta semantics already used in the codebase.  When ``family``
+    names a family that the insertion-ring builder calibrates with
+    :func:`insertion_ring_extra_stretch`, the same Å delta is added here
+    so the scorer/validator and the builder cannot drift apart on
+    calibrated families.
 
     Args:
         bond: ``(i, j)`` atom-index pair (used to look up symbols).
@@ -400,7 +479,10 @@ def get_ts_target_distance(
         bo_r: Reactant bond order, if available.
         bo_p: Product bond order, if available.
         weight: Interpolation weight; 0 = reactant-like, 1 = product-like.
-        family: Reaction family name (currently unused but reserved).
+        family: Reaction family name.  When the family is one that
+            :func:`insertion_ring_extra_stretch` calibrates, the
+            family-specific stretch is added to ``breaking`` and
+            ``forming`` targets so they match the builder.
 
     Returns:
         Target distance in Å.
@@ -418,13 +500,16 @@ def get_ts_target_distance(
 
     if role == 'breaking':
         # Same semantics already used by adjust_reactive_bond_distances:
-        # stretch breaking bonds toward sbl + Pauling delta.
-        return float(sbl + PAULING_DELTA)
+        # stretch breaking bonds toward sbl + Pauling delta.  When the
+        # family has a builder-side calibration, mirror it here so the
+        # scorer judges the same target as the builder produced.
+        return float(sbl + PAULING_DELTA + insertion_ring_extra_stretch(family))
 
     if role == 'forming':
         # Same semantics already used by adjust_reactive_bond_distances:
         # forming bonds also approach sbl + Pauling delta from above/below.
-        return float(sbl + PAULING_DELTA)
+        # The same builder/scorer mirroring applies.
+        return float(sbl + PAULING_DELTA + insertion_ring_extra_stretch(family))
 
     if role == 'changed':
         # Bond exists on both sides but its order changes.  Linear interpolation
@@ -1406,3 +1491,61 @@ def validate_guess_against_path_spec(
         return False, f'phase4a:{reason}'
 
     return True, ''
+
+
+# ---------------------------------------------------------------------------
+# Single canonical addition-side validation gateway
+# ---------------------------------------------------------------------------
+
+def validate_addition_guess(xyz: dict,
+                            uni_mol: 'Molecule',
+                            forming_bonds: List[Tuple[int, int]],
+                            label: str,
+                            path_spec: Optional['ReactionPathSpec'] = None,
+                            ) -> Tuple[bool, str]:
+    """Single canonical validation gateway for addition-side TS guesses.
+
+    This is the *one* gateway used by:
+
+    * leaf builders inside :mod:`arc.job.adapters.ts.linear_utils.addition`
+      (:func:`try_insertion_ring`, :func:`build_concerted_ts`,
+      :func:`migrate_verified_atoms`, …),
+    * the orchestration loop in
+      :func:`arc.job.adapters.ts.linear.interpolate_addition` for both
+      enriched (path-spec available) and degraded (path-spec ``None``)
+      modes,
+    * the builder-stage permissive screen used by the same orchestrator
+      for guesses that are still intermediate.
+
+    Routing:
+
+    * When ``path_spec is not None``, route through
+      :func:`validate_guess_against_path_spec` so the guess receives the
+      same Phase 1+2+4a checks as isomerization.
+    * When ``path_spec is None`` (degraded mode — dedicated motif
+      builders, builder-stage screening, frag-fallback intermediates),
+      fall back to the legacy :func:`validate_ts_guess` so coverage
+      never regresses below the pre-Phase-3a baseline.
+
+    Args:
+        xyz: TS guess XYZ dict.
+        uni_mol: Reactant molecule.
+        forming_bonds: Forming bonds for the legacy fallback path
+            (only used when ``path_spec is None``).
+        label: Logging label.
+        path_spec: Optional :class:`ReactionPathSpec` for the guess.
+
+    Returns:
+        ``(is_valid, reason)`` matching the existing validator contract.
+    """
+    if path_spec is not None:
+        return validate_guess_against_path_spec(
+            xyz=xyz,
+            path_spec=path_spec,
+            r_mol=uni_mol,
+            family=path_spec.family,
+            reactive_indices=set(path_spec.reactive_atoms),
+            label=label,
+        )
+    return validate_ts_guess(
+        xyz, set(), list(forming_bonds or []), uni_mol, label=label)

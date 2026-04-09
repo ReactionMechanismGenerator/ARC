@@ -21,8 +21,17 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
 )
 from arc.job.adapters.ts.linear_utils.path_spec import (
     ReactionPathSpec,
+    insertion_ring_extra_stretch,
+    validate_addition_guess,
     validate_guess_against_path_spec,
 )
+
+
+# Backwards-compatible alias.  The canonical helper now lives in
+# :mod:`arc.job.adapters.ts.linear_utils.path_spec` so the builder and
+# the scorer/validator share the same source of truth for family-aware
+# insertion-ring target calibration.
+_insertion_ring_extra_stretch = insertion_ring_extra_stretch
 from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
 
 if TYPE_CHECKING:
@@ -30,44 +39,6 @@ if TYPE_CHECKING:
 
 
 logger = get_logger()
-
-
-def _validate_addition_xyz(ts_xyz: dict,
-                            uni_mol: 'Molecule',
-                            split_bonds: List[Tuple[int, int]],
-                            label: str,
-                            path_spec: Optional['ReactionPathSpec'] = None,
-                            ) -> Tuple[bool, str]:
-    """Phase 3a: addition-side validation gateway used by leaf builders.
-
-    When a :class:`ReactionPathSpec` is supplied, validation is routed
-    through :func:`validate_guess_against_path_spec` so addition guesses
-    receive the same Phase 1+2 path-spec checks as isomerization.  When
-    the spec is ``None`` (degraded mode — e.g. dedicated motif builders
-    with no per-bond metadata), the legacy
-    :func:`validate_ts_guess` path is used so behavior never regresses
-    below the pre-Phase-3a baseline.
-
-    Args:
-        ts_xyz: Built TS guess XYZ dict.
-        uni_mol: The unimolecular RMG Molecule (always available here).
-        split_bonds: Forming-bond indices for the legacy fallback path.
-        label: Logging label.
-        path_spec: Optional :class:`ReactionPathSpec` for the guess.
-
-    Returns:
-        ``(is_valid, reason)`` matching the existing validator contract.
-    """
-    if path_spec is not None:
-        return validate_guess_against_path_spec(
-            xyz=ts_xyz,
-            path_spec=path_spec,
-            r_mol=uni_mol,
-            family=path_spec.family,
-            reactive_indices=set(path_spec.reactive_atoms),
-            label=label,
-        )
-    return validate_ts_guess(ts_xyz, set(), split_bonds, uni_mol, label=label)
 
 
 # ---------------------------------------------------------------------------
@@ -723,46 +694,14 @@ def stretch_bond(uni_xyz: dict,
     # split_bonds are passed as forming_bonds: for addition the TS "forms"
     # the bonds that are being stretched apart, so both names refer to the
     # same bond set from the TS perspective.
-    is_valid, reason = _validate_addition_xyz(
-        ts_xyz, uni_mol, split_bonds, label=label, path_spec=path_spec)
+    is_valid, reason = validate_addition_guess(
+        xyz=ts_xyz, uni_mol=uni_mol, forming_bonds=split_bonds,
+        label=label, path_spec=path_spec)
     if not is_valid:
         logger.debug(f'Linear addition ({label}): rejected — {reason}.')
         return None
 
     return ts_xyz
-
-
-# ---------------------------------------------------------------------------
-# Phase 4a — limited family-aware insertion-ring target calibration
-# ---------------------------------------------------------------------------
-
-
-def _insertion_ring_extra_stretch(family: Optional[str]) -> float:
-    """Return a family-specific positive Å delta to add to the standard
-    Pauling target inside :func:`try_insertion_ring`.
-
-    The 3-membered insertion-ring TS in :func:`try_insertion_ring` uses a
-    uniform ``single_bond_length + PAULING_DELTA`` target on its three
-    reactive edges (mobile-anchor C-C, mobile-mig C-H, anchor-mig C-H).
-    For most families this scale is correct, but for highly exothermic
-    carbene insertions the textbook TS sits much *earlier* on the
-    reaction coordinate — its three reactive edges are roughly 0.20 Å
-    looser than the standard delta predicts.  This helper returns the
-    family-specific extra stretch (in Å) to add to *every* reactive
-    edge of the insertion ring; an empty/unknown family returns 0.
-
-    Currently calibrated families:
-    * ``'1,2_Insertion_carbene'``: +0.20 Å.
-
-    Args:
-        family: Reaction family name (typically ``path_spec.family``).
-
-    Returns:
-        A non-negative additional stretch in Å.  Defaults to ``0.0``.
-    """
-    if family == '1,2_Insertion_carbene':
-        return 0.20
-    return 0.0
 
 
 def try_insertion_ring(uni_xyz: dict,
@@ -920,8 +859,9 @@ def try_insertion_ring(uni_xyz: dict,
         'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
         'coords': tuple(tuple(float(c) for c in row) for row in ts_coords),
     }
-    is_valid, reason = _validate_addition_xyz(
-        ts_xyz, uni_mol, split_bonds, label='insertion-ring', path_spec=path_spec)
+    is_valid, reason = validate_addition_guess(
+        xyz=ts_xyz, uni_mol=uni_mol, forming_bonds=split_bonds,
+        label='insertion-ring', path_spec=path_spec)
     if not is_valid:
         # Phase 4a: when the calibrated insertion-ring builder is in
         # use, the standard ``has_too_many_fragments`` heavy-heavy
