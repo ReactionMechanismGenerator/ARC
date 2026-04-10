@@ -757,6 +757,41 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(unique_label, 'new_species_15_1')
         self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO', 'new_species_15', 'new_species_15_0', 'new_species_15_1'])
 
+    def test_troubleshoot_ess_max_attempts(self):
+        """Test that troubleshoot_ess respects the max_ess_trsh limit."""
+        label = 'methylamine'
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+        self.assertEqual(self.sched1.output[label]['errors'], '')
+
+        job = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
+                          species=[self.spc1], xyz=self.spc1.get_xyz(), job_type='opt',
+                          level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
+                          project_directory=self.project_directory, job_num=200)
+        job.ess_trsh_methods = ['trsh_attempt'] * 10
+
+        self.sched1.troubleshoot_ess(label=label, job=job,
+                                     level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        self.assertIn('ESS troubleshooting attempts exhausted', self.sched1.output[label]['errors'])
+
+    def test_troubleshoot_ess_under_max_attempts(self):
+        """Test that troubleshoot_ess proceeds when under the max_ess_trsh limit."""
+        job = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
+                          species=[self.spc1], xyz=self.spc1.get_xyz(), job_type='opt',
+                          level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
+                          project_directory=self.project_directory, job_num=201)
+        job.ess_trsh_methods = ['trsh_attempt'] * 3
+        initial_count = job.ess_trsh_methods.count('trsh_attempt')
+        # The method will proceed past the guard and append a new 'trsh_attempt',
+        # even though it may fail later due to missing job_status — that's fine,
+        # we're testing that the guard didn't block it.
+        try:
+            self.sched1.troubleshoot_ess(label='methylamine', job=job,
+                                         level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        except (KeyError, AttributeError, TypeError):
+            pass  # Expected — job has no real status; we only test the guard
+        self.assertEqual(job.ess_trsh_methods.count('trsh_attempt'), initial_count + 1)
+
     @classmethod
     def tearDownClass(cls):
         """
