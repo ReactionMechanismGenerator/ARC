@@ -1192,6 +1192,18 @@ def has_committed_spectator_group(
         if b in heavy_reactive_endpoints and 0 <= a < len(symbols) and symbols[a] != 'H':
             approved_partners[int(b)].add(int(a))
 
+    # Build bond-order lookup for the reactant graph so we can exempt
+    # high-order bonds (double, triple) from the spectator check.  Their
+    # natural distances are shorter than sbl(single) and would otherwise
+    # false-positive.  E.g. C≡O at ~1.13 Å < 0.85 × sbl(C,O) = 1.22 Å.
+    atom_to_idx_mol = {atom: i for i, atom in enumerate(r_mol.atoms)}
+    bond_order_lookup: Dict[Tuple[int, int], float] = {}
+    for atom in r_mol.atoms:
+        ia = atom_to_idx_mol[atom]
+        for nbr, bond in atom.bonds.items():
+            ib = atom_to_idx_mol[nbr]
+            bond_order_lookup[(min(ia, ib), max(ia, ib))] = bond.order
+
     n_atoms = len(symbols)
     for ep in sorted(heavy_reactive_endpoints):
         if ep >= len(coords):
@@ -1201,6 +1213,14 @@ def has_committed_spectator_group(
             if k == ep or k in reactive or k in approved:
                 continue
             if symbols[k] == 'H':
+                continue
+            # Exempt existing high-order bonds (double/triple) — their
+            # equilibrium distances are intrinsically shorter than
+            # sbl(single) and are not a sign of committed spectator
+            # contact.
+            bond_key = (min(int(ep), int(k)), max(int(ep), int(k)))
+            bo = bond_order_lookup.get(bond_key, 0.0)
+            if bo >= 2.0:
                 continue
             sbl = get_single_bond_length(symbols[ep], symbols[k])
             if sbl is None or sbl <= 0.0:

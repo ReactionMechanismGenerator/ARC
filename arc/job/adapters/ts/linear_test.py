@@ -3543,11 +3543,35 @@ H      -2.65275729    0.85777810   -0.63272727"""
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn)
         _save_debug_geometries(ts_xyzs, rxn)
-        # The adapter isn't handling this pericyclic TS well yet.
-        # Check basic sanity: no collisions and reasonable size.
         self.assertGreaterEqual(len(ts_xyzs), 1)
         for ts_xyz in ts_xyzs:
-            self.assertFalse(colliding_atoms(ts_xyz))
+            self.assertFalse(colliding_atoms(ts_xyz),
+                             msg=f'Collision in Korcek_step1 TS:\n{xyz_to_str(ts_xyz)}')
+        # Geometry quality checks for the best guess:
+        # 1. O-O distance (atoms 5,6) should be reasonable for the TS
+        #    (reactant O-O ~ 1.47 Å; TS should be stretched toward ~1.8-2.2 Å,
+        #    not collapsed to < 1.3 Å which would be unphysical).
+        coords_best = np.array(ts_xyzs[0]['coords'], dtype=float)
+        d_oo = float(np.linalg.norm(coords_best[5] - coords_best[6]))
+        self.assertGreater(d_oo, 1.3,
+                           msg=f'O-O distance {d_oo:.3f} Å is unphysically short '
+                               f'(< 1.3 Å) in Korcek_step1 TS')
+        # 2. Terminal CH3 (atom 4 = C, H atoms 11,12,13) should not be
+        #    umbrella-inverted — all three H atoms should be on the
+        #    outward side of the C3-C4 axis (positive dot product with
+        #    the C3→C4 direction).
+        c3_pos = coords_best[3]
+        c4_pos = coords_best[4]
+        axis = c4_pos - c3_pos
+        axis_norm = float(np.linalg.norm(axis))
+        if axis_norm > 1e-6:
+            axis_hat = axis / axis_norm
+            for h_idx in [11, 12, 13]:
+                h_vec = coords_best[h_idx] - c4_pos
+                dot = float(np.dot(h_vec, axis_hat))
+                self.assertGreater(dot, -0.3,
+                                   msg=f'H{h_idx} on terminal CH3 appears '
+                                       f'umbrella-inverted (dot={dot:.3f})')
 
     def test_interpolate_korcek_step2(self):
         """Test the interpolate_isomerization() function for Korcek_step2: OC1CC(C)OO1 <=> CC(C)=O + OC=O.
@@ -4655,6 +4679,8 @@ H       0.82596935    1.24150783    3.22846954"""
         self.assertGreaterEqual(len(ts_xyzs), 1)
         matched = any(almost_equal_coords(ts, str_to_xyz(expected_ts_1))
                       for ts in ts_xyzs)
+        self.assertTrue(matched,
+                        msg='No TS guess matched the curated expected_ts_1 for intra_NO2_ONO_conversion')
 
     def test_interpolate_intra_oh_migration(self):  # TODO: H's on reactive CH2 turn slightly toward the reactive OH, should turn slightly away from it
         """Test the interpolate_isomerization() function for Intra_OH_migration: [CH2]COO <=> [O]CCO"""
@@ -4890,13 +4916,13 @@ H       1.61593633   -0.33730052   -2.83543977"""
  H                  2.46946687    4.19514065    0.74709944"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
-    def test_interpolate_lone_electron_pair_bond(self):  # todo: no TS
-        """Test the interpolate_isomerization() function for lone_electron_pair_bond: NH2CH3 + O <=> CH2[NH2+][O-]"""
+    def test_interpolate_lone_electron_pair_bond(self):  # TODO: no TS
+        """Test the interpolate() function for lone_electron_pair_bond: NH2CH3 + O <=> CH2[NH2+][O-]"""
         r_1 = ARCSpecies(label='R1', smiles='NC')
         r_2 = ARCSpecies(label='O', smiles='[O]', multiplicity=1)
         p = ARCSpecies(label='P', smiles='C[NH2+][O-]')
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p])
-        ts_xyzs = interpolate_isomerization(rxn, weight=0.5)
+        ts_xyzs = interpolate(rxn)
         _save_debug_geometries(ts_xyzs, rxn)
         self.assertTrue(len(ts_xyzs) > 0)
         expected_ts = """C                 -0.77741160    0.03661248    0.03964173
