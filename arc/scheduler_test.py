@@ -8,6 +8,7 @@ This module contains unit tests for the arc.scheduler module
 import unittest
 import os
 import shutil
+from unittest.mock import patch, MagicMock
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
@@ -19,7 +20,7 @@ from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
-from arc.species.species import ARCSpecies
+from arc.species.species import ARCSpecies, TSGuess
 
 
 default_levels_of_theory = settings['default_levels_of_theory']
@@ -756,6 +757,135 @@ H      -1.82570782    0.42754384   -0.56130718"""
         unique_label = self.sched2.add_label_to_unique_species_labels(label='new_species_15')
         self.assertEqual(unique_label, 'new_species_15_1')
         self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO', 'new_species_15', 'new_species_15_0', 'new_species_15_1'])
+
+    def _make_isolated_scheduler(self):
+        """Create a Scheduler with a fresh species object for tests that mutate species state."""
+        spc = ARCSpecies(label='spc_test', smiles='CN',
+                         xyz=str_to_xyz("""C  -0.57422867  -0.01669771   0.01229213
+N   0.82084044   0.08279104  -0.37769346
+H  -1.05737005  -0.84067772  -0.52007494
+H  -1.10211468   0.90879867  -0.23383011
+H  -0.66133128  -0.19490562   1.08785111
+H   0.88047852   0.26966160  -1.37780789
+H   1.27889520  -0.81548721  -0.22940984"""))
+        sched = Scheduler(
+            project='project_test_stage_checks',
+            ess_settings=self.ess_settings,
+            species_list=[spc],
+            composite_method=None,
+            conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+            opt_level=Level(repr=default_levels_of_theory['opt']),
+            freq_level=Level(repr=default_levels_of_theory['freq']),
+            sp_level=Level(repr=default_levels_of_theory['sp']),
+            scan_level=Level(repr=default_levels_of_theory['scan']),
+            ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+            project_directory=os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage6'),
+            testing=True,
+            job_types=self.job_types1,
+            orbitals_level=default_levels_of_theory['orbitals'],
+            adaptive_levels=None,
+        )
+        return sched, spc.label
+
+    def test_check_conformer_stage_complete_spawns_opt_for_ts(self):
+        """Test that _check_conformer_stage_complete() calls determine_most_likely_ts_conformer() and
+        spawns an opt job after all TS conformer jobs finish, even when the job-processing loop broke
+        early due to troubleshooting."""
+        sched, label = self._make_isolated_scheduler()
+        # Set up species as a TS with completed conformer jobs.
+        sched.species_dict[label].is_ts = True
+        sched.species_dict[label].ts_conf_spawned = True
+        sched.species_dict[label].ts_guesses_exhausted = False
+        sched.species_dict[label].initial_xyz = None
+        tsg = TSGuess(method='autotst', index=0, success=True, energy=10.0)
+        sched.species_dict[label].ts_guesses = [tsg]
+        sched.job_dict[label] = {'conf_opt': {0: MagicMock()}}
+        sched.running_jobs[label] = []  # all conf_opt jobs done
+        sched.output[label]['job_types']['conf_opt'] = False
+
+        with patch.object(sched, 'determine_most_likely_ts_conformer') as mock_det, \
+             patch.object(sched, 'run_opt_job') as mock_opt:
+            # Simulate determine_most_likely_ts_conformer setting initial_xyz.
+            def set_xyz(lbl):
+                sched.species_dict[lbl].initial_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0, 0, 0),)}
+            mock_det.side_effect = set_xyz
+            sched._check_conformer_stage_complete(label)
+            mock_det.assert_called_once_with(label)
+            mock_opt.assert_called_once_with(label, fine=sched.fine_only)
+
+    def test_check_tsg_stage_complete_all_failed(self):
+        """Test that _check_tsg_stage_complete() sets ts_guesses_exhausted when all TS guesses
+        failed, and does not call run_conformer_jobs()."""
+        sched, label = self._make_isolated_scheduler()
+        sched.species_dict[label].is_ts = True
+        sched.species_dict[label].ts_conf_spawned = False
+        sched.species_dict[label].ts_guesses_exhausted = False
+        tsg1 = TSGuess(method='autotst', index=0, success=False)
+        tsg2 = TSGuess(method='gcn', index=1, success=False)
+        sched.species_dict[label].ts_guesses = [tsg1, tsg2]
+        sched.job_dict[label] = {'tsg': {0: MagicMock(), 1: MagicMock()}}
+        sched.running_jobs[label] = []  # no tsg jobs running
+
+        with patch.object(sched, 'run_conformer_jobs') as mock_conf:
+            sched._check_tsg_stage_complete(label)
+            mock_conf.assert_not_called()
+        self.assertTrue(sched.species_dict[label].ts_guesses_exhausted)
+
+    def test_check_tsg_stage_complete_no_repeat_after_exhausted(self):
+        """Test that _check_tsg_stage_complete() returns immediately when ts_guesses_exhausted
+        is already True (does not re-log or re-call run_conformer_jobs)."""
+        sched, label = self._make_isolated_scheduler()
+        sched.species_dict[label].is_ts = True
+        sched.species_dict[label].ts_conf_spawned = False
+        sched.species_dict[label].ts_guesses_exhausted = True
+        tsg = TSGuess(method='autotst', index=0, success=False)
+        sched.species_dict[label].ts_guesses = [tsg]
+        sched.job_dict[label] = {'tsg': {0: MagicMock()}}
+        sched.running_jobs[label] = []
+
+        with patch.object(sched, 'run_conformer_jobs') as mock_conf:
+            sched._check_tsg_stage_complete(label)
+            mock_conf.assert_not_called()
+
+    def test_check_species_complete_no_repeat_after_converged(self):
+        """Test that _check_species_complete() does not call check_all_done()
+        for a species whose convergence is already True."""
+        sched, label = self._make_isolated_scheduler()
+        sched.output[label]['convergence'] = True
+        sched.running_jobs[label] = []  # empty entry left over
+
+        with patch.object(sched, 'check_all_done') as mock_cad:
+            sched._check_species_complete(label)
+            mock_cad.assert_not_called()
+        # Also verify empty running_jobs entry was cleaned up.
+        self.assertNotIn(label, sched.running_jobs)
+
+    def test_check_species_complete_no_repeat_after_failed(self):
+        """Test that _check_species_complete() does not call check_all_done()
+        for a species whose convergence is already False."""
+        sched, label = self._make_isolated_scheduler()
+        sched.output[label]['convergence'] = False
+
+        with patch.object(sched, 'check_all_done') as mock_cad:
+            sched._check_species_complete(label)
+            mock_cad.assert_not_called()
+
+    def test_check_species_complete_calls_check_all_done_when_ready(self):
+        """Test that _check_species_complete() calls check_all_done() when running_jobs
+        is empty and convergence is still None (not yet finalized)."""
+        sched, label = self._make_isolated_scheduler()
+        sched.output[label]['convergence'] = None
+        sched.running_jobs[label] = []
+        sched._pending_pipe_sp = set()
+        sched._pending_pipe_freq = set()
+        sched._pending_pipe_irc = set()
+        sched._pending_pipe_conf_sp = {}
+
+        with patch.object(sched, 'check_all_done') as mock_cad:
+            sched._check_species_complete(label)
+            mock_cad.assert_called_once_with(label)
+        # Empty running_jobs entry should be cleaned up.
+        self.assertNotIn(label, sched.running_jobs)
 
     @classmethod
     def tearDownClass(cls):

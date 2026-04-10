@@ -622,55 +622,21 @@ class Scheduler(object):
                         job = self.job_dict[label]['conf_opt'][i] if 'conf_opt' in job_name \
                             else self.job_dict[label]['conf_sp'][i]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
-                            # this is a completed conformer job
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
                                 troubleshooting_conformer = self.parse_conformer(job=job, label=label, i=i)
                                 if 'conf_opt' in job_name and self.job_types['conf_sp'] and not troubleshooting_conformer:
                                     # Accumulate for deferred pipe batching of conf_sp.
                                     self._pending_pipe_conf_sp.setdefault(label, set()).add(i)
-                                if troubleshooting_conformer:
-                                    break
-                            # Just terminated a conformer job.
-                            # Are there additional conformer jobs currently running for this species?
-                            # Note: end_job already removed the current job from running_jobs,
-                            # so we don't need to exclude job_name.
-                            for spec_jobs in job_list:
-                                if 'conf_opt' in spec_jobs or 'conf_sp' in spec_jobs:
-                                    break
-                            else:
-                                # All conformer jobs terminated.
-                                # Check isomorphism and run opt on most stable conformer geometry.
-                                logger.info(f'\nConformer jobs for {label} successfully terminated.\n')
-                                if self.species_dict[label].is_ts:
-                                    self.determine_most_likely_ts_conformer(label)
-                                else:
-                                    self.determine_most_stable_conformer(label, sp_flag=True if self.job_types['conf_sp'] else False)  # also checks isomorphism
-                                if self.species_dict[label].initial_xyz is not None:
-                                    # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
-                                    if not self.composite_method:
-                                        self.run_opt_job(label, fine=self.fine_only)
-                                    else:
-                                        self.run_composite_job(label)
                             self.timer = False
                             break
                     if 'tsg' in job_name:
                         job = self.job_dict[label]['tsg'][get_i_from_job_name(job_name)]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
-                            # This is a successfully completed tsg job. It may have resulted in several TSGuesses.
                             self.end_job(job=job, label=label, job_name=job_name)
                             if job.local_path_to_output_file.endswith('.yml') or job.local_path_to_output_file.endswith('.log'):
                                 for rxn in job.reactions:
                                     rxn.ts_species.process_completed_tsg_queue_jobs(path=job.local_path_to_output_file)
-                            # Just terminated a tsg job.
-                            # Are there additional tsg jobs currently running for this species?
-                            for spec_jobs in job_list:
-                                if 'tsg' in spec_jobs:
-                                    break
-                            else:
-                                # All tsg jobs terminated. Spawn confs.
-                                logger.info(f'\nTS guess jobs for {label} successfully terminated.\n')
-                                self.run_conformer_jobs(labels=[label])
                             self.timer = False
                             break
                     elif 'opt' in job_name and 'conf_opt' not in job_name:
@@ -803,20 +769,12 @@ class Scheduler(object):
                             self.timer = False
                             break
 
-                if not len(job_list):
-                    has_pending_pipe_work = (
-                        label in self._pending_pipe_sp
-                        or label in self._pending_pipe_freq
-                        or any(lbl == label for lbl, _ in self._pending_pipe_irc)
-                        or label in self._pending_pipe_conf_sp
-                        or any(label in {t.owner_key for t in p.tasks}
-                               for p in self.active_pipes.values())
-                    )
-                    if not has_pending_pipe_work:
-                        self.check_all_done(label)
-                    if not self.running_jobs[label]:
-                        # Delete the label only if it represents an empty entry.
-                        del self.running_jobs[label]
+            for label in list(self.unique_species_labels):
+                if label in self.output and self.output[label]['convergence'] is False:
+                    continue
+                self._check_conformer_stage_complete(label)
+                self._check_tsg_stage_complete(label)
+                self._check_species_complete(label)
 
             # Poll active pipe runs (per-run failures are handled inside poll_pipes).
             if self.active_pipes:
@@ -839,6 +797,114 @@ class Scheduler(object):
 
         # Generate a TS report:
         self.generate_final_ts_guess_report()
+
+    def _check_conformer_stage_complete(self, label: str) -> None:
+        """
+        Check whether all conformer jobs (conf_opt/conf_sp) for a species have
+        finished. If so, select the best conformer and spawn the next job.
+
+        Called unconditionally after job event processing so that no break
+        in the job-processing loop can skip the conformer-to-opt transition.
+        """
+        if 'conf_opt' not in self.job_dict.get(label, {}):
+            return
+        if any('conf_opt' in j or 'conf_sp' in j
+               for j in self.running_jobs.get(label, [])):
+            return
+        if label in self._pending_pipe_conf_sp:
+            return
+        if any(label in {t.owner_key for t in p.tasks}
+               for p in self.active_pipes.values()
+               if any(t.task_family in ('conf_opt', 'conf_sp', 'ts_opt') for t in p.tasks)):
+            return
+        if self.species_dict[label].initial_xyz is not None:
+            return
+        if self.output[label].get('job_types', {}).get('conf_opt'):
+            return
+        if self.species_dict[label].is_ts and self.species_dict[label].ts_guesses_exhausted:
+            return
+
+        if self.species_dict[label].is_ts:
+            has_successful_conformer = any(
+                tsg.energy is not None for tsg in self.species_dict[label].ts_guesses)
+        else:
+            has_successful_conformer = any(
+                e is not None for e in self.species_dict[label].conformer_energies)
+
+        if not has_successful_conformer:
+            logger.error(f'All conformer jobs for {label} failed. '
+                         f'No conformer has a valid energy.')
+            if self.species_dict[label].is_ts:
+                self.species_dict[label].ts_guesses_exhausted = True
+            return
+
+        logger.info(f'\nConformer jobs for {label} successfully terminated.\n')
+        if self.species_dict[label].is_ts:
+            self.determine_most_likely_ts_conformer(label)
+        else:
+            self.determine_most_stable_conformer(
+                label, sp_flag=True if self.job_types.get('conf_sp') else False)
+        if self.species_dict[label].initial_xyz is not None:
+            if not self.composite_method:
+                self.run_opt_job(label, fine=self.fine_only)
+            else:
+                self.run_composite_job(label)
+        elif not any('conf_opt' in j or 'conf_sp' in j
+                     for j in self.running_jobs.get(label, [])):
+            self.output[label]['job_types']['conf_opt'] = True
+
+    def _check_tsg_stage_complete(self, label: str) -> None:
+        """
+        Check whether all TS guess jobs for a species have finished.
+        If so, spawn conformer jobs for the TS.
+        """
+        if 'tsg' not in self.job_dict.get(label, {}):
+            return
+        if any('tsg' in j for j in self.running_jobs.get(label, [])):
+            return
+        if not self.species_dict[label].is_ts:
+            return
+        if self.species_dict[label].ts_conf_spawned:
+            return
+        if self.species_dict[label].ts_guesses_exhausted:
+            return
+        if not all(tsg.success is not None for tsg in self.species_dict[label].ts_guesses):
+            return
+
+        if not any(tsg.success for tsg in self.species_dict[label].ts_guesses):
+            logger.error(f'All TS guess jobs for {label} failed. '
+                         f'No successful TS guess found.')
+            self.species_dict[label].ts_guesses_exhausted = True
+            return
+
+        logger.info(f'\nTS guess jobs for {label} successfully terminated.\n')
+        self.run_conformer_jobs(labels=[label])
+
+    def _check_species_complete(self, label: str) -> None:
+        """
+        Check whether all jobs for a species are complete and call
+        check_all_done if so. Clean up empty running_jobs entries.
+        """
+        if label in self.output and self.output[label]['convergence'] is not None:
+            # Species already finalized (converged or failed); clean up and skip.
+            if label in self.running_jobs and not self.running_jobs[label]:
+                del self.running_jobs[label]
+            return
+        running = self.running_jobs.get(label, [])
+        if running:
+            return
+        has_pending_pipe_work = (
+            label in self._pending_pipe_sp
+            or label in self._pending_pipe_freq
+            or any(lbl == label for lbl, _ in self._pending_pipe_irc)
+            or label in self._pending_pipe_conf_sp
+            or any(label in {t.owner_key for t in p.tasks}
+                   for p in self.active_pipes.values())
+        )
+        if not has_pending_pipe_work:
+            self.check_all_done(label)
+        if label in self.running_jobs and not self.running_jobs[label]:
+            del self.running_jobs[label]
 
     def run_job(self,
                 job_type: str,
