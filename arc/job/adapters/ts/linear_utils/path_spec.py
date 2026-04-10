@@ -1217,17 +1217,18 @@ def has_committed_spectator_group(
                 continue
             if symbols[k] == 'H':
                 continue
-            # Exempt atoms that are already bonded to the reactive
-            # endpoint in the reactant graph.  A "committed spectator"
-            # is an atom that has formed a NEW contact with a reactive
-            # endpoint that it was not bonded to before — existing
-            # bonds (of any order) are not spectator contacts.  This
-            # correctly handles triple bonds (C≡O ~1.13 Å) and
-            # borderline double bonds (C=C ~1.30 Å) that would
-            # otherwise false-positive against the 0.85 × sbl(single)
-            # threshold.
+            # Exempt existing multiple bonds (bo >= 2.0) in the
+            # reactant graph.  Their equilibrium distances are
+            # intrinsically shorter than 0.85 × sbl(single) and are
+            # not a sign of committed spectator contact:
+            #   C≡O ~1.13 Å  (bo=3)  vs 0.85×sbl(C,O) = 1.22 Å
+            #   C=C ~1.30 Å  (bo=2)  vs 0.85×sbl(C,C) = 1.31 Å
+            # Single bonds (bo < 2) are NOT exempt — a short single
+            # bond between a spectator and a reactive endpoint is a
+            # genuine committed-spectator signal.
             bond_key = (min(int(ep), int(k)), max(int(ep), int(k)))
-            if bond_key in bond_order_lookup:
+            bo = bond_order_lookup.get(bond_key, 0.0)
+            if bo >= 2.0:
                 continue
             sbl = get_single_bond_length(symbols[ep], symbols[k])
             if sbl is None or sbl <= 0.0:
