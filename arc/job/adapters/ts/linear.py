@@ -2585,6 +2585,75 @@ def interpolate_addition(rxn: 'ARCReaction',
             continue
         pre_unique.append(rec)
 
+    # Narrow wrong-channel filter for 1,2_Insertion_carbene.
+    #
+    # The frag-fallback path can produce guesses where the carbene C
+    # (the mono-atomic fragment from the multi-species side) is at
+    # product-like distance (~1.5 Å) from the backbone because the
+    # H-migration step creates a CH₃-like group instead of a TS-like
+    # insertion motif.  The correct TS has the carbene C at ~2.16 Å.
+    #
+    # The carbene C is identifiable as the atom from the smaller
+    # reactant species (the CH₂ singlet).  In the unimolecular product,
+    # this is the C atom that has only C neighbors in the product graph
+    # but was a separate species in the reactant.  The filter rejects
+    # frag-fallback guesses where the smallest multi-species fragment's
+    # heavy atom is at product-like distance from any backbone heavy
+    # atom in the guess.
+    if _family_name == '1,2_Insertion_carbene':
+        # Find the carbene C: the smallest reactant species' heavy atom
+        # index, mapped into the unimolecular product ordering.
+        carbene_c_idx = None
+        smallest_sp = min(multi_species, key=lambda sp: len(sp.get_xyz()['symbols']))
+        if len([s for s in smallest_sp.get_xyz()['symbols'] if s != 'H']) == 1:
+            # The carbene has exactly 1 heavy atom.  Find which atom
+            # in the uni species corresponds to it.  For 1,2_Insertion,
+            # the product is the uni side.  The carbene C is the atom
+            # that was NOT in the butadiene reactant.  A simple heuristic:
+            # the product has 5 heavy C atoms; the butadiene has 4.
+            # The "extra" C is the carbene C.  We identify it by finding
+            # the C in the product that has the most H neighbors
+            # (the CH₃/CH₂ group from the insertion site).
+            atom_to_idx_uni = {a: i for i, a in enumerate(uni_mol.atoms)}
+            uni_syms = uni_xyz['symbols']
+            for atom in uni_mol.atoms:
+                idx = atom_to_idx_uni[atom]
+                if uni_syms[idx] != 'C':
+                    continue
+                h_count = sum(1 for n in atom.bonds.keys()
+                              if n.element.symbol == 'H')
+                heavy_count = sum(1 for n in atom.bonds.keys()
+                                  if n.element.symbol != 'H')
+                # The insertion-site C has 3 H + 1 heavy in the product,
+                # or in some cases 2 H + 2 heavy.  The key is that the
+                # butadiene C atoms have at most 1 H each.
+                if h_count >= 3:
+                    carbene_c_idx = idx
+                    break
+
+        if carbene_c_idx is not None:
+            filtered = []
+            for rec in pre_unique:
+                if rec.strategy == 'frag_fallback':
+                    coords_check = np.array(rec.xyz['coords'], dtype=float)
+                    uni_syms = rec.xyz['symbols']
+                    # Check if the carbene C is at product-like distance
+                    # from any backbone heavy atom.
+                    d_nearest = min(
+                        float(np.linalg.norm(
+                            coords_check[carbene_c_idx] - coords_check[j]))
+                        for j in range(len(uni_syms))
+                        if j != carbene_c_idx and uni_syms[j] != 'H')
+                    if d_nearest < 1.7:
+                        logger.debug(
+                            f'Linear addition (rxn={rxn.label}): rejecting '
+                            f'frag_fallback 1,2_Insertion_carbene guess — '
+                            f'carbene C{carbene_c_idx} at product-like '
+                            f'd={d_nearest:.3f} from backbone.')
+                        continue
+                filtered.append(rec)
+            pre_unique = filtered
+
     # addition guesses now carry their per-path
     # :class:`ReactionPathSpec` directly on each :class:`GuessRecord`,
     # so the shared finalizer assigns real finite scores via
