@@ -1442,10 +1442,11 @@ class Scheduler(object):
                              level_of_theory='ccsd/cc-pvdz',
                              job_type='sp')
                 return
-        mol = self.species_dict[label].mol
-        if mol is not None and len(mol.atoms) == 1 and mol.atoms[0].element.symbol == 'H' and 'DLPNO' in level.method:
-            # Run only CCSD for an H atom instead of DLPNO-CCSD(T) / etc.
-            level = Level(repr='ccsd/vtz', software=level.software, args=level.args)
+        if self.species_dict[label].is_monoatomic() and 'dlpno' in level.method:
+            canonical_method = level.method.replace('dlpno-', '')
+            logger.warning(f'DLPNO methods are incompatible with monoatomic species {label}. '
+                           f'Using {canonical_method}/{level.basis} instead.')
+            level = Level(method=canonical_method, basis=level.basis, software=level.software)
         if self.job_types['sp']:
             if self.species_dict[label].multi_species:
                 if self.output_multi_spc[self.species_dict[label].multi_species].get('sp', False):
@@ -3578,6 +3579,7 @@ class Scheduler(object):
                          server=job.server,
                          job_status=job.job_status[1],
                          is_h=is_h,
+                         is_monoatomic=bool(self.species_dict[label].is_monoatomic()),
                          job_type=job.job_type,
                          num_heavy_atoms=self.species_dict[label].number_of_heavy_atoms,
                          software=job.job_adapter,
