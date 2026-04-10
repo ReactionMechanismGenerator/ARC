@@ -1011,8 +1011,8 @@ class TestTryPipeRotorScans1d(unittest.TestCase):
             run.stage()
 
 
-class TestResubmissionLifecycle(unittest.TestCase):
-    """Tests for #1: resubmission sets SUBMITTED status and clears flag."""
+class TestNoResubmissionLifecycle(unittest.TestCase):
+    """Pipe runs must never resubmit — Q-state workers handle retried tasks."""
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='pipe_resub_test_')
@@ -1021,11 +1021,11 @@ class TestResubmissionLifecycle(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def test_resubmission_sets_submitted_status(self):
-        """After successful resubmission, pipe status should be SUBMITTED."""
+    def test_no_resubmission_even_with_retried_tasks(self):
+        """Even when all workers are done and retried tasks remain,
+        poll_pipes must not resubmit a new scheduler job."""
         tasks = [_make_task_spec(f'task_{i}') for i in range(3)]
         pipe = self.sched.pipe_coordinator.submit_pipe_run('resub_test', tasks)
-        # Simulate retried tasks (attempt_index > 0) so reconcile flags resubmission
         for task_id in ['task_0', 'task_1', 'task_2']:
             now = time.time()
             update_task_state(pipe.pipe_root, task_id, new_status=TaskState.CLAIMED,
@@ -1038,22 +1038,10 @@ class TestResubmissionLifecycle(unittest.TestCase):
                               claimed_at=None, lease_expires_at=None,
                               started_at=None, ended_at=None, failure_class=None)
         pipe.status = PipeRunState.RECONCILING
-        # Mock submit_to_scheduler to succeed
-        with patch.object(pipe, 'submit_to_scheduler', return_value=('submitted', '12345')):
+        with patch.object(pipe, 'submit_to_scheduler', return_value=('submitted', '12345')) as mock_submit:
             self.sched.pipe_coordinator.poll_pipes()
-        self.assertEqual(pipe.status, PipeRunState.SUBMITTED)
-        self.assertEqual(pipe.scheduler_job_id, '12345')
-        self.assertFalse(pipe._needs_resubmission)
-
-    def test_resubmission_clears_flag_on_failure(self):
-        """After failed resubmission, flag should still be cleared to avoid infinite loops."""
-        tasks = [_make_task_spec(f'task_{i}') for i in range(3)]
-        pipe = self.sched.pipe_coordinator.submit_pipe_run('resub_fail', tasks)
-        pipe._needs_resubmission = True
-        pipe.status = PipeRunState.RECONCILING
-        with patch.object(pipe, 'submit_to_scheduler', return_value=('errored', None)):
-            self.sched.pipe_coordinator.poll_pipes()
-        self.assertFalse(pipe._needs_resubmission)
+        mock_submit.assert_not_called()
+        self.assertFalse(pipe.needs_resubmission)
 
 
 class TestShouldUsePipeOwnerType(unittest.TestCase):
