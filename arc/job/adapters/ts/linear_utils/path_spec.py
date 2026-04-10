@@ -1193,9 +1193,12 @@ def has_committed_spectator_group(
             approved_partners[int(b)].add(int(a))
 
     # Build bond-order lookup for the reactant graph so we can exempt
-    # high-order bonds (double, triple) from the spectator check.  Their
-    # natural distances are shorter than sbl(single) and would otherwise
-    # false-positive.  E.g. C≡O at ~1.13 Å < 0.85 × sbl(C,O) = 1.22 Å.
+    # triple bonds from the spectator check.  Triple-bond distances
+    # (C≡O ~1.13 Å, C≡N ~1.16 Å, C≡C ~1.20 Å) are all shorter than
+    # 0.85 × sbl(single) and would false-positive.  Double bonds are
+    # NOT exempted because their distances (~1.20-1.34 Å) are only
+    # borderline and exempting them could mask real wrong-channel
+    # contacts (e.g. a C=O spectator committing to a reactive site).
     atom_to_idx_mol = {atom: i for i, atom in enumerate(r_mol.atoms)}
     bond_order_lookup: Dict[Tuple[int, int], float] = {}
     for atom in r_mol.atoms:
@@ -1214,13 +1217,15 @@ def has_committed_spectator_group(
                 continue
             if symbols[k] == 'H':
                 continue
-            # Exempt existing high-order bonds (double/triple) — their
-            # equilibrium distances are intrinsically shorter than
-            # sbl(single) and are not a sign of committed spectator
-            # contact.
+            # Exempt existing triple bonds (bo >= 2.5) — their
+            # equilibrium distances (C≡O ~1.13, C≡N ~1.16, C≡C ~1.20)
+            # are intrinsically shorter than 0.85 × sbl(single) and
+            # are not a sign of committed spectator contact.  Double
+            # bonds are NOT exempt (borderline distances that could
+            # mask real wrong-channel contacts).
             bond_key = (min(int(ep), int(k)), max(int(ep), int(k)))
             bo = bond_order_lookup.get(bond_key, 0.0)
-            if bo >= 2.0:
+            if bo >= 2.5:
                 continue
             sbl = get_single_bond_length(symbols[ep], symbols[k])
             if sbl is None or sbl <= 0.0:
