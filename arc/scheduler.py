@@ -1443,10 +1443,15 @@ class Scheduler(object):
                              job_type='sp')
                 return
         if self.species_dict[label].is_monoatomic() and 'dlpno' in level.method:
-            canonical_method = level.method.replace('dlpno-', '')
-            logger.warning(f'DLPNO methods are incompatible with monoatomic species {label}. '
-                           f'Using {canonical_method}/{level.basis} instead.')
-            level = Level(method=canonical_method, basis=level.basis, software=level.software)
+            species = self.species_dict[label]
+            if species.number_of_atoms == 1 and species.mol.atoms[0].element.symbol in ('H', 'D', 'T'):
+                logger.warning(f'Using HF/{level.basis} for {label} (single electron, no correlation).')
+                level = Level(method='hf', basis=level.basis, software=level.software)
+            else:
+                canonical_method = level.method.replace('dlpno-', '')
+                logger.warning(f'DLPNO methods are incompatible with monoatomic species {label}. '
+                               f'Using {canonical_method}/{level.basis} instead.')
+                level = Level(method=canonical_method, basis=level.basis, software=level.software)
         if self.job_types['sp']:
             if self.species_dict[label].multi_species:
                 if self.output_multi_spc[self.species_dict[label].multi_species].get('sp', False):
