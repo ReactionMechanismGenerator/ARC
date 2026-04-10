@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import arc.job.trsh as trsh
 from arc.common import ARC_TESTING_PATH
+from arc.exceptions import TrshError
 from arc.imports import settings
 from arc.parser.parser import parse_1d_scan_energies
 
@@ -774,6 +775,26 @@ class TestTrsh(unittest.TestCase):
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('cpu', ess_trsh_methods)
         self.assertEqual(cpu_cores, 10)
+
+        # Orca: test 5
+        # Test that DLPNO + monoatomic species raises TrshError
+        label = 'H'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server1'
+        job_type = 'sp'
+        software = 'orca'
+        fine = True
+        memory_gb = 16
+        cpu_cores = 12
+        num_heavy_atoms = 0
+        ess_trsh_methods = []
+        job_status = {'keywords': ['MDCI', 'Memory'],
+                      'error': 'MDCI error in Orca. Assuming memory allocation error.'}
+        with self.assertRaises(TrshError):
+            trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                              job_type, software, fine, memory_gb,
+                              num_heavy_atoms, cpu_cores, ess_trsh_methods,
+                              is_h=True, is_monoatomic=True)
 
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""

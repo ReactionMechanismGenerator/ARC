@@ -838,6 +838,7 @@ def trsh_ess_job(label: str,
                  cpu_cores: int,
                  ess_trsh_methods: list,
                  is_h: bool = False,
+                 is_monoatomic: bool = False,
                  ) -> tuple:
     """
     Troubleshoot issues related to the electronic structure software, such as convergence.
@@ -856,6 +857,7 @@ def trsh_ess_job(label: str,
         cpu_cores (int): The total number of cpu cores requested for a job.
         ess_trsh_methods (list): The troubleshooting methods tried for this job.
         is_h (bool): Whether the species is a hydrogen atom (or its isotope). e.g., H, D, T.
+        is_monoatomic (bool): Whether the species is monoatomic (single atom).
 
     Todo:
         - Change server to one that has the same ESS if running out of disk space.
@@ -1016,7 +1018,10 @@ def trsh_ess_job(label: str,
             couldnt_trsh = True
 
     elif 'orca' in software:
-        if 'Memory' in job_status['keywords']:
+        if 'dlpno' in level_of_theory.method and (is_monoatomic or is_h):
+            raise TrshError(f'DLPNO methods are incompatible with monoatomic species {label} in Orca. '
+                            f'This should have been caught by the Scheduler before job submission.')
+        elif 'Memory' in job_status['keywords']:
             # Increase memory allocation.
             # job_status will be for example
             # `Error  (ORCA_SCF): Not enough memory available! Please increase MaxCore to more than: 289 MB`.
@@ -1067,9 +1072,6 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {cpu_cores} cpu cores.')
             if 'cpu' not in ess_trsh_methods:
                 ess_trsh_methods.append('cpu')
-        elif 'dlpno' in level_of_theory.method and is_h:
-            logger.error('DLPNO method is not supported for H atom (or its isotope D or T) in Orca.')
-            couldnt_trsh = True
         else:
             couldnt_trsh = True
 
