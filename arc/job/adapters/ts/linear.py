@@ -1760,6 +1760,12 @@ def interpolate_addition(rxn: 'ARCReaction',
         if not split_bonds:
             continue
 
+        # (Wrong-channel guard placeholder: future phases may add a
+        # narrow topology check for reverse-template R_Addition_MultipleBond
+        # scission reactions.  Deferred because the current discriminator
+        # between legitimate reverse-template H-addition paths and true
+        # wrong-channel paths is too subtle for a simple split-bonds check.)
+
         sb_key = frozenset(split_bonds)
         if sb_key in seen_split_sets:
             continue

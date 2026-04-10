@@ -1266,6 +1266,23 @@ H      -0.58767904   -1.85093188    0.22577726"""
  H                 -2.08819756   -1.44598384    1.29850705
  H                 -0.26777988   -1.39577664   -0.43976256"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
+        # Chemistry check: in the correct TS, the carbene C (atom 4,
+        # the inserted CH2) should still be at a TS-like distance from
+        # the butadiene backbone (> 1.7 Å from the nearest butadiene C).
+        # Bad guesses have the carbene C already bonded to the
+        # butadiene at product-like distance (~1.5 Å) with the
+        # migrating H already on the terminal carbon.
+        for ts in ts_xyzs:
+            coords = np.array(ts['coords'], dtype=float)
+            d_c4_nearest = min(
+                float(np.linalg.norm(coords[4] - coords[j]))
+                for j in range(4))
+            self.assertGreater(
+                d_c4_nearest, 1.7,
+                msg=f'Carbene C (atom 4) is at product-like distance '
+                    f'{d_c4_nearest:.3f} Å from the butadiene backbone '
+                    f'— this is a bad guess where the migrating H is '
+                    f'already on the terminal C.')
 
     def test_interpolate_1_2_nh3_elimination(self):
         """Test the interpolate_addition() function for 1,2_NH3_elimination: NNN <=> H2NN(S) + NH3"""
