@@ -225,8 +225,10 @@ class TestBuild13SigmatropicRearrangementTS(unittest.TestCase):
         # Curated TS reference distances (DFT-calibrated):
         #   breaking C3-N4: 2.243 Å
         #   forming N1-C3:  1.850 Å
+        #   bridge C2-C3:   1.656 Å (core-shaping target)
         d_break = float(np.linalg.norm(coords[3] - coords[4]))
         d_form = float(np.linalg.norm(coords[1] - coords[3]))
+        d_bridge = float(np.linalg.norm(coords[2] - coords[3]))
 
         # The calibrated builder should place the migrating atom within
         # 0.1 Å of the curated targets on both motif edges.
@@ -234,6 +236,14 @@ class TestBuild13SigmatropicRearrangementTS(unittest.TestCase):
                                msg=f'd(C3-N4)={d_break:.3f} should be ~2.24')
         self.assertAlmostEqual(d_form, 1.85, delta=0.10,
                                msg=f'd(N1-C3)={d_form:.3f} should be ~1.85')
+
+        # The bridge C2-C3 distance should be materially improved
+        # compared to Phase 5b (which had 2.147 Å).  The curated
+        # target is 1.656 Å — the core-shaping step should bring it
+        # below 2.0 Å (closer to the curated value).
+        self.assertLess(d_bridge, 2.0,
+                        msg=f'd(C2-C3)={d_bridge:.3f} should be < 2.0 '
+                            f'(curated: 1.656, was 2.147 before core-shaping)')
 
         # Unchanged near-core heavy-heavy bonds must remain chemically
         # sane (not collapsed below 0.9 Å or stretched past 3.0 Å).
@@ -312,28 +322,40 @@ class TestBuildBaeyerVilligerStep2TS(unittest.TestCase):
         coords = np.array(ts['coords'], dtype=float)
 
         # Curated TS reference distances (DFT-calibrated):
-        #   O-O peroxide: 2.016 Å
-        #   C_parent-C_mig: 2.304 Å
-        #   C_mig-O_approach: 2.160 Å
+        #   O-O peroxide:       2.016 Å
+        #   C_parent-C_mig:     2.304 Å
+        #   C_mig-O_approach:   2.160 Å
+        #   C_parent-O_hydroxyl: 1.279 Å (new C=O forming)
+        #
+        # C6 and C7 are topologically equivalent CH₃ groups on C5;
+        # the builder picks whichever gives the best-fit geometry.
+        # The curated TS happens to label C7 as the migrating group,
+        # but C6 is an equally valid migration.  The assertions below
+        # are *equivalence-aware*: they check that ONE of C6/C7
+        # migrates with the correct distances, without forcing a
+        # specific label choice.
         d_oo = float(np.linalg.norm(coords[3] - coords[4]))
-        self.assertAlmostEqual(d_oo, 2.02, delta=0.15,
+        self.assertAlmostEqual(d_oo, 2.02, delta=0.10,
                                msg=f'd(O-O)={d_oo:.3f} should be ~2.02')
 
-        # One of the C neighbors of C5 (the quaternary C at index 5)
-        # should be stretched to ~2.30 (migrating group leaving C5)
-        # and approaching O4 at ~2.16.
+        # One of C6/C7 should be significantly stretched from C5
+        # (migrating group departure) and approaching O4.
         d56 = float(np.linalg.norm(coords[5] - coords[6]))
         d57 = float(np.linalg.norm(coords[5] - coords[7]))
-        # At least one of them should be significantly stretched.
         d_mig = max(d56, d57)
-        self.assertGreater(d_mig, 1.8,
-                           msg=f'max(d(C5-C6), d(C5-C7))={d_mig:.3f} — '
-                               f'at least one CH₃ should have migrated')
-        # The migrated one should also be close to O4 (~2.16).
         mig_idx = 6 if d56 > d57 else 7
+        self.assertAlmostEqual(d_mig, 2.30, delta=0.15,
+                               msg=f'd(C5-C{mig_idx})={d_mig:.3f} should be ~2.30')
+
         d_mig_o4 = float(np.linalg.norm(coords[mig_idx] - coords[4]))
-        self.assertAlmostEqual(d_mig_o4, 2.16, delta=0.20,
-                               msg=f'd(C_mig-O4)={d_mig_o4:.3f} should be ~2.16')
+        self.assertAlmostEqual(d_mig_o4, 2.16, delta=0.15,
+                               msg=f'd(C{mig_idx}-O4)={d_mig_o4:.3f} should be ~2.16')
+
+        # C_parent-O_hydroxyl (C5-O8) should be shortened to ~1.28
+        # (new C=O forming in the concerted mechanism).
+        d_c5_o8 = float(np.linalg.norm(coords[5] - coords[8]))
+        self.assertAlmostEqual(d_c5_o8, 1.28, delta=0.15,
+                               msg=f'd(C5-O8)={d_c5_o8:.3f} should be ~1.28')
 
         # Atom count preserved.
         self.assertEqual(ts['symbols'], r.get_xyz()['symbols'])

@@ -491,6 +491,42 @@ def build_1_3_sigmatropic_rearrangement_ts(
     for idx in moving_set:
         coords[idx] += displacement
 
+    # Local core-shaping step: adjust the bridge atom(s) toward the
+    # migrating atom's new position so that the bridge–migrating
+    # distance approaches its curated TS value (~1.66 Å for C–C in
+    # the imidazole case) rather than being over-stretched.
+    #
+    # The bridge atom is the heavy neighbor of the migrating atom that
+    # is neither the origin nor the target — it persists in both
+    # reactant and product.  Moving it (and its H-only substituents)
+    # partially toward the migrating atom's new position closes the
+    # gap without disturbing the calibrated motif edges (which are
+    # anchored to origin and target, not the bridge).
+    _BRIDGE_TARGET_FACTOR = 0.40  # fraction of the gap to close
+    if bridge is not None:
+        d_bridge_mig = float(np.linalg.norm(coords[bridge] - coords[migrating]))
+        # Calibrated bridge–migrating distance: midpoint between the
+        # reactant value (aromatic ~1.37) and a stretched single bond
+        # (~1.66).  Use a family-calibrated target.
+        sbl_bridge = get_single_bond_length(
+            symbols[bridge], symbols[migrating]) or 1.5
+        d_bridge_target = sbl_bridge + 0.12  # ~1.66 for C–C
+        if d_bridge_mig > d_bridge_target:
+            bridge_dir = coords[migrating] - coords[bridge]
+            bridge_dir_norm = float(np.linalg.norm(bridge_dir))
+            if bridge_dir_norm > 1e-6:
+                bridge_hat = bridge_dir / bridge_dir_norm
+                # Move bridge partially toward the calibrated target.
+                gap = d_bridge_mig - d_bridge_target
+                shift = bridge_hat * gap * _BRIDGE_TARGET_FACTOR
+                bridge_moving = {bridge}
+                for nbr in r_mol.atoms[bridge].bonds.keys():
+                    ni = atom_to_idx[nbr]
+                    if symbols[ni] == 'H':
+                        bridge_moving.add(ni)
+                for idx in bridge_moving:
+                    coords[idx] += shift
+
     # Sanity guard: check that no heavy-heavy near-core bond collapsed
     # to less than 0.9 Å (would indicate an unphysical geometry).
     for atom in r_mol.atoms:
@@ -654,6 +690,25 @@ def build_baeyer_villiger_step2_ts(
     d_cc_target = sbl_cc + _BV_CC_STRETCH
     d_approach_target = sbl_co + _BV_CO_STRETCH
 
+    # Step 5: Identify the OH oxygen on c_parent (if present) — its
+    # bond to c_parent shortens in the TS as it forms a new C=O.
+    o_hydroxyl = None
+    for nbr_idx in adj[c_parent]:
+        if nbr_idx == o_other_side:
+            continue
+        if symbols[nbr_idx] != 'O':
+            continue
+        # Check if this O has an H neighbor (hydroxyl).
+        h_on_o = [k for k in adj[nbr_idx] if symbols[k] == 'H']
+        if h_on_o:
+            o_hydroxyl = nbr_idx
+            break
+
+    # Calibrated C_parent-OH target distance (from DFT TS: 1.279 Å).
+    # In the concerted mechanism, C_parent forms a new C=O with the
+    # hydroxyl oxygen as the migrating group departs.
+    _BV_CO_SHORTEN_TARGET = 1.28  # Å (calibrated)
+
     # Try each candidate migrating group; collect all non-colliding
     # guesses and return the best-fit one.
     best_ts: Optional[dict] = None
@@ -711,6 +766,17 @@ def build_baeyer_villiger_step2_ts(
         displacement = new_mig_pos - coords[c_migrating]
         for idx in frag_mig:
             coords[idx] += displacement
+
+        # 4c. Shorten C_parent-O_hydroxyl bond toward calibrated TS
+        # target (~1.28 Å).  In the concerted mechanism, C_parent forms
+        # a new C=O with the hydroxyl oxygen as the migrating group
+        # departs.  Only the O and its H(s) are moved.
+        if o_hydroxyl is not None:
+            frag_oh = _bfs_fragment(adj, o_hydroxyl, block={c_parent})
+            coords = _set_bond_distance(
+                coords, fixed=c_parent, mobile=o_hydroxyl,
+                target_dist=_BV_CO_SHORTEN_TARGET,
+                mobile_frag=frag_oh)
 
         ts_xyz = {
             'symbols': symbols,
