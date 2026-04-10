@@ -527,6 +527,48 @@ def build_1_3_sigmatropic_rearrangement_ts(
                 for idx in bridge_moving:
                     coords[idx] += shift
 
+    # Ring planarity enforcement: project all ring heavy atoms (and
+    # their directly bonded H atoms) onto the best-fit plane of the
+    # ring.  The [1,3]-sigmatropic TS for cyclic substrates (e.g. the
+    # imidazole → azirine rearrangement) should be approximately
+    # planar, but the out-of-plane displacement from the triangulation
+    # leaves the migrating atom far from the ring plane.
+    ring_atoms = {migrating, origin, target}
+    if bridge is not None:
+        ring_atoms.add(bridge)
+    # Add any other heavy atoms bonded to two ring members (ring-closing).
+    for idx in list(ring_atoms):
+        for nbr in r_mol.atoms[idx].bonds.keys():
+            ni = atom_to_idx[nbr]
+            if symbols[ni] != 'H' and ni not in ring_atoms:
+                # Check if this neighbor is bonded to another ring member.
+                nbr_ring_count = sum(
+                    1 for nbr2 in r_mol.atoms[ni].bonds.keys()
+                    if atom_to_idx[nbr2] in ring_atoms)
+                if nbr_ring_count >= 2:
+                    ring_atoms.add(ni)
+    _PLANARITY_FRACTION = 0.20  # fraction of out-of-plane offset to remove
+    if len(ring_atoms) >= 3:
+        ring_list = sorted(ring_atoms)
+        ring_pts = coords[ring_list]
+        centroid = ring_pts.mean(axis=0)
+        centered = ring_pts - centroid
+        _, _, vt = np.linalg.svd(centered)
+        plane_normal = vt[-1]
+        # Partially project ring atoms toward the plane.  Full
+        # projection can collapse bonds between atoms that are far
+        # apart in-plane but close in 3D (e.g. C0-N4 in the imidazole
+        # case).  Moving only a fraction preserves inter-atom distances
+        # while reducing the out-of-plane deviation.
+        for ri in ring_list:
+            offset = float(np.dot(coords[ri] - centroid, plane_normal))
+            coords[ri] -= offset * _PLANARITY_FRACTION * plane_normal
+            for nbr in r_mol.atoms[ri].bonds.keys():
+                hi = atom_to_idx[nbr]
+                if symbols[hi] == 'H':
+                    h_offset = float(np.dot(coords[hi] - centroid, plane_normal))
+                    coords[hi] -= h_offset * _PLANARITY_FRACTION * plane_normal
+
     # Sanity guard: check that no heavy-heavy near-core bond collapsed
     # to less than 0.9 Å (would indicate an unphysical geometry).
     for atom in r_mol.atoms:
@@ -777,6 +819,22 @@ def build_baeyer_villiger_step2_ts(
                 coords, fixed=c_parent, mobile=o_hydroxyl,
                 target_dist=_BV_CO_SHORTEN_TARGET,
                 mobile_frag=frag_oh)
+
+        # 4d. Stretch the hydroxyl O-H bond toward the calibrated TS
+        # target (~1.40 Å).  In the concerted BV mechanism, the
+        # hydroxyl H loosens from O_hydroxyl as the C=O forms.  The
+        # curated TS has d(O-H) ≈ 1.40 Å (stretched from ~0.97 Å).
+        # The H is moved along the O→H direction without moving any
+        # other atom.
+        _BV_OH_STRETCH_TARGET = 1.40  # Å (calibrated from DFT TS)
+        if o_hydroxyl is not None:
+            h_on_oh = [k for k in adj[o_hydroxyl] if symbols[k] == 'H']
+            for h_idx in h_on_oh:
+                oh_vec = coords[h_idx] - coords[o_hydroxyl]
+                oh_dist = float(np.linalg.norm(oh_vec))
+                if oh_dist > 1e-6 and oh_dist < _BV_OH_STRETCH_TARGET:
+                    oh_hat = oh_vec / oh_dist
+                    coords[h_idx] = coords[o_hydroxyl] + oh_hat * _BV_OH_STRETCH_TARGET
 
         ts_xyz = {
             'symbols': symbols,
