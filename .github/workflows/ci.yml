@@ -124,3 +124,63 @@ jobs:
           name: codecov-umbrella
           verbose: true
           fail_ci_if_error: false
+
+  rits-install:
+    name: RitS install (CPU lane)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - name: Checkout ARC
+        uses: actions/checkout@v6
+        with:
+          path: ARC
+
+      - name: Clean Ubuntu Image
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          micromamba-version: 'latest'
+          init-shell: bash
+
+      - name: Restore RitS cache (clone + rits_env + checkpoint)
+        id: rits-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/RitS
+            ~/micromamba/envs/rits_env
+          key: rits-cpu-${{ runner.os }}-${{ hashFiles('ARC/devtools/install_rits.sh') }}
+
+      - name: Install RitS (CPU)
+        shell: bash -el {0}
+        working-directory: ${{ github.workspace }}
+        run: |
+          # Use the existing RitS clone from the cache if present, else clone fresh.
+          if [[ -d RitS/.git ]]; then
+            bash ARC/devtools/install_rits.sh --cpu --path "$PWD/RitS"
+          else
+            bash ARC/devtools/install_rits.sh --cpu
+          fi
+
+      - name: Smoke-test 'import megalodon' from rits_env
+        shell: bash -el {0}
+        run: |
+          micromamba run -n rits_env python - <<'PYEOF'
+          import megalodon, torch, torch_geometric
+          print("megalodon:", megalodon.__file__)
+          print("torch    :", torch.__version__)
+          print("pyg      :", torch_geometric.__version__)
+          print("cuda?    :", torch.cuda.is_available())
+          PYEOF
