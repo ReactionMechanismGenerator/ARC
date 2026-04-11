@@ -2763,7 +2763,6 @@ class Scheduler(object):
         logger.info(f'Switching a TS guess for {label}...')
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
-        self.output[label]['geo'] = self.output[label]['freq'] = self.output[label]['sp'] = self.output[label]['composite'] = ''
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
             os.remove(freq_path)
@@ -3555,7 +3554,14 @@ class Scheduler(object):
                                f'log file:\n"{job.job_status[1]["line"]}".'
         logger.warning(warning_message)
         if self.species_dict[label].is_ts and conformer is not None:
-            xyz = self.species_dict[label].ts_guesses[conformer].get_xyz()
+            tsg = next((t for t in self.species_dict[label].ts_guesses
+                        if t.index == conformer or t.conformer_index == conformer), None)
+            if tsg is not None:
+                xyz = tsg.get_xyz()
+            else:
+                logger.warning(f'Could not find TS guess with index {conformer} for {label}; '
+                               f'skipping troubleshooting for this conformer.')
+                return None
         elif conformer is not None:
             xyz = self.species_dict[label].conformers[conformer]
         else:
@@ -3705,6 +3711,35 @@ class Scheduler(object):
                     job.delete()
         self.running_jobs[label] = list()
         self.output[label]['paths'] = {key: '' if key != 'irc' else list() for key in self.output[label]['paths'].keys()}
+        for job_type in self.output[label]['job_types']:
+            if job_type in ['rotors', 'bde']:
+                continue
+            self.output[label]['job_types'][job_type] = False
+        self.output[label]['convergence'] = None
+        self._pending_pipe_sp.discard(label)
+        self._pending_pipe_freq.discard(label)
+        self._pending_pipe_irc.discard((label, 'forward'))
+        self._pending_pipe_irc.discard((label, 'reverse'))
+        # Clean up any IRC species spawned from this TS.
+        if label in self.species_dict and self.species_dict[label].is_ts:
+            irc_labels_str = self.species_dict[label].irc_label
+            if irc_labels_str:
+                for irc_label in irc_labels_str.split():
+                    if irc_label in self.job_dict and irc_label in self.output:
+                        self.delete_all_species_jobs(irc_label)
+                    if irc_label in self.running_jobs:
+                        del self.running_jobs[irc_label]
+                    if irc_label in self.job_dict:
+                        del self.job_dict[irc_label]
+                    if irc_label in self.output:
+                        del self.output[irc_label]
+                    if irc_label in self.species_dict:
+                        self.species_list = [spc for spc in self.species_list if spc.label != irc_label]
+                        del self.species_dict[irc_label]
+                    if irc_label in self.unique_species_labels:
+                        self.unique_species_labels.remove(irc_label)
+                    logger.info(f'Deleted IRC species {irc_label}.')
+                self.species_dict[label].irc_label = None
 
     def restore_running_jobs(self):
         """
