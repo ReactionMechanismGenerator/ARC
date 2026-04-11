@@ -2,6 +2,7 @@
 A module for plotting and saving output files such as RMG libraries.
 """
 
+import datetime
 import matplotlib
 # Force matplotlib to not use any Xwindows backend.
 # This must be called before pylab, matplotlib.pyplot, or matplotlib.backends is imported.
@@ -12,10 +13,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import shutil
+import textwrap
 from matplotlib.backends.backend_pdf import PdfPages
 from mpl_toolkits.mplot3d import Axes3D
 from typing import List, Optional, Tuple, Union
 
+try:
+    import graphviz
+except ImportError:
+    graphviz = None
 import py3Dmol as p3D
 from rdkit import Chem
 
@@ -52,6 +58,305 @@ PRETTY_UNITS = {'(s^-1)': r' (s$^-1$)',
                 '(cm^6/(mol^2*s))': r' (cm$^6$/(mol$^2$ s))'}
 
 logger = get_logger()
+
+
+def _sanitize_graphviz_id(value: str) -> str:
+    """Return a Graphviz-safe identifier."""
+    return ''.join(ch if ch.isalnum() else '_' for ch in value)
+
+
+def _wrap_graph_label(text: str, width: int = 24) -> str:
+    """Wrap long labels so graph nodes stay readable, preserving intentional newlines."""
+    if not text:
+        return ''
+    return '\n'.join(line for part in str(text).split('\n')
+                     for line in (textwrap.wrap(part, width=width) or ['']))
+
+
+def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz.Digraph':
+    """
+    Render a :class:`ProvenanceGraph` as a Graphviz directed graph.
+
+    Node styling by type:
+      - **species**: box / aliceblue
+      - **calculation**: box / color by status (honeydew=done, mistyrose=errored, white=pending)
+      - **data**: note / cornsilk
+      - **decision**: diamond / color by kind (lavender, moccasin, mistyrose)
+
+    Edge styling by type:
+      - ``selected_by``: solid green
+      - ``rejected_by``: dashed red
+      - ``troubleshot_by``: dashed orange
+      - ``retried_as`` / ``fine_of``: dotted gray
+      - others: solid black
+
+    Args:
+        prov_graph: A :class:`ProvenanceGraph` instance.
+        run_label (str): Label for the root run node.
+
+    Returns:
+        graphviz.Digraph: The rendered graph object.
+    """
+    if graphviz is None:
+        raise ImportError('The graphviz Python package is required for render_provenance_graph(). '
+                          'Install it with: conda install -c conda-forge python-graphviz')
+    gv = graphviz.Digraph(
+        name='arc_provenance',
+        comment=f'ARC provenance for {run_label}',
+        graph_attr={'rankdir': 'LR', 'splines': 'true', 'overlap': 'false'},
+        node_attr={'shape': 'box', 'style': 'rounded,filled', 'fillcolor': 'white', 'fontname': 'Helvetica'},
+        edge_attr={'fontname': 'Helvetica'},
+    )
+
+    # Node styling lookup
+    _calc_colors = {'done': 'honeydew', 'errored': 'mistyrose', 'pending': 'white'}
+    _decision_colors = {
+        'ts_guess_selection': 'lavender',
+        'ts_guess_selection_failed': 'mistyrose',
+        'job_troubleshooting': 'moccasin',
+        'conformer_selection': 'lavender',
+        'ts_guess_clustering': 'lavender',
+        'ts_method_spawning': 'lavender',
+        'ts_validation_freq': 'lightyellow',
+        'ts_validation_nmd': 'lightyellow',
+        'ts_validation_irc': 'lightyellow',
+        'ts_switch': 'mistyrose',
+    }
+
+    # Edge styling lookup
+    _edge_styles = {
+        'selected_by': {'color': 'green3', 'style': 'solid'},
+        'rejected_by': {'color': 'red', 'style': 'dashed'},
+        'troubleshot_by': {'color': 'orange', 'style': 'dashed'},
+        'triggered_by': {'color': 'gray40', 'style': 'solid'},
+        'retried_as': {'color': 'gray60', 'style': 'dotted'},
+        'fine_of': {'color': 'gray60', 'style': 'dotted'},
+        'spawned_by': {'color': 'blue', 'style': 'solid'},
+    }
+
+    for node in prov_graph.nodes.values():
+        nid = _sanitize_graphviz_id(node.node_id)
+        ntype = node.node_type
+
+        if ntype == 'species':
+            lbl = node.label or node.node_id
+            is_ts = (node.metadata or {}).get('is_ts', False)
+            if is_ts:
+                lbl += '\nTS'
+            gv.node(nid, _wrap_graph_label(lbl), shape='box', fillcolor='aliceblue')
+
+        elif ntype == 'calculation':
+            parts = [getattr(node, 'job_type', '') or '', getattr(node, 'job_name', '') or '']
+            if getattr(node, 'job_adapter', None):
+                parts.append(node.job_adapter)
+            if getattr(node, 'level', None):
+                parts.append(node.level)
+            lbl = '\n'.join(p for p in parts if p)
+            status = getattr(node, 'status', 'pending') or 'pending'
+            fillcolor = _calc_colors.get(status, 'white')
+            gv.node(nid, _wrap_graph_label(lbl), shape='box', fillcolor=fillcolor)
+
+        elif ntype == 'data':
+            dk = getattr(node, 'data_kind', '') or ''
+            val = getattr(node, 'value', None)
+            lbl = dk
+            if val is not None and not isinstance(val, (list, dict)):
+                lbl += f'\n{val}'
+            gv.node(nid, _wrap_graph_label(lbl), shape='note', fillcolor='cornsilk')
+
+        elif ntype == 'decision':
+            dk = getattr(node, 'decision_kind', '') or ''
+            outcome = getattr(node, 'outcome', '') or ''
+            lbl = dk.replace('_', ' ')
+            if outcome:
+                lbl += f'\n{outcome}'
+            fillcolor = _decision_colors.get(dk, 'lavender')
+            gv.node(nid, _wrap_graph_label(lbl, width=28), shape='diamond', fillcolor=fillcolor)
+
+        else:
+            gv.node(nid, _wrap_graph_label(node.node_id))
+
+    for edge in prov_graph.edges:
+        src = _sanitize_graphviz_id(edge.source_id)
+        tgt = _sanitize_graphviz_id(edge.target_id)
+        etype = edge.edge_type
+        style_attrs = _edge_styles.get(etype, {})
+        label = etype.replace('_', ' ') if etype not in ('belongs_to', 'input_of', 'output_of') else ''
+        gv.edge(src, tgt, label=label, **style_attrs)
+
+    return gv
+
+
+def save_provenance_artifacts(project_directory: str,
+                              provenance: dict,
+                              graph=None,
+                              ) -> dict:
+    """
+    Save provenance YAML and render Graphviz artifacts for an ARC run.
+
+    When a ``graph`` (:class:`ProvenanceGraph`) is provided, the Graphviz
+    visualization is built from the graph's typed nodes and edges rather
+    than the flat event list, producing richer diagrams.
+
+    Args:
+        project_directory (str): The ARC project directory.
+        provenance (dict): A provenance dictionary with an ``events`` list.
+        graph: Optional ProvenanceGraph instance for graph-based rendering.
+
+    Returns:
+        dict: Paths to generated artifacts.
+    """
+    output_directory = os.path.join(project_directory, 'output')
+    os.makedirs(output_directory, exist_ok=True)
+    yml_path = os.path.join(output_directory, 'provenance.yml')
+    dot_path = os.path.join(output_directory, 'provenance.dot')
+    svg_path = os.path.join(output_directory, 'provenance.svg')
+
+    run_label = provenance.get('project', 'ARC run')
+    if graphviz is None:
+        logger.warning('The graphviz Python package is not available, so ARC will only save provenance.yml.')
+        provenance['updated_at'] = datetime.datetime.now().isoformat(timespec='seconds')
+        save_yaml_file(path=yml_path, content=provenance)
+        return {'yml': yml_path, 'dot': None, 'svg': None}
+
+    # Prefer graph-based rendering when a ProvenanceGraph is available.
+    if graph is not None and len(graph) > 0:
+        gv_graph = render_provenance_graph(graph, run_label=run_label)
+        with open(dot_path, 'w') as f:
+            f.write(gv_graph.source)
+        try:
+            svg_data = gv_graph.pipe(format='svg')
+        except (graphviz.ExecutableNotFound, graphviz.CalledProcessError):
+            logger.warning('Could not render ARC provenance SVG because Graphviz is not available on this system.')
+        else:
+            with open(svg_path, 'wb') as f:
+                f.write(svg_data)
+        provenance['updated_at'] = datetime.datetime.now().isoformat(timespec='seconds')
+        save_yaml_file(path=yml_path, content=provenance)
+        return {'yml': yml_path, 'dot': dot_path, 'svg': svg_path if os.path.isfile(svg_path) else None}
+
+    # Fallback: event-based rendering (legacy path).
+    graph = graphviz.Digraph(
+        name='arc_provenance',
+        comment=f'ARC provenance for {run_label}',
+        graph_attr={'rankdir': 'LR', 'splines': 'true', 'overlap': 'false'},
+        node_attr={'shape': 'box', 'style': 'rounded,filled', 'fillcolor': 'white', 'fontname': 'Helvetica'},
+        edge_attr={'fontname': 'Helvetica'},
+    )
+    run_node_id = _sanitize_graphviz_id(f"run_{provenance.get('run_id', run_label)}")
+    run_header = provenance.get('started_at', '')
+    run_footer = provenance.get('ended_at', '')
+    run_text = f'{run_label}'
+    if run_header:
+        run_text += f'\nstart: {run_header}'
+    if run_footer:
+        run_text += f'\nend: {run_footer}'
+    graph.node(run_node_id, _wrap_graph_label(run_text, width=32), shape='oval', fillcolor='lightgoldenrod1')
+
+    species_nodes = dict()
+    job_nodes = dict()
+    # Track the most recent decision node (troubleshoot / TS selection) per label,
+    # so that follow-up jobs spawned by that decision connect from the diamond.
+    last_decision_by_label = dict()
+
+    for event in provenance.get('events', list()):
+        event_type = event.get('event_type', '')
+        label = event.get('label')
+        if label and label not in species_nodes:
+            species_node_id = _sanitize_graphviz_id(f'species_{label}')
+            species_text = label
+            if event.get('is_ts'):
+                species_text += '\nTS'
+            graph.node(species_node_id, _wrap_graph_label(species_text), fillcolor='aliceblue')
+            graph.edge(run_node_id, species_node_id)
+            species_nodes[label] = species_node_id
+
+        if event_type == 'job_started':
+            job_key = event.get('job_key', event.get('job_name', 'job'))
+            job_node_id = _sanitize_graphviz_id(f'job_{job_key}')
+            job_text = f"{event.get('job_type', 'job')}\n{event.get('job_name', job_key)}"
+            if event.get('job_adapter'):
+                job_text += f"\n{event['job_adapter']}"
+            if event.get('level'):
+                job_text += f"\n{event['level']}"
+            graph.node(job_node_id, _wrap_graph_label(job_text), fillcolor='white')
+
+            # Determine the source node for this job's incoming edge.
+            parent_job = event.get('provenance_parent_job')
+            reason = event.get('provenance_reason', '')
+            if parent_job and label in last_decision_by_label:
+                # A decision (troubleshoot / TS selection) preceded this job — connect from it.
+                source_node_id = last_decision_by_label.pop(label)
+            elif parent_job:
+                # Rerun or other child job — connect from the parent job node.
+                parent_key = f'{label}:{parent_job}'
+                source_node_id = job_nodes.get(parent_key, species_nodes.get(label, run_node_id))
+            else:
+                # Normal first-launch job — connect from the species node.
+                source_node_id = species_nodes.get(label, run_node_id)
+            graph.edge(source_node_id, job_node_id, label=reason)
+            job_nodes[job_key] = job_node_id
+
+        elif event_type == 'job_finished':
+            job_key = event.get('job_key')
+            if job_key in job_nodes:
+                status = event.get('status', 'unknown')
+                fillcolor = {'done': 'honeydew', 'errored': 'mistyrose'}.get(status, 'lightyellow')
+                graph.node(job_nodes[job_key], fillcolor=fillcolor)
+
+                result_node_id = _sanitize_graphviz_id(
+                    f"result_{event.get('event_id', len(job_nodes))}_{job_key}"
+                )
+                result_text = f"{status}"
+                if event.get('run_time'):
+                    result_text += f"\n{event['run_time']}"
+                if event.get('keywords'):
+                    result_text += f"\n{', '.join(event['keywords'])}"
+                graph.node(result_node_id, _wrap_graph_label(result_text), shape='note', fillcolor='cornsilk')
+                graph.edge(job_nodes[job_key], result_node_id)
+
+        elif event_type in ('ts_guess_selected', 'ts_guess_selection_failed', 'job_troubleshooting'):
+            decision_node_id = _sanitize_graphviz_id(f"decision_{event.get('event_id', 0)}")
+            if event_type == 'ts_guess_selected':
+                decision_text = f"Select TS guess {event.get('selected_index')}"
+                if event.get('method'):
+                    decision_text += f"\n{event['method']}"
+                fillcolor = 'lavender'
+            elif event_type == 'ts_guess_selection_failed':
+                decision_text = 'TS guess selection\nfailed'
+                fillcolor = 'mistyrose'
+            else:
+                decision_text = f"Troubleshoot {event.get('job_name', '')}"
+                if event.get('methods'):
+                    decision_text += f"\n{', '.join(event['methods'])}"
+                fillcolor = 'moccasin'
+            graph.node(decision_node_id, _wrap_graph_label(decision_text), shape='diamond', fillcolor=fillcolor)
+            source_job_key = event.get('job_key')
+            source_node_id = job_nodes.get(source_job_key) if source_job_key else species_nodes.get(label)
+            if source_node_id is None and label is not None:
+                source_node_id = species_nodes.get(label)
+            if source_node_id is not None:
+                graph.edge(source_node_id, decision_node_id)
+            if label is not None:
+                last_decision_by_label[label] = decision_node_id
+
+        elif event_type == 'species_initialized' and label in species_nodes:
+            continue
+
+    with open(dot_path, 'w') as f:
+        f.write(graph.source)
+
+    try:
+        svg_data = graph.pipe(format='svg')
+    except (graphviz.ExecutableNotFound, graphviz.CalledProcessError):
+        logger.warning('Could not render ARC provenance SVG because Graphviz is not available on this system.')
+    else:
+        with open(svg_path, 'wb') as f:
+            f.write(svg_data)
+
+    provenance['updated_at'] = datetime.datetime.now().isoformat(timespec='seconds')
+    save_yaml_file(path=yml_path, content=provenance)
+    return {'yml': yml_path, 'dot': dot_path, 'svg': svg_path if os.path.isfile(svg_path) else None}
 
 
 # *** Drawings species ***
