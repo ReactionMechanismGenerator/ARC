@@ -5,8 +5,6 @@ contains helper functions for Scheduler.
 
 import datetime
 
-from typing import List, Optional
-
 CONFORMER_JOB_TYPES = ('conf_opt', 'conf_sp')
 
 
@@ -23,7 +21,7 @@ def is_conformer_job(job_name: str) -> bool:
     return job_name.startswith(CONFORMER_JOB_TYPES)
 
 
-def sum_time_delta(timedelta_list: List[datetime.timedelta]) -> datetime.timedelta:
+def sum_time_delta(timedelta_list: list[datetime.timedelta]) -> datetime.timedelta:
     """
     A helper function for summing datetime.timedelta objects.
 
@@ -39,8 +37,7 @@ def sum_time_delta(timedelta_list: List[datetime.timedelta]) -> datetime.timedel
             result += timedelta
     return result
 
-
-def get_i_from_job_name(job_name: str) -> Optional[int]:
+def get_i_from_job_name(job_name: str) -> int | None:
     """
     Get the conformer or tsg index from the job name.
 
@@ -48,7 +45,7 @@ def get_i_from_job_name(job_name: str) -> Optional[int]:
         job_name (str): The job name, e.g., 'conformer12' or 'tsg5'.
 
     Returns:
-        Optional[int]: The corresponding conformer or tsg index.
+        int | None: The corresponding conformer or tsg index.
     """
     i = None
     for prefix in CONFORMER_JOB_TYPES:

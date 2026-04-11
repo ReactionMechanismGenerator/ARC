@@ -4,17 +4,15 @@ A module for manipulating vectors
 
 import math
 import numpy as np
-from typing import List, Union
 
 from arc.common import logger
 from arc.exceptions import VectorsError
 from arc.molecule.molecule import Molecule
 from arc.species import converter
 
-
-def get_normal(v1: List[float],
-               v2: List[float],
-               ) -> List[float]:
+def get_normal(v1: list[float],
+               v2: list[float],
+               ) -> list[float]:
     """
     Calculate a normal vector using cross multiplication.
 
@@ -28,9 +26,8 @@ def get_normal(v1: List[float],
     normal = [v1[1] * v2[2] - v2[1] * v1[2], - v1[0] * v2[2] + v2[0] * v1[2], v1[0] * v2[1] - v2[0] * v1[1]]
     return unit_vector(normal)
 
-
-def get_angle(v1: List[float],
-              v2: List[float],
+def get_angle(v1: list[float],
+              v2: list[float],
               units: str = 'rads',
               ) -> float:
     """
@@ -53,10 +50,9 @@ def get_angle(v1: List[float],
     conversion = 180 / math.pi if 'degs' in units else 1
     return float(np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)) * conversion)
 
-
-def get_dihedral(v1: List[float],
-                 v2: List[float],
-                 v3: List[float],
+def get_dihedral(v1: list[float],
+                 v2: list[float],
+                 v3: list[float],
                  units: str = 'degs',
                  tol: float = 1e-8,
                  ) -> float:
@@ -115,8 +111,7 @@ def get_dihedral(v1: List[float],
 
     return float(dihedral) * conversion
 
-
-def calculate_distance(coords: Union[list, tuple, dict],
+def calculate_distance(coords: list | tuple | dict,
                        atoms: list,
                        index: int = 0,
                        ) -> float:
@@ -158,8 +153,7 @@ def calculate_distance(coords: Union[list, tuple, dict],
     vector = coords[new_atoms[1]] - coords[new_atoms[0]]
     return get_vector_length(vector)
 
-
-def calculate_angle(coords: Union[list, tuple, dict],
+def calculate_angle(coords: list | tuple | dict,
                     atoms: list,
                     index: int = 0,
                     units: str = 'degs',
@@ -204,8 +198,7 @@ def calculate_angle(coords: Union[list, tuple, dict],
     v2 = coords[new_atoms[1]] - coords[new_atoms[2]]
     return get_angle(v1, v2, units=units)
 
-
-def calculate_dihedral_angle(coords: Union[list, tuple, dict],
+def calculate_dihedral_angle(coords: list | tuple | dict,
                              torsion: list,
                              index: int = 0,
                              units: str = 'degs',
@@ -254,8 +247,7 @@ def calculate_dihedral_angle(coords: Union[list, tuple, dict],
     v3 = coords[new_torsion[3]] - coords[new_torsion[2]]
     return get_dihedral(v1, v2, v3, units=units)
 
-
-def calculate_param(coords: Union[list, tuple, dict],
+def calculate_param(coords: list | tuple | dict,
                     atoms: list,
                     index: int = 0,
                     ) -> float:
@@ -280,8 +272,7 @@ def calculate_param(coords: Union[list, tuple, dict],
     else:
         raise ValueError(f'Expected 2, 3, or 4 indices in coords, got {len(coords)}: {coords}')
 
-
-def unit_vector(vector: List[float]) -> List[float]:
+def unit_vector(vector: list[float]) -> list[float]:
     """
     Calculate a unit vector in the same direction as the input vector.
 
@@ -294,10 +285,9 @@ def unit_vector(vector: List[float]) -> List[float]:
     length = get_vector_length(vector)
     return [vi / length for vi in vector]
 
-
-def set_vector_length(vector: List[float],
+def set_vector_length(vector: list[float],
                       length: float,
-                      ) -> List[float]:
+                      ) -> list[float]:
     """
     Set the length of a 3D vector.
 
@@ -311,12 +301,11 @@ def set_vector_length(vector: List[float],
     u = unit_vector(vector)
     return [u[0] * length, u[1] * length, u[2] * length]
 
-
-def rotate_vector(point_a: List[float],
-                  point_b: List[float],
-                  normal: List[float],
+def rotate_vector(point_a: list[float],
+                  point_b: list[float],
+                  normal: list[float],
                   theta: float,
-                  ) -> List[float]:
+                  ) -> list[float]:
     """
     Rotate a vector in 3D space around a given axis by a certain angle.
 
@@ -345,7 +334,6 @@ def rotate_vector(point_a: List[float],
     new_vector = [n_v + a for n_v, a in zip(new_vector, point_a)]  # root the vector at the original starting point
     return new_vector
 
-
 def get_vector(pivot: int,
                anchor: int,
                xyz: dict,
@@ -366,7 +354,6 @@ def get_vector(pivot: int,
     dy = y[anchor] - y[pivot]
     dz = z[anchor] - z[pivot]
     return [dx, dy, dz]
-
 
 def get_lp_vector(label: str,
                   mol: Molecule,
@@ -407,8 +394,7 @@ def get_lp_vector(label: str,
     z = sum(v[2] for v in vectors)
     return unit_vector([x, y, z])
 
-
-def get_vector_length(v: List[float]) -> float:
+def get_vector_length(v: list[float]) -> float:
     """
     Get the length of an ND vector
 
@@ -419,7 +405,6 @@ def get_vector_length(v: List[float]) -> float:
         The vector's length.
     """
     return float(np.dot(v, v) ** 0.5)
-
 
 def get_delta_angle(a1: float,
                     a2: float,

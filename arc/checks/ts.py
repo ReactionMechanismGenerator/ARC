@@ -6,7 +6,7 @@ from itertools import product
 import os
 
 import numpy as np
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 from arc.parser import parser
 from arc.checks.nmd import analyze_ts_normal_mode_displacement
@@ -35,16 +35,15 @@ logger = get_logger()
 MAX_IRC_FRAGMENTS_FOR_CHARGE_SEARCH = 4
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ']
 
-
 def check_ts(reaction: 'ARCReaction',
-             job: Optional['JobAdapter'] = None,
-             checks: Optional[List[str]] = None,
-             rxn_zone_atom_indices: Optional[List[int]] = None,
-             species_dict: Optional[dict] = None,
-             project_directory: Optional[str] = None,
-             kinetics_adapter: Optional[str] = None,
-             output: Optional[dict] = None,
-             sp_level: Optional['Level'] = None,
+             job: 'JobAdapter' | None = None,
+             checks: list[str] | None = None,
+             rxn_zone_atom_indices: list[int] | None = None,
+             species_dict: dict | None = None,
+             project_directory: str | None = None,
+             kinetics_adapter: str | None = None,
+             output: dict | None = None,
+             sp_level: 'Level' | None = None,
              freq_scale_factor: float = 1.0,
              skip_nmd: bool = False,
              verbose: bool = True,
@@ -60,8 +59,8 @@ def check_ts(reaction: 'ARCReaction',
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
         job (JobAdapter, optional): The frequency job object instance.
-        checks (List[str], optional): Specific checks to run. Optional values: 'energy', 'NMD', 'IRC', 'rotors'.
-        rxn_zone_atom_indices (List[int], optional): The 0-indices of atoms identified by the normal mode displacement
+        checks (list[str], optional): Specific checks to run. Optional values: 'energy', 'NMD', 'IRC', 'rotors'.
+        rxn_zone_atom_indices (list[int], optional): The 0-indices of atoms identified by the normal mode displacement
                                                      as the reaction zone. Automatically determined if not given.
         species_dict (dict, optional): The Scheduler species dictionary.
         project_directory (str, optional): The path to ARC's project directory.
@@ -102,9 +101,8 @@ def check_ts(reaction: 'ARCReaction',
         invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction, job,
                                                               rxn_zone_atom_indices=rxn_zone_atom_indices)
 
-
 def ts_passed_checks(species: 'ARCSpecies',
-                     exemptions: Optional[List[str]] = None,
+                     exemptions: list[str] | None = None,
                      verbose: bool = False,
                      ) -> bool:
     """
@@ -112,7 +110,7 @@ def ts_passed_checks(species: 'ARCSpecies',
 
     Args:
         species (ARCSpecies): The TS species.
-        exemptions (List[str], optional): Keys of the TS.ts_checks dict to pass.
+        exemptions (list[str], optional): Keys of the TS.ts_checks dict to pass.
         verbose (bool, optional): Whether to log findings.
 
     Returns:
@@ -125,7 +123,6 @@ def ts_passed_checks(species: 'ARCSpecies',
                 logger.warning(f'TS {species.label} did not pass the all checks, status is:\n{species.ts_checks}')
             return False
     return True
-
 
 def check_rxn_e_elect(reaction: 'ARCReaction',
                       verbose: bool = True,
@@ -165,7 +162,6 @@ def check_rxn_e_elect(reaction: 'ARCReaction',
     if 'Could not determine TS e_elect relative to the wells; ' not in reaction.ts_species.ts_checks['warnings']:
         reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS e_elect relative to the wells; '
 
-
 def compute_rxn_e0(reaction: 'ARCReaction',
                    species_dict: dict,
                    project_directory: str,
@@ -173,7 +169,7 @@ def compute_rxn_e0(reaction: 'ARCReaction',
                    output: dict,
                    sp_level: 'Level',
                    freq_scale_factor: float = 1.0,
-                   ) -> Optional['ARCReaction']:
+                   ) -> 'ARCReaction' | None:
     """
     Checking the E0 values between wells and a TS in a ``reaction`` using ZPE from statmech.
     This function computed E0 values and populates them in a copy of the given reaction instance.
@@ -188,7 +184,7 @@ def compute_rxn_e0(reaction: 'ARCReaction',
         freq_scale_factor (float, optional): The frequency scaling factor.
 
     Returns:
-        Optional['ARCReaction']: A copy of the reaction object with E0 values populated.
+        'ARCReaction' | None: A copy of the reaction object with E0 values populated.
     """
     if any(val is None for val in [species_dict, project_directory, kinetics_adapter,
                                    output, sp_level, freq_scale_factor]):
@@ -216,7 +212,6 @@ def compute_rxn_e0(reaction: 'ARCReaction',
                                         )
     statmech_adapter.compute_thermo(e0_only=True, skip_rotors=True)
     return rxn_copy
-
 
 def check_rxn_e0(reaction: 'ARCReaction',
                  verbose: bool = True,
@@ -249,7 +244,6 @@ def check_rxn_e0(reaction: 'ARCReaction',
         else:
             reaction.ts_species.ts_checks['E0'] = True
 
-
 def report_ts_and_wells_energy(r_e: float,
                                p_e: float,
                                ts_e: float,
@@ -281,10 +275,9 @@ def report_ts_and_wells_energy(r_e: float,
             f'TS: {ts_text}\n'
             f'Products: {p_text}')
 
-
 def check_normal_mode_displacement(reaction: 'ARCReaction',
-                                   job: Optional['JobAdapter'],
-                                   amplitude: Optional[Union[float, list]] = None,
+                                   job: 'JobAdapter' | None,
+                                   amplitude: float | list | None = None,
                                    ):
     """
     Check the normal mode displacement by identifying bonds that break and form
@@ -293,7 +286,7 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
         job (JobAdapter): The frequency job object instance.
-        amplitude (Union[float, list]): The amplitude of the normal mode displacement motion to check.
+        amplitude (float | list): The amplitude of the normal mode displacement motion to check.
                                         If a list, all possible results are returned.
     """
     amplitude = amplitude or 0.25
@@ -302,21 +295,21 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
                                                                                amplitude=amplitude,
                                                                                )
 
-def determine_changing_bond(bond: Tuple[int, ...],
-                            dmat_bonds_1: List[Tuple[int, int]],
-                            dmat_bonds_2: List[Tuple[int, int]],
-                            ) -> Optional[str]:
+def determine_changing_bond(bond: tuple[int, ...],
+                            dmat_bonds_1: list[tuple[int, int]],
+                            dmat_bonds_2: list[tuple[int, int]],
+                            ) -> str | None:
     """
     Determine whether a bond breaks or forms in a TS.
     Note that ``bond`` and all bond entries in `dmat_bonds_1/2`` must be already sorted from small to large indices.
 
     Args:
-        bond (Tuple[int]): The atom indices describing the bond.
-        dmat_bonds_1 (List[Tuple[int, int]]): The bonds perceived from dmat_1.
-        dmat_bonds_2 (List[Tuple[int, int]]): The bonds perceived from dmat_2.
+        bond (tuple[int]): The atom indices describing the bond.
+        dmat_bonds_1 (list[tuple[int, int]]): The bonds perceived from dmat_1.
+        dmat_bonds_2 (list[tuple[int, int]]): The bonds perceived from dmat_2.
 
     Returns:
-        Optional[bool]:
+        bool | None:
             'forming' if the bond indeed forms between ``dmat_1`` and ``dmat_2``, 'breaking' if it indeed breaks,
             ``None`` if it does not change significantly.
     """
@@ -329,10 +322,9 @@ def determine_changing_bond(bond: Tuple[int, ...],
         return 'breaking'
     return None
 
-
 def invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction: 'ARCReaction',
                                                           job: 'JobAdapter',
-                                                          rxn_zone_atom_indices: Optional[List[int]] = None,
+                                                          rxn_zone_atom_indices: list[int] | None = None,
                                                           ):
     """
     Invalidate rotors in which both pivots are included in the reactive zone.
@@ -340,7 +332,7 @@ def invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction: 'ARCReaction
     Args:
         reaction (ARCReaction): The respective reaction object instance.
         job (JobAdapter): The frequency job object instance.
-        rxn_zone_atom_indices (List[int], optional): The 0-indices of atoms identified by the normal mode displacement
+        rxn_zone_atom_indices (list[int], optional): The 0-indices of atoms identified by the normal mode displacement
                                                      as the reaction zone. Automatically determined if not given.
     """
     rxn_zone_atom_indices = rxn_zone_atom_indices or get_rxn_zone_atom_indices(reaction, job)
@@ -354,10 +346,9 @@ def invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction: 'ARCReaction
                 rotor['invalidation_reason'] += 'Pivots participate in the TS reaction zone (code: pivTS). '
                 logger.info(f"\nNot considering rotor {key} with pivots {rotor['pivots']} in TS {reaction.ts_species.label}\n")
 
-
 def get_rxn_zone_atom_indices(reaction: 'ARCReaction',
                               job: 'JobAdapter',
-                              ) -> List[int]:
+                              ) -> list[int]:
     """
     Get the reaction zone atom indices by parsing normal mode displacement.
 
@@ -366,7 +357,7 @@ def get_rxn_zone_atom_indices(reaction: 'ARCReaction',
         job (JobAdapter): The frequency job object instance.
 
     Returns:
-        List[int]: The indices of the atoms participating in the reaction.
+        list[int]: The indices of the atoms participating in the reaction.
                    The indices are 0-indexed and sorted in an increasing order.
     """
     freqs, normal_mode_disp = parser.parse_normal_mode_displacement(log_file_path=job.local_path_to_output_file,
@@ -379,11 +370,10 @@ def get_rxn_zone_atom_indices(reaction: 'ARCReaction',
     indices = sorted(range(len(normal_mode_disp_rms)), key=lambda i: normal_mode_disp_rms[i], reverse=True)[:num_of_atoms]
     return indices
 
-
 def get_rms_from_normal_mode_disp(normal_mode_disp: np.ndarray,
                                   freqs: np.ndarray,
-                                  reaction: Optional['ARCReaction'] = None,
-                                  ) -> List[float]:
+                                  reaction: 'ARCReaction' | None = None,
+                                  ) -> list[float]:
     """
     Get the root mean squares of the normal mode displacements.
     Use atom mass weights if ``reaction`` is given.
@@ -394,7 +384,7 @@ def get_rms_from_normal_mode_disp(normal_mode_disp: np.ndarray,
         reaction (ARCReaction): The respective reaction object instance.
 
     Returns:
-        List[float]: The RMS of the normal mode displacements.
+        list[float]: The RMS of the normal mode displacements.
     """
     mode_index = get_index_of_abs_largest_neg_freq(freqs)
     nmd = normal_mode_disp[mode_index]
@@ -404,8 +394,7 @@ def get_rms_from_normal_mode_disp(normal_mode_disp: np.ndarray,
         rms.append(((entry[0] ** 2 + entry[1] ** 2 + entry[2] ** 2) ** 0.5) * masses[i] ** 0.55)
     return rms
 
-
-def get_index_of_abs_largest_neg_freq(freqs: np.ndarray) -> Optional[int]:
+def get_index_of_abs_largest_neg_freq(freqs: np.ndarray) -> int | None:
     """
     Get the index of the |largest| negative frequency.
 
@@ -413,16 +402,15 @@ def get_index_of_abs_largest_neg_freq(freqs: np.ndarray) -> Optional[int]:
         freqs (np.ndarray): Entries are frequency values.
 
     Returns:
-        Optional[int]: The 0-index of the largest absolute negative frequency.
+        int | None: The 0-index of the largest absolute negative frequency.
     """
     if not len(freqs) or all(freq > 0 for freq in freqs):
         return None
     return list(freqs).index(min(freqs))
 
-
-def get_expected_num_atoms_with_largest_normal_mode_disp(normal_mode_disp_rms: List[float],
-                                                         ts_guesses: List['TSGuess'],
-                                                         reaction: Optional['ARCReaction'] = None,
+def get_expected_num_atoms_with_largest_normal_mode_disp(normal_mode_disp_rms: list[float],
+                                                         ts_guesses: list['TSGuess'],
+                                                         reaction: 'ARCReaction' | None = None,
                                                          ) -> int:
     """
     Get the number of atoms that are expected to have the largest normal mode displacement for the TS
@@ -430,8 +418,8 @@ def get_expected_num_atoms_with_largest_normal_mode_disp(normal_mode_disp_rms: L
     It is theoretically possible that TSGuesses of the same species will belong to different families.
 
     Args:
-        normal_mode_disp_rms (List[float]): The RMS of the normal mode displacements.
-        ts_guesses (List[TSGuess]): The TSGuess objects of a TS species.
+        normal_mode_disp_rms (list[float]): The RMS of the normal mode displacements.
+        ts_guesses (list[TSGuess]): The TSGuess objects of a TS species.
         reaction (ARCReaction): The respective reaction object instance.
 
     Returns:
@@ -448,10 +436,9 @@ def get_expected_num_atoms_with_largest_normal_mode_disp(normal_mode_disp_rms: L
                         for family in families])
     return num_of_atoms
 
-
-def get_rxn_normal_mode_disp_atom_number(rxn_family: Optional[str] = None,
-                                         reaction: Optional['ARCReaction'] = None,
-                                         rms_list: Optional[List[float]] = None,
+def get_rxn_normal_mode_disp_atom_number(rxn_family: str | None = None,
+                                         reaction: 'ARCReaction' | None = None,
+                                         rms_list: list[float] | None = None,
                                          ) -> int:
     """
     Get the number of atoms expected to have the largest normal mode displacement per family.
@@ -460,7 +447,7 @@ def get_rxn_normal_mode_disp_atom_number(rxn_family: Optional[str] = None,
     Args:
         rxn_family (str, optional): The reaction family label.
         reaction (ARCReaction, optional): The reaction object instance.
-        rms_list (List[float], optional): The root mean squares of the normal mode displacements.
+        rms_list (list[float], optional): The root mean squares of the normal mode displacements.
 
     Raises:
         TypeError: If ``rms_list`` is not ``None`` and is either not a list or does not contain floats.
@@ -492,10 +479,9 @@ def get_rxn_normal_mode_disp_atom_number(rxn_family: Optional[str] = None,
                 number_by_family += 1
     return number_by_family
 
-
 def check_irc_species_and_rxn(xyz_1: dict,
                               xyz_2: dict,
-                              rxn: Optional['ARCReaction'],
+                              rxn: 'ARCReaction' | None,
                               ):
     """
     Check that the two species that result from optimizing the outputs of two IRC runs
@@ -550,10 +536,9 @@ def check_irc_species_and_rxn(xyz_1: dict,
             or _check_equal_bonds_list(dmat_bonds_2, r_bonds) and _check_equal_bonds_list(dmat_bonds_1, p_bonds):
         rxn.ts_species.ts_checks['IRC'] = True
 
-
 def _perceive_irc_fragments(xyz: dict,
                             charge: int = 0,
-                            ) -> Optional[List['Molecule']]:
+                            ) -> list['Molecule'] | None:
     """
     Perceive individual molecular fragments from an IRC endpoint geometry.
 
@@ -567,7 +552,7 @@ def _perceive_irc_fragments(xyz: dict,
         charge (int): The net charge of the full system.
 
     Returns:
-        Optional[List[Molecule]]: A list of perceived ``Molecule`` objects (one per fragment),
+        list[Molecule] | None: A list of perceived ``Molecule`` objects (one per fragment),
                                   or ``None`` if perception fails for any fragment.
     """
     symbols = xyz['symbols']
@@ -639,9 +624,8 @@ def _perceive_irc_fragments(xyz: dict,
                 break
     return best_mols
 
-
-def _match_fragments_to_species(fragments: List['Molecule'],
-                                expected_mols: List['Molecule'],
+def _match_fragments_to_species(fragments: list['Molecule'],
+                                expected_mols: list['Molecule'],
                                 ) -> bool:
     """
     Check whether a list of perceived molecular fragments matches a list of expected species
@@ -649,8 +633,8 @@ def _match_fragments_to_species(fragments: List['Molecule'],
     one-to-one matching between fragments and expected species using backtracking with pruning.
 
     Args:
-        fragments (List[Molecule]): Perceived fragment molecules from an IRC endpoint.
-        expected_mols (List[Molecule]): Expected species molecules from the reaction.
+        fragments (list[Molecule]): Perceived fragment molecules from an IRC endpoint.
+        expected_mols (list[Molecule]): Expected species molecules from the reaction.
 
     Returns:
         bool: Whether a valid one-to-one isomorphic matching exists.
@@ -682,16 +666,15 @@ def _match_fragments_to_species(fragments: List['Molecule'],
 
     return _backtrack(0)
 
-
-def _check_equal_bonds_list(bonds_1: List[Tuple[int, int]],
-                            bonds_2: List[Tuple[int, int]],
+def _check_equal_bonds_list(bonds_1: list[tuple[int, int]],
+                            bonds_2: list[tuple[int, int]],
                             ) -> bool:
     """
     Check whether two lists of bonds are equal.
 
     Args:
-        bonds_1 (List[Tuple[int, int]]): List 1 of bonds.
-        bonds_2 (List[Tuple[int, int]]): List 2 of bonds.
+        bonds_1 (list[tuple[int, int]]): List 1 of bonds.
+        bonds_2 (list[tuple[int, int]]): List 2 of bonds.
 
     Returns:
         bool: Whether the two lists of bonds are equal.
@@ -702,8 +685,7 @@ def _check_equal_bonds_list(bonds_1: List[Tuple[int, int]],
         return True
     return False
 
-
-def check_imaginary_frequencies(imaginary_freqs: Optional[List[float]]) -> bool:
+def check_imaginary_frequencies(imaginary_freqs: list[float] | None) -> bool:
     """
     Check that the number of imaginary frequencies make sense.
     Theoretically, a TS should only have one "large" imaginary frequency,
@@ -711,7 +693,7 @@ def check_imaginary_frequencies(imaginary_freqs: Optional[List[float]]) -> bool:
     This method does not consider the normal mode displacement check.
 
     Args:
-        imaginary_freqs (List[float]): The imaginary frequencies of the TS guess after optimization.
+        imaginary_freqs (list[float]): The imaginary frequencies of the TS guess after optimization.
 
     Returns:
         bool: Whether the imaginary frequencies make sense.

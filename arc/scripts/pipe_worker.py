@@ -18,7 +18,6 @@ import os
 import shutil
 import tempfile
 import time
-from typing import Optional
 
 from arc.imports import settings
 from arc.job.factory import job_factory
@@ -40,9 +39,7 @@ from arc.species import ARCSpecies
 
 pipe_settings, output_filenames = settings['pipe_settings'], settings.get('output_filenames', {})
 
-
 logger = logging.getLogger('pipe_worker')
-
 
 def setup_logging(log_path: str) -> None:
     """Configure logging. Safe to call multiple times."""
@@ -57,7 +54,6 @@ def setup_logging(log_path: str) -> None:
     stderr_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
     logger.addHandler(stderr_handler)
     logger.setLevel(logging.INFO)
-
 
 def claim_task(pipe_root: str, worker_id: str):
     """
@@ -93,12 +89,10 @@ def claim_task(pipe_root: str, worker_id: str):
             continue
     return None, None, None
 
-
 # ESS error keywords that are transient/infrastructure-related and worth retrying
 # with identical input (e.g., on a different node). All other ESS errors are
 # deterministic and should be ejected to the Scheduler for troubleshooting.
 _TRANSIENT_ESS_KEYWORDS = {'NoOutput', 'ServerTimeLimit', 'DiskSpace'}
-
 
 def _is_deterministic_ess_error(ess_info: dict) -> bool:
     """Return True if the ESS error is deterministic (same input will always fail)."""
@@ -107,8 +101,7 @@ def _is_deterministic_ess_error(ess_info: dict) -> bool:
     keywords = set(ess_info.get('keywords', []))
     return not keywords.issubset(_TRANSIENT_ESS_KEYWORDS)
 
-
-def _parse_ess_error(attempt_dir: str, spec) -> Optional[dict]:
+def _parse_ess_error(attempt_dir: str, spec) -> dict | None:
     """
     Parse ESS error info from the output file in an attempt directory.
     Returns a dict with 'status', 'keywords', 'error', 'line', or None.
@@ -126,7 +119,6 @@ def _parse_ess_error(attempt_dir: str, spec) -> Optional[dict]:
         return {'status': status, 'keywords': keywords, 'error': error, 'line': line}
     except Exception:
         return None
-
 
 def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
              worker_id: str, claim_token: str) -> None:
@@ -231,7 +223,6 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
     finally:
         shutil.rmtree(scratch_dir, ignore_errors=True)
 
-
 def _make_result_template(task_id: str, attempt_index: int, started_at: float) -> dict:
     return {
         'task_id': task_id,
@@ -245,7 +236,6 @@ def _make_result_template(task_id: str, attempt_index: int, started_at: float) -
         'parser_summary': None,
         'result_fields': {},
     }
-
 
 # ---------------------------------------------------------------------------
 # Task-family execution dispatch
@@ -277,7 +267,6 @@ def _get_family_extra_kwargs(spec: TaskSpec) -> dict:
 
     return kwargs
 
-
 def _dispatch_execution(spec: TaskSpec, scratch_dir: str) -> None:
     """
     Dispatch execution by task_family.
@@ -292,7 +281,6 @@ def _dispatch_execution(spec: TaskSpec, scratch_dir: str) -> None:
         raise ValueError(f'Unsupported task_family for execution: {spec.task_family}')
     extra = _get_family_extra_kwargs(spec)
     _run_adapter(spec, scratch_dir, job_type=job_type, **extra)
-
 
 def _run_adapter(spec: TaskSpec, scratch_dir: str, job_type: str, **extra_kwargs) -> None:
     """
@@ -349,7 +337,6 @@ def _run_adapter(spec: TaskSpec, scratch_dir: str, job_type: str, **extra_kwargs
         raise RuntimeError(f'{spec.engine} produced no output file at {output_file}. '
                            f'The engine may not be installed or configured on this node.')
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -379,8 +366,7 @@ def _verify_ownership(pipe_root: str, task_id: str,
         return False
     return True
 
-
-def _find_canonical_output(attempt_dir: str, engine: str) -> Optional[str]:
+def _find_canonical_output(attempt_dir: str, engine: str) -> str | None:
     """Try to find the canonical output file path within the attempt calcs tree."""
     target = output_filenames.get(engine, 'output.out')
     calcs_dir = os.path.join(attempt_dir, 'calcs')
@@ -389,7 +375,6 @@ def _find_canonical_output(attempt_dir: str, engine: str) -> Optional[str]:
             if target in files:
                 return os.path.join(root, target)
     return None
-
 
 def _fix_int_keys(obj):
     """Recursively convert string dict keys that represent integers back to int."""
@@ -406,13 +391,11 @@ def _fix_int_keys(obj):
         return [_fix_int_keys(x) for x in obj]
     return obj
 
-
 def _copy_outputs(src_dir: str, dst_dir: str) -> None:
     calcs_dir = os.path.join(src_dir, 'calcs')
     if not os.path.isdir(calcs_dir):
         return
     shutil.copytree(calcs_dir, os.path.join(dst_dir, 'calcs'), dirs_exist_ok=True)
-
 
 def main(argv=None):
     """Entry point. Loops claiming and executing PENDING tasks until none remain."""
@@ -433,7 +416,6 @@ def main(argv=None):
         print('No claimable tasks found. Exiting.')
     else:
         print(f'Worker {args.worker_id} completed {tasks_completed} task(s). No more work remaining.')
-
 
 if __name__ == '__main__':
     main()

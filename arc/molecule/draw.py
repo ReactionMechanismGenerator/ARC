@@ -21,8 +21,6 @@ import numpy as np
 import os.path
 import re
 
-from typing import Optional
-
 import rdkit.Chem as Chem
 from rdkit.Chem import AllChem
 
@@ -38,9 +36,7 @@ from arc.common import get_logger
 from arc.molecule.molecule import Atom, Molecule, Bond
 from arc.molecule.pathfinder import find_shortest_path
 
-
 logger = get_logger()
-
 
 def create_new_surface(file_format, target=None, width=1024, height=768):
     """
@@ -69,13 +65,11 @@ def create_new_surface(file_format, target=None, width=1024, height=768):
             'Invalid value "{0}" for type parameter; valid values are "png", "svg", "pdf", and "ps".'.format(type))
     return surface
 
-
 class AdsorbateDrawingError(Exception):
     """
     When something goes wrong trying to draw an adsorbate.
     """
     pass
-
 
 class MoleculeDrawer(object):
     """
@@ -128,7 +122,7 @@ class MoleculeDrawer(object):
         self.surface = None
         self.cr = None
 
-    def draw(self, molecule, file_format, target=None) -> Optional[tuple]:
+    def draw(self, molecule, file_format, target=None) -> tuple | None:
         """
         Draw the given `molecule` using the given image `file_format` - pdf, svg, ps, or
         png. If `path` is given, the drawing is saved to that location on disk. The
@@ -1671,7 +1665,6 @@ class MoleculeDrawer(object):
                         del site1.bonds[site2]
                         del site2.bonds[site1]
 
-
 class ReactionDrawer(object):
     """
     This class provides functionality for drawing chemical reactions using the
@@ -1848,7 +1841,6 @@ class ReactionDrawer(object):
             rxn_surface.write_to_png(path)
         else:
             rxn_surface.finish()
-
 
 class Geometry(object):
     """

@@ -27,7 +27,6 @@ Currently supported resonance types:
 """
 
 import cython
-from typing import List
 
 import arc.molecule.filtration as filtration
 import arc.molecule.pathfinder as pathfinder
@@ -38,9 +37,7 @@ from arc.molecule.graph import Edge, Graph, Vertex
 from arc.molecule.kekulize import kekulize
 from arc.molecule.molecule import Atom, Bond, Molecule
 
-
 logger = get_logger()
-
 
 def populate_resonance_algorithms(features=None):
     """
@@ -96,7 +93,6 @@ def populate_resonance_algorithms(features=None):
             method_list.append(generate_adsorbate_conjugate_resonance_structures)
     return method_list
 
-
 def analyze_molecule(mol, save_order=False):
     """
     Identify key features of molecule important for resonance structure generation.
@@ -132,13 +128,12 @@ def analyze_molecule(mol, save_order=False):
 
     return features
 
-
 def generate_resonance_structures_safely(mol,
                                          clar_structures=True,
                                          keep_isomorphic=False,
                                          filter_structures=True,
                                          save_order=True,
-                                         ) -> List[Molecule]:
+                                         ) -> list[Molecule]:
     """
     Generates resonance structures for a given molecule with specified options safely.
     A wrapper for generate_resonance_structures().
@@ -155,13 +150,12 @@ def generate_resonance_structures_safely(mol,
         pass
     return result
 
-
 def generate_resonance_structures(mol,
                                   clar_structures=True,
                                   keep_isomorphic=False,
                                   filter_structures=True,
                                   save_order=True,
-                                  ) -> List[Molecule]:
+                                  ) -> list[Molecule]:
     """
     Generate and return all the resonance structures for the input molecule.
 
@@ -259,7 +253,6 @@ def generate_resonance_structures(mol,
 
     return mol_list
 
-
 def _generate_resonance_structures(mol_list, method_list, keep_isomorphic=False, copy=False,
                                    save_order=False):
     """
@@ -349,7 +342,6 @@ def _generate_resonance_structures(mol_list, method_list, keep_isomorphic=False,
 
     return mol_list
 
-
 def generate_allyl_delocalization_resonance_structures(mol):
     """
     Generate all the resonance structures formed by one allyl radical shift.
@@ -384,7 +376,6 @@ def generate_allyl_delocalization_resonance_structures(mol):
                 else:
                     structures.append(structure)
     return structures
-
 
 def generate_lone_pair_multiple_bond_resonance_structures(mol):
     """
@@ -425,7 +416,6 @@ def generate_lone_pair_multiple_bond_resonance_structures(mol):
                     structures.append(structure)
     return structures
 
-
 def generate_adj_lone_pair_radical_resonance_structures(mol):
     """
     Generate all of the resonance structures formed by lone electron pair - radical shifts between adjacent atoms.
@@ -465,7 +455,6 @@ def generate_adj_lone_pair_radical_resonance_structures(mol):
                 else:
                     structures.append(structure)
     return structures
-
 
 def generate_adj_lone_pair_multiple_bond_resonance_structures(mol):
     """
@@ -510,7 +499,6 @@ def generate_adj_lone_pair_multiple_bond_resonance_structures(mol):
                 if not (structure.get_net_charge() and structure.contains_surface_site()):
                     structures.append(structure)
     return structures
-
 
 def generate_adj_lone_pair_radical_multiple_bond_resonance_structures(mol):
     """
@@ -567,7 +555,6 @@ def generate_adj_lone_pair_radical_multiple_bond_resonance_structures(mol):
                     structures.append(structure)
     return structures
 
-
 def generate_N5dc_radical_resonance_structures(mol):
     """
     Generate all of the resonance structures formed by radical and lone pair shifts mediated by an N5dc atom.
@@ -603,7 +590,6 @@ def generate_N5dc_radical_resonance_structures(mol):
                 else:
                     structures.append(structure)
     return structures
-
 
 def generate_optimal_aromatic_resonance_structures(mol, features=None, save_order=False):
     """
@@ -677,7 +663,6 @@ def generate_optimal_aromatic_resonance_structures(mol, features=None, save_orde
 
     return new_mol_list
 
-
 def generate_aromatic_resonance_structure(mol, aromatic_bonds=None, copy=True, save_order=False):
     """
     Generate the aromatic form of the molecule in place without considering other resonance.
@@ -750,7 +735,6 @@ def generate_aromatic_resonance_structure(mol, aromatic_bonds=None, copy=True, s
 
     return [molecule]
 
-
 def generate_aryne_resonance_structures(mol):
     """
     Generate aryne resonance structures, including the cumulene and alkyne forms.
@@ -821,7 +805,6 @@ def generate_aryne_resonance_structures(mol):
 
     return new_mol_list
 
-
 def generate_kekule_structure(mol):
     """
     Generate a kekulized (single-double bond) form of the molecule.
@@ -849,7 +832,6 @@ def generate_kekule_structure(mol):
         return []
 
     return [molecule]
-
 
 def generate_isomorphic_resonance_structures(mol, saturate_h=False):
     """
@@ -903,7 +885,6 @@ def generate_isomorphic_resonance_structures(mol, saturate_h=False):
             isomer.delete_hydrogens()
 
     return isomorphic_isomers
-
 
 def generate_clar_structures(mol, save_order=False):
     """
@@ -960,14 +941,12 @@ def generate_clar_structures(mol, save_order=False):
 
     return mol_list
 
-
 # Define this helper function at the module level (outside the cpdef method):
 def _aromatic_ring_sort_key(ring):
     sum_ids = 0
     for atom in ring:
         sum_ids += atom.id
     return sum_ids
-
 
 def _clar_optimization(mol, constraints=None, max_num=None, save_order=False):
     """
@@ -1109,7 +1088,6 @@ def _clar_optimization(mol, constraints=None, max_num=None, save_order=False):
 
     return inner_solutions + [(molecule, aromatic_rings, bonds, solution)]
 
-
 def _clar_transformation(mol, aromatic_ring):
     """
     Performs Clar transformation for a given ring in a molecule, i.e., conversion to aromatic sextet.
@@ -1131,7 +1109,6 @@ def _clar_transformation(mol, aromatic_ring):
 
     for bond in bond_list:
         bond.order = 1.5
-
 
 def generate_adsorbate_shift_down_resonance_structures(mol):
     """
@@ -1166,7 +1143,6 @@ def generate_adsorbate_shift_down_resonance_structures(mol):
                         structures.append(structure)
     return structures
 
-
 def generate_adsorbate_shift_up_resonance_structures(mol):
     """
     Generate all of the resonance structures formed by the shift of two electrons from X-C bonds to increase the bond
@@ -1199,7 +1175,6 @@ def generate_adsorbate_shift_up_resonance_structures(mol):
                         else:
                             structures.append(structure)
     return structures
-
 
 def generate_adsorbate_conjugate_resonance_structures(mol):
     """

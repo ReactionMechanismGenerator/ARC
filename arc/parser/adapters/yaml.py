@@ -4,7 +4,6 @@ An adapter for parsing YAML log files created by ARC for other packages.
 
 from abc import ABC
 
-from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from arc.common import read_yaml_file
@@ -12,7 +11,6 @@ from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
 from arc.species.converter import str_to_xyz
-
 
 class YAMLParser(ESSAdapter, ABC):
     """
@@ -25,21 +23,21 @@ class YAMLParser(ESSAdapter, ABC):
         super().__init__(log_file_path=log_file_path)
         self.data = read_yaml_file(log_file_path) or dict()
 
-    def logfile_contains_errors(self) -> Optional[str]:
+    def logfile_contains_errors(self) -> str | None:
         """
         Check if the TeraChem log file contains any errors.
 
-        Returns: Optional[str]
+        Returns: str | None
             None if no errors, else error message string.
         """
         # YAML files don't contain runtime errors like ESS logs.
         return None
 
-    def parse_geometry(self) -> Optional[Dict[str, tuple]]:
+    def parse_geometry(self) -> dict[str, tuple] | None:
         """
         Parse the xyz geometry from an ESS log file.
 
-        Returns: Optional[Dict[str, tuple]]
+        Returns: dict[str, tuple] | None
             The cartesian geometry.
         """
         for key in ['xyz', 'opt_xyz']:
@@ -47,21 +45,21 @@ class YAMLParser(ESSAdapter, ABC):
                 return self.data[key] if isinstance(self.data[key], dict) else str_to_xyz(self.data[key])
         return None
 
-    def parse_frequencies(self) -> Optional['np.ndarray']:
+    def parse_frequencies(self) -> 'np.ndarray' | None:
         """
         Parse the frequencies from a freq job output file.
 
-        Returns: Optional[np.ndarray]
+        Returns: np.ndarray | None
             The parsed frequencies (in cm^-1).
         """
         freqs = self.data.get('freqs')
         return np.array(freqs, dtype=np.float64) if freqs else None
 
-    def parse_normal_mode_displacement(self) -> Tuple[Optional['np.ndarray'], Optional['np.ndarray']]:
+    def parse_normal_mode_displacement(self) -> tuple['np.ndarray' | None, 'np.ndarray' | None]:
         """
         Parse frequencies and normal mode displacement.
 
-        Returns: Tuple[Optional['np.ndarray'], Optional['np.ndarray']]
+        Returns: tuple['np.ndarray' | None, 'np.ndarray' | None]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
         freqs = self.data.get('freqs')
@@ -73,41 +71,41 @@ class YAMLParser(ESSAdapter, ABC):
             )
         return None, None
 
-    def parse_t1(self) -> Optional[float]:
+    def parse_t1(self) -> float | None:
         """
         Parse the T1 parameter from a CFOUR coupled cluster calculation.
 
-        Returns: Optional[float]
+        Returns: float | None
             The T1 parameter.
         """
         t1 = self.data.get('T1')
         return t1
 
-    def parse_e_elect(self) -> Optional[float]:
+    def parse_e_elect(self) -> float | None:
         """
         Parse the electronic energy from an sp job output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The electronic energy in kJ/mol.
         """
         energy = self.data.get('sp')
         return energy
 
-    def parse_zpe_correction(self) -> Optional[float]:
+    def parse_zpe_correction(self) -> float | None:
         """
         Determine the calculated ZPE correction (E0 - e_elect) from a frequency output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The calculated zero point energy in kJ/mol.
         """
         zpe = self.data.get('zpe')
         return zpe
 
-    def parse_1d_scan_energies(self) -> Tuple[Optional[List[float]], Optional[List[float]]]:
+    def parse_1d_scan_energies(self) -> tuple[list[float] | None, list[float] | None]:
         """
         Parse the 1D torsion scan energies from an ESS log file.
 
-        Returns: Tuple[Optional[List[float]], Optional[List[float]]]
+        Returns: tuple[list[float] | None, list[float] | None]
             The electronic energy in kJ/mol and the dihedral scan angle in degrees.
         """
         energies = self.data.get('energies')
@@ -118,12 +116,12 @@ class YAMLParser(ESSAdapter, ABC):
             return rel_energies, angles
         return None, None
 
-    def parse_1d_scan_coords(self) -> Optional[List[Dict[str, tuple]]]:
+    def parse_1d_scan_coords(self) -> list[dict[str, tuple]] | None:
         """Parse 1D scan coordinates from YAML data."""
         # Not implemented.
         return None
 
-    def parse_scan_conformers(self) -> Optional['pd.DataFrame']:
+    def parse_scan_conformers(self) -> 'pd.DataFrame' | None:
         """
         Parse all internal coordinates of scan conformers into a DataFrame.
 
@@ -133,21 +131,21 @@ class YAMLParser(ESSAdapter, ABC):
         # Not implemented.
         return None
 
-    def parse_irc_traj(self) -> Optional[List[Dict[str, tuple]]]:
+    def parse_irc_traj(self) -> list[dict[str, tuple]] | None:
         """
         Parse the IRC trajectory coordinates from an ESS log file.
 
-        Returns: List[Dict[str, tuple]]
+        Returns: list[dict[str, tuple]]
             The Cartesian coordinates for each scan point.
         """
         # Not implemented.
         return None
 
-    def parse_nd_scan_energies(self) -> Optional[Dict]:
+    def parse_nd_scan_energies(self) -> Dict | None:
         """
         Parse the ND torsion scan energies from an ESS log file.
 
-        Returns: Optional[Dict]
+        Returns: Dict | None
             The "results" dictionary, which has the following structure::
 
                   results = {'directed_scan_type': <str, used for the fig name>,
@@ -163,11 +161,11 @@ class YAMLParser(ESSAdapter, ABC):
         # Not implemented.
         return None
 
-    def parse_dipole_moment(self) -> Optional[float]:
+    def parse_dipole_moment(self) -> float | None:
         """
         Parse the dipole moment in Debye from an opt job output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The dipole moment in Debye.
         """
         dipole = self.data.get('dipole')
@@ -179,11 +177,11 @@ class YAMLParser(ESSAdapter, ABC):
             return float(np.linalg.norm(list(dipole.values())))
         return None
 
-    def parse_polarizability(self) -> Optional[float]:
+    def parse_polarizability(self) -> float | None:
         """
         Parse the polarizability from a freq job output file, returns the value in Angstrom^3.
 
-        Returns: Optional[float]
+        Returns: float | None
             The polarizability in Angstrom^3.
         """
         polarizability = self.data.get('polarizability')
@@ -191,6 +189,5 @@ class YAMLParser(ESSAdapter, ABC):
             # Convert from Bohr^3 to A^3 if needed
             return polarizability * (bohr_to_angstrom ** 3)
         return None
-
 
 register_ess_adapter('yaml', YAMLParser)

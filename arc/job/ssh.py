@@ -9,7 +9,8 @@ Todo:
 import datetime
 import os
 import time
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any
+from collections.abc import Callable
 
 import paramiko
 
@@ -17,14 +18,11 @@ from arc.common import get_logger
 from arc.exceptions import InputError, ServerError
 from arc.imports import settings
 
-
 logger = get_logger()
-
 
 check_status_command, delete_command, list_available_nodes_command, servers, submit_command, submit_filenames = \
     settings['check_status_command'], settings['delete_command'], settings['list_available_nodes_command'], \
     settings['servers'], settings['submit_command'], settings['submit_filenames']
-
 
 def check_connections(function: Callable[..., Any]) -> Callable[..., Any]:
     """
@@ -50,7 +48,6 @@ def check_connections(function: Callable[..., Any]) -> Callable[..., Any]:
             self.connect()
         return function(*args, **kwargs)
     return decorator
-
 
 class SSHClient(object):
     """
@@ -89,17 +86,17 @@ class SSHClient(object):
 
     @check_connections
     def _send_command_to_server(self,
-                                command: Union[str, list],
+                                command: str | list,
                                 remote_path: str = '',
-                                ) -> Tuple[list, list]:
+                                ) -> tuple[list, list]:
         """
         A wrapper for exec_command in paramiko.SSHClient. Send commands to the server.
 
         Args:
-            command (Union[str, list]): A string or an array of string commands to send.
-            remote_path (Optional[str]): The directory path at which the command will be executed.
+            command (str | list): A string or an array of string commands to send.
+            remote_path (str | None): The directory path at which the command will be executed.
 
-        Returns: Tuple[list, list]:
+        Returns: tuple[list, list]:
             - A list of lines of standard output stream.
             - A list of lines of the standard error stream.
         """
@@ -138,8 +135,8 @@ class SSHClient(object):
 
         Args:
             remote_file_path (str): The path to write into on the remote server.
-            local_file_path (Optional[str]): The local file path to be copied to the remote location.
-            file_string (Optional[str]): The file content to be copied and saved as the remote file.
+            local_file_path (str | None): The local file path to be copied to the remote location.
+            file_string (str | None): The file content to be copied and saved as the remote file.
 
         Raises:
             InputError: If both `local_file_path` or `file_string` are invalid,
@@ -233,24 +230,24 @@ class SSHClient(object):
             return f'errored: {stderr}'
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
-    def delete_job(self, job_id: Union[int, str]) -> None:
+    def delete_job(self, job_id: int | str) -> None:
         """
         Deletes a running job.
 
         Args:
-            job_id (Union[int, str]): The job's ID.
+            job_id (int | str): The job's ID.
         """
         cmd = f"{delete_command[servers[self.server]['cluster_soft']]} {job_id}"
         self._send_command_to_server(cmd)
 
     def delete_jobs(self,
-                    jobs: Optional[List[Union[str, int]]] = None
+                    jobs: list[str | int] | None = None
                     ) -> None:
         """
         Delete all of the jobs on a specific server.
 
         Args:
-            jobs (List[Union[str, int]], optional): Specific ARC job IDs to delete.
+            jobs (list[str | int], optional): Specific ARC job IDs to delete.
         """
         jobs_message = f'{len(jobs)}' if jobs is not None else 'all'
         print(f'\nDeleting {jobs_message} ARC jobs from {self.server}...')
@@ -285,7 +282,7 @@ class SSHClient(object):
 
     def submit_job(self, remote_path: str,
                    recursion: bool = False,
-                   ) -> Tuple[Optional[str], Optional[str]]:
+                   ) -> tuple[str | None, str | None]:
         """
         Submit a job to the server.
 
@@ -293,7 +290,7 @@ class SSHClient(object):
             remote_path (str): The remote path contains the input file and the submission script.
             recursion (bool, optional): Whether this call is within a recursion.
 
-        Returns: Tuple[str, int]
+        Returns: tuple[str, int]
             - A string indicate the status of job submission.
               Either `errored` or `submitted`.
             - The job ID of the submitted job.
@@ -359,11 +356,11 @@ class SSHClient(object):
             time.sleep(interval)
         raise ServerError(f'Could not connect to server {self.server} even after {times_tried} trials.')
 
-    def _connect(self) -> Tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]:
+    def _connect(self) -> tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]:
         """
         Connect via paramiko, and open an SSH session as well as a SFTP session.
 
-        Returns: Tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]
+        Returns: tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]
             - An SFTP client used to perform remote file operations.
             - A high-level representation of a session with an SSH server.
         """
@@ -394,8 +391,8 @@ class SSHClient(object):
     @check_connections
     def get_last_modified_time(self,
                                remote_file_path_1: str,
-                               remote_file_path_2: Optional[str],
-                               ) -> Optional[datetime.datetime]:
+                               remote_file_path_2: str | None,
+                               ) -> datetime.datetime | None:
         """
         Returns the last modified time of ``remote_file_path_1`` if the file exists,
         else returns the last modified time of ``remote_file_path_2`` if the file exists.
@@ -535,9 +532,8 @@ class SSHClient(object):
             raise ServerError(
                 f'Cannot create dir for the given path ({remote_path}).\nGot: {stderr}')
 
-
 def check_job_status_in_stdout(job_id: int,
-                               stdout: Union[list, str],
+                               stdout: list | str,
                                server: str,
                                ) -> str:
     """
@@ -545,7 +541,7 @@ def check_job_status_in_stdout(job_id: int,
 
     Args:
         job_id (int): the job ID recognized by the server.
-        stdout (Union[list, str]): The output of a queue status check.
+        stdout (list | str): The output of a queue status check.
         server (str): The server name.
 
     Returns:
@@ -580,9 +576,8 @@ def check_job_status_in_stdout(job_id: int,
         return 'running'
     raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 
-
 def delete_all_arc_jobs(server_list: list,
-                        jobs: Optional[List[str]] = None,
+                        jobs: list[str] | None = None,
                         ) -> None:
     """
     Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from :list:servers
@@ -592,7 +587,7 @@ def delete_all_arc_jobs(server_list: list,
 
     Args:
         server_list (list): List of servers to delete ARC jobs from.
-        jobs (Optional[List[str]]): Specific ARC job IDs to delete.
+        jobs (list[str] | None): Specific ARC job IDs to delete.
     """
     if isinstance(server_list, str):
         server_list = [server_list]

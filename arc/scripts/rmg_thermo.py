@@ -7,7 +7,6 @@ and get thermodynamic properties for species
 """
 
 import os
-from typing import List
 
 from common import parse_command_line_arguments, read_yaml_file, save_yaml_file
 
@@ -15,9 +14,7 @@ from rmgpy.data.rmg import RMGDatabase
 from rmgpy import settings as rmg_settings
 from rmgpy.species import Species
 
-
 DB_PATH = rmg_settings['database.directory']
-
 
 def main():
     """
@@ -40,16 +37,15 @@ def main():
     result = get_thermo(species_list)
     save_yaml_file(path=input_file, content=result)
 
-
-def get_thermo(species_list: List[dict]) -> List[dict]:
+def get_thermo(species_list: list[dict]) -> list[dict]:
     """
     Get thermo properties for a list of species.
 
     Args:
-        species_list (List[dict]): A list of species dictionaries.
+        species_list (list[dict]): A list of species dictionaries.
 
     Returns:
-        List[dict]: A list of species dictionaries with thermo properties.
+        list[dict]: A list of species dictionaries with thermo properties.
     """
     print('Loading RMG database...')
     rmgdb = load_rmg_database()
@@ -62,7 +58,6 @@ def get_thermo(species_list: List[dict]) -> List[dict]:
         species_list[i]['comment'] = spc.thermo.comment
     return species_list
 
-
 def load_rmg_database() -> RMGDatabase:
     """
     Load the RMG database.
@@ -74,7 +69,6 @@ def load_rmg_database() -> RMGDatabase:
     thermo_libraries = read_yaml_file(path=os.path.join(os.path.dirname(__file__), 'libraries.yaml'))['thermo']
     rmgdb.load_thermo(path=os.path.join(DB_PATH, 'thermo'), thermo_libraries=thermo_libraries, depository=True, surface=False)
     return rmgdb
-
 
 if __name__ == '__main__':
     main()

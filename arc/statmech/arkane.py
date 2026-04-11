@@ -6,7 +6,7 @@ import os
 import re
 import shutil
 from abc import ABC
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 from mako.template import Template
 
@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from arc.reaction import ARCReaction
     from arc.species.species import ARCSpecies
 
-
 RMG_DB_PATH = settings['RMG_DB_PATH']
 RMG_ENV_NAME = settings.get('RMG_ENV_NAME', 'rmg_env')
 logger = get_logger()
@@ -36,7 +35,6 @@ PBAC_SECTION_END = "mbac = {"
 MBAC_SECTION_START = "mbac = {"
 MBAC_SECTION_END = "freq_dict ="
 FREQ_SECTION_START = "freq_dict = {"
-
 
 main_input_template = """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
@@ -121,7 +119,6 @@ rotors = [
 
 """
 
-
 class ArkaneAdapter(StatmechAdapter, ABC):
     """
     A class for working with the Arkane statmech software.
@@ -131,10 +128,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         calcs_directory (str): The path to the ARC project calculations directory.
         output_dict (dict): Keys are labels, values are output file paths.
                             See Scheduler for a description of this dictionary.
-        bac_type (Optional[str]): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
+        bac_type (str | None): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
                                   ``None`` to not use BAC.
-        species (List[ARCSpecies]): A list of ARCSpecies objects to compute thermodynamic properties for.
-        reactions (Optional[List[ARCReaction]]): A list of ARCReaction objects to compute kinetics for.
+        species (list[ARCSpecies]): A list of ARCSpecies objects to compute thermodynamic properties for.
+        reactions (list[ARCReaction] | None): A list of ARCReaction objects to compute kinetics for.
         sp_level (Level, optional): The level of theory used for energy corrections.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         skip_nmd (bool, optional): Whether to skip the normal mode displacement check. ``True`` to skip.
@@ -147,11 +144,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                  output_directory: str,
                  calcs_directory: str,
                  output_dict: dict,
-                 species: List['ARCSpecies'],
-                 reactions: Optional[List['ARCReaction']] = None,
-                 bac_type: Optional[str] = None,
-                 sp_level: Optional['Level'] = None,
-                 freq_level: Optional['Level'] = None,
+                 species: list['ARCSpecies'],
+                 reactions: list['ARCReaction'] | None = None,
+                 bac_type: str | None = None,
+                 sp_level: 'Level' | None = None,
+                 freq_level: 'Level' | None = None,
                  freq_scale_factor: float = 1.0,
                  skip_nmd: bool = False,
                  species_dict: dict = None,
@@ -530,7 +527,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         for rxn in self.reactions:
             _parse_conformer_statmech(rxn.ts_species, output_content)
 
-
 def run_arkane(statmech_dir: str) -> bool:
     """
     Execute an Arkane calculation within statmech_dir that contains an 'input.py' file.
@@ -594,7 +590,6 @@ fi' '''
     logger.debug(f'Arkane run completed:\n{std_out}')
     return True
 
-
 def clean_output_directory(species_path: str,  # todo
                            is_ts: bool = False,
                            ) -> None:
@@ -653,9 +648,8 @@ def clean_output_directory(species_path: str,  # todo
                         dst=os.path.join(species_path, target_file))
         shutil.rmtree(plot_path)
 
-
 def create_statmech_dir(calcs_directory: str,
-                        subdir: Optional[str] = None,
+                        subdir: str | None = None,
                         delete_existing_subdir: bool = True,
                         ) -> str:
     """
@@ -678,19 +672,18 @@ def create_statmech_dir(calcs_directory: str,
         os.makedirs(statmech_dir, exist_ok=True)
     return statmech_dir
 
-
-def _extract_section(file_path: str, section_start: str, section_end: Optional[str] = None) -> Optional[str]:
+def _extract_section(file_path: str, section_start: str, section_end: str | None = None) -> str | None:
     """
     Extract a section from a file between section_start and section_end.
 
     Args:
         file_path (str): Path to the file to read.
         section_start (str): String marking the start of the section.
-        section_end (Optional[str]): String marking the end of the section.
+        section_end (str | None): String marking the end of the section.
                                      If ``None``, reads to the end of the file.
 
     Returns:
-        Optional[str]: Extracted section as string, or None if not found.
+        str | None: Extracted section as string, or None if not found.
     """
     if not os.path.isfile(file_path):
         return None
@@ -706,9 +699,7 @@ def _extract_section(file_path: str, section_start: str, section_end: Optional[s
         return None
     return text[start_idx:end_idx + len(section_end)]
 
-
-
-def get_qm_corrections_files() -> List[str]:
+def get_qm_corrections_files() -> list[str]:
     """
     Return quantum corrections data.py paths from the RMG database.
     """
@@ -725,8 +716,7 @@ def get_qm_corrections_files() -> List[str]:
         )
     return existing
 
-
-def _normalize_name(name: Optional[str]) -> Optional[str]:
+def _normalize_name(name: str | None) -> str | None:
     """
     Normalize a method or basis name for comparison:
       - lowercase
@@ -739,7 +729,6 @@ def _normalize_name(name: Optional[str]) -> Optional[str]:
     if name is None:
         return None
     return name.replace('-', '').replace(' ', '').lower()
-
 
 def _split_method_year(method_norm: str) -> tuple:
     """
@@ -755,7 +744,6 @@ def _split_method_year(method_norm: str) -> tuple:
     base, year_str = m.groups()
     return base, int(year_str)
 
-
 def _parse_lot_params(lot_str: str) -> dict:
     """
     Parse method, basis, and software from a LevelOfTheory(...) string.
@@ -770,10 +758,9 @@ def _parse_lot_params(lot_str: str) -> dict:
             params[key] = m.group(1)
     return params
 
-
 def _iter_level_keys_from_section(file_path: str,
                                   section_start: str,
-                                  section_end: Optional[str] = None) -> List[str]:
+                                  section_end: str | None = None) -> list[str]:
     """
     Return all LevelOfTheory(...) key strings that appear as dictionary keys
     in a given section of data.py.
@@ -789,11 +776,10 @@ def _iter_level_keys_from_section(file_path: str,
     pattern = r'"(LevelOfTheory\([^"]*\))"\s*:'
     return re.findall(pattern, section, flags=re.DOTALL)
 
-
 def _available_years_for_level(level: "Level",
                                file_path: str,
                                section_start: str,
-                               section_end: Optional[str] = None) -> List[Optional[int]]:
+                               section_end: str | None = None) -> list[int | None]:
     """
     Return a sorted list of available year suffixes for a given Level in a section.
     """
@@ -833,8 +819,7 @@ def _available_years_for_level(level: "Level",
     # Sort with None first to represent "no year suffix"
     return sorted(years, key=lambda y: (-1 if y is None else y))
 
-
-def _format_years(years: List[Optional[int]]) -> str:
+def _format_years(years: list[int | None]) -> str:
     """
     Format a list of years for logging.
     """
@@ -842,12 +827,11 @@ def _format_years(years: List[Optional[int]]) -> str:
         return "none"
     return ", ".join("none" if y is None else str(y) for y in years)
 
-
 def find_best_across_files(level: "Level",
-                            qm_corr_files: List[str],
+                            qm_corr_files: list[str],
                             section_start: str,
-                            section_end: Optional[str],
-                            ) -> Optional[str]:
+                            section_end: str | None,
+                            ) -> str | None:
     """
     Search all quantum-corrections files for the best matching LevelOfTheory key.
 
@@ -859,12 +843,11 @@ def find_best_across_files(level: "Level",
             return result
     return None
 
-
 def _all_available_years(level: "Level",
-                         qm_corr_files: List[str],
+                         qm_corr_files: list[str],
                          section_start: str,
-                         section_end: Optional[str],
-                         ) -> List[Optional[int]]:
+                         section_end: str | None,
+                         ) -> list[int | None]:
     """
     Aggregate available year suffixes for a Level across all quantum-corrections files.
     """
@@ -873,11 +856,10 @@ def _all_available_years(level: "Level",
         years.update(_available_years_for_level(level, qm_corr_file, section_start, section_end))
     return sorted(years, key=lambda y: (-1 if y is None else y))
 
-
 def _warn_no_match(level: "Level",
-                   qm_corr_files: List[str],
+                   qm_corr_files: list[str],
                    section_start: str,
-                   section_end: Optional[str],
+                   section_end: str | None,
                    label: str = "AEC",
                    ) -> None:
     """
@@ -900,11 +882,10 @@ def _warn_no_match(level: "Level",
             f"No Arkane {label} entry found for {level.simple()} in the RMG database."
         )
 
-
 def _find_best_level_key_for_sp_level(level: "Level",
                                       file_path: str,
                                       section_start: str,
-                                      section_end: Optional[str] = None) -> Optional[str]:
+                                      section_end: str | None = None) -> str | None:
     """
     Given an ARC Level and a data.py section, find the LevelOfTheory(...) key string
     that best matches the level's method/basis, allowing:
@@ -979,7 +960,6 @@ def _find_best_level_key_for_sp_level(level: "Level",
 
     return best_key
 
-
 def _level_to_str(level: 'Level') -> str:
     """
     Convert Level to Arkane's LevelOfTheory string representation.
@@ -1001,11 +981,10 @@ def _level_to_str(level: 'Level') -> str:
         parts.append(f"software='{level.software.lower()}'")
     return f"LevelOfTheory({','.join(parts)})".replace('-', '')
 
-
 def get_arkane_model_chemistry(sp_level: 'Level',
-                               freq_level: Optional['Level'] = None,
-                               freq_scale_factor: Optional[float] = None,
-                               ) -> Optional[str]:
+                               freq_level: 'Level' | None = None,
+                               freq_scale_factor: float | None = None,
+                               ) -> str | None:
     """
     Get Arkane model chemistry string with database validation.
 
@@ -1022,11 +1001,11 @@ def get_arkane_model_chemistry(sp_level: 'Level',
 
     Args:
         sp_level (Level): Level of theory for energy.
-        freq_level (Optional[Level]): Level of theory for frequencies.
-        freq_scale_factor (Optional[float]): Frequency scaling factor.
+        freq_level (Level | None): Level of theory for frequencies.
+        freq_scale_factor (float | None): Frequency scaling factor.
 
     Returns:
-        Optional[str]: Arkane-compatible model chemistry string.
+        str | None: Arkane-compatible model chemistry string.
     """
     qm_corr_files = get_qm_corrections_files()
 
@@ -1059,7 +1038,6 @@ def get_arkane_model_chemistry(sp_level: 'Level',
         ")"
     )
 
-
 def check_arkane_aec(sp_level: 'Level', raise_error: bool = False) -> bool:
     """
     Check that Arkane has AEC for the given sp level of theory (no BAC check).
@@ -1085,7 +1063,6 @@ def check_arkane_aec(sp_level: 'Level', raise_error: bool = False) -> bool:
         if raise_error:
             raise ValueError(f'Arkane has no atom energy corrections (AEC) for {_level_to_str(sp_level)}.')
     return best_aec_key is not None
-
 
 def check_arkane_bacs(sp_level: 'Level',
                       bac_type: str = 'p',
@@ -1165,7 +1142,6 @@ def check_arkane_bacs(sp_level: 'Level',
         logger.info(f'Arkane energy corrections matched for {best_aec_key} (AEC and {bac_type.upper()}BAC)')
     return has_encorr
 
-
 def parse_species_thermo(species, output_content: str) -> None:
     """Parse thermodynamic data for a single species."""
     # Parse E0
@@ -1183,7 +1159,6 @@ def parse_species_thermo(species, output_content: str) -> None:
     if thermo_match:
         thermo_block = thermo_match.group(1)
         species.thermo.update(parse_thermo_block(thermo_block))
-
 
 def parse_reaction_kinetics(reaction, output_content: str) -> None:
     """
@@ -1266,7 +1241,6 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
             kinetics['dEa_units'] = m_dea.group(2) or 'kJ/mol'
     reaction.kinetics = kinetics
 
-
 def _parse_conformer_statmech(species, content: str) -> None:
     """
     Parse external_symmetry and optical_isomers from the Arkane conformer block.
@@ -1303,7 +1277,6 @@ def _parse_conformer_statmech(species, content: str) -> None:
     if sym_match and species.external_symmetry is None:
         species.external_symmetry = int(sym_match.group(1))
 
-
 def parse_e0(label: str, content: str) -> float | None:
     """Parse E0 value for a species."""
     pattern = rf"conformer\(\s*label\s*=\s*['\"]{re.escape(label)}['\"].*?E0\s*=\s*\(([^)]*)\)"
@@ -1314,7 +1287,6 @@ def parse_e0(label: str, content: str) -> float | None:
     e0_block = match.group(1)
     value_match = re.search(r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?).*?['\"]kJ/mol['\"]", e0_block, re.DOTALL)
     return float(value_match.group(1)) if value_match else None
-
 
 def parse_thermo_block(block: str) -> dict:
     """Parse thermo data block into dictionary, including full ThermoData."""
@@ -1334,7 +1306,6 @@ def parse_thermo_block(block: str) -> dict:
     # Parse full thermo data
     thermo_data['thermo_data'] = parse_thermo_data_block(block)
     return thermo_data
-
 
 def parse_thermo_data_block(block: str) -> dict:
     """
@@ -1371,6 +1342,5 @@ def parse_thermo_data_block(block: str) -> dict:
                     value = value_str
             thermo_data[key] = value
     return thermo_data
-
 
 register_statmech_adapter('arkane', ArkaneAdapter)

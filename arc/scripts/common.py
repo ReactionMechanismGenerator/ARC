@@ -5,8 +5,6 @@ A common module for subprocess scripts with importable functions outside the env
 import argparse
 import os
 import yaml
-from typing import Union
-
 
 def parse_command_line_arguments(command_line_args=None):
     """
@@ -24,8 +22,7 @@ def parse_command_line_arguments(command_line_args=None):
     args.file = args.file[0]
     return args
 
-
-def read_yaml_file(path: str) -> Union[dict, list]:
+def read_yaml_file(path: str) -> dict | list:
     """
     Read a YAML file (usually an input / restart file, but also conformers file)
     and return the parameters as python variables.
@@ -33,7 +30,7 @@ def read_yaml_file(path: str) -> Union[dict, list]:
     Args:
         path (str): The YAML file path to read.
 
-    Returns: Union[dict, list]
+    Returns: dict | list
         The content read from the file.
     """
     if not isinstance(path, str):
@@ -44,8 +41,7 @@ def read_yaml_file(path: str) -> Union[dict, list]:
         content = yaml.load(stream=f, Loader=yaml.FullLoader)
     return content
 
-
-def save_yaml_file(path: str, content: Union[list, dict]) -> None:
+def save_yaml_file(path: str, content: list | dict) -> None:
     """
     Save a YAML file (usually an input / restart file, but also conformers file).
 
@@ -61,8 +57,7 @@ def save_yaml_file(path: str, content: Union[list, dict]) -> None:
     with open(path, 'w') as f:
         f.write(yaml_str)
 
-
-def to_yaml(py_content: Union[list, dict]) -> str:
+def to_yaml(py_content: list | dict) -> str:
     """
     Convert a Python list or dictionary to a YAML string format.
 
@@ -75,7 +70,6 @@ def to_yaml(py_content: Union[list, dict]) -> str:
     yaml.add_representer(str, string_representer)
     yaml_str = yaml.dump(data=py_content)
     return yaml_str
-
 
 def string_representer(dumper, data):
     """

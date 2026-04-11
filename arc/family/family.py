@@ -2,7 +2,7 @@
 A module for working with RMG reaction families.
 """
 
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 import ast
 import os
 import re
@@ -20,9 +20,7 @@ if TYPE_CHECKING:
 RMG_DB_PATH = settings['RMG_DB_PATH']
 ARC_FAMILIES_PATH = settings['ARC_FAMILIES_PATH']
 
-
 logger = get_logger()
-
 
 def get_rmg_db_subpath(*parts: str, must_exist: bool = False) -> str:
     """Return a path under the RMG database, handling both source and packaged layouts."""
@@ -39,7 +37,6 @@ def get_rmg_db_subpath(*parts: str, must_exist: bool = False) -> str:
             if os.path.exists(candidate):
                 return candidate
     return candidates[0]
-
 
 class ReactionFamily(object):
     """
@@ -79,7 +76,7 @@ class ReactionFamily(object):
         """
         return f'ReactionFamily(label={self.label})'
 
-    def get_groups_file_as_lines(self, consider_arc_families: bool = True) -> List[str]:
+    def get_groups_file_as_lines(self, consider_arc_families: bool = True) -> list[str]:
         """
         Get the groups file as a list of lines.
         Precedence is given to RMG families (ARC families should therefore have distinct names than RMG's)
@@ -88,7 +85,7 @@ class ReactionFamily(object):
             consider_arc_families (bool, optional): Whether to consider ARC's custom families.
 
         Returns:
-            List[str]: The groups file as a list of lines.
+            list[str]: The groups file as a list of lines.
         """
         groups_path = get_rmg_db_subpath('kinetics', 'families', self.label, 'groups.py', must_exist=True)
         if not os.path.isfile(groups_path):
@@ -101,8 +98,8 @@ class ReactionFamily(object):
         return groups_as_lines
 
     def generate_products(self,
-                          reactants: List['ARCSpecies'],
-                          ) -> Dict[Union[str, Tuple[str, str]], List[Tuple[List['Molecule'], Dict[int, str]]]]:
+                          reactants: list['ARCSpecies'],
+                          ) -> dict[str | tuple[str, str], list[tuple[list['Molecule'], dict[int, str]]]]:
         """
         Generate a list of all the possible reaction products of this family starting from the list of ``reactants``.
 
@@ -112,10 +109,10 @@ class ReactionFamily(object):
              1: [{'group': 0, 'subgroup': <label of group that is subgraphisomorphic with reactant 1>}, ...]}
 
         Args:
-            reactants (List['ARCSpecies']): The reactants to generate reaction products for.
+            reactants (list['ARCSpecies']): The reactants to generate reaction products for.
 
         Returns:
-            Dict[Union[str, Tuple[str, str]], List[Tuple[List['Molecule'], Dict[int, str]]]]:
+            dict[str | tuple[str, str], list[tuple[list['Molecule'], dict[int, str]]]]:
                 The generated reaction products in different possible reaction paths including iso-teleological paths.
                 keys are family group labels used to generate the products,
                 values are a list of the corresponding possible products and isomorphic subgraphs.
@@ -141,20 +138,20 @@ class ReactionFamily(object):
                                                          reactant_to_group_maps=reactant_to_group_maps)
 
     def generate_products_by_reactant_groups(self,
-                                             reactants: List['ARCSpecies'],
-                                             reactant_to_group_maps: Dict[int, List[Dict[str, Union[int, str]]]],
-                                             ) -> Dict[Union[str, Tuple[str, str]], List[Tuple[List['Molecule'], Dict[int, str]]]]:
+                                             reactants: list['ARCSpecies'],
+                                             reactant_to_group_maps: dict[int, list[dict[str, int | str]]],
+                                             ) -> dict[str | tuple[str, str], list[tuple[list['Molecule'], dict[int, str]]]]:
         """
         Generate a list of all the possible reaction products of this family starting from the list of ``reactants``
         and the mapping of reactant indices to family groups.
 
         Args:
-            reactants (List['ARCSpecies']): The reactants to generate reaction products for.
-            reactant_to_group_maps (Dict[int, List[Dict[str, Union[int, str]]]]): A dictionary mapping reactant indices
+            reactants (list['ARCSpecies']): The reactants to generate reaction products for.
+            reactant_to_group_maps (dict[int, list[dict[str, int | str]]]): A dictionary mapping reactant indices
                                                                                   to groups that match them.
 
         Returns:
-            Dict[str, List[Tuple[List['Molecule'], Dict[int, str]]]]:
+            dict[str, list[tuple[list['Molecule'], dict[int, str]]]]:
                 The generated reaction products.
                 Keys are family group labels used to generate the products.
                 Values are lists of tuples with entries:
@@ -171,20 +168,20 @@ class ReactionFamily(object):
         return dict()
 
     def generate_unimolecular_products(self,
-                                       reactants: List['ARCSpecies'],
-                                       reactant_to_group_maps: Dict[int, List[Dict[str, Union[int, str]]]],
-                                       ) -> Dict[str, List[Tuple[List['Molecule'], Dict[int, str]]]]:
+                                       reactants: list['ARCSpecies'],
+                                       reactant_to_group_maps: dict[int, list[dict[str, int | str]]],
+                                       ) -> dict[str, list[tuple[list['Molecule'], dict[int, str]]]]:
         """
         Generate a list of all the possible unimolecular reaction products of this family starting from
         the list of ``reactants`` and the mapping of reactant indices to family groups.
 
         Args:
-            reactants (List['ARCSpecies']): The reactants to generate reaction products for.
-            reactant_to_group_maps (Dict[int, List[Dict[str, Union[int, str]]]]): A dictionary mapping reactant indices
+            reactants (list['ARCSpecies']): The reactants to generate reaction products for.
+            reactant_to_group_maps (dict[int, list[dict[str, int | str]]]): A dictionary mapping reactant indices
                                                                                   to groups that match them.
 
         Returns:
-            Dict[str, List[Tuple[List['Molecule'], Dict[int, str]]]]:
+            dict[str, list[tuple[list['Molecule'], dict[int, str]]]]:
                 The generated reaction products.
                 Keys are family group labels used to generate the products.
                 Values are lists of tuples with entries:
@@ -220,9 +217,9 @@ class ReactionFamily(object):
         return products_by_group
 
     def generate_bimolecular_products(self,
-                                      reactants: List['ARCSpecies'],
-                                      reactant_to_group_maps: Dict[int, List[Dict[str, Union[int, str]]]],
-                                      ) -> Dict[Tuple[str, str], List[Tuple[List['Molecule'], Dict[int, str]]]]:
+                                      reactants: list['ARCSpecies'],
+                                      reactant_to_group_maps: dict[int, list[dict[str, int | str]]],
+                                      ) -> dict[tuple[str, str], list[tuple[list['Molecule'], dict[int, str]]]]:
         """
         Generate a list of all the possible bimolecular reaction products of this family starting from
         the list of ``reactants`` and the mapping of reactant indices to family groups.
@@ -233,12 +230,12 @@ class ReactionFamily(object):
              1: [{'group': 0, 'subgroup': <label of group that is subgraphisomorphic with reactant 1>}, ...]}
 
         Args:
-            reactants (List['ARCSpecies']): The reactants to generate reaction products for.
-            reactant_to_group_maps (Dict[int, List[Dict[str, Union[int, str]]]]): A dictionary mapping reactant indices
+            reactants (list['ARCSpecies']): The reactants to generate reaction products for.
+            reactant_to_group_maps (dict[int, list[dict[str, int | str]]]): A dictionary mapping reactant indices
                                                                                   to groups that match them.
 
         Returns:
-            Dict[Tuple[str, str], List[Tuple[List['Molecule'], Dict[int, str]]]]:
+            dict[tuple[str, str], list[tuple[list['Molecule'], dict[int, str]]]]:
                 The generated reaction products.
                 Keys are family group labels used to generate the products.
                 Values are lists of tuples with entries:
@@ -300,22 +297,22 @@ class ReactionFamily(object):
         return products_by_group
 
     def apply_recipe(self,
-                     mols: List['Molecule'],
-                     isomorphic_subgraph: Dict[int, str],
-                     ) -> Optional[List['Molecule']]:
+                     mols: list['Molecule'],
+                     isomorphic_subgraph: dict[int, str],
+                     ) -> list['Molecule'] | None:
         """
         Generate a reaction product of this family from a reactant mol and the isomorphic subgraph
         using the family's recipe.
 
         Args:
             mols (['Molecule']): The reactant molecule(s).
-            isomorphic_subgraph (Dict[int, str]): A dictionary representing the isomorphic subgraph.
+            isomorphic_subgraph (dict[int, str]): A dictionary representing the isomorphic subgraph.
 
         Raises:
             ValueError: If an invalid action is encountered.
 
         Returns:
-            Optional[List['Molecule']]: The generated reaction product(s).
+            list['Molecule'] | None: The generated reaction product(s).
         """
         structure = Molecule()
         for mol in mols:
@@ -405,19 +402,18 @@ class ReactionFamily(object):
         else:
             return len(self.reactants)
 
-
 def get_reaction_family_products(rxn: 'ARCReaction',
-                                 rmg_family_set: Optional[Union[List[str], str]] = None,
+                                 rmg_family_set: list[str] | str | None = None,
                                  consider_rmg_families: bool = True,
                                  consider_arc_families: bool = True,
                                  discover_own_reverse_rxns_in_reverse: bool = False,
-                                 ) -> List[dict]:
+                                 ) -> list[dict]:
     """
     Determine the RMG reaction family for a given ARC reaction by generating corresponding product dicts.
 
     Args:
         rxn ('ARCReaction'): The ARC reaction object.
-        rmg_family_set (Union[List[str], str], optional): The RMG family set to use from
+        rmg_family_set (list[str] | str, optional): The RMG family set to use from
                                                           RMG-database/input/kinetics/families/recommended.py.
                                                           Can be a name of a defined set, or a list
                                                           of explicit family labels to consider.
@@ -432,7 +428,7 @@ def get_reaction_family_products(rxn: 'ARCReaction',
                                                                to discover reactions only in the forward direction.
 
     Returns:
-        List[dict]: The list of product dictionaries with the reaction family label.
+        list[dict]: The list of product dictionaries with the reaction family label.
                     Keys are: 'family', 'group_labels', 'products', 'own_reverse', 'discovered_in_reverse', 'actions'.
     """
     family_labels = get_all_families(rmg_family_set=rmg_family_set,
@@ -467,22 +463,21 @@ def get_reaction_family_products(rxn: 'ARCReaction',
             logger.debug(f'Skipping family {family_label} due to unsupported group definition: {type(e).__name__}: {e}')
     return product_dicts
 
-
 def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
                                                      family_label: str,
                                                      consider_arc_families: bool = True,
                                                      reverse: bool = False,
-                                                     ) -> List[dict]:
+                                                     ) -> list[dict]:
     """
     Determine the possible reaction products for a given ARC reaction and a given RMG reaction family.
 
     Structure of the returned product_dicts::
 
         [{'family': str: Family label,
-          'group_labels': Tuple[str, str]: Group labels used to generate the products,
-          'products': List['Molecule']: The generated products,
-          'r_label_map': Dict[str, int]: Mapping of reactant atom indices to labels,
-          'p_label_map': Dict[str, int]: Mapping of product labels to atom indices
+          'group_labels': tuple[str, str]: Group labels used to generate the products,
+          'products': list['Molecule']: The generated products,
+          'r_label_map': dict[str, int]: Mapping of reactant atom indices to labels,
+          'p_label_map': dict[str, int]: Mapping of product labels to atom indices
                                          (refers to the given 'products' in this dict
                                          and not to the products of the original reaction),
           'own_reverse': bool: Whether the family's template also represents its own reverse,
@@ -496,7 +491,7 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
         reverse (bool, optional): Whether the reaction is in reverse.
 
     Returns:
-        List[dict]: A list of dictionaries, each containing the family label, the group labels, the products,
+        list[dict]: A list of dictionaries, each containing the family label, the group labels, the products,
                     and whether the family's template also represents its own reverse.
     """
     product_dicts = list()
@@ -523,7 +518,7 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
                 offsets = [0]
                 for mol in template_mols:
                     offsets.append(offsets[-1] + len(mol.atoms))
-                p_label_map: Dict[str, int] = dict()
+                p_label_map: dict[str, int] = dict()
                 for i, mol in enumerate(template_mols):
                     base = offsets[i]
                     for j, atom in enumerate(mol.atoms):
@@ -545,20 +540,19 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
                 })
     return product_dicts
 
-
 def filter_products_by_reaction(rxn: 'ARCReaction',
-                                product_dicts: List[dict],
-                                ) -> List[dict]:
+                                product_dicts: list[dict],
+                                ) -> list[dict]:
     """
     Filter the possible reaction products by the ARC reaction.
 
     Args:
         rxn ('ARCReaction'): The ARC reaction object.
-        product_dicts (List[dict]): A list of dictionaries, each containing the family label, the group labels,
+        product_dicts (list[dict]): A list of dictionaries, each containing the family label, the group labels,
                                     the products, and whether the family's template also represents its own reverse.
 
     Returns:
-        List[dict]: The filtered list of product dictionaries.
+        list[dict]: The filtered list of product dictionaries.
     """
     filtered_product_dicts, r_label_maps = list(), list()
     _, p_species = rxn.get_reactants_and_products(return_copies=True)
@@ -572,9 +566,8 @@ def filter_products_by_reaction(rxn: 'ARCReaction',
             r_label_maps.append(product_dict['r_label_map'])
     return filtered_product_dicts
 
-
-def check_product_isomorphism(products: List['Molecule'],
-                              p_species: List['ARCSpecies'],
+def check_product_isomorphism(products: list['Molecule'],
+                              p_species: list['ARCSpecies'],
                               ) -> bool:
     """
     Check whether the products are isomorphic to the given species.
@@ -582,8 +575,8 @@ def check_product_isomorphism(products: List['Molecule'],
     (e.g., different Lewis structures perceived from XYZ vs SMILES).
 
     Args:
-        products (List['Molecule']): The products to check.
-        p_species (List['ARCSpecies']): The species to check against.
+        products (list['Molecule']): The products to check.
+        p_species (list['ARCSpecies']): The species to check against.
 
     Returns:
         bool: Whether the products are isomorphic to the species.
@@ -638,22 +631,21 @@ def check_product_isomorphism(products: List['Molecule'],
                 isomorphic[i] = True
     return all(isomorphic)
 
-
-def get_all_families(rmg_family_set: Union[List[str], str] = 'default',
+def get_all_families(rmg_family_set: list[str] | str = 'default',
                      consider_rmg_families: bool = True,
                      consider_arc_families: bool = True,
-                     ) -> List[str]:
+                     ) -> list[str]:
     """
     Get all available RMG and ARC families.
     If ``rmg_family_set`` is a list of family labels and does not contain family sets, it will be returned as is.
 
     Args:
-        rmg_family_set (Union[List[str], str], optional): The RMG family set to use.
+        rmg_family_set (list[str] | str, optional): The RMG family set to use.
         consider_rmg_families (bool, optional): Whether to consider RMG's families.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
 
     Returns:
-        List[str]: A list of all available families.
+        list[str]: A list of all available families.
     """
     rmg_family_set = rmg_family_set or 'default'
     family_sets = get_rmg_recommended_family_sets()
@@ -677,13 +669,12 @@ def get_all_families(rmg_family_set: Union[List[str], str] = 'default',
             arc_families.append(os.path.splitext(family)[0])
     return rmg_families + arc_families if rmg_families is not None else arc_families
 
-
-def get_rmg_recommended_family_sets() -> Dict[str, str]:
+def get_rmg_recommended_family_sets() -> dict[str, str]:
     """
     Get the recommended RMG family sets from RMG-database/input/kinetics/families/recommended.py.
 
     Returns:
-        Dict[str, str]: The recommended RMG family sets.
+        dict[str, str]: The recommended RMG family sets.
     """
     family_sets = dict()
     recommended_path = get_rmg_db_subpath('kinetics', 'families', 'recommended.py', must_exist=True)
@@ -699,7 +690,6 @@ def get_rmg_recommended_family_sets() -> Dict[str, str]:
             dict_str = match.group(1)
             family_sets[dict_name] = ast.literal_eval(dict_str)
     return family_sets
-
 
 def add_labels_to_molecule(mol: 'Molecule',
                            isomorphic_subgraph: dict,
@@ -722,8 +712,7 @@ def add_labels_to_molecule(mol: 'Molecule',
         mol.atoms[atom_index].label = label
     return mol
 
-
-def is_reversible(groups_as_lines: List[str]) -> bool:
+def is_reversible(groups_as_lines: list[str]) -> bool:
     """
     Determine whether the reaction family is reversible.
 
@@ -737,8 +726,7 @@ def is_reversible(groups_as_lines: List[str]) -> bool:
             return False
     return True
 
-
-def is_own_reverse(groups_as_lines: List[str]) -> bool:
+def is_own_reverse(groups_as_lines: list[str]) -> bool:
     """
     Determine whether the reaction family's template also represents its own reverse.
 
@@ -752,18 +740,17 @@ def is_own_reverse(groups_as_lines: List[str]) -> bool:
             return False
     return False
 
-
-def get_reactant_groups_from_template(groups_as_lines: List[str]) -> List[List[str]]:
+def get_reactant_groups_from_template(groups_as_lines: list[str]) -> list[list[str]]:
     """
     Get the reactant groups from a template content string.
     Descends the entries if a group is defined as an OR complex,
     e.g.: group = "OR{Xtrirad_H, Xbirad_H, Xrad_H, X_H}"
 
     Args:
-        groups_as_lines (List[str]): The template content string.
+        groups_as_lines (list[str]): The template content string.
 
     Returns:
-        List[List[str]]: The non-complex reactant groups.
+        list[list[str]]: The non-complex reactant groups.
     """
     reactant_labels = get_initial_reactant_labels_from_template(groups_as_lines)
     result = list()
@@ -782,15 +769,14 @@ def get_reactant_groups_from_template(groups_as_lines: List[str]) -> List[List[s
             result.append(stack)
     return result
 
-
-def get_product_num(groups_as_lines: List[str]) -> int:
+def get_product_num(groups_as_lines: list[str]) -> int:
     """
     Get the number of products from a template content string.
     Uses the explicit ``productNum`` value from the groups file if available,
     otherwise infers from the template product labels.
 
     Args:
-        groups_as_lines (List[str]): The template content string.
+        groups_as_lines (list[str]): The template content string.
 
     Returns:
         int: The number of products.
@@ -803,8 +789,7 @@ def get_product_num(groups_as_lines: List[str]) -> int:
                 return int(match.group(1))
     return len(get_initial_reactant_labels_from_template(groups_as_lines, products=True))
 
-
-def descent_complex_group(group: str) -> List[str]:
+def descent_complex_group(group: str) -> list[str]:
     """
     Descend a group if it is defined as an OR complex,
     e.g.: group = "OR{Xtrirad_H, Xbirad_H, Xrad_H, X_H}".
@@ -813,7 +798,7 @@ def descent_complex_group(group: str) -> List[str]:
         group (str): The group to descend.
 
     Returns:
-        List[str]: The non-complex reactant group labels, e.g.: ['Xtrirad_H', 'Xbirad_H', 'Xrad_H', 'X_H'].
+        list[str]: The non-complex reactant group labels, e.g.: ['Xtrirad_H', 'Xbirad_H', 'Xrad_H', 'X_H'].
     """
     if group.startswith('OR{') and group.endswith('}'):
         group = [g.strip() for g in group[3:-1].split(',')]
@@ -821,20 +806,19 @@ def descent_complex_group(group: str) -> List[str]:
         group = [group]
     return group
 
-
-def get_initial_reactant_labels_from_template(groups_as_lines: List[str],
+def get_initial_reactant_labels_from_template(groups_as_lines: list[str],
                                               products: bool = False,
-                                              ) -> List[str]:
+                                              ) -> list[str]:
     """
     Get the initial reactant labels from a template content string.
     Does not descent the entries if the corresponding group is defined as an OR complex.
 
     Args:
-        groups_as_lines (List[str]): The template content string.
+        groups_as_lines (list[str]): The template content string.
         products (bool, optional): Whether to get the product labels instead of the reactant labels.
 
     Returns:
-        List[str]: The reactant groups.
+        list[str]: The reactant groups.
     """
     labels = list()
     for line in groups_as_lines:
@@ -844,16 +828,15 @@ def get_initial_reactant_labels_from_template(groups_as_lines: List[str],
             break
     return labels
 
-
-def get_recipe_actions(groups_as_lines: List[str]) -> List[List[str]]:
+def get_recipe_actions(groups_as_lines: list[str]) -> list[list[str]]:
     """
     Get the recipe actions from a template content string.
 
     Args:
-        groups_as_lines (List[str]): The template content string.
+        groups_as_lines (list[str]): The template content string.
 
     Returns:
-        List[List[str]]: The recipe actions.
+        list[list[str]]: The recipe actions.
     """
     actions = []
     for i in range(len(groups_as_lines)):
@@ -868,19 +851,18 @@ def get_recipe_actions(groups_as_lines: List[str]) -> List[List[str]]:
             break
     return actions
 
-
-def get_entries(groups_as_lines: List[str],
-                entry_labels: List[str],
-                ) -> Dict[str, str]:
+def get_entries(groups_as_lines: list[str],
+                entry_labels: list[str],
+                ) -> dict[str, str]:
     """
     Get the requested entries grom a template content string.
 
     Args:
-        groups_as_lines (List[str]): The template content string.
-        entry_labels (List[str]): The entry labels to extract.
+        groups_as_lines (list[str]): The template content string.
+        entry_labels (list[str]): The entry labels to extract.
 
     Returns:
-        Dict[str, str]: The extracted entries, keys are the labels, values are the groups.
+        dict[str, str]: The extracted entries, keys are the labels, values are the groups.
     """
     groups_str = ''.join(groups_as_lines)
     entries = re.findall(r'entry\((.*?)\)', groups_str, re.DOTALL)
@@ -894,15 +876,14 @@ def get_entries(groups_as_lines: List[str],
             break
     return specific_entries
 
-
-def get_group_adjlist(groups_as_lines: List[str],
+def get_group_adjlist(groups_as_lines: list[str],
                       entry_label: str,
                       ) -> str:
     """
     Get the corresponding group value for the given entry label.
 
     Args:
-        groups_as_lines (List[str]): The template content string.
+        groups_as_lines (list[str]): The template content string.
         entry_label (str): The entry label to extract.
 
     Returns:
@@ -910,7 +891,6 @@ def get_group_adjlist(groups_as_lines: List[str],
     """
     specific_entries = get_entries(groups_as_lines, entry_labels=[entry_label])
     return specific_entries[entry_label]
-
 
 def get_isomorphic_subgraph(isomorphic_subgraph_1: dict,
                             isomorphic_subgraph_2: dict,
@@ -938,16 +918,15 @@ def get_isomorphic_subgraph(isomorphic_subgraph_1: dict,
         isomorphic_subgraph[mol_2.atoms.index(atom) + len_mol_1] = group_atom.label
     return isomorphic_subgraph
 
-
 def isomorphic_products(rxn: 'ARCReaction',
-                        products: List['Molecule'],
+                        products: list['Molecule'],
                         ) -> bool:
     """
     Check whether the reaction products are isomorphic to the family-generated products.
 
     Args:
         rxn ('ARCReaction'): The ARC reaction object.
-        products (List['Molecule']): The products to check.
+        products (list['Molecule']): The products to check.
 
     Returns:
         bool: Whether the products are isomorphic to the species.

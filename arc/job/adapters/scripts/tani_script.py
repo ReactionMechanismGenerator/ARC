@@ -6,8 +6,6 @@ A standalone script to run TorhANI,
 should be run under the tani environment.
 """
 
-from typing import Optional
-
 import argparse
 import os
 import yaml
@@ -35,7 +33,6 @@ elements = {'H': 1, 'He': 2, 'Li': 3, 'Be': 4, 'B': 5, 'C': 6, 'N': 7, 'O': 8,
  'Bh': 107, 'Hs': 108, 'Mt': 109, 'Ds': 110, 'Rg': 111, 'Cn': 112, 'Nh': 113, 'Fl': 114,
  'Mc': 115, 'Lv': 116, 'Ts': 117,'Og': 118}
 
-
 def run_sp(xyz, device, model):
     """
     Run a single-point energy calculation.
@@ -46,7 +43,6 @@ def run_sp(xyz, device, model):
     energy = model((species, coordinates)).energies
     sp = hartree_to_si(energy.item(), kilo=True)
     return sp
-
 
 def to_Z(element: str) -> int:
     """
@@ -59,7 +55,6 @@ def to_Z(element: str) -> int:
         The element number. For the example: 1, 35
     """
     return elements.get(element.capitalize(), None)
-
 
 def run_force(xyz, device, model):
     """
@@ -74,12 +69,11 @@ def run_force(xyz, device, model):
     force = force.squeeze().numpy().tolist()
     return force
 
-
 def run_opt(xyz,
             model,
             constraints: dict = None,
             fmax: float = 0.001,
-            steps: Optional[int] = None,
+            steps: int | None = None,
             engine: str = 'SciPyFminBFGS',
             ):
     """
@@ -137,7 +131,6 @@ def run_opt(xyz,
     opt_xyz = {'coords': tuple(map(tuple, atoms.get_positions().tolist())), 'isotopes': xyz['isotopes'], 'symbols': xyz['symbols'] }
     return opt_xyz
 
-
 def run_vibrational_analysis(xyz: dict = None,
                              opt_xyz: dict = None,
                              device: str = None,
@@ -166,7 +159,6 @@ def run_vibrational_analysis(xyz: dict = None,
     }
     return results
 
-
 def hartree_to_si(e: float,
                   kilo: bool = True,
                   ) -> float:
@@ -184,7 +176,6 @@ def hartree_to_si(e: float,
     E_h = 4.35974434e-18
     return e * Na * E_h * factor
 
-
 def read_yaml_file(path: str):
     """
     Read a YAML file (usually an input / restart file, but also conformers file)
@@ -200,7 +191,6 @@ def read_yaml_file(path: str):
         content = yaml.load(stream=f, Loader=yaml.FullLoader)
     return content
 
-
 def save_yaml_file(path: str,
                    content: list,
                    ) -> None:
@@ -215,7 +205,6 @@ def save_yaml_file(path: str,
     yaml_str = yaml.dump(data=content)
     with open(path, 'w') as f:
         f.write(yaml_str)
-
 
 def save_output_file(path,
                      key = None,
@@ -239,7 +228,6 @@ def save_output_file(path,
         content[key] = val
     save_yaml_file(path=yml_out_path, content=content)
 
-
 def convert_list_index_0_to_1(_list: list, direction: int = 1):
     """
     Convert a list from 0-indexed to 1-indexed, or vice versa.
@@ -262,7 +250,6 @@ def convert_list_index_0_to_1(_list: list, direction: int = 1):
         new_list = tuple(new_list)
     return new_list
 
-
 def string_representer(dumper, data):
     """
     Add a custom string representer to use block literals for multiline strings.
@@ -270,7 +257,6 @@ def string_representer(dumper, data):
     if len(data.splitlines()) > 1:
         return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data, style='|')
     return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data)
-
 
 def parse_command_line_arguments(command_line_args=None):
     """
@@ -283,7 +269,6 @@ def parse_command_line_arguments(command_line_args=None):
                         help='A path to the YAML input file')
     args = parser.parse_args(command_line_args)
     return args
-
 
 def xyz_to_coords_and_element_numbers(xyz: dict):
     """
@@ -299,7 +284,6 @@ def xyz_to_coords_and_element_numbers(xyz: dict):
     z_list = list(map(to_Z, list(xyz["symbols"])))
     return coords, z_list
 
-
 def xyz_to_coords_list(xyz_dict: dict):
     """
     Get the coords part of an xyz dict as a (mutable) list of lists (rather than a tuple of tuples).
@@ -307,7 +291,7 @@ def xyz_to_coords_list(xyz_dict: dict):
     Args:
         xyz_dict (dict): The ARC xyz format.
 
-    Returns: Optional[List[List[float]]]
+    Returns: List[List[float]] | None
         The coordinates.
     """
     if xyz_dict is None:
@@ -317,7 +301,6 @@ def xyz_to_coords_list(xyz_dict: dict):
     for coords_tup in coords_tuple:
         coords_list.append([coords_tup[0], coords_tup[1], coords_tup[2]])
     return coords_list
-
 
 def main():
     """
@@ -365,7 +348,6 @@ def main():
     if job_type == 'scan':
         raise NotImplementedError("Scan job type is not implemented for TorchANI. Use ARC's directed scan instead")
     return None
-
 
 if __name__ == '__main__':
     main()
