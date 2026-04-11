@@ -57,6 +57,7 @@ from arc.species.converter import (check_isomorphism,
                                    )
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.vectors import get_angle, calculate_dihedral_angle
+from arc.provenance import (ProvenanceGraph, EdgeType, NodeType, DecisionKind)
 
 if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
@@ -304,6 +305,8 @@ class Scheduler(object):
                            'events': list(),
                            }
         self.provenance_path = os.path.join(self.project_directory, 'output', 'provenance.yml')
+        self.graph = ProvenanceGraph(project=self.project, run_id=self.provenance['run_id'])
+        self.graph_path = os.path.join(self.project_directory, 'output', 'provenance_graph.yml')
 
         self.species_dict, self.rxn_dict = dict(), dict()
         for species in self.species_list:
@@ -382,6 +385,7 @@ class Scheduler(object):
                                                  label=ts_species.label,
                                                  is_ts=True,
                                                  )
+                    self.graph.add_species_node(label=ts_species.label, is_ts=True)
                 else:
                     # The TS species was already loaded from a restart dict or an Arkane YAML file.
                     ts_species = None
@@ -611,14 +615,22 @@ class Scheduler(object):
                     self.provenance['events'] = raw_events
                 else:
                     logger.warning('Existing provenance.yml has invalid events; starting with an empty event log.')
+        if os.path.isfile(self.graph_path):
+            try:
+                self.graph = ProvenanceGraph.load(self.graph_path)
+            except Exception:
+                logger.warning('Could not parse existing provenance_graph.yml; starting a fresh graph.')
         already_initialized = {e['label'] for e in self.provenance['events']
                                if e.get('event_type') == 'species_initialized' and isinstance(e.get('label'), str)}
+        already_in_graph = {n.label for n in self.graph.get_nodes_by_type(NodeType.species)}
         for species in self.species_list:
             if species.label not in already_initialized:
                 self.record_provenance_event(event_type='species_initialized',
                                              label=species.label,
                                              is_ts=species.is_ts,
                                              )
+            if species.label not in already_in_graph:
+                self.graph.add_species_node(label=species.label, is_ts=species.is_ts)
 
     def record_provenance_event(self,
                                 event_type: str,
@@ -640,17 +652,23 @@ class Scheduler(object):
         self.save_provenance()
 
     def save_provenance(self):
-        """Persist the provenance event log."""
+        """Persist the provenance event log. The graph is saved lazily via save_provenance_graph()."""
         output_directory = os.path.dirname(self.provenance_path)
         if not os.path.isdir(output_directory):
             os.makedirs(output_directory)
         save_yaml_file(path=self.provenance_path, content=self.provenance)
 
+    def save_provenance_graph(self):
+        """Persist the provenance graph to disk. Called at checkpoints and finalization, not per-event."""
+        self.graph.save(self.graph_path)
+
     def finalize_provenance(self):
         """Render final provenance artifacts after the run completes."""
         self.provenance['ended_at'] = datetime.datetime.now().isoformat(timespec='seconds')
+        self.graph.save(self.graph_path)
         plotter.save_provenance_artifacts(project_directory=self.project_directory,
                                           provenance=self.provenance,
+                                          graph=self.graph,
                                           )
 
     def schedule_jobs(self):
@@ -1096,6 +1114,26 @@ class Scheduler(object):
             provenance_parent_job=provenance_parent_job,
             provenance_reason=provenance_reason,
         )
+        # ── Graph: add CalculationNode ──
+        calc_node_id = self.graph.add_calculation_node(
+            label=provenance_label,
+            job_name=job.job_name,
+            job_type=job.job_type,
+            job_adapter=job.job_adapter,
+            level=level_repr,
+            status='pending',
+            conformer=conformer,
+            tsg=tsg,
+            ess_trsh_methods=job.ess_trsh_methods if job.ess_trsh_methods else None,
+        )
+        species_node_id = self.graph.find_species_node(provenance_label)
+        if species_node_id is not None:
+            self.graph.add_edge(species_node_id, calc_node_id, EdgeType.belongs_to)
+        if provenance_parent_job:
+            parent_node_id = self.graph.find_calc_node(provenance_label, provenance_parent_job)
+            if parent_node_id is not None:
+                edge_type = EdgeType.fine_of if provenance_reason == 'fine_opt' else EdgeType.retried_as
+                self.graph.add_edge(parent_node_id, calc_node_id, edge_type)
         job.execute()
         self.save_restart_dict()
 
@@ -1216,6 +1254,7 @@ class Scheduler(object):
             self.timer = False
             job.write_completed_job_to_csv_file()
             logger.info(f'  Ending job {job_name} for {label} (run time: {job.run_time})')
+            job_status_str = job.job_status[1]['status'] if job.job_status[1]['status'] else job.job_status[0]
             self.record_provenance_event(
                 event_type='job_finished',
                 label=label,
@@ -1223,11 +1262,18 @@ class Scheduler(object):
                 job_key=f'{label}:{job.job_name}',
                 job_name=job.job_name,
                 job_type=job.job_type,
-                status=job.job_status[1]['status'] if job.job_status[1]['status'] else job.job_status[0],
+                status=job_status_str,
                 keywords=job.job_status[1]['keywords'],
                 error=job.job_status[1]['error'],
                 run_time=str(job.run_time) if job.run_time is not None else None,
             )
+            # ── Graph: update CalculationNode status ──
+            prov_label = '+'.join(label) if isinstance(label, list) else label
+            calc_nid = self.graph.find_calc_node(prov_label, job.job_name)
+            if calc_nid is not None:
+                self.graph.update_node(calc_nid,
+                                       status=job_status_str,
+                                       run_time=str(job.run_time) if job.run_time is not None else None)
             if job.job_status[0] != 'done':
                 return False
             if job.job_adapter in ['gaussian', 'terachem'] and os.path.isfile(os.path.join(job.local_path, 'check.chk')) \
@@ -1355,7 +1401,16 @@ class Scheduler(object):
         Args:
             label (str): The TS species label.
         """
-        self.species_dict[label].cluster_tsgs()
+        cluster_summary = self.species_dict[label].cluster_tsgs()
+        if cluster_summary is not None and cluster_summary['n_before'] > cluster_summary['n_after']:
+            self.graph.add_decision_node(
+                label=label,
+                decision_kind=DecisionKind.ts_guess_clustering,
+                criteria={'n_before': cluster_summary['n_before'],
+                          'n_after': cluster_summary['n_after'],
+                          'merged': cluster_summary['merged']},
+                outcome=f'Clustered {cluster_summary["n_before"]} into {cluster_summary["n_after"]} unique guesses',
+            )
         plotter.save_conformers_file(
             project_directory=self.project_directory,
             label=label,
@@ -1377,18 +1432,15 @@ class Scheduler(object):
             if not piped_indices:
                 self.job_dict[label]['conf_opt'] = dict()
             for i, tsg in enumerate(successful_tsgs):
-                tsg.conformer_index = i  # Store the conformer index to match them later.
-                if i in piped_indices:
-                    continue
-                if 'conf_opt' not in self.job_dict[label]:
-                    self.job_dict[label]['conf_opt'] = dict()
-            self.job_dict[label]['conf_opt'] = dict()
-            for tsg in successful_tsgs:
                 if tsg.index is None:
                     existing_indices = [guess.index for guess in self.species_dict[label].ts_guesses
                                         if guess.index is not None]
                     tsg.index = max(existing_indices or [-1]) + 1
-                tsg.conformer_index = tsg.index  # Set before run_job so restart state is consistent.
+                tsg.conformer_index = tsg.index
+                if i in piped_indices:
+                    continue
+                if 'conf_opt' not in self.job_dict[label]:
+                    self.job_dict[label]['conf_opt'] = dict()
                 self.run_job(label=label,
                              xyz=tsg.initial_xyz,
                              level_of_theory=self.ts_guess_level,
@@ -1821,6 +1873,7 @@ class Scheduler(object):
                 else:
                     rxn.ts_species.tsg_spawned = True
                     tsg_index = 0
+                    spawned_methods = []
                     for method in self.ts_adapters:
                         if method in all_families_ts_adapters or \
                                 (rxn.family is not None
@@ -1832,7 +1885,21 @@ class Scheduler(object):
                                          reactions=[rxn],
                                          tsg=tsg_index,
                                          )
+                            spawned_methods.append(method)
                             tsg_index += 1
+                    # ── Graph: record TS method spawning decision ──
+                    if spawned_methods:
+                        dec_nid = self.graph.add_decision_node(
+                            label=rxn.ts_label,
+                            decision_kind=DecisionKind.ts_method_spawning,
+                            criteria={'family': rxn.family,
+                                      'all_adapters': list(self.ts_adapters),
+                                      'spawned': spawned_methods},
+                            outcome=f'Spawned {len(spawned_methods)} TS guess methods',
+                        )
+                        spc_nid = self.graph.find_species_node(rxn.ts_label)
+                        if spc_nid is not None:
+                            self.graph.add_edge(spc_nid, dec_nid, EdgeType.triggered_by)
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
                     rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])
@@ -2384,6 +2451,17 @@ class Scheduler(object):
                 self.output[label]['job_types']['conf_opt'] = True
                 if sp_flag:
                     self.output[label]['job_types']['conf_sp'] = True
+                # ── Graph: record conformer selection decision ──
+                selected_idx = xyzs_in_original_order.index(conformer_xyz)
+                non_none_energies = [(i, e) for i, e in enumerate(
+                    self.species_dict[label].conformer_energies) if e is not None]
+                self.graph.add_decision_node(
+                    label=label,
+                    decision_kind=DecisionKind.conformer_selection,
+                    criteria={'n_conformers': len(non_none_energies),
+                              'isomorphic': self.species_dict[label].conf_is_isomorphic},
+                    outcome=f'Selected conformer #{selected_idx}',
+                )
 
     def determine_most_likely_ts_conformer(self, label: str):
         """
@@ -2393,7 +2471,16 @@ class Scheduler(object):
         Args:
             label (str): The TS species label.
         """
-        self.species_dict[label].cluster_tsgs()
+        cluster_summary = self.species_dict[label].cluster_tsgs()
+        if cluster_summary is not None and cluster_summary['n_before'] > cluster_summary['n_after']:
+            self.graph.add_decision_node(
+                label=label,
+                decision_kind=DecisionKind.ts_guess_clustering,
+                criteria={'n_before': cluster_summary['n_before'],
+                          'n_after': cluster_summary['n_after'],
+                          'merged': cluster_summary['merged']},
+                outcome=f'Clustered {cluster_summary["n_before"]} into {cluster_summary["n_after"]} unique guesses',
+            )
         if not self.species_dict[label].is_ts:
             raise SchedulerError('determine_most_likely_ts_conformer() method only processes transition state guesses.')
         if not self.species_dict[label].successful_methods:
@@ -2443,6 +2530,11 @@ class Scheduler(object):
                                              label=label,
                                              is_ts=True,
                                              )
+                self.graph.add_decision_node(
+                    label=label,
+                    decision_kind=DecisionKind.ts_guess_selection_failed,
+                    outcome='No viable TS guess found',
+                )
                 return None
             else:
                 rxn_txt = '' if self.species_dict[label].rxn_label is None \
@@ -2469,6 +2561,12 @@ class Scheduler(object):
                                                  method=tsg.method,
                                                  energy=tsg.energy,
                                                  )
+                    self.graph.add_decision_node(
+                        label=label,
+                        decision_kind=DecisionKind.ts_guess_selection,
+                        criteria={'selected_index': selected_i, 'energy': tsg.energy},
+                        outcome=f'Selected TSGuess #{selected_i} via {tsg.method}',
+                    )
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
@@ -2758,6 +2856,12 @@ class Scheduler(object):
                         logger.info(f'TS {label} did not pass the normal mode displacement check. '
                                     f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                     f'Searching for a better TS conformer...')
+                        # ── Graph: record NMD validation failure ──
+                        self.graph.add_decision_node(
+                            label=label,
+                            decision_kind=DecisionKind.ts_validation_nmd,
+                            outcome='Failed: normal mode displacement check',
+                        )
                         self.switch_ts(label)
                         switch_ts = True
                 if wrong_freq_message in self.output[label]['warnings']:
@@ -2825,10 +2929,25 @@ class Scheduler(object):
                     logger.info(f'TS {label} did not pass the negative frequency check. '
                                 f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                 f'Searching for a better TS conformer...')
+                # ── Graph: record TS freq validation failure ──
+                self.graph.add_decision_node(
+                    label=label,
+                    decision_kind=DecisionKind.ts_validation_freq,
+                    criteria={'neg_freqs': [float(f) for f in neg_freqs],
+                              'expected': 1},
+                    outcome=f'Failed: {len(neg_freqs)} imaginary freqs, switching TS',
+                )
                 self.switch_ts(label=label)
                 return False
             else:
                 logger.info(f'TS {label} has exactly one imaginary frequency: {neg_freqs[0]}')
+                # ── Graph: record TS freq validation pass ──
+                self.graph.add_decision_node(
+                    label=label,
+                    decision_kind=DecisionKind.ts_validation_freq,
+                    criteria={'neg_freqs': [float(neg_freqs[0])]},
+                    outcome='Passed: exactly 1 imaginary frequency',
+                )
                 self.output[label]['info'] += f'Imaginary frequency: {neg_freqs[0] if len(neg_freqs) == 1 else neg_freqs}; '
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
@@ -2898,7 +3017,18 @@ class Scheduler(object):
             label (str): The TS species label.
         """
         logger.info(f'Switching a TS guess for {label}...')
+        old_chosen = self.species_dict[label].chosen_ts
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
+        new_chosen = self.species_dict[label].chosen_ts
+        # ── Graph: record TS switch decision ──
+        self.graph.add_decision_node(
+            label=label,
+            decision_kind=DecisionKind.ts_switch,
+            criteria={'old_chosen': old_chosen, 'new_chosen': new_chosen,
+                      'exhausted': self.species_dict[label].ts_guesses_exhausted},
+            outcome=f'Switched from TSG #{old_chosen} to #{new_chosen}'
+            if new_chosen is not None else 'All TS guesses exhausted',
+        )
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
@@ -3070,10 +3200,18 @@ class Scheduler(object):
         if len(self.output[ts_label]['paths']['irc']) == 2:
             irc_species_labels = self.species_dict[ts_label].irc_label.split()
             if all(self.output[irc_label]['paths']['geo'] for irc_label in irc_species_labels):
-                check_irc_species_and_rxn(xyz_1=self.output[irc_species_labels[0]]['paths']['geo'],
-                                          xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
-                                          rxn=self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None),
-                                          )
+                check_irc_species_and_rxn(
+                    xyz_1=self.output[irc_species_labels[0]]['paths']['geo'],
+                    xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
+                    rxn=self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None),
+                )
+                # ── Graph: record IRC validation decision ──
+                self.graph.add_decision_node(
+                    label=ts_label,
+                    decision_kind=DecisionKind.ts_validation_irc,
+                    criteria={'irc_species': irc_species_labels},
+                    outcome='IRC validation completed',
+                )
 
     def check_scan_job(self,
                        label: str,
@@ -3331,18 +3469,6 @@ class Scheduler(object):
                         logger.debug(f'Species {label} did not converge.')
                         all_converged = False
                         break
-            for job_type, spawn_job_type in self.job_types.items():
-                if spawn_job_type and not self.output[label]['job_types'][job_type] \
-                        and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conf_opt'])
-                                 or (self.species_dict[label].number_of_atoms == 1
-                                     and job_type in ['conf_opt', 'opt', 'fine', 'freq', 'rotors', 'bde'])
-                                 or job_type == 'bde' and self.species_dict[label].bdes is None
-                                 or job_type == 'conf_opt'
-                                 or job_type == 'irc'
-                                 or job_type == 'tsg'):
-                    logger.debug(f'Species {label} did not converge.')
-                    all_converged = False
-                    break
             if all_converged and self._missing_required_paths(label):
                 logger.debug(f'Species {label} did not converge due to missing output paths.')
                 all_converged = False
@@ -3764,7 +3890,14 @@ class Scheduler(object):
                                f'log file:\n"{job.job_status[1]["line"]}".'
         logger.warning(warning_message)
         if self.species_dict[label].is_ts and conformer is not None:
-            xyz = self.species_dict[label].ts_guesses[conformer].get_xyz()
+            tsg = next((t for t in self.species_dict[label].ts_guesses
+                        if t.index == conformer or t.conformer_index == conformer), None)
+            if tsg is not None:
+                xyz = tsg.get_xyz()
+            else:
+                logger.warning(f'Could not find TS guess with index {conformer} for {label}; '
+                               f'falling back to species xyz.')
+                xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz
         elif conformer is not None:
             xyz = self.species_dict[label].conformers[conformer]
         else:
@@ -3816,6 +3949,17 @@ class Scheduler(object):
                                          keywords=job.job_status[1]['keywords'],
                                          error=job.job_status[1]['error'],
                                          )
+            # ── Graph: record troubleshooting decision ──
+            trsh_dec_nid = self.graph.add_decision_node(
+                label=label,
+                decision_kind=DecisionKind.job_troubleshooting,
+                criteria={'error_keywords': job.job_status[1]['keywords'],
+                          'error': job.job_status[1]['error']},
+                outcome=f'Retrying with {", ".join(ess_trsh_methods[-1:])}' if ess_trsh_methods else 'Retrying',
+            )
+            failed_calc_nid = self.graph.find_calc_node(label, job.job_name)
+            if failed_calc_nid is not None:
+                self.graph.add_edge(failed_calc_nid, trsh_dec_nid, EdgeType.troubleshot_by)
             self.run_job(label=label,
                          xyz=xyz,
                          level_of_theory=level_of_theory,
@@ -3839,6 +3983,10 @@ class Scheduler(object):
                 and conformer is None:
             # Only switch TS guess when a full optimization fails, not when a single
             # conformer search job fails. Other conformers may still be running.
+            logger.info(f'TS {label} did not converge. '
+                        f'Status is:\n{self.species_dict[label].ts_checks}\n'
+                        f'Searching for a better TS conformer...')
+            self.switch_ts(label=label)
         elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted:
             # During TS conf_opt screening, avoid switching mid-batch since switch_ts() deletes all
             # running jobs for this TS label and can discard other viable TS guesses still running.
@@ -4040,8 +4188,9 @@ class Scheduler(object):
                            for job_name in self.running_jobs[spc.label] if 'conf_sp' in job_name] \
                         + [self.job_dict[spc.label]['tsg'][get_i_from_job_name(job_name)].as_dict()
                            for job_name in self.running_jobs[spc.label] if 'tsg' in job_name]
-            save_yaml_file(path=self.restart_path, content=self.restart_dict)    
-    
+            save_yaml_file(path=self.restart_path, content=self.restart_dict)
+            self.save_provenance_graph()
+
     def make_reaction_labels_info_file(self):
         """
         A helper function for creating the `reactions labels.info` file.

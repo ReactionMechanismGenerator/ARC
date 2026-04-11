@@ -912,6 +912,59 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(event['label'], 'H2+O2')
         self.assertIsInstance(event['label'], str)
 
+    def test_provenance_graph_species_initialized(self):
+        """Test that the provenance graph contains species nodes after initialization."""
+        spc = ARCSpecies(label='water', smiles='O')
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_prov_graph')
+        os.makedirs(os.path.join(project_directory, 'output'), exist_ok=True)
+        sched = Scheduler(project='test_prov_graph', ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=project_directory,
+                          testing=True, job_types=initialize_job_types())
+        from arc.provenance import NodeType
+        species_nodes = sched.graph.get_nodes_by_type(NodeType.species)
+        self.assertEqual(len(species_nodes), 1)
+        self.assertEqual(species_nodes[0].label, 'water')
+        # Graph is saved lazily (at checkpoints/finalization, not per-event).
+        # Verify it can be saved on demand.
+        sched.save_provenance_graph()
+        self.assertTrue(os.path.isfile(sched.graph_path))
+        shutil.rmtree(project_directory, ignore_errors=True)
+
+    def test_provenance_graph_restart_preserves_nodes(self):
+        """Test that the provenance graph is restored correctly on restart."""
+        spc = ARCSpecies(label='methane', smiles='C')
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_prov_graph2')
+        os.makedirs(os.path.join(project_directory, 'output'), exist_ok=True)
+        # Create initial scheduler to write provenance files
+        sched1 = Scheduler(project='test_restart', ess_settings=self.ess_settings,
+                           species_list=[spc],
+                           opt_level=Level(repr=default_levels_of_theory['opt']),
+                           freq_level=Level(repr=default_levels_of_theory['freq']),
+                           sp_level=Level(repr=default_levels_of_theory['sp']),
+                           project_directory=project_directory,
+                           testing=True, job_types=initialize_job_types())
+        n_nodes_before = len(sched1.graph)
+        self.assertGreater(n_nodes_before, 0)
+        sched1.save_provenance_graph()  # Persist graph so the restart can load it.
+        # Create second scheduler on same directory (simulates restart)
+        sched2 = Scheduler(project='test_restart', ess_settings=self.ess_settings,
+                           species_list=[spc],
+                           opt_level=Level(repr=default_levels_of_theory['opt']),
+                           freq_level=Level(repr=default_levels_of_theory['freq']),
+                           sp_level=Level(repr=default_levels_of_theory['sp']),
+                           project_directory=project_directory,
+                           testing=True, job_types=initialize_job_types())
+        from arc.provenance import NodeType
+        species_nodes = sched2.graph.get_nodes_by_type(NodeType.species)
+        # Should still have exactly 1 species node (no duplicate)
+        self.assertEqual(len(species_nodes), 1)
+        self.assertEqual(species_nodes[0].label, 'methane')
+        shutil.rmtree(project_directory, ignore_errors=True)
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -919,7 +972,9 @@ H      -1.82570782    0.42754384   -0.56130718"""
         Delete all project directories created during these unit tests
         """
         projects = ['arc_project_for_testing_delete_after_usage3', 'arc_project_for_testing_delete_after_usage6',
-                    'arc_project_for_testing_delete_after_usage_prov']
+                    'arc_project_for_testing_delete_after_usage_prov',
+                    'arc_project_for_testing_delete_after_usage_prov_graph',
+                    'arc_project_for_testing_delete_after_usage_prov_graph2']
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)

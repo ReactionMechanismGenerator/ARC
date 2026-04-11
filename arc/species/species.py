@@ -1553,6 +1553,11 @@ class ARCSpecies(object):
     def cluster_tsgs(self):
         """
         Cluster TSGuesses.
+
+        Returns:
+            Optional[dict]: ``None`` if this species is not a TS or has no TS guesses.
+            Otherwise a summary dict with keys ``n_before``, ``n_after``, and
+            ``merged`` (list of lists of merged indices).
         """
         if not self.is_ts or not len(self.ts_guesses):
             return None
@@ -1574,6 +1579,9 @@ class ARCSpecies(object):
         if len(cluster_tsgs) < n_before:
             logger.info(f'Clustered {n_before} TS guesses for {self.label} '
                         f'into {len(cluster_tsgs)} unique conformers.')
+        return {'n_before': n_before,
+                'n_after': len(cluster_tsgs),
+                'merged': [tsg.cluster for tsg in cluster_tsgs if len(tsg.cluster) > 1]}
 
     def process_completed_tsg_queue_jobs(self, path: str):
         """

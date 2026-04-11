@@ -9,6 +9,11 @@ import os
 import shutil
 import unittest
 
+try:
+    import graphviz
+except ImportError:
+    graphviz = None
+
 import arc.plotter as plotter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file, safe_copy_file
 from arc.species.converter import str_to_xyz
@@ -300,6 +305,57 @@ H      -1.16115119    0.31478894   -0.81506145
             # Troubleshoot follow-up connects from the decision diamond, not the species node.
             self.assertIn('decision_7 -> job_spc1_freq_a3', dot)
 
+    def test_render_provenance_graph(self):
+        """Test Graphviz rendering from a ProvenanceGraph object."""
+        from arc.provenance import (ProvenanceGraph, DecisionKind, DataKind, EdgeType)
+        g = ProvenanceGraph(project='render_test')
+        sid = g.add_species_node(label='ethanol')
+        cid = g.add_calculation_node(label='ethanol', job_name='opt_a1',
+                                     job_type='opt', job_adapter='gaussian',
+                                     level='b3lyp/6-31g(d)', status='done')
+        did = g.add_data_node(label='ethanol', data_kind=DataKind.energy, value=-79.5)
+        dec = g.add_decision_node(label='ethanol',
+                                  decision_kind=DecisionKind.conformer_selection,
+                                  outcome='Selected conformer #0')
+        g.add_edge(sid, cid, EdgeType.input_of)
+        g.add_edge(cid, did, EdgeType.output_of)
+        g.add_edge(did, dec, EdgeType.selected_by)
+
+        if graphviz is not None:
+            gv = plotter.render_provenance_graph(g, run_label='render_test')
+            dot_source = gv.source
+            self.assertIn('ethanol', dot_source)
+            self.assertIn('opt', dot_source)
+            self.assertIn('energy', dot_source)
+            self.assertIn('conformer selection', dot_source)
+            self.assertIn('honeydew', dot_source)  # done calc
+            self.assertIn('cornsilk', dot_source)  # data node
+            self.assertIn('diamond', dot_source)    # decision node
+            self.assertIn('green3', dot_source)     # selected_by edge
+
+    def test_save_provenance_artifacts_with_graph(self):
+        """Test that save_provenance_artifacts prefers graph-based rendering when a graph is provided."""
+        from arc.provenance import (ProvenanceGraph, DecisionKind, EdgeType)
+        project = 'arc_project_for_testing_delete_after_usage'
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        g = ProvenanceGraph(project=project)
+        sid = g.add_species_node(label='spc1')
+        cid = g.add_calculation_node(label='spc1', job_name='opt_a1',
+                                     job_type='opt', status='done')
+        g.add_edge(sid, cid, EdgeType.input_of)
+        provenance = {'project': project, 'events': []}
+        paths = plotter.save_provenance_artifacts(
+            project_directory=project_directory,
+            provenance=provenance,
+            graph=g,
+        )
+        self.assertTrue(os.path.isfile(paths['yml']))
+        if paths['dot'] is not None:
+            with open(paths['dot'], 'r') as f:
+                dot = f.read()
+            # Graph-based rendering uses node IDs like species_1 not event-based species_spc1.
+            self.assertIn('species_1', dot)
+            self.assertIn('honeydew', dot)
 
     @classmethod
     def tearDownClass(cls):

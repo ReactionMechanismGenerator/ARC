@@ -73,15 +73,135 @@ def _wrap_graph_label(text: str, width: int = 24) -> str:
                      for line in (textwrap.wrap(part, width=width) or ['']))
 
 
+def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz.Digraph':
+    """
+    Render a :class:`ProvenanceGraph` as a Graphviz directed graph.
+
+    Node styling by type:
+      - **species**: box / aliceblue
+      - **calculation**: box / color by status (honeydew=done, mistyrose=errored, white=pending)
+      - **data**: note / cornsilk
+      - **decision**: diamond / color by kind (lavender, moccasin, mistyrose)
+
+    Edge styling by type:
+      - ``selected_by``: solid green
+      - ``rejected_by``: dashed red
+      - ``troubleshot_by``: dashed orange
+      - ``retried_as`` / ``fine_of``: dotted gray
+      - others: solid black
+
+    Args:
+        prov_graph: A :class:`ProvenanceGraph` instance.
+        run_label (str): Label for the root run node.
+
+    Returns:
+        graphviz.Digraph: The rendered graph object.
+    """
+    if graphviz is None:
+        raise ImportError('The graphviz Python package is required for render_provenance_graph(). '
+                          'Install it with: conda install -c conda-forge python-graphviz')
+    gv = graphviz.Digraph(
+        name='arc_provenance',
+        comment=f'ARC provenance for {run_label}',
+        graph_attr={'rankdir': 'LR', 'splines': 'true', 'overlap': 'false'},
+        node_attr={'shape': 'box', 'style': 'rounded,filled', 'fillcolor': 'white', 'fontname': 'Helvetica'},
+        edge_attr={'fontname': 'Helvetica'},
+    )
+
+    # Node styling lookup
+    _calc_colors = {'done': 'honeydew', 'errored': 'mistyrose', 'pending': 'white'}
+    _decision_colors = {
+        'ts_guess_selection': 'lavender',
+        'ts_guess_selection_failed': 'mistyrose',
+        'job_troubleshooting': 'moccasin',
+        'conformer_selection': 'lavender',
+        'ts_guess_clustering': 'lavender',
+        'ts_method_spawning': 'lavender',
+        'ts_validation_freq': 'lightyellow',
+        'ts_validation_nmd': 'lightyellow',
+        'ts_validation_irc': 'lightyellow',
+        'ts_switch': 'mistyrose',
+    }
+
+    # Edge styling lookup
+    _edge_styles = {
+        'selected_by': {'color': 'green3', 'style': 'solid'},
+        'rejected_by': {'color': 'red', 'style': 'dashed'},
+        'troubleshot_by': {'color': 'orange', 'style': 'dashed'},
+        'triggered_by': {'color': 'gray40', 'style': 'solid'},
+        'retried_as': {'color': 'gray60', 'style': 'dotted'},
+        'fine_of': {'color': 'gray60', 'style': 'dotted'},
+        'spawned_by': {'color': 'blue', 'style': 'solid'},
+    }
+
+    for node in prov_graph.nodes.values():
+        nid = _sanitize_graphviz_id(node.node_id)
+        ntype = node.node_type
+
+        if ntype == 'species':
+            lbl = node.label or node.node_id
+            is_ts = (node.metadata or {}).get('is_ts', False)
+            if is_ts:
+                lbl += '\nTS'
+            gv.node(nid, _wrap_graph_label(lbl), shape='box', fillcolor='aliceblue')
+
+        elif ntype == 'calculation':
+            parts = [getattr(node, 'job_type', '') or '', getattr(node, 'job_name', '') or '']
+            if getattr(node, 'job_adapter', None):
+                parts.append(node.job_adapter)
+            if getattr(node, 'level', None):
+                parts.append(node.level)
+            lbl = '\n'.join(p for p in parts if p)
+            status = getattr(node, 'status', 'pending') or 'pending'
+            fillcolor = _calc_colors.get(status, 'white')
+            gv.node(nid, _wrap_graph_label(lbl), shape='box', fillcolor=fillcolor)
+
+        elif ntype == 'data':
+            dk = getattr(node, 'data_kind', '') or ''
+            val = getattr(node, 'value', None)
+            lbl = dk
+            if val is not None and not isinstance(val, (list, dict)):
+                lbl += f'\n{val}'
+            gv.node(nid, _wrap_graph_label(lbl), shape='note', fillcolor='cornsilk')
+
+        elif ntype == 'decision':
+            dk = getattr(node, 'decision_kind', '') or ''
+            outcome = getattr(node, 'outcome', '') or ''
+            lbl = dk.replace('_', ' ')
+            if outcome:
+                lbl += f'\n{outcome}'
+            fillcolor = _decision_colors.get(dk, 'lavender')
+            gv.node(nid, _wrap_graph_label(lbl, width=28), shape='diamond', fillcolor=fillcolor)
+
+        else:
+            gv.node(nid, _wrap_graph_label(node.node_id))
+
+    for edge in prov_graph.edges:
+        src = _sanitize_graphviz_id(edge.source_id)
+        tgt = _sanitize_graphviz_id(edge.target_id)
+        etype = edge.edge_type
+        style_attrs = _edge_styles.get(etype, {})
+        label = etype.replace('_', ' ') if etype not in ('belongs_to', 'input_of', 'output_of') else ''
+        gv.edge(src, tgt, label=label, **style_attrs)
+
+    return gv
+
+
 def save_provenance_artifacts(project_directory: str,
                               provenance: dict,
+                              graph=None,
                               ) -> dict:
     """
     Save provenance YAML and render Graphviz artifacts for an ARC run.
 
+    When a ``graph`` (:class:`ProvenanceGraph`) is provided, the Graphviz
+    visualization is built from the graph's typed nodes and edges rather
+    than the flat event list, producing richer diagrams.
+
     Args:
         project_directory (str): The ARC project directory.
         provenance (dict): A provenance dictionary with an ``events`` list.
+        graph: Optional ProvenanceGraph instance for graph-based rendering.
 
     Returns:
         dict: Paths to generated artifacts.
@@ -99,6 +219,23 @@ def save_provenance_artifacts(project_directory: str,
         save_yaml_file(path=yml_path, content=provenance)
         return {'yml': yml_path, 'dot': None, 'svg': None}
 
+    # Prefer graph-based rendering when a ProvenanceGraph is available.
+    if graph is not None and len(graph) > 0:
+        gv_graph = render_provenance_graph(graph, run_label=run_label)
+        with open(dot_path, 'w') as f:
+            f.write(gv_graph.source)
+        try:
+            svg_data = gv_graph.pipe(format='svg')
+        except (graphviz.ExecutableNotFound, graphviz.CalledProcessError):
+            logger.warning('Could not render ARC provenance SVG because Graphviz is not available on this system.')
+        else:
+            with open(svg_path, 'wb') as f:
+                f.write(svg_data)
+        provenance['updated_at'] = datetime.datetime.now().isoformat(timespec='seconds')
+        save_yaml_file(path=yml_path, content=provenance)
+        return {'yml': yml_path, 'dot': dot_path, 'svg': svg_path if os.path.isfile(svg_path) else None}
+
+    # Fallback: event-based rendering (legacy path).
     graph = graphviz.Digraph(
         name='arc_provenance',
         comment=f'ARC provenance for {run_label}',
