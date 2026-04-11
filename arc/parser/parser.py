@@ -7,6 +7,8 @@ import re
 from typing import Any
 from collections.abc import Callable
 
+import numpy as np
+
 from arc.common import get_logger
 from arc.exceptions import InputError, ParserError
 from arc.parser.factory import ess_factory
