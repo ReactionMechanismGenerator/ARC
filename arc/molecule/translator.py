@@ -12,6 +12,7 @@ import arc.molecule.inchi as inchiutil
 import arc.molecule.molecule as mm
 import arc.molecule.util as util
 from arc.common import get_logger
+from arc.exceptions import DependencyError
 from arc.molecule.converter import to_rdkit_mol, from_rdkit_mol
 
 
