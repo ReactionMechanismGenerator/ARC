@@ -2767,7 +2767,35 @@ class Scheduler(object):
         logger.info(f'Switching a TS guess for {label}...')
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
-        self.output[label]['geo'] = self.output[label]['freq'] = self.output[label]['sp'] = self.output[label]['composite'] = ''
+        # Clean up IRC species spawned from the invalidated TS guess.
+        irc_labels_str = self.species_dict[label].irc_label
+        if irc_labels_str:
+            for irc_label in irc_labels_str.split():
+                if irc_label in self.running_jobs:
+                    self.delete_all_species_jobs(irc_label)
+                    del self.running_jobs[irc_label]
+                if irc_label in self.job_dict:
+                    del self.job_dict[irc_label]
+                if irc_label in self.output:
+                    del self.output[irc_label]
+                if irc_label in self.species_dict:
+                    self.species_list = [spc for spc in self.species_list if spc.label != irc_label]
+                    del self.species_dict[irc_label]
+                if irc_label in self.unique_species_labels:
+                    self.unique_species_labels.remove(irc_label)
+                logger.info(f'Deleted IRC species {irc_label} from invalidated TS guess.')
+            self.species_dict[label].irc_label = None
+        # Reset job_types so the new guess's pipeline runs from scratch.
+        for job_type in self.output[label]['job_types']:
+            if job_type in ['rotors', 'bde']:
+                continue
+            self.output[label]['job_types'][job_type] = False
+        self.output[label]['convergence'] = None
+        # Discard any pending pipe jobs queued for the OLD guess geometry.
+        self._pending_pipe_sp.discard(label)
+        self._pending_pipe_freq.discard(label)
+        self._pending_pipe_irc.discard((label, 'forward'))
+        self._pending_pipe_irc.discard((label, 'reverse'))
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
             os.remove(freq_path)

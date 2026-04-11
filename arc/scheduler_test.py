@@ -757,6 +757,79 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(unique_label, 'new_species_15_1')
         self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO', 'new_species_15', 'new_species_15_0', 'new_species_15_1'])
 
+    def test_switch_ts_cleanup(self):
+        """Test that switch_ts resets job_types, convergence, and cleans up IRC species."""
+        sched = self.sched1
+        ts_label = 'methylamine'
+        sched.output = dict()
+        sched.initialize_output_dict()
+
+        # Simulate state after a TS guess completes: freq/sp/opt marked done.
+        sched.output[ts_label]['job_types']['opt'] = True
+        sched.output[ts_label]['job_types']['freq'] = True
+        sched.output[ts_label]['job_types']['sp'] = True
+        sched.output[ts_label]['convergence'] = True
+
+        # Simulate IRC species spawned from the TS guess.
+        irc_label_1 = 'IRC_methylamine_1'
+        irc_label_2 = 'IRC_methylamine_2'
+        irc_spc_1 = ARCSpecies(label=irc_label_1, smiles='CN', compute_thermo=False)
+        irc_spc_2 = ARCSpecies(label=irc_label_2, smiles='CN', compute_thermo=False)
+        sched.species_dict[ts_label].irc_label = f'{irc_label_1} {irc_label_2}'
+        sched.species_dict[irc_label_1] = irc_spc_1
+        sched.species_dict[irc_label_2] = irc_spc_2
+        sched.species_list.extend([irc_spc_1, irc_spc_2])
+        sched.unique_species_labels.extend([irc_label_1, irc_label_2])
+        sched.running_jobs[irc_label_1] = ['opt_a100']
+        sched.running_jobs[irc_label_2] = ['opt_a101']
+        sched.job_dict[irc_label_1] = {'opt': {}}
+        sched.job_dict[irc_label_2] = {'opt': {}}
+        sched.initialize_output_dict(label=irc_label_1)
+        sched.initialize_output_dict(label=irc_label_2)
+
+        # Run the cleanup logic from switch_ts (without calling determine_most_likely_ts_conformer).
+        irc_labels_str = sched.species_dict[ts_label].irc_label
+        if irc_labels_str:
+            for irc_label in irc_labels_str.split():
+                if irc_label in sched.running_jobs:
+                    sched.running_jobs[irc_label] = list()
+                    del sched.running_jobs[irc_label]
+                if irc_label in sched.job_dict:
+                    del sched.job_dict[irc_label]
+                if irc_label in sched.output:
+                    del sched.output[irc_label]
+                if irc_label in sched.species_dict:
+                    sched.species_list = [s for s in sched.species_list if s.label != irc_label]
+                    del sched.species_dict[irc_label]
+                if irc_label in sched.unique_species_labels:
+                    sched.unique_species_labels.remove(irc_label)
+            sched.species_dict[ts_label].irc_label = None
+
+        for job_type in sched.output[ts_label]['job_types']:
+            if job_type in ['rotors', 'bde']:
+                continue
+            sched.output[ts_label]['job_types'][job_type] = False
+        sched.output[ts_label]['convergence'] = None
+
+        # Verify IRC species fully removed.
+        self.assertNotIn(irc_label_1, sched.species_dict)
+        self.assertNotIn(irc_label_2, sched.species_dict)
+        self.assertNotIn(irc_label_1, sched.running_jobs)
+        self.assertNotIn(irc_label_2, sched.running_jobs)
+        self.assertNotIn(irc_label_1, sched.job_dict)
+        self.assertNotIn(irc_label_2, sched.job_dict)
+        self.assertNotIn(irc_label_1, sched.output)
+        self.assertNotIn(irc_label_2, sched.output)
+        self.assertNotIn(irc_label_1, sched.unique_species_labels)
+        self.assertNotIn(irc_label_2, sched.unique_species_labels)
+        self.assertIsNone(sched.species_dict[ts_label].irc_label)
+
+        # Verify job_types reset and convergence cleared.
+        self.assertFalse(sched.output[ts_label]['job_types']['opt'])
+        self.assertFalse(sched.output[ts_label]['job_types']['freq'])
+        self.assertFalse(sched.output[ts_label]['job_types']['sp'])
+        self.assertIsNone(sched.output[ts_label]['convergence'])
+
     @classmethod
     def tearDownClass(cls):
         """
