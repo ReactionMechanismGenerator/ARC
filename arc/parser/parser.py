@@ -8,6 +8,7 @@ from typing import Any
 from collections.abc import Callable
 
 import numpy as np
+import pandas as pd
 
 from arc.common import get_logger
 from arc.exceptions import InputError, ParserError
@@ -222,7 +223,7 @@ parse_irc_traj = make_parser(
 
 parse_scan_conformers = make_parser(
     parse_method='parse_scan_conformers',
-    return_type='pd.DataFrame' | None,
+    return_type=pd.DataFrame | None,
     error_message='Could not parse scan conformers from {path}',
 )
 
