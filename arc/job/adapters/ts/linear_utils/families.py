@@ -21,6 +21,7 @@ from arc.job.adapters.ts.linear_utils.geom_utils import (
     dihedral_deg,
     rotate_atoms,
 )
+from arc.species.species import colliding_atoms as _colliding
 
 if TYPE_CHECKING:
     from rmgpy.molecule.molecule import Molecule
@@ -332,8 +333,11 @@ def build_1_3_sigmatropic_rearrangement_ts(
     In a [1,3]-sigmatropic shift one atom (the *migrating atom*) moves
     from the *origin* to the *target* via the allylic/heteroallylic
     bridge.  The TS has the migrating atom positioned at calibrated
-    distances from both origin and target, with unchanged near-core
-    heavy-heavy bonds preserved in a chemically sane window.
+    distances from both origin and target.
+
+    All ring atoms are reconstructed via two-sphere placement to
+    maintain a physically sane ring geometry rather than only moving
+    the migrating atom and leaving others at reactant positions.
 
     Motif identification (from ``breaking_bonds`` / ``forming_bonds``):
 
@@ -343,28 +347,11 @@ def build_1_3_sigmatropic_rearrangement_ts(
     * The function returns ``None`` if these conditions are not met or
       if any index is out of range.
 
-    Geometry construction:
-
-    1. The migrating atom is placed at the intersection of two spheres
-       centred on the origin (radius = calibrated breaking-side target)
-       and target (radius = calibrated forming-side target).  The
-       perpendicular direction is taken from the migrating atom's
-       current position to keep the guess in the same hemisphere as
-       the reactant geometry.
-    2. H-only substituents of the migrating atom are translated rigidly
-       with it.
-    3. All other atoms remain at their reactant positions.
-    4. If any heavy-heavy near-core bond (within the reactive core)
-       ends up shorter than 0.9 Å after migration, the guess is
-       considered unphysical and ``None`` is returned.
-
     Calibrated distances (specific to 1,3-sigmatropic shifts):
 
-    * Breaking side: ``sbl + 0.77 Å`` (calibrated to the DFT-curated TS
-      at ~2.24 Å for C–N; the [1,3]-sigmatropic TS is orbital-symmetry-
-      forbidden and sits at a late, stretched geometry).
-    * Forming side: ``sbl + 0.38 Å`` (calibrated to ~1.85 Å for N–C;
-      the forming bond is already mostly formed in the TS).
+    * Breaking side: ``sbl + 0.77 Å`` (calibrated to ~2.24 Å for C–N).
+    * Forming side: ``sbl + 0.38 Å`` (calibrated to ~1.85 Å for N–C).
+    * Bridge: ``sbl + 0.12 Å`` (calibrated to ~1.66 Å for C–C).
 
     Args:
         r_xyz: Reactant XYZ dict.
@@ -400,45 +387,13 @@ def build_1_3_sigmatropic_rearrangement_ts(
     atom_to_idx = {atom: idx for idx, atom in enumerate(r_mol.atoms)}
 
     # Calibrated TS target distances for [1,3]-sigmatropic shifts.
-    # These are narrowly scoped to this family and calibrated from
-    # DFT-curated TS reference geometries.  The TS is orbital-symmetry-
-    # forbidden (Woodward-Hoffmann), so the breaking bond is stretched
-    # much more than generic Pauling delta predicts.
     sbl_break = get_single_bond_length(symbols[origin], symbols[migrating]) or 1.5
     sbl_form = get_single_bond_length(symbols[target], symbols[migrating]) or 1.5
-    _SIGMA_BREAK_STRETCH = 0.77  # Å above sbl (calibrated: ~2.24 for C-N)
-    _SIGMA_FORM_STRETCH = 0.38   # Å above sbl (calibrated: ~1.85 for N-C)
+    _SIGMA_BREAK_STRETCH = 0.77
+    _SIGMA_FORM_STRETCH = 0.38
     d_break_target = sbl_break + _SIGMA_BREAK_STRETCH
     d_form_target = sbl_form + _SIGMA_FORM_STRETCH
 
-    # Place the migrating atom at the two-sphere intersection of
-    # origin (radius d_break_target) and target (radius d_form_target).
-    origin_pos = coords[origin]
-    target_pos = coords[target]
-    ot_vec = target_pos - origin_pos
-    ot_dist = float(np.linalg.norm(ot_vec))
-    if ot_dist < 1e-6:
-        return None
-    ot_hat = ot_vec / ot_dist
-
-    if ot_dist <= d_break_target + d_form_target:
-        # Spheres overlap — triangulate.
-        x = (ot_dist ** 2 + d_break_target ** 2 - d_form_target ** 2) / (2.0 * ot_dist)
-        h_sq = d_break_target ** 2 - x ** 2
-        h_perp = float(np.sqrt(max(h_sq, 0.0)))
-    else:
-        # Spheres don't overlap — place at d_break_target along the axis.
-        x = d_break_target
-        h_perp = 0.0
-
-    # Perpendicular direction: use the out-of-plane normal of the
-    # (origin, target, bridge_neighbor) triangle.  In a cyclic
-    # [1,3]-shift the migrating atom has a bridge neighbor (bonded
-    # to it in both R and P, e.g. C2 in the imidazole case) that
-    # lies IN the ring plane.  Using the ring-plane normal as the
-    # perpendicular direction ensures the migrating atom is placed
-    # OUT of the plane, avoiding collision with the bridge neighbor.
-    mig_pos = coords[migrating]
     # Find the bridge neighbor: a heavy neighbor of the migrating atom
     # that is neither the origin nor the target.
     bridge = None
@@ -447,130 +402,148 @@ def build_1_3_sigmatropic_rearrangement_ts(
         if symbols[ni] != 'H' and ni != origin and ni != target:
             bridge = ni
             break
-    if bridge is not None:
-        aux_vec = coords[bridge] - origin_pos
-        perp = np.cross(ot_hat, aux_vec)
-        perp_norm = float(np.linalg.norm(perp))
-        if perp_norm > 1e-8:
-            perp_hat = perp / perp_norm
-            # Choose the sign that puts the migrating atom on the same
-            # side as its current position.
-            proj_on_axis = origin_pos + ot_hat * np.dot(mig_pos - origin_pos, ot_hat)
-            mig_offset = mig_pos - proj_on_axis
-            if float(np.dot(mig_offset, perp_hat)) < 0:
-                perp_hat = -perp_hat
-        else:
-            perp_hat = None
-    else:
-        perp_hat = None
 
-    if perp_hat is None:
-        # Fallback: use the migrating atom's current offset.
-        proj_on_axis = origin_pos + ot_hat * np.dot(mig_pos - origin_pos, ot_hat)
-        perp = mig_pos - proj_on_axis
-        perp_norm = float(np.linalg.norm(perp))
-        if perp_norm > 1e-8:
-            perp_hat = perp / perp_norm
-        else:
-            arb = np.array([1.0, 0.0, 0.0])
-            if abs(float(np.dot(ot_hat, arb))) > 0.9:
-                arb = np.array([0.0, 1.0, 0.0])
-            perp_hat = np.cross(ot_hat, arb)
-            perp_hat /= max(float(np.linalg.norm(perp_hat)), 1e-10)
-
-    new_mig_pos = origin_pos + ot_hat * x + perp_hat * h_perp
-
-    # Identify H-only substituents on the migrating atom (move them
-    # rigidly with the migrating atom).
-    displacement = new_mig_pos - coords[migrating]
-    moving_set = {migrating}
-    for nbr in r_mol.atoms[migrating].bonds.keys():
-        ni = atom_to_idx[nbr]
-        if symbols[ni] == 'H':
-            moving_set.add(ni)
-    for idx in moving_set:
-        coords[idx] += displacement
-
-    # Local core-shaping step: adjust the bridge atom(s) toward the
-    # migrating atom's new position so that the bridge–migrating
-    # distance approaches its curated TS value (~1.66 Å for C–C in
-    # the imidazole case) rather than being over-stretched.
-    #
-    # The bridge atom is the heavy neighbor of the migrating atom that
-    # is neither the origin nor the target — it persists in both
-    # reactant and product.  Moving it (and its H-only substituents)
-    # partially toward the migrating atom's new position closes the
-    # gap without disturbing the calibrated motif edges (which are
-    # anchored to origin and target, not the bridge).
-    _BRIDGE_TARGET_FACTOR = 0.40  # fraction of the gap to close
-    if bridge is not None:
-        d_bridge_mig = float(np.linalg.norm(coords[bridge] - coords[migrating]))
-        # Calibrated bridge–migrating distance: midpoint between the
-        # reactant value (aromatic ~1.37) and a stretched single bond
-        # (~1.66).  Use a family-calibrated target.
-        sbl_bridge = get_single_bond_length(
-            symbols[bridge], symbols[migrating]) or 1.5
-        d_bridge_target = sbl_bridge + 0.12  # ~1.66 for C–C
-        if d_bridge_mig > d_bridge_target:
-            bridge_dir = coords[migrating] - coords[bridge]
-            bridge_dir_norm = float(np.linalg.norm(bridge_dir))
-            if bridge_dir_norm > 1e-6:
-                bridge_hat = bridge_dir / bridge_dir_norm
-                # Move bridge partially toward the calibrated target.
-                gap = d_bridge_mig - d_bridge_target
-                shift = bridge_hat * gap * _BRIDGE_TARGET_FACTOR
-                bridge_moving = {bridge}
-                for nbr in r_mol.atoms[bridge].bonds.keys():
-                    ni = atom_to_idx[nbr]
-                    if symbols[ni] == 'H':
-                        bridge_moving.add(ni)
-                for idx in bridge_moving:
-                    coords[idx] += shift
-
-    # Ring planarity enforcement: project all ring heavy atoms (and
-    # their directly bonded H atoms) onto the best-fit plane of the
-    # ring.  The [1,3]-sigmatropic TS for cyclic substrates (e.g. the
-    # imidazole → azirine rearrangement) should be approximately
-    # planar, but the out-of-plane displacement from the triangulation
-    # leaves the migrating atom far from the ring plane.
+    # Identify the full set of ring atoms and a 5th atom if present.
     ring_atoms = {migrating, origin, target}
     if bridge is not None:
         ring_atoms.add(bridge)
-    # Add any other heavy atoms bonded to two ring members (ring-closing).
     for idx in list(ring_atoms):
         for nbr in r_mol.atoms[idx].bonds.keys():
             ni = atom_to_idx[nbr]
             if symbols[ni] != 'H' and ni not in ring_atoms:
-                # Check if this neighbor is bonded to another ring member.
                 nbr_ring_count = sum(
                     1 for nbr2 in r_mol.atoms[ni].bonds.keys()
                     if atom_to_idx[nbr2] in ring_atoms)
                 if nbr_ring_count >= 2:
                     ring_atoms.add(ni)
-    _PLANARITY_FRACTION = 0.20  # fraction of out-of-plane offset to remove
-    if len(ring_atoms) >= 3:
-        ring_list = sorted(ring_atoms)
+
+    # Compute the reactant ring-plane normal for use as the
+    # perpendicular direction in all two-sphere placements.
+    ring_list = sorted(ring_atoms)
+    if len(ring_list) >= 3:
         ring_pts = coords[ring_list]
         centroid = ring_pts.mean(axis=0)
         centered = ring_pts - centroid
         _, _, vt = np.linalg.svd(centered)
-        plane_normal = vt[-1]
-        # Partially project ring atoms toward the plane.  Full
-        # projection can collapse bonds between atoms that are far
-        # apart in-plane but close in 3D (e.g. C0-N4 in the imidazole
-        # case).  Moving only a fraction preserves inter-atom distances
-        # while reducing the out-of-plane deviation.
+        ring_normal = vt[-1]
+    else:
+        ring_normal = np.array([0.0, 0.0, 1.0])
+
+    def _two_sphere_place(center1, r1, center2, r2, ref_pos):
+        """Place a point at the two-sphere intersection, on the same
+        side as ``ref_pos`` relative to the center1→center2 axis."""
+        axis = center2 - center1
+        axis_d = float(np.linalg.norm(axis))
+        if axis_d < 1e-6:
+            return None
+        axis_h = axis / axis_d
+        if axis_d <= r1 + r2:
+            x = (axis_d ** 2 + r1 ** 2 - r2 ** 2) / (2.0 * axis_d)
+            h_sq = r1 ** 2 - x ** 2
+            h_p = float(np.sqrt(max(h_sq, 0.0)))
+        else:
+            x = r1
+            h_p = 0.0
+        # Perpendicular direction: use the ring-plane normal, then
+        # pick the sign that keeps the point on the same side as ref.
+        proj = center1 + axis_h * np.dot(ref_pos - center1, axis_h)
+        ref_offset = ref_pos - proj
+        ref_norm = float(np.linalg.norm(ref_offset))
+        if ref_norm > 1e-8:
+            p_hat = ref_offset / ref_norm
+        else:
+            p_hat = ring_normal.copy()
+            # Remove component along axis.
+            p_hat -= axis_h * np.dot(p_hat, axis_h)
+            pn = float(np.linalg.norm(p_hat))
+            if pn > 1e-8:
+                p_hat /= pn
+            else:
+                arb = np.array([1.0, 0.0, 0.0])
+                if abs(float(np.dot(axis_h, arb))) > 0.9:
+                    arb = np.array([0.0, 1.0, 0.0])
+                p_hat = np.cross(axis_h, arb)
+                p_hat /= max(float(np.linalg.norm(p_hat)), 1e-10)
+        return center1 + axis_h * x + p_hat * h_p
+
+    def _move_atom_with_h(idx, new_pos):
+        """Move atom ``idx`` to ``new_pos`` and translate its H-only
+        neighbors rigidly."""
+        disp = new_pos - coords[idx]
+        moving = {idx}
+        for nbr in r_mol.atoms[idx].bonds.keys():
+            ni = atom_to_idx[nbr]
+            if symbols[ni] == 'H':
+                moving.add(ni)
+        for k in moving:
+            coords[k] += disp
+
+    # Step 1: Place migrating atom at calibrated breaking/forming
+    # distances from origin and target.
+    new_mig = _two_sphere_place(
+        coords[origin], d_break_target,
+        coords[target], d_form_target,
+        coords[migrating])
+    if new_mig is None:
+        return None
+    _move_atom_with_h(migrating, new_mig)
+
+    # Step 2: Place bridge atom at calibrated distance from migrating
+    # and at reactant distance from target.
+    if bridge is not None:
+        sbl_bridge = get_single_bond_length(
+            symbols[bridge], symbols[migrating]) or 1.5
+        d_bridge_target = sbl_bridge + 0.12  # ~1.66 for C-C
+        d_bridge_target_side = float(np.linalg.norm(
+            np.array(r_xyz['coords'][bridge]) - np.array(r_xyz['coords'][target])))
+        new_bridge = _two_sphere_place(
+            coords[migrating], d_bridge_target,
+            coords[target], d_bridge_target_side,
+            coords[bridge])
+        if new_bridge is not None:
+            _move_atom_with_h(bridge, new_bridge)
+
+    # Step 3: Place the remaining ring atom (e.g. C0 in the imidazole
+    # case) at its reactant distances from its two ring neighbors
+    # (origin and target).
+    remaining = ring_atoms - {migrating, origin, target}
+    if bridge is not None:
+        remaining -= {bridge}
+    for rem_idx in remaining:
+        # Find the two ring neighbors of this atom.
+        ring_nbrs = []
+        for nbr in r_mol.atoms[rem_idx].bonds.keys():
+            ni = atom_to_idx[nbr]
+            if ni in ring_atoms and symbols[ni] != 'H':
+                ring_nbrs.append(ni)
+        if len(ring_nbrs) >= 2:
+            n1, n2 = ring_nbrs[0], ring_nbrs[1]
+            d1 = float(np.linalg.norm(
+                np.array(r_xyz['coords'][rem_idx]) - np.array(r_xyz['coords'][n1])))
+            d2 = float(np.linalg.norm(
+                np.array(r_xyz['coords'][rem_idx]) - np.array(r_xyz['coords'][n2])))
+            new_rem = _two_sphere_place(
+                coords[n1], d1, coords[n2], d2, coords[rem_idx])
+            if new_rem is not None:
+                _move_atom_with_h(rem_idx, new_rem)
+
+    # Step 4: Light planarity enforcement using the ORIGINAL ring
+    # plane normal (computed before any atoms moved).
+    _PLANARITY_FRACTION = 0.50
+    if len(ring_list) >= 3:
+        current_ring_pts = coords[ring_list]
+        current_centroid = current_ring_pts.mean(axis=0)
         for ri in ring_list:
-            offset = float(np.dot(coords[ri] - centroid, plane_normal))
-            coords[ri] -= offset * _PLANARITY_FRACTION * plane_normal
+            offset = float(np.dot(coords[ri] - current_centroid, ring_normal))
+            coords[ri] -= offset * _PLANARITY_FRACTION * ring_normal
             for nbr in r_mol.atoms[ri].bonds.keys():
                 hi = atom_to_idx[nbr]
                 if symbols[hi] == 'H':
-                    h_offset = float(np.dot(coords[hi] - centroid, plane_normal))
-                    coords[hi] -= h_offset * _PLANARITY_FRACTION * plane_normal
+                    h_offset = float(np.dot(
+                        coords[hi] - current_centroid, ring_normal))
+                    coords[hi] -= h_offset * _PLANARITY_FRACTION * ring_normal
 
-    # Sanity guard: check that no heavy-heavy near-core bond collapsed
-    # to less than 0.9 Å (would indicate an unphysical geometry).
+    # Sanity guard: check that no heavy-heavy bond collapsed below 0.9 Å.
     for atom in r_mol.atoms:
         ia = atom_to_idx[atom]
         if symbols[ia] == 'H':
@@ -644,7 +617,6 @@ def build_baeyer_villiger_step2_ts(
     Returns:
         TS XYZ dict, or ``None`` if the BV motif cannot be identified.
     """
-    from arc.species.species import colliding_atoms as _colliding
 
     symbols = uni_xyz['symbols']
     n_atoms = len(symbols)
@@ -820,21 +792,66 @@ def build_baeyer_villiger_step2_ts(
                 target_dist=_BV_CO_SHORTEN_TARGET,
                 mobile_frag=frag_oh)
 
-        # 4d. Stretch the hydroxyl O-H bond toward the calibrated TS
-        # target (~1.40 Å).  In the concerted BV mechanism, the
-        # hydroxyl H loosens from O_hydroxyl as the C=O forms.  The
-        # curated TS has d(O-H) ≈ 1.40 Å (stretched from ~0.97 Å).
-        # The H is moved along the O→H direction without moving any
-        # other atom.
-        _BV_OH_STRETCH_TARGET = 1.40  # Å (calibrated from DFT TS)
+        # 4d. Concerted H migration: place the hydroxyl H between
+        # O_hydroxyl and the carbonyl double-bond O at calibrated TS
+        # distances (~1.40 Å from each).  In the concerted BV mechanism,
+        # the H transfers from O_hydroxyl to the C=O oxygen.
+        _BV_H_TRANSFER_TARGET = 1.40  # Å from each O (calibrated)
         if o_hydroxyl is not None:
+            # Find the carbonyl double-bond O on c_carbonyl.
+            o_carbonyl_dbl = None
+            for nbr_idx in adj[c_carbonyl]:
+                if nbr_idx == o_carb_side:
+                    continue
+                if symbols[nbr_idx] != 'O':
+                    continue
+                key = (min(c_carbonyl, nbr_idx), max(c_carbonyl, nbr_idx))
+                if bond_orders.get(key, 1.0) >= 1.5:
+                    o_carbonyl_dbl = nbr_idx
+                    break
             h_on_oh = [k for k in adj[o_hydroxyl] if symbols[k] == 'H']
-            for h_idx in h_on_oh:
-                oh_vec = coords[h_idx] - coords[o_hydroxyl]
-                oh_dist = float(np.linalg.norm(oh_vec))
-                if oh_dist > 1e-6 and oh_dist < _BV_OH_STRETCH_TARGET:
-                    oh_hat = oh_vec / oh_dist
-                    coords[h_idx] = coords[o_hydroxyl] + oh_hat * _BV_OH_STRETCH_TARGET
+            if o_carbonyl_dbl is not None and h_on_oh:
+                h_idx = h_on_oh[0]
+                # Two-sphere triangulation: place H at intersection of
+                # spheres centered on O_hydroxyl and O_carbonyl_dbl.
+                p1 = coords[o_hydroxyl]
+                p2 = coords[o_carbonyl_dbl]
+                ax = p2 - p1
+                ax_d = float(np.linalg.norm(ax))
+                if ax_d > 1e-6:
+                    ax_h = ax / ax_d
+                    r1 = _BV_H_TRANSFER_TARGET
+                    r2 = _BV_H_TRANSFER_TARGET
+                    if ax_d <= r1 + r2:
+                        xp = ax_d / 2.0  # equidistant
+                        hp_sq = r1 ** 2 - xp ** 2
+                        hp = float(np.sqrt(max(hp_sq, 0.0)))
+                    else:
+                        xp = r1
+                        hp = 0.0
+                    # Perpendicular: use H's current offset from axis.
+                    h_pos = coords[h_idx]
+                    proj = p1 + ax_h * np.dot(h_pos - p1, ax_h)
+                    perp = h_pos - proj
+                    pn = float(np.linalg.norm(perp))
+                    if pn > 1e-8:
+                        ph = perp / pn
+                    else:
+                        arb = np.array([1.0, 0.0, 0.0])
+                        if abs(float(np.dot(ax_h, arb))) > 0.9:
+                            arb = np.array([0.0, 1.0, 0.0])
+                        ph = np.cross(ax_h, arb)
+                        ph /= max(float(np.linalg.norm(ph)), 1e-10)
+                    coords[h_idx] = p1 + ax_h * xp + ph * hp
+            elif h_on_oh:
+                # Fallback: just stretch O-H along existing direction.
+                for h_idx in h_on_oh:
+                    oh_vec = coords[h_idx] - coords[o_hydroxyl]
+                    oh_dist = float(np.linalg.norm(oh_vec))
+                    if oh_dist > 1e-6 and oh_dist < _BV_H_TRANSFER_TARGET:
+                        oh_hat = oh_vec / oh_dist
+                        coords[h_idx] = (coords[o_hydroxyl]
+                                         + oh_hat * _BV_H_TRANSFER_TARGET)
 
         ts_xyz = {
             'symbols': symbols,
@@ -904,30 +921,30 @@ def build_singlet_carbene_intra_disproportionation_ts(
         return None
 
     # Find the donor: a heavy neighbor of the carbene C that has >= 1 H.
+    # Prefer the neighbor with the most H atoms (CH₂ over CH), since
+    # in singlet carbene disproportionation the H typically migrates
+    # from a CH₂ group, not a CH.
     donor_c = None
+    best_h_count = 0
     for nbr in r_mol.atoms[carbene_c].bonds.keys():
         ni = atom_to_idx[nbr]
         if symbols[ni] == 'H':
             continue
         h_on_donor = [n for n in nbr.bonds.keys() if n.element.symbol == 'H']
-        if len(h_on_donor) >= 1:
+        if len(h_on_donor) > best_h_count:
+            best_h_count = len(h_on_donor)
             donor_c = ni
-            break
     if donor_c is None:
         return None
 
-    # Select the migrating H: the H on the donor closest to the carbene C.
+    # Identify ALL H atoms on the donor.
     coords = np.array(r_xyz['coords'], dtype=float).copy()
-    best_h = None
-    best_dist = float('inf')
+    donor_h_list = []
     for nbr in r_mol.atoms[donor_c].bonds.keys():
         ni = atom_to_idx[nbr]
         if symbols[ni] == 'H':
-            d = float(np.linalg.norm(coords[ni] - coords[carbene_c]))
-            if d < best_dist:
-                best_dist = d
-                best_h = ni
-    if best_h is None:
+            donor_h_list.append(ni)
+    if not donor_h_list:
         return None
 
     # Place the migrating H at a Pauling-triangulated TS position
@@ -952,26 +969,233 @@ def build_singlet_carbene_intra_disproportionation_ts(
         x = d_target
         h_perp = 0.0
 
-    # Use the migrating H's current offset from the D-C axis for
-    # the perpendicular direction.
-    h_pos = coords[best_h]
-    proj_on_axis = donor_pos + dc_hat * np.dot(h_pos - donor_pos, dc_hat)
-    perp = h_pos - proj_on_axis
-    perp_norm = float(np.linalg.norm(perp))
-    if perp_norm > 1e-8:
-        perp_hat = perp / perp_norm
+    # When the donor has 2 H atoms (CH₂), the migrating H should be
+    # placed on the OPPOSITE side of the donor-carbene axis from the
+    # bonded H.  This ensures the two H's end up on opposite faces
+    # of the ring, which is the chemically correct TS geometry.
+    if len(donor_h_list) == 2:
+        # Pick the H further from the carbene C as the one to stay
+        # bonded; the closer one migrates (but gets placed on the
+        # opposite side from the bonded H).
+        d0 = float(np.linalg.norm(coords[donor_h_list[0]] - carbene_pos))
+        d1 = float(np.linalg.norm(coords[donor_h_list[1]] - carbene_pos))
+        if d0 <= d1:
+            migrating_h = donor_h_list[0]
+            bonded_h = donor_h_list[1]
+        else:
+            migrating_h = donor_h_list[1]
+            bonded_h = donor_h_list[0]
+        # Perpendicular direction: use the BONDED H's offset from the
+        # axis, then NEGATE it so the migrating H goes to the opposite
+        # side.
+        bonded_pos = coords[bonded_h]
+        proj = donor_pos + dc_hat * np.dot(bonded_pos - donor_pos, dc_hat)
+        perp = bonded_pos - proj
+        perp_norm = float(np.linalg.norm(perp))
+        if perp_norm > 1e-8:
+            perp_hat = -(perp / perp_norm)  # opposite side
+        else:
+            arb = np.array([1.0, 0.0, 0.0])
+            if abs(float(np.dot(dc_hat, arb))) > 0.9:
+                arb = np.array([0.0, 1.0, 0.0])
+            perp_hat = np.cross(dc_hat, arb)
+            perp_hat /= max(float(np.linalg.norm(perp_hat)), 1e-10)
     else:
-        arb = np.array([1.0, 0.0, 0.0])
-        if abs(float(np.dot(dc_hat, arb))) > 0.9:
-            arb = np.array([0.0, 1.0, 0.0])
-        perp_hat = np.cross(dc_hat, arb)
-        perp_hat /= max(float(np.linalg.norm(perp_hat)), 1e-10)
+        # Single H: use its current offset direction.
+        migrating_h = donor_h_list[0]
+        h_pos = coords[migrating_h]
+        proj = donor_pos + dc_hat * np.dot(h_pos - donor_pos, dc_hat)
+        perp = h_pos - proj
+        perp_norm = float(np.linalg.norm(perp))
+        if perp_norm > 1e-8:
+            perp_hat = perp / perp_norm
+        else:
+            arb = np.array([1.0, 0.0, 0.0])
+            if abs(float(np.dot(dc_hat, arb))) > 0.9:
+                arb = np.array([0.0, 1.0, 0.0])
+            perp_hat = np.cross(dc_hat, arb)
+            perp_hat /= max(float(np.linalg.norm(perp_hat)), 1e-10)
 
-    coords[best_h] = donor_pos + dc_hat * x + perp_hat * h_perp
+    coords[migrating_h] = donor_pos + dc_hat * x + perp_hat * h_perp
 
     ts_xyz = {
         'symbols': symbols,
         'isotopes': r_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
         'coords': tuple(tuple(float(c) for c in row) for row in coords),
     }
+    return ts_xyz
+
+
+# ---------------------------------------------------------------------------
+# Korcek_step1 (Intra_RH_Add_Exocyclic) bespoke builder
+# ---------------------------------------------------------------------------
+
+
+def build_korcek_step1_ts(
+        r_xyz: dict,
+        r_mol: 'Molecule',
+) -> Optional[dict]:
+    """Build a TS for Korcek step 1 ring closure with H transfer.
+
+    In Korcek step 1, an open-chain keto-peroxide cyclizes:
+    the carbonyl C forms a bond to the terminal peroxide O (closing a
+    6-membered ring containing the O-O peroxide), while the peroxide H
+    transfers to the carbonyl O.
+
+    Motif identification:
+
+    * Find the aldehyde / ketone: a C bonded to an O via a double bond.
+    * Find the peroxide: an O-O pair where at least one O has a bonded H.
+    * The terminal peroxide O (the one with H) must be reachable from
+      the carbonyl C through a short chain (4-6 bonds), forming a
+      5-7 membered ring.
+
+    Returns ``None`` if the motif cannot be identified.
+    """
+    symbols = r_xyz['symbols']
+    n_atoms = len(symbols)
+    atom_to_idx = {atom: idx for idx, atom in enumerate(r_mol.atoms)}
+
+    # Build adjacency and bond orders.
+    adj: Dict[int, Set[int]] = {k: set() for k in range(n_atoms)}
+    bond_orders: Dict[Tuple[int, int], float] = {}
+    for atom in r_mol.atoms:
+        ia = atom_to_idx[atom]
+        for nbr, bond in atom.bonds.items():
+            ib = atom_to_idx[nbr]
+            adj[ia].add(ib)
+            key = (min(ia, ib), max(ia, ib))
+            bond_orders[key] = bond.order
+
+    # Step 1: Find all carbonyl C atoms (C with C=O).
+    carbonyl_pairs = []  # (c_idx, o_dbl_idx)
+    for atom in r_mol.atoms:
+        c_idx = atom_to_idx[atom]
+        if symbols[c_idx] != 'C':
+            continue
+        for nbr, bond in atom.bonds.items():
+            o_idx = atom_to_idx[nbr]
+            if symbols[o_idx] == 'O' and bond.order >= 1.5:
+                carbonyl_pairs.append((c_idx, o_idx))
+
+    # Step 2: Find the peroxide O-O bond.
+    peroxide_pair = None
+    for atom in r_mol.atoms:
+        ia = atom_to_idx[atom]
+        if symbols[ia] != 'O':
+            continue
+        for nbr in atom.bonds.keys():
+            ib = atom_to_idx[nbr]
+            if symbols[ib] == 'O' and ib > ia:
+                peroxide_pair = (ia, ib)
+                break
+        if peroxide_pair is not None:
+            break
+    if peroxide_pair is None:
+        return None
+
+    # Identify the terminal peroxide O (has H) and the internal one.
+    o_term = None
+    h_peroxide = None
+    for o_idx in peroxide_pair:
+        for nbr_idx in adj[o_idx]:
+            if symbols[nbr_idx] == 'H':
+                o_term = o_idx
+                h_peroxide = nbr_idx
+                break
+        if o_term is not None:
+            break
+    if o_term is None:
+        return None
+    o_int = peroxide_pair[0] if peroxide_pair[1] == o_term else peroxide_pair[1]
+
+    # Step 3: Find the carbonyl C connected to the peroxide through
+    # the backbone chain.  BFS from o_term to each carbonyl C
+    # (through the O-O-C backbone, which forms part of the ring).
+    from collections import deque
+    best_path = None
+    best_carb_c = None
+    best_o_dbl = None
+    for c_idx, o_dbl_idx in carbonyl_pairs:
+        visited = {o_term}
+        queue = deque([(o_term, [o_term])])
+        found = False
+        while queue:
+            curr, path = queue.popleft()
+            if curr == c_idx:
+                if best_path is None or len(path) < len(best_path):
+                    best_path = path
+                    best_carb_c = c_idx
+                    best_o_dbl = o_dbl_idx
+                found = True
+                break
+            for nxt in adj[curr]:
+                if nxt in visited:
+                    continue
+                # Skip H atoms to keep the path on the heavy-atom chain.
+                if symbols[nxt] == 'H':
+                    continue
+                visited.add(nxt)
+                queue.append((nxt, path + [nxt]))
+    if best_path is None or len(best_path) < 4 or len(best_path) > 8:
+        return None
+
+    # Step 4: Use ring_closure_xyz to fold the chain.
+    from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
+    forming_bond = (best_carb_c, o_term)
+    sbl_co = get_single_bond_length('C', 'O') or 1.43
+    d_ring_target = sbl_co + PAULING_DELTA  # ~1.85 Å
+    rc_xyz = ring_closure_xyz(
+        r_xyz, r_mol, forming_bond=forming_bond,
+        target_distance=d_ring_target)
+    if rc_xyz is None:
+        return None
+    if _colliding(rc_xyz):
+        return None
+
+    # Step 5: Adjust the peroxide H toward the carbonyl O.
+    # In the TS, the H is loosening from o_term and approaching o_dbl.
+    # Place H at the two-sphere intersection of (o_term, d_target) and
+    # (o_dbl, d_target) to keep it equidistant from both O atoms.
+    coords = np.array(rc_xyz['coords'], dtype=float)
+    sbl_oh = get_single_bond_length('O', 'H') or 0.97
+    d_h_target = sbl_oh + PAULING_DELTA  # ~1.39 Å
+    o_term_pos = coords[o_term]
+    o_dbl_pos = coords[best_o_dbl]
+    h_pos = coords[h_peroxide]
+
+    ax = o_dbl_pos - o_term_pos
+    ax_d = float(np.linalg.norm(ax))
+    if ax_d > 1e-6:
+        ax_h = ax / ax_d
+        r1 = d_h_target
+        r2 = d_h_target
+        if ax_d <= r1 + r2:
+            xp = ax_d / 2.0
+            hp_sq = r1 ** 2 - xp ** 2
+            hp = float(np.sqrt(max(hp_sq, 0.0)))
+        else:
+            xp = r1
+            hp = 0.0
+        # Perpendicular: use H's current offset from the O-O axis.
+        proj = o_term_pos + ax_h * np.dot(h_pos - o_term_pos, ax_h)
+        perp = h_pos - proj
+        pn = float(np.linalg.norm(perp))
+        if pn > 1e-8:
+            ph = perp / pn
+        else:
+            arb = np.array([1.0, 0.0, 0.0])
+            if abs(float(np.dot(ax_h, arb))) > 0.9:
+                arb = np.array([0.0, 1.0, 0.0])
+            ph = np.cross(ax_h, arb)
+            ph /= max(float(np.linalg.norm(ph)), 1e-10)
+        coords[h_peroxide] = o_term_pos + ax_h * xp + ph * hp
+
+    ts_xyz = {
+        'symbols': rc_xyz['symbols'],
+        'isotopes': rc_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
+        'coords': tuple(tuple(float(c) for c in row) for row in coords),
+    }
+    if _colliding(ts_xyz):
+        return None
     return ts_xyz

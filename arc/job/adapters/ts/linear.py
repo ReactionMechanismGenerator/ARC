@@ -260,6 +260,7 @@ from arc.job.adapters.ts.linear_utils.families import (
     build_xy_elimination_ts,
     build_1_3_sigmatropic_rearrangement_ts,
     build_baeyer_villiger_step2_ts,
+    build_korcek_step1_ts,
 )
 
 
@@ -3729,6 +3730,24 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                 strategy='bespoke_singlet_carbene',
             ))
 
+    # Narrow bespoke builder for Korcek_step1 (Intra_RH_Add_Exocyclic).
+    # This family is not in RMG's default family set, so product_dicts
+    # is empty and the per-path pipeline never runs.  When no guesses
+    # have been produced and the reactant has a keto-peroxide motif
+    # (C=O + O-O-H connected by a short chain), use the dedicated
+    # ring-closure builder.
+    if not ts_xyzs:
+        ts_korcek = build_korcek_step1_ts(r_xyz, r_mol)
+        if ts_korcek is not None and not colliding_atoms(ts_korcek):
+            logger.debug(f'Linear (rxn={rxn.label}): used bespoke '
+                         f'Korcek_step1 builder.')
+            ts_xyzs.append(GuessRecord(
+                xyz=ts_korcek,
+                bb=[], fb=[],
+                family='Korcek_step1',
+                strategy='bespoke_korcek_step1',
+            ))
+
     # Direct-contraction supplement: when the per-path pipeline produced no
     # guesses (e.g. atom map failed) but the family recipe has fb-only with
     # short forming bonds, contract them directly from the reactant geometry.
@@ -3800,10 +3819,13 @@ def interpolate_isomerization(rxn: 'ARCReaction',
     # Trivial atom-map fallback: when no product_dicts could be determined (e.g., the
     # reaction family is unknown) fall back to an identity atom map and determine
     # breaking/forming bonds via the Reaction's bond-comparison methods.
-    # Also run when the initial atom map was None — any non-trivial guesses
-    # produced in that case used degraded-mode atom maps and may be unreliable.
+    # Also run when the initial atom map was None AND no family-specific
+    # bespoke builders produced guesses — bespoke guesses are reliable
+    # even without a global atom map.
     _ensure_global_atom_map()
-    if not ts_xyzs or initial_atom_map is None:
+    _has_bespoke = any(getattr(g, 'strategy', '').startswith('bespoke_')
+                       for g in ts_xyzs)
+    if not ts_xyzs or (initial_atom_map is None and not _has_bespoke):
         n_atoms = len(r_xyz['symbols'])
         p_xyz = rxn.p_species[0].get_xyz()
         p_mol = rxn.p_species[0].mol
