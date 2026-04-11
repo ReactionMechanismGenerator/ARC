@@ -43,7 +43,7 @@ jobs:
       # For PRs: Build image but do not push and run smoke tests
       - name: Build Docker Image (No Push)
         if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main')
-        uses: docker/build-push-action@v7.0.0
+        uses: docker/build-push-action@v7.1.0
         with:
           context: .
           file: ./Dockerfile
@@ -63,7 +63,7 @@ jobs:
       # For pushes to main: Build, run smoke tests, and push to Docker Hub
       - name: Build test stage (main)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v7.0.0
+        uses: docker/build-push-action@v7.1.0
         with:
           context: .
           file: ./Dockerfile
@@ -80,14 +80,14 @@ jobs:
 
       - name: Login to Docker Hub
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3.5.0
+        uses: docker/login-action@v4.1.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build final and push (main)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v7.0.0
+        uses: docker/build-push-action@v7.1.0
         with:
           context: .
           file: ./Dockerfile

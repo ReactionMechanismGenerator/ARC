@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import arc.parser.parser as parser
 from arc import plotter
-from arc.checks.common import get_i_from_job_name, sum_time_delta
+from arc.checks.common import get_i_from_job_name, is_conformer_job, sum_time_delta
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
@@ -630,7 +630,15 @@ class Scheduler(object):
                                     # Accumulate for deferred pipe batching of conf_sp.
                                     self._pending_pipe_conf_sp.setdefault(label, set()).add(i)
                                 if troubleshooting_conformer:
-                                    break
+                                    # Only break if other conformer jobs are still in flight.
+                                    # When the last conformer exhausts troubleshooting without
+                                    # converging, we must fall through to the "all done" check
+                                    # below so it can call determine_most_likely_ts_conformer
+                                    # on the conformers that already succeeded — otherwise ARC
+                                    # mistakenly concludes no TS guess converged.
+                                    if any(is_conformer_job(j)
+                                           for j in self.running_jobs.get(label, [])):
+                                        break
                             # Just terminated a conformer job.
                             # Are there additional conformer jobs currently running for this species?
                             # Note: end_job already removed the current job from running_jobs,
@@ -3791,7 +3799,7 @@ class Scheduler(object):
                     self.restart_dict['running_jobs'][spc.label] = \
                         [self.job_dict[spc.label][job_name.rsplit('_', 1)[0]][job_name].as_dict()
                          for job_name in self.running_jobs[spc.label]
-                         if all(x not in job_name for x in ['conf_opt', 'conf_sp', 'tsg'])] \
+                         if not is_conformer_job(job_name) and 'tsg' not in job_name] \
                         + [self.job_dict[spc.label]['conf_opt'][get_i_from_job_name(job_name)].as_dict()
                            for job_name in self.running_jobs[spc.label] if 'conf_opt' in job_name] \
                         + [self.job_dict[spc.label]['conf_sp'][get_i_from_job_name(job_name)].as_dict()

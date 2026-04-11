@@ -363,20 +363,11 @@ class PipeRun:
                     logger.debug(f'Could not promote task {task_id} to FAILED_TERMINAL '
                                  f'(lock contention or concurrent state change): {e}')
 
-        # Only flag resubmission for genuinely retried tasks (attempt_index > 0).
-        # Fresh PENDING tasks (attempt_index == 0) are waiting for the initial
-        # submission's workers to start — don't resubmit for those.
-        # After a resubmission, allow a grace period for workers to start before
-        # flagging again (prevents duplicate submissions).
-        active_after_retry = counts[TaskState.CLAIMED.value] + counts[TaskState.RUNNING.value]
-        resubmit_grace = 120  # seconds
-        time_since_submit = (now - self.submitted_at) if self.submitted_at else float('inf')
-        if retried_pending > 0 and active_after_retry == 0 and time_since_submit > resubmit_grace:
-            self._needs_resubmission = True
-            logger.info(f'Pipe run {self.run_id}: {retried_pending} retried tasks '
-                        f'need workers. Resubmission needed.')
-        else:
-            self._needs_resubmission = False
+        # Never resubmit a new scheduler job for retried tasks.
+        # Workers still in the scheduler queue (PBS Q state) will claim
+        # retried PENDING tasks when they start.  If the scheduler job
+        # was killed, that is a manual intervention issue.
+        self._needs_resubmission = False
 
         terminal = (counts[TaskState.COMPLETED.value]
                     + counts[TaskState.FAILED_ESS.value]
