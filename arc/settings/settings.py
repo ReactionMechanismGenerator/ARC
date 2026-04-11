@@ -81,12 +81,11 @@ global_ess_settings = {
     'xtb': 'local',
     'xtb_gsm': 'local',
     'torchani': 'local',
-    'openbabel': 'local',
     'orca_neb': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
+supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
@@ -118,7 +117,6 @@ levels_ess = {
     'terachem': ['pbe'],
     'xtb': ['xtb', 'gfn'],
     'torchani': ['torchani'],
-    'openbabel': ['mmff94s', 'mmff94', 'gaff', 'uff', 'ghemical'],
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
@@ -181,7 +179,6 @@ output_filenames = {'cfour': 'output.out',
                     'terachem': 'output.out',
                     'torchani': 'output.yml',
                     'xtb': 'output.out',
-                    'openbabel':'output.yml',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
@@ -225,11 +222,6 @@ tani_default_options_dict = {"model" : "ani2x", # available: 'ANI1ccx', 'ANI1x',
                              "fmax" : 0.001,    # Make sure it is an int or a float.
                              "steps" : None}    # Make sure it is an int.
                              
-ob_default_settings = {"FF" : "MMFF94s",
-                       "opt_gradient_settings" : {"steps" : 2000,
-                                                  "econv" : 1e-6}
-                       }
-
 # xTB-GSM
 xtb_gsm_settings = {'sm_type': 'GSM',
                     'restart': 0,
@@ -321,8 +313,8 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
 # Default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
-    None, None, None, None, None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
+    None, None, None, None, None, None, None, None
 
 home = os.getenv("HOME") or os.path.expanduser("~")
 
@@ -359,7 +351,6 @@ def find_executable(env_name, executable_name='python'):
     return None
 
 TANI_PYTHON = find_executable('tani_env')
-OB_PYTHON = find_executable('ob_env')
 TS_GCN_PYTHON = find_executable('ts_gcn')
 AUTOTST_PYTHON = find_executable('tst_env')
 ARC_PYTHON = find_executable('arc_env')

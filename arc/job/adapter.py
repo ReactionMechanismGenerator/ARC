@@ -89,7 +89,6 @@ class JobEnum(str, Enum):
     terachem = 'terachem'
     torchani = 'torchani'
     xtb = 'xtb'
-    openbabel = 'openbabel'
 
     # TS search methods
     autotst = 'autotst'  # AutoTST, 10.1021/acs.jpca.7b07361, 10.26434/chemrxiv.13277870.v2
