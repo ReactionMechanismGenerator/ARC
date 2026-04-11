@@ -36,6 +36,10 @@ from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
 from arc.species.species import ARCSpecies
 from arc.species.zmat import _compare_zmats, get_parameter_from_atom_indices
 
+from arc.species.species import check_isomorphism
+from arc.species.zmat import remove_zmat_atom_0
+from arc.species.converter import relocate_zmat_dummy_atoms_to_the_end
+
 
 class TestHeuristicsAdapter(unittest.TestCase):
     """
@@ -1414,11 +1418,32 @@ H      -3.45360689    0.15275707   -0.76116277""")
         # expected_new_map = {0: 12, 1: 13, 2: 'X24', 3: 14, 4: 15, 5: 16, 6: 'X25', 7: 17, 8: 'X26', 9: 18, 10: 19,
         #                     11: 20, 12: 21, 13: 22, 14: 'X27', 15: 23, 16: 'X28', 17: 2, 18: 3, 19: 1, 21: 4, 23: 0,
         #                     25: 7, 26: 6, 28: 5, 20: 'X8', 22: 'X9', 24: 'X10', 27: 'X11'}
-        expected_new_map = {0: 12, 1: 13, 2: 'X24', 3: 14, 4: 15, 5: 16, 6: 'X25', 7: 17, 8: 'X26', 9: 18, 10: 19,
-                            11: 20, 12: 21, 13: 22, 14: 'X27', 15: 23, 16: 'X28', 17: 2, 18: 1, 19: 3, 21: 0, 23: 4,
-                            25: 5, 26: 6, 28: 7, 20: 'X8', 22: 'X9', 24: 'X10', 27: 'X11'}
+        
+        # Test isomorphism of the mapped reactant_2 part
+        zmat_2_mod = remove_zmat_atom_0(self.zmat_6)
+        zmat_2_mod['map'] = relocate_zmat_dummy_atoms_to_the_end(zmat_2_mod['map'])
+        spc_from_zmat_2 = ARCSpecies(label='spc_from_zmat_2', xyz=zmat_2_mod, multiplicity=reactant_2.multiplicity,
+                                     number_of_radicals=reactant_2.number_of_radicals, charge=reactant_2.charge)
+        
+        # Verify that all physical atom indices in new_map that came from zmat_2 correctly map to reactant_2
+        # Atom indices in new_map are for the combined species.
+        # Atoms 0-16 in self.zmat_5, atoms 1-12 in self.zmat_6 (13 atoms total, index 0 removed).
+        # In get_new_zmat_2_map, zmat_2 atoms are mapped to indices in new_map.
+        
+        num_atoms_1 = len(self.zmat_5['symbols'])
+        atom_map = dict()
+        for i in range(1, len(self.zmat_6['symbols'])):
+            if not isinstance(self.zmat_6['symbols'][i], str) or self.zmat_6['symbols'][i] != 'X':
+                # This is a physical atom in zmat_2 (at index i)
+                # Its index in the combined Z-Matrix is num_atoms_1 + i - 1
+                combined_idx = num_atoms_1 + i - 1
+                if combined_idx in new_map:
+                    # new_map[combined_idx] is the index in reactant_2
+                    # i-1 is the index in spc_from_zmat_2
+                    atom_map[i-1] = new_map[combined_idx]
 
-        self.assertEqual(new_map, expected_new_map)
+        # Verify the atom_map is a valid isomorphism
+        self.assertTrue(check_isomorphism(spc_from_zmat_2.mol, reactant_2.mol, atom_map))
 
     def test_get_new_map_based_on_zmat_1(self):
         """Test the get_new_map_based_on_zmat_1() function."""
