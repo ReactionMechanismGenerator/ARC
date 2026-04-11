@@ -856,3 +856,122 @@ def build_baeyer_villiger_step2_ts(
             best_ts = ts_xyz
 
     return best_ts
+
+
+# ---------------------------------------------------------------------------
+# Singlet_Carbene_Intra_Disproportionation bespoke builder
+# ---------------------------------------------------------------------------
+
+
+def build_singlet_carbene_intra_disproportionation_ts(
+        r_xyz: dict,
+        r_mol: 'Molecule',
+) -> Optional[dict]:
+    """Build a TS for singlet carbene intramolecular H-shift.
+
+    In this reaction, a singlet carbene C (divalent, lone pair) on a
+    ring accepts an H from an adjacent CH₂ center.  The TS has the
+    migrating H between the donor C and the carbene C at
+    Pauling-triangulated distances.
+
+    Motif identification (from molecular graph):
+
+    * Find the carbene C: a carbon with exactly 2 heavy neighbors
+      and 0 H neighbors (consistent with a singlet carbene).
+    * Find the donor: a neighbor of the carbene C that has at least
+      1 bonded H.
+    * Select the migrating H: the H on the donor that is closest to
+      the carbene C.
+
+    Returns ``None`` if the motif cannot be identified.
+    """
+    symbols = r_xyz['symbols']
+    n_atoms = len(symbols)
+    atom_to_idx = {atom: idx for idx, atom in enumerate(r_mol.atoms)}
+
+    # Find the carbene C: a C with 2 heavy nbrs and 0 H nbrs.
+    carbene_c = None
+    for atom in r_mol.atoms:
+        idx = atom_to_idx[atom]
+        if symbols[idx] != 'C':
+            continue
+        heavy = [n for n in atom.bonds.keys() if n.element.symbol != 'H']
+        h_nbrs = [n for n in atom.bonds.keys() if n.element.symbol == 'H']
+        if len(heavy) == 2 and len(h_nbrs) == 0:
+            carbene_c = idx
+            break
+    if carbene_c is None:
+        return None
+
+    # Find the donor: a heavy neighbor of the carbene C that has >= 1 H.
+    donor_c = None
+    for nbr in r_mol.atoms[carbene_c].bonds.keys():
+        ni = atom_to_idx[nbr]
+        if symbols[ni] == 'H':
+            continue
+        h_on_donor = [n for n in nbr.bonds.keys() if n.element.symbol == 'H']
+        if len(h_on_donor) >= 1:
+            donor_c = ni
+            break
+    if donor_c is None:
+        return None
+
+    # Select the migrating H: the H on the donor closest to the carbene C.
+    coords = np.array(r_xyz['coords'], dtype=float).copy()
+    best_h = None
+    best_dist = float('inf')
+    for nbr in r_mol.atoms[donor_c].bonds.keys():
+        ni = atom_to_idx[nbr]
+        if symbols[ni] == 'H':
+            d = float(np.linalg.norm(coords[ni] - coords[carbene_c]))
+            if d < best_dist:
+                best_dist = d
+                best_h = ni
+    if best_h is None:
+        return None
+
+    # Place the migrating H at a Pauling-triangulated TS position
+    # between the donor C and the carbene C.
+    sbl_ch = get_single_bond_length('C', 'H') or 1.09
+    d_target = sbl_ch + PAULING_DELTA  # ~1.51 Å
+
+    donor_pos = coords[donor_c]
+    carbene_pos = coords[carbene_c]
+    dc_vec = carbene_pos - donor_pos
+    dc_dist = float(np.linalg.norm(dc_vec))
+    if dc_dist < 1e-6:
+        return None
+    dc_hat = dc_vec / dc_dist
+
+    # Triangulate: place H at d_target from both donor and carbene.
+    if dc_dist <= 2.0 * d_target:
+        x = dc_dist / 2.0
+        h_sq = d_target ** 2 - x ** 2
+        h_perp = float(np.sqrt(max(h_sq, 0.0)))
+    else:
+        x = d_target
+        h_perp = 0.0
+
+    # Use the migrating H's current offset from the D-C axis for
+    # the perpendicular direction.
+    h_pos = coords[best_h]
+    proj_on_axis = donor_pos + dc_hat * np.dot(h_pos - donor_pos, dc_hat)
+    perp = h_pos - proj_on_axis
+    perp_norm = float(np.linalg.norm(perp))
+    if perp_norm > 1e-8:
+        perp_hat = perp / perp_norm
+    else:
+        arb = np.array([1.0, 0.0, 0.0])
+        if abs(float(np.dot(dc_hat, arb))) > 0.9:
+            arb = np.array([0.0, 1.0, 0.0])
+        perp_hat = np.cross(dc_hat, arb)
+        perp_hat /= max(float(np.linalg.norm(perp_hat)), 1e-10)
+
+    coords[best_h] = donor_pos + dc_hat * x + perp_hat * h_perp
+
+    ts_xyz = {
+        'symbols': symbols,
+        'isotopes': r_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
+        'coords': tuple(tuple(float(c) for c in row) for row in coords),
+    }
+    return ts_xyz

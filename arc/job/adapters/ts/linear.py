@@ -3605,6 +3605,38 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     strategy='bespoke_1_3_sigmatropic',
                 ))
 
+        # Narrow ring-closure bespoke route for families where the
+        # per-path atom map commonly fails but the forming-bond
+        # topology is known from the product_dicts.  Uses the existing
+        # ring_closure_xyz torsion-folding + postprocess_ts_guess
+        # machinery, bypassing the atom map entirely.
+        # Family-gated: only fires for the exact named families.
+        _RING_CLOSURE_BESPOKE_FAMILIES = {
+            'Intra_R_Add_Endocyclic',
+            'Intra_Diels_alder_monocyclic',
+        }
+        if path_family in _RING_CLOSURE_BESPOKE_FAMILIES and fb and not bb:
+            for forming_bond in fb:
+                rc_xyz = ring_closure_xyz(r_xyz, r_mol, forming_bond=forming_bond)
+                if rc_xyz is not None and not colliding_atoms(rc_xyz):
+                    import copy
+                    rc_try = copy.deepcopy(rc_xyz)
+                    rc_try, mhs = postprocess_ts_guess(
+                        rc_try, r_mol, list(fb), list(bb), family=path_family)
+                    ok, _ = validate_ts_guess(
+                        rc_try, mhs, fb, r_mol,
+                        label=f'rxn={rxn.label}, path={i}, ring-closure-bespoke',
+                        family=path_family)
+                    if ok and not colliding_atoms(rc_try):
+                        logger.debug(f'Linear (rxn={rxn.label}, path={i}): '
+                                     f'used ring-closure bespoke for {path_family}.')
+                        ts_xyzs.append(GuessRecord(
+                            xyz=rc_try,
+                            bb=list(bb), fb=list(fb),
+                            family=path_family,
+                            strategy=f'ring_closure_bespoke_{path_family}',
+                        ))
+
         # Per-path atom map: different paths may involve different equivalent atoms
         # (e.g., distinct H's in intra_H_migration), so we must not reuse the
         # global rxn.atom_map for all paths.
@@ -3674,6 +3706,28 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                 ts_xyzs.extend(result.guesses)
             if result.halt:
                 break
+
+    # Narrow bespoke builder for Singlet_Carbene_Intra_Disproportionation.
+    # This family is often not detected by RMG (product_dicts empty), so
+    # the per-path strategy pipeline never runs.  When no guesses have
+    # been produced and the reactant has a singlet carbene motif (a C
+    # with 2 heavy neighbors and 0 H neighbors), try the dedicated
+    # builder that places the migrating H at the Pauling TS position.
+    if not ts_xyzs:
+        from arc.job.adapters.ts.linear_utils.families import (
+            build_singlet_carbene_intra_disproportionation_ts,
+        )
+        ts_carbene = build_singlet_carbene_intra_disproportionation_ts(
+            r_xyz, r_mol)
+        if ts_carbene is not None and not colliding_atoms(ts_carbene):
+            logger.debug(f'Linear (rxn={rxn.label}): used bespoke '
+                         f'Singlet_Carbene_Intra_Disproportionation builder.')
+            ts_xyzs.append(GuessRecord(
+                xyz=ts_carbene,
+                bb=[], fb=[],
+                family='Singlet_Carbene_Intra_Disproportionation',
+                strategy='bespoke_singlet_carbene',
+            ))
 
     # Direct-contraction supplement: when the per-path pipeline produced no
     # guesses (e.g. atom map failed) but the family recipe has fb-only with
