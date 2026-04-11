@@ -267,6 +267,44 @@ class TestPipeRunReconcile(unittest.TestCase):
         self.assertEqual(run.status, PipeRunState.COMPLETED)
 
 
+class TestPipeRunNoResubmission(unittest.TestCase):
+    """Pipe runs must never flag resubmission — Q-state workers handle retried tasks."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_run_resub_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_never_resubmit_even_with_retried_tasks_and_no_workers(self):
+        """Even when all workers are done and retried tasks remain,
+        needs_resubmission must stay False — no automatic resubmission."""
+        tasks = [_make_spec(f't{i}') for i in range(3)]
+        run = PipeRun(project_directory=self.tmpdir, run_id='resub',
+                      tasks=tasks, cluster_software='slurm', max_attempts=3)
+        run.stage()
+        run.submitted_at = time.time() - 300
+        run.status = PipeRunState.SUBMITTED
+        # All 3 workers started: t0 completed, t1 failed, t2 completed
+        now = time.time()
+        for tid in ('t0', 't2'):
+            update_task_state(run.pipe_root, tid, new_status=TaskState.CLAIMED,
+                              claimed_by='w', claim_token='tok', claimed_at=now,
+                              lease_expires_at=now + 300)
+            update_task_state(run.pipe_root, tid, new_status=TaskState.RUNNING, started_at=now)
+            update_task_state(run.pipe_root, tid, new_status=TaskState.COMPLETED, ended_at=now)
+        update_task_state(run.pipe_root, 't1', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now,
+                          lease_expires_at=now + 300)
+        update_task_state(run.pipe_root, 't1', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(run.pipe_root, 't1', new_status=TaskState.FAILED_RETRYABLE,
+                          ended_at=now + 1, failure_class='timeout')
+
+        run.reconcile()
+        self.assertFalse(run.needs_resubmission,
+                         'Should never resubmit — Q-state workers or manual intervention handle retries')
+
+
 class TestPipeRunHomogeneity(unittest.TestCase):
     """Tests for PipeRun homogeneity validation."""
 
