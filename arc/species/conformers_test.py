@@ -125,51 +125,6 @@ H      -1.22610851    0.40421362    1.35170355"""
         self.assertTrue(found_inf, "The CONFS_VS_TORSIONS dictionary has to have a key that ends with 'inf'. "
                                    "got:\n{0}".format(conformers.CONFS_VS_TORSIONS))
 
-    def test_generate_conformers_with_openbabel(self):
-        """Test the main conformer generation function with a species for which RDKit fails to generate conformers"""
-        xyz = converter.str_to_xyz("""C         -2.18276        2.03598        0.00028
-        C         -0.83696        1.34108       -0.05231
-        H         -2.23808        2.82717       -0.75474
-        H         -2.33219        2.51406        0.97405
-        H         -2.99589        1.32546       -0.17267
-        O          0.18176        2.30786        0.17821
-        H         -0.69161        0.88171       -1.03641
-        H         -0.78712        0.56391        0.71847
-        O          1.39175        1.59510        0.11494""")
-        spc = ARCSpecies(label='CCO[O]', smiles='CCO[O]', xyz=xyz)
-        lowest_confs = conformers.generate_conformers(mol_list=spc.mol_list, label=spc.label,
-                                                      charge=spc.charge, multiplicity=spc.multiplicity,
-                                                      force_field='MMFF94s', print_logs=False, diastereomers=None,
-                                                      n_confs=1, return_all_conformers=False)
-        self.assertEqual(len(lowest_confs), 1)
-        self.assertAlmostEqual(lowest_confs[0]['FF energy'], 1.7935, 3)
-        expected_xyz = {'symbols': ('C', 'C', 'H', 'H', 'H', 'O', 'H', 'H', 'O'),
-                        'isotopes': (12, 12, 1, 1, 1, 16, 1, 1, 16),
-                        'coords': ((-1.06401, 0.15134, -0.02907),
-                                   (0.39059, -0.26595, -0.11181),
-                                   (-1.38709, 0.21893, 1.01503),
-                                   (-1.21986, 1.1209, -0.51032),
-                                   (-1.70646, -0.59124, -0.51377),
-                                   (0.53686, -1.52925, 0.52713),
-                                   (0.6972, -0.347, -1.16062),
-                                   (1.0214, 0.47542, 0.39124),
-                                   (1.90095, -1.84857, 0.41142))}
-        # Only symbols instead of the coordinate values are compared.
-        # This is due to the unknown behavior of OpenBabel optimization function.
-        # With the same iteration number and same initial xyz, the optimized xyzs can
-        # be different on different machines, while energies are still consistent.
-        # More info can be found in PR #332
-        self.assertEqual(lowest_confs[0]['xyz']['symbols'], expected_xyz['symbols'])
-
-        # HO2
-        lowest_confs = conformers.generate_conformers(mol_list=[Molecule(smiles='O[O]')],
-                                                      label='HO2',
-                                                      charge=0,
-                                                      multiplicity=2,
-                                                      force_field='MMFF94s',
-                                                      )
-        self.assertEqual(lowest_confs[0]['xyz']['symbols'], ('O', 'O', 'H'))
-
     def test_generate_conformers_with_specific_diastereomers(self):
         """Test the main conformer generation function, considering a specific diastereomer"""
         spc1 = ARCSpecies(label='spc1', smiles='IC=CC(Cl)(I)NF')
@@ -540,69 +495,6 @@ H       0.68104300    0.74807180    0.61546062""")]
         mol = Molecule(smiles='CNC(O)(S)C=CO')
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=30, torsion_num=10,
                                                                                label='', mol=mol), (7500, 3))
-
-    def test_openbabel_force_field(self):
-        """Test Open Babel force field"""
-        xyz = """S      -0.19093478    0.57933906    0.00000000
-                 O      -1.21746139   -0.72237602    0.00000000
-                 O       1.40839617    0.14303696    0.00000000"""
-        spc = ARCSpecies(label='SO2', smiles='O=S=O', xyz=xyz)
-        xyzs, energies = conformers.openbabel_force_field(label='',
-                                                          mol=spc.mol,
-                                                          num_confs=1,
-                                                          force_field='GAFF',
-                                                          method='diverse',
-                                                          )
-        self.assertEqual(len(xyzs), 1)
-        self.assertAlmostEqual(energies[0], 2.931930, 3)
-
-    def test_openbabel_force_field_on_rdkit_conformers(self):
-        """Test Open Babel force field on RDKit conformers"""
-        xyz = converter.str_to_xyz("""C         -2.18276        2.03598        0.00028
-                                      C         -0.83696        1.34108       -0.05231
-                                      H         -2.23808        2.82717       -0.75474
-                                      H         -2.33219        2.51406        0.97405
-                                      H         -2.99589        1.32546       -0.17267
-                                      O          0.18176        2.30786        0.17821
-                                      H         -0.69161        0.88171       -1.03641
-                                      H         -0.78712        0.56391        0.71847
-                                      O          1.39175        1.59510        0.11494""")
-        spc = ARCSpecies(label='CCO[O]', smiles='CCO[O]', xyz=xyz)
-        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=2, xyz=xyz)
-        xyzs, energies = conformers.openbabel_force_field_on_rdkit_conformers(label='', rd_mol=rd_mol,
-                                                                              force_field='MMFF94s',)
-        expected_xyzs = [{'symbols': ('C', 'C', 'H', 'H', 'H', 'O', 'H', 'H', 'O'),
-                          'isotopes': (12, 12, 1, 1, 1, 16, 1, 1, 16),
-                          'coords': ((-0.92004, 0.17591, -0.00274),
-                                     (0.41052, -0.54976, 0.06772),
-                                     (-1.70176, -0.48351, -0.39026),
-                                     (-0.85205, 1.05583, -0.65051),
-                                     (-1.21725, 0.53214, 0.98907),
-                                     (1.40523, 0.29451, 0.63948),
-                                     (0.7238, -0.90625, -0.92072),
-                                     (0.3145, -1.42616, 0.71666),
-                                     (1.87763, 1.10137, -0.41125))},
-                         {'symbols': ('C', 'C', 'H', 'H', 'H', 'O', 'H', 'H', 'O'),
-                          'isotopes': (12, 12, 1, 1, 1, 16, 1, 1, 16),
-                          'coords': ((-1.06853, -0.10587, 0.01916),
-                                     (0.39395, 0.27799, -0.08402),
-                                     (-1.33109, -0.35023, 1.05379),
-                                     (-1.71119, 0.70925, -0.32507),
-                                     (-1.2765, -0.99769, -0.58128),
-                                     (1.18277, -0.81419, 0.37478),
-                                     (0.64876, 0.50323, -1.12562),
-                                     (0.59336, 1.16044, 0.53412),
-                                     (2.51642, -0.38757, 0.25036))}]
-        self.assertEqual(len(energies), 2)
-        self.assertAlmostEqual(energies[0], 2.05173086, 3)
-        self.assertAlmostEqual(energies[1], -0.7202283, 2)
-        # Only symbols instead of the coordinate values are compared.
-        # This is due to the unknown behavior of OpenBabel optimization function.
-        # With the same iteration number and same initial xyz, the optimized xyzs can
-        # be different on different machines, while energies are still consistent.
-        # More info can be found from PR #332
-        self.assertEqual(xyzs[0]['symbols'], expected_xyzs[0]['symbols'])
-        self.assertEqual(xyzs[1]['symbols'], expected_xyzs[1]['symbols'])
 
     def test_embed_rdkit(self):
         """Test embedding in RDKit"""

@@ -168,7 +168,6 @@ CORE_PKGS=(
   psutil
   rdkit
   scipy
-  openbabel
   py3dmol
   glew
   pymol-open-source

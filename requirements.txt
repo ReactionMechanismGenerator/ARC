@@ -5,7 +5,6 @@ numpy >=2.1
 ase >=3.22.1
 mako
 matplotlib
-# openbabel >=3  # no Python 3.14 build yet
 pandas
 paramiko>=2.6.0
 py3Dmol>=0.8.0

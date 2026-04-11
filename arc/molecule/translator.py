@@ -493,8 +493,8 @@ def _get_backend_list(backend):
         raise ValueError("The backend argument should be a string. "
                          "Accepted values are 'rdkit-first' and 'rdkit'")
     backend = backend.strip().lower()
-    if backend in ('rdkit-first', 'rdkit', 'openbabel-first'):
-        # Accept 'openbabel-first' for backwards compatibility, maps to rdkit.
+    if backend in ('rdkit-first', 'rdkit', 'openbabel-first', 'openbabel'):
+        # Accept 'openbabel*' for backwards compatibility, maps to rdkit.
         return ['rdkit']
     else:
         raise ValueError("Unrecognized value for backend argument. "

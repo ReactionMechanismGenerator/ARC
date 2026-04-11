@@ -2,7 +2,7 @@
 set -eo pipefail
 
 REPOS_TO_REMOVE=(RMG-Py RMG-database molecule RingDecomposerLib AutoTST TS-GCN KinBot)
-ENVS_TO_REMOVE=(tst_env ob_env xtb_env rmg_env arc_env gcn_env)
+ENVS_TO_REMOVE=(tst_env xtb_env rmg_env arc_env gcn_env)
 
 echo "⚠️ WARNING: This will DELETE the following repositories and environments:"
 echo "Repositories: ${REPOS_TO_REMOVE[*]}"

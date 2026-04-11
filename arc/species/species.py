@@ -125,7 +125,7 @@ class ARCSpecies(object):
                                             in which case the job should be unrestricted, but the multiplicity does not
                                             have the required information to make that decision (r vs. u).
         force_field (str, optional): The force field to be used for conformer screening. The default is MMFF94s.
-                                     Other optional force fields are MMFF94, UFF, or GAFF (not recommended, slow).
+                                     Other optional force fields are MMFF94 and UFF.
                                      If 'fit' is specified for this parameter, some initial MMFF94s conformers will be
                                      generated, then force field parameters will be fitted for this molecule and
                                      conformers will be re-run with the fitted force field (recommended for drug-like
@@ -262,7 +262,7 @@ class ARCSpecies(object):
         transport_data (TransportData): A placeholder for updating transport properties after Lennard-Jones
                                         calculation (using OneDMin).
         force_field (str): The force field to be used for conformer screening. The default is MMFF94s.
-                           Other optional force fields are MMFF94, UFF, or GAFF (not recommended, slow).
+                           Other optional force fields are MMFF94 and UFF.
                            If 'fit' is specified for this parameter, some initial MMFF94s conformers will be generated,
                            then force field parameters will be fitted for this molecule and conformers will be re-run
                            with the fitted force field (recommended for drug-like species and species with many

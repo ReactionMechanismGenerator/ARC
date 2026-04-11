@@ -10,8 +10,6 @@ from collections.abc import Iterable
 
 from ase import Atoms
 from scipy.spatial.transform import Rotation
-from openbabel import openbabel as ob
-from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
 from rdkit.Chem import AllChem, SDWriter
@@ -42,7 +40,6 @@ from arc.species.zmat import (KEY_FROM_LEN,
 if TYPE_CHECKING:
     from arc.species.species import ARCSpecies
 
-ob.obErrorLog.SetOutputLevel(0)
 logger = get_logger()
 
 DIST_PRECISION = 0.01  # Angstrom
@@ -1213,42 +1210,6 @@ def get_most_common_isotope_for_element(element_symbol):
                 isotope_contribution = iso[2]
                 isotope = iso[0]
     return isotope
-
-def xyz_to_pybel_mol(xyz: dict):
-    """
-    Convert xyz into an Open Babel molecule object.
-
-    Args:
-        xyz (dict): ARC's xyz dictionary format.
-
-    Returns: OBmol | None
-        An Open Babel molecule.
-    """
-    if xyz is None:
-        return None
-    xyz = check_xyz_dict(xyz)
-    try:
-        pybel_mol = pybel.readstring('xyz', xyz_to_xyz_file_format(xyz))
-    except (IOError, InputError):
-        return None
-    return pybel_mol
-
-def pybel_to_inchi(pybel_mol, has_h=True):
-    """
-    Convert an Open Babel molecule object to InChI
-
-    Args:
-        pybel_mol (OBmol): An Open Babel molecule.
-        has_h (bool): Whether the molecule has hydrogen atoms. ``True`` if it does.
-
-    Returns:
-        str: The respective InChI representation of the molecule.
-    """
-    if has_h:
-        inchi = pybel_mol.write('inchi', opt={'F': None}).strip()  # Add fixed H layer
-    else:
-        inchi = pybel_mol.write('inchi').strip()
-    return inchi
 
 def rmg_mol_from_inchi(inchi: str):
     """

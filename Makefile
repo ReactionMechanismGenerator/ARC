@@ -8,7 +8,7 @@ DEVTOOLS_DIR := devtools
 
 .PHONY: all help clean test test-unittests test-functional test-all \
         install-all install-ci install-pyrdl install-rmg install-rmgdb install-autotst install-gcn \
-        install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-ob \
+        install-gcn-cpu install-kinbot install-sella install-xtb install-torchani \
         lite check-env compile
 
 
@@ -37,7 +37,6 @@ help:
 	@echo "  install-sella    Install Sella"
 	@echo "  install-xtb      Install xTB"
 	@echo "  install-torchani Install TorchANI"
-	@echo "  install-ob       Install OpenBabel"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  lite             Run lite installation (no tests)"
@@ -102,9 +101,6 @@ install-xtb:
 
 install-torchani:
 	bash $(DEVTOOLS_DIR)/install_torchani.sh
-
-install-ob:
-	bash $(DEVTOOLS_DIR)/install_ob.sh
 
 lite:
 	bash $(DEVTOOLS_DIR)/lite.sh

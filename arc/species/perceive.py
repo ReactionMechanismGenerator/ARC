@@ -8,8 +8,6 @@ from itertools import combinations, product
 from math import dist
 from typing import Any
 
-from openbabel import pybel
-
 from arc.common import NUMBER_BY_SYMBOL, distance_matrix, get_bonds_from_dmat, get_logger, get_single_bond_length
 from arc.exceptions import AtomTypeError, InputError, SanitizationError
 from arc.molecule.filtration import get_octet_deviation
@@ -891,9 +889,7 @@ def alternative_perception(
     The procedure tries several approaches in order:
         (1) Remove all formal charges and call `_resurrect_molecule` to adjust radicals/lone pairs.
         (2) Apply hard-coded fixes for known edge cases (e.g., N2H2 triplet).
-        (3) Rebuild from 3D geometry: export `xyz` to OpenBabel/pybel → InChI → RMG `Molecule`
-            and attempt to map atoms back to the original.
-        (4) As a last resort, derive SMILES from `xyz` and rebuild `Molecule`.
+        (3) As a last resort, derive SMILES from `xyz` and rebuild `Molecule`.
 
     Args:
         mol (Molecule): Initial molecule, possibly invalid.
@@ -928,33 +924,7 @@ def alternative_perception(
         if is_mol_valid(mol_2, total_charge, multiplicity, n_radicals):
             return mol_2
 
-    # (3.) use xyz => open babel (pybel) => InChI => RMG Molecule with bond orders
-    mol_3 = mol.copy(deep=True)
-    try:
-        xyz_file_format = str(len(xyz['symbols'])) + '\n\n' + xyz_to_str(xyz) + '\n'
-        pybel_mol = pybel.readstring('xyz', xyz_file_format)
-    except (IOError, InputError):
-        pybel_mol = None
-    if pybel_mol is not None:
-        if bool(len([atom.is_hydrogen() for atom in mol_3.atoms])):
-            inchi = pybel_mol.write('inchi', opt={'F': None}).strip()  # Add a fixed H layer
-        else:
-            inchi = pybel_mol.write('inchi').strip()
-        try:
-            mol_3 = Molecule().from_inchi(inchi)
-        except (AtomTypeError, ValueError, KeyError, TypeError):
-            mol_3 = None
-        if mol_3 is not None:
-            try:
-                order_atoms(ref_mol=mol_2, mol=mol_3)
-            except SanitizationError:
-                pass
-            mol_3.multiplicity = multiplicity
-            mol_3 = _resurrect_molecule(mol_3, n_radicals)
-            if is_mol_valid(mol_3, total_charge, multiplicity, n_radicals):
-                return mol_3
-
-    # (4.) use xyz_to_smiles
+    # (3.) use xyz_to_smiles
     smiles_list = xyz_to_smiles(xyz=xyz, charge=total_charge)
     mol_4 = Molecule(smiles=smiles_list[0]) if smiles_list else None
     mol_4 = _resurrect_molecule(mol_4, n_radicals)
