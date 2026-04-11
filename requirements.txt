@@ -1,6 +1,6 @@
 # ARC core requirements
 
-python >=3.12
+python >=3.14
 numpy >=2.1
 ase >=3.22.1
 mako
@@ -10,7 +10,7 @@ pandas
 paramiko>=2.6.0
 py3Dmol>=0.8.0
 pyyaml
-rdkit>=2025.3
+rdkit>=2026.3
 scipy
 networkx
 
@@ -18,7 +18,7 @@ networkx
 cairo
 cairocffi
 cmake
-cython>=3.0
+cython>=3.1
 ffmpeg
 gprof2dot
 graphviz

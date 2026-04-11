@@ -5,7 +5,7 @@ channels:
 
 dependencies:
   # ─── core ─────────────────────────────────────
-  - conda-forge::python =3.12
+  - conda-forge::python =3.14
   - conda-forge::numpy  >=2.1.*
   - conda-forge::pip
 
@@ -20,7 +20,7 @@ dependencies:
   - conda-forge::cairocffi
   - conda-forge::cmake
   - conda-forge::coverage
-  - conda-forge::cython >=3.0
+  - conda-forge::cython >=3.1
   - conda-forge::ffmpeg
   - conda-forge::gprof2dot
   - conda-forge::graphviz
@@ -41,7 +41,7 @@ dependencies:
   - conda-forge::pytest-cov
   - conda-forge::pytest-xdist
   - conda-forge::pyyaml
-  - conda-forge::rdkit >=2025.03
+  - conda-forge::rdkit >=2026.03
   - conda-forge::scipy
   - conda-forge::sphinx
   - conda-forge::sphinx_rtd_theme
