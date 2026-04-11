@@ -27,8 +27,6 @@ cpdef mm.Molecule from_augmented_inchi(mm.Molecule mol, aug_inchi, bint raise_at
 
 cpdef object _rdkit_translator(object input_object, str identifier_type, mm.Molecule mol=?)
 
-cpdef object _openbabel_translator(object input_object, str identifier_type, mm.Molecule mol=?, bint raise_atomtype_exception=?)
-
 cdef mm.Molecule _lookup(mm.Molecule mol, str identifier, str identifier_type)
 
 cpdef _check_output(mm.Molecule mol, str identifier)
