@@ -489,6 +489,7 @@ class ARCSpecies(object):
                                f'xyz coordinates only. For better thermodynamic properties, provide bond corrections.')
 
             self.neg_freqs_trshed = list()
+            self.freqs = None  # harmonic vibrational frequencies in cm⁻¹, set after a successful freq job
 
         if self.charge is None:
             self.charge = 0
@@ -741,6 +742,8 @@ class ARCSpecies(object):
             species_dict['original_label'] = self.original_label
         if self.e_elect is not None:
             species_dict['e_elect'] = self.e_elect
+        if self.freqs is not None:
+            species_dict['freqs'] = self.freqs
         if self.fragments is not None:
             species_dict['fragments'] = self.fragments
         if self.e0 is not None:
@@ -832,6 +835,7 @@ class ARCSpecies(object):
         self.original_label = species_dict['original_label'] if 'original_label' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
         self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
+        self.freqs = species_dict.get('freqs')
         self.e0 = species_dict['e0'] if 'e0' in species_dict else None
         self.tsg_spawned = species_dict['tsg_spawned'] if 'tsg_spawned' in species_dict else False
         self.active = species_dict['active'] if 'active' in species_dict else None
@@ -1556,15 +1560,20 @@ class ARCSpecies(object):
         for tsg in self.ts_guesses:
             for cluster_tsg in cluster_tsgs:
                 if cluster_tsg.almost_equal_tsgs(tsg):
+                    logger.debug(f"Similar TSGuesses found: {tsg.index} is similar to {cluster_tsg.index}")
                     cluster_tsg.cluster.append(tsg.index)
-                    if tsg.method not in cluster_tsg.method:
-                        cluster_tsg.method += f' + {tsg.method}'
-                        cluster_tsg.execution_time = f'{cluster_tsg.execution_time} + {tsg.execution_time}'
+                    cluster_tsg.method_sources = TSGuess._normalize_method_sources(
+                        (cluster_tsg.method_sources or []) + (tsg.method_sources or [])
+                    )
                     break
             else:
                 tsg.cluster = [tsg.index]
                 cluster_tsgs.append(tsg)
+        n_before = len([tsg for tsg in self.ts_guesses])
         self.ts_guesses = cluster_tsgs
+        if len(cluster_tsgs) < n_before:
+            logger.info(f'Clustered {n_before} TS guesses for {self.label} '
+                        f'into {len(cluster_tsgs)} unique conformers.')
 
     def process_completed_tsg_queue_jobs(self, path: str):
         """
@@ -1580,6 +1589,7 @@ class ARCSpecies(object):
             tsg = TSGuess(method='orca_neb',
                           success=True,
                           xyz=xyz,
+                          log_path=path,
                           )
             if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
                 if tsg.index is None:
@@ -2199,12 +2209,14 @@ class TSGuess(object):
         energy (float, optional): Relative energy of all TS conformers in kJ/mol.
         t0 (datetime.datetime, optional): Initial time of spawning the guess job.
         execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.
+        log_path (str, optional): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
         project_directory (str, optional): The path to the project directory.
 
     Attributes:
         initial_xyz (dict): The 3D coordinates guess.
         opt_xyz (dict): The 3D coordinates after optimization at the ts_guesses level.
         method (str): The method/source used for the xyz guess.
+        method_sources (List[str]): All methods/sources that produced an equivalent xyz guess.
         method_index (int): A subindex, used for cases where a single method generates several guesses.
                             Counts separately for each direction, 'F' and 'R'.
         method_direction (str): The reaction direction used for generating the guess ('F' or 'R').
@@ -2222,6 +2234,7 @@ class TSGuess(object):
         successful_normal_mode (bool): Whether a normal mode check was successful.
         errors (str): Problems experienced with this TSGuess. Used for logging.
         cluster (List[int]): Indices of TSGuess object instances clustered together.
+        log_path (str): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
     """
 
     def __init__(self,
@@ -2239,6 +2252,7 @@ class TSGuess(object):
                  ts_dict: Optional[dict] = None,
                  energy: Optional[float] = None,
                  cluster: Optional[List[int]] = None,
+                 log_path: Optional[str] = None,
                  project_directory: Optional[str] = None,
                  ):
 
@@ -2249,6 +2263,7 @@ class TSGuess(object):
             # Not reading from a dictionary
             self.index = index
             self.method = method.lower() if method is not None else 'user guess'
+            self.method_sources = self._normalize_method_sources([self.method])
             self.method_index = method_index
             self.method_direction = method_direction
             self.constraints = constraints
@@ -2260,6 +2275,7 @@ class TSGuess(object):
             self.success = success
             self.energy = energy
             self.cluster = cluster
+            self.log_path = log_path
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
@@ -2305,6 +2321,22 @@ class TSGuess(object):
         """Allow setting the initial coordinate guess"""
         self._opt_xyz = check_xyz_dict(value)
 
+    @staticmethod
+    def _normalize_method_sources(method_sources: Optional[List[str]]) -> List[str]:
+        """
+        Normalize method_sources to a unique, ordered, lowercase list.
+        """
+        if not method_sources:
+            return []
+        normalized = []
+        for method in method_sources:
+            if method is None:
+                continue
+            method = method.lower()
+            if method not in normalized:
+                normalized.append(method)
+        return normalized
+
     def as_dict(self, for_report: bool = False) -> dict:
         """
         A helper function for dumping this object as a dictionary.
@@ -2318,6 +2350,8 @@ class TSGuess(object):
         """
         ts_dict = dict()
         ts_dict['method'] = self.method
+        if self.method_sources:
+            ts_dict['method_sources'] = list(self.method_sources)
         ts_dict['method_index'] = self.method_index
         if self.method_direction is not None:
             ts_dict['method_direction'] = self.method_direction
@@ -2347,6 +2381,8 @@ class TSGuess(object):
                 ts_dict['family'] = self.family
             if self.errors:
                 ts_dict['errors'] = self.errors
+            if self.log_path is not None:
+                ts_dict['log_path'] = self.log_path
         return ts_dict
 
     def from_dict(self, ts_dict: dict):
@@ -2366,6 +2402,10 @@ class TSGuess(object):
             and isinstance(ts_dict['execution_time'], str) \
             else ts_dict['execution_time'] if 'execution_time' in ts_dict else None
         self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
+        if 'method_sources' in ts_dict and isinstance(ts_dict['method_sources'], list):
+            self.method_sources = self._normalize_method_sources(ts_dict['method_sources'])
+        else:
+            self.method_sources = self._normalize_method_sources([self.method])
         self.method_index = ts_dict['method_index'] if 'method_index' in ts_dict else None
         self.method_direction = ts_dict['method_direction'] if 'method_direction' in ts_dict else None
         self.imaginary_freqs = ts_dict['imaginary_freqs'] if 'imaginary_freqs' in ts_dict else None
@@ -2378,6 +2418,7 @@ class TSGuess(object):
             self.success = self.success if self.success is not None else True
             self.execution_time = datetime.timedelta(seconds=0)
         self.family = ts_dict['family'] if 'family' in ts_dict else None
+        self.log_path = ts_dict['log_path'] if 'log_path' in ts_dict else None
         self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
 
     def process_xyz(self,
@@ -2471,6 +2512,9 @@ class ThermoData(object):
                  Tmax=None,
                  data=None,
                  comment='',
+                 nasa_low=None,
+                 nasa_high=None,
+                 cp_data=None,
                  ):
         """
         Args:
@@ -2484,6 +2528,9 @@ class ThermoData(object):
             Tmax (tuple): Maximum temperature as (value, units)
             data (str): the thermo data block from the RMG library
             comment (str): Additional comments or description
+            nasa_low (dict): Low-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
+            nasa_high (dict): High-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
+            cp_data (list): Tabulated Cp: list of {temperature_k, cp_j_mol_k} dicts.
         """
         self.H298 = H298
         self.S298 = S298
@@ -2495,6 +2542,9 @@ class ThermoData(object):
         self.Tmax = Tmax
         self.data = data
         self.comment = comment
+        self.nasa_low = nasa_low
+        self.nasa_high = nasa_high
+        self.cp_data = cp_data
 
     def __repr__(self):
         """
@@ -2527,7 +2577,27 @@ class ThermoData(object):
         """
         return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
                              self.Cp0, self.CpInf, self.Tmin, self.Tmax,
-                             self.comment))
+                             self.data, self.comment,
+                             self.nasa_low, self.nasa_high, self.cp_data))
+
+    def update(self, data: dict):
+        """
+        Update attributes from a dictionary.
+
+        Handles both top-level keys (H298, S298, nasa_low, ...) and the nested
+        'thermo_data' sub-dict produced by parse_thermo_block(), which carries
+        Tdata, Cpdata, Tmin, Tmax, Cp0, CpInf.
+
+        Args:
+            data (dict): Mapping of attribute names to values.
+        """
+        for key, value in data.items():
+            if key == 'thermo_data' and isinstance(value, dict):
+                for sub_key, sub_value in value.items():
+                    if hasattr(self, sub_key):
+                        setattr(self, sub_key, sub_value)
+            elif hasattr(self, key):
+                setattr(self, key, value)
 
 
 class TransportData(object):

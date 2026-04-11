@@ -2,6 +2,7 @@
 A module for checking the quality of TS-related calculations, contains helper functions for Scheduler.
 """
 
+from itertools import product
 import os
 
 import numpy as np
@@ -17,19 +18,21 @@ from arc.common import (ARC_PATH,
                         read_yaml_file,
                         sum_list_entries,
                         )
-from arc.family.family import get_reaction_family_products
 from arc.imports import settings
-from arc.species.converter import check_xyz_dict, displace_xyz, xyz_to_dmat
+from arc.species.converter import check_isomorphism, check_xyz_dict, xyz_from_data, xyz_to_dmat
+from arc.species.perceive import perceive_molecule_from_xyz
 from arc.statmech.factory import statmech_factory
 
 if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
     from arc.level import Level
+    from arc.molecule.molecule import Molecule
     from arc.species.species import ARCSpecies, TSGuess
     from arc.reaction import ARCReaction
 
 logger = get_logger()
 
+MAX_IRC_FRAGMENTS_FOR_CHARGE_SEARCH = 4
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ']
 
 
@@ -498,26 +501,186 @@ def check_irc_species_and_rxn(xyz_1: dict,
     Check that the two species that result from optimizing the outputs of two IRC runs
     correspond to the desired reactants and products of the corresponding reaction.
 
+    Uses molecular graph isomorphism (including bond orders and resonance structures)
+    when molecule perception succeeds for both endpoints. Falls back to distance-matrix-based
+    bond-list comparison if perception fails for either endpoint or if the expected
+    reactant/product ``Molecule`` objects are unavailable.
+
     Args:
-        xyz_1 (dict): The coordinates of IRS species 1.
-        xyz_2 (dict): The coordinates of IRS species 2.
+        xyz_1 (dict): The coordinates of IRC species 1.
+        xyz_2 (dict): The coordinates of IRC species 2.
         rxn (ARCReaction): The corresponding reaction object instance.
     """
     if rxn is None:
         return None
     rxn.ts_species.ts_checks['IRC'] = False
     xyz_1, xyz_2 = check_xyz_dict(xyz_1), check_xyz_dict(xyz_2)
+
+    # Primary check: molecular graph isomorphism
+    reactants, products = rxn.get_reactants_and_products(return_copies=True)
+    r_mols = [r.mol for r in reactants]
+    p_mols = [p.mol for p in products]
+
+    if not any(m is None for m in r_mols + p_mols):
+        charge = rxn.charge or 0
+        frags_1 = _perceive_irc_fragments(xyz_1, charge=charge)
+        frags_2 = _perceive_irc_fragments(xyz_2, charge=charge)
+        if frags_1 is not None and frags_2 is not None:
+            if (_match_fragments_to_species(frags_1, r_mols)
+                    and _match_fragments_to_species(frags_2, p_mols)) \
+                    or (_match_fragments_to_species(frags_1, p_mols)
+                        and _match_fragments_to_species(frags_2, r_mols)):
+                rxn.ts_species.ts_checks['IRC'] = True
+                return
+            logger.debug('IRC isomorphism check failed, falling back to bond-list comparison.')
+        else:
+            logger.debug('IRC molecule perception failed for one or both endpoints, '
+                         'falling back to bond-list comparison.')
+
+    # Fallback: bond-list connectivity comparison
+    try:
+        r_bonds, p_bonds = rxn.get_bonds()
+    except Exception:
+        logger.debug('Could not get reaction bonds for IRC fallback check.')
+        return
     dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
-    dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1,
-                                       elements=xyz_1['symbols'],
-                                       )
-    dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2,
-                                       elements=xyz_2['symbols'],
-                                       )
-    r_bonds, p_bonds = rxn.get_bonds()
+    dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1, elements=xyz_1['symbols'])
+    dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2, elements=xyz_2['symbols'])
     if _check_equal_bonds_list(dmat_bonds_1, r_bonds) and _check_equal_bonds_list(dmat_bonds_2, p_bonds) \
             or _check_equal_bonds_list(dmat_bonds_2, r_bonds) and _check_equal_bonds_list(dmat_bonds_1, p_bonds):
         rxn.ts_species.ts_checks['IRC'] = True
+
+
+def _perceive_irc_fragments(xyz: dict,
+                            charge: int = 0,
+                            ) -> Optional[List['Molecule']]:
+    """
+    Perceive individual molecular fragments from an IRC endpoint geometry.
+
+    Detects connected components from the distance-matrix-based bond list,
+    then perceives fragments as ``Molecule`` objects. For multi-fragment systems,
+    charge distribution across fragments is handled by brute-force search over
+    charge splits that sum to the total charge, preferring minimal total absolute charge.
+
+    Args:
+        xyz (dict): The Cartesian coordinates of the IRC endpoint.
+        charge (int): The net charge of the full system.
+
+    Returns:
+        Optional[List[Molecule]]: A list of perceived ``Molecule`` objects (one per fragment),
+                                  or ``None`` if perception fails for any fragment.
+    """
+    symbols = xyz['symbols']
+    coords = xyz['coords']
+    n_atoms = len(symbols)
+
+    dmat = xyz_to_dmat(xyz)
+    # Pass n_fragments != 1 to skip the heavy-atom bridging heuristic in get_bonds_from_dmat.
+    bonds = get_bonds_from_dmat(dmat=dmat, elements=symbols, n_fragments=0)
+
+    adj = {i: set() for i in range(n_atoms)}
+    for a, b in bonds:
+        adj[a].add(b)
+        adj[b].add(a)
+
+    visited = set()
+    fragment_indices = []
+    for start in range(n_atoms):
+        if start in visited:
+            continue
+        component = []
+        stack = [start]
+        while stack:
+            node = stack.pop()
+            if node in visited:
+                continue
+            visited.add(node)
+            component.append(node)
+            for neighbor in adj[node]:
+                if neighbor not in visited:
+                    stack.append(neighbor)
+        fragment_indices.append(sorted(component))
+
+    n_frags = len(fragment_indices)
+    frag_xyzs = []
+    for frag_idx in fragment_indices:
+        frag_symbols = tuple(symbols[i] for i in frag_idx)
+        frag_coords = tuple(coords[i] for i in frag_idx)
+        frag_xyzs.append(xyz_from_data(coords=frag_coords, symbols=frag_symbols))
+
+    if n_frags == 1:
+        mol = perceive_molecule_from_xyz(frag_xyzs[0], charge=charge, n_fragments=1)
+        return [mol] if mol is not None else None
+
+    # Prefer splits that minimize the total absolute charge (e.g., 0,0 over +1,-1).
+    if n_frags > MAX_IRC_FRAGMENTS_FOR_CHARGE_SEARCH:
+        return None
+    max_abs_charge = max(2, abs(charge) + 1)
+    charge_range = range(-max_abs_charge, max_abs_charge + 1)
+    best_mols = None
+    best_sep = float('inf')
+    for charges in product(charge_range, repeat=n_frags):
+        if sum(charges) != charge:
+            continue
+        sep = sum(abs(c) for c in charges)
+        if sep >= best_sep:
+            continue
+        mols = []
+        ok = True
+        for frag_xyz, frag_charge in zip(frag_xyzs, charges):
+            mol = perceive_molecule_from_xyz(frag_xyz, charge=frag_charge, n_fragments=1)
+            if mol is None or mol.get_net_charge() != frag_charge:
+                ok = False
+                break
+            mols.append(mol)
+        if ok:
+            best_mols, best_sep = mols, sep
+            if sep == 0:
+                break
+    return best_mols
+
+
+def _match_fragments_to_species(fragments: List['Molecule'],
+                                expected_mols: List['Molecule'],
+                                ) -> bool:
+    """
+    Check whether a list of perceived molecular fragments matches a list of expected species
+    via graph isomorphism. Handles multi-species reactions (e.g., A + B) by finding a
+    one-to-one matching between fragments and expected species using backtracking with pruning.
+
+    Args:
+        fragments (List[Molecule]): Perceived fragment molecules from an IRC endpoint.
+        expected_mols (List[Molecule]): Expected species molecules from the reaction.
+
+    Returns:
+        bool: Whether a valid one-to-one isomorphic matching exists.
+    """
+    n = len(fragments)
+    if n != len(expected_mols):
+        return False
+    if n == 0:
+        return True
+    frag_formulas = sorted(frag.get_formula() for frag in fragments)
+    expected_formulas = sorted(mol.get_formula() for mol in expected_mols)
+    if frag_formulas != expected_formulas:
+        return False
+    if n == 1:
+        return check_isomorphism(fragments[0], expected_mols[0])
+    iso_matrix = [[check_isomorphism(fragments[i], expected_mols[j]) for j in range(n)] for i in range(n)]
+    used = [False] * n
+
+    def _backtrack(i: int) -> bool:
+        if i == n:
+            return True
+        for j in range(n):
+            if not used[j] and iso_matrix[i][j]:
+                used[j] = True
+                if _backtrack(i + 1):
+                    return True
+                used[j] = False
+        return False
+
+    return _backtrack(0)
 
 
 def _check_equal_bonds_list(bonds_1: List[Tuple[int, int]],

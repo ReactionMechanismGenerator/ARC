@@ -198,6 +198,24 @@ class ESSAdapter(ABC):
         """
         pass
 
+    def parse_opt_steps(self) -> Optional[int]:
+        """
+        Parse the number of geometry optimization steps from an opt job output file.
+
+        Returns: Optional[int]
+            The number of optimization cycles, or ``None`` if not an opt job or not parseable.
+        """
+        return None
+
+    def parse_ess_version(self) -> Optional[str]:
+        """
+        Parse the ESS software version string from the log file header.
+
+        Returns: Optional[str]
+            A version string like ``'Gaussian 16, Revision C.01'`` or ``'ORCA 5.0.4'``, or ``None``.
+        """
+        return None
+
     def check_logfile_exists(self,
                              counter: int = 5,
                              sleep_time: int = 5,

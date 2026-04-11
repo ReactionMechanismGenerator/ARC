@@ -1,63 +1,104 @@
 repo:
-  - ./*
-  
+  - changed-files:
+    - any-glob-to-any-file:
+      - './*'
+
 examples:
-  - examples/**/*
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'examples/**/*'
 
 tests:
-  - arc/**/*Tests.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/**/*Tests.py'
 
 'Module: Conformers':
-  - arc/species/conformers.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/species/conformers.py'
 
 'Module: Mapping':
-  - arc/mapping/*
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/mapping/*'
 
 'Module: Converter':
-  - arc/species/converter.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/species/converter.py'
 
 'Module: Job':
-  - arc/job/job.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/job/job.py'
 
 'Module: Local':
-  - arc/job/local.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/job/local.py'
 
 'Module: Main':
-  - arc/main.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/main.py'
 
 'Module: Parser':
-  - arc/parser.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/parser.py'
 
 'Module: Plotter':
-  - arc/plotter.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/plotter.py'
 
 'Module: Processor':
-  - arc/processor.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/processor.py'
 
 'Module: Reaction':
-  - arc/reaction.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/reaction.py'
 
 'Module: rmgdb':
-  - arc/rmgdb.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/rmgdb.py'
 
 'Module: Scheduler':
-  - arc/scheduler.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/scheduler.py'
 
 'Module: Species':
-  - arc/species/species.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/species/species.py'
 
 'Module: SSH':
-  - arc/job/ssh.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/job/ssh.py'
 
 'Module: trsh':
-  - arc/job/trsh.py
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/job/trsh.py'
 
 'Module: Utils':
-  - arc/job/utils/**/*
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/job/utils/**/*'
 
 'Module docs':
-  - arc/docs/**/*
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'arc/docs/**/*'
 
 'Module Functional':
-  - functional/*
-
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'functional/*'

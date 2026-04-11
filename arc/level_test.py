@@ -119,6 +119,27 @@ class TestLevel(unittest.TestCase):
                          "dlpno-ccsd(t)/def2-tzvp, auxiliary_basis: def2-tzvp/c, solvation_method: smd, "
                          "solvent: water, solvation_scheme_level: 'apfd/def2-tzvp, software: gaussian', software: orca")
 
+    def test_year_validation(self):
+        """Test year validation for Level"""
+        with self.assertRaises(ValueError):
+            Level(method='b97d3', basis='def2tzvp', year=23)
+        level = Level(method='b97d3', basis='def2tzvp', year=2023)
+        self.assertEqual(level.year, 2023)
+
+    def test_warn_if_year_set(self):
+        """Test that warn_if_year_set logs a warning when year is set."""
+        level_with_year = Level(method='b97d3', basis='def2tzvp', year=2023)
+        with self.assertLogs('arc', level='WARNING') as cm:
+            level_with_year.warn_if_year_set('sp_level')
+        self.assertEqual(len(cm.output), 1)
+        self.assertIn('sp_level', cm.output[0])
+        self.assertIn('has no effect', cm.output[0])
+
+        level_no_year = Level(method='b97d3', basis='def2tzvp')
+        with self.assertRaises(AssertionError):
+            with self.assertLogs('arc', level='WARNING'):
+                level_no_year.warn_if_year_set('opt_level')
+
     def test_ess_methods_yml(self):
         """Test reading the ess_methods.yml file"""
         ess_methods = read_yaml_file(path=os.path.join(ARC_PATH, 'data', 'ess_methods.yml'))

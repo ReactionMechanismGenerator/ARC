@@ -17,6 +17,7 @@ from arc.job.factory import job_factory
 from arc.level import Level
 from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
 from arc.reaction import ARCReaction
+from arc.species.converter import xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess
 
 
@@ -712,6 +713,144 @@ class TestTSChecks(unittest.TestCase):
         self.assertFalse(ts.check_imaginary_frequencies(imaginary_freqs))
         imaginary_freqs = [-500.80, -3.14]
         self.assertTrue(ts.check_imaginary_frequencies(imaginary_freqs))
+
+    def test_perceive_irc_fragments_single_fragment(self):
+        """Test _perceive_irc_fragments for a single connected molecule (O=[C]COO)."""
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        frags = ts._perceive_irc_fragments(xyz_1, charge=0)
+        self.assertIsNotNone(frags)
+        self.assertEqual(len(frags), 1)
+        self.assertTrue(frags[0].is_isomorphic(ARCSpecies(label='R', smiles='O=[C]COO').mol))
+
+    def test_perceive_irc_fragments_two_fragments(self):
+        """Test _perceive_irc_fragments for well-separated water + methane."""
+        coords = (
+            (0.0000, 0.0000, 0.1173),     # O
+            (0.0000, 0.7572, -0.4692),     # H
+            (0.0000, -0.7572, -0.4692),    # H
+            (10.0000, 0.0000, 0.0000),     # C
+            (10.6276, 0.6276, 0.6276),     # H
+            (10.6276, -0.6276, -0.6276),   # H
+            (9.3724, 0.6276, -0.6276),     # H
+            (9.3724, -0.6276, 0.6276),     # H
+        )
+        symbols = ('O', 'H', 'H', 'C', 'H', 'H', 'H', 'H')
+        xyz = xyz_from_data(coords=coords, symbols=symbols)
+        frags = ts._perceive_irc_fragments(xyz, charge=0)
+        self.assertIsNotNone(frags)
+        self.assertEqual(len(frags), 2)
+        water_mol = ARCSpecies(label='water', smiles='O').mol
+        methane_mol = ARCSpecies(label='methane', smiles='C').mol
+        # Fragment order follows atom indices: water (atoms 0-2) then methane (atoms 3-7)
+        self.assertTrue(frags[0].is_isomorphic(water_mol))
+        self.assertTrue(frags[1].is_isomorphic(methane_mol))
+
+    def test_perceive_irc_fragments_charge_handling(self):
+        """Test that charge is correctly handled for both single and multi-fragment systems."""
+        # 1. Single fragment case: Ensure the +1 charge is passed through
+        # Using the same XYZ but pretending it's a cation
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        frags_single = ts._perceive_irc_fragments(xyz_1, charge=1)
+
+        self.assertIsNotNone(frags_single)
+        self.assertEqual(len(frags_single), 1)
+        # Verify the perceived molecule actually inherited the +1 charge
+        self.assertEqual(frags_single[0].get_net_charge(), 1)
+
+        # 2. Multi-fragment case: charge is distributed across fragments
+        # H2 + H2O with total charge=0 should give two neutral fragments
+        xyz_multi = {
+            'symbols': ('H', 'H', 'O', 'H', 'H'),
+            'coords': ((0, 0, 0), (0, 0, 0.74),  # H2
+                       (5, 0, 0), (5.7, 0.7, 0), (5.7, -0.7, 0)) # H2O
+        }
+        frags_multi = ts._perceive_irc_fragments(xyz_multi, charge=0)
+
+        self.assertIsNotNone(frags_multi)
+        self.assertEqual(len(frags_multi), 2)
+        for frag in frags_multi:
+            self.assertEqual(frag.get_net_charge(), 0)
+
+    def test_match_fragments_to_species_single(self):
+        """Test _match_fragments_to_species with a single fragment."""
+        r_spc = ARCSpecies(label='R', smiles='O=[C]COO')
+        p_spc = ARCSpecies(label='P', smiles='O=CCO[O]')
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        frags = ts._perceive_irc_fragments(xyz_1, charge=0)
+        self.assertIsNotNone(frags)
+        self.assertTrue(ts._match_fragments_to_species(frags, [r_spc.mol]))
+        self.assertFalse(ts._match_fragments_to_species(frags, [p_spc.mol]))
+
+    def test_match_fragments_to_species_multi(self):
+        """Test _match_fragments_to_species with two well-separated fragments."""
+        coords = (
+            (0.0000, 0.0000, 0.1173),
+            (0.0000, 0.7572, -0.4692),
+            (0.0000, -0.7572, -0.4692),
+            (10.0000, 0.0000, 0.0000),
+            (10.6276, 0.6276, 0.6276),
+            (10.6276, -0.6276, -0.6276),
+            (9.3724, 0.6276, -0.6276),
+            (9.3724, -0.6276, 0.6276),
+        )
+        symbols = ('O', 'H', 'H', 'C', 'H', 'H', 'H', 'H')
+        xyz = xyz_from_data(coords=coords, symbols=symbols)
+        frags = ts._perceive_irc_fragments(xyz, charge=0)
+        self.assertIsNotNone(frags)
+
+        water_mol = ARCSpecies(label='water', smiles='O').mol
+        methane_mol = ARCSpecies(label='methane', smiles='C').mol
+        nh3_mol = ARCSpecies(label='NH3', smiles='N').mol
+
+        # Correct match (either order of expected species should work due to permutations)
+        self.assertTrue(ts._match_fragments_to_species(frags, [water_mol, methane_mol]))
+        self.assertTrue(ts._match_fragments_to_species(frags, [methane_mol, water_mol]))
+        # Wrong species
+        self.assertFalse(ts._match_fragments_to_species(frags, [water_mol, nh3_mol]))
+        # Wrong count
+        self.assertFalse(ts._match_fragments_to_species(frags, [water_mol]))
+        self.assertFalse(ts._match_fragments_to_species(frags, [water_mol, methane_mol, nh3_mol]))
+
+    def test_match_fragments_to_species_empty(self):
+        """Test _match_fragments_to_species edge cases."""
+        self.assertTrue(ts._match_fragments_to_species([], []))
+        water_mol = ARCSpecies(label='water', smiles='O').mol
+        self.assertFalse(ts._match_fragments_to_species([], [water_mol]))
+
+    def test_check_irc_isomorphism_path(self):
+        """Test that the full check_irc_species_and_rxn uses isomorphism when mol objects are available."""
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        # Both species have mol objects, so isomorphism path should be used
+        self.assertIsNotNone(rxn.r_species[0].mol)
+        self.assertIsNotNone(rxn.p_species[0].mol)
+        ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+        self.assertTrue(rxn.ts_species.ts_checks['IRC'])
+
+    def test_check_irc_swapped_endpoints(self):
+        """Test that check_irc_species_and_rxn works when IRC endpoints are swapped."""
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        # Pass endpoints in reverse order (xyz_2 as first, xyz_1 as second)
+        ts.check_irc_species_and_rxn(xyz_1=xyz_2, xyz_2=xyz_1, rxn=rxn)
+        self.assertTrue(rxn.ts_species.ts_checks['IRC'])
+
+    def test_check_irc_wrong_species(self):
+        """Test that check_irc_species_and_rxn returns False for mismatched species."""
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        # Use wrong product species
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P_wrong', smiles='CC', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+        self.assertFalse(rxn.ts_species.ts_checks['IRC'])
 
     @classmethod
     def tearDownClass(cls):

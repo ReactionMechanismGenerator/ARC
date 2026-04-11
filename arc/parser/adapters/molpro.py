@@ -6,6 +6,7 @@ from abc import ABC
 
 import numpy as np
 import pandas as pd
+import re
 from typing import Dict, List, Optional, Tuple
 
 from arc.common import SYMBOL_BY_NUMBER
@@ -343,6 +344,18 @@ class MolproParser(ESSAdapter, ABC):
             The polarizability in Angstrom^3.
         """
         # Not implemented for Molpro.
+        return None
+
+    def parse_ess_version(self) -> Optional[str]:
+        """
+        Parse the Molpro version string, e.g. ``'Molpro 2015.1.37'``.
+        """
+        with open(self.log_file_path, 'r') as f:
+            for line in f:
+                # "NAME      : 2015.1.37"
+                m = re.match(r'\s*NAME\s*:\s*([\d.]+)', line)
+                if m:
+                    return f'Molpro {m.group(1)}'
         return None
 
 

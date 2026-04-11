@@ -7,6 +7,21 @@ import datetime
 
 from typing import List, Optional
 
+CONFORMER_JOB_TYPES = ('conf_opt', 'conf_sp')
+
+
+def is_conformer_job(job_name: str) -> bool:
+    """
+    Check whether a job name represents a conformer job.
+
+    Args:
+        job_name (str): The job name, e.g., 'conf_opt_3' or 'conf_sp_0'.
+
+    Returns:
+        bool: ``True`` if the job name starts with a conformer job type prefix.
+    """
+    return job_name.startswith(CONFORMER_JOB_TYPES)
+
 
 def sum_time_delta(timedelta_list: List[datetime.timedelta]) -> datetime.timedelta:
     """
@@ -36,10 +51,10 @@ def get_i_from_job_name(job_name: str) -> Optional[int]:
         Optional[int]: The corresponding conformer or tsg index.
     """
     i = None
-    if 'conf_opt' in job_name:
-        i = int(job_name[9:])
-    elif 'conf_sp' in job_name:
-        i = int(job_name[8:])
-    elif 'tsg' in job_name:
+    for prefix in CONFORMER_JOB_TYPES:
+        if job_name.startswith(prefix):
+            i = int(job_name[len(prefix) + 1:])  # +1 for the '_' separator
+            return i
+    if job_name.startswith('tsg'):
         i = int(job_name[3:])
     return i

@@ -21,11 +21,10 @@ from enum import Enum
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
-import pandas as pd
 
 from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans, convert_to_hours
 from arc.exceptions import JobError
-from arc.imports import local_arc_path, pipe_submit, settings, submit_scripts
+from arc.imports import local_arc_path, settings, submit_scripts
 from arc.job.local import (change_mode,
                            check_job_status,
                            delete_job,
@@ -44,9 +43,9 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-default_job_settings, servers, submit_filenames, t_max_format, input_filenames, output_filenames, workers_coeff = \
+default_job_settings, servers, submit_filenames, t_max_format, input_filenames, output_filenames = \
     settings['default_job_settings'], settings['servers'], settings['submit_filenames'], settings['t_max_format'], \
-    settings['input_filenames'], settings['output_filenames'], settings['workers_coeff']
+    settings['input_filenames'], settings['output_filenames']
 
 constraint_type_dict = {2: 'B', 3: 'A', 4: 'D'}
 
@@ -133,108 +132,6 @@ class JobExecutionTypeEnum(str, Enum):
     incore = 'incore'
     queue = 'queue'
     pipe = 'pipe'
-
-
-class DataPoint(object):
-    """
-    A class for representing a data point dictionary (a single job) per species for the HDF5 file.
-
-    Args:
-        job_types (List[str]): The job types to be executed in sequence.
-        label (str): The species label.
-        level (dict): The level of theory, a Level.dict() representation.
-        xyz_1 (dict): The cartesian coordinates to consider.
-        args (dict, str, optional): Methods (including troubleshooting) to be used in input files.
-        bath_gas (str, optional): A bath gas. Currently only used in OneDMin to calculate L-J parameters.
-        charge (int): The species (or TS) charge.
-        constraints (List[Tuple[List[int], float]], optional): Optimization constraint.
-        cpu_cores (int, optional): The total number of cpu cores requested for a job.
-        dihedrals (List[float], optional): The dihedral angels corresponding to self.torsions.
-        fine (bool, optional): Whether to use fine geometry optimization parameters. Default: ``False``.
-        irc_direction (str, optional): The direction of the IRC job (`forward` or `reverse`).
-        multiplicity (int): The species (or TS) multiplicity.
-        torsions (List[List[int]], optional): The 0-indexed atom indices of the torsion(s).
-        xyz_2 (dict, optional): Additional cartesian coordinates to consider in double-ended TS search methods.
-    """
-
-    def __init__(self,
-                 job_types: List[str],
-                 label: str,
-                 level: dict,
-                 xyz_1: dict,
-                 args: Optional[Union[dict, str]] = None,
-                 bath_gas: Optional[str] = None,
-                 charge: int = 0,
-                 constraints: Optional[List[Tuple[List[int], float]]] = None,
-                 cpu_cores: Optional[str] = None,
-                 dihedrals: Optional[List[float]] = None,
-                 fine: bool = False,
-                 irc_direction: Optional[str] = None,
-                 multiplicity: int = 1,
-                 torsions: Optional[List[List[int]]] = None,
-                 xyz_2: Optional[dict] = None,
-                 ):
-        self.job_types = job_types
-        self.label = label
-        self.level = level
-        self.xyz_1 = xyz_1
-
-        self.args = args
-        self.bath_gas = bath_gas
-        self.charge = charge
-        self.constraints = constraints
-        self.cpu_cores = cpu_cores
-        self.dihedrals = dihedrals
-        self.fine = fine
-        self.irc_direction = irc_direction
-        self.multiplicity = multiplicity
-        self.torsions = torsions
-        self.xyz_2 = xyz_2
-
-        self.status = 0
-
-        # initialize outputs
-        self.electronic_energy = None
-        self.error = None
-        self.frequencies = None
-        self.xyz_out = None
-
-    def as_dict(self):
-        """
-        A dictionary representation of the object, not storing default or trivial data.
-
-        Returns: dict
-            The dictionary representation.
-        """
-        result = {'job_types': self.job_types,
-                  'label': self.label,
-                  'level': self.level,
-                  'xyz_1': self.xyz_1,
-                  'status': self.status,
-                  'electronic_energy': self.electronic_energy,
-                  'error': self.error,
-                  'frequencies': self.frequencies,
-                  'xyz_out': self.xyz_out,
-                  }
-        if self.args is not None:
-            result['args'] = self.args
-        if self.bath_gas is not None:
-            result['bath_gas'] = self.bath_gas
-        if self.charge != 0:
-            result['charge'] = self.charge
-        if self.constraints is not None:
-            result['constraints'] = self.constraints
-        if self.cpu_cores is not None:
-            result['cpu_cores'] = self.cpu_cores
-        if self.fine:
-            result['fine'] = self.fine
-        if self.irc_direction is not None:
-            result['irc_direction'] = self.irc_direction
-        if self.multiplicity != 1:
-            result['multiplicity'] = self.multiplicity
-        if self.xyz_2 is not None:
-            result['xyz_2'] = self.xyz_2
-        return result
 
 
 class JobAdapter(ABC):
@@ -324,10 +221,9 @@ class JobAdapter(ABC):
         elif execution_type == JobExecutionTypeEnum.queue:
             self.execute_queue()
         elif execution_type == JobExecutionTypeEnum.pipe:
-            # Todo:
-            #   - Check that the HDF5 file is available, else raise an error.
-            #   - Submit ARC workers with the HDF5 file.
-            self.execute_queue()  # This is temporary until pipe is fully functional.
+            raise ValueError('Pipe execution is handled at the Scheduler level. '
+                             'JobAdapters inside a pipe must be executed by the worker '
+                             "with execution_type='incore'.")
         if not self.restarted:
             self._write_initiated_job_to_csv_file()
 
@@ -367,120 +263,6 @@ class JobAdapter(ABC):
                     change_mode(mode='+x', file_name=file_name, path=self.local_path)
             return self.get_file_property_dictionary(file_name=file_name, make_x=True)
 
-    def determine_job_array_parameters(self):
-        """
-        Determine the number of processes to use in a job array
-        and whether to iterate by conformers, species, reactions, or scan constraints.
-
-        Explaining "workers" vs. "processes":
-        A pipe job may have, e.g., 1000 individual processes to compute.
-        ARC will allocate, e.g., 8 workers, to simultaneously get processes (one by one) from the HDF5 bank
-        and execute them. On average, each worker in this example executes 125 jobs.
-        """
-        if self.execution_type == 'incore' or self.run_multi_species:
-            return None
-        if len(self.job_types) > 1:
-            self.iterate_by.append('job_types')
-
-        for job_type in self.job_types:
-            if self.species is not None:
-                if len(self.species) > 1:
-                    self.iterate_by.append('species')
-                if job_type == 'conf_opt':
-                    if self.species is not None and sum(len(species.conformers) for species in self.species) > 10:
-                        self.iterate_by.append('conf_opt')
-                        self.number_of_processes += sum([len(species.conformers) for species in self.species])
-                for species in self.species:
-                    if job_type in ['sp', 'opt', 'freq', 'optfreq', 'composite', 'ornitals', 'onedmin', 'irc']:
-                        self.number_of_processes += 1
-                    # elif job_type == 'scan' and rotor_dict['directed_scan_type'] != 'ess':  # Todo: implement directed scans
-                    elif job_type == 'scan' and len(species.rotors_dict.keys()) > 1000:  # Todo: Modify when pipe is implemented
-                        self.iterate_by.append('scan')
-                        scan_points_per_dimension = 360.0 / self.scan_res
-                        for rotor_dict in species.rotors_dict.values():
-                            if rotor_dict['directed_scan_type'] == 'ess':
-                                self.number_of_processes += 1
-                            elif 'cont_opt' in rotor_dict['directed_scan_type']:
-                                # A single calculation per species for a continuous scan, either diagonal or not.
-                                self.number_of_processes += 1
-                            elif 'brute_force' in rotor_dict['directed_scan_type']:
-                                if 'diagonal' in rotor_dict['directed_scan_type']:
-                                    self.number_of_processes += scan_points_per_dimension
-                                else:
-                                    self.number_of_processes += \
-                                        sum([scan_points_per_dimension ** len(rotor_dict['scan'])])
-
-            elif self.reactions is not None:
-                if len(self.reactions) > 1:
-                    self.iterate_by.append('reactions')
-                self.number_of_processes += len(self.reactions)
-
-        if self.number_of_processes > self.incore_capacity:
-            self.execution_type = 'pipe'
-            self._determine_workers()
-            self.write_hdf5()
-
-    def _determine_workers(self):
-        """
-        Determine the number of workers to use in a pipe job.
-        """
-        if self.workers is None:
-            if self.number_of_processes <= workers_coeff['max_one']:
-                self.workers = 1
-            elif self.number_of_processes <= workers_coeff['max_two']:
-                self.workers = 2
-            else:
-                self.workers = min(round(workers_coeff['A'] * self.number_of_processes ** workers_coeff['b']),
-                                   workers_coeff['cap'])
-
-    def write_hdf5(self):
-        """
-        Write the HDF5 data file for job arrays.
-        Each data point is a dictionary representation of the DataPoint class.
-        Note: Each data point will always run "incore". A job array is created once the pipe is submitted to the queue
-        (rather than running the pipe "incore", taking no advantage of the server's potential for parallelization).
-        """
-        if self.iterate_by:
-            data = dict()
-            if 'reactions' in self.iterate_by:
-                for reaction in self.reactions:
-                    data[reaction.index] = list()
-                    data[reaction.index].append(DataPoint(charge=reaction.charge,
-                                                          job_types=[self.job_type],
-                                                          label=reaction.label,
-                                                          level=self.level.as_dict(),
-                                                          multiplicity=reaction.multiplicity,
-                                                          xyz_1=reaction.get_reactants_xyz(),
-                                                          xyz_2=reaction.get_products_xyz(),
-                                                          constraints=self.constraints,
-                                                          ).as_dict())
-            else:
-                for species in self.species:
-                    data[species.label] = list()
-                    if 'conf_opt' in self.iterate_by:
-                        for conformer in species.conformers:
-                            data[species.label].append(DataPoint(charge=species.charge,
-                                                                 job_types=['opt'],
-                                                                 label=species.label,
-                                                                 level=self.level.as_dict(),
-                                                                 multiplicity=species.multiplicity,
-                                                                 xyz_1=conformer,
-                                                                 ).as_dict())
-                    elif 'scan' in self.iterate_by:
-                        data[species.label].extend(self.generate_scan_points(species=species))
-                    elif 'species' in self.iterate_by:
-                        data[species.label].append(DataPoint(charge=species.charge,
-                                                             job_types=[self.job_type],
-                                                             label=species.label,
-                                                             level=self.level.as_dict(),
-                                                             multiplicity=species.multiplicity,
-                                                             xyz_1=species.get_xyz(),
-                                                             constraints=self.constraints,
-                                                             ).as_dict())
-
-            df = pd.json_normalize(data)
-            df.to_hdf(os.path.join(self.local_path, 'data.hdf5'), key='df', mode='w')
-
     def write_submit_script(self) -> None:
         """
         Write a submit script to execute the job.
@@ -500,8 +282,7 @@ class JobAdapter(ABC):
         if default_queue and default_queue not in self.attempted_queues:
             self.attempted_queues.append(default_queue)
 
-        submit_script = submit_scripts[self.server][self.job_adapter] if self.workers is None \
-            else pipe_submit[self.server]
+        submit_script = submit_scripts[self.server][self.job_adapter]
 
         queue = self.queue if self.queue is not None else default_queue
 
@@ -527,14 +308,9 @@ class JobAdapter(ABC):
         try:
             submit_script = submit_script.format(**format_params)
         except KeyError:
-            if self.workers is None:
-                submit_scripts_for_printing = {server: [software for software in values.keys()]
-                                               for server, values in submit_scripts.items()}
-                pipe = ''
-            else:
-                submit_scripts_for_printing = {server for server, values in pipe_submit.keys()}
-                pipe = ' pipe'
-            logger.error(f'Could not find{pipe} submit script for server {self.server} and software {self.job_adapter}.'
+            submit_scripts_for_printing = {server: [software for software in values.keys()]
+                                           for server, values in submit_scripts.items()}
+            logger.error(f'Could not find submit script for server {self.server} and software {self.job_adapter}.'
                          f'\nMake sure your submit scripts (under arc/job/submit.py) are updated with the servers '
                          f'and software defined in arc/settings.py\n'
                          f'Alternatively, It is possible that you defined parameters in curly braces (e.g., {{PARAM}}) '
@@ -662,6 +438,32 @@ class JobAdapter(ABC):
         else:
             self.run_time = None
 
+    @staticmethod
+    def _rotate_csv_if_needed(csv_path: str, max_lines: int = 10000, line_count: Optional[int] = None) -> None:
+        """
+        Rotate a CSV file if it reaches or exceeds ``max_lines`` lines (including the header).
+        The archived file is renamed with a timestamp suffix in the same directory.
+        A fresh file (with headers) will be created by the caller as needed.
+
+        Args:
+            csv_path (str): The path to the CSV file.
+            max_lines (int): The maximum number of lines before rotation is triggered.
+            line_count (int, optional): Pre-computed line count to avoid re-reading the file.
+        """
+        if not os.path.isfile(csv_path):
+            return
+        if line_count is None:
+            with open(csv_path, 'r') as f:
+                line_count = sum(1 for _ in f)
+        if line_count >= max_lines:
+            local_time = datetime.datetime.now().strftime("%d_%m_%y")
+            base, ext = os.path.splitext(csv_path)
+            archive_path = f"{base}.old.{local_time}{ext}"
+            try:
+                os.rename(csv_path, archive_path)
+            except FileNotFoundError:
+                pass  # Another process already rotated the file.
+
     def _set_job_number(self):
         """
         Used as the entry number in the database, as well as the job name on the server.
@@ -686,12 +488,16 @@ class JobAdapter(ABC):
                 writer.writerow(row)
         with open(csv_path, 'r') as f:
             reader = csv.reader(f, dialect='excel')
+            line_count = 0
             job_num = 0
             for _ in reader:
+                line_count += 1
                 job_num += 1
                 if job_num == 100000:
                     job_num = 0
             self.job_num = job_num
+        # Rotate after counting to avoid a second full read of the file.
+        self._rotate_csv_if_needed(csv_path, max_lines=10000, line_count=line_count)
         # 2. Set other related attributes job_name and job_server_name.
         self.job_server_name = self.job_server_name or 'a' + str(self.job_num)
         if self.conformer is not None and self.job_name is None:
@@ -728,6 +534,7 @@ class JobAdapter(ABC):
                 self.determine_job_status()
             local_arc_path_ = local_arc_path if os.path.isdir(local_arc_path) else ARC_PATH
             csv_path = os.path.join(local_arc_path_, 'completed_jobs.csv')
+            self._rotate_csv_if_needed(csv_path)
             if os.path.isfile(csv_path):
                 # check that this is the updated version
                 with open(csv_path, 'r') as f:
@@ -1140,197 +947,6 @@ class JobAdapter(ABC):
                 'source': source,
                 'make_x': make_x,
                 }
-
-    def generate_scan_points(self,
-                             species: 'ARCSpecies',
-                             cont_only: bool = False,
-                             ) -> List[DataPoint]:
-        """
-        Generate all coordinates in advance for "brute force" (non-continuous) directed scans,
-        or the *next* coordinates for a continuous scan.
-
-        Directed scan types could be one of the following: ``'brute_force_sp'``, ``'brute_force_opt'``,
-        ``'brute_force_sp_diagonal'``, ``'brute_force_opt_diagonal'``, ``'cont_opt'``, or ``'cont_opt_diagonal'``.
-        The differentiation between ``'sp'`` and ``'opt'`` is done in at the Job level.
-
-        Args:
-            species (ARCSpecies): The species to consider.
-            cont_only (bool, optional): Whether to only return the next point in continuous scans.
-
-        Raises:
-            ValueError: If the species directed scan type has an unexpected value.
-
-        Returns: List[DataPoint]
-            Entries are DataPoint instances.
-        """
-        data_list = list()
-
-        if divmod(360, self.scan_res)[1]:
-            raise ValueError(f'Got an illegal scan resolution of {self.scan_res}.')
-
-        for rotor_dict in species.rotors_dict.values():
-            directed_scan_type = rotor_dict['directed_scan_type']
-            if cont_only and 'cont' not in directed_scan_type:
-                # Visiting this method again for a cont scan should not re-trigger all other scans.
-                continue
-
-            torsions = rotor_dict['torsion']
-            if isinstance(torsions[0], int):
-                torsions = [torsions]
-            xyz = species.get_xyz(generate=True)
-
-            if not ('cont' in directed_scan_type or 'brute' in directed_scan_type or 'ess' in directed_scan_type):
-                raise ValueError(f'directed_scan_type must be either continuous or brute force, got: {directed_scan_type}')
-
-            if directed_scan_type == 'ess' and not rotor_dict['scan_path'] and rotor_dict['success'] is None:
-                # Allow the ESS to control the scan.
-                data_list.append(DataPoint(job_types=['scan'],
-                                           label=species.label,
-                                           level=self.level,
-                                           xyz_1=species.get_xyz(generate=True),
-                                           args=self.args,
-                                           charge=species.charge,
-                                           constraints=self.constraints,
-                                           cpu_cores=self.cpu_cores,
-                                           multiplicity=species.multiplicity,
-                                           torsions=torsions,
-                                           ))
-
-            elif 'brute' in directed_scan_type:
-                # Spawn jobs all at once.
-                dihedrals = dict()
-                for torsion in torsions:
-                    original_dihedral = calculate_dihedral_angle(coords=xyz['coords'], torsion=torsion, index=0)
-                    dihedrals[tuple(torsion)] = [round(original_dihedral + i * self.scan_res
-                                                       if original_dihedral + i * self.scan_res <= 180.0
-                                                       else original_dihedral + i * self.scan_res - 360.0, 2)
-                                                 for i in range(int(360 / self.scan_res) + 1)]
-                modified_xyz = xyz.copy()
-                if 'diagonal' not in directed_scan_type:
-                    # Increment dihedrals one by one (results in an ND scan).
-                    all_dihedral_combinations = list(itertools.product(*[dihedrals[tuple(torsion)] for torsion in torsions]))
-                    for dihedral_tuple in all_dihedral_combinations:
-                        for torsion, dihedral in zip(torsions, dihedral_tuple):
-                            species.set_dihedral(scan=torsions_to_scans(torsion),
-                                                 deg_abs=dihedral,
-                                                 count=False,
-                                                 xyz=modified_xyz)
-                            modified_xyz = species.initial_xyz
-                        rotor_dict['number_of_running_jobs'] += 1
-                        data_list.append(DataPoint(job_types=['opt'] if 'opt' in directed_scan_type else ['sp'],
-                                                   label=species.label,
-                                                   level=self.level,
-                                                   xyz_1=modified_xyz.copy(),
-                                                   args=self.args,
-                                                   charge=species.charge,
-                                                   constraints=self.constraints,
-                                                   cpu_cores=self.cpu_cores,
-                                                   multiplicity=species.multiplicity,
-                                                   ))
-                else:
-                    # Increment all dihedrals at once (results in a 1D scan along simultaneously-changing dimensions).
-                    for i in range(len(dihedrals[tuple(torsions[0])])):
-                        for torsion in torsions:
-                            dihedral = dihedrals[tuple(torsion)][i]
-                            species.set_dihedral(scan=torsions_to_scans(torsion),
-                                                 deg_abs=dihedral,
-                                                 count=False,
-                                                 xyz=modified_xyz)
-                            modified_xyz = species.initial_xyz
-                        directed_dihedrals = [dihedrals[tuple(torsion)][i] for torsion in torsions]
-                        rotor_dict['number_of_running_jobs'] += 1
-                        data_list.append(DataPoint(job_types=['opt'] if 'opt' in directed_scan_type else ['sp'],
-                                                   label=species.label,
-                                                   level=self.level,
-                                                   xyz_1=modified_xyz.copy(),
-                                                   args=self.args,
-                                                   charge=species.charge,
-                                                   constraints=self.constraints,
-                                                   cpu_cores=self.cpu_cores,
-                                                   dihedrals=directed_dihedrals,
-                                                   multiplicity=species.multiplicity,
-                                                   ))
-
-            elif 'cont' in directed_scan_type:
-                # Set up the next DataPoint only.
-                if not len(rotor_dict['cont_indices']):
-                    rotor_dict['cont_indices'] = [0] * len(torsions)
-                if not len(rotor_dict['original_dihedrals']):
-                    rotor_dict['original_dihedrals'] = \
-                        [f'{calculate_dihedral_angle(coords=xyz["coords"], torsion=scan, index=1):.2f}'
-                         for scan in rotor_dict['scan']]  # Store the dihedrals as strings for the YAML restart file.
-                torsions = rotor_dict['torsion']
-                max_num = 360 / self.scan_res + 1  # Dihedral angles per scan
-                original_dihedrals = list()
-                for dihedral in rotor_dict['original_dihedrals']:
-                    f_dihedral = float(dihedral)
-                    original_dihedrals.append(f_dihedral if f_dihedral < 180.0 else f_dihedral - 360.0)
-                if not any(rotor_dict['cont_indices']):
-                    # This is the first call to the cont_opt directed rotor, spawn the first job w/o changing dihedrals.
-                    data_list.append(DataPoint(job_types=['opt'],
-                                               label=species.label,
-                                               level=self.level,
-                                               xyz_1=species.final_xyz,
-                                               args=self.args,
-                                               charge=species.charge,
-                                               constraints=self.constraints,
-                                               cpu_cores=self.cpu_cores,
-                                               dihedrals=original_dihedrals,
-                                               multiplicity=species.multiplicity,
-                                               ))
-                    rotor_dict['cont_indices'][0] += 1
-                    continue
-                else:
-                    # This is NOT the first call for this cont_opt directed rotor.
-                    # Check whether this rotor is done.
-                    if rotor_dict['cont_indices'][-1] == max_num - 1:  # 0-indexed
-                        # No more counters to increment, all done!
-                        logger.info(f"Completed all jobs for the continuous directed rotor scan for species "
-                                    f"{species.label} between pivots {rotor_dict['pivots']}")
-                        continue
-
-                modified_xyz = xyz.copy()
-                dihedrals = list()
-                for index, (original_dihedral, torsion_) in enumerate(zip(original_dihedrals, torsions)):
-                    dihedral = original_dihedral + rotor_dict['cont_indices'][index] * self.scan_res
-                    # Change the original dihedral so we won't end up with two calcs for 180.0, but none for -180.0
-                    # (it only matters for plotting, the geometry is of course the same).
-                    dihedral = dihedral if dihedral <= 180.0 else dihedral - 360.0
-                    dihedrals.append(dihedral)
-                    # Only change the dihedrals in the xyz if this torsion corresponds to the current index,
-                    # or if this is a cont diagonal scan.
-                    # Species.set_dihedral() uses .final_xyz or the given xyz to modify the .initial_xyz
-                    # attribute to the desired dihedral.
-                    species.set_dihedral(scan=torsions_to_scans(torsion_),
-                                         deg_abs=dihedral,
-                                         count=False,
-                                         xyz=modified_xyz)
-                    modified_xyz = species.initial_xyz
-                data_list.append(DataPoint(job_types=['opt'],
-                                           label=species.label,
-                                           level=self.level,
-                                           xyz_1=modified_xyz,
-                                           args=self.args,
-                                           charge=species.charge,
-                                           constraints=self.constraints,
-                                           cpu_cores=self.cpu_cores,
-                                           dihedrals=dihedrals,
-                                           multiplicity=species.multiplicity,
-                                           ))
-
-                if 'diagonal' in directed_scan_type:
-                    # Increment ALL counters for a diagonal scan.
-                    rotor_dict['cont_indices'] = [rotor_dict['cont_indices'][0] + 1] * len(torsions)
-                else:
-                    # Increment the counter sequentially for a non-diagonal scan.
-                    for index in range(len(torsions)):
-                        if rotor_dict['cont_indices'][index] < max_num - 1:
-                            rotor_dict['cont_indices'][index] += 1
-                            break
-                        elif rotor_dict['cont_indices'][index] == max_num - 1 and index < len(torsions) - 1:
-                            rotor_dict['cont_indices'][index] = 0
-
-        return data_list
 
     def troubleshoot_server(self):
         """

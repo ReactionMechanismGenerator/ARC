@@ -34,13 +34,14 @@ from arc.imports import settings
 from arc.level import Level, assign_frequency_scale_factor
 from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import SSHClient
-from arc.processor import process_arc_project
+from arc.output import write_output_yml
+from arc.processor import process_arc_project, resolve_neb_level
 from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
-from arc.statmech.arkane import check_arkane_bacs
+from arc.statmech.arkane import check_arkane_aec, check_arkane_bacs
 from arc.utils.scale import determine_scaling_factors
 
 
@@ -406,6 +407,7 @@ class ARC(object):
             self.job_types['opt'] = True  # Run the optimizations, self.fine_only will make sure that they are fine.
 
         self.set_levels_of_theory()  # All level of theories should be Level types after this call.
+        self._warn_year_on_non_arkane_levels()
         if self.thermo_adapter == 'arkane':
             self.check_arkane_level_of_theory()
 
@@ -635,6 +637,35 @@ class ARC(object):
                             freq_level=self.freq_level,
                             skip_nmd=self.skip_nmd,
                             )
+
+        # Determine whether the user supplied the scale factor explicitly, or ARC looked it up.
+        _freq_level_for_lookup = self.composite_method if self.composite_method is not None else self.freq_level
+        _yml_scale = assign_frequency_scale_factor(level=_freq_level_for_lookup) if _freq_level_for_lookup is not None else None
+        _user_provided_scale = (_yml_scale is None or _yml_scale != self.freq_scale_factor)
+
+        neb_level = resolve_neb_level(self.ts_adapters)
+
+        try:
+            write_output_yml(
+                project=self.project,
+                project_directory=self.project_directory,
+                species_dict=self.scheduler.species_dict,
+                reactions=self.scheduler.rxn_list,
+                output_dict=self.output,
+                opt_level=self.opt_level,
+                freq_level=self.freq_level,
+                sp_level=self.sp_level,
+                neb_level=neb_level,
+                composite_method=self.composite_method,
+                freq_scale_factor=self.freq_scale_factor,
+                freq_scale_factor_user_provided=_user_provided_scale,
+                bac_type=self.bac_type,
+                arkane_level_of_theory=self.arkane_level_of_theory,
+                irc_requested=self.job_types.get('irc', True),
+                t0=self.t0,
+            )
+        except Exception as e:
+            logger.error(f'Could not write output.yml: {e}')
 
         status_dict = self.summary()
         log_footer(execution_time=self.execution_time)
@@ -1155,17 +1186,41 @@ class ARC(object):
 
         self.level_of_theory = ''  # Reset the level_of_theory argument to avoid conflicts upon restarting ARC.
 
+    def _warn_year_on_non_arkane_levels(self):
+        """
+        Warn if ``year`` was specified on any Level other than ``arkane_level_of_theory``.
+        The ``year`` attribute only affects Arkane database matching and is ignored elsewhere.
+        """
+        for attr_name in ('sp_level', 'opt_level', 'freq_level', 'scan_level', 'irc_level',
+                          'conformer_opt_level', 'conformer_sp_level', 'orbitals_level'):
+            level = getattr(self, attr_name, None)
+            if isinstance(level, Level):
+                level.warn_if_year_set(attr_name)
+
     def check_arkane_level_of_theory(self):
         """
         Check that the level of theory has AEC in Arkane.
         """
+        explicitly_set = self.arkane_level_of_theory is not None
         if self.arkane_level_of_theory is None:
             self.arkane_level_of_theory = self.composite_method if self.composite_method is not None \
                 else self.sp_level if self.sp_level is not None else None
-        if self.arkane_level_of_theory is not None and self.bac_type is not None:
-            check_arkane_bacs(sp_level=self.arkane_level_of_theory, bac_type=self.bac_type, raise_error=self.compute_thermo)
-        else:
+        if self.arkane_level_of_theory is None:
             logger.warning('Could not determine a level of theory to be used for Arkane!')
+        else:
+            if explicitly_set:
+                source = ''
+            elif self.composite_method is not None:
+                source = ' (from composite method)'
+            else:
+                source = ' (from sp level)'
+            logger.info(f'Arkane level of theory:{source} {self.arkane_level_of_theory}')
+            if self.bac_type is not None:
+                check_arkane_bacs(sp_level=self.arkane_level_of_theory, bac_type=self.bac_type,
+                                  raise_error=self.compute_thermo)
+            else:
+                check_arkane_aec(sp_level=self.arkane_level_of_theory,
+                                 raise_error=self.compute_thermo)
 
     def backup_restart(self):
         """

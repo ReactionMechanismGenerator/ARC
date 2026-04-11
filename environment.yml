@@ -5,7 +5,7 @@ channels:
 
 dependencies:
   # ─── core ─────────────────────────────────────
-  - conda-forge::python >=3.12.*
+  - conda-forge::python =3.12
   - conda-forge::numpy  >=2.1.*
   - conda-forge::pip
 

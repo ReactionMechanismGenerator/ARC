@@ -5,6 +5,7 @@ An adapter for parsing Q-Chem log files.
 from abc import ABC
 
 import numpy as np
+import re
 from typing import TYPE_CHECKING, Optional, Tuple, List, Dict
 
 from arc.constants import E_h_kJmol, bohr_to_angstrom
@@ -273,6 +274,18 @@ class QChemParser(ESSAdapter, ABC):
                     except (ValueError, IndexError):
                         continue
         return polarizability
+
+    def parse_ess_version(self) -> Optional[str]:
+        """
+        Parse the Q-Chem version string, e.g. ``'Q-Chem 4.4'``.
+        """
+        with open(self.log_file_path, 'r') as f:
+            for line in f:
+                # "Q-Chem 4.4, Q-Chem, Inc., Pleasanton, CA (2016)"
+                m = re.search(r'(Q-Chem\s+[\d.]+)', line)
+                if m:
+                    return m.group(1)
+        return None
 
 
 register_ess_adapter('qchem', QChemParser)

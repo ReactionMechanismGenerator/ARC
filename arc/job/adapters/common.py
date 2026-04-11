@@ -41,7 +41,7 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot'],
                              'Cyclic_Ether_Formation': ['kinbot'],
                              'Cyclopentadiene_scission': ['gcn', 'xtb_gsm', 'orca_neb'],
                              'Diels_alder_addition': ['kinbot'],
-                             'H_Abstraction': ['heuristics', 'autotst'],
+                             'H_Abstraction': ['heuristics', 'autotst', 'crest'],
                              'carbonyl_based_hydrolysis': ['heuristics'],
                              'ether_hydrolysis': ['heuristics'],
                              'nitrile_hydrolysis': ['heuristics'],
@@ -77,7 +77,8 @@ all_families_ts_adapters = []
 adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
-default_incore_adapters = ['autotst', 'gcn', 'heuristics', 'kinbot', 'psi4', 'xtb', 'xtb_gsm', 'torchani', 'openbabel']
+default_incore_adapters = ['autotst', 'crest', 'gcn', 'heuristics', 'kinbot', 'psi4', 'xtb', 'xtb_gsm', 'torchani',
+                           'openbabel']
 
 
 def _initialize_adapter(obj: 'JobAdapter',
@@ -242,8 +243,6 @@ def _initialize_adapter(obj: 'JobAdapter',
 
     obj.set_file_paths()
     obj.set_cpu_and_mem()
-    if obj.execution_type != 'incore' and obj.job_adapter in obj.ess_settings.keys():
-        obj.determine_job_array_parameters()
 
     # Set scan_res if required by trsh
     if obj.args and 'trsh' in obj.args.keys() and 'scan_res' in obj.args['trsh'].keys():
@@ -516,7 +515,7 @@ def which(command: Union[str, list],
             The command path or ``None``, returns ``True`` or ``False`` if ``return_bool`` is set to ``True``.
     """
     if env is None:
-        lenv = {"PATH": os.pathsep + os.environ.get("PATH", "") + os.path.dirname(sys.executable),
+        lenv = {"PATH": os.pathsep + os.environ.get("PATH", "") + os.pathsep + os.path.dirname(sys.executable),
                 "PYTHONPATH": os.pathsep + os.environ.get("PYTHONPATH", ""),
                 }
     else:
@@ -526,7 +525,7 @@ def which(command: Union[str, list],
     command = [command] if isinstance(command, str) else command
     ans = None
     for comm in command:
-        ans = shutil.which(comm, mode=os.F_OK | os.X_OK, path=lenv["PATH"] + lenv["PYTHONPATH"])
+        ans = shutil.which(comm, mode=os.F_OK | os.X_OK, path=lenv["PATH"] + os.pathsep + lenv["PYTHONPATH"])
         if ans:
             break
 

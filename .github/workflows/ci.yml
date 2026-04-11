@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout ARC
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: ARC
 
@@ -33,7 +33,7 @@ jobs:
           swap-storage: true
 
       - name: Set up micromamba (arc_env)
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@v3
         with:
           environment-name: arc_env
           environment-file: ARC/environment.yml
@@ -116,7 +116,7 @@ jobs:
           pytest functional/ --cov --cov-append --cov-report=xml -ra -vv -n auto
 
       - name: Upload coverage data
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ARC/coverage.xml

@@ -247,6 +247,18 @@ parse_polarizability = make_parser(
     error_message='Could not parse polarizability from {path}',
 )
 
+parse_opt_steps = make_parser(
+    parse_method='parse_opt_steps',
+    return_type=Optional[int],
+    error_message='Could not parse opt steps from {path}',
+)
+
+parse_ess_version = make_parser(
+    parse_method='parse_ess_version',
+    return_type=Optional[str],
+    error_message='Could not parse ESS version from {path}',
+)
+
 
 def parse_1d_scan_energies_from_specific_angle(log_file_path: str,
                                                initial_angle: float,

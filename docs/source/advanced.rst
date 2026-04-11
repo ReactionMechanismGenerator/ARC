@@ -95,9 +95,21 @@ Another example::
 
 specifies ``DLPNO-CCSD(T)-F12/cc-pVTZ-F12`` model chemistry along with two auxiliary basis sets,
 ``aug-cc-pVTZ/C`` and ``cc-pVTZ-F12-CABS``, with ``TightOpt`` for a single point energy calculation.
+You can also provide a 4-digit ``year`` on ``arkane_level_of_theory`` to distinguish method variants
+in the Arkane database (e.g., ``b97d3`` vs ``b97d32023``)::
+
+    arkane_level_of_theory:
+      method: b97d3
+      basis: def2tzvp
+      year: 2023
+
+If ``year`` is omitted, ARC will prefer the no-year Arkane entry for that method/basis. If no entry
+without a year exists, ARC will use the latest available year in the Arkane database. If no entry
+exists at all (neither with nor without a year), ARC will warn the user and proceed without
+atom energy or bond additivity corrections.
 
 
-THe following are examples for **equivalent** definitions::
+The following are examples for **equivalent** definitions::
 
     opt_level = 'apfd/def2tzvp'
     opt_level = {'method': 'apfd', 'basis': 'def2tzvp'}
@@ -137,6 +149,12 @@ is equivalent to::
     freq_level = {'method': 'wb97xd', 'basis': 'def2svp'}
     scan_level = {'method': 'wb97xd', 'basis': 'def2svp'}
     sp_level = {'method': 'wb97xd', 'basis': 'def2svp'}
+
+Note: Year suffixes in the method (e.g., ``wb97xd32023``) are meant for Arkane database matching
+and are not valid QC methods. Do not include year suffixes in ``level_of_theory``; instead, specify a
+``year`` key on ``arkane_level_of_theory`` if you need a specific atom or bond energy correction year.
+See `here <https://github.com/ReactionMechanismGenerator/RMG-database/blob/main/input/quantum_corrections/data.py>`_
+for all of Arkane's corrections.
 
 Note: If ``level_of_theory`` does not contain any deliminator (neither ``//`` nor ``\/``), it is interpreted as a
 composite method.
@@ -899,5 +917,115 @@ Alternatively, the user may request to compute the rate coefficients in the clas
 
 instructs the relevant statmech program to compute rate coefficients in the classical two-parameter Arrhenius format for
 all reactions in the same ARC project.
+
+.. _pipe_mode:
+
+Pipe mode (distributed HPC execution)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Pipe mode allows ARC to batch many independent jobs (e.g., conformer optimizations)
+into a single SLURM/PBS/SGE/HTCondor array allocation.
+Instead of submitting hundreds of individual cluster jobs, ARC stages all tasks on
+disk and launches a small number of array workers that claim and execute tasks from
+a shared task directory.
+
+**When does ARC use pipe mode?**
+
+ARC automatically evaluates pipe eligibility when scheduling batches of homogeneous
+jobs (same engine, level of theory, and resource requirements).
+By default, pipe mode activates when a batch has 10 or more tasks.
+Below that threshold, ARC uses its normal per-job submission path.
+
+**Supported job types:**
+
+- Conformer optimization (``conf_opt``) and single-point (``conf_sp``)
+- TS guess generation and TS optimization
+- Species single-point, frequency, and IRC calculations
+- 1D rotor scans
+
+**What pipe mode does and does not do:**
+
+- Pipe executes only ready "leaf" jobs. All quality checks, troubleshooting,
+  and downstream decision-making remain in ARC's main scheduler.
+- Failed tasks are classified and handled automatically (see task states below).
+- Each array worker verifies task ownership before writing results,
+  preventing stale workers from overwriting state after lease expiration.
+
+**Task states:**
+
+Each pipe task has a state that is reported in the ARC log
+(e.g., ``Pipe run TS0_ts_opt: COMPLETED: 30, FAILED_ESS: 2, RUNNING: 8``).
+The states are:
+
+- ``PENDING`` — Waiting for a worker to claim it. Fresh tasks start here.
+  Retried tasks return here with an incremented attempt index.
+- ``CLAIMED`` — A worker has claimed this task via file lock.
+- ``RUNNING`` — The worker is executing the ESS (e.g., Gaussian, Orca).
+- ``COMPLETED`` — ESS converged successfully. Results will be ingested.
+- ``FAILED_RETRYABLE`` — Transient failure (node crash, no output, disk issue).
+  The pipe will retry this task on a different node with the same input.
+- ``FAILED_ESS`` — Deterministic ESS convergence error (e.g., SCF failure,
+  max optimization cycles, internal coordinate error). Retrying with the
+  same input will produce the same failure. The task is ejected to the
+  Scheduler as an individual job for troubleshooting with modified input.
+- ``FAILED_TERMINAL`` — Exhausted all retry attempts. No further automatic action.
+- ``ORPHANED`` — Worker lease expired (e.g., killed by PBS walltime).
+  Will be reset to ``PENDING`` for retry.
+- ``CANCELLED`` — Manually cancelled. Terminal state.
+
+**Configuration:**
+
+Pipe mode is configured via ``pipe_settings`` in ``arc/settings/settings.py``
+(or in ``~/.arc/settings.py`` to override per-installation)::
+
+    pipe_settings = {
+        'enabled': True,           # Set to False to disable pipe mode entirely.
+        'min_tasks': 10,           # Minimum batch size to trigger pipe mode.
+        'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
+        'max_attempts': 3,         # Retry budget per task before terminal failure.
+        'lease_duration_s': 86400, # Worker lease duration in seconds (default 24h).
+        'env_setup': {},           # Engine-specific shell setup commands, e.g.,
+                                   # {'gaussian': 'source /usr/local/g09/setup.sh'}
+        'scratch_base': '',        # Base directory for worker scratch (e.g., '/gtmp').
+    }
+
+**Directory structure:**
+
+Pipe runs are placed under ``calcs/`` alongside regular job output, following
+ARC's existing directory convention. A new run auto-increments its index
+(``_0``, ``_1``, ...) to avoid collisions with prior runs::
+
+    <project>/calcs/
+    ├── TSs/
+    │   └── TS0/
+    │       ├── opt_a1349/              # regular job
+    │       └── pipe_ts_opt_0/          # pipe run
+    │           ├── run.json
+    │           ├── submit.sh
+    │           └── tasks/
+    │               ├── TS0_ts_opt_0/
+    │               │   ├── spec.json
+    │               │   ├── state.json
+    │               │   └── attempts/
+    │               │       └── 0/
+    │               │           ├── calcs/
+    │               │           ├── result.json
+    │               │           └── worker.log
+    │               └── TS0_ts_opt_1/
+    │                   └── ...
+    ├── Species/
+    │   └── H2O/
+    │       ├── conf_opt_a1/            # regular job
+    │       └── pipe_conf_opt_0/        # pipe run
+    └── batches/
+        └── pipe_species_sp_batch_0/    # cross-species batch
+
+**Submit scripts:**
+
+Pipe mode generates array submit scripts under the pipe run directory.
+The templates follow ARC's existing submit-script conventions from
+``arc/settings/submit.py`` and support SLURM, PBS, SGE, and HTCondor.
+Users who customize their submit templates can edit the ``pipe_submit``
+dictionary in ``submit.py``.
 
 .. include:: links.txt

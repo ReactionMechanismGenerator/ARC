@@ -6,18 +6,18 @@ This module contains unit tests of the arc.job.adapter module
 """
 
 import datetime
+import glob
 import math
 import os
+import tempfile
 import time
 import shutil
 import unittest
 from unittest.mock import patch
 
-import pandas as pd
-
 from arc.common import ARC_TESTING_PATH
 from arc.imports import settings
-from arc.job.adapter import DataPoint, JobEnum, JobTypeEnum, JobExecutionTypeEnum
+from arc.job.adapter import JobAdapter, JobEnum, JobTypeEnum, JobExecutionTypeEnum
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.level import Level
 from arc.species import ARCSpecies
@@ -75,39 +75,6 @@ class TestEnumerationClasses(unittest.TestCase):
         self.assertEqual(JobExecutionTypeEnum('pipe').value, 'pipe')
         with self.assertRaises(ValueError):
             JobExecutionTypeEnum('wrong')
-
-
-class TestDataPoint(unittest.TestCase):
-    """
-    Contains unit tests for the DataPoint class.
-    """
-
-    def test_as_dict(self):
-        """Test the dictionary representation of a DataPoint instance"""
-        xyz_1 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
-                 'isotopes': (12, 1, 1, 1, 1),
-                 'coords': ((0.0, 0.0, 0.0),
-                            (0.6300326, 0.6300326, 0.6300326),
-                            (-0.6300326, -0.6300326, 0.6300326),
-                            (-0.6300326, 0.6300326, -0.6300326),
-                            (0.6300326, -0.6300326, -0.6300326))}
-        data_point = DataPoint(charge=0,
-                               job_types=['opt'],
-                               label='spc1',
-                               level={'method': 'cbs-qb3'},
-                               multiplicity=1,
-                               xyz_1=xyz_1,
-                               )
-        expected_dict = {'job_types': ['opt'],
-                         'label': 'spc1',
-                         'level': {'method': 'cbs-qb3'},
-                         'xyz_1': xyz_1,
-                         'status': 0,
-                         'electronic_energy': None,
-                         'error': None,
-                         'frequencies': None,
-                         'xyz_out': None}
-        self.assertEqual(data_point.as_dict(), expected_dict)
 
 
 class TestJobAdapter(unittest.TestCase):
@@ -194,124 +161,39 @@ class TestJobAdapter(unittest.TestCase):
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
+        # Copy the PBS time limit fixture into the directory structure the adapter expects.
+        stl_dir = os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit')
+        err_dest = os.path.join(stl_dir, 'calcs', 'Species', 'spc1', 'opt_101')
+        os.makedirs(err_dest, exist_ok=True)
+        shutil.copy(os.path.join(ARC_TESTING_PATH, 'server', 'pbs', 'timelimit', 'err.txt'),
+                    os.path.join(err_dest, 'err.txt'))
         cls.job_5 = GaussianAdapter(execution_type='queue',
-                                    job_name='spc1',
+                                    job_name='opt_101',
                                     job_type='opt',
                                     job_id='123456',
                                     job_num=101,
-                                    job_server_name = 'server3',
+                                    job_server_name='server3',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit'),
+                                    project_directory=stl_dir,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     server='server3',
                                     testing=True,
                                     )
         cls.job_6 = GaussianAdapter(execution_type='queue',
-                                    job_name='spc1',
+                                    job_name='opt_101',
                                     job_type='opt',
                                     job_id='123456',
                                     job_num=101,
-                                    job_server_name = 'server1',
+                                    job_server_name='server1',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit'),
+                                    project_directory=stl_dir,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     queue='short_queue',
                                     attempted_queues=['short_queue']
                                     )
-
-    def test_determine_job_array_parameters(self):
-        """Test determining job array parameters"""
-        self.assertEqual(self.job_1.iterate_by, ['species', 'conf_opt'])
-        self.assertEqual(self.job_1.number_of_processes, 3 * 6)
-        self.assertEqual(self.job_1.workers, 4)
-
-    def test_determine_workers(self):
-        """Test determining the number of workers"""
-        self.job_2.number_of_processes, self.job_2.workers = 1, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 1)
-
-        self.job_2.number_of_processes, self.job_2.workers = 2, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 1)
-
-        self.job_2.number_of_processes, self.job_2.workers = 3, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 1)
-
-        self.job_2.number_of_processes, self.job_2.workers = 4, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 2)
-
-        self.job_2.number_of_processes, self.job_2.workers = 5, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 2)
-
-        self.job_2.number_of_processes, self.job_2.workers = 9, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 2)
-
-        self.job_2.number_of_processes, self.job_2.workers = 10, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 4)
-
-        self.job_2.number_of_processes, self.job_2.workers = 100, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 6)
-
-        self.job_2.number_of_processes, self.job_2.workers = 1000, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 11)
-
-        self.job_2.number_of_processes, self.job_2.workers = 1e4, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 20)
-
-        self.job_2.number_of_processes, self.job_2.workers = 1e5, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 36)
-
-        self.job_2.number_of_processes, self.job_2.workers = 1e6, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 63)
-
-        self.job_2.number_of_processes, self.job_2.workers = 1e7, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 100)
-
-        self.job_2.number_of_processes, self.job_2.workers = 1e8, None
-        self.job_2._determine_workers()
-        self.assertEqual(self.job_2.workers, 100)
-
-    def test_write_hdf5(self):
-        """Test writing the HDF5 file"""
-        with pd.HDFStore(os.path.join(self.job_1.local_path, 'data.hdf5')) as store:
-            data = store['df'].to_dict()
-        self.assertEqual([key for key in data.keys()], ['spc1', 'spc2', 'spc3'])
-
-    def test_write_hdf5_for_directed_scans(self):
-        """Test writing the HDF5 file for directed scans"""
-        with pd.HDFStore(os.path.join(self.job_1.local_path, 'data.hdf5')) as store:
-            data = store['df'].to_dict()
-        self.assertEqual([key for key in data.keys()], ['spc1', 'spc2', 'spc3'])
-
-    def test_write_array_submit_script(self):
-        """Test writing an array submit script"""
-        self.job_1.write_submit_script()
-        with open(os.path.join(self.job_1.local_path, submit_filenames[servers[self.job_1.server]['cluster_soft']]),
-                  'r') as f:
-            lines = f.readlines()
-        array, hdf5 = False, False
-        for line in lines:
-            if '#SBATCH --array=1-4' in line:
-                array = True
-            if 'job/scripts/pipe.py' in line and 'data.hdf5' in line:
-                hdf5 = True
-        self.assertTrue(array)
-        self.assertTrue(hdf5)
 
     def test_write_queue_submit_script(self):
         """Test writing a queue submit script"""
@@ -469,6 +351,63 @@ class TestJobAdapter(unittest.TestCase):
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'), ignore_errors=True)
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_scan'), ignore_errors=True)
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit'), ignore_errors=True)
+
+
+class TestRotateCSV(unittest.TestCase):
+    """
+    Contains unit tests for the CSV rotation logic.
+    """
+
+    def _make_csv(self, path, num_lines):
+        """Helper to create a CSV file with a header and ``num_lines - 1`` data rows."""
+        with open(path, 'w') as f:
+            f.write('col1,col2\n')
+            for i in range(num_lines - 1):
+                f.write(f'{i},data\n')
+
+    def test_no_rotation_below_threshold(self):
+        """Test that no rotation occurs when the file is below the threshold."""
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = os.path.join(tmp, 'jobs.csv')
+            self._make_csv(csv_path, 10)
+            JobAdapter._rotate_csv_if_needed(csv_path, max_lines=50)
+            self.assertTrue(os.path.isfile(csv_path))
+            self.assertEqual(glob.glob(os.path.join(tmp, 'jobs.old.*.csv')), [])
+
+    def test_rotation_at_threshold(self):
+        """Test that the file is rotated when it reaches the threshold."""
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = os.path.join(tmp, 'jobs.csv')
+            self._make_csv(csv_path, 50)
+            JobAdapter._rotate_csv_if_needed(csv_path, max_lines=50)
+            self.assertFalse(os.path.isfile(csv_path))
+            archives = glob.glob(os.path.join(tmp, 'jobs.old.*.csv'))
+            self.assertEqual(len(archives), 1)
+
+    def test_no_error_for_missing_file(self):
+        """Test that rotation is a no-op when the file does not exist."""
+        JobAdapter._rotate_csv_if_needed('/tmp/nonexistent_arc_test.csv')
+
+    def test_multiple_rotations(self):
+        """Test that multiple rotations produce distinct archive files."""
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = os.path.join(tmp, 'jobs.csv')
+            # First rotation on "day 1"
+            self._make_csv(csv_path, 50)
+            with patch('arc.job.adapter.datetime') as mock_dt:
+                mock_dt.datetime.now.return_value = datetime.datetime(2026, 1, 15)
+                mock_dt.timedelta = datetime.timedelta
+                JobAdapter._rotate_csv_if_needed(csv_path, max_lines=50)
+            self.assertFalse(os.path.isfile(csv_path))
+            # Second rotation on "day 2"
+            self._make_csv(csv_path, 50)
+            with patch('arc.job.adapter.datetime') as mock_dt:
+                mock_dt.datetime.now.return_value = datetime.datetime(2026, 2, 20)
+                mock_dt.timedelta = datetime.timedelta
+                JobAdapter._rotate_csv_if_needed(csv_path, max_lines=50)
+            self.assertFalse(os.path.isfile(csv_path))
+            archives = glob.glob(os.path.join(tmp, 'jobs.old.*.csv'))
+            self.assertEqual(len(archives), 2)
 
 
 if __name__ == '__main__':

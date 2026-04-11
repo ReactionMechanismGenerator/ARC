@@ -8,6 +8,7 @@ import os
 import re
 
 from arc.common import clean_text, get_logger
+from arc.exceptions import InvalidAdjacencyListError
 from arc.imports import settings
 from arc.molecule import Bond, Group, Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
@@ -324,8 +325,14 @@ class ReactionFamily(object):
             if action[0] in ['CHANGE_BOND', 'FORM_BOND', 'BREAK_BOND']:
                 structure.reset_connectivity_values()
                 label_1, info, label_2 = action[1:]
-                atom_1 = structure.get_labeled_atoms(label_1)[0]
-                atom_2 = structure.get_labeled_atoms(label_2)[0]
+                labeled_1 = structure.get_labeled_atoms(label_1)
+                atom_1 = labeled_1[0] if labeled_1 else None
+                if label_1 == label_2 and len(labeled_1) >= 2:
+                    # Same label on two different atoms (e.g., R_Recombination: * + * → *-*)
+                    atom_2 = labeled_1[1]
+                else:
+                    labeled_2 = structure.get_labeled_atoms(label_2)
+                    atom_2 = labeled_2[0] if labeled_2 else None
                 if atom_1 is None or atom_2 is None or atom_1 is atom_2:
                     raise ValueError('Invalid atom labels in reaction recipe.')
                 if action[0] == 'CHANGE_BOND':
@@ -356,10 +363,11 @@ class ReactionFamily(object):
             elif action[0] in ['LOSE_RADICAL', 'GAIN_RADICAL', 'LOSE_PAIR', 'GAIN_PAIR']:
                 label, change = action[1:]
                 change = int(change)
-                atom = structure.get_labeled_atoms(label)[0]
-                if atom is None:
+                labeled_atoms = structure.get_labeled_atoms(label)
+                if not labeled_atoms:
                     raise ValueError(f'Unable to find atom with label "{label}" while applying reaction recipe.')
-                atom.apply_action([action[0], label, change])
+                for atom in labeled_atoms:
+                    atom.apply_action([action[0], label, change])
             else:
                 raise ValueError(f'Unknown action "{action[0]}" encountered.')
         if 'validAromatic' in structure.props and not structure.props['validAromatic']:
@@ -378,10 +386,18 @@ class ReactionFamily(object):
     def get_reactant_num(self) -> int:
         """
         Get the number of reactants for this family.
+        Uses the explicit ``reactantNum`` value from the groups file if available,
+        otherwise infers from the template group structure.
 
         Returns:
             int: The number of reactants.
         """
+        for line in self.groups_as_lines:
+            stripped = line.strip()
+            if stripped.startswith('reactantNum'):
+                match = re.search(r'reactantNum\s*=\s*(\d+)', stripped)
+                if match:
+                    return int(match.group(1))
         if len(self.reactants) == 1:
             group = Group().from_adjacency_list(get_group_adjlist(self.groups_as_lines, entry_label=self.reactants[0][0]))
             groups = group.split()
@@ -424,28 +440,31 @@ def get_reaction_family_products(rxn: 'ARCReaction',
                                      consider_arc_families=consider_arc_families)
     product_dicts = list()
     for family_label in family_labels:
-        # Forward:
-        products = determine_possible_reaction_products_from_family(rxn=rxn,
-                                                                    family_label=family_label,
-                                                                    consider_arc_families=consider_arc_families,
-                                                                    reverse=False,
-                                                                    )
-        if len(products):
-            product_dicts.extend(filter_products_by_reaction(rxn=rxn, product_dicts=products))
+        try:
+            # Forward:
+            products = determine_possible_reaction_products_from_family(rxn=rxn,
+                                                                        family_label=family_label,
+                                                                        consider_arc_families=consider_arc_families,
+                                                                        reverse=False,
+                                                                        )
+            if len(products):
+                product_dicts.extend(filter_products_by_reaction(rxn=rxn, product_dicts=products))
 
-        # Reverse:
-        flipped_rxn = rxn.flip_reaction(report_family=False)
-        products = determine_possible_reaction_products_from_family(rxn=flipped_rxn,
-                                                                    family_label=family_label,
-                                                                    consider_arc_families=consider_arc_families,
-                                                                    reverse=True,
-                                                                    )
-        if len(products):
-            filtered_products = filter_products_by_reaction(rxn=flipped_rxn, product_dicts=products)
-            if not discover_own_reverse_rxns_in_reverse:
-                product_dicts.extend([prod for prod in filtered_products if not prod['own_reverse']])
-            else:
-                product_dicts.extend(filtered_products)
+            # Reverse:
+            flipped_rxn = rxn.flip_reaction(report_family=False)
+            products = determine_possible_reaction_products_from_family(rxn=flipped_rxn,
+                                                                        family_label=family_label,
+                                                                        consider_arc_families=consider_arc_families,
+                                                                        reverse=True,
+                                                                        )
+            if len(products):
+                filtered_products = filter_products_by_reaction(rxn=flipped_rxn, product_dicts=products)
+                if not discover_own_reverse_rxns_in_reverse:
+                    product_dicts.extend([prod for prod in filtered_products if not prod['own_reverse']])
+                else:
+                    product_dicts.extend(filtered_products)
+        except (KeyError, ValueError, InvalidAdjacencyListError) as e:
+            logger.debug(f'Skipping family {family_label} due to unsupported group definition: {type(e).__name__}: {e}')
     return product_dicts
 
 
@@ -462,7 +481,7 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
         [{'family': str: Family label,
           'group_labels': Tuple[str, str]: Group labels used to generate the products,
           'products': List['Molecule']: The generated products,
-          'r_label_map': Dict[int, str]: Mapping of reactant atom indices to labels,
+          'r_label_map': Dict[str, int]: Mapping of reactant atom indices to labels,
           'p_label_map': Dict[str, int]: Mapping of product labels to atom indices
                                          (refers to the given 'products' in this dict
                                          and not to the products of the original reaction),
@@ -489,7 +508,18 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
                 template_mols, r_label_dict = product_list[0], product_list[1]
                 if not isomorphic_products(rxn=rxn, products=template_mols):
                     continue
-                r_label_map = {val: key for key, val in r_label_dict.items() if val}
+                # Build r_label_map preserving duplicate labels by suffixing
+                # (e.g., R_Recombination has two atoms labeled '*' → '*' and '*_2').
+                r_label_map = {}
+                for key, val in r_label_dict.items():
+                    if not val:
+                        continue
+                    label = val
+                    suffix = 2
+                    while label in r_label_map:
+                        label = f'{val}_{suffix}'
+                        suffix += 1
+                    r_label_map[label] = key
                 offsets = [0]
                 for mol in template_mols:
                     offsets.append(offsets[-1] + len(mol.atoms))
@@ -498,7 +528,12 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
                     base = offsets[i]
                     for j, atom in enumerate(mol.atoms):
                         if atom.label:
-                            p_label_map[atom.label] = base + j
+                            label = atom.label
+                            suffix = 2
+                            while label in p_label_map:
+                                label = f'{atom.label}_{suffix}'
+                                suffix += 1
+                            p_label_map[label] = base + j
                 product_dicts.append({
                     'family': family_label,
                     'group_labels': group_labels,
@@ -543,36 +578,65 @@ def check_product_isomorphism(products: List['Molecule'],
                               ) -> bool:
     """
     Check whether the products are isomorphic to the given species.
-    Supports unimolecular and bimolecular reactions.
+    Falls back to InChI comparison when graph isomorphism fails
+    (e.g., different Lewis structures perceived from XYZ vs SMILES).
 
     Args:
-        products (Tuple[List['Molecule'], Dict[int, str]]): The products to check.
+        products (List['Molecule']): The products to check.
         p_species (List['ARCSpecies']): The species to check against.
 
     Returns:
         bool: Whether the products are isomorphic to the species.
     """
+    if len(products) != len(p_species):
+        return False
     prods_a = [generate_resonance_structures_safely(mol) or [mol.copy(deep=True)] for mol in products]
     prods_b = [spc.mol_list or [spc.mol] for spc in p_species]
-    if len(prods_a) == 1:
-        prod_a = prods_a[0]
-        prod_b = prods_b[0]
-        for mol_a in prod_a:
-            if any(mol_b.is_isomorphic(mol_a) for mol_b in prod_b):
-                return True
-    if len(products) == 2:
-        isomorphic = [False, False]
-        for i, prod_a in enumerate(prods_a):
-            skip = False
-            for prod_b in prods_b:
-                if skip:
+    isomorphic = [False] * len(products)
+    for i, prod_a in enumerate(prods_a):
+        for prod_b in prods_b:
+            if isomorphic[i]:
+                break
+            for mol_a in prod_a:
+                if any(mol_b.is_isomorphic(mol_a) for mol_b in prod_b):
+                    isomorphic[i] = True
                     break
-                for mol_a in prod_a:
-                    if any(mol_b.is_isomorphic(mol_a) for mol_b in prod_b):
-                        isomorphic[i] = True
-                        skip = True
-        return all(isomorphic)
-    return False
+    if all(isomorphic):
+        return True
+    # Fall back to InChI comparison for unmatched products.
+    # Different Lewis structures perceived from XYZ vs SMILES (e.g., O=C=C(O)C=O vs O=C[C-](O)C#[O+])
+    # may not be graph-isomorphic but share the same InChI.
+    # InChI does not encode radical electrons, so also require matching multiplicity
+    # to avoid false matches between biradicals and closed-shell species
+    # (e.g., [CH2][CH2] vs C=C both give InChI=1S/C2H4/c1-2/h1-2H2).
+    # Gate behind molecular-formula check to avoid expensive InChI generation
+    # for products that can't possibly match.
+    species_fingerprints = {spc.mol.fingerprint for spc in p_species if spc.mol is not None}
+    needs_inchi = False
+    for i in range(len(products)):
+        if not isomorphic[i] and products[i].fingerprint in species_fingerprints:
+            needs_inchi = True
+            break
+    if not needs_inchi:
+        return False
+    # Precompute p_species InChIs once (not per candidate product).
+    try:
+        species_inchi_mult = [(spc.mol.to_inchi(), spc.mol.multiplicity) for spc in p_species]
+    except Exception:
+        return False
+    for i in range(len(products)):
+        if not isomorphic[i]:
+            if products[i].fingerprint not in species_fingerprints:
+                continue
+            try:
+                inchi_a = products[i].to_inchi()
+                mult_a = products[i].multiplicity
+            except Exception:
+                continue
+            if any(inchi_a == inchi_b and mult_a == mult_b
+                   for inchi_b, mult_b in species_inchi_mult):
+                isomorphic[i] = True
+    return all(isomorphic)
 
 
 def get_all_families(rmg_family_set: Union[List[str], str] = 'default',
@@ -722,6 +786,8 @@ def get_reactant_groups_from_template(groups_as_lines: List[str]) -> List[List[s
 def get_product_num(groups_as_lines: List[str]) -> int:
     """
     Get the number of products from a template content string.
+    Uses the explicit ``productNum`` value from the groups file if available,
+    otherwise infers from the template product labels.
 
     Args:
         groups_as_lines (List[str]): The template content string.
@@ -729,6 +795,12 @@ def get_product_num(groups_as_lines: List[str]) -> int:
     Returns:
         int: The number of products.
     """
+    for line in groups_as_lines:
+        stripped = line.strip()
+        if stripped.startswith('productNum'):
+            match = re.search(r'productNum\s*=\s*(\d+)', stripped)
+            if match:
+                return int(match.group(1))
     return len(get_initial_reactant_labels_from_template(groups_as_lines, products=True))
 
 
@@ -744,7 +816,7 @@ def descent_complex_group(group: str) -> List[str]:
         List[str]: The non-complex reactant group labels, e.g.: ['Xtrirad_H', 'Xbirad_H', 'Xrad_H', 'X_H'].
     """
     if group.startswith('OR{') and group.endswith('}'):
-        group = group[3:-1].split(', ')
+        group = [g.strip() for g in group[3:-1].split(',')]
     if isinstance(group, str):
         group = [group]
     return group
@@ -789,7 +861,9 @@ def get_recipe_actions(groups_as_lines: List[str]) -> List[List[str]]:
             j = 0
             while '])' not in groups_as_lines[i + 1 + j]:
                 if "['" in groups_as_lines[i + 1 + j]:
-                    actions.append(ast.literal_eval(groups_as_lines[i + 1 + j].strip())[0])
+                    line = groups_as_lines[i + 1 + j].strip()
+                    if not line.startswith('#'):
+                        actions.append(ast.literal_eval(line)[0])
                 j += 1
             break
     return actions

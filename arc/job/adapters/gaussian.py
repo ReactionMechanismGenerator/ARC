@@ -155,7 +155,7 @@ class GaussianAdapter(JobAdapter):
         self.incore_capacity = 1
         self.job_adapter = 'gaussian'
         self.execution_type = execution_type or 'queue'
-        self.command = ['g03', 'g09', 'g16']
+        self.command = ['g16', 'g09', 'g03']
         self.url = 'https://gaussian.com/'
 
         if species is None:
@@ -500,13 +500,15 @@ class GaussianAdapter(JobAdapter):
         """
         Execute a job incore.
         """
-        which(self.command,
-              return_bool=True,
-              raise_error=True,
-              raise_msg=f'Please install {self.job_adapter}, see {self.url} for more information.',
-              )
+        binary = which(self.command,
+                       return_bool=False,
+                       raise_error=True,
+                       raise_msg=f'Please install {self.job_adapter}, see {self.url} for more information.',
+                       )
+        binary_name = os.path.basename(binary)
         self._log_job_execution()
-        execute_command(incore_commands[self.job_adapter])
+        commands = [cmd.replace('g16', binary_name) for cmd in incore_commands[self.job_adapter]]
+        execute_command(commands)
 
     def execute_queue(self):
         """
