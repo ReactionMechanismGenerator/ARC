@@ -4,7 +4,6 @@ Processor module for computing thermodynamic properties and rate coefficients us
 
 import os
 import shutil
-from typing import Optional
 
 import arc.plotter as plotter
 from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file
@@ -13,15 +12,13 @@ from arc.level import Level
 from arc.job.local import execute_command
 from arc.statmech.factory import statmech_factory
 
-
 logger = get_logger()
 
 THERMO_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_thermo.py')
 KINETICS_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_kinetics.py')
 EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 4.184e+3}
 
-
-def resolve_neb_level(ts_adapters: list) -> Optional[Level]:
+def resolve_neb_level(ts_adapters: list) -> Level | None:
     """Determine the NEB level of theory if NEB was a configured TS adapter."""
     if ts_adapters and 'orca_neb' in (a.lower() for a in ts_adapters):
         orca_neb_settings = settings.get('orca_neb_settings', {})
@@ -30,7 +27,6 @@ def resolve_neb_level(ts_adapters: list) -> Optional[Level]:
             return Level(repr=neb_level_repr)
     return None
 
-
 def process_arc_project(thermo_adapter: str,
                         kinetics_adapter: str,
                         project: str,
@@ -38,9 +34,9 @@ def process_arc_project(thermo_adapter: str,
                         species_dict: dict,
                         reactions: list,
                         output_dict: dict,
-                        bac_type: Optional[str] = None,
-                        sp_level: Optional[Level] = None,
-                        freq_level: Optional[Level] = None,
+                        bac_type: str | None = None,
+                        sp_level: Level | None = None,
+                        freq_level: Level | None = None,
                         freq_scale_factor: float = 1.0,
                         compute_thermo: bool = True,
                         compute_rates: bool = True,
@@ -242,7 +238,6 @@ def process_arc_project(thermo_adapter: str,
                           log_file_path=os.path.join(output_directory, 'unconverged_species.log'))
     clean_output_directory(project_directory)
 
-
 def compare_thermo(species_for_thermo_lib: list,
                    output_directory: str,
                    ) -> None:
@@ -283,7 +278,6 @@ def compare_thermo(species_for_thermo_lib: list,
         species_to_compare.append(original_spc)
     if len(species_to_compare):
         plotter.draw_thermo_parity_plots(species_list=species_to_compare, path=output_directory)
-
 
 def compare_rates(rxns_for_kinetics_lib: list,
                   output_directory: str,
@@ -359,7 +353,6 @@ python {KINETICS_SCRIPT_PATH} {reactions_kinetics_path}   > >(tee -a stdout.log)
                                     path=output_directory)
     return reactions_to_compare
 
-
 def compare_transport(species_for_transport_lib: list,
                       output_directory: str,
                       ) -> None:
@@ -371,7 +364,6 @@ def compare_transport(species_for_transport_lib: list,
         output_directory (str): The path to the project's output folder.
     """
     pass
-
 
 def process_bdes(label: str,
                  species_dict: dict,
@@ -429,7 +421,6 @@ def process_bdes(label: str,
                          f'and {bde_indices[1]} ({source.mol.atoms[bde_indices[1] - 1].element.symbol})')
     return bde_report
 
-
 def write_unconverged_log(unconverged_species: list,
                           unconverged_rxns: list,
                           log_file_path: str,
@@ -457,7 +448,6 @@ def write_unconverged_log(unconverged_species: list,
                 f.write('Reactions:')
                 for reaction in unconverged_rxns:
                     f.write(reaction.label)
-
 
 def clean_output_directory(project_directory: str) -> None:
     """

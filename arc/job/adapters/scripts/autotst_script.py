@@ -10,10 +10,8 @@ import argparse
 import numpy as np
 import os
 import yaml
-from typing import Optional
 
 from autotst.reaction import Reaction
-
 
 def parse_command_line_arguments(command_line_args=None):
     """
@@ -37,9 +35,8 @@ def parse_command_line_arguments(command_line_args=None):
 
     return args
 
-
-def main(reaction_label: Optional[str] = None,
-         output_path: Optional[str] = None,
+def main(reaction_label: str | None = None,
+         output_path: str | None = None,
          ) -> None:
     """
     Run AutoTST to generate TS guesses.
@@ -78,7 +75,6 @@ def main(reaction_label: Optional[str] = None,
         output_path = os.path.join(output_path, 'ts_results.yml')
     with open(output_path, 'w') as f:
         f.write(yaml.dump(data=results))
-
 
 if __name__ == '__main__':
     main()

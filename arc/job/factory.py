@@ -2,7 +2,7 @@
 A module for generating job adapters.
 """
 
-from typing import TYPE_CHECKING, List, Optional, Type, Tuple, Union
+from typing import TYPE_CHECKING
 
 from arc.exceptions import JobError
 from arc.job.adapter import JobAdapter, JobEnum, JobTypeEnum
@@ -15,9 +15,8 @@ if TYPE_CHECKING:
 
 _registered_job_adapters = {}  # keys are JobEnum, values are JobAdapter subclasses
 
-
 def register_job_adapter(job_adapter_label: str,
-                         job_adapter_class: Type[JobAdapter],
+                         job_adapter_class: type[JobAdapter],
                          ) -> None:
     """
     A register for job adapters.
@@ -33,47 +32,46 @@ def register_job_adapter(job_adapter_label: str,
         raise TypeError(f'Job adapter class {job_adapter_class} is not a subclass JobAdapter.')
     _registered_job_adapters[JobEnum(job_adapter_label.lower())] = job_adapter_class
 
-
 def job_factory(job_adapter: str,
                 project: str,
                 project_directory: str,
-                job_type: Optional[Union[List[str], str]] = None,
-                args: Optional[Union[dict, str]] = None,
-                bath_gas: Optional[str] = None,
-                checkfile: Optional[str] = None,
-                conformer: Optional[int] = None,
-                constraints: Optional[List[Tuple[List[int], float]]] = None,
-                cpu_cores: Optional[str] = None,
-                dihedral_increment: Optional[float] = None,
-                dihedrals: Optional[List[float]] = None,
-                directed_scan_type: Optional[str] = None,
-                ess_settings: Optional[dict] = None,
-                ess_trsh_methods: Optional[List[str]] = None,
-                execution_type: Optional[str] = None,
+                job_type: list[str] | str | None = None,
+                args: dict | str | None = None,
+                bath_gas: str | None = None,
+                checkfile: str | None = None,
+                conformer: int | None = None,
+                constraints: list[tuple[list[int], float]] | None = None,
+                cpu_cores: str | None = None,
+                dihedral_increment: float | None = None,
+                dihedrals: list[float] | None = None,
+                directed_scan_type: str | None = None,
+                ess_settings: dict | None = None,
+                ess_trsh_methods: list[str] | None = None,
+                execution_type: str | None = None,
                 fine: bool = False,
-                initial_time: Optional[Union['datetime.datetime', str]] = None,
-                irc_direction: Optional[str] = None,
-                job_id: Optional[int] = None,
+                initial_time: 'datetime.datetime' | str | None = None,
+                irc_direction: str | None = None,
+                job_id: int | None = None,
                 job_memory_gb: float = 14.0,
-                job_name: Optional[str] = None,
-                job_num: Optional[int] = None,
-                job_server_name: Optional[str] = None,
-                job_status: Optional[List[Union[dict, str]]] = None,
-                level: Optional['Level'] = None,
-                max_job_time: Optional[float] = None,
+                job_name: str | None = None,
+                job_num: int | None = None,
+                job_server_name: str | None = None,
+                job_status: list[dict | str] | None = None,
+                level: 'Level' | None = None,
+                max_job_time: float | None = None,
                 run_multi_species: bool = False,
-                reactions: Optional[List['ARCReaction']] = None,
-                rotor_index: Optional[int] = None,
-                server: Optional[str] = None,
-                server_nodes: Optional[list] = None,
-                queue: Optional[str] = None,
-                attempted_queues: Optional[List[str]] = None,
-                species: Optional[List[ARCSpecies]] = None,
+                reactions: list['ARCReaction'] | None = None,
+                rotor_index: int | None = None,
+                server: str | None = None,
+                server_nodes: list | None = None,
+                queue: str | None = None,
+                attempted_queues: list[str] | None = None,
+                species: list[ARCSpecies] | None = None,
                 testing: bool = False,
                 times_rerun: int = 0,
-                torsions: Optional[List[List[int]]] = None,
-                tsg: Optional[int] = None,
-                xyz: Optional[dict] = None,
+                torsions: list[list[int]] | None = None,
+                tsg: int | None = None,
+                xyz: dict | None = None,
                 ) -> JobAdapter:
     """
     A factory generating a job adapter corresponding to ``job_adapter``.
@@ -100,13 +98,13 @@ def job_factory(job_adapter: str,
                                    ARC adopts the following naming system to describe computing hardware hierarchy:
                                    node > cpu > cpu_cores > cpu_threads.
         dihedral_increment (float, optional): The degrees increment to use when scanning dihedrals of TS guesses.
-        dihedrals (List[float], optional): The dihedral angels corresponding to self.torsions.
+        dihedrals (list[float], optional): The dihedral angels corresponding to self.torsions.
         directed_scan_type (str, optional): The type of the directed scan.
                                             Either ``'ess'``, ``'brute_force_sp'``, ``'brute_force_opt'``,
                                             ``'cont_opt'``, ``'brute_force_sp_diagonal'``,
                                             ``'brute_force_opt_diagonal'``, or ``'cont_opt_diagonal'``.
         ess_settings (dict, optional): A dictionary of available ESS and a corresponding server list.
-        ess_trsh_methods (List[str], optional): A list of troubleshooting methods already tried out.
+        ess_trsh_methods (list[str], optional): A list of troubleshooting methods already tried out.
         execution_type (str, optional): The execution type, 'incore', 'queue', or 'pipe'.
         fine (bool, optional): Whether to use fine geometry optimization parameters. Default: ``False``.
         initial_time (datetime.datetime or str, optional): The time at which this job was initiated.
@@ -127,15 +125,15 @@ def job_factory(job_adapter: str,
         level (Level): The level of theory to use.
         max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
         run_multi_species (bool, optional): Whether to run a job for multiple species in the same input file.
-        reactions (List[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
+        reactions (list[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
         rotor_index (int, optional): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         server (str, optional): The server's name.
         server_nodes (list, optional): The nodes this job was previously submitted to.
-        species (List[ARCSpecies], optional): Entries are ARCSpecies instances.
+        species (list[ARCSpecies], optional): Entries are ARCSpecies instances.
                                               Either ``reactions`` or ``species`` must be given.
         testing (bool, optional): Whether the object is generated for testing purposes, ``True`` if it is.
         times_rerun (int, optional): Number of times this job was re-run with the same arguments (no trsh methods).
-        torsions (List[List[int]], optional): The 0-indexed atom indices of the torsion(s).
+        torsions (list[list[int]], optional): The 0-indexed atom indices of the torsion(s).
         tsg (int, optional): TSGuess number if optimizing TS guesses.
         xyz (dict, optional): The 3D coordinates to use. If not give, species.get_xyz() will be used.
 

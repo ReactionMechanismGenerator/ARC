@@ -2,15 +2,12 @@
 A factory for parsing ESS log files.
 """
 
-from typing import Optional, Type
-
 from arc.parser.adapter import ESSAdapter, ESSEnum
 
 _registered_ess_adapters = {}  # keys are ESSEnum, values are ESSAdapter subclasses
 
-
 def register_ess_adapter(ess_adapter_label: str,
-                         ess_adapter_class: Type[ESSAdapter],
+                         ess_adapter_class: type[ESSAdapter],
                          ) -> None:
     """
     A register for ess adapters.
@@ -26,7 +23,6 @@ def register_ess_adapter(ess_adapter_label: str,
         raise TypeError(
             f'ESS adapter class {ess_adapter_class} is not a subclass ESSAdapter.')
     _registered_ess_adapters[ESSEnum(ess_adapter_label.lower())] = ess_adapter_class
-
 
 def ess_factory(log_file_path: str,
                 ess_adapter: str,

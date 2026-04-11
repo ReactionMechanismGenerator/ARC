@@ -83,7 +83,6 @@ class TestARC(unittest.TestCase):
                                           'mockter': ['local'],
                                           'molpro': ['local', 'server2'],
                                           'onedmin': ['server1'],
-                                          'openbabel': ['local'],
                                           'orca': ['local'],
                                           'orca_neb': ['local'],
                                           'qchem': ['server1'],

@@ -3,16 +3,14 @@ A module for working with levels of theory.
 """
 
 import os
-from typing import Dict, Iterable, List, Optional, Union
+from collections.abc import Iterable
 
 from arc.common import ARC_PATH, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
 from arc.imports import settings
 
-
 logger = get_logger()
 
 levels_ess, supported_ess = settings['levels_ess'], settings['supported_ess']
-
 
 class Level(object):
     """
@@ -31,33 +29,33 @@ class Level(object):
         method_type (str, optional): The level of theory method type (DFT, wavefunction, force field, semi-empirical,
                                      or composite). Not in ``LevelOfTheory``.
         software (str, optional): Quantum chemistry software.
-        software_version (Union[int, float, str], optional): Quantum chemistry software version.
+        software_version (int | float | str, optional): Quantum chemistry software version.
         solvation_method (str, optional): Solvation method.
         solvent (str, optional): The solvent. Values are strings of "known" solvents, see https://gaussian.com/scrf/.
         solvation_scheme_level (Level, optional): A Level class representing the level of theory to calculate a
                                                   solvation energy correction at. Not in ``LevelOfTheory``.
-        args (Dict[Dict[str, str]], optional): Additional arguments provided to the software.
+        args (dict[dict[str, str]], optional): Additional arguments provided to the software.
                                                Different than the ``args`` in ``LevelOfTheory``.
         compatible_ess (list, optional): Entries are names of compatible ESS. Not in ``LevelOfTheory``.
         year (int, optional): Optional 4-digit year suffix for differentiating methods such as b97d3/b97d32023.
     """
 
     def __init__(self,
-                 repr: Optional[Union[str, dict, 'Level']] = None,
-                 method: Optional[str] = None,
-                 basis: Optional[str] = None,
-                 auxiliary_basis: Optional[str] = None,
-                 dispersion: Optional[str] = None,
-                 cabs: Optional[str] = None,
-                 method_type: Optional[str] = None,
-                 software: Optional[str] = None,
-                 software_version: Optional[Union[int, float, str]] = None,
-                 compatible_ess: Optional[List[str]] = None,
-                 solvation_method: Optional[str] = None,
-                 solvent: Optional[str] = None,
-                 solvation_scheme_level: Optional['Level'] = None,
-                 args: Optional[Union[Dict[str, str], Iterable, str]] = None,
-                 year: Optional[int] = None,
+                 repr: str | dict | 'Level' | None = None,
+                 method: str | None = None,
+                 basis: str | None = None,
+                 auxiliary_basis: str | None = None,
+                 dispersion: str | None = None,
+                 cabs: str | None = None,
+                 method_type: str | None = None,
+                 software: str | None = None,
+                 software_version: int | float | str | None = None,
+                 compatible_ess: list[str] | None = None,
+                 solvation_method: str | None = None,
+                 solvent: str | None = None,
+                 solvation_scheme_level: 'Level' | None = None,
+                 args: dict[str, str] | Iterable | str | None = None,
+                 year: int | None = None,
                  ):
         self.repr = repr
         self.method = method
@@ -339,7 +337,7 @@ class Level(object):
         wave_function_methods = ['hf', 'cc', 'ci', 'mp2', 'mp3', 'cp', 'cep', 'nevpt', 'dmrg', 'ri', 'cas', 'ic', 'mr',
                                  'bd', 'mbpt']
         semiempirical_methods = ['am', 'pm', 'zindo', 'mndo', 'xtb', 'nddo']
-        force_field_methods = ['amber', 'mmff', 'dreiding', 'uff', 'qmdff', 'gfn', 'gaff', 'ghemical', 'charmm', 'ani']
+        force_field_methods = ['amber', 'mmff', 'dreiding', 'uff', 'qmdff', 'gfn', 'charmm', 'ani']
         # all composite methods supported by Gaussian
         composite_methods = ['cbs-4m', 'cbs-qb3', 'cbs-qb3-paraskevas', 'rocbs-qb3', 'cbs-apno', 'w1u', 'w1ro', 'w1bd',
                              'g1', 'g2', 'g3', 'g4', 'g2mp2', 'g3mp2', 'g3b3', 'g3mp2b3', 'g4mp2']
@@ -361,7 +359,7 @@ class Level(object):
             self.method_type = 'dft'
 
     def deduce_software(self,
-                        job_type: Optional[str] = None):
+                        job_type: str | None = None):
         """
         Deduce the ESS to be used for a given level of theory.
         Populates the .software attribute.
@@ -446,16 +444,15 @@ class Level(object):
                 if ess in ess_methods and self.method in ess_methods[ess]:
                     self.compatible_ess.append(ess)
 
-
-def assign_frequency_scale_factor(level: Union[str, Level]) -> Optional[int]:
+def assign_frequency_scale_factor(level: str | Level) -> int | None:
     """
     Assign a frequency scaling factor to a level of theory.
 
     Args:
-        level (Union[str, Level]): The level of theory.
+        level (str | Level): The level of theory.
 
     Returns:
-        Optional[int]: The frequency scaling factor.
+        int | None: The frequency scaling factor.
     """
     freq_scale_factors = read_yaml_file(os.path.join(ARC_PATH, 'data', 'freq_scale_factors.yml'))['freq_scale_factors']
     if isinstance(level, str):

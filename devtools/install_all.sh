@@ -98,7 +98,6 @@ if [[ $SKIP_EXT == false ]]; then
         [GCN\ CPU]=install_gcn.sh
         [AutoTST]=install_autotst.sh
         [KinBot]=install_kinbot.sh
-        [OpenBabel]=install_ob.sh
         [xtb]=install_xtb.sh
         [Sella]=install_sella.sh
         [TorchANI]=install_torchani.sh

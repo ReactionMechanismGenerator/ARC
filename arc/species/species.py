@@ -7,7 +7,6 @@ import datetime
 import numpy as np
 import os
 from math import isclose
-from typing import Dict, List, Optional, Tuple, Union
 
 import arc.molecule.element as elements
 from arc.common import (SYMBOL_BY_NUMBER,
@@ -60,25 +59,24 @@ logger = get_logger()
 
 valid_chars, minimum_barrier = settings['valid_chars'], settings['minimum_barrier']
 
-
 class ARCSpecies(object):
     """
     A class for representing stationary points.
 
     Structures (rotors_dict is initialized in conformers.find_internal_rotors; pivots/scan/top values are 1-indexed)::
 
-            rotors_dict: {0: {'pivots': ``List[int]``,  # 1-indexed
-                              'top': ``List[int]``,  # 1-indexed
-                              'scan': ``List[int]``,  # 1-indexed
-                              'torsion': ``List[int]``,  # 0-indexed
+            rotors_dict: {0: {'pivots': ``list[int]``,  # 1-indexed
+                              'top': ``list[int]``,  # 1-indexed
+                              'scan': ``list[int]``,  # 1-indexed
+                              'torsion': ``list[int]``,  # 0-indexed
                               'number_of_running_jobs': ``int``,
-                              'success': Optional[``bool``],  # ``None`` by default
+                              'success': ``bool`` | None,  # ``None`` by default
                               'invalidation_reason': ``str``,
                               'times_dihedral_set': ``int``,
                               'scan_path': <path to scan output file>,
                               'max_e': ``float``,  # relative to the minimum energy, in kJ/mol,
                               'trsh_counter': ``int``,
-                              'trsh_methods': ``List[str]``,
+                              'trsh_methods': ``list[str]``,
                               'symmetry': ``int``,
                               'dimensions': ``int``,
                               'original_dihedrals': ``list``,
@@ -127,7 +125,7 @@ class ARCSpecies(object):
                                             in which case the job should be unrestricted, but the multiplicity does not
                                             have the required information to make that decision (r vs. u).
         force_field (str, optional): The force field to be used for conformer screening. The default is MMFF94s.
-                                     Other optional force fields are MMFF94, UFF, or GAFF (not recommended, slow).
+                                     Other optional force fields are MMFF94 and UFF.
                                      If 'fit' is specified for this parameter, some initial MMFF94s conformers will be
                                      generated, then force field parameters will be fitted for this molecule and
                                      conformers will be re-run with the fitted force field (recommended for drug-like
@@ -175,15 +173,15 @@ class ARCSpecies(object):
         preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)
                                                  between which distances and dihedrals of these pivots must be
                                                  preserved. Used for identification of rotors which break a TS.
-        fragments (Optional[List[List[int]]]):
+        fragments (list[list[int]] | None):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
         active (dict, optional): The active orbitals. Possible keys are:
-                                 'occ' (List[int]): The occupied orbitals.
-                                 'closed' (List[int]): The closed-shell orbitals.
-                                 'frozen' (List[int]): The frozen orbitals.
-                                 'core' (List[int]): The core orbitals.
-                                 'e_o' (Tuple[int, int]): The number of active electrons, determined by the total number
+                                 'occ' (list[int]): The occupied orbitals.
+                                 'closed' (list[int]): The closed-shell orbitals.
+                                 'frozen' (list[int]): The frozen orbitals.
+                                 'core' (list[int]): The core orbitals.
+                                 'e_o' (tuple[int, int]): The number of active electrons, determined by the total number
                                  of electrons minus the core electrons (2 e's per heavy atom), and the number of active
                                  orbitals, determined by the number of closed-shell orbitals and active orbitals
                                  (w/o core orbitals).
@@ -241,10 +239,10 @@ class ARCSpecies(object):
         successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.
         unsuccessful_methods (list): Methods used to generate a TS guess that were unsuccessfully.
         chosen_ts (int): The TSGuess index corresponding to the chosen TS conformer used for optimization.
-        chosen_ts_list (List[int]): The TSGuess index corresponding to the TS guesses that were tried out.
+        chosen_ts_list (list[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
-        ts_checks (Dict[str, bool]): Checks that a TS species went through.
-        rxn_zone_atom_indices (List[int]): 0-indexed atom indices of the active reaction zone.
+        ts_checks (dict[str, bool]): Checks that a TS species went through.
+        rxn_zone_atom_indices (list[int]): 0-indexed atom indices of the active reaction zone.
         ts_conf_spawned (bool): Whether conformers were already spawned for the Species (representing a TS) based on its
                                 TSGuess objects.
         tsg_spawned (bool): If this species is a TS, this attribute describes whether TS guess jobs were already spawned.
@@ -264,7 +262,7 @@ class ARCSpecies(object):
         transport_data (TransportData): A placeholder for updating transport properties after Lennard-Jones
                                         calculation (using OneDMin).
         force_field (str): The force field to be used for conformer screening. The default is MMFF94s.
-                           Other optional force fields are MMFF94, UFF, or GAFF (not recommended, slow).
+                           Other optional force fields are MMFF94 and UFF.
                            If 'fit' is specified for this parameter, some initial MMFF94s conformers will be generated,
                            then force field parameters will be fitted for this molecule and conformers will be re-run
                            with the fitted force field (recommended for drug-like species and species with many
@@ -285,7 +283,7 @@ class ARCSpecies(object):
         zmat (dict): The species internal coordinates (Z Matrix).
         preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
                                        distances and dihedrals of these pivots must be preserved.
-        fragments (Optional[List[List[int]]]):
+        fragments (list[list[int]] | None):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
         active (dict): The active orbitals. See description in Args.
@@ -301,40 +299,40 @@ class ARCSpecies(object):
     """
 
     def __init__(self,
-                 active: Optional[dict] = None,
+                 active: dict | None = None,
                  adjlist: str = '',
-                 bdes: Optional[list] = None,
-                 bond_corrections: Optional[dict] = None,
-                 charge: Optional[int] = None,
-                 checkfile: Optional[str] = None,
-                 compute_thermo: Optional[bool] = None,
-                 include_in_thermo_lib: Optional[bool] = True,
+                 bdes: list | None = None,
+                 bond_corrections: dict | None = None,
+                 charge: int | None = None,
+                 checkfile: str | None = None,
+                 compute_thermo: bool | None = None,
+                 include_in_thermo_lib: bool | None = True,
                  consider_all_diastereomers: bool = True,
-                 directed_rotors: Optional[dict] = None,
+                 directed_rotors: dict | None = None,
                  e0_only: bool = False,
-                 external_symmetry: Optional[int] = None,
-                 fragments: Optional[List[List[int]]] = None,
+                 external_symmetry: int | None = None,
+                 fragments: list[list[int]] | None = None,
                  force_field: str = 'MMFF94s',
                  inchi: str = '',
                  is_ts: bool = False,
-                 irc_label: Optional[str] = None,
-                 label: Optional[str] = None,
-                 mol: Optional[Molecule] = None,
-                 multiplicity: Optional[int] = None,
-                 multi_species: Optional[str] = None,
-                 number_of_radicals: Optional[int] = None,
-                 optical_isomers: Optional[int] = None,
-                 preserve_param_in_scan: Optional[list] = None,
-                 run_time: Optional[datetime.timedelta] = None,
-                 rxn_label: Optional[str] = None,
-                 rxn_index: Optional[int] = None,
+                 irc_label: str | None = None,
+                 label: str | None = None,
+                 mol: Molecule | None = None,
+                 multiplicity: int | None = None,
+                 multi_species: str | None = None,
+                 number_of_radicals: int | None = None,
+                 optical_isomers: int | None = None,
+                 preserve_param_in_scan: list | None = None,
+                 run_time: datetime.timedelta | None = None,
+                 rxn_label: str | None = None,
+                 rxn_index: int | None = None,
                  smiles: str = '',
-                 species_dict: Optional[dict] = None,
-                 ts_number: Optional[int] = None,
-                 xyz: Optional[Union[list, dict, str]] = None,
-                 yml_path: Optional[str] = None,
+                 species_dict: dict | None = None,
+                 ts_number: int | None = None,
+                 xyz: list | dict | str | None = None,
+                 yml_path: str | None = None,
                  keep_mol: bool = False,
-                 project_directory: Optional[str] = None,
+                 project_directory: str | None = None,
                  ):
         self.t1 = None
         self.ts_number = ts_number
@@ -1061,12 +1059,12 @@ class ARCSpecies(object):
             if not success:
                 self.mol_list = [self.mol]
 
-    def is_monoatomic(self) -> Optional[bool]:
+    def is_monoatomic(self) -> bool | None:
         """
         Determine whether the species is monoatomic.
 
         Returns:
-            Optional[bool]: Whether the species is monoatomic.
+            bool | None: Whether the species is monoatomic.
         """
         if self.mol is not None and len(self.mol.atoms):
             return len(self.mol.atoms) == 1
@@ -1077,12 +1075,12 @@ class ARCSpecies(object):
             return len(xyz['symbols']) == 1
         return None
 
-    def is_diatomic(self) -> Optional[bool]:
+    def is_diatomic(self) -> bool | None:
         """
         Determine whether the species is diatomic.
 
         Returns:
-            Optional[bool]: Whether the species is diatomic.
+            bool | None: Whether the species is diatomic.
         """
         if self.mol is not None and len(self.mol.atoms):
             return len(self.mol.atoms) == 2
@@ -1091,15 +1089,15 @@ class ARCSpecies(object):
             return len(xyz['symbols']) == 2
         return None
 
-    def is_isomorphic(self, other: Union['ARCSpecies', Molecule]) -> Optional[bool]:
+    def is_isomorphic(self, other: 'ARCSpecies' | Molecule) -> bool | None:
         """
         Determine whether the species is isomorphic with ``other``.
 
         Args:
-            other (Union[ARCSpecies, Molecule]): An ARCSpecies, or Molecule object instance to compare isomorphism with.
+            other (ARCSpecies | Molecule): An ARCSpecies, or Molecule object instance to compare isomorphism with.
 
         Returns:
-            Optional[bool]: Whether the species is isomorphic with ``other``.
+            bool | None: Whether the species is isomorphic with ``other``.
         """
         if self.mol is None:
             return None
@@ -1203,7 +1201,7 @@ class ARCSpecies(object):
     def get_xyz(self,
                 generate: bool = True,
                 return_format: str = 'dict',
-                ) -> Optional[Union[dict, str]]:
+                ) -> dict | str | None:
         """
         Get the highest quality xyz the species has.
         If it doesn't have any 3D information, and if ``generate`` is ``True``, cheaply generate it.
@@ -1216,7 +1214,7 @@ class ARCSpecies(object):
             return_format (str, optional): Whether to output a 'dict' or a 'str' representation of the respective xyz.
 
         Return:
-             Optional[Union[dict, str]]: The xyz coordinates in the requested representation.
+             dict | str | None: The xyz coordinates in the requested representation.
         """
         conf = self.conformers[0] if self.conformers else None
         xyz = self.final_xyz or self.initial_xyz or self.most_stable_conformer or conf or self.cheap_conformer
@@ -1383,10 +1381,10 @@ class ARCSpecies(object):
     def set_dihedral(self,
                      scan: list,
                      index: int = 1,
-                     deg_increment: Optional[float] = None,
-                     deg_abs: Optional[float] = None,
+                     deg_increment: float | None = None,
+                     deg_abs: float | None = None,
                      count: bool = True,
-                     xyz: Optional[dict] = None,
+                     xyz: dict | None = None,
                      chk_rotor_list: bool = True):
         """
         Set the dihedral angle value of the torsion ``scan``.
@@ -1463,7 +1461,7 @@ class ARCSpecies(object):
     def determine_multiplicity(self,
                                smiles: str,
                                adjlist: str,
-                               mol: Optional[Molecule],
+                               mol: Molecule | None,
                                ):
         """
         Determine the spin multiplicity of the species.
@@ -1483,7 +1481,7 @@ class ARCSpecies(object):
     def determine_multiplicity_from_descriptors(self,
                                                 smiles: str,
                                                 adjlist: str,
-                                                mol: Optional[Molecule]):
+                                                mol: Molecule | None):
         """
         Determine the spin multiplicity of the species from the chemical descriptors.
 
@@ -1609,7 +1607,7 @@ class ARCSpecies(object):
         self.cluster_tsgs()
 
     def mol_from_xyz(self,
-                     xyz: Optional[dict] = None,
+                     xyz: dict | None = None,
                      get_cheap: bool = False,
                      ) -> None:
         """
@@ -1680,7 +1678,7 @@ class ARCSpecies(object):
             else:
                 logger.error(f'Could not infer a 2D graph for species {self.label}')
 
-    def process_xyz(self, xyz_list: Union[list, str, dict]):
+    def process_xyz(self, xyz_list: list | str | dict):
         """
         Process the user's input and add either to the .conformers attribute or to .ts_guesses.
 
@@ -1757,8 +1755,8 @@ class ARCSpecies(object):
                            opt_path: str,
                            bath_gas: str,
                            opt_level: Level,
-                           freq_path: Optional[str] = '',
-                           freq_level: Optional[Level] = None):
+                           freq_path: str | None = '',
+                           freq_level: Level | None = None):
         """
         Set the species.transport_data attribute after a Lennard-Jones calculation (via OneDMin).
 
@@ -1816,10 +1814,10 @@ class ARCSpecies(object):
         )
 
     def check_xyz_isomorphism(self,
-                              mol: Optional[Molecule] = None,
-                              xyz: Optional[dict] = None,
-                              allow_nonisomorphic_2d: Optional[bool] = False,
-                              verbose: Optional[bool] = True,
+                              mol: Molecule | None = None,
+                              xyz: dict | None = None,
+                              allow_nonisomorphic_2d: bool | None = False,
+                              verbose: bool | None = True,
                               ) -> bool:
         """
         Check whether the perception of self.final_xyz or ``xyz`` is isomorphic with self.mol.
@@ -2155,7 +2153,7 @@ class ARCSpecies(object):
         else:
             return 1 if self.fragments is None else len(self.fragments)
 
-    def get_bonds(self) -> List[tuple]:
+    def get_bonds(self) -> list[tuple]:
         """
         Generate a list of length-2 tuples indicating the bonding atoms in the molecule.
         Returns:
@@ -2188,7 +2186,6 @@ class ARCSpecies(object):
 
         return kabsch(self.get_xyz(), sort_xyz_using_indices(other.get_xyz(), map_))
 
-
 class TSGuess(object):
     """
     A class for representing TS a guess.
@@ -2216,7 +2213,7 @@ class TSGuess(object):
         initial_xyz (dict): The 3D coordinates guess.
         opt_xyz (dict): The 3D coordinates after optimization at the ts_guesses level.
         method (str): The method/source used for the xyz guess.
-        method_sources (List[str]): All methods/sources that produced an equivalent xyz guess.
+        method_sources (list[str]): All methods/sources that produced an equivalent xyz guess.
         method_index (int): A subindex, used for cases where a single method generates several guesses.
                             Counts separately for each direction, 'F' and 'R'.
         method_direction (str): The reaction direction used for generating the guess ('F' or 'R').
@@ -2227,33 +2224,33 @@ class TSGuess(object):
         success (bool): Whether the TS guess method succeeded in generating an XYZ guess or not.
         energy (float): Relative energy of all TS conformers in kJ/mol.
         index (int): A running index of all TSGuess objects belonging to an ARCSpecies object.
-        imaginary_freqs (List[float]): The imaginary frequencies of the TS guess after optimization.
+        imaginary_freqs (list[float]): The imaginary frequencies of the TS guess after optimization.
         conformer_index (int): An index corresponding to the conformer jobs spawned for each TSGuess object.
                                Assigned only if self.success is ``True``.
         successful_irc (bool): Whether the IRS run(s) identified this to be the correct TS by isomorphism of the wells.
         successful_normal_mode (bool): Whether a normal mode check was successful.
         errors (str): Problems experienced with this TSGuess. Used for logging.
-        cluster (List[int]): Indices of TSGuess object instances clustered together.
+        cluster (list[int]): Indices of TSGuess object instances clustered together.
         log_path (str): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
     """
 
     def __init__(self,
-                 index: Optional[int] = None,
-                 method: Optional[str] = None,
-                 method_index: Optional[int] = None,
-                 method_direction: Optional[str] = None,
-                 constraints: Optional[Dict[List[int], int]] = None,
-                 t0: Optional[datetime.datetime] = None,
-                 execution_time: Optional[Union[str, datetime.timedelta]] = None,
-                 success: Optional[bool] = None,
-                 family: Optional[str] = None,
-                 xyz: Optional[Union[dict, str]] = None,
+                 index: int | None = None,
+                 method: str | None = None,
+                 method_index: int | None = None,
+                 method_direction: str | None = None,
+                 constraints: dict[list[int], int] | None = None,
+                 t0: datetime.datetime | None = None,
+                 execution_time: str | datetime.timedelta | None = None,
+                 success: bool | None = None,
+                 family: str | None = None,
+                 xyz: dict | str | None = None,
                  arc_reaction: Optional = None,
-                 ts_dict: Optional[dict] = None,
-                 energy: Optional[float] = None,
-                 cluster: Optional[List[int]] = None,
-                 log_path: Optional[str] = None,
-                 project_directory: Optional[str] = None,
+                 ts_dict: dict | None = None,
+                 energy: float | None = None,
+                 cluster: list[int] | None = None,
+                 log_path: str | None = None,
+                 project_directory: str | None = None,
                  ):
 
         if ts_dict is not None:
@@ -2322,7 +2319,7 @@ class TSGuess(object):
         self._opt_xyz = check_xyz_dict(value)
 
     @staticmethod
-    def _normalize_method_sources(method_sources: Optional[List[str]]) -> List[str]:
+    def _normalize_method_sources(method_sources: list[str] | None) -> list[str]:
         """
         Normalize method_sources to a unique, ordered, lowercase list.
         """
@@ -2422,8 +2419,8 @@ class TSGuess(object):
         self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
 
     def process_xyz(self,
-                    xyz: Union[dict, str],
-                    project_directory: Optional[str] = None,
+                    xyz: dict | str,
+                    project_directory: str | None = None,
                     ):
         """
         Process the user's input. If ``xyz`` represents a file path, parse it.
@@ -2442,7 +2439,7 @@ class TSGuess(object):
 
     def get_xyz(self,
                 return_format: str = 'dict',
-                ) -> Optional[Union[dict, str]]:
+                ) -> dict | str | None:
         """
         Get the highest quality xyz the TSGuess has.
         Returns ``None`` if no xyz can be retrieved.
@@ -2451,7 +2448,7 @@ class TSGuess(object):
             return_format (str, optional): Whether to output a 'dict' or a 'str' representation of the respective xyz.
 
         Return:
-             Optional[Union[dict, str]]: The xyz coordinates in the requested representation.
+             dict | str | None: The xyz coordinates in the requested representation.
         """
         xyz = self.opt_xyz or self.initial_xyz
         if return_format == 'str':
@@ -2494,7 +2491,6 @@ class TSGuess(object):
         """
         if self.t0 is not None:
             self.execution_time = datetime.datetime.now() - self.t0
-
 
 class ThermoData(object):
     """
@@ -2599,7 +2595,6 @@ class ThermoData(object):
             elif hasattr(self, key):
                 setattr(self, key, value)
 
-
 class TransportData(object):
     """
     A set of transport properties used in molecular simulations and kinetic models.
@@ -2661,7 +2656,6 @@ class TransportData(object):
         return (TransportData, (self.shapeIndex, self.epsilon, self.sigma, self.dipoleMoment,
                                 self.polarizability, self.rotrelaxcollnum, self.comment))
 
-
 def determine_occ(xyz, charge):
     """
     Determines the number of occupied orbitals for an MRCI calculation.
@@ -2675,14 +2669,13 @@ def determine_occ(xyz, charge):
             electrons += atom.number
     electrons -= charge
 
-
 def determine_rotor_symmetry(label: str,
-                             pivots: Union[List[int], str],
+                             pivots: list[int] | str,
                              rotor_path: str = '',
-                             energies: Optional[Union[list, np.ndarray]] = None,
+                             energies: list | np.ndarray | None = None,
                              return_num_wells: bool = False,
                              log: bool = True,
-                             ) -> Tuple[int, float, Optional[int]]:
+                             ) -> tuple[int, float, int | None]:
     """
     Determine the rotor symmetry number from a potential energy scan.
     The *worst* resolution for each peak and valley is determined.
@@ -2705,7 +2698,7 @@ def determine_rotor_symmetry(label: str,
         or if rotor_path does not point to an existing file.
 
     Returns:
-        Tuple[int, float, int]:
+        tuple[int, float, int]:
             int: The symmetry number
             float: The highest torsional energy barrier in kJ/mol.
             int (optional): The number of peaks, only returned if ``return_len_peaks`` is ``True``.
@@ -2795,18 +2788,15 @@ def determine_rotor_symmetry(label: str,
     else:
         return symmetry, max_e, None
 
-
 def cyclic_index_i_plus_1(i: int,
                           length: int,
                           ) -> int:
     """A helper function for cyclic indexing rotor scans"""
     return i + 1 if i + 1 < length else 0
 
-
 def cyclic_index_i_minus_1(i: int) -> int:
     """A helper function for cyclic indexing rotor scans"""
     return i - 1 if i - 1 > 0 else -1
-
 
 def determine_rotor_type(rotor_path: str) -> str:
     """
@@ -2816,7 +2806,6 @@ def determine_rotor_type(rotor_path: str) -> str:
     energies = parse_1d_scan_energies(log_file_path=rotor_path)[0]
     max_val = max(energies)
     return 'FreeRotor' if max_val < minimum_barrier else 'HinderedRotor'
-
 
 def enumerate_bonds(mol: Molecule) -> dict:
     """
@@ -2835,7 +2824,6 @@ def enumerate_bonds(mol: Molecule) -> dict:
         return mol_list[0].enumerate_bonds()
     else:
         return mol.enumerate_bonds()
-
 
 def check_xyz(xyz: dict,
               multiplicity: int,
@@ -2863,7 +2851,6 @@ def check_xyz(xyz: dict,
     if electrons % 2 ^ multiplicity % 2:
         return True
     return False
-
 
 def are_coords_compliant_with_graph(xyz: dict,
                                     mol: Molecule,
@@ -2896,9 +2883,8 @@ def are_coords_compliant_with_graph(xyz: dict,
         checked_atoms.append(atom_index_1)
     return True
 
-
 def colliding_atoms(xyz: dict,
-                    mol: Optional[Molecule] = None,
+                    mol: Molecule | None = None,
                     threshold: float = 0.60,
                     ) -> bool:
     """
@@ -2932,11 +2918,10 @@ def colliding_atoms(xyz: dict,
                 return True
     return False
 
-
 def check_label(label: str,
                 is_ts: bool = False,
                 verbose: bool = False,
-                ) -> Tuple[str, Optional[str]]:
+                ) -> tuple[str, str | None]:
     """
     Check whether a species (or reaction) label is legal, modify it if needed.
 
@@ -2949,7 +2934,7 @@ def check_label(label: str,
         TypeError: If the label is not a string type.
         SpeciesError: If the label is illegal and cannot be automatically fixed.
 
-    Returns: Tuple[str, Optional[str]]
+    Returns: tuple[str, str | None]
         - A legal label.
         - The original label if the label was modified, else ``None``.
     """
@@ -2989,18 +2974,17 @@ def check_label(label: str,
         original_label = None
     return label, original_label
 
-
-def check_atom_balance(entry_1: Union[dict, str, Molecule],
-                       entry_2: Union[dict, str, Molecule],
-                       verbose: Optional[bool] = True,
+def check_atom_balance(entry_1: dict | str | Molecule,
+                       entry_2: dict | str | Molecule,
+                       verbose: bool | None = True,
                        ) -> bool:
     """
     Check whether the two entries are in atom balance.
 
     Args:
-        entry_1 (Union[dict, str, Molecule]): Either an xyz (dict or str) or an RMG Molecule object.
-        entry_2 (Union[dict, str, Molecule]): Either an xyz (dict or str) or an RMG Molecule object.
-        verbose (Optional[bool]): Whether to log the differences if found.
+        entry_1 (dict | str | Molecule): Either an xyz (dict or str) or an RMG Molecule object.
+        entry_2 (dict | str | Molecule): Either an xyz (dict or str) or an RMG Molecule object.
+        verbose (bool | None): Whether to log the differences if found.
 
     Raises:
         SpeciesError: If both entries are empty.
@@ -3045,8 +3029,7 @@ def check_atom_balance(entry_1: Union[dict, str, Molecule],
 
     return result
 
-
-def split_mol(mol: Molecule) -> Tuple[List[Molecule], List[List[int]]]:
+def split_mol(mol: Molecule) -> tuple[list[Molecule], list[list[int]]]:
     """
     Split an RMG Molecule object by connectivity gaps while retaining the relative atom order.
 
@@ -3054,7 +3037,7 @@ def split_mol(mol: Molecule) -> Tuple[List[Molecule], List[List[int]]]:
         mol (Molecule): The Molecule to split.
 
     Returns:
-        Tuple[List[Molecule], List[List[int]]]:
+        tuple[list[Molecule], list[list[int]]]:
             - Entries are molecular fragments resulting from the split.
             - Entries are lists with indices that correspond to the original atoms that were assigned to each fragment.
     """
@@ -3068,10 +3051,9 @@ def split_mol(mol: Molecule) -> Tuple[List[Molecule], List[List[int]]]:
         fragments.append(frag_indices)
     return molecules, fragments
 
-
 def rmg_mol_from_dict_repr(representation: dict,
                            is_ts: bool = False,
-                           ) -> Optional[Molecule]:
+                           ) -> Molecule | None:
     """
     Generate a dict representation of an RMG ``Molecule`` object instance.
 
@@ -3107,7 +3089,6 @@ def rmg_mol_from_dict_repr(representation: dict,
         mol.identify_ring_membership()
         mol.update_connectivity_values()
     return mol
-
 
 def rmg_mol_to_dict_repr(mol: Molecule,
                          reset_atom_ids: bool = False,

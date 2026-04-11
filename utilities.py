@@ -21,7 +21,6 @@ def check_dependencies():
     print('{0:<15}{1:<15}{2}'.format('Package', 'Version', 'Location'))
 
     missing = {
-        'openbabel': _check_openbabel(),
         'rdkit': _check_rdkit(),
     }
 
@@ -47,24 +46,6 @@ RDKit should be installed from the RDKit channel instead:
         print("""
 Everything was found :)
 """)
-
-
-def _check_openbabel():
-    """Check for OpenBabel"""
-    missing = False
-
-    try:
-        from openbabel import openbabel
-    except ImportError:
-        print('{0:<30}{1}'.format('OpenBabel',
-                                  'Not found. Necessary for SMILES/InChI functionality for nitrogen compounds.'))
-        missing = True
-    else:
-        version = openbabel.OBReleaseVersion()
-        location = openbabel.__file__
-        print('{0:<15}{1:<15}{2}'.format('OpenBabel', version, location))
-
-    return missing
 
 
 def _check_rdkit():
@@ -100,16 +81,16 @@ def _check_rdkit():
 
 def check_python():
     """
-    Check that Python 3 is in the environment.
+    Check that Python 3.14+ is in the environment.
     """
     major = sys.version_info.major
     minor = sys.version_info.minor
-    if not (major == 3 and minor >= 7):
-        sys.exit('\nRMG-Py requires Python 3.7 or higher. You are using Python {0}.{1}.\n\n'
+    if not (major == 3 and minor >= 14):
+        sys.exit(f'\nARC requires Python 3.14 or higher. You are using Python {major}.{minor}.\n\n'
                  'If you are using Anaconda, you should create a new environment using\n\n'
                  '    conda env create -f environment.yml\n\n'
-                 'If you have an existing rmg_env, you can remove it using\n\n'
-                 '    conda remove --name rmg_env --all\n'.format(major, minor))
+                 'If you have an existing arc_env, you can remove it using\n\n'
+                 '    conda remove --name arc_env --all\n')
 
 
 def clean(subdirectory=''):

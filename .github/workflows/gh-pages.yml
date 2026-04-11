@@ -55,7 +55,6 @@ jobs:
       # ── add legacy ABI runtime for NumPy/PyDAS ─────────────────
       - name: Add legacy gfortran runtime
         run: micromamba install -y -n arc_env -c conda-forge libgfortran=3
-        shell: micromamba-shell {0}
 
       # ── build HTML docs ─────────────────────────────────────────
       - name: Set env vars & Build docs
@@ -63,8 +62,7 @@ jobs:
           export RMG_DB_PATH="$MAMBA_ROOT_PREFIX/envs/rmg_env/share/RMG-database"
           export PYTHONPATH="$GITHUB_WORKSPACE/ARC:$PYTHONPATH"
           export PATH="$GITHUB_WORKSPACE/ARC:$PATH"
-          make -C ARC/docs html
-        shell: micromamba-shell {0}
+          micromamba run -n arc_env make -C ARC/docs html
 
       - name: List built docs
         run: ls -R ARC/docs/build/html

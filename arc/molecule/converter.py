@@ -1,21 +1,15 @@
 """
-This module provides methods for converting molecules between RMG, RDKit, and OpenBabel.
+This module provides methods for converting molecules between RMG and RDKit.
 """
 
 import sys
 
 import cython
 from rdkit import Chem
-# Test if openbabel is installed
-try:
-    from openbabel import openbabel
-except ImportError:
-    openbabel = None
 
 import arc.molecule.element as elements
 import arc.molecule.molecule as mm
 from arc.common import get_logger
-from arc.exceptions import DependencyError
 
 
 logger = get_logger()
@@ -187,115 +181,3 @@ def debug_rdkit_mol(rdmol, level=10):
     return message
 
 
-def to_ob_mol(mol, return_mapping=False, save_order=False):
-    """
-    Convert a molecular structure to an OpenBabel OBMol object. Uses
-    `OpenBabel <http://openbabel.org/>`_ to perform the conversion.
-    """
-    if openbabel is None:
-        raise DependencyError('OpenBabel is not installed. Please install or use RDKit.')
-
-    # Sort the atoms to ensure consistent output
-    if not save_order:
-        mol.sort_atoms()
-    atoms = mol.vertices
-
-    ob_atom_ids = {}  # dictionary of OB atom IDs
-    obmol = openbabel.OBMol()
-    for atom in atoms:
-        a = obmol.NewAtom()
-        if atom.element.symbol == 'X':
-            a.SetAtomicNum(78)  # not sure how to do this with linear scaling when this might not be Pt
-        else:
-            a.SetAtomicNum(atom.number)
-        if atom.element.isotope != -1:
-            a.SetIsotope(atom.element.isotope)
-        a.SetFormalCharge(atom.charge)
-        # a.SetImplicitHCount(0) # the default is 0
-        ob_atom_ids[atom] = a.GetId()
-    orders = {1: 1, 2: 2, 3: 3, 4: 4, 1.5: 5}
-    for atom1 in mol.vertices:
-        for atom2, bond in atom1.edges.items():
-            if bond.is_hydrogen_bond():
-                continue
-            index1 = atoms.index(atom1)
-            index2 = atoms.index(atom2)
-            if index1 < index2:
-                order = orders[bond.order]
-                obmol.AddBond(index1 + 1, index2 + 1, order)
-
-    obmol.AssignSpinMultiplicity(True)
-
-    if return_mapping:
-        return obmol, ob_atom_ids
-
-    return obmol
-
-
-def from_ob_mol(mol, obmol, raise_atomtype_exception=True):
-    """
-    Convert a OpenBabel Mol object `obmol` to a molecular structure. Uses
-    `OpenBabel <http://openbabel.org/>`_ to perform the conversion.
-
-    It estimates radical placement based on undervalence of atoms,
-    and assumes overall spin multiplicity is radical count + 1
-    """
-    # Below are the declared variables for cythonizing the module
-    cython.declare(
-        number=cython.int,
-        isotope=cython.int,
-        element=elements.Element,
-        charge=cython.int,
-        valence=cython.int,
-        radical_electrons=cython.int,
-        atom=mm.Atom,
-        )
-
-    if openbabel is None:
-        raise DependencyError('OpenBabel is not installed. Please install or use RDKit.')
-
-    mol.vertices = []
-
-    # Add hydrogen atoms to complete molecule if needed
-    obmol.AddHydrogens()
-
-    # iterate through atoms in obmol
-    for obatom in openbabel.OBMolAtomIter(obmol):
-        # Use atomic number as key for element
-        number = obatom.GetAtomicNum()
-        isotope = obatom.GetIsotope()
-        element = elements.get_element(number, isotope or -1)
-        # Process charge
-        charge = obatom.GetFormalCharge()
-        # Calculate the radical electrons due to undervalence,
-        # ignoring whatever may be set on obatom.GetSpinMultiplicity()
-        valence = obatom.GetTotalValence()
-        radical_electrons = openbabel.GetTypicalValence(number, valence, charge) - valence
-
-        atom = mm.Atom(element, radical_electrons, charge, '', 0)
-        mol.vertices.append(atom)
-
-    # iterate through bonds in obmol
-    for obbond in openbabel.OBMolBondIter(obmol):
-        # Process bond type
-        oborder = obbond.GetBondOrder()
-        if oborder not in [1, 2, 3, 4] and obbond.IsAromatic():
-            oborder = 1.5
-
-        bond = mm.Bond(mol.vertices[obbond.GetBeginAtomIdx() - 1],
-                       mol.vertices[obbond.GetEndAtomIdx() - 1],
-                       oborder)  # python array indices start at 0
-        mol.add_bond(bond)
-
-    # Set atom types and connectivity values
-    mol.update_connectivity_values()
-    mol.update_atomtypes(log_species=True, raise_exception=raise_atomtype_exception)
-    mol.update_multiplicity()
-    mol.identify_ring_membership()
-
-    # Assume this is always true
-    # There are cases where 2 radical_electrons is a singlet, but
-    # the triplet is often more stable,
-    mol.multiplicity = mol.get_radical_count() + 1
-
-    return mol

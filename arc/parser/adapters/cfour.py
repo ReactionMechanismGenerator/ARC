@@ -6,7 +6,6 @@ from abc import ABC
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Tuple
 
 from arc.common import SYMBOL_BY_NUMBER
 from arc.constants import E_h_kJmol
@@ -14,7 +13,6 @@ from arc.species.converter import xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
 from arc.parser.parser import _get_lines_from_file
-
 
 class CfourParser(ESSAdapter, ABC):
     """
@@ -26,11 +24,11 @@ class CfourParser(ESSAdapter, ABC):
     def __init__(self, log_file_path: str):
         super().__init__(log_file_path=log_file_path)
 
-    def logfile_contains_errors(self) -> Optional[str]:
+    def logfile_contains_errors(self) -> str | None:
         """
         Check if the ESS log file contains any errors.
 
-        Returns: Optional[str]
+        Returns: str | None
             ``None`` if the log file is free of errors, otherwise the error is returned as a string.
         """
         with open(self.log_file_path, 'r') as f:
@@ -43,11 +41,11 @@ class CfourParser(ESSAdapter, ABC):
                 return f'Non-zero CFOUR error code: {line.strip()}'
         return None
 
-    def parse_geometry(self) -> Optional[Dict[str, tuple]]:
+    def parse_geometry(self) -> dict[str, tuple] | None:
         """
         Parse the xyz geometry from an ESS log file.
 
-        Returns: Optional[Dict[str, tuple]]
+        Returns: dict[str, tuple] | None
             The cartesian geometry.
         """
         lines = _get_lines_from_file(self.log_file_path)
@@ -71,11 +69,11 @@ class CfourParser(ESSAdapter, ABC):
                     return xyz_from_data(coords=np.array(coords), numbers=np.array(numbers))
         return None
 
-    def parse_frequencies(self) -> Optional[np.ndarray]:
+    def parse_frequencies(self) -> np.ndarray | None:
         """
         Parse the frequencies from a freq job output file.
 
-        Returns: Optional[np.ndarray]
+        Returns: np.ndarray | None
             The parsed frequencies (in cm^-1).
         """
         frequencies = []
@@ -89,21 +87,21 @@ class CfourParser(ESSAdapter, ABC):
             return np.array(frequencies, dtype=np.float64)
         return None
 
-    def parse_normal_mode_displacement(self) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """
         Parse frequencies and normal mode displacement.
 
-        Returns: Tuple[Optional['np.ndarray'], Optional['np.ndarray']]
+        Returns: tuple[np.ndarray | None, np.ndarray | None]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
         # Not implemented for CFOUR.
         return None, None
 
-    def parse_t1(self) -> Optional[float]:
+    def parse_t1(self) -> float | None:
         """
         Parse the T1 parameter from a CC calculation.
 
-        Returns: Optional[float]
+        Returns: float | None
             The T1 parameter.
         """
         with open(self.log_file_path, 'r') as f:
@@ -115,11 +113,11 @@ class CfourParser(ESSAdapter, ABC):
                         continue
         return None
 
-    def parse_e_elect(self) -> Optional[float]:
+    def parse_e_elect(self) -> float | None:
         """
         Parse the electronic energy from an sp job output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The electronic energy in kJ/mol.
         """
         lines = _get_lines_from_file(self.log_file_path)
@@ -160,11 +158,11 @@ class CfourParser(ESSAdapter, ABC):
             return energy * E_h_kJmol
         return None
 
-    def parse_zpe_correction(self) -> Optional[float]:
+    def parse_zpe_correction(self) -> float | None:
         """
         Determine the calculated ZPE correction (E0 - e_elect) from a frequency output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The calculated zero point energy in kJ/mol.
         """
         zpe = None
@@ -181,37 +179,37 @@ class CfourParser(ESSAdapter, ABC):
             return zpe * E_h_kJmol
         return None
 
-    def parse_1d_scan_energies(self) -> Tuple[Optional[List[float]], Optional[List[float]]]:
+    def parse_1d_scan_energies(self) -> tuple[list[float] | None, list[float] | None]:
         """
         Parse the 1D torsion scan energies from an ESS log file.
 
-        Returns: Tuple[Optional[List[float]], Optional[List[float]]]
+        Returns: tuple[list[float] | None, list[float] | None]
             The electronic energy in kJ/mol and the dihedral scan angle in degrees.
         """
         # Not implemented for CFOUR.
         return None, None
 
-    def parse_1d_scan_coords(self) -> Optional[List[Dict[str, tuple]]]:
+    def parse_1d_scan_coords(self) -> list[dict[str, tuple]] | None:
         """
         Parse the 1D torsion scan coordinates from an ESS log file.
 
-        Returns: List[Dict[str, tuple]]
+        Returns: list[dict[str, tuple]]
             The Cartesian coordinates for each scan point.
         """
         # Not implemented for CFOUR.
         return None
 
-    def parse_irc_traj(self) -> Optional[List[Dict[str, tuple]]]:
+    def parse_irc_traj(self) -> list[dict[str, tuple]] | None:
         """
         Parse the IRC trajectory coordinates from an ESS log file.
 
-        Returns: List[Dict[str, tuple]]
+        Returns: list[dict[str, tuple]]
             The Cartesian coordinates for each scan point.
         """
         # Not implemented for TeraChem.
         return None
 
-    def parse_scan_conformers(self) -> Optional[pd.DataFrame]:
+    def parse_scan_conformers(self) -> pd.DataFrame | None:
         """
         Parse all internal coordinates of scan conformers into a DataFrame.
 
@@ -221,7 +219,7 @@ class CfourParser(ESSAdapter, ABC):
         # Not implemented for CFOUR.
         return None
 
-    def parse_nd_scan_energies(self) -> Optional[Dict]:
+    def parse_nd_scan_energies(self) -> dict | None:
         """
         Parse the ND torsion scan energies from an ESS log file.
 
@@ -231,11 +229,11 @@ class CfourParser(ESSAdapter, ABC):
         # Not implemented for CFOUR.
         return None
 
-    def parse_dipole_moment(self) -> Optional[float]:
+    def parse_dipole_moment(self) -> float | None:
         """
         Parse the dipole moment in Debye from an opt job output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The dipole moment in Debye.
         """
         with open(self.log_file_path, 'r') as f:
@@ -251,15 +249,14 @@ class CfourParser(ESSAdapter, ABC):
                         continue
         return None
 
-    def parse_polarizability(self) -> Optional[float]:
+    def parse_polarizability(self) -> float | None:
         """
         Parse the polarizability from a freq job output file, returns the value in Angstrom^3.
 
-        Returns: Optional[float]
+        Returns: float | None
             The polarizability in Angstrom^3.
         """
         # Not implemented for CFOUR.
         return None
-
 
 register_ess_adapter('cfour', CfourParser)

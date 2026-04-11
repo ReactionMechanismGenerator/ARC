@@ -28,8 +28,6 @@ import os
 import time
 import uuid
 from enum import Enum
-from typing import Dict, Optional, Tuple, Union
-
 
 class TaskState(str, Enum):
     """
@@ -69,7 +67,6 @@ class TaskState(str, Enum):
     ORPHANED = 'ORPHANED'
     CANCELLED = 'CANCELLED'
 
-
 class PipeRunState(str, Enum):
     """States for the overall pipe run."""
     CREATED = 'CREATED'
@@ -80,7 +77,6 @@ class PipeRunState(str, Enum):
     COMPLETED = 'COMPLETED'
     COMPLETED_PARTIAL = 'COMPLETED_PARTIAL'
     FAILED = 'FAILED'
-
 
 # Task families currently supported by the pipe system.
 # Only families listed here pass TaskSpec validation.
@@ -107,9 +103,8 @@ TASK_FAMILY_TO_JOB_TYPE = {
     'rotor_scan_1d': 'scan',
 }
 
-
 # Allowed transitions: maps each state to the set of states it may transition to.
-TASK_TRANSITIONS: Dict[TaskState, Tuple[TaskState, ...]] = {
+TASK_TRANSITIONS: dict[TaskState, tuple[TaskState, ...]] = {
     TaskState.PENDING: (TaskState.CLAIMED, TaskState.CANCELLED),
     TaskState.CLAIMED: (TaskState.RUNNING, TaskState.ORPHANED, TaskState.CANCELLED),
     TaskState.RUNNING: (TaskState.COMPLETED, TaskState.FAILED_RETRYABLE, TaskState.FAILED_ESS,
@@ -122,7 +117,7 @@ TASK_TRANSITIONS: Dict[TaskState, Tuple[TaskState, ...]] = {
     TaskState.CANCELLED: (),
 }
 
-PIPE_RUN_TRANSITIONS: Dict[PipeRunState, Tuple[PipeRunState, ...]] = {
+PIPE_RUN_TRANSITIONS: dict[PipeRunState, tuple[PipeRunState, ...]] = {
     PipeRunState.CREATED: (PipeRunState.STAGED, PipeRunState.FAILED),
     PipeRunState.STAGED: (PipeRunState.SUBMITTED, PipeRunState.FAILED),
     PipeRunState.SUBMITTED: (PipeRunState.ACTIVE, PipeRunState.FAILED),
@@ -133,9 +128,8 @@ PIPE_RUN_TRANSITIONS: Dict[PipeRunState, Tuple[PipeRunState, ...]] = {
     PipeRunState.FAILED: (),
 }
 
-
-def check_valid_transition(current_state: Union[TaskState, PipeRunState],
-                           new_state: Union[TaskState, PipeRunState],
+def check_valid_transition(current_state: TaskState | PipeRunState,
+                           new_state: TaskState | PipeRunState,
                            ) -> None:
     """
     Validate that a state transition is allowed.
@@ -159,7 +153,6 @@ def check_valid_transition(current_state: Union[TaskState, PipeRunState],
         raise TypeError(f'Unsupported state type: {type(current_state).__name__}')
     if new_state not in allowed[current_state]:
         raise ValueError(f'Invalid state transition: {current_state.value} -> {new_state.value}')
-
 
 def _validate_task_spec(spec: 'TaskSpec') -> None:
     """
@@ -186,7 +179,6 @@ def _validate_task_spec(spec: 'TaskSpec') -> None:
         raise ValueError('TaskSpec.input_payload is required')
     if spec.ingestion_metadata is None:
         raise ValueError('TaskSpec.ingestion_metadata is required')
-
 
 class TaskSpec:
     """
@@ -221,7 +213,7 @@ class TaskSpec:
                  required_memory_mb: int,
                  input_payload: dict,
                  ingestion_metadata: dict,
-                 args: Optional[dict] = None,
+                 args: dict | None = None,
                  ):
         self.task_id = task_id
         self.task_family = task_family
@@ -285,7 +277,6 @@ class TaskSpec:
         obj.args = d.get('args', {})
         return obj
 
-
 class TaskStateRecord:
     """
     Mutable state record for a single pipe task.
@@ -309,14 +300,14 @@ class TaskStateRecord:
                  status: str = TaskState.PENDING.value,
                  attempt_index: int = 0,
                  max_attempts: int = 3,
-                 claimed_by: Optional[str] = None,
-                 claim_token: Optional[str] = None,
-                 claimed_at: Optional[float] = None,
-                 lease_expires_at: Optional[float] = None,
-                 started_at: Optional[float] = None,
-                 ended_at: Optional[float] = None,
-                 failure_class: Optional[str] = None,
-                 retry_disposition: Optional[str] = None,
+                 claimed_by: str | None = None,
+                 claim_token: str | None = None,
+                 claimed_at: float | None = None,
+                 lease_expires_at: float | None = None,
+                 started_at: float | None = None,
+                 ended_at: float | None = None,
+                 failure_class: str | None = None,
+                 retry_disposition: str | None = None,
                  ):
         self.status = status
         self.attempt_index = attempt_index
@@ -363,11 +354,9 @@ class TaskStateRecord:
             retry_disposition=d.get('retry_disposition'),
         )
 
-
 def generate_claim_token() -> str:
     """Generate a unique claim token for ownership verification."""
     return uuid.uuid4().hex[:16]
-
 
 # ---------------------------------------------------------------------------
 # Directory & I/O Utilities
@@ -386,7 +375,6 @@ def get_task_dir(pipe_root: str, task_id: str) -> str:
     """
     return os.path.join(pipe_root, 'tasks', task_id)
 
-
 def get_task_attempt_dir(pipe_root: str, task_id: str, attempt_index: int) -> str:
     """
     Get the working directory for a specific attempt of a task.
@@ -400,7 +388,6 @@ def get_task_attempt_dir(pipe_root: str, task_id: str, attempt_index: int) -> st
         str: Absolute path to the attempt directory.
     """
     return os.path.join(pipe_root, 'tasks', task_id, 'attempts', str(attempt_index))
-
 
 def initialize_task(pipe_root: str, spec: TaskSpec, max_attempts: int = 3,
                     overwrite: bool = False) -> str:
@@ -429,7 +416,6 @@ def initialize_task(pipe_root: str, spec: TaskSpec, max_attempts: int = 3,
         json.dump(state.as_dict(), f, indent=2)
     return task_dir
 
-
 def read_task_spec(pipe_root: str, task_id: str) -> TaskSpec:
     """
     Read the immutable task specification from disk.
@@ -444,7 +430,6 @@ def read_task_spec(pipe_root: str, task_id: str) -> TaskSpec:
     spec_path = os.path.join(get_task_dir(pipe_root, task_id), 'spec.json')
     with open(spec_path, 'r') as f:
         return TaskSpec.from_dict(json.load(f))
-
 
 def read_task_state(pipe_root: str, task_id: str) -> TaskStateRecord:
     """
@@ -461,7 +446,6 @@ def read_task_state(pipe_root: str, task_id: str) -> TaskStateRecord:
     with open(state_path, 'r') as f:
         return TaskStateRecord.from_dict(json.load(f))
 
-
 def write_result_json(attempt_dir: str, result: dict) -> str:
     """Write a ``result.json`` file in the attempt directory. Returns the path."""
     result_path = os.path.join(attempt_dir, 'result.json')
@@ -470,7 +454,6 @@ def write_result_json(attempt_dir: str, result: dict) -> str:
         json.dump(result, f, indent=2)
     os.replace(tmp_path, result_path)
     return result_path
-
 
 def _validate_state_invariants(state: TaskStateRecord) -> None:
     """Validate lightweight invariants on a TaskStateRecord before persisting."""
@@ -499,10 +482,9 @@ def _validate_state_invariants(state: TaskStateRecord) -> None:
             raise ValueError(f'lease_expires_at ({state.lease_expires_at}) '
                              f'must be >= claimed_at ({state.claimed_at})')
 
-
 def update_task_state(pipe_root: str,
                       task_id: str,
-                      new_status: Optional[TaskState] = None,
+                      new_status: TaskState | None = None,
                       lock_timeout: float = 30.0,
                       **fields,
                       ) -> TaskStateRecord:
@@ -555,7 +537,6 @@ def update_task_state(pipe_root: str,
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         lock_fd.close()
-
 
 def _acquire_lock(lock_fd, timeout: float) -> None:
     """

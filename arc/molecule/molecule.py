@@ -1814,13 +1814,13 @@ class Molecule(Graph):
         os.unlink(temp_file_name)
         return png
 
-    def from_inchi(self, inchistr, backend='openbabel-first', raise_atomtype_exception=True):
+    def from_inchi(self, inchistr, backend='rdkit', raise_atomtype_exception=True):
         """
         Convert an InChI string `inchistr` to a molecular structure.
 
         RDKit and Open Babel are the two backends used in RMG. It is possible to use a
         single backend or try different backends in sequence. The available options for the ``backend``
-        argument: 'openbabel-first'(default), 'rdkit-first', 'rdkit', or 'openbabel'.
+        argument: 'rdkit' (default) or 'rdkit-first'.
         """
         translator.from_inchi(self, inchistr, backend, raise_atomtype_exception=raise_atomtype_exception)
         return self
@@ -1832,13 +1832,13 @@ class Molecule(Graph):
         translator.from_augmented_inchi(self, aug_inchi, raise_atomtype_exception=raise_atomtype_exception)
         return self
 
-    def from_smiles(self, smilesstr, backend='openbabel-first', raise_atomtype_exception=True):
+    def from_smiles(self, smilesstr, backend='rdkit', raise_atomtype_exception=True):
         """
         Convert a SMILES string `smilesstr` to a molecular structure.
 
         RDKit and Open Babel are the two backends used in RMG. It is possible to use a
         single backend or try different backends in sequence. The available options for the ``backend``
-        argument: 'openbabel-first'(default), 'rdkit-first', 'rdkit', or 'openbabel'.
+        argument: 'rdkit' (default) or 'rdkit-first'.
         """
         translator.from_smiles(self, smilesstr, backend, raise_atomtype_exception=raise_atomtype_exception)
         return self
@@ -1926,11 +1926,11 @@ class Molecule(Graph):
         or
 
         Convert a molecular structure to an InChI string. Uses
-        `OpenBabel <http://openbabel.org/>`_ to perform the conversion.
+        `RDKit <http://rdkit.org/>`_ to perform the conversion.
 
         It is possible to use a single backend or try different backends in sequence.
         The available options for the ``backend`` argument: 'rdkit-first'(default),
-        'openbabel-first', 'rdkit', or 'openbabel'.
+        'rdkit-first' or 'rdkit'.
         """
         try:
             return translator.to_inchi(self, backend=backend)
@@ -1947,7 +1947,7 @@ class Molecule(Graph):
 
         RDKit and Open Babel are the two backends used in RMG. It is possible to use a
         single backend or try different backends in sequence. The available options for the ``backend``
-        argument: 'rdkit-first'(default), 'openbabel-first', 'rdkit', or 'openbabel'.
+        argument: 'rdkit-first' (default) or 'rdkit'.
         """
         try:
             return translator.to_inchi(self, backend=backend, aug_level=2)
@@ -1958,7 +1958,7 @@ class Molecule(Graph):
     def to_inchi_key(self, backend='rdkit-first'):
         """
         Convert a molecular structure to an InChI Key string. Uses
-        `OpenBabel <http://openbabel.org/>`_ to perform the conversion.
+        `RDKit <http://rdkit.org/>`_ to perform the conversion.
 
         or
 
@@ -1967,7 +1967,7 @@ class Molecule(Graph):
 
         It is possible to use a single backend or try different backends in sequence.
         The available options for the ``backend`` argument: 'rdkit-first'(default),
-        'openbabel-first', 'rdkit', or 'openbabel'.
+        'rdkit-first' or 'rdkit'.
         """
         try:
             return translator.to_inchi_key(self, backend=backend)
@@ -1985,7 +1985,7 @@ class Molecule(Graph):
 
         RDKit and Open Babel are the two backends used in RMG. It is possible to use a
         single backend or try different backends in sequence. The available options for the ``backend``
-        argument: 'rdkit-first'(default), 'openbabel-first', 'rdkit', or 'openbabel'.
+        argument: 'rdkit-first' (default) or 'rdkit'.
         """
         try:
             return translator.to_inchi_key(self, backend=backend, aug_level=2)
@@ -2006,7 +2006,7 @@ class Molecule(Graph):
         Convert a molecular structure to an SMILES string. 
         
         If there is a Nitrogen atom present it uses
-        `OpenBabel <http://openbabel.org/>`_ to perform the conversion,
+        `RDKit <http://rdkit.org/>`_ to perform the conversion,
         and the SMILES may or may not be canonical.
         
         Otherwise, it uses `RDKit <http://rdkit.org/>`_ to perform the 
@@ -2579,33 +2579,8 @@ class Molecule(Graph):
 
             return aromatic_rings, aromatic_bonds
 
-        logger.info('Trying to use OpenBabel to check aromaticity.')
-        try:
-            obmol, ob_atom_ids = converter.to_ob_mol(self, return_mapping=True, save_order=save_order)
-        except DependencyError:
-            logger.warning('Unable to check aromaticity by converting for OB Mol.')
-            return [], []
-        else:
-            aromatic_rings = []
-            aromatic_bonds = []
-            for ring0 in rings:
-                aromatic_bonds_in_ring = []
-                # Figure out which atoms and bonds are aromatic and reassign appropriately:
-                for i, atom1 in enumerate(ring0):
-                    if not atom1.is_carbon():
-                        # all atoms in the ring must be carbon in RMG for our definition of aromatic
-                        break
-                    for atom2 in ring0[i + 1:]:
-                        if self.has_bond(atom1, atom2):
-                            if obmol.GetBond(obmol.GetAtomById(ob_atom_ids[atom1]),
-                                             obmol.GetAtomById(ob_atom_ids[atom2])).IsAromatic():
-                                aromatic_bonds_in_ring.append(self.get_bond(atom1, atom2))
-                else:  # didn't break so all atoms are carbon
-                    if len(aromatic_bonds_in_ring) == 6:
-                        aromatic_rings.append(ring0)
-                        aromatic_bonds.append(aromatic_bonds_in_ring)
-
-            return aromatic_rings, aromatic_bonds
+        logger.warning('Unable to check aromaticity by converting to RDKit Mol.')
+        return [], []
 
     def get_deterministic_sssr(self):
         """

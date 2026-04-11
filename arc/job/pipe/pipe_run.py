@@ -17,7 +17,6 @@ import os
 import stat
 import sys
 import time
-from typing import Dict, List, Optional
 
 import arc.parser.parser as parser
 from arc.common import get_logger
@@ -39,7 +38,6 @@ pipe_settings = settings['pipe_settings']
 default_job_settings = settings['default_job_settings']
 servers_dict = settings['servers']
 
-
 class PipeRun:
     """
     Orchestrator for a pipe run.
@@ -47,7 +45,7 @@ class PipeRun:
     Args:
         project_directory (str): Path to the ARC project directory.
         run_id (str): Unique identifier for this pipe run.
-        tasks (List[TaskSpec]): Task specifications to execute.
+        tasks (list[TaskSpec]): Task specifications to execute.
         cluster_software (str): Cluster scheduler type.
         max_workers (int): Maximum number of concurrent array workers.
         max_attempts (int): Maximum retry attempts per task.
@@ -56,11 +54,11 @@ class PipeRun:
     def __init__(self,
                  project_directory: str,
                  run_id: str,
-                 tasks: List[TaskSpec],
+                 tasks: list[TaskSpec],
                  cluster_software: str,
                  max_workers: int = 100,
                  max_attempts: int = 3,
-                 pipe_root: Optional[str] = None,
+                 pipe_root: str | None = None,
                  ):
         self.project_directory = project_directory
         self.run_id = run_id
@@ -277,13 +275,13 @@ class PipeRun:
         )
         return job_status, job_id
 
-    def reconcile(self) -> Dict[str, int]:
+    def reconcile(self) -> dict[str, int]:
         """
         Poll all tasks, detect orphans, schedule retries, and check for completion.
         Does not regress an already-terminal run status.
 
         Returns:
-            Dict[str, int]: Counts of tasks in each state.
+            dict[str, int]: Counts of tasks in each state.
         """
         if self.status in (PipeRunState.COMPLETED, PipeRunState.COMPLETED_PARTIAL, PipeRunState.FAILED):
             return self._count_task_states()
@@ -295,7 +293,7 @@ class PipeRun:
             return {}
 
         now = time.time()
-        counts: Dict[str, int] = {s.value: 0 for s in TaskState}
+        counts: dict[str, int] = {s.value: 0 for s in TaskState}
         retried_pending = 0  # PENDING tasks with attempt_index > 0 (genuinely retried)
         task_ids = sorted(os.listdir(tasks_dir))
 
@@ -392,9 +390,9 @@ class PipeRun:
         """Whether the run has PENDING retried tasks but no active workers."""
         return getattr(self, '_needs_resubmission', False)
 
-    def _count_task_states(self) -> Dict[str, int]:
+    def _count_task_states(self) -> dict[str, int]:
         """Read all task states and return counts without modifying anything."""
-        counts: Dict[str, int] = {s.value: 0 for s in TaskState}
+        counts: dict[str, int] = {s.value: 0 for s in TaskState}
         tasks_dir = os.path.join(self.pipe_root, 'tasks')
         if not os.path.isdir(tasks_dir):
             return counts
@@ -408,12 +406,11 @@ class PipeRun:
                 continue
         return counts
 
-
 # ===========================================================================
 # Ingestion helpers
 # ===========================================================================
 
-def find_output_file(attempt_dir: str, engine: str, task_id: str = '') -> Optional[str]:
+def find_output_file(attempt_dir: str, engine: str, task_id: str = '') -> str | None:
     """
     Find the output file for a completed task.
 
@@ -452,7 +449,6 @@ def find_output_file(attempt_dir: str, engine: str, task_id: str = '') -> Option
                    f'(engine={engine})')
     return None
 
-
 def _check_ess_convergence(pipe_run_id: str, spec: TaskSpec, output_file: str, label: str) -> bool:
     """
     Check whether an ESS job converged by inspecting the output file.
@@ -474,7 +470,6 @@ def _check_ess_convergence(pipe_run_id: str, spec: TaskSpec, output_file: str, l
                        f'ESS job did not converge (status={status}, keywords={keywords}). Skipping.')
         return False
     return True
-
 
 def ingest_completed_task(pipe_run_id: str, pipe_root: str, spec: TaskSpec,
                           state: 'TaskStateRecord', species_dict: dict,
@@ -519,7 +514,6 @@ def ingest_completed_task(pipe_run_id: str, pipe_root: str, spec: TaskSpec,
     elif spec.task_family == 'rotor_scan_1d':
         _ingest_rotor_scan_1d(pipe_run_id, pipe_root, spec, state, species_dict, label)
 
-
 def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, conformer_index):
     """Ingest a completed conf_opt task: update geometry and opt-level energy."""
     attempt_dir = get_task_attempt_dir(pipe_root, spec.task_id, state.attempt_index)
@@ -541,7 +535,6 @@ def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, confor
     if conformer_index < len(species.conformer_energies) and e_elect is not None:
         species.conformer_energies[conformer_index] = e_elect
 
-
 def _ingest_conf_sp(run_id, pipe_root, spec, state, species_dict, label, conformer_index):
     """Ingest a completed conf_sp task: update energy only."""
     attempt_dir = get_task_attempt_dir(pipe_root, spec.task_id, state.attempt_index)
@@ -559,7 +552,6 @@ def _ingest_conf_sp(run_id, pipe_root, spec, state, species_dict, label, conform
         return
     if conformer_index < len(species.conformer_energies) and e_elect is not None:
         species.conformer_energies[conformer_index] = e_elect
-
 
 def _ingest_ts_guess_batch(run_id, pipe_root, spec, state, species_dict, label):
     if label not in species_dict:
@@ -580,7 +572,6 @@ def _ingest_ts_guess_batch(run_id, pipe_root, spec, state, species_dict, label):
         except Exception as e:
             logger.error(f'Pipe run {run_id}, task {spec.task_id}: '
                          f'TSG processing failed: {type(e).__name__}: {e}')
-
 
 def _ingest_ts_opt(run_id, pipe_root, spec, state, species_dict, label):
     """Ingest a completed ts_opt task: update the matching TSGuess's opt_xyz and energy."""
@@ -620,7 +611,6 @@ def _ingest_ts_opt(run_id, pipe_root, spec, state, species_dict, label):
         logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '
                        f'no TSGuess with conformer_index={conformer_index} for {label}.')
 
-
 def _ingest_species_sp(run_id, pipe_root, spec, state, species_dict, label):
     if label not in species_dict:
         logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '
@@ -642,7 +632,6 @@ def _ingest_species_sp(run_id, pipe_root, spec, state, species_dict, label):
     if e_elect is not None:
         species.e_elect = e_elect
 
-
 def _ingest_species_freq(run_id, pipe_root, spec, state, species_dict, label, output):
     if label not in species_dict:
         logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '
@@ -661,7 +650,6 @@ def _ingest_species_freq(run_id, pipe_root, spec, state, species_dict, label, ou
         elif 'paths' not in output[label]:
             output[label]['paths'] = {}
         output[label]['paths']['freq'] = output_file
-
 
 def _ingest_irc(run_id, pipe_root, spec, state, species_dict, label, output):
     if label not in species_dict:
@@ -683,7 +671,6 @@ def _ingest_irc(run_id, pipe_root, spec, state, species_dict, label, output):
         irc_paths = output[label]['paths'].get('irc', [])
         irc_paths.append(output_file)
         output[label]['paths']['irc'] = irc_paths
-
 
 def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):
     if label not in species_dict:
@@ -718,7 +705,6 @@ def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):
         return
     species.rotors_dict[rotor_index]['scan_path'] = output_file
 
-
 # ===========================================================================
 # Routing helpers
 # ===========================================================================
@@ -739,12 +725,11 @@ def derive_cluster_software(ess_settings: dict, job_adapter: str) -> str:
             return cs_alias.get(raw, raw)
     return 'slurm'
 
-
 def build_conformer_pipe_tasks(species, label: str, task_family: str,
                                level_dict: dict, job_adapter: str,
                                memory_mb: int,
-                               conformer_indices: Optional[List[int]] = None,
-                               ) -> List[TaskSpec]:
+                               conformer_indices: list[int] | None = None,
+                               ) -> list[TaskSpec]:
     """
     Build TaskSpec objects for conformer pipe tasks (conf_opt or conf_sp).
 
@@ -776,11 +761,10 @@ def build_conformer_pipe_tasks(species, label: str, task_family: str,
         ))
     return tasks
 
-
 def build_species_leaf_task(species, label: str, task_family: str,
                             level_dict: dict, job_adapter: str,
                             memory_mb: int,
-                            extra_ingestion: Optional[dict] = None) -> TaskSpec:
+                            extra_ingestion: dict | None = None) -> TaskSpec:
     """Build a single TaskSpec for a species-side leaf job (sp, freq, irc)."""
     cores = default_job_settings.get('job_cpu_cores', 8)
     meta = extra_ingestion or {}
@@ -798,9 +782,8 @@ def build_species_leaf_task(species, label: str, task_family: str,
         ingestion_metadata=meta,
     )
 
-
 def build_tsg_tasks(ts_label: str, method: str, count: int,
-                    rxn_dict: dict, memory_mb: int) -> List[TaskSpec]:
+                    rxn_dict: dict, memory_mb: int) -> list[TaskSpec]:
     """
     Build TaskSpec objects for one TSG method batch.
 
@@ -830,10 +813,9 @@ def build_tsg_tasks(ts_label: str, method: str, count: int,
         ))
     return tasks
 
-
-def build_ts_opt_tasks(species, label: str, xyzs: List[dict],
+def build_ts_opt_tasks(species, label: str, xyzs: list[dict],
                        level_dict: dict, job_adapter: str,
-                       memory_mb: int) -> List[TaskSpec]:
+                       memory_mb: int) -> list[TaskSpec]:
     """Build TaskSpec objects for TS optimization tasks."""
     cores = default_job_settings.get('job_cpu_cores', 8)
     species_dict_payload = species.as_dict()
@@ -858,10 +840,9 @@ def build_ts_opt_tasks(species, label: str, xyzs: List[dict],
         ))
     return tasks
 
-
-def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: List[int],
+def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: list[int],
                               level_dict: dict, job_adapter: str,
-                              memory_mb: int) -> List[TaskSpec]:
+                              memory_mb: int) -> list[TaskSpec]:
     """Build TaskSpec objects for 1D rotor scan tasks."""
     cores = default_job_settings.get('job_cpu_cores', 8)
     species_dict_payload = species.as_dict()

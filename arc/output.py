@@ -12,7 +12,7 @@ file will not exist rather than be partially written.
 import datetime
 import os
 import tempfile
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from arc.common import ARC_PATH, VERSION, get_git_commit, get_logger, read_yaml_file, save_yaml_file
 from arc.constants import E_h_kJmol
@@ -27,27 +27,25 @@ from arc.statmech.arkane import (
     find_best_across_files, get_qm_corrections_files,
 )
 
-
 logger = get_logger()
-
 
 def write_output_yml(
     project: str,
     project_directory: str,
-    species_dict: Dict,
-    reactions: List,
-    output_dict: Dict,
+    species_dict: dict,
+    reactions: list,
+    output_dict: dict,
     opt_level=None,
     freq_level=None,
     sp_level=None,
     neb_level=None,
     composite_method=None,
-    freq_scale_factor: Optional[float] = None,
+    freq_scale_factor: float | None = None,
     freq_scale_factor_user_provided: bool = False,
-    bac_type: Optional[str] = None,
+    bac_type: str | None = None,
     arkane_level_of_theory=None,
     irc_requested: bool = True,
-    t0: Optional[float] = None,
+    t0: float | None = None,
 ) -> None:
     """
     Write the consolidated output.yml to <project_directory>/output/output.yml.
@@ -59,7 +57,7 @@ def write_output_yml(
         project (str): ARC project name.
         project_directory (str): Root directory of this ARC project.
         species_dict (dict): {label: ARCSpecies} for all species and TSs.
-        reactions (list): List of ARCReaction objects.
+        reactions (list): list of ARCReaction objects.
         output_dict (dict): {label: {convergence, paths, job_types, ...}}.
         opt_level (Level, optional): Level of theory for geometry optimization.
         freq_level (Level, optional): Level of theory for frequency calculations.
@@ -74,7 +72,7 @@ def write_output_yml(
         irc_requested (bool): Whether IRC jobs were requested for this run.
         t0 (float, optional): The epoch timestamp when the ARC run started.
     """
-    doc: Dict[str, Any] = {}
+    doc: dict[str, Any] = {}
 
     # ---- header ----------------------------------------------------------------
     doc['schema_version'] = '1.0'
@@ -137,10 +135,9 @@ def write_output_yml(
         raise
     logger.info(f'Wrote consolidated results to {out_path}')
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-def _get_arkane_git_commit() -> Optional[str]:
+def _get_arkane_git_commit() -> str | None:
     """Return the HEAD commit hash of the RMG-Py repo (Arkane lives there), or None."""
     try:
         rmg_path = settings.get('RMG_PATH')
@@ -151,8 +148,7 @@ def _get_arkane_git_commit() -> Optional[str]:
     except Exception:
         return None
 
-
-def _level_to_dict(level) -> Optional[Dict]:
+def _level_to_dict(level) -> dict | None:
     """Convert a Level object to a dict with all non-None fields, or None."""
     if level is None:
         return None
@@ -167,8 +163,7 @@ def _level_to_dict(level) -> Optional[Dict]:
         'software': getattr(level, 'software', None),
     }
 
-
-def _resolve_freq_scale_factor_source(freq_level) -> Optional[str]:
+def _resolve_freq_scale_factor_source(freq_level) -> str | None:
     """
     Return the full literature citation for the freq scale factor, or None.
 
@@ -196,8 +191,7 @@ def _resolve_freq_scale_factor_source(freq_level) -> Optional[str]:
         return None
     return sources.get(source_key)
 
-
-def _make_rel_path(path: Optional[str], project_directory: str) -> Optional[str]:
+def _make_rel_path(path: str | None, project_directory: str) -> str | None:
     """Convert an absolute path to one relative to project_directory, or None."""
     if not path:
         return None
@@ -206,8 +200,7 @@ def _make_rel_path(path: Optional[str], project_directory: str) -> Optional[str]
     except ValueError:
         return path  # Windows: relpath can fail across drives
 
-
-def _parse_zpe(freq_path: Optional[str], project_directory: str) -> Optional[float]:
+def _parse_zpe(freq_path: str | None, project_directory: str) -> float | None:
     """
     Parse ZPE in Hartree from the freq log file.
 
@@ -227,8 +220,7 @@ def _parse_zpe(freq_path: Optional[str], project_directory: str) -> Optional[flo
     except Exception:
         return None
 
-
-def _parse_opt_log(geo_path: Optional[str], project_directory: str) -> tuple:
+def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
     """
     Parse opt_n_steps and opt_final_energy_hartree from the geometry opt log.
 
@@ -249,8 +241,7 @@ def _parse_opt_log(geo_path: Optional[str], project_directory: str) -> tuple:
     except Exception:
         return None, None
 
-
-def _get_ess_versions(paths: Dict, project_directory: str) -> Optional[Dict[str, str]]:
+def _get_ess_versions(paths: dict, project_directory: str) -> dict[str, str] | None:
     """
     Parse ESS version strings from each available log file (sp, opt, freq, neb).
 
@@ -259,8 +250,8 @@ def _get_ess_versions(paths: Dict, project_directory: str) -> Optional[Dict[str,
     Returns ``None`` if nothing could be parsed.
     """
     key_map = {'sp': 'sp', 'geo': 'opt', 'freq': 'freq', 'neb': 'neb'}
-    versions: Dict[str, str] = {}
-    parsed_cache: Dict[str, str] = {}
+    versions: dict[str, str] = {}
+    parsed_cache: dict[str, str] = {}
     for path_key, label in key_map.items():
         log_path = paths.get(path_key) or None
         if not log_path:
@@ -281,8 +272,7 @@ def _get_ess_versions(paths: Dict, project_directory: str) -> Optional[Dict[str,
             logger.debug(f"Failed to parse ESS version from log file '{log_path}'", exc_info=True)
     return versions or None
 
-
-def _get_energy_corrections(arkane_level_of_theory, bac_type: Optional[str]) -> tuple:
+def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> tuple:
     """
     Look up the AEC (per-atom, Hartree) and BAC (per-bond, kJ/mol) values
     that Arkane used from the RMG database for the given level of theory.
@@ -353,7 +343,6 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: Optional[str]) -> 
     except Exception:
         return None, None
 
-
 def _safe(fn, default=None):
     """Call fn() and return *default* if any exception is raised."""
     try:
@@ -362,8 +351,7 @@ def _safe(fn, default=None):
         logger.debug(f'_safe() caught exception in {fn}', exc_info=True)
         return default
 
-
-def _compute_point_groups(species_dict: Dict, project_directory: str) -> Dict[str, Optional[str]]:
+def _compute_point_groups(species_dict: dict, project_directory: str) -> dict[str, str | None]:
     """
     Compute point groups for all species via the ``symmetry`` binary in the RMG env.
 
@@ -377,7 +365,7 @@ def _compute_point_groups(species_dict: Dict, project_directory: str) -> Dict[st
     script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_point_groups.py')
 
     # Build input dict: {label: {symbols: [...], coords: [...]}}
-    pg_input: Dict[str, Any] = {}
+    pg_input: dict[str, Any] = {}
     for label, spc in species_dict.items():
         xyz = spc.final_xyz if spc.final_xyz is not None else spc.initial_xyz
         if xyz is None:
@@ -427,16 +415,15 @@ def _compute_point_groups(species_dict: Dict, project_directory: str) -> Dict[st
             except OSError:
                 logger.debug(f'Failed to remove temporary file {p!r}', exc_info=True)
 
-
-def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
-                  point_groups: Optional[Dict] = None, irc_requested: bool = True) -> Dict:
+def _spc_to_dict(spc, output_dict: dict, project_directory: str,
+                  point_groups: dict | None = None, irc_requested: bool = True) -> dict:
     """Build the per-species/TS section for output.yml."""
     label = spc.label
     entry = output_dict.get(label, {})
     converged = entry.get('convergence') is True
     paths = entry.get('paths', {})
 
-    d: Dict[str, Any] = {
+    d: dict[str, Any] = {
         'label': label,
         'original_label': spc.original_label,
         'charge': spc.charge,
@@ -544,8 +531,7 @@ def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
 
     return d
 
-
-def _get_ts_imag_freq(spc) -> Optional[float]:
+def _get_ts_imag_freq(spc) -> float | None:
     """Return the imaginary frequency (cm⁻¹) of the TS, or None."""
     # Primary: take the most negative frequency from spc.freqs (all freqs from the freq job)
     freqs = getattr(spc, 'freqs', None)
@@ -564,8 +550,7 @@ def _get_ts_imag_freq(spc) -> Optional[float]:
         logger.debug('Failed to obtain TS imaginary frequency from ts_guesses for %s', spc.label, exc_info=True)
     return None
 
-
-def _thermo_to_dict(thermo) -> Dict:
+def _thermo_to_dict(thermo) -> dict:
     """Convert a ThermoData object to a plain, unit-labelled dict."""
     def _scalar(x):
         """Extract the numeric value from a (value, units) tuple or a plain number."""
@@ -573,7 +558,7 @@ def _thermo_to_dict(thermo) -> Dict:
             return x[0]
         return x
 
-    t: Dict[str, Any] = {
+    t: dict[str, Any] = {
         'h298_kj_mol': thermo.H298,
         's298_j_mol_k': thermo.S298,
         'tmin_k': _scalar(thermo.Tmin),
@@ -598,8 +583,7 @@ def _thermo_to_dict(thermo) -> Dict:
 
     return t
 
-
-def _statmech_to_dict(spc, project_directory: str, point_group: Optional[str] = None) -> Dict:
+def _statmech_to_dict(spc, project_directory: str, point_group: str | None = None) -> dict:
     """Build the statmech sub-section for a non-monoatomic converged species/TS."""
     # Use the cached private attribute to avoid triggering a geometry re-read
     is_linear = spc._is_linear
@@ -628,8 +612,7 @@ def _statmech_to_dict(spc, project_directory: str, point_group: Optional[str] = 
         'torsions': _get_torsions(spc, project_directory),
     }
 
-
-def _get_torsions(spc, project_directory: str) -> List[Dict]:
+def _get_torsions(spc, project_directory: str) -> list[dict]:
     """Build the torsions list from spc.rotors_dict."""
     if not getattr(spc, 'rotors_dict', None):
         return []
@@ -651,8 +634,7 @@ def _get_torsions(spc, project_directory: str) -> List[Dict]:
         })
     return torsions
 
-
-def _get_rotor_barrier(rotor: Dict, project_directory: str) -> Optional[float]:
+def _get_rotor_barrier(rotor: dict, project_directory: str) -> float | None:
     """
     Return max(V) - min(V) in kJ/mol from the 1D scan output file.
 
@@ -674,11 +656,10 @@ def _get_rotor_barrier(rotor: Dict, project_directory: str) -> Optional[float]:
         logger.debug(f"Failed to parse 1D rotor scan energies from '{scan_path}'", exc_info=True)
     return None
 
-
-def _rxn_to_dict(rxn) -> Dict:
+def _rxn_to_dict(rxn) -> dict:
     """Convert an ARCReaction to a plain dict for output.yml."""
     kinetics = rxn.kinetics
-    kin_dict: Optional[Dict] = None
+    kin_dict: dict | None = None
     if kinetics is not None:
         A = kinetics.get('A')
         Ea = kinetics.get('Ea')

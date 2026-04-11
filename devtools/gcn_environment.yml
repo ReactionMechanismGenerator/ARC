@@ -10,7 +10,6 @@ dependencies:
   - jupyter
   - matplotlib
   - numpy
-  - openbabel
   - pandas
   - pip
   - psutil

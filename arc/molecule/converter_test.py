@@ -7,7 +7,7 @@ This module contains unit test for the converter module.
 
 import unittest
 
-from arc.molecule.converter import debug_rdkit_mol, to_rdkit_mol, from_rdkit_mol, to_ob_mol, from_ob_mol
+from arc.molecule.converter import debug_rdkit_mol, to_rdkit_mol, from_rdkit_mol
 from arc.molecule.molecule import Molecule
 
 
@@ -127,14 +127,6 @@ class ConverterTest(unittest.TestCase):
         for mol in self.test_mols:
             rdkit_mol = to_rdkit_mol(mol)
             new_mol = from_rdkit_mol(Molecule(), rdkit_mol)
-            self.assertTrue(mol.is_isomorphic(new_mol) or self.test_Hbond_free_mol.is_isomorphic(new_mol))
-            self.assertEqual(mol.get_element_count(), new_mol.get_element_count())
-
-    def test_ob_round_trip(self):
-        """Test conversion to and from OBMol"""
-        for mol in self.test_mols:
-            ob_mol = to_ob_mol(mol)
-            new_mol = from_ob_mol(Molecule(), ob_mol)
             self.assertTrue(mol.is_isomorphic(new_mol) or self.test_Hbond_free_mol.is_isomorphic(new_mol))
             self.assertEqual(mol.get_element_count(), new_mol.get_element_count())
 

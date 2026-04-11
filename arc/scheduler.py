@@ -11,7 +11,7 @@ import shutil
 import time
 
 import numpy as np
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import arc.parser.parser as parser
 from arc import plotter
@@ -63,7 +63,6 @@ if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
     from arc.reaction import ARCReaction
 
-
 logger = get_logger()
 
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
@@ -71,7 +70,6 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
     settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], \
     settings['default_job_types'], settings['ts_adapters'], settings['max_rotor_trsh'], \
     settings['rotor_scan_resolution'], settings['servers']
-
 
 class Scheduler(object):
     """
@@ -114,7 +112,7 @@ class Scheduler(object):
                                      },
                             'conformers': <comments>,
                             'isomorphism': <comments>,
-                            'convergence': <status>,  # Optional[bool]
+                            'convergence': <status>,  # bool | None
                             'restart': <comments>,
                             'info': <comments>,
                             'warnings': <comments>,
@@ -133,15 +131,15 @@ class Scheduler(object):
         rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
         composite_method (str, optional): A composite method to use.
-        conformer_opt_level (Union[str, dict], optional): The level of theory to use for conformer comparisons.
-        conformer_sp_level (Union[str, dict], optional): The level of theory to use for conformer sp jobs.
-        opt_level (Union[str, dict], optional): The level of theory to use for geometry optimizations.
-        freq_level (Union[str, dict], optional): The level of theory to use for frequency calculations.
-        sp_level (Union[str, dict], optional): The level of theory to use for single point energy calculations.
-        scan_level (Union[str, dict], optional): The level of theory to use for torsion scans.
-        ts_guess_level (Union[str, dict], optional): The level of theory to use for TS guess comparisons.
-        irc_level (Union[str, dict], optional): The level of theory to use for IRC calculations.
-        orbitals_level (Union[str, dict], optional): The level of theory to use for calculating MOs (for plotting).
+        conformer_opt_level (str | dict, optional): The level of theory to use for conformer comparisons.
+        conformer_sp_level (str | dict, optional): The level of theory to use for conformer sp jobs.
+        opt_level (str | dict, optional): The level of theory to use for geometry optimizations.
+        freq_level (str | dict, optional): The level of theory to use for frequency calculations.
+        sp_level (str | dict, optional): The level of theory to use for single point energy calculations.
+        scan_level (str | dict, optional): The level of theory to use for torsion scans.
+        ts_guess_level (str | dict, optional): The level of theory to use for TS guess comparisons.
+        irc_level (str | dict, optional): The level of theory to use for IRC calculations.
+        orbitals_level (str | dict, optional): The level of theory to use for calculating MOs (for plotting).
         adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms
                                           in the species. Keys are tuples of (min_num_atoms, max_num_atoms),
                                           values are dictionaries with job type tuples as keys and levels of theory
@@ -233,37 +231,37 @@ class Scheduler(object):
                  ess_settings: dict,
                  species_list: list,
                  project_directory: str,
-                 composite_method: Optional[Level] = None,
-                 conformer_opt_level: Optional[Level] = None,
-                 conformer_sp_level: Optional[Level] = None,
-                 opt_level: Optional[Level] = None,
-                 freq_level: Optional[Level] = None,
-                 sp_level: Optional[Level] = None,
-                 scan_level: Optional[Level] = None,
-                 ts_guess_level: Optional[Level] = None,
-                 irc_level: Optional[Level] = None,
-                 orbitals_level: Optional[Level] = None,
-                 adaptive_levels: Optional[dict] = None,
-                 job_types: Optional[dict] = None,
-                 rxn_list: Optional[list] = None,
-                 bath_gas: Optional[str] = None,
-                 restart_dict: Optional[dict] = None,
-                 max_job_time: Optional[float] = None,
-                 allow_nonisomorphic_2d: Optional[bool] = False,
-                 memory: Optional[float] = None,
-                 testing: Optional[bool] = False,
-                 dont_gen_confs: Optional[list] = None,
-                 n_confs: Optional[int] = 10,
-                 e_confs: Optional[float] = 5,
-                 fine_only: Optional[bool] = False,
-                 trsh_ess_jobs: Optional[bool] = True,
-                 trsh_rotors: Optional[bool] = True,
+                 composite_method: Level | None = None,
+                 conformer_opt_level: Level | None = None,
+                 conformer_sp_level: Level | None = None,
+                 opt_level: Level | None = None,
+                 freq_level: Level | None = None,
+                 sp_level: Level | None = None,
+                 scan_level: Level | None = None,
+                 ts_guess_level: Level | None = None,
+                 irc_level: Level | None = None,
+                 orbitals_level: Level | None = None,
+                 adaptive_levels: dict | None = None,
+                 job_types: dict | None = None,
+                 rxn_list: list | None = None,
+                 bath_gas: str | None = None,
+                 restart_dict: dict | None = None,
+                 max_job_time: float | None = None,
+                 allow_nonisomorphic_2d: bool | None = False,
+                 memory: float | None = None,
+                 testing: bool | None = False,
+                 dont_gen_confs: list | None = None,
+                 n_confs: int | None = 10,
+                 e_confs: float | None = 5,
+                 fine_only: bool | None = False,
+                 trsh_ess_jobs: bool | None = True,
+                 trsh_rotors: bool | None = True,
                  kinetics_adapter: str = 'arkane',
                  freq_scale_factor: float = 1.0,
-                 ts_adapters: List[str] = None,
-                 report_e_elect: Optional[bool] = False,
-                 skip_nmd: Optional[bool] = False,
-                 output: Optional[dict] = None,
+                 ts_adapters: list[str] = None,
+                 report_e_elect: bool | None = False,
+                 skip_nmd: bool | None = False,
+                 output: dict | None = None,
                  ) -> None:
 
         self.project = project
@@ -850,30 +848,30 @@ class Scheduler(object):
 
     def run_job(self,
                 job_type: str,
-                conformer: Optional[int] = None,
-                cpu_cores: Optional[int] = None,
-                dihedral_increment: Optional[float] = None,
-                dihedrals: Optional[list] = None,
-                directed_scan_type: Optional[str] = None,
-                ess_trsh_methods: Optional[list] = None,
-                fine: Optional[bool] = False,
-                irc_direction: Optional[str] = None,
-                job_adapter: Optional[str] = None,
-                label: Optional[Union[str, List[str]]] = None,
-                level_of_theory: Optional[Union[Level, dict, str]] = None,
-                memory: Optional[int] = None,
-                max_job_time: Optional[int] = None,
-                rotor_index: Optional[int] = None,
-                reactions: Optional[List['ARCReaction']] = None,
-                queue: Optional[str] = None,
-                attempted_queues: Optional[list] = None,
-                scan_trsh: Optional[str] = '',
-                shift: Optional[str] = '',
-                trsh: Optional[Union[str, dict, list]] = None,
-                torsions: Optional[List[List[int]]] = None,
+                conformer: int | None = None,
+                cpu_cores: int | None = None,
+                dihedral_increment: float | None = None,
+                dihedrals: list | None = None,
+                directed_scan_type: str | None = None,
+                ess_trsh_methods: list | None = None,
+                fine: bool | None = False,
+                irc_direction: str | None = None,
+                job_adapter: str | None = None,
+                label: str | list[str] | None = None,
+                level_of_theory: Level | dict | str | None = None,
+                memory: int | None = None,
+                max_job_time: int | None = None,
+                rotor_index: int | None = None,
+                reactions: list['ARCReaction'] | None = None,
+                queue: str | None = None,
+                attempted_queues: list | None = None,
+                scan_trsh: str | None = '',
+                shift: str | None = '',
+                trsh: str | dict | list | None = None,
+                torsions: list[list[int]] | None = None,
                 times_rerun: int = 0,
-                tsg: Optional[int] = None,
-                xyz: Optional[Union[dict, List[dict]]]= None,
+                tsg: int | None = None,
+                xyz: dict | list[dict] | None= None,
                 ):
         """
         A helper function for running (all) jobs.
@@ -889,19 +887,19 @@ class Scheduler(object):
             fine (bool, optional): Whether to run an optimization job with a fine grid. `True` to use fine.
             irc_direction (str, optional): The direction to run the IRC computation.
             job_adapter (str, optional): An ESS software to use.
-            label (Union[str, List[str]], optional): The species label, or a list of labels in case of multispecies.
+            label (str | list[str], optional): The species label, or a list of labels in case of multispecies.
             level_of_theory (Level, optional): The level of theory to use.
             memory (int, optional): The total job allocated memory in GB.
             max_job_time (int, optional): The maximal allowed job time on the server in hours.
             rotor_index (int, optional): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
-            reactions (List[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
+            reactions (list[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
             scan_trsh (str, optional): A troubleshooting method for rotor scans.
             shift (str, optional): A string representation alpha- and beta-spin orbitals shifts (molpro only).
             times_rerun (int, optional): Number of times this job was re-run with the same arguments (no trsh methods).
-            torsions (List[List[int]], optional): The 0-indexed atom indices of the torsion(s).
+            torsions (list[list[int]], optional): The 0-indexed atom indices of the torsion(s).
             trsh (str, optional): A troubleshooting keyword to be used in input files.
             tsg (int, optional): TSGuess number if optimizing TS guesses.
-            xyz (Union[dict, List[dict]], optional): The 3D coordinates for the species.
+            xyz (dict | list[dict], optional): The 3D coordinates for the species.
         """
         max_job_time = max_job_time or self.max_job_time  # if it's None, set to default
         ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
@@ -1183,7 +1181,7 @@ class Scheduler(object):
                      xyz=job.xyz,
                      )
 
-    def run_conformer_jobs(self, labels: Optional[List[str]] = None):
+    def run_conformer_jobs(self, labels: list[str] | None = None):
         """
         Select the most stable conformer for each species using molecular dynamics (force fields) and subsequently
         spawning opt jobs at the conformer level of theory, usually a reasonable yet cheap DFT, e.g., b97d3/6-31+g(d,p).
@@ -1380,8 +1378,8 @@ class Scheduler(object):
 
     def run_sp_job(self,
                    label: str,
-                   level: Optional[Level] = None,
-                   conformer: Optional[int] = None,
+                   level: Level | None = None,
+                   conformer: int | None = None,
                    ):
         """
         Spawn a single point job using 'final_xyz' for species or a TS represented by 'label'.
@@ -1727,7 +1725,7 @@ class Scheduler(object):
     def spawn_directed_scan_jobs(self,
                                  label: str,
                                  rotor_index: int,
-                                 xyz: Optional[str] = None,
+                                 xyz: str | None = None,
                                  ):
         """
         Spawn directed scan jobs.
@@ -1905,13 +1903,13 @@ class Scheduler(object):
                           and index < len(torsions) - 1):
                         self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] = 0
 
-    def process_directed_scans(self, label: str, pivots: Union[List[int], List[List[int]]]):
+    def process_directed_scans(self, label: str, pivots: list[int] | list[list[int]]):
         """
         Process all directed rotors for a species and check the quality of the scan.
 
         Args:
             label (str): The species label.
-            pivots (Union[List[int], List[List[int]]]): The rotor pivots.
+            pivots (list[int] | list[list[int]]): The rotor pivots.
         """
         for rotor_dict_index in self.species_dict[label].rotors_dict.keys():
             rotor_dict = self.species_dict[label].rotors_dict[rotor_dict_index]  # avoid modifying the iterator
@@ -2639,7 +2637,7 @@ class Scheduler(object):
     def check_negative_freq(self,
                             label: str,
                             job: 'JobAdapter',
-                            vibfreqs: Union[list, np.ndarray],
+                            vibfreqs: list | np.ndarray,
                             ):
         """
         A helper function for determining the number of negative frequencies. Also logs appropriate errors.
@@ -2810,7 +2808,7 @@ class Scheduler(object):
     def post_sp_actions(self,
                         label: str,
                         sp_path: str,
-                        level: Optional[Level] = None,
+                        level: Level | None = None,
                         ):
         """
         Perform post-sp actions.
@@ -3072,9 +3070,9 @@ class Scheduler(object):
 
         Args:
             label (str): The species label.
-            pivots (List[List[int]]): The rotor pivots.
-            scan (List[int]): The four atoms defining the dihedral.
-            energies (List[float]): The rotor scan energies in kJ/mol.
+            pivots (list[list[int]]): The rotor pivots.
+            scan (list[int]): The four atoms defining the dihedral.
+            energies (list[float]): The rotor scan energies in kJ/mol.
 
         Todo:
             - Not used!!
@@ -3235,7 +3233,7 @@ class Scheduler(object):
         # Update restart dictionary and save the yaml restart file:
         self.save_restart_dict()
 
-    def get_server_job_ids(self, specific_server: Optional[str] = None):
+    def get_server_job_ids(self, specific_server: str | None = None):
         """
         Check job status on a specific server or on all active servers, get a list of relevant running job IDs.
 
@@ -3322,8 +3320,8 @@ class Scheduler(object):
 
     def troubleshoot_scan_job(self,
                               job: 'JobAdapter',
-                              methods: Optional[dict] = None,
-                              ) -> Tuple[bool, dict]:
+                              methods: dict | None = None,
+                              ) -> tuple[bool, dict]:
         """
         Troubleshooting rotor scans
         Using the following methods:
@@ -3339,7 +3337,7 @@ class Scheduler(object):
                  'inc_res': ``None``,
                  'change conformer': <a xyz dict>}
 
-        Returns: Tuple[bool, dict]:
+        Returns: tuple[bool, dict]:
             - ``True`` if the troubleshooting is valid.
             - The actions are applied in the troubleshooting.
         """
@@ -3525,8 +3523,8 @@ class Scheduler(object):
     def troubleshoot_ess(self,
                          label: str,
                          job: 'JobAdapter',
-                         level_of_theory: Union[Level, dict, str],
-                         conformer: Optional[int] = None,
+                         level_of_theory: Level | dict | str,
+                         conformer: int | None = None,
                          ):
         """
         Troubleshoot issues related to the electronic structure software, such as conversion.
@@ -3853,7 +3851,7 @@ class Scheduler(object):
         # for any other job type use the original level of theory regardless of the number of heavy atoms
         return original_level_of_theory
 
-    def initialize_output_dict(self, label: Optional[str] = None):
+    def initialize_output_dict(self, label: str | None = None):
         """
         Initialize self.output.
         Do not initialize keys that will contain paths ('geo', 'freq', 'sp', 'composite'),
@@ -3966,7 +3964,7 @@ class Scheduler(object):
         content[label] = self.species_dict[label].e_elect
         save_yaml_file(path=path, content=content)
 
-    def check_max_simultaneous_jobs_limit(self, server: Optional[str]):
+    def check_max_simultaneous_jobs_limit(self, server: str | None):
         """
         Check if the number of running jobs on the server is not above the set server limit.
 
@@ -3983,9 +3981,8 @@ class Scheduler(object):
                     continue_lopping = False
             self.get_server_job_ids()
 
-
 def species_has_freq(species_output_dict: dict,
-                     yml_path: Optional[str] = None,
+                     yml_path: str | None = None,
                      ) -> bool:
     """
     Checks whether a species has valid converged frequencies using it's output dict.
@@ -4003,9 +4000,8 @@ def species_has_freq(species_output_dict: dict,
         return True
     return False
 
-
 def species_has_geo(species_output_dict: dict,
-                    yml_path: Optional[str] = None,
+                    yml_path: str | None = None,
                     ) -> bool:
     """
     Checks whether a species has a valid converged geometry using it's output dict.
@@ -4023,9 +4019,8 @@ def species_has_geo(species_output_dict: dict,
         return True
     return False
 
-
 def species_has_sp(species_output_dict: dict,
-                   yml_path: Optional[str] = None,
+                   yml_path: str | None = None,
                    ) -> bool:
     """
     Checks whether a species has a valid converged single-point energy using it's output dict.
@@ -4043,9 +4038,8 @@ def species_has_sp(species_output_dict: dict,
         return True
     return False
 
-
 def species_has_sp_and_freq(species_output_dict: dict,
-                            yml_path: Optional[str] = None,
+                            yml_path: str | None = None,
                             ) -> bool:
     """
     Checks whether a species has a valid converged single-point energy and valid converged frequencies.

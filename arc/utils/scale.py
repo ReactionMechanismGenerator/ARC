@@ -7,7 +7,7 @@ Adapted by Duminda Ranasinghe and Alon Grinberg Dana
 
 import os
 import time
-from typing import List, Optional, Union
+
 import shutil
 
 from arc.common import (ARC_PATH,
@@ -27,9 +27,7 @@ try:
 except ImportError:
     global_ess_settings = None
 
-
 logger = get_logger()
-
 
 HEADER = 'FREQ: A PROGRAM FOR OPTIMIZING SCALE FACTORS (Version 1)\n'\
          '                 written by                 \n'\
@@ -42,10 +40,9 @@ HEADER = 'FREQ: A PROGRAM FOR OPTIMIZING SCALE FACTORS (Version 1)\n'\
          '2. H.S. Yu, L.J. Fiedler, I.M. Alecu,, D.G. Truhlar, Computer Physics Communications 2017, 210, 132-138,\n'\
          '   DOI: 10.1016/j.cpc.2016.09.004\n\n'
 
-
-def determine_scaling_factors(levels: List[Union[Level, dict, str]],
-                              ess_settings: Optional[dict] = None,
-                              init_log: Optional[bool] = True,
+def determine_scaling_factors(levels: list[Level | dict | str],
+                              ess_settings: dict | None = None,
+                              init_log: bool | None = True,
                               ) -> list:
     """
     Determine the zero-point energy, harmonic frequencies, and fundamental frequencies scaling factors
@@ -127,7 +124,6 @@ def determine_scaling_factors(levels: List[Union[Level, dict, str]],
     harmonic_freq_scaling_factors = [lambda_zpe * 1.014 for lambda_zpe in lambda_zpes]
     return harmonic_freq_scaling_factors
 
-
 def calculate_truhlar_scaling_factors(zpe_dict: dict,
                                       level: str,
                                       ) -> float:
@@ -189,13 +185,12 @@ def calculate_truhlar_scaling_factors(zpe_dict: dict,
 
     return lambda_zpe
 
-
 def summarize_results(lambda_zpes: list,
-                      levels: List[Union[Level, dict, str]],
+                      levels: list[Level | dict | str],
                       zpe_dicts: list,
                       times: list,
                       overall_time: str,
-                      base_path: Optional[str] = None,
+                      base_path: str | None = None,
                       ) -> None:
     """
     Print and save the results to file.
@@ -252,7 +247,6 @@ def summarize_results(lambda_zpes: list,
                             f'(elapsed time: {overall_time}).\n'
         logger.info(overall_time_text)
         f.write(overall_time_text)
-
 
 def get_species_list() -> list:
     """
@@ -336,7 +330,6 @@ def get_species_list() -> list:
     species_list = [c2h2, ch4, co2, co, f2, ch2o, h2o, h2, hcn, hf, n2o, n2, nh3, oh, cl2]
 
     return species_list
-
 
 def rename_level(level: str) -> str:
     """

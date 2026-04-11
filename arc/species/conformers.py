@@ -22,13 +22,11 @@ conformers is a list of dictionaries, each with the following keys::
                            <torsion tuple 1>: angle 1,
      }
 
-
 Module workflow::
 
     generate_conformers
         generate_force_field_conformers
-            get_force_field_energies, rdkit_force_field or openbabel_force_field_on_rdkit_conformers,
-            determine_dihedrals
+            get_force_field_energies, rdkit_force_field, determine_dihedrals
         deduce_new_conformers
             get_torsion_angles, determine_torsion_symmetry, determine_torsion_sampling_points,
             change_dihedrals_and_force_field_it
@@ -41,10 +39,7 @@ import logging
 import sys
 import time
 from itertools import product
-from typing import Dict, List, Optional, Tuple, Union
 
-from openbabel import openbabel as ob
-from openbabel import pybel as pyb
 from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
@@ -55,14 +50,12 @@ from arc.common import (convert_list_index_0_to_1,
                         get_logger,
                         )
 from arc.exceptions import ConformerError, InputError
-from arc.molecule.converter import to_ob_mol
 from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
 from arc.molecule.resonance import generate_resonance_structures_safely
 import arc.plotter
 from arc.species import converter, vectors
 from arc.species.perceive import perceive_molecule_from_xyz
-
 
 logger = get_logger()
 
@@ -128,15 +121,14 @@ CHEAT_SHEET = {'[H][H]': {'xyz': converter.str_to_xyz("""H  0.0  0.0  0.3715170
                           'torsion_dihedrals': {}}
                }
 
-
-def cheat_sheet(mol_list: Union[List[Molecule], Molecule]) -> Optional[List[Dict]]:
+def cheat_sheet(mol_list: list[Molecule] | Molecule) -> list[dict] | None:
     """
     Check if the species is in the cheat sheet, and return its correct xyz if it is.
 
     Args:
-        mol_list (Union[List[Molecule], Molecule]): Molecule objects to consider (or Molecule, resonance structures will be generated).
+        mol_list (list[Molecule] | Molecule): Molecule objects to consider (or Molecule, resonance structures will be generated).
     
-    Returns: Optional[lis[Dict]]
+    Returns: lis[Dict] | None
     """
     mol_list = [mol_list] if not isinstance(mol_list, list) else mol_list
     for smiles in CHEAT_SHEET.keys():
@@ -146,8 +138,7 @@ def cheat_sheet(mol_list: Union[List[Molecule], Molecule]) -> Optional[List[Dict
                 return [CHEAT_SHEET[smiles]]
     return None
 
-
-def generate_conformers(mol_list: Union[List[Molecule], Molecule],
+def generate_conformers(mol_list: list[Molecule] | Molecule,
                         label,
                         xyzs=None,
                         torsions=None,
@@ -166,13 +157,13 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
                         return_all_conformers=False,
                         plot_path=None,
                         print_logs=True,
-                        ) -> Optional[Union[list, Tuple[list, list]]]:
+                        ) -> list | tuple[list, list] | None:
     """
     Generate conformers for (non-TS) species starting from a list of RMG Molecules.
     (resonance structures are assumed to have already been generated and included in the molecule list)
 
     Args:
-        mol_list (Union[List[Molecule], Molecule]): Molecule objects to consider (or Molecule, resonance structures will be generated).
+        mol_list (list[Molecule] | Molecule): Molecule objects to consider (or Molecule, resonance structures will be generated).
         label (str): The species' label.
         xyzs (list), optional: A list of user guess xyzs that will also be taken into account, each in a dict format.
         torsions (list, optional): A list of all possible torsions in the molecule. Will be determined if not given.
@@ -186,7 +177,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         de_threshold (float, optional): Energy threshold (in kJ/mol) above which wells will not be considered.
         smeared_scan_res (float, optional): The resolution (in degrees) for scanning smeared wells.
         combination_threshold (int, optional): A threshold below which all combinations will be generated.
-        force_field (str, optional): The type of force field to use (MMFF94, MMFF94s, UFF, GAFF).
+        force_field (str, optional): The type of force field to use (MMFF94, MMFF94s, UFF).
         max_combination_iterations (int, optional): The maximum number of times to iteratively search
                                                     for the lowest conformer.
         diastereomers (list, optional): Entries are xyz's in a dictionary format or conformer structures
@@ -202,7 +193,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         ConformerError: If something goes wrong.
         TypeError: If xyzs has entries of a wrong type.
 
-    Returns: Optional[Union[list, Tuple[list, list]]]
+    Returns: list | tuple[list, list] | None
         - Lowest conformers
         - Lowest conformers and all new conformers.
     """
@@ -304,7 +295,6 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
     else:
         return lowest_confs, new_conformers
 
-
 def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_scan_res=None, plot_path=None,
                           combination_threshold=1000, force_field='MMFF94s', max_combination_iterations=25,
                           diastereomers=None, de_threshold=None):
@@ -330,7 +320,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
                                         will not be considered.
 
     Returns:
-        Tuple[list, dict]:
+        tuple[list, dict]:
             - The deduced conformers.
             - Keys are torsion tuples.
     """
@@ -414,7 +404,6 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
 
     return new_conformers, symmetries
 
-
 def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb, multiple_tors,
                                     multiple_sampling_points, combination_threshold=1000, len_conformers=-1,
                                     force_field='MMFF94s', max_combination_iterations=25, plot_path=None,
@@ -470,7 +459,6 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
                                                    torsions=list(torsion_angles.keys()))
     return new_conformers
 
-
 def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_tors, multiple_sampling_points,
                                                 len_conformers=-1, force_field='MMFF94s', max_combination_iterations=25,
                                                 torsion_angles=None, multiple_sampling_points_dict=None,
@@ -504,7 +492,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         list: New conformer combinations, entries are conformer dictionaries.
     """
     base_energy = get_force_field_energies(label, mol, num_confs=None, xyz=base_xyz,
-                                           force_field=force_field, optimize=True, suppress_warning=True)[1]
+                                           force_field=force_field, optimize=True)[1]
     if len(base_energy) == 0:
         return list()
     else:
@@ -582,7 +570,6 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         return new_conformers_no_energy
     return new_conformers
 
-
 def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_sampling_points, len_conformers=-1,
                               torsions=None, force_field='MMFF94s'):
     """
@@ -619,7 +606,7 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
     else:
         # No multiple torsions (all torsions are symmetric or no torsions in the molecule), this is a trivial case.
         energy = get_force_field_energies(label, mol, num_confs=None, xyz=base_xyz, force_field=force_field,
-                                          optimize=True, suppress_warning=True)[1]
+                                          optimize=True)[1]
         if energy is not None and len(energy):
             energy = energy[0]
         else:
@@ -633,7 +620,6 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
     new_conformers = determine_dihedrals(new_conformers, torsions)
     return new_conformers
 
-
 def generate_force_field_conformers(label,
                                     mol_list,
                                     torsion_num,
@@ -642,9 +628,9 @@ def generate_force_field_conformers(label,
                                     xyzs=None,
                                     num_confs=None,
                                     force_field='MMFF94s',
-                                    ) -> List[dict]:
+                                    ) -> list[dict]:
     """
-    Generate conformers using RDKit and OpenBabel and optimize them using a force field
+    Generate conformers using RDKit and optimize them using a force field.
     Also consider user guesses in `xyzs`.
 
     Args:
@@ -705,7 +691,6 @@ def generate_force_field_conformers(label,
                                'source': 'User Guess'})
     return conformers
 
-
 def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals, optimize=True, force_field='MMFF94s'):
     """
     Change dihedrals of specified torsions according to the new dihedrals specified, and get FF energies.
@@ -730,7 +715,7 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
         force_field (str, optional): The type of force field to use.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - The conformer FF energies corresponding to the list of dihedrals.
             - The conformer xyz geometries corresponding to the list of dihedrals.
     """
@@ -739,7 +724,7 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
 
     if torsions is None or new_dihedrals is None:
         xyz, energy = get_force_field_energies(label, mol=mol, xyz=xyz, optimize=True,
-                                               force_field=force_field, suppress_warning=True)
+                                               force_field=force_field)
         return xyz, energy
 
     xyzs, energies = list(), list()
@@ -757,7 +742,7 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
                 torsion_0_indexed = [tor - 1 for tor in torsion]
                 xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
         xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
-                                                force_field=force_field, suppress_warning=True)
+                                                force_field=force_field)
         if energy and xyz_:
             energies.append(energy[0])
             if optimize:
@@ -769,7 +754,6 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
             xyzs.append(xyz_dihedrals)
     return xyzs, energies
 
-
 def determine_rotors(mol_list):
     """
     Determine possible unique rotors in the species to be treated as hindered rotors.
@@ -778,7 +762,7 @@ def determine_rotors(mol_list):
         mol_list (list): Localized structures (Molecule objects) by which all rotors will be determined.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - A list of indices of scan pivots.
             - A list of indices of top atoms (including one of the pivotal atoms) corresponding to the torsions.
     """
@@ -794,14 +778,13 @@ def determine_rotors(mol_list):
                 tops.append(new_rotor['top'])
     return torsions, tops
 
-
 def determine_number_of_conformers_to_generate(label: str,
                                                heavy_atoms: int,
                                                torsion_num: int,
-                                               mol: Optional[Molecule] = None,
-                                               xyz: Optional[dict] = None,
+                                               mol: Molecule | None = None,
+                                               xyz: dict | None = None,
                                                minimalist: bool = False,
-                                               ) -> Tuple[int, int]:
+                                               ) -> tuple[int, int]:
     """
     Determine the number of conformers to generate using molecular mechanics.
 
@@ -818,7 +801,7 @@ def determine_number_of_conformers_to_generate(label: str,
         ConformerError: If the number of conformers to generate cannot be determined.
 
     Returns:
-        Tuple[int, int]:
+        tuple[int, int]:
             - The number of conformers to generate.
             - The number of chiral centers.
     """
@@ -859,7 +842,7 @@ def determine_number_of_conformers_to_generate(label: str,
                                          n_radicals=None,
                                          )
     if mol is not None and xyz is None:
-        xyzs = get_force_field_energies(label, mol, num_confs=1, suppress_warning=True)[0]
+        xyzs = get_force_field_energies(label, mol, num_confs=1)[0]
         xyz = xyzs[0] if len(xyzs) else None
     if mol is not None and xyz is not None:
         num_chiral_centers = get_number_of_chiral_centers(label, mol, xyz=xyz, just_get_the_number=True)
@@ -867,7 +850,6 @@ def determine_number_of_conformers_to_generate(label: str,
         num_confs = int(num_confs * num_chiral_centers)
 
     return num_confs, num_chiral_centers
-
 
 def determine_dihedrals(conformers, torsions):
     """
@@ -892,7 +874,6 @@ def determine_dihedrals(conformers, torsions):
                 conformer['torsion_dihedrals'][tuple(torsion)] = dihedral
     return conformers
 
-
 def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=None, symmetry=1):
     """
     Determine how many points to consider in each well of a torsion for conformer combinations.
@@ -904,7 +885,7 @@ def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=No
         symmetry (int, optional): The torsion symmetry number.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - Sampling points for the torsion.
             - Each entry is a well dictionary with the keys
               ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``, ``angles``.
@@ -926,7 +907,6 @@ def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=No
         if symmetry > 1 and i == len(wells) / symmetry - 1:
             break
     return sampling_points, wells
-
 
 def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
     """
@@ -1016,7 +996,6 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
                     symmetry *= len(groups)
     return symmetry
 
-
 def add_missing_symmetric_torsion_values(top1, mol_list, torsion_scan):
     """
     Add symmetry to a torsion scan in the rotor for efficient conformer generation.
@@ -1055,7 +1034,6 @@ def add_missing_symmetric_torsion_values(top1, mol_list, torsion_scan):
 
     return torsion_scan
 
-
 def determine_well_width_tolerance(mean_width):
     """
     Determine the tolerance by which well widths are determined to be nearly equal using a simple hyperbolic form.
@@ -1072,11 +1050,10 @@ def determine_well_width_tolerance(mean_width):
     scale = 2.0
     return baseline + scale / mean_width
 
-
 def get_lowest_confs(label: str,
-                     confs: Union[dict, list],
-                     n: Optional[int] = 10,
-                     e: Optional[float] = 5.0,
+                     confs: dict | list,
+                     n: int | None = 10,
+                     e: float | None = 5.0,
                      energy: str = 'FF energy',
                      ) -> list:
     """
@@ -1136,7 +1113,6 @@ def get_lowest_confs(label: str,
                     break
     return lowest_confs
 
-
 def get_torsion_angles(label, conformers, torsions, mol_list=None, tops=None):
     """
     Populate each torsion pivots with all available angles from the generated conformers.
@@ -1168,7 +1144,6 @@ def get_torsion_angles(label, conformers, torsions, mol_list=None, tops=None):
             torsion_angles[tuple(torsion)] = add_missing_symmetric_torsion_values(top, mol_list, torsion_angles[tuple(torsion)])
     return torsion_angles
 
-
 def get_force_field_energies(label: str,
                              mol: Molecule,
                              num_confs: int = None,
@@ -1176,9 +1151,7 @@ def get_force_field_energies(label: str,
                              force_field: str = 'MMFF94s',
                              try_uff: bool = True,
                              optimize: bool = True,
-                             try_ob: bool = False,
-                             suppress_warning: bool = False,
-                             ) -> Tuple[list, list]:
+                             ) -> tuple[list, list]:
     """
     Determine force field energies using RDKit.
     If ``num_confs`` is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
@@ -1192,14 +1165,12 @@ def get_force_field_energies(label: str,
         force_field (str, optional): The type of force field to use.
         try_uff (bool, optional): Whether to try UFF if MMFF94(s) fails. ``True`` by default.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
-        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``True`` by default.
-        suppress_warning (bool, optional): Whether to suppress OpenBabel warnings. ``False`` by default.
 
     Raises:
         ConformerError: If conformers could not be generated.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - Entries are xyz coordinates, each in a dict format.
             - Entries are the FF energies (in kJ/mol).
     """
@@ -1214,221 +1185,11 @@ def get_force_field_energies(label: str,
                                                try_uff=try_uff,
                                                optimize=optimize,
                                                )
-    if not len(xyzs) and force_field.lower() in ['gaff', 'mmff94', 'mmff94s', 'uff', 'ghemical'] and try_ob:
-        if not suppress_warning:
-            logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers for {label}. '
-                           f'This is often slower.')
-        xyzs, energies = openbabel_force_field(label,
-                                               mol,
-                                               num_confs,
-                                               xyz=xyz,
-                                               force_field=force_field,
-                                               )
     if not len(xyzs):
-        if force_field.lower() not in ['mmff94', 'mmff94s', 'uff', 'gaff', 'ghemical']:
-            raise ConformerError(f'Unrecognized force field for {label}. Should be either MMFF94, MMFF94s, UFF, '
-                                 f'Ghemical, or GAFF. Got: {force_field}.')
+        if force_field.lower() not in ['mmff94', 'mmff94s', 'uff']:
+            raise ConformerError(f'Unrecognized force field for {label}. Should be either MMFF94, MMFF94s, or UFF. '
+                                 f'Got: {force_field}.')
     return xyzs, energies
-
-
-def openbabel_force_field_on_rdkit_conformers(label, rd_mol, force_field='MMFF94s', optimize=True):
-    """
-    Optimize RDKit conformers by OpenBabel using a force field (MMFF94 or MMFF94s are recommended).
-    This is a fallback method when RDKit fails to generate force field optimized conformers.
-
-    Args:
-        label (str): The species' label.
-        rd_mol (RDKit RDMol): The RDKit molecule with embedded conformers to optimize.
-        force_field (str, optional): The type of force field to use.
-        optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
-
-    Returns:
-        Tuple[list, list]:
-            - Entries are optimized xyz's in a dictionary format.
-            - Entries are float numbers representing the energies (in kJ/mol).
-    """
-    xyzs, energies = list(), list()
-    if not rd_mol.GetNumConformers():
-        logger.warning(f'Could not generate conformers for {label} via OpenBabel')
-        return xyzs, energies
-    # Set up Openbabel input and output format
-    obconversion = ob.OBConversion()
-    obconversion.SetInAndOutFormats('xyz', 'xyz')
-    # Set up Openbabel force field
-    ff = ob.OBForceField.FindForceField(force_field)
-    symbols = [rd_atom.GetSymbol() for rd_atom in rd_mol.GetAtoms()]
-    for i in range(rd_mol.GetNumConformers()):
-        # Convert RDKit conformer to xyz string
-        conf = rd_mol.GetConformer(i)
-        xyz_str = f'{conf.GetNumAtoms()}\n\n'
-        for j in range(conf.GetNumAtoms()):
-            xyz_str += symbols[j] + '      '
-            pt = conf.GetAtomPosition(j)
-            xyz_str += '   '.join([str(pt.x), str(pt.y), str(pt.z)]) + '\n'
-        # Build OpenBabel molecule from xyz string
-        ob_mol = ob.OBMol()
-        obconversion.ReadString(ob_mol, xyz_str)
-        ff.Setup(ob_mol)
-        # Optimize the molecule if needed
-        if optimize:
-            ff.ConjugateGradients(2000)
-        # Export xyzs and energies
-        ob_mol.GetCoordinates()
-        ff.GetCoordinates(ob_mol)
-        energies.append(ff.Energy())
-        xyz_str = '\n'.join(obconversion.WriteString(ob_mol).splitlines()[2:])
-        xyzs.append(converter.str_to_xyz(xyz_str))
-    return xyzs, energies
-
-
-def mix_rdkit_and_openbabel_force_field(label,
-                                        mol,
-                                        num_confs=None,
-                                        xyz=None,
-                                        force_field='GAFF',
-                                        try_ob=False):
-    """
-    Optimize conformers using a force field (GAFF, MMFF94s, MMFF94, UFF, Ghemical)
-    Use RDKit to generate the random conformers (OpenBabel isn't good enough),
-    but use OpenBabel to optimize them (RDKit doesn't have GAFF).
-
-    Args:
-        label (str): The species' label.
-        mol (Molecule, optional): The RMG molecule object with connectivity and bond order information.
-        num_confs (int, optional): The number of random 3D conformations to generate.
-        xyz (string or list, optional): The 3D coordinates in either a string or an array format.
-        force_field (str, optional): The type of force field to use.
-        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
-
-    Returns:
-        Tuple[list, list]:
-            - Entries are optimized xyz's in a list format.
-            - Entries are float numbers representing the energies in kJ/mol.
-    """
-    xyzs, energies = list(), list()
-    rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
-    if rd_mol is None:
-        return xyzs, energies
-    unoptimized_xyzs = list()
-    for i in range(rd_mol.GetNumConformers()):
-        conf, xyz = rd_mol.GetConformer(i), list()
-        for j in range(conf.GetNumAtoms()):
-            pt = conf.GetAtomPosition(j)
-            xyz.append([pt.x, pt.y, pt.z])
-        xyz = [xyz[j] for j, _ in enumerate(xyz)]  # reorder
-        unoptimized_xyzs.append(xyz)
-
-    if try_ob:
-        if not len(unoptimized_xyzs):
-            # use OB as the fallback method
-            logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers for {label}. '
-                           f'This is often slower, and prohibits ARC from using all features of the conformers module.')
-            xyzs, energies = openbabel_force_field(label, mol, num_confs, force_field=force_field)
-
-        else:
-            for xyz in unoptimized_xyzs:
-                xyzs_, energies_ = openbabel_force_field(label, mol, num_confs, xyz=xyz, force_field=force_field)
-                xyzs.extend(xyzs_)
-                energies.extend(energies_)
-    return xyzs, energies
-
-
-def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAFF', method='diverse'):
-    """
-    Optimize conformers using a force field (GAFF, MMFF94s, MMFF94, UFF, Ghemical).
-
-    Args:
-        label (str): The species' label.
-        mol (Molecule, optional): The RMG molecule object with connectivity and bond order information.
-        num_confs (int, optional): The number of random 3D conformations to generate.
-        xyz (dict, optional): The 3D coordinates.
-        force_field (str, optional): The type of force field to use.
-        method (str, optional): The conformer searching method to use in OpenBabel.
-                                For method description, see https://openbabel.org/dev-api/group__conformer.shtml
-
-    Returns:
-        Tuple[list, list]:
-            - Entries are optimized xyz's in a list format.
-            - Entries are float numbers representing the energies in kJ/mol.
-    """
-    xyzs, energies = list(), list()
-    ff = ob.OBForceField.FindForceField(force_field)
-
-    if xyz is not None:
-        obmol = ob.OBMol()
-        atoms = mol.vertices
-        ob_atom_ids = dict()
-        for i, atom in enumerate(atoms):
-            a = obmol.NewAtom()
-            a.SetAtomicNum(atom.number)
-            a.SetVector(xyz['coords'][i][0], xyz['coords'][i][1], xyz['coords'][i][2])
-            if atom.element.isotope != -1:
-                a.SetIsotope(atom.element.isotope)
-            a.SetFormalCharge(atom.charge)
-            ob_atom_ids[atom] = a.GetId()
-        orders = {1: 1, 2: 2, 3: 3, 4: 4, 1.5: 5}
-        for atom1 in mol.vertices:
-            for atom2, bond in atom1.edges.items():
-                if bond.is_hydrogen_bond():
-                    continue
-                index1 = atoms.index(atom1)
-                index2 = atoms.index(atom2)
-                if index1 < index2:
-                    obmol.AddBond(index1 + 1, index2 + 1, orders[bond.order])
-
-        # optimize
-        ff.Setup(obmol)
-        ff.SetLogLevel(0)
-        ff.SetVDWCutOff(6.0)  # The VDW cut-off distance (default=6.0)
-        ff.SetElectrostaticCutOff(10.0)  # The Electrostatic cut-off distance (default=10.0)
-        ff.SetUpdateFrequency(10)  # The frequency to update the non-bonded pairs (default=10)
-        ff.EnableCutOff(False)  # Use cut-off (default=don't use cut-off)
-        ff.SteepestDescentInitialize()  # ConjugateGradientsInitialize
-        v = 1
-        while v:
-            v = ff.SteepestDescentTakeNSteps(1)  # ConjugateGradientsTakeNSteps
-            if ff.DetectExplosion():
-                raise ConformerError(f'Force field {force_field} exploded with method SteepestDescent for {label}')
-        ff.GetCoordinates(obmol)
-
-    elif num_confs is not None:
-        obmol, ob_atom_ids = to_ob_mol(mol, return_mapping=True)
-        pybmol = pyb.Molecule(obmol)
-        pybmol.make3D()
-        obmol = pybmol.OBMol
-        ff.Setup(obmol)
-
-        if method.lower() == 'weighted':
-            ff.WeightedRotorSearch(num_confs, 2000)
-        elif method.lower() == 'random':
-            ff.RandomRotorSearch(num_confs, 2000)
-        elif method.lower() == 'diverse':
-            rmsd_cutoff = 0.5
-            energy_cutoff = 50.
-            confab_verbose = False
-            ff.DiverseConfGen(rmsd_cutoff, num_confs, energy_cutoff, confab_verbose)
-        elif method.lower() == 'systematic':
-            ff.SystematicRotorSearch(num_confs)
-        else:
-            raise ConformerError(f'Could not identify method {method} for {label}')
-    else:
-        raise ConformerError(f'Either num_confs or xyz should be given for {label}')
-
-    ff.GetConformers(obmol)
-    obconversion = ob.OBConversion()
-    obconversion.SetOutFormat('xyz')
-
-    for i in range(obmol.NumConformers()):
-        obmol.SetConformer(i)
-        ff.Setup(obmol)
-        xyz_str = '\n'.join(obconversion.WriteString(obmol).splitlines()[2:])
-        xyz_dict = converter.str_to_xyz(xyz_str)
-        xyz_dict['coords'] = tuple(xyz_dict['coords'][ob_atom_ids[mol.atoms[j]]]
-                                   for j in range(len(xyz_dict['coords'])))
-        xyzs.append(xyz_dict)
-        energies.append(ff.Energy())
-    return xyzs, energies
-
 
 def embed_rdkit(label, mol, num_confs=None, xyz=None):
     """
@@ -1441,7 +1202,7 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
         xyz (dict, optional): The 3D coordinates.
 
     Returns:
-        Optional[RDMol]: An RDKIt molecule with embedded conformers.
+        RDMol | None: An RDKIt molecule with embedded conformers.
     """
     if num_confs is None and xyz is None:
         raise ConformerError(f'Either num_confs or xyz must be set when calling embed_rdkit() for {label}')
@@ -1464,7 +1225,6 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
             rd_conf.SetAtomPosition(i, xyz['coords'][i])
         rd_mol.AddConformer(rd_conf)
     return rd_mol
-
 
 def read_rdkit_embedded_conformers(label, rd_mol, i=None, rd_index_map=None):
     """
@@ -1492,7 +1252,6 @@ def read_rdkit_embedded_conformers(label, rd_mol, i=None, rd_index_map=None):
                              f'conformers for {label}')
     return xyzs
 
-
 def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None):
     """
     Read coordinates from RDKit conformers.
@@ -1519,16 +1278,14 @@ def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None):
     xyz_dict = converter.xyz_from_data(coords=coords, symbols=symbols)
     return xyz_dict
 
-
 def rdkit_force_field(label: str,
-                      rd_mol: Optional[RDMol],
-                      mol: Optional[Molecule] = None,
-                      num_confs: Optional[int] = None,
+                      rd_mol: RDMol | None,
+                      mol: Molecule | None = None,
+                      num_confs: int | None = None,
                       force_field: str = 'MMFF94s',
                       try_uff: bool = True,
                       optimize: bool = True,
-                      try_ob: bool = False,
-                      ) -> Tuple[list, list]:
+                      ) -> tuple[list, list]:
     """
     Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
     For UFF see: https://www.rdkit.org/docs/source/rdkit.Chem.rdForceFieldHelpers.html#rdkit.Chem.rdForceFieldHelpers.UFFOptimizeMoleculeConfs
@@ -1541,10 +1298,9 @@ def rdkit_force_field(label: str,
         force_field (str, optional): The type of force field to use.
         try_uff (bool, optional): Whether to try UFF if MMFF94(s) fails. ``True`` by default.
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
-        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - Entries are optimized xyz's in a dictionary format.
             - Entries are float numbers representing the energies.
     """
@@ -1581,21 +1337,12 @@ def rdkit_force_field(label: str,
                                                                ignoreInterfragInteractions=True,
                                                                )
             except (RuntimeError, ValueError):
-                if try_ob:
-                    logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers '
-                                   f'for {label}. This is often slower.')
-                    xyzs, energies = openbabel_force_field_on_rdkit_conformers(label,
-                                                                               rd_mol,
-                                                                               force_field=force_field,
-                                                                               optimize=optimize,
-                                                                               )
-                    return xyzs, energies
+                pass
         for i in range(rd_mol.GetNumConformers()):
             if output is not None and output[i][0] == 0:  # The optimization converged.
                 energies.append(output[i][1])
             xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
     return xyzs, energies
-
 
 def get_wells(label, angles, blank=WELL_GAP):
     """
@@ -1643,7 +1390,6 @@ def get_wells(label, angles, blank=WELL_GAP):
         wells[-1]['angles'].append(new_angles[-1])
     return wells
 
-
 def check_special_non_rotor_cases(mol, top1, top2):
     """
     Check whether one of the tops correspond to a special case which does not have a torsional mode.
@@ -1664,7 +1410,6 @@ def check_special_non_rotor_cases(mol, top1, top2):
                 (len(top) == 2 or (len(top) == 3 and mol.atoms[top[2] - 1].is_hydrogen())):
             return True
     return False
-
 
 def find_internal_rotors(mol):
     """
@@ -1722,7 +1467,6 @@ def find_internal_rotors(mol):
                         rotors.append(rotor)
     return rotors
 
-
 def determine_smallest_atom_index_in_scan(atom1: Atom,
                                           atom2: Atom,
                                           mol: Molecule,
@@ -1758,7 +1502,6 @@ def determine_smallest_atom_index_in_scan(atom1: Atom,
                 smallest_index = atom_index
     return smallest_index + 1
 
-
 def to_group(mol, atom_indices):
     """
     This method converts a defined part of a Molecule into a Group.
@@ -1790,7 +1533,6 @@ def to_group(mol, atom_indices):
     group.update()
     return group
 
-
 def update_mol(mol):
     """
     Update atom types, multiplicity, and atom charges in the molecule.
@@ -1807,7 +1549,6 @@ def update_mol(mol):
     mol.update_multiplicity()
     mol.identify_ring_membership()
     return mol
-
 
 def generate_monoatomic_conformer(symbol: str) -> dict:
     """
@@ -1830,10 +1571,9 @@ def generate_monoatomic_conformer(symbol: str) -> dict:
             }
     return conf
 
-
 def generate_diatomic_conformer(symbol_1: str,
                                 symbol_2: str,
-                                multiplicity: Optional[int] = None,
+                                multiplicity: int | None = None,
                                 ) -> dict:
     """
     Generate a conformer for a diatomic species.
@@ -1902,7 +1642,6 @@ def generate_diatomic_conformer(symbol_1: str,
             }
     return conf
 
-
 def translate_groups(label, mol, xyz, pivot):
     """
     Exchange between two groups in a molecule. The groups cannot share a ring with the pivotal atom.
@@ -1962,7 +1701,6 @@ def translate_groups(label, mol, xyz, pivot):
             raise ConformerError(f'The number of groups to translate is {len(translate)}, expected 2 for {label}.')
     return new_xyz
 
-
 def translate_group(mol, xyz, pivot, anchor, vector):
     """
     Translate a group (a set of atoms from the pivot towards the anchor and onwards) by changing its
@@ -1995,7 +1733,6 @@ def translate_group(mol, xyz, pivot, anchor, vector):
     new_xyz = converter.xyz_from_data(coords=coords, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
     return new_xyz
 
-
 def get_number_of_chiral_centers(label, mol, conformer=None, xyz=None, just_get_the_number=True):
     """
     Determine the number of chiral centers by type. Either ``conformer`` or ``xyz`` must be given.
@@ -2011,7 +1748,7 @@ def get_number_of_chiral_centers(label, mol, conformer=None, xyz=None, just_get_
         InputError: If neither ``conformer`` nor ``xyz`` were given.
 
     Returns:
-        Optional[dict, int]:
+        dict, int | None:
             Keys are types of chiral sites ('C' for carbon, 'N' for nitrogen, 'D' for double bond),
             values are the number of chiral centers of each type. If ``just_get_the_number`` is ``True``,
             just returns the number of chiral centers (integer).
@@ -2034,7 +1771,6 @@ def get_number_of_chiral_centers(label, mol, conformer=None, xyz=None, just_get_
     if just_get_the_number:
         return sum([val for val in result.values()])
     return result
-
 
 def get_lowest_diastereomers(label, mol, conformers, diastereomers=None):
     """
@@ -2104,7 +1840,6 @@ def get_lowest_diastereomers(label, mol, conformers, diastereomers=None):
                         f'{list(pruned_enantiomers_dict.keys())}')
     return list(pruned_enantiomers_dict.values())
 
-
 def prune_enantiomers_dict(label, enantiomers_dict):
     """
     A helper function for screening out enantiomers from the enantiomers_dict, leaving only diastereomers
@@ -2144,7 +1879,6 @@ def prune_enantiomers_dict(label, enantiomers_dict):
                 pruned_enantiomers_dict[chirality_tuples] = conformer
     return pruned_enantiomers_dict
 
-
 def inverse_chirality_symbol(symbol):
     """
     Inverses a chirality symbol, e.g., the 'R' character to 'S', or 'NS' to 'NR'.
@@ -2163,7 +1897,6 @@ def inverse_chirality_symbol(symbol):
     if symbol not in list(inversion_dict.keys()):
         raise InputError(f"Recognized chirality symbols are 'R', 'S', 'NR', 'NS', 'E', and 'Z', got {symbol}.")
     return inversion_dict[symbol]
-
 
 def chirality_dict_to_tuple(chirality_dict):
     """
@@ -2200,7 +1933,6 @@ def chirality_dict_to_tuple(chirality_dict):
     for entry in c_sites + n_sites + bonds:
         result.append(entry)
     return tuple(result)
-
 
 def determine_chirality(conformers, label, mol, force=False):
     """
@@ -2253,7 +1985,6 @@ def determine_chirality(conformers, label, mol, force=False):
                 conformer['chirality'][tuple(rd_atom for rd_atom in rd_atoms)] = stereo[-1]
     return conformers
 
-
 def identify_chiral_nitrogen_centers(mol):
     """
     Identify the atom indices corresponding to a chiral nitrogen centers in a molecule (umbrella modes).
@@ -2288,7 +2019,6 @@ def identify_chiral_nitrogen_centers(mol):
                 chiral_nitrogen_centers.append(mol.atoms.index(atom1))
     return chiral_nitrogen_centers
 
-
 def replace_n_with_c_in_mol(mol, chiral_nitrogen_centers):
     """
     Replace nitrogen atoms (pre-identified as chiral centers) with carbon atoms, replacing the lone electron pair
@@ -2302,7 +2032,7 @@ def replace_n_with_c_in_mol(mol, chiral_nitrogen_centers):
         ConformerError: If any of the atoms indicated by ``chiral_nitrogen_centers`` could not be a chiral nitrogen atom.
 
     Returns:
-        Tuple[Molecule, list]:
+        tuple[Molecule, list]:
             - A copy of the molecule with replaced N atoms.
             - Elements inserted in addition to the C atom, ordered as in ``chiral_nitrogen_centers``.
     """
@@ -2359,7 +2089,6 @@ def replace_n_with_c_in_mol(mol, chiral_nitrogen_centers):
         new_mol.add_bond(new_bond)
     return new_mol, inserted_elements
 
-
 def replace_n_with_c_in_xyz(label, mol, xyz, chiral_nitrogen_centers, elements_to_insert):
     """
     Replace nitrogen atoms (pre-identified as chiral centers) with carbon atoms, replacing the lone electron pair
@@ -2403,7 +2132,6 @@ def replace_n_with_c_in_xyz(label, mol, xyz, chiral_nitrogen_centers, elements_t
     new_xyz = converter.xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
     return new_xyz
 
-
 def get_top_element_count(mol, top):
     """
     Returns the element count for the molecule considering only the atom indices in ``top``.
@@ -2426,7 +2154,6 @@ def get_top_element_count(mol, top):
             else:
                 element_count[key] = 1
     return element_count
-
 
 def initialize_log(verbose=logging.INFO):
     """

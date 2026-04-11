@@ -10,7 +10,7 @@ Strategy:
 import numpy as np
 from collections import deque
 from itertools import product
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 from arc.common import convert_list_index_0_to_1, extremum_list, get_angle_in_180_range, logger, signed_angular_diff
 from arc.exceptions import AtomTypeError, ConformerError, InputError, SpeciesError
@@ -26,18 +26,16 @@ if TYPE_CHECKING:
     from arc.molecule.molecule import Atom
     from arc.reaction import ARCReaction
 
-
 RESERVED_FINGERPRINT_KEYS = ['self', 'chirality', 'label']
 
-
-def map_two_species(spc_1: Union[ARCSpecies, Molecule],
-                    spc_2: Union[ARCSpecies, Molecule],
+def map_two_species(spc_1: ARCSpecies | Molecule,
+                    spc_2: ARCSpecies | Molecule,
                     map_type: str = 'list',
                     backend: str = 'ARC',
                     consider_chirality: bool = True,
-                    inc_vals: Optional[int] = None,
+                    inc_vals: int | None = None,
                     verbose: bool = False,
-                    ) -> Optional[Union[List[int], Dict[int, int]]]:
+                    ) -> list[int] | dict[int, int] | None:
     """
     Map the atoms in spc_1 to the atoms in spc_2.
     All indices are 0-indexed.
@@ -45,8 +43,8 @@ def map_two_species(spc_1: Union[ARCSpecies, Molecule],
         ordered_spc1.atoms = [spc_2.atoms[atom_map[i]] for i in range(len(spc_2.atoms))]
 
     Args:
-        spc_1 (Union[ARCSpecies, Molecule]): Species 1.
-        spc_2 (Union[ARCSpecies, Molecule]): Species 2.
+        spc_1 (ARCSpecies | Molecule): Species 1.
+        spc_2 (ARCSpecies | Molecule): Species 2.
         map_type (str, optional): Whether to return a 'list' or a 'dict' map type.
         backend (str, optional): Currently only ``ARC``'s method is implemented as the backend.
         consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
@@ -54,7 +52,7 @@ def map_two_species(spc_1: Union[ARCSpecies, Molecule],
         verbose (bool, optional): Whether to use logging.
 
     Returns:
-        Optional[Union[List[int], Dict[int, int]]]:
+        list[int] | dict[int, int] | None:
             The atom map. By default, a list is returned.
             If the map is of ``list`` type, entry indices are atom indices of ``spc_1``, entry values are atom indices of ``spc_2``.
             If the map is of ``dict`` type, keys are atom indices of ``spc_1``, values are atom indices of ``spc_2``.
@@ -137,13 +135,12 @@ def map_two_species(spc_1: Union[ARCSpecies, Molecule],
         atom_map = [value + inc_vals for value in atom_map]
     return atom_map
 
-
-def get_arc_species(spc: Union[ARCSpecies, Molecule]) -> ARCSpecies:
+def get_arc_species(spc: ARCSpecies | Molecule) -> ARCSpecies:
     """
     Convert an object to an ARCSpecies object.
 
     Args:
-        spc (Union[ARCSpecies, Molecule]): An input object.
+        spc (ARCSpecies | Molecule): An input object.
 
     Returns:
         ARCSpecies: The corresponding ARCSpecies object.
@@ -153,7 +150,6 @@ def get_arc_species(spc: Union[ARCSpecies, Molecule]) -> ARCSpecies:
     if isinstance(spc, Molecule):
         return ARCSpecies(label='S', mol=spc)
     raise ValueError(f'Species entries may only be ARCSpecies or RMG Molecule.\nGot {spc} which is a {type(spc)}.')
-
 
 def check_species_before_mapping(spc_1: ARCSpecies,
                                  spc_2: ARCSpecies,
@@ -214,8 +210,7 @@ def check_species_before_mapping(spc_1: ARCSpecies,
         return False
     return True
 
-
-def get_bonds_dict(spc: ARCSpecies) -> Dict[str, int]:
+def get_bonds_dict(spc: ARCSpecies) -> dict[str, int]:
     """
     Get a dictionary of bonds by elements in the species ignoring bond orders.
 
@@ -223,7 +218,7 @@ def get_bonds_dict(spc: ARCSpecies) -> Dict[str, int]:
         spc (ARCSpecies): The species to examine.
 
     Returns:
-        Dict[str, int]: Keys are 'A-B' strings of element symbols sorted alphabetically (e.g., 'C-H' or 'H-O'),
+        dict[str, int]: Keys are 'A-B' strings of element symbols sorted alphabetically (e.g., 'C-H' or 'H-O'),
                         values are the number of such bonds (ignoring bond order).
     """
     bond_dict = dict()
@@ -233,10 +228,9 @@ def get_bonds_dict(spc: ARCSpecies) -> Dict[str, int]:
         bond_dict[key] = bond_dict.get(key, 0) + 1
     return bond_dict
 
-
 def fingerprint(spc: ARCSpecies,
                 consider_chirality: bool = True
-                ) -> Dict[int, Dict[str, Union[str, List[int]]]]:
+                ) -> dict[int, dict[str, str | list[int]]]:
     """
     Determine the species fingerprint.
     For any heavy atom in the ``spc`` its element (``self``) will be determined,
@@ -248,7 +242,7 @@ def fingerprint(spc: ARCSpecies,
         consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
 
     Returns:
-        Dict[int, Dict[str, List[int]]]: Keys are indices of heavy atoms, values are dicts. keys are element symbols,
+        dict[int, dict[str, list[int]]]: Keys are indices of heavy atoms, values are dicts. keys are element symbols,
                                          values are indices of adjacent atoms corresponding to this element.
     """
     fingerprint_dict = dict()
@@ -270,19 +264,18 @@ def fingerprint(spc: ARCSpecies,
             fingerprint_dict[i] = atom_fingerprint
     return fingerprint_dict
 
-
-def identify_superimposable_candidates(fingerprint_1: Dict[int, Dict[str, Union[str, List[int]]]],
-                                       fingerprint_2: Dict[int, Dict[str, Union[str, List[int]]]],
-                                       ) -> List[Dict[int, int]]:
+def identify_superimposable_candidates(fingerprint_1: dict[int, dict[str, str | list[int]]],
+                                       fingerprint_2: dict[int, dict[str, str | list[int]]],
+                                       ) -> list[dict[int, int]]:
     """
     Identify candidate ordering of heavy atoms (only) that could potentially be superimposed.
 
     Args:
-        fingerprint_1 (Dict[int, Dict[str, Union[str, List[int]]]]): Adjacent element dict for species 1.
-        fingerprint_2 (Dict[int, Dict[str, Union[str, List[int]]]]): Adjacent element dict for species 2.
+        fingerprint_1 (dict[int, dict[str, str | list[int]]]): Adjacent element dict for species 1.
+        fingerprint_2 (dict[int, dict[str, str | list[int]]]): Adjacent element dict for species 2.
 
     Returns:
-        List[Dict[int, int]]: Entries are superimposable candidate dicts. Keys are atom indices of heavy atoms
+        list[dict[int, int]]: Entries are superimposable candidate dicts. Keys are atom indices of heavy atoms
                               of species 1, values are potentially mapped atom indices of species 2.
     """
     candidates = list()
@@ -294,9 +287,8 @@ def identify_superimposable_candidates(fingerprint_1: Dict[int, Dict[str, Union[
                 candidates.append(result)
     return prune_identical_dicts(candidates)
 
-
-def are_adj_elements_in_agreement(fingerprint_1: Dict[str, Union[str, List[int]]],
-                                  fingerprint_2: Dict[str, Union[str, List[int]]],
+def are_adj_elements_in_agreement(fingerprint_1: dict[str, str | list[int]],
+                                  fingerprint_2: dict[str, str | list[int]],
                                   ) -> bool:
     """
     Check whether two dictionaries representing adjacent elements are in agreement
@@ -304,8 +296,8 @@ def are_adj_elements_in_agreement(fingerprint_1: Dict[str, Union[str, List[int]]
     Also checks the identity of the parent ("self") element.
 
     Args:
-          fingerprint_1 (Dict[str, List[int]]): Adjacent elements dictionary 1.
-          fingerprint_2 (Dict[str, List[int]]): Adjacent elements dictionary 2.
+          fingerprint_1 (dict[str, list[int]]): Adjacent elements dictionary 1.
+          fingerprint_2 (dict[str, list[int]]): Adjacent elements dictionary 2.
 
     Returns:
         bool: ``True`` if the two dicts represent identical adjacent elements, ``False`` otherwise.
@@ -320,36 +312,34 @@ def are_adj_elements_in_agreement(fingerprint_1: Dict[str, Union[str, List[int]]
             return False
     return True
 
-
-
-def iterative_dfs(fingerprint_1: Dict[int, Dict[str, List[int]]],
-                  fingerprint_2: Dict[int, Dict[str, List[int]]],
+def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
+                  fingerprint_2: dict[int, dict[str, list[int]]],
                   key_1: int,
                   key_2: int,
                   allow_first_key_pair_to_disagree: bool = False,
-                  ) -> Optional[Dict[int, int]]:
+                  ) -> dict[int, int] | None:
     """
     A depth first search (DFS) graph traversal algorithm to determine possible superimposable ordering of heavy atoms.
     This is an iterative and not a recursive algorithm since Python doesn't have a great support for recursion
     since it lacks Tail Recursion Elimination and because there is a limit of recursion stack depth (by default is 1000).
 
     Args:
-        fingerprint_1 (Dict[int, Dict[str, List[int]]]): Adjacent elements dictionary 1 (graph 1).
-        fingerprint_2 (Dict[int, Dict[str, List[int]]]): Adjacent elements dictionary 2 (graph 2).
+        fingerprint_1 (dict[int, dict[str, list[int]]]): Adjacent elements dictionary 1 (graph 1).
+        fingerprint_2 (dict[int, dict[str, list[int]]]): Adjacent elements dictionary 2 (graph 2).
         key_1 (int): The starting index for graph 1.
         key_2 (int): The starting index for graph 2.
         allow_first_key_pair_to_disagree (bool, optional): ``True`` to not enforce agreement between the fingerprint
                                                            of ``key_1`` and ``key_2``.
 
     Returns:
-        Optional[Dict[int, int]]: ``None`` if this is an invalid superimposable candidate. Keys are atom indices of
+        dict[int, int] | None: ``None`` if this is an invalid superimposable candidate. Keys are atom indices of
                                   heavy atoms of species 1, values are potentially mapped atom indices of species 2.
     """
     visited_1, visited_2 = list(), list()
     stack_1, stack_2 = deque(), deque()
     stack_1.append(key_1)
     stack_2.append(key_2)
-    result: Dict[int, int] = dict()
+    result: dict[int, int] = dict()
     while stack_1 and stack_2:
         current_key_1 = stack_1.pop()
         current_key_2 = stack_2.pop()
@@ -371,16 +361,15 @@ def iterative_dfs(fingerprint_1: Dict[int, Dict[str, List[int]]],
         return None
     return result
 
-
-def prune_identical_dicts(dicts_list: List[dict]) -> List[dict]:
+def prune_identical_dicts(dicts_list: list[dict]) -> list[dict]:
     """
     Return a list of unique dictionaries.
 
     Args:
-        dicts_list (List[dict]): A list of dicts to prune.
+        dicts_list (list[dict]): A list of dicts to prune.
 
     Returns:
-        List[dict]: A list of unique dicts.
+        list[dict]: A list of unique dicts.
     """
     new_dicts_list = list()
     for new_dict in dicts_list:
@@ -395,16 +384,15 @@ def prune_identical_dicts(dicts_list: List[dict]) -> List[dict]:
             new_dicts_list.append(new_dict)
     return new_dicts_list
 
-
-def remove_gaps_from_values(data: Dict[int, int]) -> Dict[int, int]:
+def remove_gaps_from_values(data: dict[int, int]) -> dict[int, int]:
     """
     Return a dictionary of integer keys and values with consecutive values starting at 0.
 
     Args:
-        data (Dict[int, int]): A dictionary of integers as keys and values.
+        data (dict[int, int]): A dictionary of integers as keys and values.
 
     Returns:
-        Dict[int, int]: A dictionary of integers as keys and values with consecutive values starting at 0.
+        dict[int, int]: A dictionary of integers as keys and values with consecutive values starting at 0.
     """
     new_data = dict()
     val = 0
@@ -413,21 +401,20 @@ def remove_gaps_from_values(data: Dict[int, int]) -> Dict[int, int]:
         val += 1
     return new_data
 
-
 def fix_dihedrals_by_backbone_mapping(spc_1: ARCSpecies,
                                       spc_2: ARCSpecies,
-                                      backbone_map: Dict[int, int],
-                                      ) -> Tuple[ARCSpecies, ARCSpecies]:
+                                      backbone_map: dict[int, int],
+                                      ) -> tuple[ARCSpecies, ARCSpecies]:
     """
     Fix the dihedral angles of two mapped species to align them.
 
     Args:
         spc_1 (ARCSpecies): Species 1.
         spc_2 (ARCSpecies): Species 2.
-        backbone_map (Dict[int, int]): The backbone map.
+        backbone_map (dict[int, int]): The backbone map.
 
     Returns:
-        Tuple[ARCSpecies, ARCSpecies]: The corresponding species with aligned dihedral angles.
+        tuple[ARCSpecies, ARCSpecies]: The corresponding species with aligned dihedral angles.
     """
     if not spc_1.rotors_dict or not spc_2.rotors_dict:
         spc_1.determine_rotors()
@@ -448,11 +435,10 @@ def fix_dihedrals_by_backbone_mapping(spc_1: ARCSpecies,
         deviations.append(get_backbone_dihedral_deviation_score(spc_1_copy, spc_2_copy, backbone_map, torsions=torsions))
     return spc_1_copy, spc_2_copy
 
-
 def get_backbone_dihedral_deviation_score(spc_1: ARCSpecies,
                                           spc_2: ARCSpecies,
-                                          backbone_map: Dict[int, int],
-                                          torsions: Optional[List[Dict[str, Union[float, List[int]]]]] = None
+                                          backbone_map: dict[int, int],
+                                          torsions: list[dict[str, float | list[int]]] | None = None
                                           ) -> float:
     """
     Determine a deviation score for dihedral angles of torsions.
@@ -461,8 +447,8 @@ def get_backbone_dihedral_deviation_score(spc_1: ARCSpecies,
     Args:
         spc_1 (ARCSpecies): Species 1.
         spc_2 (ARCSpecies): Species 2.
-        backbone_map (Dict[int, int]): The backbone map.
-        torsions (Optional[List[Dict[str, Union[float, List[int]]]]], optional): The backbone dihedral angles.
+        backbone_map (dict[int, int]): The backbone map.
+        torsions (list[dict[str, float | list[int]]] | None, optional): The backbone dihedral angles.
 
     Returns:
         Float: The dihedral deviation score.
@@ -470,11 +456,10 @@ def get_backbone_dihedral_deviation_score(spc_1: ARCSpecies,
     torsions = torsions or get_backbone_dihedral_angles(spc_1, spc_2, backbone_map)
     return sum([abs(torsion_dict['angle 1'] - torsion_dict['angle 2']) for torsion_dict in torsions])
 
-
 def get_backbone_dihedral_angles(spc_1: ARCSpecies,
                                  spc_2: ARCSpecies,
-                                 backbone_map: Dict[int, int],
-                                 ) -> List[Dict[str, Union[float, List[int]]]]:
+                                 backbone_map: dict[int, int],
+                                 ) -> list[dict[str, float | list[int]]]:
     """
     Determine the dihedral angles of the backbone torsions of two backbone mapped species.
     The output has the following format::
@@ -490,10 +475,10 @@ def get_backbone_dihedral_angles(spc_1: ARCSpecies,
     Args:
         spc_1 (ARCSpecies): Species 1.
         spc_2 (ARCSpecies): Species 2.
-        backbone_map (Dict[int, int]): The backbone map.
+        backbone_map (dict[int, int]): The backbone map.
 
     Returns:
-        List[Dict[str, Union[float, List[int]]]]: The corresponding species with aligned dihedral angles.
+        list[dict[str, float | list[int]]]: The corresponding species with aligned dihedral angles.
     """
     torsions = list()
     if not spc_1.rotors_dict or not spc_2.rotors_dict:
@@ -515,21 +500,20 @@ def get_backbone_dihedral_angles(spc_1: ARCSpecies,
                                          'angle 2': calculate_dihedral_angle(coords=spc_2.get_xyz(), torsion=torsion_2)})
     return torsions
 
-
-def map_lists(list_1: List[float],
-              list_2: List[float],
-              ) -> Dict[int, int]:
+def map_lists(list_1: list[float],
+              list_2: list[float],
+              ) -> dict[int, int]:
     """
     Map two lists with equal lengths of floats by proximity of entries.
     Assuming no two entries in a list are identical.
     Note: values are treated as cyclic in a 0-360 range (i.e., 1 is closer to 259 than to 5)!
 
     Args:
-        list_1 (List[float]): List 1.
-        list_2 (List[float]): List 2.
+        list_1 (list[float]): List 1.
+        list_2 (list[float]): List 2.
 
     Returns:
-        Dict[int, int]: The lists map. Keys correspond to entry indices in ``list_1``,
+        dict[int, int]: The lists map. Keys correspond to entry indices in ``list_1``,
                         Values correspond to respective entry indices in ``list_2``.
     """
     if len(list_1) != len(list_2):
@@ -545,17 +529,16 @@ def map_lists(list_1: List[float],
         list_map[min_1_index] = min_2_index
     return list_map
 
-
-def _find_hydrogen_neighbors(heavy_index: int, atoms: List['Atom']) -> List[int]:
+def _find_hydrogen_neighbors(heavy_index: int, atoms: list['Atom']) -> list[int]:
     """
     Return the indices of all hydrogen atoms bonded to the specified heavy atom.
 
     Args:
         heavy_index (int): Index of the heavy atom in the atoms list.
-        atoms (List[Atom]): List of Atom objects comprising the molecule.
+        atoms (list[Atom]): List of Atom objects comprising the molecule.
 
     Returns:
-        List[int]: Sorted list of indices of hydrogen atoms bonded to the heavy atom.
+        list[int]: Sorted list of indices of hydrogen atoms bonded to the heavy atom.
 
     Raises:
         IndexError: If heavy_index is out of range.
@@ -566,12 +549,11 @@ def _find_hydrogen_neighbors(heavy_index: int, atoms: List['Atom']) -> List[int]
     neighbors = [i for i, atom in enumerate(atoms) if atom.is_hydrogen() and heavy in atom.bonds]
     return sorted(neighbors)
 
-
 def _find_preferably_heavy_neighbor(heavy_index: int,
                                     spc: ARCSpecies,
-                                    partial_atom_map: Optional[Dict[int, int]] = None,
-                                    exclude_index: Optional[int] = None,
-                                    ) -> Optional[int]:
+                                    partial_atom_map: dict[int, int] | None = None,
+                                    exclude_index: int | None = None,
+                                    ) -> int | None:
     """
     Return the indices of a non-hydrogen atoms bonded to the specified heavy atom.
     If no heavy atom neighbors are found, it will return a hydrogen neighbor.
@@ -580,11 +562,11 @@ def _find_preferably_heavy_neighbor(heavy_index: int,
     Args:
         heavy_index (int): Index of the heavy atom in the atoms list.
         spc (ARCSpecies): ARCSpecies object containing the molecule.
-        exclude_index (Optional[int]): Index of an atom to exclude from the result.
-        partial_atom_map (Optional[Dict[int, int]]): A mapping of atom indices to indices in the product species.
+        exclude_index (int | None): Index of an atom to exclude from the result.
+        partial_atom_map (dict[int, int] | None): A mapping of atom indices to indices in the product species.
 
     Returns:
-        Optional[int]: An integer atom index, or None if no neighbor qualifies.
+        int | None: An integer atom index, or None if no neighbor qualifies.
 
     Raises:
         IndexError: If heavy_index is out of range.
@@ -615,11 +597,10 @@ def _find_preferably_heavy_neighbor(heavy_index: int,
                 return neighbor
     return None
 
-
 def _select_ch3_anchors(heavy_index: int,
                         spc: ARCSpecies,
-                        backbone_map: Dict[int, int],
-                        ) -> Tuple[Optional[int], Optional[int]]:
+                        backbone_map: dict[int, int],
+                        ) -> tuple[int | None, int | None]:
     """
     Select two anchors A and B for a XH3 center X (usually X is C) so that:
       - A is the mapped heavy neighbor (C → A)
@@ -654,12 +635,11 @@ def _select_ch3_anchors(heavy_index: int,
         return None, None
     return A_index, B_index
 
-
 def _construct_local_axes(center_idx: int,
                           anchor1_idx: int,
                           anchor2_idx: int,
-                          coords: List[Tuple[float, float, float]]
-                          ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
+                          coords: list[tuple[float, float, float]]
+                          ) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
     """
     Construct a right-handed local coordinate frame at a central atom C.
 
@@ -671,9 +651,9 @@ def _construct_local_axes(center_idx: int,
         center_idx (int): Index of the central atom C.
         anchor1_idx (int): Index of the primary anchor A.
         anchor2_idx (int): Index of the secondary anchor B.
-        coords (List[Tuple[float, float, float]]): List of 3D coordinates for all atoms.
+        coords (list[tuple[float, float, float]]): List of 3D coordinates for all atoms.
 
-    Returns: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]
+    Returns: tuple[np.ndarray, np.ndarray, np.ndarray] | None
         Tuple of three numpy arrays (e_x, e_y, e_z), each shape (3,), forming an orthonormal basis.
 
     Raises:
@@ -711,13 +691,12 @@ def _construct_local_axes(center_idx: int,
 
     return e_x, e_y, e_z
 
-
 def _compute_azimuthal_angles(center_idx: int,
-                              hydrogen_indices: List[int],
-                              coords: List[Tuple[float, float, float]],
+                              hydrogen_indices: list[int],
+                              coords: list[tuple[float, float, float]],
                               e_y: np.ndarray,
                               e_z: np.ndarray
-                              ) -> Dict[int, float]:
+                              ) -> dict[int, float]:
     """
     Compute the azimuthal angles (in degrees) of hydrogen atoms around a principal axis.
 
@@ -726,8 +705,8 @@ def _compute_azimuthal_angles(center_idx: int,
 
     Args:
         center_idx (int): Index of the central atom C.
-        hydrogen_indices (List[int]): List of hydrogen atom indices.
-        coords (List[Tuple[float, float, float]]): 3D coordinates for all atoms.
+        hydrogen_indices (list[int]): List of hydrogen atom indices.
+        coords (list[tuple[float, float, float]]): 3D coordinates for all atoms.
         e_y (np.ndarray): Local unit y-axis.
         e_z (np.ndarray): Local unit z-axis.
 
@@ -735,7 +714,7 @@ def _compute_azimuthal_angles(center_idx: int,
         Dict mapping each hydrogen index to its azimuthal angle in [0, 360).
     """
     c = np.array(coords[center_idx], dtype=float)
-    angles: Dict[int, float] = dict()
+    angles: dict[int, float] = dict()
     for h_idx in hydrogen_indices:
         v = np.array(coords[h_idx], dtype=float) - c
         proj_y = float(np.dot(v, e_y))
@@ -744,10 +723,9 @@ def _compute_azimuthal_angles(center_idx: int,
         angles[h_idx] = angle
     return angles
 
-
-def _determine_cyclic_shift(angles_1: Dict[int, float],
-                            angles_2: Dict[int, float]
-                            ) -> Dict[int, int]:
+def _determine_cyclic_shift(angles_1: dict[int, float],
+                            angles_2: dict[int, float]
+                            ) -> dict[int, int]:
     """
     Determine the optimal cyclic permutation mapping between two sets of azimuthal angles.
 
@@ -756,11 +734,11 @@ def _determine_cyclic_shift(angles_1: Dict[int, float],
     the total periodic angular difference to the first.
 
     Args:
-        angles_1 (Dict[int, float]): Mapping H-index → angle for species1.
-        angles_2 (Dict[int, float]): Mapping H-index → angle for species2.
+        angles_1 (dict[int, float]): Mapping H-index → angle for species1.
+        angles_2 (dict[int, float]): Mapping H-index → angle for species2.
 
     Returns:
-        Dict[int, int]: Mapping from each H-index in angles_1 to the best-matched H-index in angles_2.
+        dict[int, int]: Mapping from each H-index in angles_1 to the best-matched H-index in angles_2.
     """
     # If no hydrogens, return empty mapping
     if not angles_1 or not angles_2:
@@ -786,18 +764,17 @@ def _determine_cyclic_shift(angles_1: Dict[int, float],
             best_cost = cost
             best_shift = shift
     # Build mapping using best shift
-    mapping: Dict[int, int] = dict()
+    mapping: dict[int, int] = dict()
     for i in range(n):
         mapping[idx1[i]] = idx2[(i + best_shift) % n]
     return mapping
-
 
 def _map_xh3_group(heavy_idx_1: int,
                    heavy_index_2: int,
                    spc_1: ARCSpecies,
                    spc_2: ARCSpecies,
-                   backbone_map: Dict[int, int]
-                   ) -> Optional[Dict[int, int]]:
+                   backbone_map: dict[int, int]
+                   ) -> dict[int, int] | None:
     """
     Map hydrogens of a CH3 group between two species using local azimuthal angles.
 
@@ -806,10 +783,10 @@ def _map_xh3_group(heavy_idx_1: int,
         heavy_index_2 (int): Index of CH3 carbon atom in species 2.
         spc_1 (ARCSpecies): Species 1.
         spc_2 (ARCSpecies): Species 2.
-        backbone_map (Dict[int, int]): Existing backbone atom mapping.
+        backbone_map (dict[int, int]): Existing backbone atom mapping.
 
     Returns:
-        Optional[Dict[int, int]]: Mapping from hydrogen indices in spc_1 to hydrogen indices in spc_2.
+        dict[int, int] | None: Mapping from hydrogen indices in spc_1 to hydrogen indices in spc_2.
     """
     anchors_1 = _select_ch3_anchors(heavy_idx_1, spc_1, backbone_map)
     anchors_2 = _select_ch3_anchors(heavy_index_2, spc_2, {val: key for key, val in backbone_map.items()})  # reverse map
@@ -830,12 +807,11 @@ def _map_xh3_group(heavy_idx_1: int,
 
     return _determine_cyclic_shift(angles_1, angles_2)
 
-
 def _compute_ch2_pair_dihedrals(coords_1, coords_2,
                                 heavy_index_1, heavy_index_2,
                                 neighbor_A1, neighbor_A2, neighbor_B1, neighbor_B2,
                                 h_a_1, h_b_1, h_a_2, h_b_2,
-                                ) -> Tuple[float, float, float, float]:
+                                ) -> tuple[float, float, float, float]:
     """
     A helper function for _map_xh2_group.
     Return phi_1_a, phi_1_b, phi_2_a, phi_2_b all mapped into [-180,180).
@@ -850,13 +826,12 @@ def _compute_ch2_pair_dihedrals(coords_1, coords_2,
         calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_B2, neighbor_A2, heavy_index_2, h_b_2]))
     return phi_1_a, phi_1_b, phi_2_a, phi_2_b
 
-
 def _map_xh2_group(heavy_index_1: int,
                    heavy_index_2: int,
                    spc_1: ARCSpecies,
                    spc_2: ARCSpecies,
-                   backbone_map: Dict[int, int],
-                   ) -> Dict[int, int]:
+                   backbone_map: dict[int, int],
+                   ) -> dict[int, int]:
     """
     Map the two hydrogens of a XH2 group (X is, e.g., C) by comparing signed dihedral angles.
 
@@ -875,7 +850,7 @@ def _map_xh2_group(heavy_index_1: int,
         backbone_map: Existing heavy‐atom mapping X1→X2, etc.
 
     Returns:
-        Dict[int,int]: Mapping of the two H indices from spc_1 to spc_2, or {} if unable to apply dihedral strategy.
+        dict[int,int]: Mapping of the two H indices from spc_1 to spc_2, or {} if unable to apply dihedral strategy.
     """
     h_list_1 = _find_hydrogen_neighbors(heavy_index_1, spc_1.mol.atoms)
     h_list_2 = _find_hydrogen_neighbors(heavy_index_2, spc_2.mol.atoms)
@@ -940,11 +915,10 @@ def _map_xh2_group(heavy_index_1: int,
 
     return chosen_mapping
 
-
 def map_hydrogens(spc_1: ARCSpecies,
                   spc_2: ARCSpecies,
-                  backbone_map: Dict[int, int],
-                  ) -> Dict[int, int]:
+                  backbone_map: dict[int, int],
+                  ) -> dict[int, int]:
     """
     Atom map hydrogen atoms between two species with a known mapped heavy atom backbone.
     If only a single hydrogen atom is bonded to a given heavy atom, it is straight-forwardly mapped.
@@ -952,10 +926,10 @@ def map_hydrogens(spc_1: ARCSpecies,
     Args:
         spc_1 (ARCSpecies): Species 1.
         spc_2 (ARCSpecies): Species 2.
-        backbone_map (Dict[int, int]): The backbone map.
+        backbone_map (dict[int, int]): The backbone map.
 
     Returns:
-        Dict[int, int]: The atom map. Keys are 0-indices in ``spc_1``, values are corresponding 0-indices in ``spc_2``.
+        dict[int, int]: The atom map. Keys are 0-indices in ``spc_1``, values are corresponding 0-indices in ``spc_2``.
     """
     atom_map = backbone_map.copy()
     atoms_1, atoms_2 = spc_1.mol.atoms, spc_2.mol.atoms
@@ -993,7 +967,6 @@ def map_hydrogens(spc_1: ARCSpecies,
                     atom_map.update(mapped)
     return atom_map
 
-
 def check_atom_map(rxn: 'ARCReaction') -> bool:
     """
     A helper function for testing a reaction atom map.
@@ -1022,15 +995,14 @@ def check_atom_map(rxn: 'ARCReaction') -> bool:
             return False
     return True
 
-
 def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpecies,
                                                                    spc_2: ARCSpecies,
                                                                    heavy_atom_1: 'Atom',
                                                                    heavy_atom_2: 'Atom',
-                                                                   torsion: List[int],
-                                                                   atom_map: Dict[int, int],
+                                                                   torsion: list[int],
+                                                                   atom_map: dict[int, int],
                                                                    find_torsion_end_to_map: bool = True,
-                                                                   ) -> Dict[int, int]:
+                                                                   ) -> dict[int, int]:
     """
     Map hydrogen atoms around one end of a specific torsion (or pseudo-torsion) by matching dihedral angles.
 
@@ -1039,14 +1011,14 @@ def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpe
           spc_2 (ARCSpecies): Species 2.
           heavy_atom_1 (Atom): The heavy atom from ``spc_1`` around which hydrogen atoms will be mapped.
           heavy_atom_2 (Atom): The heavy atom from ``spc_2`` around which hydrogen atoms will be mapped.
-          torsion (List[int]): 0-indices of 4 consecutive atoms in ``spc_1``.
-          atom_map (Dict[int, int]): A partial atom map between ``spc_1`` and ``spc_2``.
+          torsion (list[int]): 0-indices of 4 consecutive atoms in ``spc_1``.
+          atom_map (dict[int, int]): A partial atom map between ``spc_1`` and ``spc_2``.
           find_torsion_end_to_map (bool, optional): Whether to automatically identify the side of the torsion that
                                                     requires mapping. If ``False``, the last atom, ``torsion[-1]``
                                                     is assumed to be on the side that requires mapping.
 
     Returns:
-        Dict[int, int]: The updated atom map.
+        dict[int, int]: The updated atom map.
     """
     atoms_1, atoms_2 = spc_1.mol.atoms, spc_2.mol.atoms
     hydrogen_indices_1 = [atoms_1.index(atom)
@@ -1070,16 +1042,15 @@ def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpe
         atom_map[hydrogen_indices_1[key]] = hydrogen_indices_2[val]
     return atom_map
 
-
-def flip_map(atom_map: Optional[List[int]]) -> Optional[List[int]]:
+def flip_map(atom_map: list[int] | None) -> list[int] | None:
     """
     Flip an atom map so that the products map to the reactants.
 
     Args:
-        atom_map (List[int]): The atom map in a list format.
+        atom_map (list[int]): The atom map in a list format.
 
     Returns:
-        Optional[List[int]]: The flipped atom map.
+        list[int] | None: The flipped atom map.
     """
     if atom_map is None:
         return None
@@ -1090,14 +1061,13 @@ def flip_map(atom_map: Optional[List[int]]) -> Optional[List[int]]:
         raise ValueError(f'Cannot flip the atom map {atom_map}')
     return flipped_map
 
-
-def make_bond_changes(rxn: 'ARCReaction', r_cuts: List[ARCSpecies], r_label_dict: dict) -> None:
+def make_bond_changes(rxn: 'ARCReaction', r_cuts: list[ARCSpecies], r_label_dict: dict) -> None:
     """
     Makes bond changes before matching the reactants and products.
 
     Args:
         rxn ('ARCReaction'): An ARCReaction object
-        r_cuts (List[ARCSpecies]): The cut products
+        r_cuts (list[ARCSpecies]): The cut products
         r_label_dict (dict): The dictionary of reactant atom labels for the family recipe.
     """
     family = ReactionFamily(label=rxn.family)
@@ -1136,17 +1106,16 @@ def make_bond_changes(rxn: 'ARCReaction', r_cuts: List[ARCSpecies], r_label_dict
                     except AtomTypeError:
                         r_cut.mol = r_cut_mol_copy
 
-
-def update_xyz(species: List[ARCSpecies]) -> List[ARCSpecies]:
+def update_xyz(species: list[ARCSpecies]) -> list[ARCSpecies]:
     """
     A helper function, updates the xyz values of each species after cutting. This is important, since the
     scission sometimes scrambles the Molecule object, and updating the xyz makes up for that.
 
     Args:
-        species (List[ARCSpecies]): the scission products that needs to be updated.
+        species (list[ARCSpecies]): the scission products that needs to be updated.
 
     Returns:
-        List[ARCSpecies]: A newly generated copies of the ARCSpecies, with updated xyz.
+        list[ARCSpecies]: A newly generated copies of the ARCSpecies, with updated xyz.
     """
     new = list()
     for spc in species:
@@ -1163,7 +1132,6 @@ def update_xyz(species: List[ARCSpecies]) -> List[ARCSpecies]:
         new_spc.final_xyz = xyz_1 or xyz_2
         new.append(new_spc)
     return new
-
 
 def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies) -> bool:
     """
@@ -1182,21 +1150,20 @@ def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies) -> bool:
             return True
     return False
 
-
-def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
-                                               p_cuts: List[ARCSpecies]
-                                               )-> List[Tuple[ARCSpecies,ARCSpecies]]:
+def pairing_reactants_and_products_for_mapping(r_cuts: list[ARCSpecies],
+                                               p_cuts: list[ARCSpecies]
+                                               )-> list[tuple[ARCSpecies,ARCSpecies]]:
     """
     A function for matching reactants and products in scissored products.
 
     Args:
-        r_cuts (List[ARCSpecies]): A list of the scissored species in the reactants
-        p_cuts (List[ARCSpecies]): A list of the scissored species in the reactants
+        r_cuts (list[ARCSpecies]): A list of the scissored species in the reactants
+        p_cuts (list[ARCSpecies]): A list of the scissored species in the reactants
 
     Returns:
-        List[Tuple[ARCSpecies,ARCSpecies]]: A list of paired reactant and products, to be sent to map_two_species.
+        list[tuple[ARCSpecies,ARCSpecies]]: A list of paired reactant and products, to be sent to map_two_species.
     """
-    pairs: List[Tuple[ARCSpecies, ARCSpecies]] = list()
+    pairs: list[tuple[ARCSpecies, ARCSpecies]] = list()
     for react in r_cuts:
         for idx, prod in enumerate(p_cuts):
             if r_cut_p_cut_isomorphic(react, prod):
@@ -1205,29 +1172,27 @@ def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
                 break
     return pairs
 
-
-def map_pairs(pairs: List[Tuple[ARCSpecies, ARCSpecies]]) -> List[List[int]]:
+def map_pairs(pairs: list[tuple[ARCSpecies, ARCSpecies]]) -> list[list[int]]:
     """
     A function that maps the matched species together
 
     Args:
-         (List[Tuple[ARCSpecies, ARCSpecies]]): A list of the pairs of reactants and species.
+         (list[tuple[ARCSpecies, ARCSpecies]]): A list of the pairs of reactants and species.
 
     Returns:
-        List[List[int]]: A list of the mapped species
+        list[list[int]]: A list of the mapped species
     """
     maps = list()
     for pair in pairs:
         maps.append(map_two_species(pair[0], pair[1]))
     return maps
 
-
-def label_species_atoms(species: List['ARCSpecies']) -> None:
+def label_species_atoms(species: list['ARCSpecies']) -> None:
     """
     Adds the labels to the ``.mol.atoms`` properties of the species object.
 
     Args:
-        species (List['ARCSpecies']): ARCSpecies object to be labeled.
+        species (list['ARCSpecies']): ARCSpecies object to be labeled.
     """
     index = 0
     for spc in species:
@@ -1235,28 +1200,27 @@ def label_species_atoms(species: List['ARCSpecies']) -> None:
             atom.label = str(index)
             index += 1
 
-
-def glue_maps(maps: List[List[int]],
-              pairs: List[Tuple[ARCSpecies, ARCSpecies]],
-              r_label_map: Dict[str, int],
-              p_label_map: Dict[str, int],
+def glue_maps(maps: list[list[int]],
+              pairs: list[tuple[ARCSpecies, ARCSpecies]],
+              r_label_map: dict[str, int],
+              p_label_map: dict[str, int],
               total_atoms: int,
-              ) -> List[int]:
+              ) -> list[int]:
     """
     Join the maps from the parts of a bimolecular reaction.
 
     Args:
-        maps (List[List[int]]): The list of all maps of the isomorphic cuts.
-        pairs (List[Tuple[ARCSpecies, ARCSpecies]]): The pairs of the reactants and products.
-        r_label_map (Dict[str, int]): A dictionary mapping the reactant labels to their indices.
-        p_label_map (Dict[str, int]): A dictionary mapping the product labels to their indices.
+        maps (list[list[int]]): The list of all maps of the isomorphic cuts.
+        pairs (list[tuple[ARCSpecies, ARCSpecies]]): The pairs of the reactants and products.
+        r_label_map (dict[str, int]): A dictionary mapping the reactant labels to their indices.
+        p_label_map (dict[str, int]): A dictionary mapping the product labels to their indices.
         total_atoms (int): The total number of atoms across all reactants.
 
     Returns:
-        List[int]: An Atom Map of the complete reaction.
+        list[int]: An Atom Map of the complete reaction.
     """
     # 1) Build base map
-    am_dict: Dict[int,int] = {}
+    am_dict: dict[int,int] = {}
     for map_list, (r_cut, p_cut) in zip(maps, pairs):
         for local_i, r_atom in enumerate(r_cut.mol.atoms):
             r_glob = int(r_atom.label)
@@ -1288,15 +1252,14 @@ def glue_maps(maps: List[List[int]],
         final.append(am_dict[i])
     return final
 
-
-def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int, int]) -> bool:
+def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: tuple[int, int]) -> bool:
     """
     A function for determining whether the species in question contains the bond specified by the bond dissociation indices.
     Also, assigns the correct BDE to the species.
 
     Args:
         spc (ARCSpecies): The species in question, with labels atom indices.
-        bde (Tuple[int, int]): The bde in question.
+        bde (tuple[int, int]): The bde in question.
 
     Returns:
         bool: Whether the bde is based on the atom labels.
@@ -1314,22 +1277,21 @@ def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int
         return True
     return False
 
-
-def cut_species_based_on_atom_indices(species: List["ARCSpecies"],
-                                      bdes: List[Tuple[int, int]],
-                                      ref_species: Optional[List["ARCSpecies"]] = None,
-                                      ) -> Optional[List["ARCSpecies"]]:
+def cut_species_based_on_atom_indices(species: list["ARCSpecies"],
+                                      bdes: list[tuple[int, int]],
+                                      ref_species: list["ARCSpecies"] | None = None,
+                                      ) -> list["ARCSpecies"] | None:
     """
     A function for scissoring species based on their atom indices.
 
     Args:
-        species (List[ARCSpecies]): The species list that requires scission.
-        bdes (List[Tuple[int, int]]): A list of the atoms between which the bond should be scissored.
+        species (list[ARCSpecies]): The species list that requires scission.
+        bdes (list[tuple[int, int]]): A list of the atoms between which the bond should be scissored.
                                       The atoms are described using the atom labels, and not the actual atom positions.
-        ref_species (Optional[List[ARCSpecies]]): A reference species list for which BDE indices are given.
+        ref_species (list[ARCSpecies] | None): A reference species list for which BDE indices are given.
 
     Returns:
-        Optional[List["ARCSpecies"]]: The species list input after the scission.
+        list["ARCSpecies"] | None: The species list input after the scission.
     """
     if ref_species is not None:
         bdes = translate_bdes_based_on_ref_species(species, ref_species, bdes)
@@ -1357,22 +1319,21 @@ def cut_species_based_on_atom_indices(species: List["ARCSpecies"],
                 break
     return species
 
-
-def translate_bdes_based_on_ref_species(species: List["ARCSpecies"],
-                                        ref_species: List["ARCSpecies"],
-                                        bdes: List[Tuple[int, int]],
-                                        ) -> Optional[List[Tuple[int, int]]]:
+def translate_bdes_based_on_ref_species(species: list["ARCSpecies"],
+                                        ref_species: list["ARCSpecies"],
+                                        bdes: list[tuple[int, int]],
+                                        ) -> list[tuple[int, int]] | None:
     """
     Translate a list of BDE indices based on a reference species list.
     The given BDE indices refer to `ref_species`, and they'll be translated to refer to `species`.
 
     Args:
-        species (List[ARCSpecies]): The species list for which the indices should be translated.
-        ref_species (List[ARCSpecies]): The reference species list.
-        bdes (List[Tuple[int, int]]): The BDE indices to be translated.
+        species (list[ARCSpecies]): The species list for which the indices should be translated.
+        ref_species (list[ARCSpecies]): The reference species list.
+        bdes (list[tuple[int, int]]): The BDE indices to be translated.
 
     Returns:
-        Optional[List[Tuple[int, int]]]: The translated BDE indices, or None if translation fails.
+        list[tuple[int, int]] | None: The translated BDE indices, or None if translation fails.
     """
     if not bdes:
         return list()
@@ -1397,22 +1358,21 @@ def translate_bdes_based_on_ref_species(species: List["ARCSpecies"],
             return None
     return new_bdes
 
-
-def translate_indices_based_on_ref_species(species: List["ARCSpecies"],
-                                           ref_species: List["ARCSpecies"],
-                                           indices: List[int],
-                                           ) -> Optional[List[int]]:
+def translate_indices_based_on_ref_species(species: list["ARCSpecies"],
+                                           ref_species: list["ARCSpecies"],
+                                           indices: list[int],
+                                           ) -> list[int] | None:
     """
     Translate a list of atom indices based on a reference species list.
     The given indices refer to `ref_species`, and they'll be translated to refer to `species`.
 
     Args:
-        species (List[ARCSpecies]): The species list for which the indices should be translated.
-        ref_species (List[ARCSpecies]): The reference species list.
-        indices (List[int]): The list of atom indices to be translated.
+        species (list[ARCSpecies]): The species list for which the indices should be translated.
+        ref_species (list[ARCSpecies]): The reference species list.
+        indices (list[int]): The list of atom indices to be translated.
 
     Returns:
-        Optional[List[int]]: The translated atom indices if all translations are successful; otherwise, None.
+        list[int] | None: The translated atom indices if all translations are successful; otherwise, None.
     """
     visited_ref_species = list()
     species_map = dict()  # maps ref species j to species i
@@ -1429,7 +1389,7 @@ def translate_indices_based_on_ref_species(species: List["ARCSpecies"],
     spcs_lengths = [spc.number_of_atoms for spc in species]
     accum_sum_spcs_lengths = [sum(spcs_lengths[:i+1]) for i in range(len(spcs_lengths))]
 
-    def translate_single_index(index: int) -> Optional[int]:
+    def translate_single_index(index: int) -> int | None:
         for ref_idx, ref_len in enumerate(accum_sum_ref_spcs_lengths):
             if index < ref_len:
                 atom_map = index_map.get(ref_idx)
@@ -1451,16 +1411,15 @@ def translate_indices_based_on_ref_species(species: List["ARCSpecies"],
             return None
     return new_indices
 
-
-def copy_species_list_for_mapping(species: List["ARCSpecies"]) -> List["ARCSpecies"]:
+def copy_species_list_for_mapping(species: list["ARCSpecies"]) -> list["ARCSpecies"]:
     """
     A helper function for copying the species list for mapping. Also keeps the atom indices when copying.
 
     Args:
-        species (List[ARCSpecies]): The species list to be copied.
+        species (list[ARCSpecies]): The species list to be copied.
 
     Returns:
-        List[ARCSpecies]: The copied species list.
+        list[ARCSpecies]: The copied species list.
     """
     copies = [spc.copy() for spc in species]
     for copy, spc in zip(copies, species):
@@ -1468,11 +1427,10 @@ def copy_species_list_for_mapping(species: List["ARCSpecies"]) -> List["ARCSpeci
             atom1.label = atom2.label
     return copies
 
-
 def find_all_breaking_bonds(rxn: "ARCReaction",
                             r_direction: bool,
                             pdi: int = 0,
-                            ) -> Optional[List[Tuple[int, int]]]:
+                            ) -> list[tuple[int, int]] | None:
     """
     A function for finding all the broken (or formed of the direction to consider starts with the products)
     bonds during a chemical reaction, based on marked atom labels.
@@ -1483,7 +1441,7 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
         pdi (int): The product dictionary index to consider. Defaults to 0.
 
     Returns:
-        Optional[List[Tuple[int, int]]]: Entries are tuples of the form (atom_index1, atom_index2) for each
+        list[tuple[int, int]] | None: Entries are tuples of the form (atom_index1, atom_index2) for each
             broken bond (1-indexed), representing the atom indices to be cut.
             Returns ``None`` if ``rxn.family`` is not set or ``rxn.product_dicts`` is empty.
     """
@@ -1515,22 +1473,21 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
             bdes=breaking_bonds)
     return breaking_bonds
 
-
 def get_template_product_order(rxn: 'ARCReaction',
-                               template_products: List[Molecule]
-                               ) -> List[int]:
+                               template_products: list[Molecule]
+                               ) -> list[int]:
     """
     Determine the order of the template products based on the reaction products.
 
     Args:
         rxn (ARCReaction): the reaction whose .p_species defines the desired order.
-        template_products (List[Molecule]): the RMG‐template Molecule list (typically comes from product_dicts[0]['products']).
+        template_products (list[Molecule]): the RMG‐template Molecule list (typically comes from product_dicts[0]['products']).
 
     Returns:
-        List[int]: A list of indices such that for each template molecule index.
+        list[int]: A list of indices such that for each template molecule index.
                    The corresponding position in the order list yields the index on the reaction product.
     """
-    order: List[int] = list()
+    order: list[int] = list()
     used = set()
     for template_mol in template_products:
         for i, prod in enumerate(rxn.p_species):
@@ -1543,23 +1500,22 @@ def get_template_product_order(rxn: 'ARCReaction',
                              f"{[template_mol.to_smiles() for template_mol in template_products]}.")
     return order
 
-
-def reorder_p_label_map(p_label_map: Dict[str, int],
-                        template_order: List[int],
-                        template_products: List['Molecule'],
-                        actual_products: List[ARCSpecies],
-                        ) -> Dict[str, int]:
+def reorder_p_label_map(p_label_map: dict[str, int],
+                        template_order: list[int],
+                        template_products: list['Molecule'],
+                        actual_products: list[ARCSpecies],
+                        ) -> dict[str, int]:
     """
     Re‐compute the global indices in p_label_map_tpl to account for a new ordering (template_order) of the template products.
 
     Args:
-        p_label_map (Dict[str,int]): Original template‐product‐label → global‐atom‐index map (in the order of template_products).
-        template_order (List[int]): A permutation of range(len(template_products)) mapping new positions → old indices.
-        template_products (List[Molecule]): List of template Molecule/ARCSpecies in RMG-generated order.
-        actual_products (List[ARCSpecies]): List of ARCSpecies in the reaction’s true product order.
+        p_label_map (dict[str,int]): Original template‐product‐label → global‐atom‐index map (in the order of template_products).
+        template_order (list[int]): A permutation of range(len(template_products)) mapping new positions → old indices.
+        template_products (list[Molecule]): List of template Molecule/ARCSpecies in RMG-generated order.
+        actual_products (list[ARCSpecies]): List of ARCSpecies in the reaction’s true product order.
 
     Returns:
-        Dict[str,int]: A new product‐label → global‐atom‐index map consistent with the reordered product list.
+        dict[str,int]: A new product‐label → global‐atom‐index map consistent with the reordered product list.
     """
     arc_lengths = [len(spc.mol.atoms) for spc in actual_products]
     template_lengths = [len(mol.atoms) for mol in template_products]

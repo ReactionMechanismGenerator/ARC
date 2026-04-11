@@ -5,19 +5,15 @@ representation formats, e.g. SMILES, InChI, SMARTS.
 
 import cython
 from rdkit import Chem
-try:
-    from openbabel import openbabel
-except ImportError:
-    BACKENDS = ['rdkit']
-else:
-    BACKENDS = ['openbabel', 'rdkit']
+
+BACKENDS = ['rdkit']
 
 import arc.molecule.inchi as inchiutil
 import arc.molecule.molecule as mm
 import arc.molecule.util as util
 from arc.common import get_logger
 from arc.exceptions import DependencyError
-from arc.molecule.converter import to_rdkit_mol, from_rdkit_mol, to_ob_mol, from_ob_mol
+from arc.molecule.converter import to_rdkit_mol, from_rdkit_mol
 
 
 logger = get_logger()
@@ -149,10 +145,10 @@ def to_inchi(mol, backend='rdkit-first', aug_level=0):
     For aug_level=1, appends the molecule multiplicity.
     For aug_level=2, appends positions of unpaired and paired electrons.
 
-    Uses RDKit or OpenBabel for conversion.
+    Uses RDKit for conversion.
 
     Args:
-        backend     choice of backend, 'rdkit-first' (default), 'openbabel-first', 'rdkit', or 'openbabel'
+        backend     choice of backend, 'rdkit-first' (default) or 'rdkit'
         aug_level   level of augmentation, 0, 1, or 2
     """
     cython.declare(inchi=str, ulayer=str, player=str, mlayer=str)
@@ -185,10 +181,10 @@ def to_inchi_key(mol, backend='rdkit-first', aug_level=0):
     For aug_level=1, appends the molecule multiplicity.
     For aug_level=2, appends positions of unpaired and paired electrons.
 
-    Uses RDKit or OpenBabel for conversion.
+    Uses RDKit for conversion.
 
     Args:
-        backend     choice of backend, 'rdkit-first' (default), 'openbabel-first', 'rdkit', or 'openbabel'
+        backend     choice of backend, 'rdkit-first' (default) or 'rdkit'
         aug_level   level of augmentation, 0, 1, or 2
     """
     cython.declare(key=str, ulayer=str, player=str, mlayer=str)
@@ -227,12 +223,8 @@ def to_smiles(mol, backend='default'):
     """
     Convert a molecular structure to an SMILES string.
 
-    If there is a Nitrogen/Sulfur atom present it uses
-    `OpenBabel <http://openbabel.org/>`_ to perform the conversion,
-    and the SMILES may or may not be canonical.
-
-    Otherwise, it uses `RDKit <http://rdkit.org/>`_ to perform the
-    conversion, so it will be canonical SMILES.
+    Uses `RDKit <http://rdkit.org/>`_ to perform the
+    conversion, producing canonical SMILES.
     While converting to an RDMolecule it will perceive aromaticity
     and removes Hydrogen atoms.
     """
@@ -247,9 +239,6 @@ def to_smiles(mol, backend='default'):
             output = MOLECULE_LOOKUPS[mol.get_formula()]
     except KeyError:
         if backend == 'default':
-            for atom in mol.atoms:
-                if atom.is_nitrogen() or atom.is_sulfur():
-                    return _write(mol, 'smi', backend='openbabel')
             return _write(mol, 'smi', backend='rdkit')
         else:
             return _write(mol, 'smi', backend=backend)
@@ -257,11 +246,10 @@ def to_smiles(mol, backend='default'):
         return output
 
 
-def from_inchi(mol, inchistr, backend='openbabel-first', raise_atomtype_exception=True):
+def from_inchi(mol, inchistr, backend='rdkit', raise_atomtype_exception=True):
     """
     Convert an InChI string `inchistr` to a molecular structure. Uses
-    a user-specified backend for conversion, currently supporting 'openbabel-first' (default), rdkit-first,
-    rdkit, and openbabel.
+    RDKit for conversion.
     """
     if inchiutil.INCHI_PREFIX in inchistr:
         return _read(mol, inchistr, 'inchi', backend, raise_atomtype_exception=raise_atomtype_exception)
@@ -302,11 +290,10 @@ def from_smarts(mol, smartsstr, backend='rdkit', raise_atomtype_exception=True):
     return _read(mol, smartsstr, 'sma', backend, raise_atomtype_exception=raise_atomtype_exception)
 
 
-def from_smiles(mol, smilesstr, backend='openbabel-first', raise_atomtype_exception=True):
+def from_smiles(mol, smilesstr, backend='rdkit', raise_atomtype_exception=True):
     """
     Convert a SMILES string `smilesstr` to a molecular structure. Uses
-    a user-specified backend for conversion, currently supporting openbabel-first (default), rdkit-first,
-    rdkit and openbabel.
+    RDKit for conversion.
     """
     return _read(mol, smilesstr, 'smi', backend, raise_atomtype_exception=raise_atomtype_exception)
 
@@ -365,60 +352,6 @@ def _rdkit_translator(input_object, identifier_type, mol=None):
                 output = Chem.MolToSmiles(rdkitmol, kekuleSmiles=True)
         else:
             raise ValueError('Identifier type {0} is not supported for writing using RDKit.'.format(identifier_type))
-    else:
-        raise ValueError('Unexpected input format. Should be a Molecule or a string.')
-
-    return output
-
-
-def _openbabel_translator(input_object, identifier_type, mol=None, raise_atomtype_exception=False):
-    """
-    Converts between formats using OpenBabel. If input is a :class:`Molecule`,
-    the identifier_type is used to determine the output type. If the input is
-    a `str`, then the identifier_type is used to identify the input, and the
-    desired output is assumed to be a :class:`Molecule` object.
-
-    Args:
-        input_object: either molecule or string identifier
-        identifier_type: format of string identifier
-            'inchi'    -> InChI
-            'inchikey' -> InChI Key
-            'smi'      -> SMILES
-        mol: molecule object for output (optional)
-        raise_atomtype_exception: whether to raise an exception if an error occurs.
-    """
-    ob_conversion = openbabel.OBConversion()
-
-    if isinstance(input_object, str):
-        # We are converting from a string identifier to a Molecule
-        ob_conversion.SetInFormat(identifier_type)
-        obmol = openbabel.OBMol()
-        ob_conversion.ReadString(obmol, input_object)
-        obmol.AddHydrogens()
-        # In OpenBabel 3+ the function obmol.AssignSpinMultiplicity(True) does nothing.
-        # We could write our own method here and call obatom.SetSpinMultiplicity on
-        # each atom, but instead we will leave them blank for now and fix them 
-        # in the from_ob_mol() method.
-        if mol is None:
-            mol = mm.Molecule()
-        output = from_ob_mol(mol, obmol, raise_atomtype_exception=raise_atomtype_exception)
-    elif isinstance(input_object, mm.Molecule):
-        # We are converting from a Molecule to a string identifier
-        if identifier_type == 'inchi':
-            ob_conversion.SetOutFormat('inchi')
-            ob_conversion.AddOption('w')
-        elif identifier_type == 'inchikey':
-            ob_conversion.SetOutFormat('inchi')
-            ob_conversion.AddOption('w')
-            ob_conversion.AddOption('K')
-        elif identifier_type == 'smi':
-            ob_conversion.SetOutFormat('can')
-            # turn off isomer and stereochemistry information
-            ob_conversion.AddOption('i')
-        else:
-            raise ValueError('Unexpected identifier type {0}.'.format(identifier_type))
-        obmol = to_ob_mol(input_object)
-        output = ob_conversion.WriteString(obmol).strip()
     else:
         raise ValueError('Unexpected input format. Should be a Molecule or a string.')
 
@@ -500,8 +433,6 @@ def _read(mol, identifier, identifier_type, backend, raise_atomtype_exception=Tr
     for option in _get_backend_list(backend):
         if option == 'rdkit':
             mol = _rdkit_translator(identifier, identifier_type, mol)
-        elif option == 'openbabel':
-            mol = _openbabel_translator(identifier, identifier_type, mol, raise_atomtype_exception=raise_atomtype_exception)
         else:
             raise NotImplementedError(f"Unrecognized backend {option}")
 
@@ -521,7 +452,7 @@ def _write(mol, identifier_type, backend):
     Parameters:
         mol: Molecule object
         identifier_type (str): Desired identifier type (e.g. 'smiles', 'inchi')
-        backend (str or list): A backend name or list of backends to try (e.g. 'rdkit', 'openbabel')
+        backend (str or list): A backend name or list of backends to try (e.g. 'rdkit')
 
     Returns:
         str: The identifier string if successful.
@@ -536,8 +467,6 @@ def _write(mol, identifier_type, backend):
         try:
             if option == 'rdkit':
                 output = _rdkit_translator(mol, identifier_type)
-            elif option == 'openbabel':
-                output = _openbabel_translator(mol, identifier_type)
             else:
                 raise NotImplementedError(f"Unrecognized backend '{option}'")
 
@@ -563,14 +492,11 @@ def _get_backend_list(backend):
     """
     if not isinstance(backend, str):
         raise ValueError("The backend argument should be a string. "
-                         "Accepted values are 'openbabel-first', 'rdkit-first', 'rdkit', and 'openbabel'")
+                         "Accepted values are 'rdkit-first' and 'rdkit'")
     backend = backend.strip().lower()
-    if backend == 'openbabel-first':
-        return BACKENDS
-    elif backend == 'rdkit-first':
-        return reversed(BACKENDS)
-    elif backend in ['rdkit', 'openbabel']:
-        return [backend]
+    if backend in ('rdkit-first', 'rdkit', 'openbabel-first', 'openbabel'):
+        # Accept 'openbabel*' for backwards compatibility, maps to rdkit.
+        return ['rdkit']
     else:
         raise ValueError("Unrecognized value for backend argument. "
-                         "Accepted values are 'openbabel-first', 'rdkit-first', 'rdkit', and 'openbabel'")
+                         "Accepted values are 'rdkit-first' and 'rdkit'")

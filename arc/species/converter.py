@@ -5,12 +5,11 @@ A module for performing various species-related format conversions.
 import math
 import numpy as np
 import os
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
+from collections.abc import Iterable
 
 from ase import Atoms
 from scipy.spatial.transform import Rotation
-from openbabel import openbabel as ob
-from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
 from rdkit.Chem import AllChem, SDWriter
@@ -41,16 +40,13 @@ from arc.species.zmat import (KEY_FROM_LEN,
 if TYPE_CHECKING:
     from arc.species.species import ARCSpecies
 
-
-ob.obErrorLog.SetOutputLevel(0)
 logger = get_logger()
 
 DIST_PRECISION = 0.01  # Angstrom
 ANGL_PRECISION = 0.1  # rad (for both bond angle and dihedral)
 
-
 def str_to_xyz(xyz_str: str,
-               project_directory: Optional[str] = None,
+               project_directory: str | None = None,
                ) -> dict:
     """
     Convert a string xyz format to the ARC dict xyz style.
@@ -133,10 +129,9 @@ def str_to_xyz(xyz_str: str,
                 xyz_dict['coords'] += (coord,)
     return xyz_dict
 
-
 def xyz_to_str(xyz_dict: dict,
-               isotope_format: Optional[str] = None,
-               ) -> Optional[str]:
+               isotope_format: str | None = None,
+               ) -> str | None:
     """
     Convert an ARC xyz dictionary format, e.g.::
 
@@ -167,7 +162,7 @@ def xyz_to_str(xyz_dict: dict,
     Raises:
         ConverterError: If input is not a dict or does not have all attributes.
 
-    Returns: Optional[str]
+    Returns: str | None
         The string xyz format.
     """
     if xyz_dict is None:
@@ -202,15 +197,14 @@ def xyz_to_str(xyz_dict: dict,
         xyz_list.append(row)
     return '\n'.join(xyz_list)
 
-
-def xyz_to_x_y_z(xyz_dict: dict) -> Optional[Tuple[tuple, tuple, tuple]]:
+def xyz_to_x_y_z(xyz_dict: dict) -> tuple[tuple, tuple, tuple] | None:
     """
     Get the X, Y, and Z coordinates separately from the ARC xyz dictionary format.
 
     Args:
         xyz_dict (dict): The ARC xyz format.
 
-    Returns: Optional[Tuple[tuple, tuple, tuple]]
+    Returns: tuple[tuple, tuple, tuple] | None
         The X coordinates, the Y coordinates, the Z coordinates.
     """
     if xyz_dict is None:
@@ -223,15 +217,14 @@ def xyz_to_x_y_z(xyz_dict: dict) -> Optional[Tuple[tuple, tuple, tuple]]:
         z += (coord[2],)
     return x, y, z
 
-
-def xyz_to_coords_list(xyz_dict: dict) -> Optional[List[List[float]]]:
+def xyz_to_coords_list(xyz_dict: dict) -> list[list[float]] | None:
     """
     Get the coords part of an xyz dict as a (mutable) list of lists (rather than a tuple of tuples).
 
     Args:
         xyz_dict (dict): The ARC xyz format.
 
-    Returns: Optional[List[List[float]]]
+    Returns: list[list[float]] | None
         The coordinates.
     """
     if xyz_dict is None:
@@ -243,23 +236,21 @@ def xyz_to_coords_list(xyz_dict: dict) -> Optional[List[List[float]]]:
         coords_list.append([coords_tup[0], coords_tup[1], coords_tup[2]])
     return coords_list
 
-
-def xyz_to_np_array(xyz_dict: dict) -> Optional[np.ndarray]:
+def xyz_to_np_array(xyz_dict: dict) -> np.ndarray | None:
     """
     Get the coords part of an xyz dict as a numpy array.
 
     Args:
         xyz_dict (dict): The ARC xyz format.
 
-    Returns: Optional[np.ndarray]
+    Returns: np.ndarray | None
         The coordinates.
     """
     return np.array(xyz_to_coords_list(xyz_dict), dtype=np.float64) if xyz_dict is not None else None
 
-
 def xyz_to_xyz_file_format(xyz_dict: dict,
                            comment: str = '',
-                           ) -> Optional[str]:
+                           ) -> str | None:
     """
     Get the `XYZ file format <https://en.wikipedia.org/wiki/XYZ_file_format>`_ representation
     from the ARC xyz dictionary format.
@@ -272,7 +263,7 @@ def xyz_to_xyz_file_format(xyz_dict: dict,
     Raises:
         ConverterError: If ``xyz_dict`` is of wrong format or ``comment`` is a multiline string.
 
-    Returns: Optional[str]
+    Returns: str | None
         The XYZ file format.
     """
     if xyz_dict is None:
@@ -282,11 +273,10 @@ def xyz_to_xyz_file_format(xyz_dict: dict,
         raise ConverterError('The comment attribute cannot be a multiline string, got:\n{0}'.format(list(comment)))
     return str(len(xyz_dict['symbols'])) + '\n' + comment.strip() + '\n' + xyz_to_str(xyz_dict) + '\n'
 
-
 def xyz_to_turbomol_format(xyz_dict: dict,
-                           charge: Optional[int] = None,
-                           unpaired: Optional[int] = None,
-                           ) -> Optional[str]:
+                           charge: int | None = None,
+                           unpaired: int | None = None,
+                           ) -> str | None:
     """
     Get the respective Turbomole coordinates format.
 
@@ -313,8 +303,7 @@ $eht charge=0 unpaired=0
     coords_list.append('$end\n')
     return '\n'.join(coords_list)
 
-
-def xyz_to_coords_and_element_numbers(xyz: dict) -> Tuple[list, list]:
+def xyz_to_coords_and_element_numbers(xyz: dict) -> tuple[list, list]:
     """
     Convert xyz to a coords list and an atomic number list.
 
@@ -322,14 +311,13 @@ def xyz_to_coords_and_element_numbers(xyz: dict) -> Tuple[list, list]:
         xyz (dict): The coordinates.
 
     Returns:
-        Tuple[list, list]: Coords and atomic numbers.
+        tuple[list, list]: Coords and atomic numbers.
     """
     coords = xyz_to_coords_list(xyz)
     z_list = [NUMBER_BY_SYMBOL[symbol] for symbol in xyz['symbols']]
     return coords, z_list
 
-
-def xyz_to_kinbot_list(xyz_dict: dict) -> List[Union[str, float]]:
+def xyz_to_kinbot_list(xyz_dict: dict) -> list[str | float]:
     """
     Get the KinBot xyz format of a single running list of:
     [symbol0, x0, y0, z0, symbol1, x1, y1, z1,...]
@@ -337,7 +325,7 @@ def xyz_to_kinbot_list(xyz_dict: dict) -> List[Union[str, float]]:
     Args:
         xyz_dict (dict): The ARC xyz format.
 
-    Returns: List[Union[str, float]]
+    Returns: list[str | float]
         The respective KinBot xyz format.
     """
     kinbot_xyz = list()
@@ -345,8 +333,7 @@ def xyz_to_kinbot_list(xyz_dict: dict) -> List[Union[str, float]]:
         kinbot_xyz.extend([symbol, coords[0], coords[1], coords[2]])
     return kinbot_xyz
 
-
-def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
+def xyz_to_dmat(xyz_dict: dict) -> np.array | None:
     """
     Convert Cartesian coordinates to a distance matrix.
 
@@ -354,7 +341,7 @@ def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
         xyz_dict (dict): The Cartesian coordinates.
 
     Returns:
-        Optional[np.array]: The distance matrix.
+        np.array | None: The distance matrix.
     """
     if xyz_dict is None or isinstance(xyz_dict, dict) and any(not val for val in xyz_dict.values()):
         return None
@@ -362,7 +349,6 @@ def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
     dmat = distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
                            b=np.array(xyz_to_coords_list(xyz_dict)))
     return dmat
-
 
 def xyz_file_format_to_xyz(xyz_file: str) -> dict:
     """
@@ -389,7 +375,6 @@ def xyz_file_format_to_xyz(xyz_file: str) -> dict:
                               len(lines), number_of_atoms))
     xyz_str = '\n'.join(lines)
     return str_to_xyz(xyz_str)
-
 
 def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None) -> dict:
     """
@@ -447,7 +432,6 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None) -> dict:
     xyz_dict = {'symbols': symbols, 'isotopes': isotopes, 'coords': coords}
     return xyz_dict
 
-
 def species_to_sdf_file(species: 'ARCSpecies',
                         path: str,
                         ):
@@ -466,16 +450,15 @@ def species_to_sdf_file(species: 'ARCSpecies',
         w.write(rdkit_mol)
         w.close()
 
-
 def sort_xyz_using_indices(xyz_dict: dict,
-                           indices: Optional[List[int]],
+                           indices: list[int] | None,
                            ) -> dict:
     """
     Sort the tuples in an xyz dict according to the given indices.
 
     Args:
         xyz_dict (dict): The Cartesian coordinates.
-        indices (Optional[List[int]]): Entries are 0-indices of the desired order.
+        indices (list[int] | None): Entries are 0-indices of the desired order.
 
     Returns:
         dict: The ordered xyz.
@@ -496,7 +479,6 @@ def sort_xyz_using_indices(xyz_dict: dict,
         isotopes.append(xyz_dict['isotopes'][i])
     return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
 
-
 def xyz_to_ase(xyz_dict: dict) -> Atoms:
     """
     Convert an xyz dict to an ASE Atoms object.
@@ -509,16 +491,15 @@ def xyz_to_ase(xyz_dict: dict) -> Atoms:
     """
     return Atoms(xyz_dict['symbols'], xyz_dict['coords'])
 
-
 def translate_xyz(xyz_dict: dict,
-                  translation: Tuple[float, float, float],
+                  translation: tuple[float, float, float],
                   ) -> dict:
     """
     Translate xyz.
 
     Args:
         xyz_dict (dict): The ARC xyz format.
-        translation (Tuple[float, float, float]): The x, y, z translation vector.
+        translation (tuple[float, float, float]): The x, y, z translation vector.
 
     Returns:
         dict: The translated xyz.
@@ -534,12 +515,11 @@ def translate_xyz(xyz_dict: dict,
                }
     return new_xyz
 
-
 def displace_xyz(xyz: dict,
                  displacement: np.ndarray,
                  amplitude: float = 0.25,
                  use_weights: bool = True,
-                 ) -> Tuple[dict, dict]:
+                 ) -> tuple[dict, dict]:
     """
     Displace the coordinates using the ``displacement`` by the requested ``amplitude`` using atom mass weights.
 
@@ -550,7 +530,7 @@ def displace_xyz(xyz: dict,
         use_weights( bool, optional): Whether to scale displacements by the square root of the respective element mass.
 
     Returns:
-        Tuple[dict, dict]:
+        tuple[dict, dict]:
             The two displaced xyz's, one for each direction (+/-) of the weighted ``displacement``.
     """
     coords = xyz_to_coords_list(xyz)
@@ -565,8 +545,7 @@ def displace_xyz(xyz: dict,
     xyz_2 = xyz_from_data(coords=coords_2, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
     return xyz_1, xyz_2
 
-
-def get_element_mass_from_xyz(xyz: dict) -> List[float]:
+def get_element_mass_from_xyz(xyz: dict) -> list[float]:
     """
     Get a list of element masses corresponding to the given ``xyz`` considering isotopes.
 
@@ -574,7 +553,7 @@ def get_element_mass_from_xyz(xyz: dict) -> List[float]:
         xyz (dict): The coordinates.
 
     Returns:
-        List[float]: The corresponding list of mass in amu.
+        list[float]: The corresponding list of mass in amu.
     """
     symbols, isotopes = xyz['symbols'], xyz.get('isotopes', None)
     masses = list()
@@ -591,7 +570,6 @@ def get_element_mass_from_xyz(xyz: dict) -> List[float]:
         masses.append(mass)
     return masses
 
-
 def hartree_to_si(e: float,
                   kilo: bool = True,
                   ) -> float:
@@ -606,7 +584,6 @@ def hartree_to_si(e: float,
         raise ValueError(f'Expected a float, got {e} which is a {type(e)}.')
     factor = 0.001 if kilo else 1
     return e * constants.E_h * constants.Na * factor
-
 
 def standardize_xyz_string(xyz_str, isotope_format=None):
     """
@@ -631,10 +608,9 @@ def standardize_xyz_string(xyz_str, isotope_format=None):
     xyz_dict = str_to_xyz(xyz_str)
     return xyz_to_str(xyz_dict=xyz_dict, isotope_format=isotope_format)
 
-
-def check_xyz_dict(xyz: Union[dict, str],
-                   project_directory: Optional[str] = None,
-                   ) -> Optional[dict]:
+def check_xyz_dict(xyz: dict | str,
+                   project_directory: str | None = None,
+                   ) -> dict | None:
     """
     Check that the xyz dictionary entered is valid.
     If it is a string, convert it.
@@ -643,13 +619,13 @@ def check_xyz_dict(xyz: Union[dict, str],
     If a part of the xyz structure is a np.ndarray type, convert it by always calling xyz_from_data().
 
     Args:
-        xyz (Union[dict, str]): The xyz dictionary.
+        xyz (dict | str): The xyz dictionary.
         project_directory (str, optional): The path to the project directory.
 
     Raises:
         ConverterError: If ``xyz`` is of wrong type or is missing symbols or coords.
 
-    Returns: Optional[dict]
+    Returns: dict | None
         The cartesian coordinates in a dictionary format.
     """
     if xyz is None:
@@ -675,8 +651,7 @@ def check_xyz_dict(xyz: Union[dict, str],
                              f'isotopes:\n{xyz_dict}')
     return xyz_dict
 
-
-def check_zmat_dict(zmat: Union[dict, str]) -> dict:
+def check_zmat_dict(zmat: dict | str) -> dict:
     """
     Check that the zmat dictionary entered is valid.
     If it is a string, convert it.
@@ -717,7 +692,6 @@ def check_zmat_dict(zmat: Union[dict, str]) -> dict:
                 raise ConverterError(f'The zmat is ill-defined:\n{zmat_dict}')
     return zmat_dict
 
-
 def remove_dummies(xyz):
     """
     Remove dummy ('X') atoms from cartesian coordinates.
@@ -743,10 +717,9 @@ def remove_dummies(xyz):
             coords.append(coord)
     return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
 
-
-def zmat_from_xyz(xyz: Union[dict, str],
-                  mol: Optional[Molecule] = None,
-                  constraints: Optional[dict] = None,
+def zmat_from_xyz(xyz: dict | str,
+                  mol: Molecule | None = None,
+                  constraints: dict | None = None,
                   consolidate: bool = True,
                   consolidation_tols: dict = None,
                   is_ts: bool = False,
@@ -755,7 +728,7 @@ def zmat_from_xyz(xyz: Union[dict, str],
     Generate a Z matrix from xyz.
 
     Args:
-        xyz (Union[dict, str]): The cartesian coordinate, either in a dict or str format.
+        xyz (dict | str): The cartesian coordinate, either in a dict or str format.
         mol (Molecule, optional): The corresponding RMG Molecule with connectivity information.
         constraints (dict, optional): Accepted keys are:
                                       'R_atom', 'R_group', 'A_atom', 'A_group', 'D_atom', 'D_group', or 'D_groups'.
@@ -797,7 +770,6 @@ def zmat_from_xyz(xyz: Union[dict, str],
                        consolidation_tols=consolidation_tols,
                        )
 
-
 def zmat_to_xyz(zmat, keep_dummy=False, xyz_isotopes=None):
     """
     Generate the xyz dict coordinates from a zmat dict.
@@ -816,7 +788,6 @@ def zmat_to_xyz(zmat, keep_dummy=False, xyz_isotopes=None):
     isotopes = xyz_isotopes['isotopes'] if xyz_isotopes is not None else None
     xyz_dict = translate_to_center_of_mass(xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes))
     return xyz_dict
-
 
 def zmat_to_str(zmat, zmat_format='gaussian', consolidate=True):
     """
@@ -909,7 +880,6 @@ def zmat_to_str(zmat, zmat_format='gaussian', consolidate=True):
         result = zmat_str + variables_str
     return result
 
-
 def str_to_zmat(zmat_str):
     """
     Convert a string Z Matrix format to the ARC dict zmat style.
@@ -980,8 +950,7 @@ def str_to_zmat(zmat_str):
     zmat_dict = {'symbols': tuple(symbols), 'coords': tuple(coords), 'vars': variables, 'map': map_}
     return zmat_dict
 
-
-def split_str_zmat(zmat_str) -> Tuple[str, Optional[str]]:
+def split_str_zmat(zmat_str) -> tuple[str, str | None]:
     """
     Split a string zmat into its coordinates and variables sections.
 
@@ -989,7 +958,7 @@ def split_str_zmat(zmat_str) -> Tuple[str, Optional[str]]:
         zmat_str (str): The zmat.
 
     Returns:
-        Tuple[str, Optional[str]]: The coords section and the variables section if it exists, else ``None``.
+        tuple[str, str | None]: The coords section and the variables section if it exists, else ``None``.
     """
     coords, variables = list(), list()
     flag = False
@@ -1027,7 +996,6 @@ def split_str_zmat(zmat_str) -> Tuple[str, Optional[str]]:
     variables = '\n'.join(variables) if len(variables) else None
     return coords, variables
 
-
 def get_zmat_str_var_value(zmat_str, var):
     """
     Returns the value of a zmat variable from a string-represented zmat.
@@ -1044,9 +1012,8 @@ def get_zmat_str_var_value(zmat_str, var):
             return float(line.replace('=', ' ').split()[-1])
     raise ConverterError(f'Could not find var "{var}" in zmat:\n{zmat_str}')
 
-
-def get_zmat_param_value(coords: Dict[str, tuple],
-                         indices: List[int],
+def get_zmat_param_value(coords: dict[str, tuple],
+                         indices: list[int],
                          mol: Molecule,
                          index: int = 0,
                          ) -> float | None:
@@ -1084,7 +1051,6 @@ def get_zmat_param_value(coords: Dict[str, tuple],
         return sum(zmat["vars"][par] for par in param)
     return None
 
-
 def relocate_zmat_dummy_atoms_to_the_end(zmat_map: dict) -> dict:
     """
     Relocate all dummy atoms in a ZMat to the end of the corresponding Cartesian coordinates atom list.
@@ -1107,15 +1073,14 @@ def relocate_zmat_dummy_atoms_to_the_end(zmat_map: dict) -> dict:
     no_x_map.update(x_map)
     return no_x_map
 
-
-def modify_coords(coords: Dict[str, tuple],
-                  indices: List[int],
+def modify_coords(coords: dict[str, tuple],
+                  indices: list[int],
                   new_value: float,
                   modification_type: str,
-                  mol: Optional[Molecule] = None,
+                  mol: Molecule | None = None,
                   index: int = 0,
-                  fragments: Optional[List[List[int]]] = None,
-                  ) -> Dict[str, tuple]:
+                  fragments: list[list[int]] | None = None,
+                  ) -> dict[str, tuple]:
     """
     Modify either a bond length, angle, or dihedral angle in the given coordinates.
     The coordinates input could either be cartesian (preferred) or internal
@@ -1141,7 +1106,7 @@ def modify_coords(coords: Dict[str, tuple],
         mol (Molecule, optional): The corresponding RMG molecule with the connectivity information.
                                   Mandatory if the modification type is 'group' or 'groups'.
         index (bool, optional): Whether the specified atoms in ``indices`` and ``fragments`` are 0- or 1-indexed.
-        fragments (List[List[int]], optional):
+        fragments (list[list[int]], optional):
             Fragments represented by the species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
             indices are 0-indexed.
@@ -1219,7 +1184,6 @@ def modify_coords(coords: Dict[str, tuple],
         new_xyz = zmat_to_xyz(zmat=zmat)
     return new_xyz
 
-
 def get_most_common_isotope_for_element(element_symbol):
     """
     Get the most common isotope for a given element symbol.
@@ -1247,45 +1211,6 @@ def get_most_common_isotope_for_element(element_symbol):
                 isotope = iso[0]
     return isotope
 
-
-def xyz_to_pybel_mol(xyz: dict):
-    """
-    Convert xyz into an Open Babel molecule object.
-
-    Args:
-        xyz (dict): ARC's xyz dictionary format.
-
-    Returns: Optional[OBmol]
-        An Open Babel molecule.
-    """
-    if xyz is None:
-        return None
-    xyz = check_xyz_dict(xyz)
-    try:
-        pybel_mol = pybel.readstring('xyz', xyz_to_xyz_file_format(xyz))
-    except (IOError, InputError):
-        return None
-    return pybel_mol
-
-
-def pybel_to_inchi(pybel_mol, has_h=True):
-    """
-    Convert an Open Babel molecule object to InChI
-
-    Args:
-        pybel_mol (OBmol): An Open Babel molecule.
-        has_h (bool): Whether the molecule has hydrogen atoms. ``True`` if it does.
-
-    Returns:
-        str: The respective InChI representation of the molecule.
-    """
-    if has_h:
-        inchi = pybel_mol.write('inchi', opt={'F': None}).strip()  # Add fixed H layer
-    else:
-        inchi = pybel_mol.write('inchi').strip()
-    return inchi
-
-
 def rmg_mol_from_inchi(inchi: str):
     """
     Generate an RMG Molecule object from InChI.
@@ -1305,7 +1230,6 @@ def rmg_mol_from_inchi(inchi: str):
         return None
     return rmg_mol
 
-
 def elementize(atom):
     """
     Convert the atom-type of an RMG ``Atom`` object into its general parent element atom type (e.g., 'S4d' into 'S').
@@ -1317,7 +1241,6 @@ def elementize(atom):
     atom_type = [at for at in atom_type.generic if at.label != 'R' and at.label != 'R!H' and 'Val' not in at.label]
     if atom_type:
         atom.atomtype = atom_type[0]
-
 
 def set_multiplicity(mol, multiplicity, charge, radical_map=None):
     """
@@ -1367,7 +1290,6 @@ def set_multiplicity(mol, multiplicity, charge, radical_map=None):
                            '\n{3}'.format(radicals, mol.multiplicity, mol.copy(deep=True).to_smiles(),
                                           mol.copy(deep=True).to_adjacency_list()))
 
-
 def add_rads_by_atom_valance(mol):
     """
     A helper function for assigning radicals if not identified automatically,
@@ -1384,7 +1306,6 @@ def add_rads_by_atom_valance(mol):
             missing_electrons = 4 - atomic_orbitals
             if missing_electrons:
                 atom.radical_electrons = missing_electrons
-
 
 def add_lone_pairs_by_atom_valance(mol):
     """
@@ -1440,7 +1361,6 @@ def add_lone_pairs_by_atom_valance(mol):
         mol.atoms[0].radical_electrons = 0
         mol.atoms[0].lone_pairs = 2
 
-
 def set_radicals_by_map(mol, radical_map):
     """
     Set radicals in ``mol`` by ``radical_map``.
@@ -1458,14 +1378,13 @@ def set_radicals_by_map(mol, radical_map):
                                  '{0} is not {1}.'.format(atom.element.symbol, radical_map.atoms[i].symbol))
         atom.radical_electrons = radical_map.atoms[i].radical_electrons
 
-
-def order_atoms_in_mol_list(ref_mol: Molecule, mol_list: List[Molecule] | None) -> bool:
+def order_atoms_in_mol_list(ref_mol: Molecule, mol_list: list[Molecule] | None) -> bool:
     """
     Order the atoms in all molecules of ``mol_list`` by the atom order in ``ref_mol``.
 
     Args:
         ref_mol (Molecule): The reference Molecule object.
-        mol_list (List[Molecule] | None): Entries are Molecule objects whose atoms will be reordered according to the reference.
+        mol_list (list[Molecule] | None): Entries are Molecule objects whose atoms will be reordered according to the reference.
 
     Raises:
         TypeError: If ``ref_mol`` or the entries in ``mol_list`` have a wrong type.
@@ -1490,7 +1409,6 @@ def order_atoms_in_mol_list(ref_mol: Molecule, mol_list: List[Molecule] | None) 
         logger.warning('Could not order atoms')
         return False
     return True
-
 
 def order_atoms(ref_mol, mol):
     """
@@ -1536,7 +1454,6 @@ def order_atoms(ref_mol, mol):
         #     ref_mol.copy(deep=True).to_adjacency_list(), mol.copy(deep=True).to_adjacency_list()))
         raise SanitizationError('Could not map non isomorphic molecules')
 
-
 def update_molecule(mol: Molecule, to_single_bonds: bool = False) -> Molecule:
     """
     Updates the molecule, useful for isomorphism comparison.
@@ -1569,15 +1486,14 @@ def update_molecule(mol: Molecule, to_single_bonds: bool = False) -> Molecule:
     new_mol.multiplicity = mol.multiplicity
     return new_mol
 
-
-def s_bonds_mol_from_xyz(xyz: dict) -> Optional[Molecule]:
+def s_bonds_mol_from_xyz(xyz: dict) -> Molecule | None:
     """
     Create a single bonded molecule from xyz using RMG's connect_the_dots() method.
 
     Args:
         xyz (dict): The xyz coordinates.
 
-    Returns: Optional[Molecule]
+    Returns: Molecule | None
         The respective molecule with only single bonds.
     """
     if xyz is None:
@@ -1590,7 +1506,6 @@ def s_bonds_mol_from_xyz(xyz: dict) -> Optional[Molecule]:
         mol.add_atom(atom)
     mol.connect_the_dots(raise_atomtype_exception=False)  # only adds single bonds, but we don't care
     return mol
-
 
 def to_rdkit_mol(mol, remove_h=False, sanitize=True):
     """
@@ -1653,7 +1568,6 @@ def to_rdkit_mol(mol, remove_h=False, sanitize=True):
         rd_mol = Chem.RemoveHs(rd_mol, sanitize=sanitize)
     return rd_mol
 
-
 def rdkit_conf_from_mol(mol: Molecule,
                         xyz: dict,
                         ) -> tuple:
@@ -1689,7 +1603,6 @@ def rdkit_conf_from_mol(mol: Molecule,
             conf.SetAtomPosition(i, xyz['coords'][i])  # reset atom coordinates
     return conf, rd_mol
 
-
 def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None):
     """
     A helper function for setting dihedral angles using RDKit.
@@ -1723,7 +1636,6 @@ def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None)
         symbols.append(atom.GetSymbol())
     new_xyz = xyz_from_data(coords=coords, symbols=symbols)
     return new_xyz
-
 
 def check_isomorphism(mol1: 'Molecule',
                       mol2: 'Molecule',
@@ -1765,14 +1677,13 @@ def check_isomorphism(mol1: 'Molecule',
                     return True
     return False
 
-
-def check_molecule_list_order(mols_1: List[Molecule], mols_2: List[Molecule]):
+def check_molecule_list_order(mols_1: list[Molecule], mols_2: list[Molecule]):
     """
     Check if the order of molecules in two lists is the same.
 
     Args:
-        mols_1 (List[Molecule]): A list of RMG Molecule objects.
-        mols_2 (List[Molecule]): A list of RMG Molecule objects.
+        mols_1 (list[Molecule]): A list of RMG Molecule objects.
+        mols_2 (list[Molecule]): A list of RMG Molecule objects.
 
     Returns:
         bool: Whether the order of molecules in the two lists is the same.
@@ -1783,7 +1694,6 @@ def check_molecule_list_order(mols_1: List[Molecule], mols_2: List[Molecule]):
         if not check_isomorphism(mol1, mol2):
             return False
     return True
-
 
 def get_center_of_mass(xyz):
     """
@@ -1807,7 +1717,6 @@ def get_center_of_mass(xyz):
     cm_y /= sum(masses)
     cm_z /= sum(masses)
     return float(cm_x), float(cm_y), float(cm_z)
-
 
 def translate_to_center_of_mass(xyz):
     """
@@ -1838,7 +1747,6 @@ def translate_to_center_of_mass(xyz):
     translated_coords = tuple((xi, yi, zi) for xi, yi, zi in zip(x, y, z))
     return xyz_from_data(coords=translated_coords, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
 
-
 def get_xyz_radius(xyz):
     """
     Determine the largest distance from the coordinate system origin attributed to one of the atoms in 3D space.
@@ -1861,7 +1769,6 @@ def get_xyz_radius(xyz):
     atom_r = max([get_atom_radius(si) if get_atom_radius(si) is not None else 1.50 for si in border_elements])
     radius = r ** 0.5 + atom_r
     return radius
-
 
 def compare_zmats(z1, z2, r_tol=0.01, a_tol=2, d_tol=2, verbose=False, symmetric_torsions=None, index=1):
     """
@@ -1898,11 +1805,10 @@ def compare_zmats(z1, z2, r_tol=0.01, a_tol=2, d_tol=2, verbose=False, symmetric
     return _compare_zmats(z1, z2, r_tol=r_tol, a_tol=a_tol, d_tol=d_tol, verbose=verbose,
                           symmetric_torsions=symmetric_torsions)
 
-
 def compare_confs_fl(xyz1: dict,
                      conf2: dict,
                      rtol: float = 0.01,
-                     ) -> Tuple[float, Optional[np.ndarray], dict, bool]:
+                     ) -> tuple[float, np.ndarray | None, dict, bool]:
     """
     Compare two Cartesian coordinates representing conformers using first and last atom distances. If the distances are the same,
     the distance matrices are computed and returned.
@@ -1935,16 +1841,15 @@ def compare_confs_fl(xyz1: dict,
         conf2['dmat'] = xyz_to_dmat(xyz2)
     return fl_distance1, dmat1, conf2, similar
 
-
 def compare_confs(xyz1: dict,
                   xyz2: dict,
                   rtol: float = 0.01,
                   atol: float = 0.1,
                   rmsd_score: bool = False,
                   skip_conversion: bool = False,
-                  dmat1: Optional[np.ndarray] = None,
-                  dmat2: Optional[np.ndarray] = None,
-                  ) -> Union[float, bool]:
+                  dmat1: np.ndarray | None = None,
+                  dmat2: np.ndarray | None = None,
+                  ) -> float | bool:
     """
     Compare two Cartesian coordinates representing conformers using distance matrices.
 
@@ -1962,7 +1867,7 @@ def compare_confs(xyz1: dict,
         dmat2 (np.ndarray, optional): The distance matrix of conformer 2.
 
     Returns:
-        Union[float, bool]:
+        float | bool:
             - If ``rmsd_score`` is ``False`` (default): Whether the two conformers have almost equal atom distances.
               ``True`` if they do.
             - If ``rmsd_score`` is ``True``: The RMSD score of two distance matrices.
@@ -1977,10 +1882,9 @@ def compare_confs(xyz1: dict,
     else:
         return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
 
-
-def cluster_confs_by_rmsd(xyzs: Iterable[Dict[str, tuple]],
+def cluster_confs_by_rmsd(xyzs: Iterable[dict[str, tuple]],
                           rmsd_threshold: float = 1e-2,
-                          ) -> Tuple[Dict[str, tuple]]:
+                          ) -> tuple[dict[str, tuple]]:
     """
     Cluster conformers with the same atom orders using RMSD of distance matrices.
     Works for both TS and non-TS conformers.
@@ -1996,7 +1900,7 @@ def cluster_confs_by_rmsd(xyzs: Iterable[Dict[str, tuple]],
                                 (i.e., if rmsd > rmsd_threshold, then two conformers are considered distinctive).
 
     Returns:
-        Tuple[Dict[str, tuple]]: Conformers with distinctive geometries.
+        tuple[dict[str, tuple]]: Conformers with distinctive geometries.
     """
     xyzs = tuple(xyzs)
     distinct_xyzs = [xyzs[0]]
@@ -2006,9 +1910,8 @@ def cluster_confs_by_rmsd(xyzs: Iterable[Dict[str, tuple]],
             distinct_xyzs.append(xyz)
     return tuple(distinct_xyzs)
 
-
 def ics_to_scan_constraints(ics: list,
-                            software: Optional[str] = 'gaussian',
+                            software: str | None = 'gaussian',
                             ) -> str:
     """
     A helper function for converting internal coordinate (ic) info
@@ -2036,17 +1939,16 @@ def ics_to_scan_constraints(ics: list,
                                   f'for ics_to_scan_constraints().')
     return scan_trsh
 
-
-def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
+def add_atom_to_xyz_using_internal_coords(xyz: dict | str,
                                           element: str,
                                           r_index: int,
-                                          a_indices: Union[tuple, list],
-                                          d_indices: Union[tuple, list],
+                                          a_indices: tuple | list,
+                                          d_indices: tuple | list,
                                           r_value: float,
                                           a_value: float,
                                           d_value: float,
-                                          opt_methods: Optional[Union[str, List[str]]] = None,
-                                          ) -> Optional[dict]:
+                                          opt_methods: str | list[str] | None = None,
+                                          ) -> dict | None:
     """
     Add an atom to an XYZ structure based on distance, angle, and dihedral constraints.
     The new atom may have random r, a, and d index parameters (not necessarily defined for the same respective atoms).
@@ -2057,16 +1959,16 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
         xyz (dict): The xyz coordinates to process in a dictionary format.
         element (str): The chemical element of the atom to add.
         r_index (int): The index of an atom R to define the distance parameter R-X w.r.t the newly added atom, X.
-        a_indices (Union[tuple, list]): The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.
-        d_indices (Union[tuple, list]): The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.
+        a_indices (tuple | list): The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.
+        d_indices (tuple | list): The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.
         r_value (float): The value of the R-X distance parameter, r.
         a_value (float): The value of the A-B-X angle parameter, a.
         d_value (float): The value of the L-M-N-X dihedral angle parameter, d.
-        opt_methods (List[str], optional): The optimization method to use for finding the new atom's coordinates.
+        opt_methods (list[str], optional): The optimization method to use for finding the new atom's coordinates.
                                            Options include 'SLSQP', 'Nelder-Mead', 'trust-constr' and 'BFGS'.
 
     Returns:
-        Optional[dict]: The updated xyz coordinates.
+        dict | None: The updated xyz coordinates.
     """
     best_guesses = list()
     xyz = check_xyz_dict(xyz)
@@ -2163,7 +2065,6 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
                         )
     return xyz
 
-
 def _add_atom_to_xyz_using_internal_coords(xyz: dict,
                                            element: str,
                                            r_index: int,
@@ -2218,12 +2119,12 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
     angle_eq = angle_constraint(atom_a=atom_a_coord, atom_b=atom_b_coord, angle=a_value)
     dihedral_eq = dihedral_constraint(atom_a=atom_l_coord, atom_b=atom_m_coord, atom_c=atom_n_coord, dihedral=d_value)
 
-    def objective_func(coord: Tuple[float, float, float]) -> float:
+    def objective_func(coord: tuple[float, float, float]) -> float:
         """
         The objective function to minimize to satisfy the sphere, angle, and dihedral constraints.
 
         Args:
-            coord (Tuple[float, float, float]): The Cartesian coordinates of the new atom.
+            coord (tuple[float, float, float]): The Cartesian coordinates of the new atom.
 
         Returns:
             float: The sum of the squared differences between the constraints and their desired values.
@@ -2245,7 +2146,6 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
     xyz = xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
     return xyz
 
-
 def distance_constraint(reference_coord: tuple, distance: float):
     """
     Generate the sphere equation for a new atom at a specific distance from a reference atom.
@@ -2260,7 +2160,6 @@ def distance_constraint(reference_coord: tuple, distance: float):
     x1, y1, z1 = reference_coord
     sphere_eq = lambda x, y, z: (x - x1) ** 2 + (y - y1) ** 2 + (z - z1) ** 2 - distance ** 2
     return sphere_eq
-
 
 def angle_constraint(atom_a: tuple, atom_b: tuple, angle: float):
     """
@@ -2305,7 +2204,6 @@ def angle_constraint(atom_a: tuple, atom_b: tuple, angle: float):
         return wrapped_diff
 
     return angle_eq
-
 
 def dihedral_constraint(atom_a: tuple, atom_b: tuple, atom_c: tuple, dihedral: float):
     """
@@ -2354,7 +2252,6 @@ def dihedral_constraint(atom_a: tuple, atom_b: tuple, atom_c: tuple, dihedral: f
 
     return dihedral_eq
 
-
 def generate_initial_guess_r_a(atom_r_coord: tuple,
                                r_value: float,
                                atom_a_coord: tuple,
@@ -2393,14 +2290,12 @@ def generate_initial_guess_r_a(atom_r_coord: tuple,
     X_position = np.array(atom_r_coord) + r_value * X_direction
     return X_position
 
-
 def generate_midpoint_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess midway between the two reference atoms."""
     midpoint = (np.array(atom_a_coord) + np.array(atom_b_coord)) / 2.0
     direction = np.array(atom_r_coord) - midpoint
     direction /= np.linalg.norm(direction)
     return midpoint + r_value * direction
-
 
 def generate_perpendicular_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess that is perpendicular to the plane defined by the reference atoms."""
@@ -2414,12 +2309,10 @@ def generate_perpendicular_initial_guess(atom_r_coord, r_value, atom_a_coord, at
     perpendicular_vector /= np.linalg.norm(perpendicular_vector)
     return np.array(atom_r_coord) + r_value * perpendicular_vector
 
-
 def generate_shifted_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     shift = np.array([0.1, -0.1, 0.1])  # A deterministic shift
     base_guess = generate_initial_guess_r_a(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value)
     return base_guess + shift
-
 
 def generate_bond_length_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess considering only the bond length to the reference atom."""
@@ -2427,8 +2320,7 @@ def generate_bond_length_initial_guess(atom_r_coord, r_value, atom_a_coord, atom
     direction /= np.linalg.norm(direction)  # Normalize to unit vector
     return np.array(atom_r_coord) + r_value * direction
 
-
-def sorted_distances_of_atom(xyz_dict: dict, atom_index: int) -> List[Tuple[int, float]]:
+def sorted_distances_of_atom(xyz_dict: dict, atom_index: int) -> list[tuple[int, float]]:
     """
     Given XYZ coordinates of a molecule and an atom index, return a list of
     (other_atom_index, distance) tuples sorted from closest to farthest,
@@ -2439,7 +2331,7 @@ def sorted_distances_of_atom(xyz_dict: dict, atom_index: int) -> List[Tuple[int,
         atom_index (int): Index of the reference atom.
 
     Returns:
-        List[Tuple[int, float]]: Sorted list of (atom index, distance) tuples.
+        list[tuple[int, float]]: Sorted list of (atom index, distance) tuples.
     """
     d_matrix = xyz_to_dmat(xyz_dict)
     if atom_index >= d_matrix.shape[0]:
@@ -2447,7 +2339,6 @@ def sorted_distances_of_atom(xyz_dict: dict, atom_index: int) -> List[Tuple[int,
 
     distances = [(i, d_matrix[atom_index, i]) for i in range(d_matrix.shape[0]) if i != atom_index]
     return sorted(distances, key=lambda x: x[1])
-
 
 def kabsch(xyz1: dict, xyz2: dict) -> float:
     """

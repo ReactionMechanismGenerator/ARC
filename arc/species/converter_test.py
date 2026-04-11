@@ -3185,63 +3185,6 @@ R1=1.0912"""
         self.assertEqual(coords, zmat_str_5)
         self.assertIsNone(vars_)
 
-    def test_xyz_to_pybel_mol(self):
-        """Test xyz conversion into Open Babel"""
-        pbmol1 = converter.xyz_to_pybel_mol(self.xyz1['dict'])
-        pbmol2 = converter.xyz_to_pybel_mol(self.xyz5['dict'])
-        pbmol3 = converter.xyz_to_pybel_mol(self.xyz2['dict'])
-        pbmol4 = converter.xyz_to_pybel_mol(self.xyz6['dict'])
-
-        # These tests check that the atoms we expect appear in the correct order:
-
-        self.assertEqual(pbmol1.atoms[0].idx, 1)  # C
-        self.assertAlmostEqual(pbmol1.atoms[0].atomicmass, 12.0107, 2)
-        self.assertEqual(pbmol1.atoms[0].coords, (0.0, 0.0, 0.0))
-        self.assertAlmostEqual(pbmol1.atoms[1].atomicmass, 1.00794, 2)  # H
-        self.assertEqual(pbmol1.atoms[1].coords, (0.6300326, 0.6300326, 0.6300326))
-
-        self.assertAlmostEqual(pbmol2.atoms[0].atomicmass, 15.9994, 2)  # O
-        self.assertEqual(pbmol2.atoms[0].coords, (1.1746411, -0.15309781, 0.0))
-        self.assertAlmostEqual(pbmol2.atoms[1].atomicmass, 14.0067, 2)  # N
-        self.assertEqual(pbmol2.atoms[1].coords, (0.06304988, 0.35149648, 0.0))
-        self.assertAlmostEqual(pbmol2.atoms[2].atomicmass, 12.0107, 2)  # C
-        self.assertEqual(pbmol2.atoms[2].coords, (-1.12708952, -0.11333971, 0.0))
-        self.assertAlmostEqual(pbmol2.atoms[3].atomicmass, 1.00794, 2)  # H
-        self.assertEqual(pbmol2.atoms[3].coords, (-1.93800144, 0.60171738, 0.0))
-
-        self.assertAlmostEqual(pbmol3.atoms[0].atomicmass, 32.065, 2)  # S
-        self.assertEqual(pbmol3.atoms[0].coords, (1.02558264, -0.04344404, -0.07343859))
-        self.assertAlmostEqual(pbmol3.atoms[1].atomicmass, 15.9994, 2)  # O
-        self.assertEqual(pbmol3.atoms[1].coords, (-0.25448248, 1.10710477, 0.18359696))
-        self.assertAlmostEqual(pbmol3.atoms[2].atomicmass, 14.0067, 2)  # N
-        self.assertEqual(pbmol3.atoms[2].coords, (-1.30762173, 0.15796567, -0.1048929))
-        self.assertAlmostEqual(pbmol3.atoms[3].atomicmass, 12.0107, 2)  # C
-        self.assertEqual(pbmol3.atoms[3].coords, (-0.49011438, -1.0370438, 0.15365747))
-        self.assertAlmostEqual(pbmol3.atoms[-1].atomicmass, 1.00794, 2)  # H
-        self.assertEqual(pbmol3.atoms[-1].coords, (-1.43009127, 0.23517346, -1.11797908))
-
-        self.assertAlmostEqual(pbmol4.atoms[0].atomicmass, 32.065, 2)  # S
-        self.assertEqual(pbmol4.atoms[0].coords, (-0.06618943, -0.12360663, -0.07631983))
-        self.assertAlmostEqual(pbmol4.atoms[3].atomicmass, 14.0067, 2)  # N
-        self.assertEqual(pbmol4.atoms[3].coords, (0.01546439, -1.54297548, 0.44580391))
-
-    def test_pybel_to_inchi(self):
-        """Tests the conversion of Open Babel molecules to InChI"""
-        pbmol1 = converter.xyz_to_pybel_mol(self.xyz1['dict'])
-        pbmol2 = converter.xyz_to_pybel_mol(self.xyz5['dict'])
-        pbmol3 = converter.xyz_to_pybel_mol(self.xyz2['dict'])
-        pbmol4 = converter.xyz_to_pybel_mol(self.xyz6['dict'])
-
-        inchi1 = converter.pybel_to_inchi(pbmol1)
-        inchi2 = converter.pybel_to_inchi(pbmol2)
-        inchi3 = converter.pybel_to_inchi(pbmol3)
-        inchi4 = converter.pybel_to_inchi(pbmol4)
-
-        self.assertEqual(inchi1, 'InChI=1/CH4/h1H4')
-        self.assertEqual(inchi2, 'InChI=1/CH2NO/c1-2-3/h1H2')
-        self.assertEqual(inchi3, 'InChI=1/CH3NOS/c1-2-3-4-1/h2H,1H2')
-        self.assertEqual(inchi4, 'InChI=1/CH5NO2S/c1-5(2,3)4/h2-3H,1H3')
-
     def test_rmg_mol_from_inchi(self):
         """Test generating RMG Molecule objects from InChI's"""
         mol1 = converter.rmg_mol_from_inchi('InChI=1S/NO2/c2-1-3')

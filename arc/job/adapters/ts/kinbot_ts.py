@@ -5,7 +5,7 @@ https://github.com/zadorlab/KinBot
 """
 
 import datetime
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 from arc.common import almost_equal_coords, get_logger
 from arc.job.adapter import JobAdapter
@@ -34,7 +34,6 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-
 if not HAS_KINBOT:
     # Create a dummy class to properly compile this module if KinBot is missing.
     class ReactionGenerator(object):
@@ -60,10 +59,10 @@ class KinBotAdapter(JobAdapter):
         constraints (list, optional): A list of constraints to use during an optimization or scan.
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
         dihedral_increment (float, optional): The degrees increment to use when scanning dihedrals of TS guesses.
-        dihedrals (List[float], optional): The dihedral angels corresponding to self.torsions.
+        dihedrals (list[float], optional): The dihedral angels corresponding to self.torsions.
         directed_scan_type (str, optional): The type of the directed scan.
         ess_settings (dict, optional): A dictionary of available ESS and a corresponding server list.
-        ess_trsh_methods (List[str], optional): A list of troubleshooting methods already tried out.
+        ess_trsh_methods (list[str], optional): A list of troubleshooting methods already tried out.
         execution_type (str, optional): The execution type, 'incore', 'queue', or 'pipe'.
         fine (bool, optional): Whether to use fine geometry optimization parameters. Default: ``False``.
         initial_time (datetime.datetime or str, optional): The time at which this job was initiated.
@@ -77,15 +76,15 @@ class KinBotAdapter(JobAdapter):
         level (Level, optional): The level of theory to use.
         max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
         run_multi_species (bool, optional): Whether to run a job for multiple species in the same input file.
-        reactions (List[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
+        reactions (list[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
         rotor_index (int, optional): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         server (str): The server to run on.
         server_nodes (list, optional): The nodes this job was previously submitted to.
-        species (List[ARCSpecies], optional): Entries are ARCSpecies instances.
+        species (list[ARCSpecies], optional): Entries are ARCSpecies instances.
                                               Either ``reactions`` or ``species`` must be given.
         testing (bool, optional): Whether the object is generated for testing purposes, ``True`` if it is.
         times_rerun (int, optional): Number of times this job was re-run with the same arguments (no trsh methods).
-        torsions (List[List[int]], optional): The 0-indexed atom indices of the torsion(s).
+        torsions (list[list[int]], optional): The 0-indexed atom indices of the torsion(s).
         tsg (int, optional): TSGuess number if optimizing TS guesses.
         xyz (dict, optional): The 3D coordinates to use. If not give, species.get_xyz() will be used.
     """
@@ -93,43 +92,43 @@ class KinBotAdapter(JobAdapter):
     def __init__(self,
                  project: str,
                  project_directory: str,
-                 job_type: Union[List[str], str],
-                 args: Optional[dict] = None,
-                 bath_gas: Optional[str] = None,
-                 checkfile: Optional[str] = None,
-                 conformer: Optional[int] = None,
-                 constraints: Optional[List[Tuple[List[int], float]]] = None,
-                 cpu_cores: Optional[str] = None,
-                 dihedral_increment: Optional[float] = None,
-                 dihedrals: Optional[List[float]] = None,
-                 directed_scan_type: Optional[str] = None,
-                 ess_settings: Optional[dict] = None,
-                 ess_trsh_methods: Optional[List[str]] = None,
-                 execution_type: Optional[str] = None,
+                 job_type: list[str] | str,
+                 args: dict | None = None,
+                 bath_gas: str | None = None,
+                 checkfile: str | None = None,
+                 conformer: int | None = None,
+                 constraints: list[tuple[list[int], float]] | None = None,
+                 cpu_cores: str | None = None,
+                 dihedral_increment: float | None = None,
+                 dihedrals: list[float] | None = None,
+                 directed_scan_type: str | None = None,
+                 ess_settings: dict | None = None,
+                 ess_trsh_methods: list[str] | None = None,
+                 execution_type: str | None = None,
                  fine: bool = False,
-                 initial_time: Optional[Union['datetime.datetime', str]] = None,
-                 irc_direction: Optional[str] = None,
-                 job_id: Optional[int] = None,
+                 initial_time: 'datetime.datetime' | str | None = None,
+                 irc_direction: str | None = None,
+                 job_id: int | None = None,
                  job_memory_gb: float = 14.0,
-                 job_name: Optional[str] = None,
-                 job_num: Optional[int] = None,
-                 job_server_name: Optional[str] = None,
-                 job_status: Optional[List[Union[dict, str]]] = None,
-                 level: Optional['Level'] = None,
-                 max_job_time: Optional[float] = None,
+                 job_name: str | None = None,
+                 job_num: int | None = None,
+                 job_server_name: str | None = None,
+                 job_status: list[dict | str] | None = None,
+                 level: 'Level' | None = None,
+                 max_job_time: float | None = None,
                  run_multi_species: bool = False,
-                 reactions: Optional[List['ARCReaction']] = None,
-                 rotor_index: Optional[int] = None,
-                 server: Optional[str] = None,
-                 server_nodes: Optional[list] = None,
-                 queue: Optional[str] = None,
-                 attempted_queues: Optional[List[str]] = None,
-                 species: Optional[List['ARCSpecies']] = None,
+                 reactions: list['ARCReaction'] | None = None,
+                 rotor_index: int | None = None,
+                 server: str | None = None,
+                 server_nodes: list | None = None,
+                 queue: str | None = None,
+                 attempted_queues: list[str] | None = None,
+                 species: list['ARCSpecies'] | None = None,
                  testing: bool = False,
                  times_rerun: int = 0,
-                 torsions: Optional[List[List[int]]] = None,
-                 tsg: Optional[int] = None,
-                 xyz: Optional[dict] = None,
+                 torsions: list[list[int]] | None = None,
+                 tsg: int | None = None,
+                 xyz: dict | None = None,
                  ):
 
         self.incore_capacity = 20
@@ -359,10 +358,9 @@ class KinBotAdapter(JobAdapter):
         """
         self.execute_incore()
 
-
 def set_up_kinbot(mol: 'Molecule',
-                  families: List[str],
-                  kinbot_xyz: List[Union[str, float]],
+                  families: list[str],
+                  kinbot_xyz: list[str | float],
                   multiplicity: int,
                   charge: int,
                   ) -> ReactionGenerator:
@@ -371,7 +369,7 @@ def set_up_kinbot(mol: 'Molecule',
 
     Args:
         mol (Molecule): The RMG Molecule instance representing the unimolecular well to react.
-        families (List[str]): The specific KinBot families to try.
+        families (list[str]): The specific KinBot families to try.
         kinbot_xyz (list): The cartesian coordinates of the well in the KinBot list format.
         multiplicity (int): The well/reaction multiplicity.
         charge (int): The well/reaction charge.
@@ -421,6 +419,5 @@ def set_up_kinbot(mol: 'Molecule',
                                            )
 
     return reaction_generator
-
 
 register_job_adapter('kinbot', KinBotAdapter)
