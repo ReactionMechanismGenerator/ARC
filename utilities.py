@@ -21,7 +21,6 @@ def check_dependencies():
     print('{0:<15}{1:<15}{2}'.format('Package', 'Version', 'Location'))
 
     missing = {
-        'openbabel': _check_openbabel(),
         'rdkit': _check_rdkit(),
     }
 
@@ -47,24 +46,6 @@ RDKit should be installed from the RDKit channel instead:
         print("""
 Everything was found :)
 """)
-
-
-def _check_openbabel():
-    """Check for OpenBabel"""
-    missing = False
-
-    try:
-        from openbabel import openbabel
-    except ImportError:
-        print('{0:<30}{1}'.format('OpenBabel',
-                                  'Not found. Necessary for SMILES/InChI functionality for nitrogen compounds.'))
-        missing = True
-    else:
-        version = openbabel.OBReleaseVersion()
-        location = openbabel.__file__
-        print('{0:<15}{1:<15}{2}'.format('OpenBabel', version, location))
-
-    return missing
 
 
 def _check_rdkit():
