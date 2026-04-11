@@ -81,6 +81,7 @@ class JobEnum(str, Enum):
             - gan  # Generative adversarial networks, https://doi.org/10.1063/5.0055094
     """
     # ESS
+    ase = 'ase'
     cfour = 'cfour'
     gaussian = 'gaussian'
     mockter = 'mockter'
