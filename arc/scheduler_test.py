@@ -10,16 +10,23 @@ import os
 import shutil
 
 import arc.parser.parser as parser
+import arc.scheduler as sched_module
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.plotter import save_conformers_file
-from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_has_sp, species_has_sp_and_freq
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
+from arc.species.nd_scan import decrement_running_jobs, is_adaptive_enabled, is_adaptive_scan_complete, point_to_key
 from arc.species.species import ARCSpecies
+
+Scheduler = sched_module.Scheduler
+species_has_freq = sched_module.species_has_freq
+species_has_geo = sched_module.species_has_geo
+species_has_sp = sched_module.species_has_sp
+species_has_sp_and_freq = sched_module.species_has_sp_and_freq
 
 
 default_levels_of_theory = settings['default_levels_of_theory']
@@ -767,6 +774,242 @@ H      -1.82570782    0.42754384   -0.56130718"""
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestDirectedScanFunctional(unittest.TestCase):
+    """
+    Functional tests for directed scan workflows using the xTB adapter.
+    These exercise the real scheduler -> job -> parser pipeline on small molecules.
+
+    Uses a coarse 120-degree scan resolution (4 grid points per dimension)
+    so tests complete in seconds, not hours.
+    """
+    _original_resolution = None
+    _xtb_available = None
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up a Scheduler with xTB scan level and an ethanol species."""
+        try:
+            from arc.job.adapters.xtb_adapter import xTBAdapter
+            import tempfile
+            td = tempfile.mkdtemp()
+            job = xTBAdapter(execution_type='incore', job_type='sp', project='xtb_check',
+                             project_directory=td, species=[ARCSpecies(label='H2', smiles='[H][H]')])
+            job.execute_incore()
+            cls._xtb_available = os.path.isfile(job.local_path_to_output_file)
+            shutil.rmtree(td, ignore_errors=True)
+        except Exception:
+            cls._xtb_available = False
+        if not cls._xtb_available:
+            return
+        cls.maxDiff = None
+        cls.project = 'arc_directed_scan_functional_test'
+        cls.project_directory = os.path.join(ARC_PATH, 'Projects', cls.project)
+        cls.ess_settings = {'gaussian': ['server1']}
+        xtb_level = Level(method='gfn2')
+        job_types = initialize_job_types({'rotors': True, 'opt': False, 'freq': False,
+                                          'sp': False, 'conf_opt': False, 'conf_sp': False})
+
+        cls.spc = ARCSpecies(label='EtOH', smiles='CCO')
+        cls.spc.initial_xyz = cls.spc.get_xyz()
+        cls.spc.final_xyz = cls.spc.initial_xyz
+        cls.spc.determine_rotors()
+
+        # Patch scan resolution to 120 degrees for fast tests (4 points per dim, 16 total for 2D)
+        cls._original_resolution = sched_module.rotor_scan_resolution
+        sched_module.rotor_scan_resolution = 120.0
+
+        cls.sched = Scheduler(project=cls.project,
+                              ess_settings=cls.ess_settings,
+                              species_list=[cls.spc],
+                              composite_method=None,
+                              conformer_opt_level=xtb_level,
+                              opt_level=xtb_level,
+                              freq_level=xtb_level,
+                              sp_level=xtb_level,
+                              scan_level=xtb_level,
+                              ts_guess_level=xtb_level,
+                              project_directory=cls.project_directory,
+                              testing=True,
+                              job_types=job_types,
+                              orbitals_level=xtb_level,
+                              adaptive_levels=None)
+
+    def _skip_if_no_xtb(self):
+        """Skip the test if xTB is not available."""
+        if not self._xtb_available:
+            self.skipTest('xTB is not installed or not available')
+
+    def _process_completed_brute_force_jobs(self, label, rotor_index):
+        """
+        Helper: after spawn_directed_scan_jobs has submitted (and executed incore)
+        all brute-force jobs, iterate through them calling check_directed_scan_job
+        and decrement_running_jobs to simulate the scheduler main loop.
+
+        Uses an iterative loop instead of recursion to avoid counter desync and
+        stack overflow for adaptive scans that spawn multiple batches.
+        """
+        max_rounds = 20
+        increment = sched_module.rotor_scan_resolution
+        rotor_dict = self.sched.species_dict[label].rotors_dict[rotor_index]
+
+        for _ in range(max_rounds):
+            if 'directed_scan' not in self.sched.job_dict[label]:
+                return
+            # Snapshot the current batch of jobs to process
+            processed_names = set()
+            jobs_batch = [(name, job) for name, job in self.sched.job_dict[label]['directed_scan'].items()
+                          if job.rotor_index == rotor_index and name not in processed_names]
+            for job_name, job in jobs_batch:
+                processed_names.add(job_name)
+                self.sched.check_directed_scan_job(label=label, job=job)
+                if 'brute_force' in job.directed_scan_type:
+                    decrement_running_jobs(rotor_dict)
+            # After processing this batch, check if adaptive needs more
+            if is_adaptive_enabled(rotor_dict) \
+                    and rotor_dict['number_of_running_jobs'] == 0 \
+                    and not is_adaptive_scan_complete(rotor_dict, increment):
+                self.sched.spawn_directed_scan_jobs(label=label, rotor_index=rotor_index)
+                continue  # process the new batch
+            return  # done
+
+    def _make_2d_rotor(self, label, scan_type='brute_force_opt', adaptive=False):
+        """
+        Helper: create a 2D rotor combining both ethanol rotors and add it to the species.
+        Returns the rotor index.
+        """
+        spc = self.sched.species_dict[label]
+        rotor_0 = spc.rotors_dict[0]
+        rotor_1 = spc.rotors_dict[1]
+        rotor_2d_index = max(spc.rotors_dict.keys()) + 1
+        rotor_2d = {
+            'pivots': [rotor_0['pivots'], rotor_1['pivots']],
+            'top': [rotor_0['top'], rotor_1['top']],
+            'scan': [rotor_0['scan'], rotor_1['scan']],
+            'torsion': [rotor_0['torsion'], rotor_1['torsion']],
+            'number_of_running_jobs': 0,
+            'success': None,
+            'invalidation_reason': '',
+            'times_dihedral_set': 0,
+            'trsh_counter': 0,
+            'trsh_methods': [],
+            'scan_path': '',
+            'directed_scan_type': scan_type,
+            'directed_scan': {},
+            'dimensions': 2,
+            'original_dihedrals': [],
+            'cont_indices': [],
+            'symmetry': None,
+            'max_e': None,
+        }
+        if adaptive:
+            rotor_2d['sampling_policy'] = 'adaptive'
+        spc.rotors_dict[rotor_2d_index] = rotor_2d
+        self.sched.job_dict[label]['directed_scan'] = {}
+        return rotor_2d_index
+
+    def test_dense_2d_brute_force_scan(self):
+        """Functional test: dense 2D brute_force_opt scan on ethanol 2D rotor via xTB."""
+        self._skip_if_no_xtb()
+        label = 'EtOH'
+        spc = self.sched.species_dict[label]
+        rotor_2d_index = self._make_2d_rotor(label, scan_type='brute_force_opt')
+        rotor_2d = spc.rotors_dict[rotor_2d_index]
+
+        self.sched.spawn_directed_scan_jobs(label=label, rotor_index=rotor_2d_index)
+
+        n_jobs = rotor_2d['number_of_running_jobs']
+        self.assertGreater(n_jobs, 0, 'No 2D brute-force jobs were spawned')
+
+        self._process_completed_brute_force_jobs(label, rotor_2d_index)
+
+        directed = rotor_2d['directed_scan']
+        self.assertGreater(len(directed), 0, 'No 2D directed scan entries recorded')
+        for key, entry in directed.items():
+            self.assertIsInstance(key, tuple)
+            self.assertEqual(len(key), 2, 'Expected 2D scan keys')
+            self.assertIsNotNone(entry['energy'], f'Energy is None for key {key}')
+
+        del spc.rotors_dict[rotor_2d_index]
+
+    def test_adaptive_2d_brute_force_scan(self):
+        """Functional test: adaptive 2D brute_force_opt scan on ethanol via xTB."""
+        self._skip_if_no_xtb()
+        label = 'EtOH'
+        spc = self.sched.species_dict[label]
+        rotor_2d_index = self._make_2d_rotor(label, scan_type='brute_force_opt', adaptive=True)
+        rotor_2d = spc.rotors_dict[rotor_2d_index]
+        self.assertTrue(is_adaptive_enabled(rotor_2d))
+
+        self.sched.spawn_directed_scan_jobs(label=label, rotor_index=rotor_2d_index)
+
+        n_jobs = rotor_2d['number_of_running_jobs']
+        self.assertGreater(n_jobs, 0, 'No adaptive jobs were spawned')
+
+        # Adaptive state should have been initialized
+        self.assertIn('adaptive_scan', rotor_2d)
+        state = rotor_2d['adaptive_scan']
+        self.assertTrue(state['enabled'])
+        self.assertGreater(len(state['seed_points']), 0)
+
+        self._process_completed_brute_force_jobs(label, rotor_2d_index)
+
+        # Verify adaptive bookkeeping
+        state = rotor_2d['adaptive_scan']
+        self.assertGreater(len(state['completed_points']), 0)
+        self.assertEqual(len(state['pending_points']), 0)
+
+        # Verify legacy directed_scan is populated
+        directed = rotor_2d['directed_scan']
+        self.assertGreater(len(directed), 0)
+        for key, entry in directed.items():
+            self.assertEqual(len(key), 2, 'Expected 2D scan keys')
+            self.assertIsNotNone(entry['energy'])
+
+        # Check that every completed adaptive point is in legacy directed_scan
+        for pt in state['completed_points']:
+            key = point_to_key(tuple(pt))
+            self.assertIn(key, directed, f'Completed point {pt} not in directed_scan')
+
+        # If validation ran, check its structure
+        if 'validation' in state:
+            val = state['validation']
+            self.assertIn('status', val)
+            self.assertIn('thresholds', val)
+
+        del spc.rotors_dict[rotor_2d_index]
+
+    def test_dense_2d_brute_force_sp_scan(self):
+        """Functional test: dense 2D brute_force_sp scan on ethanol via xTB."""
+        self._skip_if_no_xtb()
+        label = 'EtOH'
+        spc = self.sched.species_dict[label]
+        rotor_2d_index = self._make_2d_rotor(label, scan_type='brute_force_sp')
+        rotor_2d = spc.rotors_dict[rotor_2d_index]
+
+        self.sched.spawn_directed_scan_jobs(label=label, rotor_index=rotor_2d_index)
+
+        n_jobs = rotor_2d['number_of_running_jobs']
+        self.assertGreater(n_jobs, 0, 'No 2D brute-force SP jobs were spawned')
+
+        self._process_completed_brute_force_jobs(label, rotor_2d_index)
+
+        directed = rotor_2d['directed_scan']
+        self.assertGreater(len(directed), 0, 'No 2D SP scan entries recorded')
+        for key, entry in directed.items():
+            self.assertEqual(len(key), 2)
+            self.assertIsNotNone(entry['energy'])
+
+        del spc.rotors_dict[rotor_2d_index]
+
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up project directory and restore scan resolution."""
+        if cls._original_resolution is not None:
+            sched_module.rotor_scan_resolution = cls._original_resolution
+        if hasattr(cls, 'project_directory'):
+            shutil.rmtree(cls.project_directory, ignore_errors=True)
 
 
 if __name__ == '__main__':
