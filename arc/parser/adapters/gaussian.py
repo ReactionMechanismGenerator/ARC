@@ -138,7 +138,7 @@ class GaussianParser(ESSAdapter, ABC):
         """
         Parse frequencies and normal mode displacement.
 
-        Returns: tuple['np.ndarray' | None, 'np.ndarray' | None]
+        Returns: tuple[np.ndarray | None, np.ndarray | None]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
         freqs, displacements = list(), list()
@@ -537,11 +537,11 @@ class GaussianParser(ESSAdapter, ABC):
 
         return result if not result.empty else None
 
-    def parse_nd_scan_energies(self) -> Dict | None:
+    def parse_nd_scan_energies(self) -> dict | None:
         """
         Parse the ND torsion scan energies from an ESS log file.
 
-        Returns: Dict | None
+        Returns: dict | None
             The "results" dictionary, which has the following structure::
 
                   results = {'directed_scan_type': <str, used for the fig name>,

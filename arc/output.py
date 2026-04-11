@@ -32,9 +32,9 @@ logger = get_logger()
 def write_output_yml(
     project: str,
     project_directory: str,
-    species_dict: Dict,
-    reactions: List,
-    output_dict: Dict,
+    species_dict: dict,
+    reactions: list,
+    output_dict: dict,
     opt_level=None,
     freq_level=None,
     sp_level=None,
@@ -57,7 +57,7 @@ def write_output_yml(
         project (str): ARC project name.
         project_directory (str): Root directory of this ARC project.
         species_dict (dict): {label: ARCSpecies} for all species and TSs.
-        reactions (list): List of ARCReaction objects.
+        reactions (list): list of ARCReaction objects.
         output_dict (dict): {label: {convergence, paths, job_types, ...}}.
         opt_level (Level, optional): Level of theory for geometry optimization.
         freq_level (Level, optional): Level of theory for frequency calculations.
@@ -148,7 +148,7 @@ def _get_arkane_git_commit() -> str | None:
     except Exception:
         return None
 
-def _level_to_dict(level) -> Dict | None:
+def _level_to_dict(level) -> dict | None:
     """Convert a Level object to a dict with all non-None fields, or None."""
     if level is None:
         return None
@@ -241,7 +241,7 @@ def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
     except Exception:
         return None, None
 
-def _get_ess_versions(paths: Dict, project_directory: str) -> dict[str, str] | None:
+def _get_ess_versions(paths: dict, project_directory: str) -> dict[str, str] | None:
     """
     Parse ESS version strings from each available log file (sp, opt, freq, neb).
 
@@ -351,7 +351,7 @@ def _safe(fn, default=None):
         logger.debug(f'_safe() caught exception in {fn}', exc_info=True)
         return default
 
-def _compute_point_groups(species_dict: Dict, project_directory: str) -> dict[str, str | None]:
+def _compute_point_groups(species_dict: dict, project_directory: str) -> dict[str, str | None]:
     """
     Compute point groups for all species via the ``symmetry`` binary in the RMG env.
 
@@ -415,8 +415,8 @@ def _compute_point_groups(species_dict: Dict, project_directory: str) -> dict[st
             except OSError:
                 logger.debug(f'Failed to remove temporary file {p!r}', exc_info=True)
 
-def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
-                  point_groups: Dict | None = None, irc_requested: bool = True) -> Dict:
+def _spc_to_dict(spc, output_dict: dict, project_directory: str,
+                  point_groups: dict | None = None, irc_requested: bool = True) -> dict:
     """Build the per-species/TS section for output.yml."""
     label = spc.label
     entry = output_dict.get(label, {})
@@ -550,7 +550,7 @@ def _get_ts_imag_freq(spc) -> float | None:
         logger.debug('Failed to obtain TS imaginary frequency from ts_guesses for %s', spc.label, exc_info=True)
     return None
 
-def _thermo_to_dict(thermo) -> Dict:
+def _thermo_to_dict(thermo) -> dict:
     """Convert a ThermoData object to a plain, unit-labelled dict."""
     def _scalar(x):
         """Extract the numeric value from a (value, units) tuple or a plain number."""
@@ -583,7 +583,7 @@ def _thermo_to_dict(thermo) -> Dict:
 
     return t
 
-def _statmech_to_dict(spc, project_directory: str, point_group: str | None = None) -> Dict:
+def _statmech_to_dict(spc, project_directory: str, point_group: str | None = None) -> dict:
     """Build the statmech sub-section for a non-monoatomic converged species/TS."""
     # Use the cached private attribute to avoid triggering a geometry re-read
     is_linear = spc._is_linear
@@ -612,7 +612,7 @@ def _statmech_to_dict(spc, project_directory: str, point_group: str | None = Non
         'torsions': _get_torsions(spc, project_directory),
     }
 
-def _get_torsions(spc, project_directory: str) -> list[Dict]:
+def _get_torsions(spc, project_directory: str) -> list[dict]:
     """Build the torsions list from spc.rotors_dict."""
     if not getattr(spc, 'rotors_dict', None):
         return []
@@ -634,7 +634,7 @@ def _get_torsions(spc, project_directory: str) -> list[Dict]:
         })
     return torsions
 
-def _get_rotor_barrier(rotor: Dict, project_directory: str) -> float | None:
+def _get_rotor_barrier(rotor: dict, project_directory: str) -> float | None:
     """
     Return max(V) - min(V) in kJ/mol from the 1D scan output file.
 
@@ -656,10 +656,10 @@ def _get_rotor_barrier(rotor: Dict, project_directory: str) -> float | None:
         logger.debug(f"Failed to parse 1D rotor scan energies from '{scan_path}'", exc_info=True)
     return None
 
-def _rxn_to_dict(rxn) -> Dict:
+def _rxn_to_dict(rxn) -> dict:
     """Convert an ARCReaction to a plain dict for output.yml."""
     kinetics = rxn.kinetics
-    kin_dict: Dict | None = None
+    kin_dict: dict | None = None
     if kinetics is not None:
         A = kinetics.get('A')
         Ea = kinetics.get('Ea')

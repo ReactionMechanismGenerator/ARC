@@ -81,7 +81,7 @@ def execute_command(command: str | list[str],
 
 def _output_command_error_message(command: list[str],
                                   error: subprocess.CalledProcessError,
-                                  logging_func: logger.warning | logger.error,
+                                  logging_func,
                                   ) -> None:
     """
     Formats and logs the error message returned from a command at the desired logging level

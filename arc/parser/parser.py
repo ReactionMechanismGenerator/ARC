@@ -129,7 +129,7 @@ def parse_xyz_from_file(log_file_path: str) -> dict[str, tuple] | None:
     return xyz
 
 def make_parser(parse_method: str,
-                return_type: Type,
+                return_type: type,
                 error_message: str,
                 fallback: Callable | None = None,
                 ) -> Callable[[str, bool], Any | None]:
@@ -172,13 +172,13 @@ parse_geometry = make_parser(
 
 parse_frequencies = make_parser(
     parse_method='parse_frequencies',
-    return_type='np.ndarray' | None,
+    return_type=np.ndarray | None,
     error_message='Could not parse frequencies from {path}',
 )
 
 parse_normal_mode_displacement = make_parser(
     parse_method='parse_normal_mode_displacement',
-    return_type=tuple['np.ndarray' | None, 'np.ndarray' | None],
+    return_type=tuple[np.ndarray | None, np.ndarray | None],
     error_message='Could not parse normal mode displacement from {path}',
 )
 
@@ -226,7 +226,7 @@ parse_scan_conformers = make_parser(
 
 parse_nd_scan_energies = make_parser(
     parse_method='parse_nd_scan_energies',
-    return_type=Dict | None,
+    return_type=dict | None,
     error_message='Could not parse nd scan energies from {path}',
 )
 

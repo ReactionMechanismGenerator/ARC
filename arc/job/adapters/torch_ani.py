@@ -178,7 +178,7 @@ class TorchANIAdapter(JobAdapter):
                             xyz=xyz,
                             )
 
-    def write_input_file(self, settings : dict()) -> None:
+    def write_input_file(self, settings: dict) -> None:
         """
         Write the input file to execute the job on the server.
         """

@@ -107,7 +107,7 @@ class QChemParser(ESSAdapter, ABC):
         """
         Parse frequencies and normal mode displacement.
 
-        Returns: tuple['np.ndarray' | None, 'np.ndarray' | None]
+        Returns: tuple[np.ndarray | None, np.ndarray | None]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
         # Not implemented for Q-Chem.
@@ -213,7 +213,7 @@ class QChemParser(ESSAdapter, ABC):
         # Not implemented for Q-Chem.
         return None
 
-    def parse_nd_scan_energies(self) -> Dict | None:
+    def parse_nd_scan_energies(self) -> dict | None:
         """
         Parse the ND torsion scan energies from an ESS log file.
 

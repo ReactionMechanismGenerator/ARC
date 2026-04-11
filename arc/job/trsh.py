@@ -1752,7 +1752,7 @@ def trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh) -> tuple[
 
     return False, ess_trsh_methods, couldnt_trsh
 
-def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[List, List, bool]:
+def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, List, bool]:
     """
     Check if the job requires change of 2 electron integral accuracy
     """
@@ -1766,7 +1766,7 @@ def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tu
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword: list, couldnt_trsh: bool) -> tuple[List, List, bool]:
+def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword: list, couldnt_trsh: bool) -> tuple[list, List, bool]:
     """
     Check if the job requires change of cartesian coordinate
     """
@@ -1782,7 +1782,7 @@ def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword:
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[List, List, bool]:
+def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, List, bool]:
     """
     Check if the job requires change of scf
     """
@@ -1822,7 +1822,7 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine) -> tuple[List, List, bool, bool]:
+def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine) -> tuple[list, List, bool, bool]:
     """
     Check if the job requires change of scf
     """
@@ -1834,7 +1834,7 @@ def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt
 
     return ess_trsh_methods, trsh_keyword, fine, couldnt_trsh
 
-def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[List, List, bool]:
+def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, List, bool]:
     """
     Check if the job requires change of nosymm
     """
@@ -1848,7 +1848,7 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[List, List, bool]:
+def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, List, bool]:
     """
     Check if the job requires change of opt(maxcycle=200)
     """
@@ -1883,7 +1883,7 @@ def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, could
     
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[List, List, bool]:
+def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, List, bool]:
     """
     Check if the job requires change of inaccurate quadrature
     
@@ -1927,7 +1927,7 @@ def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keywor
     
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_l123(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[List, List, bool]:
+def trsh_keyword_l123(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, List, bool]:
     """
     When a job fails with l123.exe error, there are two possible solutions based upon the error message:
     1. If Delta-X issue, will need to adjust the maxcycle of IRC job. If fails, then change algorithm to LQA.
@@ -1953,7 +1953,7 @@ def trsh_keyword_l123(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) 
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[List, List, bool]:
+def trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, List, bool]:
     """
     Gaussian will check the number of negative frequency after finishing the TS optimization. 
     If there is more than one negative frequency, Gaussian will stop the calculation.
@@ -1979,7 +1979,7 @@ def prioritize_opt_methods(opt_methods):
 
     return filtered_methods
 
-def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[List, List, bool]:
+def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, List, bool]:
     """
     When a job fails with no qc, there are two possible solutions based upon the error message:
     1. If SCF fails, then try to change the algorithm to LQA.

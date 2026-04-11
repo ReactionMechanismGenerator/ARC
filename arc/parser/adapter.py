@@ -66,7 +66,7 @@ class ESSAdapter(ABC):
         pass
 
     @abstractmethod
-    def parse_frequencies(self) -> 'np.ndarray' | None:
+    def parse_frequencies(self) -> np.ndarray | None:
         """
         Parse the frequencies from a freq job output file.
 
@@ -76,11 +76,11 @@ class ESSAdapter(ABC):
         pass
 
     @abstractmethod
-    def parse_normal_mode_displacement(self) -> tuple['np.ndarray' | None, 'np.ndarray' | None]:
+    def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """
         Parse frequencies and normal mode displacement.
 
-        Returns: tuple['np.ndarray' | None, 'np.ndarray' | None]
+        Returns: tuple[np.ndarray | None, np.ndarray | None]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
         pass
@@ -156,11 +156,11 @@ class ESSAdapter(ABC):
         pass
 
     @abstractmethod
-    def parse_nd_scan_energies(self) -> Dict | None:
+    def parse_nd_scan_energies(self) -> dict | None:
         """
         Parse the ND torsion scan energies from an ESS log file.
 
-        Returns: Dict | None
+        Returns: dict | None
             The "results" dictionary, which has the following structure::
 
                   results = {'directed_scan_type': <str, used for the fig name>,

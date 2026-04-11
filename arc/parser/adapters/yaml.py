@@ -45,7 +45,7 @@ class YAMLParser(ESSAdapter, ABC):
                 return self.data[key] if isinstance(self.data[key], dict) else str_to_xyz(self.data[key])
         return None
 
-    def parse_frequencies(self) -> 'np.ndarray' | None:
+    def parse_frequencies(self) -> np.ndarray | None:
         """
         Parse the frequencies from a freq job output file.
 
@@ -55,11 +55,11 @@ class YAMLParser(ESSAdapter, ABC):
         freqs = self.data.get('freqs')
         return np.array(freqs, dtype=np.float64) if freqs else None
 
-    def parse_normal_mode_displacement(self) -> tuple['np.ndarray' | None, 'np.ndarray' | None]:
+    def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """
         Parse frequencies and normal mode displacement.
 
-        Returns: tuple['np.ndarray' | None, 'np.ndarray' | None]
+        Returns: tuple[np.ndarray | None, np.ndarray | None]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
         freqs = self.data.get('freqs')
@@ -141,11 +141,11 @@ class YAMLParser(ESSAdapter, ABC):
         # Not implemented.
         return None
 
-    def parse_nd_scan_energies(self) -> Dict | None:
+    def parse_nd_scan_energies(self) -> dict | None:
         """
         Parse the ND torsion scan energies from an ESS log file.
 
-        Returns: Dict | None
+        Returns: dict | None
             The "results" dictionary, which has the following structure::
 
                   results = {'directed_scan_type': <str, used for the fig name>,

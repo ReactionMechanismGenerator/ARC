@@ -121,7 +121,7 @@ CHEAT_SHEET = {'[H][H]': {'xyz': converter.str_to_xyz("""H  0.0  0.0  0.3715170
                           'torsion_dihedrals': {}}
                }
 
-def cheat_sheet(mol_list: list[Molecule] | Molecule) -> list[Dict] | None:
+def cheat_sheet(mol_list: list[Molecule] | Molecule) -> list[dict] | None:
     """
     Check if the species is in the cheat sheet, and return its correct xyz if it is.
 
