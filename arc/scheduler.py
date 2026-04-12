@@ -828,7 +828,7 @@ class Scheduler(object):
 
             # Poll active pipe runs (per-run failures are handled inside poll_pipes).
             if self.active_pipes:
-                self.pipe_coordinator.poll_pipes()
+                self.pipe_coordinator.poll_pipes(server_job_ids=self.server_job_ids)
 
             # Flush deferred pipe batches (SP, freq, IRC, conf_sp) after all
             # newly-ready work has been discovered and before the loop sleeps.
