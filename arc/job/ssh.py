@@ -7,6 +7,7 @@ Todo:
 """
 
 import datetime
+import logging
 import os
 import time
 from typing import Any, Callable, List, Optional, Tuple, Union
@@ -78,7 +79,7 @@ class SSHClient(object):
         self.key = servers[server]['key']
         self._sftp = None
         self._ssh = None
-        logger.getLogger("paramiko").setLevel(logger.WARNING)
+        logging.getLogger("paramiko").setLevel(logging.WARNING)
 
     def __enter__(self) -> 'SSHClient':
         self.connect()
