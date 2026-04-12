@@ -36,6 +36,7 @@ from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import SSHClient
 from arc.output import write_output_yml
 from arc.processor import process_arc_project, resolve_neb_level
+from arc.provenance import EdgeType
 from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
@@ -638,6 +639,9 @@ class ARC(object):
                             skip_nmd=self.skip_nmd,
                             )
 
+        # ── Provenance: add lightweight Arkane result nodes ──
+        self._add_arkane_provenance_nodes()
+
         # Determine whether the user supplied the scale factor explicitly, or ARC looked it up.
         _freq_level_for_lookup = self.composite_method if self.composite_method is not None else self.freq_level
         _yml_scale = assign_frequency_scale_factor(level=_freq_level_for_lookup) if _freq_level_for_lookup is not None else None
@@ -670,6 +674,37 @@ class ARC(object):
         status_dict = self.summary()
         log_footer(execution_time=self.execution_time)
         return status_dict
+
+    def _add_arkane_provenance_nodes(self):
+        """Add lightweight data nodes for Arkane thermo/kinetics results to the provenance graph."""
+        graph = self.scheduler.graph
+        for spc in self.scheduler.species_dict.values():
+            if spc.is_ts or getattr(spc.thermo, 'H298', None) is None:
+                continue
+            spc_nid = graph.find_species_node(spc.label)
+            if spc_nid is None:
+                continue
+            thermo_nid = graph.add_data_node(
+                label=spc.label,
+                data_kind='thermo',
+                value=f'H298={spc.thermo.H298:.1f} kJ/mol, S298={spc.thermo.S298:.1f} J/mol/K',
+            )
+            graph.add_edge(spc_nid, thermo_nid, EdgeType.output_of)
+        for rxn in self.scheduler.rxn_list:
+            if rxn.kinetics is None:
+                continue
+            ts_nid = graph.find_species_node(rxn.ts_label)
+            if ts_nid is None:
+                continue
+            ea = rxn.kinetics.get('Ea')
+            ea_str = f', Ea={ea[0]:.1f} {ea[1]}' if ea else ''
+            kinetics_nid = graph.add_data_node(
+                label=rxn.ts_label,
+                data_kind='kinetics',
+                value=f'{rxn.label}{ea_str}',
+            )
+            graph.add_edge(ts_nid, kinetics_nid, EdgeType.output_of)
+        graph.save(self.scheduler.graph_path)
 
     def save_project_info_file(self):
         """

@@ -164,6 +164,9 @@ def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz
                      _wrap_graph_label(f'conf_opt batch\n{len(nids)} jobs\n{", ".join(parts)}', width=28),
                      shape='box3d', fillcolor='lightyellow', style='filled')
 
+    # ── Identify fine-optimization targets ────────────────────────────────
+    fine_opt_targets = {e.target_id for e in prov_graph.edges if e.edge_type == 'fine_of'}
+
     # ── Render individual nodes ──────────────────────────────────────────
     for node in prov_graph.nodes.values():
         if node.node_id in conf_opt_collapsed:
@@ -181,7 +184,9 @@ def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz
         elif ntype == 'calculation':
             job_type = getattr(node, 'job_type', '') or ''
             job_name = getattr(node, 'job_name', '') or ''
-            lbl = f'{job_type}\n{job_name}'
+            is_fine = node.node_id in fine_opt_targets
+            lbl = f'{job_type} (fine)' if is_fine else job_type
+            lbl += f'\n{job_name}'
             if getattr(node, 'job_adapter', None):
                 lbl += f'\n{node.job_adapter}'
             status = getattr(node, 'status', 'pending') or 'pending'
@@ -235,8 +240,9 @@ def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz
         batch_edges_added.add(edge_key)
         etype = edge.edge_type
         style_attrs = _edge_styles.get(etype, {})
-        # Only show labels on semantically interesting edges (not belongs_to, input_of, output_of).
-        label = etype.replace('_', ' ') if etype not in ('belongs_to', 'input_of', 'output_of') else ''
+        # Only show labels on semantically interesting edges; suppress belongs_to,
+        # input_of, output_of (structural), and fine_of (indicated on the node instead).
+        label = etype.replace('_', ' ') if etype not in ('belongs_to', 'input_of', 'output_of', 'fine_of') else ''
         gv.edge(src, tgt, label=label, **style_attrs)
 
     return gv

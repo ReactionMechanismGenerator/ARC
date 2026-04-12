@@ -44,6 +44,8 @@ class DataKind(str, Enum):
     irc_path = 'irc_path'
     conformer_set = 'conformer_set'
     ts_guess_set = 'ts_guess_set'
+    thermo = 'thermo'
+    kinetics = 'kinetics'
 
 
 class DecisionKind(str, Enum):

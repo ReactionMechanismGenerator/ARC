@@ -603,40 +603,28 @@ class Scheduler(object):
                 self.run_sp_job(label=label, level=self.conformer_sp_level, conformer=i)
 
     def _initialize_provenance(self):
-        """Load previous provenance when restarting and record the current run start.
+        """Archive any previous provenance files and record the current run start.
 
-        On a fresh run (no restart_dict), the event log and graph start empty.
-        On a restart, the previous event log and graph are loaded and deduplicated.
+        Existing provenance files are moved to ``log_and_restart_archive/`` with a
+        date-stamped name (matching the arc.log archiving convention), and a fresh
+        event log and graph are started for this run.
         """
-        is_restart = self.restart_dict is not None
-        if is_restart and os.path.isfile(self.provenance_path):
-            try:
-                provenance = read_yaml_file(self.provenance_path)
-            except Exception:
-                logger.warning('Could not parse existing provenance.yml; starting a fresh provenance log.')
-                provenance = None
-            if isinstance(provenance, dict):
-                raw_events = provenance.get('events', list())
-                if isinstance(raw_events, list) and all(isinstance(e, dict) for e in raw_events):
-                    self.provenance['events'] = raw_events
-                else:
-                    logger.warning('Existing provenance.yml has invalid events; starting with an empty event log.')
-        if is_restart and os.path.isfile(self.graph_path):
-            try:
-                self.graph = ProvenanceGraph.load(self.graph_path)
-            except Exception:
-                logger.warning('Could not parse existing provenance_graph.yml; starting a fresh graph.')
-        already_initialized = {e['label'] for e in self.provenance['events']
-                               if e.get('event_type') == 'species_initialized' and isinstance(e.get('label'), str)}
-        already_in_graph = {n.label for n in self.graph.get_nodes_by_type(NodeType.species)}
+        archive_dir = os.path.join(self.project_directory, 'log_and_restart_archive')
+        local_time = datetime.datetime.now().strftime("%H%M%S_%b%d_%Y")
+        for old_path, prefix in [(self.provenance_path, 'provenance'),
+                                 (self.graph_path, 'provenance_graph')]:
+            if os.path.isfile(old_path):
+                if not os.path.isdir(archive_dir):
+                    os.makedirs(archive_dir)
+                backup_name = f'{prefix}.old.{local_time}.yml'
+                shutil.copy(old_path, os.path.join(archive_dir, backup_name))
+                os.remove(old_path)
         for species in self.species_list:
-            if species.label not in already_initialized:
-                self.record_provenance_event(event_type='species_initialized',
-                                             label=species.label,
-                                             is_ts=species.is_ts,
-                                             )
-            if species.label not in already_in_graph:
-                self.graph.add_species_node(label=species.label, is_ts=species.is_ts)
+            self.record_provenance_event(event_type='species_initialized',
+                                         label=species.label,
+                                         is_ts=species.is_ts,
+                                         )
+            self.graph.add_species_node(label=species.label, is_ts=species.is_ts)
 
     def record_provenance_event(self,
                                 event_type: str,
@@ -2584,12 +2572,16 @@ class Scheduler(object):
                                                  method=tsg.method,
                                                  energy=tsg.energy,
                                                  )
-                    self.graph.add_decision_node(
+                    sel_dec_nid = self.graph.add_decision_node(
                         label=label,
                         decision_kind=DecisionKind.ts_guess_selection,
                         criteria={'selected_index': selected_i, 'energy': tsg.energy},
                         outcome=f'Selected TSGuess #{selected_i} via {tsg.method}',
                     )
+                    # Connect the conf_opt node of the selected guess to the selection decision.
+                    conf_opt_nid = self.graph.find_calc_node(label, f'conf_opt_{selected_i}')
+                    if conf_opt_nid is not None:
+                        self.graph.add_edge(conf_opt_nid, sel_dec_nid, EdgeType.selected_by)
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
@@ -2895,6 +2887,13 @@ class Scheduler(object):
                         )
                         self.switch_ts(label)
                         switch_ts = True
+                    elif self.species_dict[label].ts_checks['NMD'] is True:
+                        # ── Graph: record NMD validation pass ──
+                        self.graph.add_decision_node(
+                            label=label,
+                            decision_kind=DecisionKind.ts_validation_nmd,
+                            outcome='Passed: normal mode displacement check',
+                        )
                 if wrong_freq_message in self.output[label]['warnings']:
                     self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(wrong_freq_message))
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
