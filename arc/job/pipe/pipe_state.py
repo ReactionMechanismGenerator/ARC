@@ -110,7 +110,7 @@ TASK_FAMILY_TO_JOB_TYPE = {
 
 # Allowed transitions: maps each state to the set of states it may transition to.
 TASK_TRANSITIONS: Dict[TaskState, Tuple[TaskState, ...]] = {
-    TaskState.PENDING: (TaskState.CLAIMED, TaskState.CANCELLED, TaskState.FAILED_TERMINAL),
+    TaskState.PENDING: (TaskState.CLAIMED, TaskState.CANCELLED),
     TaskState.CLAIMED: (TaskState.RUNNING, TaskState.ORPHANED, TaskState.CANCELLED),
     TaskState.RUNNING: (TaskState.COMPLETED, TaskState.FAILED_RETRYABLE, TaskState.FAILED_ESS,
                         TaskState.FAILED_TERMINAL, TaskState.ORPHANED, TaskState.CANCELLED),

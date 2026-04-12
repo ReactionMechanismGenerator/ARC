@@ -277,16 +277,10 @@ class PipeRun:
         )
         return job_status, job_id
 
-    def reconcile(self, scheduler_job_alive: bool = True) -> Dict[str, int]:
+    def reconcile(self) -> Dict[str, int]:
         """
         Poll all tasks, detect orphans, schedule retries, and check for completion.
         Does not regress an already-terminal run status.
-
-        Args:
-            scheduler_job_alive: Whether the scheduler (PBS/Slurm) job for this
-                pipe run is still present in the queue.  When False, any
-                CLAIMED/RUNNING tasks are immediately orphaned (the workers
-                are gone) and unreachable PENDING tasks are failed terminally.
 
         Returns:
             Dict[str, int]: Counts of tasks in each state.
@@ -303,6 +297,7 @@ class PipeRun:
         now = time.time()
         counts: Dict[str, int] = {s.value: 0 for s in TaskState}
         retried_pending = 0  # PENDING tasks with attempt_index > 0 (genuinely retried)
+        fresh_pending = 0    # PENDING tasks with attempt_index == 0 (awaiting initial workers)
         task_ids = sorted(os.listdir(tasks_dir))
 
         for task_id in task_ids:
@@ -313,11 +308,9 @@ class PipeRun:
             except (FileNotFoundError, ValueError, KeyError):
                 continue
             current = TaskState(state.status)
-            # Orphan detection: lease expired OR the scheduler job is gone.
             if current in (TaskState.CLAIMED, TaskState.RUNNING) \
-                    and (not scheduler_job_alive
-                         or (state.lease_expires_at is not None
-                             and now > state.lease_expires_at)):
+                    and state.lease_expires_at is not None \
+                    and now > state.lease_expires_at:
                 try:
                     update_task_state(self.pipe_root, task_id,
                                      new_status=TaskState.ORPHANED,
@@ -327,8 +320,11 @@ class PipeRun:
                 except (ValueError, TimeoutError) as e:
                     logger.debug(f'Could not mark task {task_id} as ORPHANED '
                                  f'(another process may be handling it): {e}')
-            if current == TaskState.PENDING and state.attempt_index > 0:
-                retried_pending += 1
+            if current == TaskState.PENDING:
+                if state.attempt_index > 0:
+                    retried_pending += 1
+                else:
+                    fresh_pending += 1
             counts[current.value] += 1
 
         active_workers = counts[TaskState.CLAIMED.value] + counts[TaskState.RUNNING.value]
@@ -349,9 +345,7 @@ class PipeRun:
                 try:
                     # FAILED_ESS tasks are handled separately (ejected to Scheduler).
                     # Only FAILED_RETRYABLE and ORPHANED reach here.
-                    # Only retry if the scheduler job is alive (workers exist
-                    # to claim the retried task); otherwise fail terminally.
-                    if state.attempt_index + 1 < state.max_attempts and scheduler_job_alive:
+                    if state.attempt_index + 1 < state.max_attempts:
                         update_task_state(self.pipe_root, task_id,
                                           new_status=TaskState.PENDING,
                                           attempt_index=state.attempt_index + 1,
@@ -373,35 +367,27 @@ class PipeRun:
                     logger.debug(f'Could not promote task {task_id} to FAILED_TERMINAL '
                                  f'(lock contention or concurrent state change): {e}')
 
-        # Never resubmit a new scheduler job for retried tasks.
-        # Workers still in the scheduler queue (PBS Q state) will claim
-        # retried PENDING tasks when they start.  If the scheduler job
-        # was killed, that is a manual intervention issue.
-        self._needs_resubmission = False
-
-        # If the scheduler job is gone, any PENDING tasks will never be
-        # claimed.  Mark them as terminally failed so the pipe can finish.
-        if not scheduler_job_alive and counts[TaskState.PENDING.value] > 0:
-            for task_id in task_ids:
-                if not os.path.isdir(os.path.join(tasks_dir, task_id)):
-                    continue
-                try:
-                    state = read_task_state(self.pipe_root, task_id)
-                except (FileNotFoundError, ValueError, KeyError):
-                    continue
-                if TaskState(state.status) != TaskState.PENDING:
-                    continue
-                try:
-                    update_task_state(self.pipe_root, task_id,
-                                     new_status=TaskState.FAILED_TERMINAL,
-                                     ended_at=now)
-                    counts[TaskState.PENDING.value] -= 1
-                    counts[TaskState.FAILED_TERMINAL.value] += 1
-                    logger.info(f'Task {task_id}: no workers remain '
-                                f'(scheduler job gone). Marked FAILED_TERMINAL.')
-                except (ValueError, TimeoutError) as e:
-                    logger.warning(f'Task {task_id}: failed to mark stranded pending task '
-                                   f'during reconciliation: {e}')
+        # Only flag resubmission for genuinely retried tasks (attempt_index > 0).
+        # Fresh PENDING tasks (attempt_index == 0) are waiting for the initial
+        # submission's workers to start — don't resubmit for those.
+        # Crucially: if fresh_pending > 0, scheduler workers are still queued
+        # (PBS Q state) and will claim retried tasks when they start.
+        # After a resubmission, allow a grace period for workers to start before
+        # flagging again (prevents duplicate submissions).
+        active_after_retry = counts[TaskState.CLAIMED.value] + counts[TaskState.RUNNING.value]
+        resubmit_grace = 120  # seconds
+        time_since_submit = (now - self.submitted_at) if self.submitted_at else float('inf')
+        if retried_pending > 0 and active_after_retry == 0 \
+                and fresh_pending == 0 and time_since_submit > resubmit_grace:
+            self._needs_resubmission = True
+            logger.info(f'Pipe run {self.run_id}: {retried_pending} retried tasks '
+                        f'need workers. Resubmission needed.')
+        else:
+            if retried_pending > 0 and fresh_pending > 0:
+                logger.debug(f'Pipe run {self.run_id}: {retried_pending} retried tasks '
+                             f'waiting, but {fresh_pending} fresh tasks still pending — '
+                             f'scheduler workers still starting, skipping resubmission.')
+            self._needs_resubmission = False
 
         terminal = (counts[TaskState.COMPLETED.value]
                     + counts[TaskState.FAILED_ESS.value]

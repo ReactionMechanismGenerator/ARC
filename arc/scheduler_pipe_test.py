@@ -1021,11 +1021,12 @@ class TestNoResubmissionLifecycle(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def test_no_resubmission_even_with_retried_tasks(self):
-        """Even when all workers are done and retried tasks remain,
-        poll_pipes must not resubmit a new scheduler job."""
+    def test_resubmit_when_retried_tasks_and_no_fresh_pending(self):
+        """When all workers are done (no fresh PENDING) and retried tasks remain,
+        poll_pipes must resubmit a new scheduler job to pick them up."""
         tasks = [_make_task_spec(f'task_{i}') for i in range(3)]
         pipe = self.sched.pipe_coordinator.submit_pipe_run('resub_test', tasks)
+        pipe.submitted_at = time.time() - 300  # past grace period
         for task_id in ['task_0', 'task_1', 'task_2']:
             now = time.time()
             update_task_state(pipe.pipe_root, task_id, new_status=TaskState.CLAIMED,
@@ -1040,8 +1041,34 @@ class TestNoResubmissionLifecycle(unittest.TestCase):
         pipe.status = PipeRunState.RECONCILING
         with patch.object(pipe, 'submit_to_scheduler', return_value=('submitted', '12345')) as mock_submit:
             self.sched.pipe_coordinator.poll_pipes()
+        mock_submit.assert_called_once()
+
+    def test_no_resubmit_while_fresh_pending_exist(self):
+        """Fresh PENDING tasks (attempt_index == 0) mean Q-state workers are coming.
+        Don't resubmit even if retried tasks also exist."""
+        tasks = [_make_task_spec(f'task_{i}') for i in range(3)]
+        pipe = self.sched.pipe_coordinator.submit_pipe_run('resub_test', tasks)
+        pipe.submitted_at = time.time() - 300
+        # task_0 completed, task_1 failed and retried, task_2 still fresh PENDING
+        now = time.time()
+        update_task_state(pipe.pipe_root, 'task_0', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='t', claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 'task_0', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 'task_0', new_status=TaskState.COMPLETED, ended_at=now)
+        update_task_state(pipe.pipe_root, 'task_1', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='t', claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 'task_1', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 'task_1', new_status=TaskState.FAILED_RETRYABLE,
+                          ended_at=now, failure_class='test')
+        update_task_state(pipe.pipe_root, 'task_1', new_status=TaskState.PENDING,
+                          attempt_index=1, claimed_by=None, claim_token=None,
+                          claimed_at=None, lease_expires_at=None,
+                          started_at=None, ended_at=None, failure_class=None)
+        # task_2 still untouched — fresh PENDING (Q-state worker coming)
+        pipe.status = PipeRunState.RECONCILING
+        with patch.object(pipe, 'submit_to_scheduler', return_value=('submitted', '12345')) as mock_submit:
+            self.sched.pipe_coordinator.poll_pipes()
         mock_submit.assert_not_called()
-        self.assertFalse(pipe.needs_resubmission)
 
 
 class TestShouldUsePipeOwnerType(unittest.TestCase):
