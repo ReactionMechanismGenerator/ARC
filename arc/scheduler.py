@@ -4,7 +4,6 @@ Includes spawning, terminating, checking, and troubleshooting various jobs
 """
 
 import datetime
-import itertools
 import os
 import pprint
 import shutil
@@ -56,6 +55,28 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_to_coords_list,
                                    xyz_to_str,
                                    )
+from arc.species.nd_scan import (decrement_running_jobs,
+                                 finalize_directed_scan_results,
+                                 get_continuous_scan_dihedrals,
+                                 get_pending_adaptive_points,
+                                 get_rotor_dict_by_pivots,
+                                 get_torsion_dihedral_grid,
+                                 increment_continuous_scan_indices,
+                                 initialize_adaptive_scan_state,
+                                 initialize_continuous_scan_state,
+                                 is_adaptive_enabled,
+                                 is_adaptive_scan_complete,
+                                 is_continuous_scan_complete,
+                                 iter_brute_force_scan_points,
+                                 mark_scan_point_completed,
+                                 mark_scan_point_failed,
+                                 mark_scan_point_invalid,
+                                 mark_scan_points_pending,
+                                 record_directed_scan_point,
+                                 select_next_adaptive_points,
+                                 should_continue_adaptive_scan,
+                                 validate_scan_resolution,
+                                 )
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.vectors import get_angle, calculate_dihedral_angle
 
@@ -744,13 +765,26 @@ class Scheduler(object):
                                     self.spawn_directed_scan_jobs(label=label, rotor_index=job.rotor_index, xyz=xyz)
                             if 'brute_force' in job.directed_scan_type:
                                 # Just terminated a brute_force directed scan job.
-                                # Are there additional jobs of the same type currently running for this species?
-                                self.species_dict[label].rotors_dict[job.rotor_index]['number_of_running_jobs'] -= 1
-                                if not self.species_dict[label].rotors_dict[job.rotor_index]['number_of_running_jobs']:
-                                    # All brute force scan jobs for these pivots terminated.
-                                    logger.info(f'\nAll brute force directed scan jobs for species {label} between '
-                                                f'pivots {job.pivots} successfully terminated.\n')
-                                    self.process_directed_scans(label, pivots=job.pivots)
+                                rotor_dict = self.species_dict[label].rotors_dict[job.rotor_index]
+                                all_done = decrement_running_jobs(rotor_dict)
+                                if all_done:
+                                    if is_adaptive_enabled(rotor_dict):
+                                        # Adaptive: check if more batches are needed
+                                        if is_adaptive_scan_complete(rotor_dict, rotor_scan_resolution):
+                                            logger.info(f'\nAdaptive scan for species {label} between '
+                                                        f'pivots {job.pivots} complete: '
+                                                        f'{rotor_dict["adaptive_scan"]["stopping_reason"]}.\n')
+                                            self.process_directed_scans(label, pivots=job.pivots)
+                                        else:
+                                            # Spawn next adaptive batch
+                                            self.spawn_directed_scan_jobs(
+                                                label=label, rotor_index=job.rotor_index)
+                                    else:
+                                        # Dense: all brute force scan jobs for these pivots terminated.
+                                        logger.info(f'\nAll brute force directed scan jobs for species '
+                                                    f'{label} between pivots {job.pivots} '
+                                                    f'successfully terminated.\n')
+                                        self.process_directed_scans(label, pivots=job.pivots)
                             shutil.rmtree(job.local_path, ignore_errors=True)
                             self.timer = False
                             break
@@ -1747,8 +1781,7 @@ class Scheduler(object):
             SchedulerError: If the rotor scan resolution as defined in settings.py is illegal.
         """
         increment = rotor_scan_resolution
-        if divmod(360, increment)[1]:
-            raise SchedulerError(f'The directed scan got an illegal scan resolution of {increment}')
+        validate_scan_resolution(increment)
         torsions = self.species_dict[label].rotors_dict[rotor_index]['torsion']
         directed_scan_type = self.species_dict[label].rotors_dict[rotor_index]['directed_scan_type']
         xyz = xyz or self.species_dict[label].get_xyz(generate=True)
@@ -1768,20 +1801,16 @@ class Scheduler(object):
                          )
 
         elif 'brute' in directed_scan_type:
-            # spawn jobs all at once
-            dihedrals = dict()
-
-            for torsion in torsions:
-                original_dihedral = get_angle_in_180_range(calculate_dihedral_angle(coords=xyz['coords'],
-                                                                                    torsion=torsion,
-                                                                                    index=0))
-                dihedrals[tuple(torsion)] = [get_angle_in_180_range(original_dihedral + i * increment) for i in
-                                             range(int(360 / increment) + 1)]
-            modified_xyz = xyz
-            if 'diagonal' not in directed_scan_type:
-                # increment dihedrals one by one (resulting in an ND scan)
-                all_dihedral_combinations = list(itertools.product(*[dihedrals[tuple(torsion)] for torsion in torsions]))
-                for dihedral_tuple in all_dihedral_combinations:
+            rotor_dict = self.species_dict[label].rotors_dict[rotor_index]
+            if is_adaptive_enabled(rotor_dict):
+                # Adaptive sparse brute-force submission
+                self._spawn_adaptive_brute_force_jobs(label, rotor_index, xyz, increment)
+            else:
+                # Dense full-grid brute-force submission (legacy behavior)
+                dihedrals = get_torsion_dihedral_grid(xyz=xyz, torsions=torsions, increment=increment)
+                is_diagonal = 'diagonal' in directed_scan_type
+                modified_xyz = xyz
+                for dihedral_tuple in iter_brute_force_scan_points(dihedrals, torsions, diagonal=is_diagonal):
                     for torsion, dihedral in zip(torsions, dihedral_tuple):
                         self.species_dict[label].set_dihedral(scan=torsion,
                                                               index=0,
@@ -1789,7 +1818,7 @@ class Scheduler(object):
                                                               count=False,
                                                               xyz=modified_xyz)
                         modified_xyz = self.species_dict[label].initial_xyz
-                    self.species_dict[label].rotors_dict[rotor_index]['number_of_running_jobs'] += 1
+                    rotor_dict['number_of_running_jobs'] += 1
                     self.run_job(label=label,
                                  xyz=modified_xyz,
                                  level_of_theory=self.scan_level,
@@ -1799,44 +1828,14 @@ class Scheduler(object):
                                  dihedrals=list(dihedral_tuple),
                                  rotor_index=rotor_index,
                                  )
-            else:
-                # increment all dihedrals at once (resulting in a unique 1D scan along several changing dimensions)
-                for i in range(len(dihedrals[tuple(torsions[0])])):
-                    for torsion in torsions:
-                        dihedral = dihedrals[tuple(torsion)][i]
-                        self.species_dict[label].set_dihedral(scan=torsion,
-                                                              index=0,
-                                                              deg_abs=dihedral,
-                                                              count=False,
-                                                              xyz=modified_xyz)
-                        modified_xyz = self.species_dict[label].initial_xyz
-                    dihedrals = [dihedrals[tuple(torsion)][i] for torsion in torsions]
-                    self.species_dict[label].rotors_dict[rotor_index]['number_of_running_jobs'] += 1
-                    self.run_job(label=label,
-                                 xyz=modified_xyz,
-                                 level_of_theory=self.scan_level,
-                                 job_type='directed_scan',
-                                 directed_scan_type=directed_scan_type,
-                                 torsions=torsions,
-                                 dihedrals=dihedrals,
-                                 rotor_index=rotor_index,
-                                 )
 
         elif 'cont' in directed_scan_type:
             # spawn jobs one by one
-            if not len(self.species_dict[label].rotors_dict[rotor_index]['cont_indices']):
-                self.species_dict[label].rotors_dict[rotor_index]['cont_indices'] = [0] * len(torsions)
-            if not len(self.species_dict[label].rotors_dict[rotor_index]['original_dihedrals']):
-                self.species_dict[label].rotors_dict[rotor_index]['original_dihedrals'] = \
-                    [f'{calculate_dihedral_angle(coords=xyz["coords"], torsion=scan, index=1):.2f}'
-                     for scan in self.species_dict[label].rotors_dict[rotor_index]['scan']]  # stores as str for YAML
             rotor_dict = self.species_dict[label].rotors_dict[rotor_index]
+            initialize_continuous_scan_state(rotor_dict, xyz)
             torsions = rotor_dict['torsion']
-            max_num = 360 / increment + 1  # dihedral angles per scan
-            original_dihedrals = list()
-            for dihedral in rotor_dict['original_dihedrals']:
-                original_dihedrals.append(get_angle_in_180_range(dihedral))
-            if not any(self.species_dict[label].rotors_dict[rotor_index]['cont_indices']):
+            original_dihedrals = [get_angle_in_180_range(float(d)) for d in rotor_dict['original_dihedrals']]
+            if not any(rotor_dict['cont_indices']):
                 # This is the first call for this cont_opt directed rotor, spawn the first job w/o changing dihedrals.
                 self.run_job(label=label,
                              xyz=self.species_dict[label].final_xyz,
@@ -1847,7 +1846,7 @@ class Scheduler(object):
                              dihedrals=original_dihedrals,
                              rotor_index=rotor_index,
                              )
-                self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][0] += 1
+                rotor_dict['cont_indices'][0] += 1
                 return
             else:
                 # this is NOT the first call for this cont_opt directed rotor, check that ``xyz`` was given.
@@ -1855,26 +1854,16 @@ class Scheduler(object):
                     # xyz is None only at the first time cont opt is spawned, where cont_index is [0, 0,... 0].
                     raise InputError('xyz argument must be given for a continuous scan job')
                 # check whether this rotor is done
-                if self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][-1] == max_num - 1:  # 0-indexed
+                if is_continuous_scan_complete(rotor_dict, increment):
                     # no more counters to increment, all done!
                     logger.info(f'Completed all jobs for the continuous directed rotor scan for species {label} '
                                 f'between pivots {rotor_dict["pivots"]}')
                     self.process_directed_scans(label, rotor_dict['pivots'])
                     return
 
+            dihedrals = get_continuous_scan_dihedrals(rotor_dict, increment)
             modified_xyz = xyz
-            dihedrals = list()
-            for index, (original_dihedral, torsion) in enumerate(zip(original_dihedrals, torsions)):
-                dihedral = original_dihedral + \
-                           self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] * increment
-                # Change the original dihedral so we won't end up with two calcs for 180.0, but none for -180.0
-                # (it only matters for plotting, the geometry is of course the same)
-                dihedral = get_angle_in_180_range(dihedral)
-                dihedrals.append(dihedral)
-                # Only change the dihedrals in the xyz if this torsion corresponds to the current index,
-                # or if this is a diagonal scan.
-                # Species.set_dihedral() uses .final_xyz or the given xyz to modify the .initial_xyz
-                # attribute to the desired dihedral.
+            for torsion, dihedral in zip(torsions, dihedrals):
                 self.species_dict[label].set_dihedral(scan=torsion,
                                                       index=0,
                                                       deg_abs=dihedral,
@@ -1891,19 +1880,75 @@ class Scheduler(object):
                          rotor_index=rotor_index,
                          )
 
-            if 'diagonal' in directed_scan_type:
-                # increment ALL counters for a diagonal scan
-                self.species_dict[label].rotors_dict[rotor_index]['cont_indices'] = \
-                    [self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][0] + 1] * len(torsions)
-            else:
-                # increment the counter sequentially (non-diagonal scan)
-                for index in range(len(torsions)):
-                    if self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] < max_num - 1:
-                        self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] += 1
-                        break
-                    elif (self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] == max_num - 1
-                          and index < len(torsions) - 1):
-                        self.species_dict[label].rotors_dict[rotor_index]['cont_indices'][index] = 0
+            increment_continuous_scan_indices(rotor_dict, increment,
+                                             diagonal='diagonal' in directed_scan_type)
+
+    def _spawn_adaptive_brute_force_jobs(self,
+                                         label: str,
+                                         rotor_index: int,
+                                         xyz: dict,
+                                         increment: float,
+                                         ):
+        """
+        Spawn the next batch of adaptive brute-force scan jobs.
+
+        This is called from within the brute-force path of ``spawn_directed_scan_jobs``
+        when adaptive execution policy is enabled.  It selects points via the adaptive
+        helpers in ``nd_scan.py`` and submits them using the same job machinery as
+        dense brute-force.
+
+        Args:
+            label (str): The species label.
+            rotor_index (int): The 0-indexed rotor number in ``species.rotors_dict``.
+            xyz (dict): The 3D coordinates for building constrained geometries.
+            increment (float): The scan resolution in degrees.
+        """
+        rotor_dict = self.species_dict[label].rotors_dict[rotor_index]
+        torsions = rotor_dict['torsion']
+        directed_scan_type = rotor_dict['directed_scan_type']
+
+        # Initialize adaptive state if this is the first call
+        initialize_adaptive_scan_state(rotor_dict, xyz, increment)
+
+        # Check if we should stop
+        if not should_continue_adaptive_scan(rotor_dict, increment):
+            if not get_pending_adaptive_points(rotor_dict):
+                logger.info(f'Adaptive scan for species {label} between pivots {rotor_dict["pivots"]} '
+                            f'is complete: {rotor_dict["adaptive_scan"]["stopping_reason"]}')
+                self.process_directed_scans(label, rotor_dict['pivots'])
+            return
+
+        # Select the next batch
+        points = select_next_adaptive_points(rotor_dict, increment)
+        if not points:
+            if not get_pending_adaptive_points(rotor_dict):
+                rotor_dict['adaptive_scan']['stopping_reason'] = 'no_candidates'
+                logger.info(f'Adaptive scan for species {label} between pivots {rotor_dict["pivots"]} '
+                            f'is complete: no_candidates')
+                self.process_directed_scans(label, rotor_dict['pivots'])
+            return
+
+        # Mark them pending and submit jobs
+        mark_scan_points_pending(rotor_dict, points)
+        for point in points:
+            modified_xyz = xyz
+            for torsion, dihedral in zip(torsions, point):
+                self.species_dict[label].set_dihedral(scan=torsion,
+                                                      index=0,
+                                                      deg_abs=dihedral,
+                                                      count=False,
+                                                      xyz=modified_xyz)
+                modified_xyz = self.species_dict[label].initial_xyz
+            rotor_dict['number_of_running_jobs'] += 1
+            self.run_job(label=label,
+                         xyz=modified_xyz,
+                         level_of_theory=self.scan_level,
+                         job_type='directed_scan',
+                         directed_scan_type=directed_scan_type,
+                         torsions=torsions,
+                         dihedrals=list(point),
+                         rotor_index=rotor_index,
+                         )
 
     def process_directed_scans(self, label: str, pivots: Union[List[int], List[List[int]]]):
         """
@@ -1913,52 +1958,34 @@ class Scheduler(object):
             label (str): The species label.
             pivots (Union[List[int], List[List[int]]]): The rotor pivots.
         """
-        for rotor_dict_index in self.species_dict[label].rotors_dict.keys():
-            rotor_dict = self.species_dict[label].rotors_dict[rotor_dict_index]  # avoid modifying the iterator
-            if rotor_dict['pivots'] == pivots:
-                # identified a directed scan (either continuous or brute force, they're treated the same here)
-                dihedrals = [[float(dihedral) for dihedral in dihedral_string_tuple]
-                             for dihedral_string_tuple in rotor_dict['directed_scan'].keys()]
-                sorted_dihedrals = sorted(dihedrals)
-                min_energy = extremum_list([directed_scan_dihedral['energy']
-                                            for directed_scan_dihedral in rotor_dict['directed_scan'].values()],
-                                           return_min=True)
-                trshed_points = 0
-                if rotor_dict['directed_scan_type'] == 'ess':
-                    # parse the single output file
-                    results = parser.parse_nd_scan_energies(log_file_path=rotor_dict['scan_path'])[0]
-                else:
-                    results = {'directed_scan_type': rotor_dict['directed_scan_type'],
-                               'scans': rotor_dict['scan'],
-                               'directed_scan': rotor_dict['directed_scan']}
-                    for dihedral_list in sorted_dihedrals:
-                        dihedrals_key = tuple(f'{dihedral:.2f}' for dihedral in dihedral_list)
-                        dihedral_dict = results['directed_scan'][dihedrals_key]
-                        if dihedral_dict['trsh']:
-                            trshed_points += 1
-                        if dihedral_dict['energy'] is not None:
-                            dihedral_dict['energy'] -= min_energy  # set 0 at the minimal energy
-                folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
-                rotor_yaml_file_path = os.path.join(self.project_directory, 'output', folder_name, label, 'rotors',
-                                                    f'{pivots}_{rotor_dict["directed_scan_type"]}.yml')
-                plotter.save_nd_rotor_yaml(results, path=rotor_yaml_file_path)
-                self.species_dict[label].rotors_dict[rotor_dict_index]['scan_path'] = rotor_yaml_file_path
-                if trshed_points:
-                    logger.warning(f'Directed rotor scan for species {label} between pivots {rotor_dict["pivots"]} '
-                                   f'had {trshed_points} points that required optimization troubleshooting.')
-                rotor_path = os.path.join(self.project_directory, 'output', folder_name, label, 'rotors')
-                if len(results['scans']) == 1:
-                    plotter.plot_1d_rotor_scan(
-                        results=results,
-                        path=rotor_path,
-                        scan=rotor_dict['scan'][0],
-                        label=label,
-                        original_dihedral=self.species_dict[label].rotors_dict[rotor_dict_index]['original_dihedrals'],
-                    )
-                elif len(results['scans']) == 2:
-                    plotter.plot_2d_rotor_scan(results=results, path=rotor_path)
-                else:
-                    logger.debug('Not plotting ND rotors with N > 2')
+        match = get_rotor_dict_by_pivots(self.species_dict[label].rotors_dict, pivots)
+        if match is not None:
+            rotor_dict_index, rotor_dict = match
+            # identified a directed scan (either continuous or brute force, they're treated the same here)
+            results, trshed_points = finalize_directed_scan_results(
+                rotor_dict, parse_nd_scan_energies_func=parser.parse_nd_scan_energies,
+                increment=rotor_scan_resolution)
+            folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
+            rotor_yaml_file_path = os.path.join(self.project_directory, 'output', folder_name, label, 'rotors',
+                                                f'{pivots}_{rotor_dict["directed_scan_type"]}.yml')
+            plotter.save_nd_rotor_yaml(results, path=rotor_yaml_file_path)
+            self.species_dict[label].rotors_dict[rotor_dict_index]['scan_path'] = rotor_yaml_file_path
+            if trshed_points:
+                logger.warning(f'Directed rotor scan for species {label} between pivots {rotor_dict["pivots"]} '
+                               f'had {trshed_points} points that required optimization troubleshooting.')
+            rotor_path = os.path.join(self.project_directory, 'output', folder_name, label, 'rotors')
+            if len(results['scans']) == 1:
+                plotter.plot_1d_rotor_scan(
+                    results=results,
+                    path=rotor_path,
+                    scan=rotor_dict['scan'][0],
+                    label=label,
+                    original_dihedral=self.species_dict[label].rotors_dict[rotor_dict_index]['original_dihedrals'],
+                )
+            elif len(results['scans']) == 2:
+                plotter.plot_2d_rotor_scan(results=results, path=rotor_path)
+            else:
+                logger.debug('Not plotting ND rotors with N > 2')
 
     def process_conformers(self, label):
         """
@@ -3153,19 +3180,56 @@ class Scheduler(object):
         if job.job_status[1]['status'] == 'done':
             xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
             is_isomorphic = self.species_dict[label].check_xyz_isomorphism(xyz=xyz, verbose=False)
-            for rotor_dict in self.species_dict[label].rotors_dict.values():
-                if rotor_dict['pivots'] == job.pivots:
-                    key = tuple(f'{dihedral:.2f}' for dihedral in job.dihedrals)
-                    rotor_dict['directed_scan'][key] = {'energy': parser.parse_e_elect(
-                        path=job.local_path_to_output_file),
-                        'xyz': xyz,
-                        'is_isomorphic': is_isomorphic,
-                        'trsh': job.ess_trsh_methods,
-                    }
+            energy = parser.parse_e_elect(log_file_path=job.local_path_to_output_file)
+            match = get_rotor_dict_by_pivots(self.species_dict[label].rotors_dict, job.pivots)
+            if match is not None:
+                _, rotor_dict = match
+                if is_adaptive_enabled(rotor_dict):
+                    # Record into adaptive bookkeeping and legacy directed_scan.
+                    # Route non-isomorphic points to invalid tracking.
+                    if is_isomorphic:
+                        mark_scan_point_completed(
+                            rotor_dict=rotor_dict,
+                            point=job.dihedrals,
+                            energy=energy,
+                            xyz=xyz,
+                            is_isomorphic=is_isomorphic,
+                            trsh=job.ess_trsh_methods,
+                        )
+                    else:
+                        mark_scan_point_invalid(rotor_dict, job.dihedrals, reason='non-isomorphic')
+                        record_directed_scan_point(
+                            rotor_dict=rotor_dict,
+                            dihedrals=job.dihedrals,
+                            energy=energy,
+                            xyz=xyz,
+                            is_isomorphic=False,
+                            trsh=job.ess_trsh_methods,
+                        )
+                else:
+                    record_directed_scan_point(
+                        rotor_dict=rotor_dict,
+                        dihedrals=job.dihedrals,
+                        energy=energy,
+                        xyz=xyz,
+                        is_isomorphic=is_isomorphic,
+                        trsh=job.ess_trsh_methods,
+                    )
         else:
+            # Snapshot running jobs before troubleshooting to detect resubmission.
+            jobs_before = set(self.running_jobs.get(label, []))
             self.troubleshoot_ess(label=label,
                                   job=job,
                                   level_of_theory=self.scan_level)
+            # Only mark the scan point as failed if troubleshooting did NOT
+            # resubmit the job. Compare running_jobs before/after to detect
+            # whether a new scan job was added for this specific label.
+            match = get_rotor_dict_by_pivots(self.species_dict[label].rotors_dict, job.pivots)
+            if match is not None and is_adaptive_enabled(match[1]):
+                jobs_after = set(self.running_jobs.get(label, []))
+                resubmitted = len(jobs_after - jobs_before) > 0
+                if not resubmitted:
+                    mark_scan_point_failed(match[1], job.dihedrals)
 
     def check_all_done(self, label: str):
         """
