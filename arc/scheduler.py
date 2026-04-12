@@ -1596,6 +1596,16 @@ class Scheduler(object):
                                      )
             else:
                 raise RuntimeError(f'Unable to set the path for the sp job for species {label}')
+            # ── Graph: emit energy DataNode from opt log (sp_level == opt_level) ──
+            if self.species_dict[label].e_elect is not None:
+                opt_calc_nid = self.graph.find_calc_node(label, recent_opt_job_name) \
+                    if recent_opt_job is not None else None
+                if opt_calc_nid is not None:
+                    data_nid = self.graph.add_data_node(
+                        label=label, data_kind=DataKind.energy,
+                        value=round(self.species_dict[label].e_elect, 2),
+                        metadata={'source': 'opt_log', 'note': 'SP energy parsed from opt output'})
+                    self.graph.add_edge(opt_calc_nid, data_nid, EdgeType.output_of)
             return
 
         if 'sp' not in self.job_dict[label].keys():
@@ -3672,6 +3682,16 @@ class Scheduler(object):
             logger.info(f'Deleting all currently running jobs for species {label} before troubleshooting for '
                         f'negative frequency with perturbed conformers...')
             logger.info(f'conformers:')
+            # ── Graph: record negative freq troubleshooting ──
+            trsh_nid = self.graph.add_decision_node(
+                label=label,
+                decision_kind=DecisionKind.job_troubleshooting,
+                criteria={'type': 'negative_freq', 'n_conformers': len(confs)},
+                outcome=f'Generated {len(confs)} perturbed conformers',
+            )
+            freq_calc_nid = self.graph.find_calc_node(label, job.job_name)
+            if freq_calc_nid is not None:
+                self.graph.add_edge(freq_calc_nid, trsh_nid, EdgeType.troubleshot_by)
             self.delete_all_species_jobs(label)
             self.species_dict[label].conformers = confs
             self.species_dict[label].conformer_energies = [None] * len(confs)
@@ -3822,6 +3842,18 @@ class Scheduler(object):
                                      trsh={'scan_res': scan_res} if scan_res is not None else None,
                                      rotor_index=job.rotor_index,
                                      )
+        # ── Graph: record scan troubleshooting decision ──
+        if trsh_success:
+            label = job.species_label
+            trsh_nid = self.graph.add_decision_node(
+                label=label,
+                decision_kind=DecisionKind.job_troubleshooting,
+                criteria={'type': 'scan', 'actions': actual_actions},
+                outcome=f'Scan troubleshooting: {", ".join(str(k) for k in actual_actions)}',
+            )
+            scan_calc_nid = self.graph.find_calc_node(label, job.job_name)
+            if scan_calc_nid is not None:
+                self.graph.add_edge(scan_calc_nid, trsh_nid, EdgeType.troubleshot_by)
         return trsh_success, actual_actions
 
     def troubleshoot_opt_jobs(self, label):
@@ -4067,7 +4099,13 @@ class Scheduler(object):
                                                 'graph representation!; '
         else:
             logger.info(f'Troubleshooting conformer job in {job.job_adapter} using {level_of_theory} for species {label}')
-
+            # ── Graph: record conformer isomorphism troubleshooting ──
+            self.graph.add_decision_node(
+                label=label,
+                decision_kind=DecisionKind.job_troubleshooting,
+                criteria={'type': 'conformer_isomorphism', 'new_level': str(level_of_theory)},
+                outcome=f'Rerunning {num_of_conformers} conformers at {level_of_theory}',
+            )
             # rerun conformer job at higher level for all conformers
             for conformer in range(0, num_of_conformers):
                 if conformer >= len(self.species_dict[label].conformers_before_opt):
