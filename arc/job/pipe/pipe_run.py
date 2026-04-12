@@ -277,10 +277,16 @@ class PipeRun:
         )
         return job_status, job_id
 
-    def reconcile(self) -> Dict[str, int]:
+    def reconcile(self, scheduler_job_alive: bool = True) -> Dict[str, int]:
         """
         Poll all tasks, detect orphans, schedule retries, and check for completion.
         Does not regress an already-terminal run status.
+
+        Args:
+            scheduler_job_alive: Whether the scheduler (PBS/Slurm) job for this
+                pipe run is still present in the queue.  When False, any
+                CLAIMED/RUNNING tasks are immediately orphaned (the workers
+                are gone) and unreachable PENDING tasks are failed terminally.
 
         Returns:
             Dict[str, int]: Counts of tasks in each state.
@@ -307,9 +313,11 @@ class PipeRun:
             except (FileNotFoundError, ValueError, KeyError):
                 continue
             current = TaskState(state.status)
+            # Orphan detection: lease expired OR the scheduler job is gone.
             if current in (TaskState.CLAIMED, TaskState.RUNNING) \
-                    and state.lease_expires_at is not None \
-                    and now > state.lease_expires_at:
+                    and (not scheduler_job_alive
+                         or (state.lease_expires_at is not None
+                             and now > state.lease_expires_at)):
                 try:
                     update_task_state(self.pipe_root, task_id,
                                      new_status=TaskState.ORPHANED,
@@ -341,7 +349,9 @@ class PipeRun:
                 try:
                     # FAILED_ESS tasks are handled separately (ejected to Scheduler).
                     # Only FAILED_RETRYABLE and ORPHANED reach here.
-                    if state.attempt_index + 1 < state.max_attempts:
+                    # Only retry if the scheduler job is alive (workers exist
+                    # to claim the retried task); otherwise fail terminally.
+                    if state.attempt_index + 1 < state.max_attempts and scheduler_job_alive:
                         update_task_state(self.pipe_root, task_id,
                                           new_status=TaskState.PENDING,
                                           attempt_index=state.attempt_index + 1,
@@ -368,6 +378,30 @@ class PipeRun:
         # retried PENDING tasks when they start.  If the scheduler job
         # was killed, that is a manual intervention issue.
         self._needs_resubmission = False
+
+        # If the scheduler job is gone, any PENDING tasks will never be
+        # claimed.  Mark them as terminally failed so the pipe can finish.
+        if not scheduler_job_alive and counts[TaskState.PENDING.value] > 0:
+            for task_id in task_ids:
+                if not os.path.isdir(os.path.join(tasks_dir, task_id)):
+                    continue
+                try:
+                    state = read_task_state(self.pipe_root, task_id)
+                except (FileNotFoundError, ValueError, KeyError):
+                    continue
+                if TaskState(state.status) != TaskState.PENDING:
+                    continue
+                try:
+                    update_task_state(self.pipe_root, task_id,
+                                     new_status=TaskState.FAILED_TERMINAL,
+                                     ended_at=now)
+                    counts[TaskState.PENDING.value] -= 1
+                    counts[TaskState.FAILED_TERMINAL.value] += 1
+                    logger.info(f'Task {task_id}: no workers remain '
+                                f'(scheduler job gone). Marked FAILED_TERMINAL.')
+                except (ValueError, TimeoutError) as e:
+                    logger.warning(f'Task {task_id}: failed to mark stranded pending task '
+                                   f'during reconciliation: {e}')
 
         terminal = (counts[TaskState.COMPLETED.value]
                     + counts[TaskState.FAILED_ESS.value]
