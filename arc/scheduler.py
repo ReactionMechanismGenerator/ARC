@@ -57,7 +57,7 @@ from arc.species.converter import (check_isomorphism,
                                    )
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.vectors import get_angle, calculate_dihedral_angle
-from arc.provenance import (ProvenanceGraph, EdgeType, NodeType, DecisionKind)
+from arc.provenance import (ProvenanceGraph, EdgeType, NodeType, DataKind, DecisionKind)
 
 if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
@@ -385,7 +385,8 @@ class Scheduler(object):
                                                  label=ts_species.label,
                                                  is_ts=True,
                                                  )
-                    self.graph.add_species_node(label=ts_species.label, is_ts=True)
+                    if self.graph.find_species_node(ts_species.label) is None:
+                        self.graph.add_species_node(label=ts_species.label, is_ts=True)
                 else:
                     # The TS species was already loaded from a restart dict or an Arkane YAML file.
                     ts_species = None
@@ -602,8 +603,13 @@ class Scheduler(object):
                 self.run_sp_job(label=label, level=self.conformer_sp_level, conformer=i)
 
     def _initialize_provenance(self):
-        """Load previous provenance when restarting and record the current run start."""
-        if os.path.isfile(self.provenance_path):
+        """Load previous provenance when restarting and record the current run start.
+
+        On a fresh run (no restart_dict), the event log and graph start empty.
+        On a restart, the previous event log and graph are loaded and deduplicated.
+        """
+        is_restart = self.restart_dict is not None
+        if is_restart and os.path.isfile(self.provenance_path):
             try:
                 provenance = read_yaml_file(self.provenance_path)
             except Exception:
@@ -615,7 +621,7 @@ class Scheduler(object):
                     self.provenance['events'] = raw_events
                 else:
                     logger.warning('Existing provenance.yml has invalid events; starting with an empty event log.')
-        if os.path.isfile(self.graph_path):
+        if is_restart and os.path.isfile(self.graph_path):
             try:
                 self.graph = ProvenanceGraph.load(self.graph_path)
             except Exception:
@@ -2282,6 +2288,13 @@ class Scheduler(object):
                     logger.debug(f'Energy for conformer {i} of {label} is {energy:.2f}')
                 else:
                     logger.debug(f'Energy for conformer {i} of {label} is None')
+            # ── Graph: emit energy DataNode from conformer job ──
+            if energy is not None:
+                calc_nid = self.graph.find_calc_node(label, job.job_name)
+                if calc_nid is not None:
+                    data_nid = self.graph.add_data_node(
+                        label=label, data_kind=DataKind.energy, value=round(energy, 2))
+                    self.graph.add_edge(calc_nid, data_nid, EdgeType.output_of)
         else:
             logger.warning(f'Conformer {i} for {label} did not converge.')
             if job.job_status[1]['status'] == 'errored' and job.times_rerun == 0:
@@ -2830,6 +2843,14 @@ class Scheduler(object):
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
             if freq_ok and vibfreqs is not None:
                 self.species_dict[label].freqs = [float(f) for f in vibfreqs]
+                # ── Graph: emit frequencies DataNode ──
+                calc_nid = self.graph.find_calc_node(label, job.job_name)
+                if calc_nid is not None:
+                    data_nid = self.graph.add_data_node(
+                        label=label, data_kind=DataKind.frequencies,
+                        value=len(vibfreqs),
+                        metadata={'n_imaginary': sum(1 for f in vibfreqs if f < 0)})
+                    self.graph.add_edge(calc_nid, data_nid, EdgeType.output_of)
             if freq_ok:
                 # Copy the frequency file to the species / TS output folder.
                 folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
@@ -3062,6 +3083,14 @@ class Scheduler(object):
                                  sp_path=os.path.join(job.local_path_to_output_file),
                                  level=job.level,
                                  )
+            # ── Graph: emit SP energy DataNode ──
+            if self.species_dict[label].e_elect is not None:
+                calc_nid = self.graph.find_calc_node(label, job.job_name)
+                if calc_nid is not None:
+                    data_nid = self.graph.add_data_node(
+                        label=label, data_kind=DataKind.energy,
+                        value=round(self.species_dict[label].e_elect, 2))
+                    self.graph.add_edge(calc_nid, data_nid, EdgeType.output_of)
             # Update restart dictionary and save the yaml restart file:
             self.save_restart_dict()
             if self.species_dict[label].number_of_atoms == 1:

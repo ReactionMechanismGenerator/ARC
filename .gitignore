@@ -70,3 +70,10 @@ build/*
 
 # AI Agent files
 AGENTS.md
+CLAUDE.md
+
+# Provenance related
+provenance.yml
+provenance_graph.yml
+provenance.svg
+*.dot
