@@ -86,7 +86,7 @@ def claim_task(pipe_root: str, worker_id: str):
                                         claimed_by=worker_id,
                                         claim_token=token,
                                         claimed_at=now,
-                                        lease_expires_at=now + pipe_settings.get('lease_duration_s', 86400))
+                                        lease_expires_at=now + pipe_settings.get('lease_duration_hrs', 24) * 3600)
             logger.info(f'Claimed task {task_id}')
             return task_id, updated, token
         except (ValueError, TimeoutError):
@@ -149,10 +149,11 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
         logger.warning(f'Task {task_id}: could not transition to RUNNING ({e}), skipping.')
         return
 
-    spec = read_task_spec(pipe_root, task_id)
-    scratch_dir = tempfile.mkdtemp(prefix=f'pipe_{task_id}_')
-    result = _make_result_template(task_id, state.attempt_index, started_at)
+    scratch_dir = None
     try:
+        spec = read_task_spec(pipe_root, task_id)
+        scratch_dir = tempfile.mkdtemp(prefix=f'pipe_{task_id}_')
+        result = _make_result_template(task_id, state.attempt_index, started_at)
         _dispatch_execution(spec, scratch_dir)
         _copy_outputs(scratch_dir, attempt_dir)
         ended_at = time.time()
@@ -201,18 +202,21 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
         failure_class = type(e).__name__
         ended_at = time.time()
         logger.error(f'Task {task_id} failed: {failure_class}: {e}')
-        _copy_outputs(scratch_dir, attempt_dir)
+        if scratch_dir:
+            _copy_outputs(scratch_dir, attempt_dir)
+        result = locals().get('result') or _make_result_template(task_id, state.attempt_index, started_at)
         result['ended_at'] = ended_at
         result['status'] = 'FAILED'
         result['failure_class'] = failure_class
         # Try to parse ESS error info even on exception path.
         is_deterministic_ess = False
-        ess_info = _parse_ess_error(attempt_dir, spec)
-        if ess_info:
-            result['parser_summary'] = ess_info
-            if ess_info['status'] != 'done' and _is_deterministic_ess_error(ess_info):
-                result['failure_class'] = 'ess_error'
-                is_deterministic_ess = True
+        if 'spec' in locals():
+            ess_info = _parse_ess_error(attempt_dir, spec)
+            if ess_info:
+                result['parser_summary'] = ess_info
+                if ess_info['status'] != 'done' and _is_deterministic_ess_error(ess_info):
+                    result['failure_class'] = 'ess_error'
+                    is_deterministic_ess = True
         write_result_json(attempt_dir, result)
         if not _verify_ownership(pipe_root, task_id, worker_id, claim_token):
             return
@@ -229,7 +233,8 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
             logger.warning(f'Task {task_id}: could not mark failed ({e}). '
                            f'Task may have been orphaned concurrently.')
     finally:
-        shutil.rmtree(scratch_dir, ignore_errors=True)
+        if scratch_dir:
+            shutil.rmtree(scratch_dir, ignore_errors=True)
 
 
 def _make_result_template(task_id: str, attempt_index: int, started_at: float) -> dict:
