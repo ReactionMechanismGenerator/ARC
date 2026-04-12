@@ -274,13 +274,16 @@ class PipeCoordinator:
             if state.status == TaskState.COMPLETED.value:
                 ingest_completed_task(pipe.run_id, pipe.pipe_root, spec, state,
                                       self.sched.species_dict, self.sched.output)
+                self._update_graph_for_pipe_task(spec, status='done')
             elif state.status == TaskState.FAILED_ESS.value:
                 self._eject_to_scheduler(pipe, spec, state)
+                self._update_graph_for_pipe_task(spec, status='errored')
                 ejected_count += 1
             elif state.status == TaskState.FAILED_TERMINAL.value:
                 logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                              f'failed terminally (failure_class={state.failure_class}). '
                              f'Manual troubleshooting required.')
+                self._update_graph_for_pipe_task(spec, status='errored')
             elif state.status == TaskState.CANCELLED.value:
                 logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                                f'was cancelled.')
@@ -289,6 +292,24 @@ class PipeCoordinator:
                         f'for troubleshooting. Deferring post-ingestion workflow.')
         else:
             self._post_ingest_pipe_run(pipe)
+
+    def _update_graph_for_pipe_task(self, spec: TaskSpec, status: str) -> None:
+        """Update the provenance graph calc node for a completed/failed pipe task."""
+        graph = getattr(self.sched, 'graph', None)
+        if graph is None:
+            return
+        label = spec.owner_key
+        meta = spec.ingestion_metadata or {}
+        job_type = TASK_FAMILY_TO_JOB_TYPE.get(spec.task_family, spec.task_family)
+        # Build the job_name the scheduler would have used for this task.
+        conf_idx = meta.get('conformer_index')
+        if conf_idx is not None:
+            job_name = f'{job_type}_{conf_idx}'
+        else:
+            job_name = spec.task_id  # fallback to pipe task_id
+        calc_nid = graph.find_calc_node(label, job_name)
+        if calc_nid is not None:
+            graph.update_node(calc_nid, status=status)
 
     def _post_ingest_pipe_run(self, pipe: PipeRun) -> None:
         """

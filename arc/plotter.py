@@ -134,7 +134,40 @@ def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz
         'spawned_by': {'color': 'blue', 'style': 'solid'},
     }
 
+    # ── Identify conf_opt batches to collapse ──────────────────────────────
+    # Group conf_opt calc nodes by species label for batch summarization.
+    _COLLAPSE_THRESHOLD = 5  # only collapse if more than this many conf_opt jobs
+    conf_opt_groups = {}  # label -> list of node_ids
+    conf_opt_collapsed = set()  # node_ids that will be replaced by a summary
     for node in prov_graph.nodes.values():
+        if (node.node_type == 'calculation'
+                and getattr(node, 'job_type', '') == 'conf_opt'):
+            conf_opt_groups.setdefault(node.label, []).append(node.node_id)
+    batch_summary_ids = {}  # label -> summary_node_graphviz_id
+    for label, nids in conf_opt_groups.items():
+        if len(nids) > _COLLAPSE_THRESHOLD:
+            conf_opt_collapsed.update(nids)
+            statuses = [getattr(prov_graph.get_node(n), 'status', 'pending') or 'pending' for n in nids]
+            done = statuses.count('done')
+            errored = statuses.count('errored')
+            pending = len(statuses) - done - errored
+            parts = []
+            if done:
+                parts.append(f'{done} done')
+            if errored:
+                parts.append(f'{errored} errored')
+            if pending:
+                parts.append(f'{pending} pending')
+            summary_id = _sanitize_graphviz_id(f'batch_conf_opt_{label}')
+            batch_summary_ids[label] = summary_id
+            gv.node(summary_id,
+                     _wrap_graph_label(f'conf_opt batch\n{len(nids)} jobs\n{", ".join(parts)}', width=28),
+                     shape='box3d', fillcolor='lightyellow', style='filled')
+
+    # ── Render individual nodes ──────────────────────────────────────────
+    for node in prov_graph.nodes.values():
+        if node.node_id in conf_opt_collapsed:
+            continue  # replaced by batch summary
         nid = _sanitize_graphviz_id(node.node_id)
         ntype = node.node_type
 
@@ -146,12 +179,11 @@ def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz
             gv.node(nid, _wrap_graph_label(lbl), shape='box', fillcolor='aliceblue')
 
         elif ntype == 'calculation':
-            parts = [getattr(node, 'job_type', '') or '', getattr(node, 'job_name', '') or '']
+            job_type = getattr(node, 'job_type', '') or ''
+            job_name = getattr(node, 'job_name', '') or ''
+            lbl = f'{job_type}\n{job_name}'
             if getattr(node, 'job_adapter', None):
-                parts.append(node.job_adapter)
-            if getattr(node, 'level', None):
-                parts.append(node.level)
-            lbl = '\n'.join(p for p in parts if p)
+                lbl += f'\n{node.job_adapter}'
             status = getattr(node, 'status', 'pending') or 'pending'
             fillcolor = _calc_colors.get(status, 'white')
             gv.node(nid, _wrap_graph_label(lbl), shape='box', fillcolor=fillcolor)
@@ -162,6 +194,9 @@ def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz
             lbl = dk
             if val is not None and not isinstance(val, (list, dict)):
                 lbl += f'\n{val}'
+            meta = getattr(node, 'metadata', None) or {}
+            if 'n_imaginary' in meta:
+                lbl += f'\n({meta["n_imaginary"]} imag)'
             gv.node(nid, _wrap_graph_label(lbl), shape='note', fillcolor='cornsilk')
 
         elif ntype == 'decision':
@@ -176,11 +211,31 @@ def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz
         else:
             gv.node(nid, _wrap_graph_label(node.node_id))
 
+    # ── Render edges ─────────────────────────────────────────────────────
+    # Track which batch summaries have been connected to avoid duplicate edges.
+    batch_edges_added = set()
     for edge in prov_graph.edges:
-        src = _sanitize_graphviz_id(edge.source_id)
-        tgt = _sanitize_graphviz_id(edge.target_id)
+        src_collapsed = edge.source_id in conf_opt_collapsed
+        tgt_collapsed = edge.target_id in conf_opt_collapsed
+        # Redirect edges involving collapsed conf_opt nodes to the batch summary.
+        if src_collapsed:
+            src_label = prov_graph.get_node(edge.source_id).label if prov_graph.get_node(edge.source_id) else None
+            src = batch_summary_ids.get(src_label, _sanitize_graphviz_id(edge.source_id))
+        else:
+            src = _sanitize_graphviz_id(edge.source_id)
+        if tgt_collapsed:
+            tgt_label = prov_graph.get_node(edge.target_id).label if prov_graph.get_node(edge.target_id) else None
+            tgt = batch_summary_ids.get(tgt_label, _sanitize_graphviz_id(edge.target_id))
+        else:
+            tgt = _sanitize_graphviz_id(edge.target_id)
+        # Deduplicate edges to/from batch summaries.
+        edge_key = (src, tgt, edge.edge_type)
+        if (src_collapsed or tgt_collapsed) and edge_key in batch_edges_added:
+            continue
+        batch_edges_added.add(edge_key)
         etype = edge.edge_type
         style_attrs = _edge_styles.get(etype, {})
+        # Only show labels on semantically interesting edges (not belongs_to, input_of, output_of).
         label = etype.replace('_', ' ') if etype not in ('belongs_to', 'input_of', 'output_of') else ''
         gv.edge(src, tgt, label=label, **style_attrs)
 
