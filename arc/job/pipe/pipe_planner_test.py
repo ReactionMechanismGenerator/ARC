@@ -8,12 +8,35 @@ This module contains unit tests for the arc.job.pipe.pipe_planner module
 import shutil
 import tempfile
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
 from arc.level import Level
 from arc.species import ARCSpecies
+
+
+_pipe_patches = []
+
+
+def setUpModule():
+    """Enable pipe mode for all tests in this module."""
+    global _pipe_patches
+    pipe_vals = {'enabled': True, 'min_tasks': 10, 'max_workers': 100,
+                 'max_attempts': 3, 'lease_duration_s': 86400}
+    for target in ('arc.job.pipe.pipe_coordinator.pipe_settings',
+                    'arc.job.pipe.pipe_planner.pipe_settings'):
+        p = patch.dict(target, pipe_vals)
+        p.start()
+        _pipe_patches.append(p)
+
+
+def tearDownModule():
+    """Restore pipe settings."""
+    global _pipe_patches
+    for p in _pipe_patches:
+        p.stop()
+    _pipe_patches.clear()
 
 
 def _make_mock_sched(project_directory):

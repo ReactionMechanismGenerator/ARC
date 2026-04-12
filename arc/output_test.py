@@ -494,8 +494,8 @@ class TestGetEnergyCorrections(unittest.TestCase):
                 return bac_key
             return None
 
-        with patch('arc.output._find_best_across_files', side_effect=mock_find_best), \
-             patch('arc.output._get_qm_corrections_files', return_value=['/fake/data.py']), \
+        with patch('arc.output.find_best_across_files', side_effect=mock_find_best), \
+             patch('arc.output.get_qm_corrections_files', return_value=['/fake/data.py']), \
              patch('arc.output.execute_command', return_value=('', '')), \
              patch('arc.output.read_yaml_file', return_value={'aec': {'H': -0.5}, 'bac': {'C-H': -0.06}}), \
              patch('arc.output.save_yaml_file') as mock_save:

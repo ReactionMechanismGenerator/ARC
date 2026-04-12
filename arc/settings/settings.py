@@ -308,7 +308,7 @@ default_job_settings = {
 # Pipe mode settings: distributed HPC execution via job arrays.
 # These can be overridden in ~/.arc/settings.py.
 pipe_settings = {
-    'enabled': True,           # Set to False to disable pipe mode entirely.
+    'enabled': False,          # Set to True to enable pipe mode (it is off by default, use it for large compute campaigns).
     'min_tasks': 10,           # Minimum batch size to trigger pipe mode.
     'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
     'max_attempts': 3,         # Retry budget per task before terminal failure.

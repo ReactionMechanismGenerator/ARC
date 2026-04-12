@@ -20,7 +20,12 @@ from arc.imports import settings
 from arc.job.local import execute_command
 from arc.parser.parser import parse_1d_scan_energies, parse_e_elect, parse_ess_version, parse_opt_steps, parse_zpe_correction
 from arc.species.converter import xyz_to_str
-from arc.statmech.arkane import _find_best_across_files, _get_qm_corrections_files
+from arc.statmech.arkane import (
+    AEC_SECTION_START, AEC_SECTION_END,
+    MBAC_SECTION_START, MBAC_SECTION_END,
+    PBAC_SECTION_START, PBAC_SECTION_END,
+    find_best_across_files, get_qm_corrections_files,
+)
 
 
 logger = get_logger()
@@ -292,23 +297,20 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: Optional[str]) -> 
     if arkane_level_of_theory is None:
         return None, None
     try:
-        qm_corr_files = _get_qm_corrections_files()
+        qm_corr_files = get_qm_corrections_files()
 
-        aec_start = "atom_energies = {"
-        aec_end = "pbac = {"
-        aec_key = _find_best_across_files(arkane_level_of_theory, qm_corr_files, aec_start, aec_end)
+        aec_key = find_best_across_files(arkane_level_of_theory, qm_corr_files,
+                                          AEC_SECTION_START, AEC_SECTION_END)
         if aec_key is None:
             return None, None
 
         bac_key = None
         if bac_type in ('p', 'm'):
             if bac_type == 'm':
-                bac_start = "mbac = {"
-                bac_end = "freq_dict ="
+                bac_start, bac_end = MBAC_SECTION_START, MBAC_SECTION_END
             else:
-                bac_start = "pbac = {"
-                bac_end = "mbac = {"
-            bac_key = _find_best_across_files(arkane_level_of_theory, qm_corr_files, bac_start, bac_end)
+                bac_start, bac_end = PBAC_SECTION_START, PBAC_SECTION_END
+            bac_key = find_best_across_files(arkane_level_of_theory, qm_corr_files, bac_start, bac_end)
 
         script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_qm_corrections.py')
         rmg_env = settings.get('RMG_ENV_NAME', 'rmg_env')

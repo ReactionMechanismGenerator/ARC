@@ -41,6 +41,7 @@ R = 8.31446261815324
 
 #: The Bohr radius :math:`a_0` in :math:`\mathrm{m}`
 a0 = 5.2917721092e-11
+bohr_to_angstrom = a0 * 1e10
 
 #: The atomic mass unit in :math:`\mathrm{kg}`
 amu = 1.660538921e-27

@@ -11,7 +11,7 @@ import os
 import pandas as pd
 
 from arc.common import is_str_float
-from arc.constants import E_h_kJmol
+from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import str_to_xyz, xyz_from_data, logger
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
@@ -35,12 +35,21 @@ class XTBParser(ESSAdapter, ABC):
         Returns: Optional[str]
             ``None`` if the log file is free of errors, otherwise the error is returned as a string.
         """
-        # Not implemented for xTB.
+        with open(self.log_file_path, 'r') as f:
+            for line in f:
+                if 'abnormal termination' in line.lower():
+                    return line.strip()
+                if '[ERROR]' in line or '#ERROR' in line:
+                    return line.strip()
         return None
 
     def parse_geometry(self) -> Optional[Dict[str, tuple]]:
         """
         Parse the xyz geometry from an ESS log file.
+
+        Supports both Turbomol ``$coord`` (Bohr) and Molfile V2000 (Angstrom) formats.
+        If the file contains multiple geometry blocks (e.g., from multiple optimization
+        cycles), only the last one is returned.
 
         Returns: Optional[Dict[str, tuple]]
             The cartesian geometry.
@@ -58,6 +67,8 @@ class XTBParser(ESSAdapter, ABC):
                 final_structure = True
                 continue
             if final_structure and '$coord' in line:
+                # Reset on each new $coord block so we keep only the last one
+                coords, symbols = list(), list()
                 in_coord_block = True
                 continue
             if final_structure and 'V2000' in line and not in_coord_block:
@@ -66,16 +77,18 @@ class XTBParser(ESSAdapter, ABC):
                 if parts and parts[0].isdigit():
                     atom_count = int(parts[0])
                     molfile_line_counter = 0
+                # Reset on each new V2000 block
+                coords, symbols = list(), list()
                 continue
 
-            # Parse $coord format
+            # Parse $coord format (Turbomole $coord coordinates are in Bohr, convert to Angstrom)
             if in_coord_block:
                 if '$' in line or 'end' in line.lower() or len(line.split()) < 4:
                     in_coord_block = False
                     continue
                 parts = line.split()
                 try:
-                    x, y, z = map(float, parts[:3])
+                    x, y, z = (float(v) * bohr_to_angstrom for v in parts[:3])
                     symbol = parts[3].capitalize() if len(parts[3]) == 1 else parts[3][0].upper() + parts[3][1:].lower()
                     coords.append([x, y, z])
                     symbols.append(symbol)
@@ -105,30 +118,34 @@ class XTBParser(ESSAdapter, ABC):
         """
         Parse the frequencies from a freq job output file.
 
+        xTB prints frequencies twice (once after the Hessian and once in the
+        Frequency Printout section). This method reads ALL eigval blocks and
+        returns only the last complete one to ensure we get the final values.
+
         Returns: Optional[np.ndarray]
             The parsed frequencies (in cm^-1).
         """
-        freqs = list()
+        # Collect all eigval blocks; use the last one
+        all_blocks = list()
+        current_block = list()
         lines = _get_lines_from_file(self.log_file_path)
-        read_output = False
 
         for line in lines:
-            if read_output:
-                if 'eigval :' in line:
-                    splits = line.split()
-                    for split in splits[2:]:
-                        try:
-                            freq = float(split)
-                            if freq != 0.0:
-                                freqs.append(freq)
-                        except ValueError:
-                            continue
-                elif line.strip() == "" or "projected vibrational frequencies" in line.lower():
-                    continue
-                else:
-                    break
-            if 'vibrational frequencies' in line.lower():
-                read_output = True
+            if 'eigval :' in line:
+                splits = line.split()
+                for split in splits[2:]:
+                    try:
+                        current_block.append(float(split))
+                    except ValueError:
+                        continue
+            elif current_block:
+                # End of an eigval run
+                all_blocks.append(current_block)
+                current_block = list()
+        if current_block:
+            all_blocks.append(current_block)
+
+        freqs = [f for f in all_blocks[-1] if f != 0.0] if all_blocks else list()
 
         # Fallback: try vibspectrum file if no frequencies found in output
         if not freqs:
@@ -232,28 +249,32 @@ class XTBParser(ESSAdapter, ABC):
         """
         Parse the electronic energy from an sp job output file.
 
+        Looks for ``:: total energy ... Eh`` (SUMMARY block) or
+        ``| TOTAL ENERGY ... Eh |`` (TOTAL section).
+        Avoids false matches against ``total energy gain`` (optimization deltas).
+
         Returns: Optional[float]
             The electronic energy in kJ/mol.
         """
+        import re
         lines = _get_lines_from_file(self.log_file_path)
         energy = None
-        for line in reversed(lines):
-            if 'total energy' in line.lower():
-                try:
-                    energy = float(line.split()[3].strip())
-                    break
-                except (ValueError, IndexError):
+        # Iterate forward and keep the LAST hit (final result)
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith(':: total energy') or 'TOTAL ENERGY' in line:
+                m = re.search(r'(-?\d+\.\d+)\s+Eh', line)
+                if m:
+                    energy = float(m.group(1))
+        if energy is None:
+            # Fallback: 'final energy' lines (rare)
+            for line in reversed(lines):
+                if 'final energy' in line.lower():
                     try:
-                        energy = float(line.split()[-1].strip())
+                        energy = float(line.split()[-1])
                         break
                     except (ValueError, IndexError):
                         continue
-            if 'final energy' in line.lower():
-                try:
-                    energy = float(line.split()[-1])
-                    break
-                except (ValueError, IndexError):
-                    continue
         if energy is not None:
             return energy * E_h_kJmol
         return None
@@ -265,16 +286,16 @@ class XTBParser(ESSAdapter, ABC):
         Returns: Optional[float]
             The calculated zero point energy in kJ/mol.
         """
+        import re
         zpe = None
         with open(self.log_file_path, 'r') as f:
             for line in f:
                 if 'zero-point vibrational energy' in line.lower() or 'zero point energy' in line.lower():
                     #          :: zero point energy           0.056690417480 Eh   ::
-                    try:
-                        zpe = float(line.split()[-3])
+                    m = re.search(r'(\d+\.\d+(?:[eE][+-]?\d+)?)\s+Eh', line)
+                    if m:
+                        zpe = float(m.group(1))
                         break
-                    except (ValueError, IndexError):
-                        continue
         if zpe is not None:
             return zpe * E_h_kJmol
         return None
@@ -323,8 +344,12 @@ class XTBParser(ESSAdapter, ABC):
             logger.warning(f'No valid scan points found in xTB scan log file {scan_path}.')
             return None, None
 
-        # Angles: evenly spaced 0 to 360 inclusive
-        angles = [i * 360.0 / (n_points + 1) for i in range(n_points + 1)]
+        # Angles: evenly spaced from 0 deg with one angle per energy point.
+        # For 44 energies, the dihedral was scanned in steps of 360/45 = 8 deg.
+        # We return n_points angles (matching the energies length): [0, 8, 16, ..., 344].
+        # Note: callers expecting (n_points+1) angles for n_points energies should
+        # add the closing 360 deg themselves.
+        angles = [i * 360.0 / (n_points + 1) for i in range(n_points)]
 
         return rel_energies, angles
 

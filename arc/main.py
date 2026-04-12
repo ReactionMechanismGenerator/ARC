@@ -1219,7 +1219,8 @@ class ARC(object):
                 check_arkane_bacs(sp_level=self.arkane_level_of_theory, bac_type=self.bac_type,
                                   raise_error=self.compute_thermo)
             else:
-                check_arkane_aec(sp_level=self.arkane_level_of_theory)
+                check_arkane_aec(sp_level=self.arkane_level_of_theory,
+                                 raise_error=self.compute_thermo)
 
     def backup_restart(self):
         """
