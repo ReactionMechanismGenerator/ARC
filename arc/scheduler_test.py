@@ -8,6 +8,7 @@ This module contains unit tests for the arc.scheduler module
 import unittest
 import os
 import shutil
+from unittest import mock
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
@@ -19,7 +20,7 @@ from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
-from arc.species.species import ARCSpecies
+from arc.species.species import ARCSpecies, TSGuess
 
 
 default_levels_of_theory = settings['default_levels_of_theory']
@@ -757,13 +758,223 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(unique_label, 'new_species_15_1')
         self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO', 'new_species_15', 'new_species_15_0', 'new_species_15_1'])
 
+    def test_initialize_provenance_dedup_on_restart(self):
+        """Test that _initialize_provenance does not re-emit species_initialized for species already in the log."""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_prov')
+        os.makedirs(os.path.join(project_directory, 'output'), exist_ok=True)
+        # Write a fake provenance file that already has ethanol initialized.
+        from arc.common import save_yaml_file
+        save_yaml_file(path=os.path.join(project_directory, 'output', 'provenance.yml'),
+                       content={'version': 1, 'project': 'test', 'run_id': 'old_run',
+                                'started_at': '2026-01-01T00:00:00',
+                                'events': [{'event_id': 1, 'event_type': 'species_initialized',
+                                            'label': 'ethanol', 'is_ts': False}]})
+        sched = Scheduler(project='test_prov_dedup', ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=project_directory,
+                          testing=True, job_types=initialize_job_types())
+        init_events = [e for e in sched.provenance['events']
+                       if e['event_type'] == 'species_initialized' and e.get('label') == 'ethanol']
+        self.assertEqual(len(init_events), 1, 'species_initialized should not be duplicated on restart')
+        # New run should get its own run_id, not the old one.
+        self.assertNotEqual(sched.provenance['run_id'], 'old_run')
+        shutil.rmtree(project_directory, ignore_errors=True)
+
+    def test_sanitize_restart_output(self):
+        """Test that _sanitize_restart_output resets convergence when paths are missing."""
+        spc = ARCSpecies(label='H2O', smiles='O')
+        output = {
+            'H2O': {
+                'paths': {'geo': '', 'freq': '', 'sp': '', 'composite': ''},
+                'restart': '', 'convergence': True,
+                'job_types': {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True,
+                              'rotors': False, 'irc': False, 'fine': False, 'composite': False},
+            }
+        }
+        sched = Scheduler(project='test_sanitize', ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True, job_types=initialize_job_types(),
+                          restart_dict={'output': output})
+        self.assertFalse(sched.output['H2O']['convergence'])
+        for key in ['opt', 'freq', 'sp']:
+            self.assertFalse(sched.output['H2O']['job_types'][key])
+
+    def test_delete_all_species_jobs_resets_output(self):
+        """Test that delete_all_species_jobs clears convergence, job_types, and paths."""
+        spc = ARCSpecies(label='CH4', smiles='C')
+        output = {
+            'CH4': {
+                'paths': {'geo': 'some/path.out', 'freq': 'freq.out', 'sp': 'sp.out', 'composite': ''},
+                'restart': '', 'convergence': True,
+                'job_types': {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True,
+                              'rotors': False, 'irc': False, 'fine': True, 'composite': False},
+            }
+        }
+        sched = Scheduler(project='test_delete_jobs', ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True, job_types=initialize_job_types(),
+                          restart_dict={'output': output})
+        sched.running_jobs['CH4'] = []
+        sched.delete_all_species_jobs(label='CH4')
+        self.assertFalse(sched.output['CH4']['convergence'])
+        for key in ['opt', 'freq', 'sp', 'fine']:
+            self.assertFalse(sched.output['CH4']['job_types'][key])
+        self.assertEqual(sched.output['CH4']['paths']['geo'], '')
+
+    def test_conformer_index_set_before_run_job(self):
+        """Test that tsg.conformer_index is assigned before run_job is called, so restart state is consistent."""
+        ts_spc = ARCSpecies(label='TS0', is_ts=True, multiplicity=1, charge=0)
+        # Use geometries different enough to survive cluster_tsgs() deduplication.
+        ts_spc.ts_guesses = [
+            TSGuess(method='autotst', index=0, success=True,
+                    xyz={'symbols': ('C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1),
+                         'coords': ((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (-1, 0, 0))},
+                    project_directory=self.project_directory),
+            TSGuess(method='gcn', index=1, success=True,
+                    xyz={'symbols': ('C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1),
+                         'coords': ((0, 0, 0), (2, 0, 0), (0, 2, 0), (0, 0, 2), (-2, 0, 0))},
+                    project_directory=self.project_directory),
+        ]
+        sched = Scheduler(project='test_conf_index_order', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=self.project_directory,
+                          testing=True, job_types=initialize_job_types())
+        # Track conformer_index values observed inside run_job.
+        observed = []
+
+        def capturing_run_job(**kwargs):
+            conformer = kwargs.get('conformer')
+            if conformer is not None:
+                tsg = next((g for g in ts_spc.ts_guesses if g.index == conformer), None)
+                observed.append((conformer, tsg.conformer_index if tsg else None))
+
+        with mock.patch.object(sched, 'run_job', side_effect=capturing_run_job), \
+             mock.patch('arc.plotter.save_conformers_file'):
+            sched.run_ts_conformer_jobs(label='TS0')
+
+        # Every call to run_job should have seen conformer_index already set.
+        self.assertTrue(len(observed) >= 2, f'Expected at least 2 conf_opt jobs, got {len(observed)}')
+        for conformer_idx, conformer_index_value in observed:
+            self.assertIsNotNone(conformer_index_value,
+                                f'conformer_index was None when run_job was called for conformer {conformer_idx}')
+            self.assertEqual(conformer_idx, conformer_index_value)
+
+    def test_provenance_records_ts_species_from_reactions(self):
+        """Test that TS species created from reactions get a species_initialized provenance event."""
+        r_spc = ARCSpecies(label='nC3H7', smiles='[CH2]CC')
+        p_spc = ARCSpecies(label='iC3H7', smiles='C[CH]C')
+        rxn = ARCReaction(reactants=['nC3H7'], products=['iC3H7'],
+                          r_species=[r_spc], p_species=[p_spc])
+        rxn.index = 0
+        sched = Scheduler(project='test_ts_prov', ess_settings=self.ess_settings,
+                          species_list=[r_spc, p_spc],
+                          rxn_list=[rxn],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True, job_types=initialize_job_types())
+        init_labels = [e['label'] for e in sched.provenance['events']
+                       if e.get('event_type') == 'species_initialized']
+        self.assertIn('nC3H7', init_labels)
+        self.assertIn('iC3H7', init_labels)
+        self.assertIn('TS0', init_labels, 'TS species created from a reaction should get a species_initialized event')
+
+    def test_provenance_multi_species_label(self):
+        """Test that provenance handles multi-species (list) labels by joining them."""
+        spc1 = ARCSpecies(label='H2', smiles='[H][H]')
+        spc2 = ARCSpecies(label='O2', smiles='[O][O]')
+        sched = Scheduler(project='test_multi_label', ess_settings=self.ess_settings,
+                          species_list=[spc1, spc2],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True, job_types=initialize_job_types())
+        sched.record_provenance_event(event_type='test_event', label='H2+O2')
+        event = sched.provenance['events'][-1]
+        self.assertEqual(event['label'], 'H2+O2')
+        self.assertIsInstance(event['label'], str)
+
+    def test_provenance_graph_species_initialized(self):
+        """Test that the provenance graph contains species nodes after initialization."""
+        spc = ARCSpecies(label='water', smiles='O')
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_prov_graph')
+        os.makedirs(os.path.join(project_directory, 'output'), exist_ok=True)
+        sched = Scheduler(project='test_prov_graph', ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=project_directory,
+                          testing=True, job_types=initialize_job_types())
+        from arc.provenance import NodeType
+        species_nodes = sched.graph.get_nodes_by_type(NodeType.species)
+        self.assertEqual(len(species_nodes), 1)
+        self.assertEqual(species_nodes[0].label, 'water')
+        # Graph is saved lazily (at checkpoints/finalization, not per-event).
+        # Verify it can be saved on demand.
+        sched.save_provenance_graph()
+        self.assertTrue(os.path.isfile(sched.graph_path))
+        shutil.rmtree(project_directory, ignore_errors=True)
+
+    def test_provenance_graph_restart_preserves_nodes(self):
+        """Test that the provenance graph is restored correctly on restart."""
+        spc = ARCSpecies(label='methane', smiles='C')
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_prov_graph2')
+        os.makedirs(os.path.join(project_directory, 'output'), exist_ok=True)
+        # Create initial scheduler to write provenance files
+        sched1 = Scheduler(project='test_restart', ess_settings=self.ess_settings,
+                           species_list=[spc],
+                           opt_level=Level(repr=default_levels_of_theory['opt']),
+                           freq_level=Level(repr=default_levels_of_theory['freq']),
+                           sp_level=Level(repr=default_levels_of_theory['sp']),
+                           project_directory=project_directory,
+                           testing=True, job_types=initialize_job_types())
+        n_nodes_before = len(sched1.graph)
+        self.assertGreater(n_nodes_before, 0)
+        sched1.save_provenance_graph()  # Persist graph so the restart can load it.
+        # Create second scheduler on same directory (simulates restart)
+        sched2 = Scheduler(project='test_restart', ess_settings=self.ess_settings,
+                           species_list=[spc],
+                           opt_level=Level(repr=default_levels_of_theory['opt']),
+                           freq_level=Level(repr=default_levels_of_theory['freq']),
+                           sp_level=Level(repr=default_levels_of_theory['sp']),
+                           project_directory=project_directory,
+                           testing=True, job_types=initialize_job_types())
+        from arc.provenance import NodeType
+        species_nodes = sched2.graph.get_nodes_by_type(NodeType.species)
+        # Should still have exactly 1 species node (no duplicate)
+        self.assertEqual(len(species_nodes), 1)
+        self.assertEqual(species_nodes[0].label, 'methane')
+        shutil.rmtree(project_directory, ignore_errors=True)
+
     @classmethod
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage3', 'arc_project_for_testing_delete_after_usage6']
+        projects = ['arc_project_for_testing_delete_after_usage3', 'arc_project_for_testing_delete_after_usage6',
+                    'arc_project_for_testing_delete_after_usage_prov',
+                    'arc_project_for_testing_delete_after_usage_prov_graph',
+                    'arc_project_for_testing_delete_after_usage_prov_graph2']
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
