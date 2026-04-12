@@ -266,6 +266,50 @@ class TestPipeRunReconcile(unittest.TestCase):
         run.reconcile()
         self.assertEqual(run.status, PipeRunState.COMPLETED)
 
+    def test_scheduler_job_gone_orphans_running_task(self):
+        """When the scheduler job is gone, RUNNING tasks are orphaned immediately."""
+        tasks = [_make_spec('t0'), _make_spec('t1')]
+        run = PipeRun(project_directory=self.tmpdir, run_id='gone',
+                      tasks=tasks, cluster_software='pbs', max_attempts=1)
+        run.stage()
+        now = time.time()
+        # t0 completed normally
+        self._complete_task(run.pipe_root, 't0')
+        # t1 is RUNNING with lease still valid (24h in the future)
+        update_task_state(run.pipe_root, 't1', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now,
+                          lease_expires_at=now + 86400)
+        update_task_state(run.pipe_root, 't1', new_status=TaskState.RUNNING, started_at=now)
+
+        # With scheduler_job_alive=True (default), the task stays RUNNING.
+        counts = run.reconcile(scheduler_job_alive=True)
+        self.assertEqual(counts[TaskState.RUNNING.value], 1)
+
+        # Reset run status so reconcile runs the main logic again.
+        run.status = PipeRunState.SUBMITTED
+
+        # With scheduler_job_alive=False, RUNNING is immediately orphaned → FAILED_TERMINAL.
+        counts = run.reconcile(scheduler_job_alive=False)
+        self.assertEqual(counts[TaskState.RUNNING.value], 0)
+        state = read_task_state(run.pipe_root, 't1')
+        self.assertEqual(state.status, 'FAILED_TERMINAL')
+        self.assertEqual(run.status, PipeRunState.COMPLETED_PARTIAL)
+
+    def test_scheduler_job_gone_stranded_pending_failed(self):
+        """When the scheduler job is gone, unreachable PENDING tasks are FAILED_TERMINAL."""
+        tasks = [_make_spec('t0'), _make_spec('t1')]
+        run = PipeRun(project_directory=self.tmpdir, run_id='stranded',
+                      tasks=tasks, cluster_software='slurm', max_attempts=3)
+        run.stage()
+        # t0 completed
+        self._complete_task(run.pipe_root, 't0')
+        # t1 was never claimed — still PENDING (e.g., worker crashed before claiming)
+
+        run.reconcile(scheduler_job_alive=False)
+        state = read_task_state(run.pipe_root, 't1')
+        self.assertEqual(state.status, 'FAILED_TERMINAL')
+        self.assertEqual(run.status, PipeRunState.COMPLETED_PARTIAL)
+
 
 class TestPipeRunNoResubmission(unittest.TestCase):
     """Pipe runs must never flag resubmission — Q-state workers handle retried tasks."""
