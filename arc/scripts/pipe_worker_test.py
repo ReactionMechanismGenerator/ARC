@@ -309,6 +309,18 @@ class TestRunTask(unittest.TestCase):
         final = read_task_state(self.tmpdir, 'bad_family')
         self.assertIn(final.status, ('FAILED_RETRYABLE', 'FAILED_TERMINAL'))
 
+    def test_scratch_creation_failure_marks_failed(self):
+        """If tempfile.mkdtemp fails (e.g., I/O error), the task is properly
+        marked FAILED_RETRYABLE instead of being left stuck in RUNNING."""
+        spec = _make_h2o_spec('io_fail')
+        initialize_task(self.tmpdir, spec)
+        state, token = self._claim('io_fail')
+        with patch('arc.scripts.pipe_worker.tempfile.mkdtemp',
+                   side_effect=OSError(5, 'Input/output error')):
+            run_task(self.tmpdir, 'io_fail', state, 'test-worker', token)
+        final = read_task_state(self.tmpdir, 'io_fail')
+        self.assertIn(final.status, ('FAILED_RETRYABLE', 'FAILED_TERMINAL'))
+
 
 class TestWorkerLoop(unittest.TestCase):
 

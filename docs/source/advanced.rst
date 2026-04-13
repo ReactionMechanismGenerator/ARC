@@ -983,7 +983,7 @@ Pipe mode is configured via ``pipe_settings`` in ``arc/settings/settings.py``
         'min_tasks': 10,           # Minimum batch size to trigger pipe mode.
         'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
         'max_attempts': 3,         # Retry budget per task before terminal failure.
-        'lease_duration_s': 86400, # Worker lease duration in seconds (default 24h).
+        'lease_duration_hrs': 24,  # Worker lease duration in hours (default 24h).
         'env_setup': {},           # Engine-specific shell setup commands, e.g.,
                                    # {'gaussian': 'source /usr/local/g09/setup.sh'}
         'scratch_base': '',        # Base directory for worker scratch (e.g., '/gtmp').
