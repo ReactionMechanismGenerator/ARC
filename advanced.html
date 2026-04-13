@@ -1022,7 +1022,7 @@ Will be reset to <code class="docutils literal notranslate"><span class="pre">PE
     <span class="s1">&#39;min_tasks&#39;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>           <span class="c1"># Minimum batch size to trigger pipe mode.</span>
     <span class="s1">&#39;max_workers&#39;</span><span class="p">:</span> <span class="mi">100</span><span class="p">,</span>        <span class="c1"># Upper bound on array worker slots per PipeRun.</span>
     <span class="s1">&#39;max_attempts&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>         <span class="c1"># Retry budget per task before terminal failure.</span>
-    <span class="s1">&#39;lease_duration_s&#39;</span><span class="p">:</span> <span class="mi">86400</span><span class="p">,</span> <span class="c1"># Worker lease duration in seconds (default 24h).</span>
+    <span class="s1">&#39;lease_duration_hrs&#39;</span><span class="p">:</span> <span class="mi">24</span><span class="p">,</span>  <span class="c1"># Worker lease duration in hours (default 24h).</span>
     <span class="s1">&#39;env_setup&#39;</span><span class="p">:</span> <span class="p">{},</span>           <span class="c1"># Engine-specific shell setup commands, e.g.,</span>
                                <span class="c1"># {&#39;gaussian&#39;: &#39;source /usr/local/g09/setup.sh&#39;}</span>
     <span class="s1">&#39;scratch_base&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>        <span class="c1"># Base directory for worker scratch (e.g., &#39;/gtmp&#39;).</span>
