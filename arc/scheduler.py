@@ -307,6 +307,7 @@ class Scheduler(object):
         self.provenance_path = os.path.join(self.project_directory, 'output', 'provenance.yml')
         self.graph = ProvenanceGraph(project=self.project, run_id=self.provenance['run_id'])
         self.graph_path = os.path.join(self.project_directory, 'output', 'provenance_graph.yml')
+        self._pending_ts_selection_nid: Dict[str, str] = dict()  # label → selection decision node ID
 
         self.species_dict, self.rxn_dict = dict(), dict()
         for species in self.species_list:
@@ -1128,6 +1129,10 @@ class Scheduler(object):
             if parent_node_id is not None:
                 edge_type = EdgeType.fine_of if provenance_reason == 'fine_opt' else EdgeType.retried_as
                 self.graph.add_edge(parent_node_id, calc_node_id, edge_type)
+        # Wire selection decision → opt job for TS species.
+        if job_type in ('opt', 'composite') and provenance_label in self._pending_ts_selection_nid:
+            sel_nid = self._pending_ts_selection_nid.pop(provenance_label)
+            self.graph.add_edge(sel_nid, calc_node_id, EdgeType.triggered_by)
         job.execute()
         self.save_restart_dict()
 
@@ -2598,10 +2603,8 @@ class Scheduler(object):
                     conf_opt_nid = self.graph.find_calc_node(label, f'conf_opt{selected_i}')
                     if conf_opt_nid is not None:
                         self.graph.add_edge(conf_opt_nid, sel_nid, EdgeType.selected_by)
-                    # Connect: selection → species (so subsequent opt flows from it).
-                    spc_nid = self.graph.find_species_node(label)
-                    if spc_nid is not None:
-                        self.graph.add_edge(sel_nid, spc_nid, EdgeType.output_of)
+                    # Stash the selection node so the next opt job can link back to it.
+                    self._pending_ts_selection_nid[label] = sel_nid
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
@@ -3120,6 +3123,9 @@ class Scheduler(object):
         )
         if triggered_by_nid is not None:
             self.graph.add_edge(triggered_by_nid, switch_nid, EdgeType.triggered_by)
+        # Connect switch → the new selection decision (if a new guess was found).
+        if label in self._pending_ts_selection_nid:
+            self.graph.add_edge(switch_nid, self._pending_ts_selection_nid[label], EdgeType.triggered_by)
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
