@@ -2880,12 +2880,12 @@ class Scheduler(object):
                                     f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                     f'Searching for a better TS conformer...')
                         # ── Graph: record NMD validation failure ──
-                        self.graph.add_decision_node(
+                        nmd_fail_nid = self.graph.add_decision_node(
                             label=label,
                             decision_kind=DecisionKind.ts_validation_nmd,
                             outcome='Failed: normal mode displacement check',
                         )
-                        self.switch_ts(label)
+                        self.switch_ts(label, triggered_by_nid=nmd_fail_nid)
                         switch_ts = True
                     elif self.species_dict[label].ts_checks['NMD'] is True:
                         # ── Graph: record NMD validation pass ──
@@ -2960,14 +2960,14 @@ class Scheduler(object):
                                 f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                 f'Searching for a better TS conformer...')
                 # ── Graph: record TS freq validation failure ──
-                self.graph.add_decision_node(
+                freq_fail_nid = self.graph.add_decision_node(
                     label=label,
                     decision_kind=DecisionKind.ts_validation_freq,
                     criteria={'neg_freqs': [float(f) for f in neg_freqs],
                               'expected': 1},
                     outcome=f'Failed: {len(neg_freqs)} imaginary freqs, switching TS',
                 )
-                self.switch_ts(label=label)
+                self.switch_ts(label=label, triggered_by_nid=freq_fail_nid)
                 return False
             else:
                 logger.info(f'TS {label} has exactly one imaginary frequency: {neg_freqs[0]}')
@@ -3029,7 +3029,13 @@ class Scheduler(object):
                 if rxn.ts_species.ts_checks['E0'] is False:
                     logger.info(f'TS {rxn.ts_species.label} of reaction {rxn.label} did not pass the E0 check.\n'
                                 f'Searching for a better TS conformer...\n')
-                    self.switch_ts(rxn.ts_label)
+                    # ── Graph: record E0 validation failure ──
+                    e0_fail_nid = self.graph.add_decision_node(
+                        label=rxn.ts_label,
+                        decision_kind=DecisionKind.ts_validation_e0,
+                        outcome=f'Failed: TS E0 not above both wells for {rxn.label}',
+                    )
+                    self.switch_ts(rxn.ts_label, triggered_by_nid=e0_fail_nid)
                     if self.species_dict[rxn.ts_label].ts_guesses_exhausted \
                             or self.species_dict[rxn.ts_label].chosen_ts is None:
                         logger.warning(f'Could not find a valid TS conformer for {rxn.ts_label} '
@@ -3038,20 +3044,41 @@ class Scheduler(object):
                         # Restore E0 failure flag — switch_ts resets ts_checks via populate_ts_checks().
                         # check_all_done reads this to avoid overwriting convergence back to True.
                         self.species_dict[rxn.ts_label].ts_checks['E0'] = False
+                elif rxn.ts_species.ts_checks['E0'] is True:
+                    # ── Graph: record E0 validation pass ──
+                    self.graph.add_decision_node(
+                        label=rxn.ts_label,
+                        decision_kind=DecisionKind.ts_validation_e0,
+                        outcome=f'Passed: TS E0 above both wells for {rxn.label}',
+                    )
+                # Also record e_elect check if it ran as a fallback.
+                if rxn.ts_species.ts_checks['e_elect'] is True:
+                    self.graph.add_decision_node(
+                        label=rxn.ts_label,
+                        decision_kind=DecisionKind.ts_validation_e_elect,
+                        outcome=f'Passed: TS e_elect above both wells for {rxn.label}',
+                    )
+                elif rxn.ts_species.ts_checks['e_elect'] is False:
+                    self.graph.add_decision_node(
+                        label=rxn.ts_label,
+                        decision_kind=DecisionKind.ts_validation_e_elect,
+                        outcome=f'Warning: TS e_elect not above both wells for {rxn.label}',
+                    )
 
-    def switch_ts(self, label: str):
+    def switch_ts(self, label: str, triggered_by_nid: Optional[str] = None):
         """
         Try the next optimized TS guess in line if a previous TS guess was found to be wrong.
 
         Args:
             label (str): The TS species label.
+            triggered_by_nid (str, optional): Node ID of the validation decision that triggered this switch.
         """
         logger.info(f'Switching a TS guess for {label}...')
         old_chosen = self.species_dict[label].chosen_ts
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
         new_chosen = self.species_dict[label].chosen_ts
         # ── Graph: record TS switch decision ──
-        self.graph.add_decision_node(
+        switch_nid = self.graph.add_decision_node(
             label=label,
             decision_kind=DecisionKind.ts_switch,
             criteria={'old_chosen': old_chosen, 'new_chosen': new_chosen,
@@ -3059,6 +3086,8 @@ class Scheduler(object):
             outcome=f'Switched from TSG #{old_chosen} to #{new_chosen}'
             if new_chosen is not None else 'All TS guesses exhausted',
         )
+        if triggered_by_nid is not None:
+            self.graph.add_edge(triggered_by_nid, switch_nid, EdgeType.triggered_by)
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
@@ -3238,17 +3267,25 @@ class Scheduler(object):
         if len(self.output[ts_label]['paths']['irc']) == 2:
             irc_species_labels = self.species_dict[ts_label].irc_label.split()
             if all(self.output[irc_label]['paths']['geo'] for irc_label in irc_species_labels):
+                rxn = self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None)
                 check_irc_species_and_rxn(
                     xyz_1=self.output[irc_species_labels[0]]['paths']['geo'],
                     xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
-                    rxn=self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None),
+                    rxn=rxn,
                 )
-                # ── Graph: record IRC validation decision ──
+                # ── Graph: record IRC validation decision with actual outcome ──
+                irc_result = rxn.ts_species.ts_checks['IRC'] if rxn is not None else None
+                if irc_result is True:
+                    irc_outcome = 'Passed: IRC endpoints match expected R/P'
+                elif irc_result is False:
+                    irc_outcome = 'Failed: IRC endpoints do not match expected R/P'
+                else:
+                    irc_outcome = 'Inconclusive: could not determine IRC match'
                 self.graph.add_decision_node(
                     label=ts_label,
                     decision_kind=DecisionKind.ts_validation_irc,
-                    criteria={'irc_species': irc_species_labels},
-                    outcome='IRC validation completed',
+                    criteria={'irc_species': irc_species_labels, 'result': irc_result},
+                    outcome=irc_outcome,
                 )
 
     def check_scan_job(self,
@@ -3512,6 +3549,12 @@ class Scheduler(object):
                 all_converged = False
         if label in self.output and all_converged:
             self.output[label]['convergence'] = True
+            # ── Graph: record convergence gate ──
+            self.graph.add_decision_node(
+                label=label,
+                decision_kind=DecisionKind.convergence_confirmed,
+                outcome=f'All required calculations converged',
+            )
             if self.species_dict[label].is_ts:
                 self.species_dict[label].make_ts_report()
                 logger.info(self.species_dict[label].ts_report + '\n')

@@ -120,7 +120,10 @@ def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz
         'ts_validation_freq': 'lightyellow',
         'ts_validation_nmd': 'lightyellow',
         'ts_validation_irc': 'lightyellow',
+        'ts_validation_e0': 'lightyellow',
+        'ts_validation_e_elect': 'lightyellow',
         'ts_switch': 'mistyrose',
+        'convergence_confirmed': 'palegreen',
     }
 
     # Edge styling lookup

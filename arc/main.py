@@ -36,7 +36,7 @@ from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import SSHClient
 from arc.output import write_output_yml
 from arc.processor import process_arc_project, resolve_neb_level
-from arc.provenance import EdgeType
+from arc.provenance import DecisionKind, EdgeType
 from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
@@ -676,7 +676,14 @@ class ARC(object):
         return status_dict
 
     def _add_arkane_provenance_nodes(self):
-        """Add lightweight data nodes for Arkane thermo/kinetics results to the provenance graph."""
+        """Add Arkane computation and result nodes to the provenance graph.
+
+        For each converged species with thermo results, creates:
+            convergence_confirmed → calc(statmech_thermo) → data(thermo)
+
+        For each converged reaction with kinetics results, creates:
+            convergence_confirmed → calc(statmech_kinetics) → data(kinetics)
+        """
         graph = self.scheduler.graph
         for spc in self.scheduler.species_dict.values():
             if spc.is_ts or getattr(spc.thermo, 'H298', None) is None:
@@ -684,18 +691,44 @@ class ARC(object):
             spc_nid = graph.find_species_node(spc.label)
             if spc_nid is None:
                 continue
+            # Insert a CalculationNode for the Arkane thermo computation.
+            calc_nid = graph.add_calculation_node(
+                label=spc.label,
+                job_name='arkane_thermo',
+                job_type='statmech_thermo',
+                job_adapter=self.thermo_adapter,
+                status='done',
+            )
+            graph.add_edge(spc_nid, calc_nid, EdgeType.belongs_to)
+            # Link from convergence gate if it exists.
+            conv_nodes = graph.query(decision_kind=DecisionKind.convergence_confirmed, label=spc.label)
+            for conv_node in conv_nodes:
+                graph.add_edge(conv_node.node_id, calc_nid, EdgeType.triggered_by)
             thermo_nid = graph.add_data_node(
                 label=spc.label,
                 data_kind='thermo',
                 value=f'H298={spc.thermo.H298:.1f} kJ/mol, S298={spc.thermo.S298:.1f} J/mol/K',
             )
-            graph.add_edge(spc_nid, thermo_nid, EdgeType.output_of)
+            graph.add_edge(calc_nid, thermo_nid, EdgeType.output_of)
         for rxn in self.scheduler.rxn_list:
             if rxn.kinetics is None:
                 continue
             ts_nid = graph.find_species_node(rxn.ts_label)
             if ts_nid is None:
                 continue
+            # Insert a CalculationNode for the Arkane kinetics computation.
+            calc_nid = graph.add_calculation_node(
+                label=rxn.ts_label,
+                job_name='arkane_kinetics',
+                job_type='statmech_kinetics',
+                job_adapter=self.kinetics_adapter,
+                status='done',
+            )
+            graph.add_edge(ts_nid, calc_nid, EdgeType.belongs_to)
+            # Link from TS convergence gate if it exists.
+            conv_nodes = graph.query(decision_kind=DecisionKind.convergence_confirmed, label=rxn.ts_label)
+            for conv_node in conv_nodes:
+                graph.add_edge(conv_node.node_id, calc_nid, EdgeType.triggered_by)
             ea = rxn.kinetics.get('Ea')
             ea_str = f', Ea={ea[0]:.1f} {ea[1]}' if ea else ''
             kinetics_nid = graph.add_data_node(
@@ -703,7 +736,7 @@ class ARC(object):
                 data_kind='kinetics',
                 value=f'{rxn.label}{ea_str}',
             )
-            graph.add_edge(ts_nid, kinetics_nid, EdgeType.output_of)
+            graph.add_edge(calc_nid, kinetics_nid, EdgeType.output_of)
         graph.save(self.scheduler.graph_path)
 
     def save_project_info_file(self):

@@ -57,9 +57,12 @@ class DecisionKind(str, Enum):
     ts_validation_freq = 'ts_validation_freq'
     ts_validation_nmd = 'ts_validation_nmd'
     ts_validation_irc = 'ts_validation_irc'
+    ts_validation_e0 = 'ts_validation_e0'
+    ts_validation_e_elect = 'ts_validation_e_elect'
     ts_switch = 'ts_switch'
     job_troubleshooting = 'job_troubleshooting'
     ts_method_spawning = 'ts_method_spawning'
+    convergence_confirmed = 'convergence_confirmed'
 
 
 class EdgeType(str, Enum):
