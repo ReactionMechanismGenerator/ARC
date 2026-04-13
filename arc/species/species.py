@@ -1540,12 +1540,12 @@ class ARCSpecies(object):
             self.ts_report += ':\n'
             if self.successful_methods:
                 self.ts_report += 'Methods that successfully generated a TS guess:\n'
-                for successful_method in self.successful_methods:
-                    self.ts_report += successful_method + ','
+                unique_successful_methods = list(dict.fromkeys(self.successful_methods))
+                self.ts_report += ','.join(unique_successful_methods)
             if self.unsuccessful_methods:
-                self.ts_report += '\nMethods that were unsuccessfully in generating a TS guess:\n'
-                for unsuccessful_method in self.unsuccessful_methods:
-                    self.ts_report += unsuccessful_method + ','
+                self.ts_report += '\nMethods that were unsuccessful in generating a TS guess:\n'
+                unique_unsuccessful_methods = list(dict.fromkeys(self.unsuccessful_methods))
+                self.ts_report += ','.join(unique_unsuccessful_methods)
             if not self.ts_guesses_exhausted:
                 self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
                                   f'optimization: {self.chosen_ts_method}\n'
@@ -1553,6 +1553,11 @@ class ARCSpecies(object):
     def cluster_tsgs(self):
         """
         Cluster TSGuesses.
+
+        Returns:
+            Optional[dict]: ``None`` if this species is not a TS or has no TS guesses.
+            Otherwise a summary dict with keys ``n_before``, ``n_after``, and
+            ``merged`` (list of lists of merged indices).
         """
         if not self.is_ts or not len(self.ts_guesses):
             return None
@@ -1574,6 +1579,9 @@ class ARCSpecies(object):
         if len(cluster_tsgs) < n_before:
             logger.info(f'Clustered {n_before} TS guesses for {self.label} '
                         f'into {len(cluster_tsgs)} unique conformers.')
+        return {'n_before': n_before,
+                'n_after': len(cluster_tsgs),
+                'merged': [tsg.cluster for tsg in cluster_tsgs if len(tsg.cluster) > 1]}
 
     def process_completed_tsg_queue_jobs(self, path: str):
         """
