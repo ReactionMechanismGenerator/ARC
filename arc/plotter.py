@@ -243,9 +243,10 @@ def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz
         batch_edges_added.add(edge_key)
         etype = edge.edge_type
         style_attrs = _edge_styles.get(etype, {})
-        # Only show labels on semantically interesting edges; suppress belongs_to,
-        # input_of, output_of (structural), and fine_of (indicated on the node instead).
-        label = etype.replace('_', ' ') if etype not in ('belongs_to', 'input_of', 'output_of', 'fine_of') else ''
+        # Only show labels on semantically interesting edges; suppress purely structural ones.
+        _suppress = ('belongs_to', 'input_of', 'output_of', 'retried_as')
+        _rename = {'fine_of': 'fine grid', 'troubleshot_by': 'troubleshoot'}
+        label = _rename.get(etype, etype.replace('_', ' ')) if etype not in _suppress else ''
         gv.edge(src, tgt, label=label, **style_attrs)
 
     return gv
