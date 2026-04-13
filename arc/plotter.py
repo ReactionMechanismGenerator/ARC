@@ -120,7 +120,10 @@ def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz
         'ts_validation_freq': 'lightyellow',
         'ts_validation_nmd': 'lightyellow',
         'ts_validation_irc': 'lightyellow',
+        'ts_validation_e0': 'lightyellow',
+        'ts_validation_e_elect': 'lightyellow',
         'ts_switch': 'mistyrose',
+        'convergence_confirmed': 'palegreen',
     }
 
     # Edge styling lookup
@@ -235,8 +238,10 @@ def render_provenance_graph(prov_graph, run_label: str = 'ARC run') -> 'graphviz
         batch_edges_added.add(edge_key)
         etype = edge.edge_type
         style_attrs = _edge_styles.get(etype, {})
-        # Only show labels on semantically interesting edges (not belongs_to, input_of, output_of).
-        label = etype.replace('_', ' ') if etype not in ('belongs_to', 'input_of', 'output_of') else ''
+        # Only show labels on semantically interesting edges; suppress purely structural ones.
+        _suppress = ('belongs_to', 'input_of', 'output_of', 'retried_as')
+        _rename = {'fine_of': 'fine grid', 'troubleshot_by': 'troubleshoot'}
+        label = _rename.get(etype, etype.replace('_', ' ')) if etype not in _suppress else ''
         gv.edge(src, tgt, label=label, **style_attrs)
 
     return gv

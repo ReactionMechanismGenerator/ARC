@@ -1408,8 +1408,9 @@ class Scheduler(object):
             label (str): The TS species label.
         """
         cluster_summary = self.species_dict[label].cluster_tsgs()
+        cluster_nid = None
         if cluster_summary is not None and cluster_summary['n_before'] > cluster_summary['n_after']:
-            self.graph.add_decision_node(
+            cluster_nid = self.graph.add_decision_node(
                 label=label,
                 decision_kind=DecisionKind.ts_guess_clustering,
                 criteria={'n_before': cluster_summary['n_before'],
@@ -1417,6 +1418,10 @@ class Scheduler(object):
                           'merged': cluster_summary['merged']},
                 outcome=f'Clustered {cluster_summary["n_before"]} into {cluster_summary["n_after"]} unique guesses',
             )
+            # Connect species → clustering decision.
+            spc_nid = self.graph.find_species_node(label)
+            if spc_nid is not None:
+                self.graph.add_edge(spc_nid, cluster_nid, EdgeType.triggered_by)
         plotter.save_conformers_file(
             project_directory=self.project_directory,
             label=label,
@@ -1903,7 +1908,7 @@ class Scheduler(object):
                                          )
                             spawned_methods.append(method)
                             tsg_index += 1
-                    # ── Graph: record TS method spawning decision ──
+                    # ── Graph: record TS method spawning decision and connect to tsg calc nodes ──
                     if spawned_methods:
                         dec_nid = self.graph.add_decision_node(
                             label=rxn.ts_label,
@@ -1916,6 +1921,11 @@ class Scheduler(object):
                         spc_nid = self.graph.find_species_node(rxn.ts_label)
                         if spc_nid is not None:
                             self.graph.add_edge(spc_nid, dec_nid, EdgeType.triggered_by)
+                        # Connect spawning decision → each tsg calc node.
+                        for i in range(tsg_index):
+                            tsg_calc_nid = self.graph.find_calc_node(rxn.ts_label, f'tsg{i}')
+                            if tsg_calc_nid is not None:
+                                self.graph.add_edge(dec_nid, tsg_calc_nid, EdgeType.spawned_by)
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
                     rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])
@@ -2496,7 +2506,7 @@ class Scheduler(object):
         """
         cluster_summary = self.species_dict[label].cluster_tsgs()
         if cluster_summary is not None and cluster_summary['n_before'] > cluster_summary['n_after']:
-            self.graph.add_decision_node(
+            cluster_nid = self.graph.add_decision_node(
                 label=label,
                 decision_kind=DecisionKind.ts_guess_clustering,
                 criteria={'n_before': cluster_summary['n_before'],
@@ -2504,6 +2514,9 @@ class Scheduler(object):
                           'merged': cluster_summary['merged']},
                 outcome=f'Clustered {cluster_summary["n_before"]} into {cluster_summary["n_after"]} unique guesses',
             )
+            spc_nid = self.graph.find_species_node(label)
+            if spc_nid is not None:
+                self.graph.add_edge(spc_nid, cluster_nid, EdgeType.triggered_by)
         if not self.species_dict[label].is_ts:
             raise SchedulerError('determine_most_likely_ts_conformer() method only processes transition state guesses.')
         if not self.species_dict[label].successful_methods:
@@ -2553,11 +2566,14 @@ class Scheduler(object):
                                              label=label,
                                              is_ts=True,
                                              )
-                self.graph.add_decision_node(
+                fail_nid = self.graph.add_decision_node(
                     label=label,
                     decision_kind=DecisionKind.ts_guess_selection_failed,
                     outcome='No viable TS guess found',
                 )
+                spc_nid = self.graph.find_species_node(label)
+                if spc_nid is not None:
+                    self.graph.add_edge(spc_nid, fail_nid, EdgeType.triggered_by)
                 return None
             else:
                 rxn_txt = '' if self.species_dict[label].rxn_label is None \
@@ -2584,12 +2600,20 @@ class Scheduler(object):
                                                  method=tsg.method,
                                                  energy=tsg.energy,
                                                  )
-                    self.graph.add_decision_node(
+                    sel_nid = self.graph.add_decision_node(
                         label=label,
                         decision_kind=DecisionKind.ts_guess_selection,
                         criteria={'selected_index': selected_i, 'energy': tsg.energy},
                         outcome=f'Selected TSGuess #{selected_i} via {tsg.method}',
                     )
+                    # Connect: conf_opt → selected_by → selection decision.
+                    conf_opt_nid = self.graph.find_calc_node(label, f'conf_opt{selected_i}')
+                    if conf_opt_nid is not None:
+                        self.graph.add_edge(conf_opt_nid, sel_nid, EdgeType.selected_by)
+                    # Connect: selection → species (so subsequent opt flows from it).
+                    spc_nid = self.graph.find_species_node(label)
+                    if spc_nid is not None:
+                        self.graph.add_edge(sel_nid, spc_nid, EdgeType.output_of)
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
@@ -2888,13 +2912,26 @@ class Scheduler(object):
                                     f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                     f'Searching for a better TS conformer...')
                         # ── Graph: record NMD validation failure ──
-                        self.graph.add_decision_node(
+                        nmd_fail_nid = self.graph.add_decision_node(
                             label=label,
                             decision_kind=DecisionKind.ts_validation_nmd,
                             outcome='Failed: normal mode displacement check',
                         )
-                        self.switch_ts(label)
+                        freq_calc_nid = self.graph.find_calc_node(label, job.job_name)
+                        if freq_calc_nid is not None:
+                            self.graph.add_edge(freq_calc_nid, nmd_fail_nid, EdgeType.output_of)
+                        self.switch_ts(label, triggered_by_nid=nmd_fail_nid)
                         switch_ts = True
+                    elif self.species_dict[label].ts_checks['NMD'] is True:
+                        # ── Graph: record NMD validation pass ──
+                        nmd_pass_nid = self.graph.add_decision_node(
+                            label=label,
+                            decision_kind=DecisionKind.ts_validation_nmd,
+                            outcome='Passed: normal mode displacement check',
+                        )
+                        freq_calc_nid = self.graph.find_calc_node(label, job.job_name)
+                        if freq_calc_nid is not None:
+                            self.graph.add_edge(freq_calc_nid, nmd_pass_nid, EdgeType.output_of)
                 if wrong_freq_message in self.output[label]['warnings']:
                     self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(wrong_freq_message))
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
@@ -2961,24 +2998,30 @@ class Scheduler(object):
                                 f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                 f'Searching for a better TS conformer...')
                 # ── Graph: record TS freq validation failure ──
-                self.graph.add_decision_node(
+                freq_fail_nid = self.graph.add_decision_node(
                     label=label,
                     decision_kind=DecisionKind.ts_validation_freq,
                     criteria={'neg_freqs': [float(f) for f in neg_freqs],
                               'expected': 1},
                     outcome=f'Failed: {len(neg_freqs)} imaginary freqs, switching TS',
                 )
-                self.switch_ts(label=label)
+                freq_calc_nid = self.graph.find_calc_node(label, job.job_name)
+                if freq_calc_nid is not None:
+                    self.graph.add_edge(freq_calc_nid, freq_fail_nid, EdgeType.output_of)
+                self.switch_ts(label=label, triggered_by_nid=freq_fail_nid)
                 return False
             else:
                 logger.info(f'TS {label} has exactly one imaginary frequency: {neg_freqs[0]}')
                 # ── Graph: record TS freq validation pass ──
-                self.graph.add_decision_node(
+                freq_pass_nid = self.graph.add_decision_node(
                     label=label,
                     decision_kind=DecisionKind.ts_validation_freq,
                     criteria={'neg_freqs': [float(neg_freqs[0])]},
                     outcome='Passed: exactly 1 imaginary frequency',
                 )
+                freq_calc_nid = self.graph.find_calc_node(label, job.job_name)
+                if freq_calc_nid is not None:
+                    self.graph.add_edge(freq_calc_nid, freq_pass_nid, EdgeType.output_of)
                 self.output[label]['info'] += f'Imaginary frequency: {neg_freqs[0] if len(neg_freqs) == 1 else neg_freqs}; '
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
@@ -3030,7 +3073,13 @@ class Scheduler(object):
                 if rxn.ts_species.ts_checks['E0'] is False:
                     logger.info(f'TS {rxn.ts_species.label} of reaction {rxn.label} did not pass the E0 check.\n'
                                 f'Searching for a better TS conformer...\n')
-                    self.switch_ts(rxn.ts_label)
+                    # ── Graph: record E0 validation failure ──
+                    e0_fail_nid = self.graph.add_decision_node(
+                        label=rxn.ts_label,
+                        decision_kind=DecisionKind.ts_validation_e0,
+                        outcome=f'Failed: TS E0 not above both wells for {rxn.label}',
+                    )
+                    self.switch_ts(rxn.ts_label, triggered_by_nid=e0_fail_nid)
                     if self.species_dict[rxn.ts_label].ts_guesses_exhausted \
                             or self.species_dict[rxn.ts_label].chosen_ts is None:
                         logger.warning(f'Could not find a valid TS conformer for {rxn.ts_label} '
@@ -3039,20 +3088,41 @@ class Scheduler(object):
                         # Restore E0 failure flag — switch_ts resets ts_checks via populate_ts_checks().
                         # check_all_done reads this to avoid overwriting convergence back to True.
                         self.species_dict[rxn.ts_label].ts_checks['E0'] = False
+                elif rxn.ts_species.ts_checks['E0'] is True:
+                    # ── Graph: record E0 validation pass ──
+                    self.graph.add_decision_node(
+                        label=rxn.ts_label,
+                        decision_kind=DecisionKind.ts_validation_e0,
+                        outcome=f'Passed: TS E0 above both wells for {rxn.label}',
+                    )
+                # Also record e_elect check if it ran as a fallback.
+                if rxn.ts_species.ts_checks['e_elect'] is True:
+                    self.graph.add_decision_node(
+                        label=rxn.ts_label,
+                        decision_kind=DecisionKind.ts_validation_e_elect,
+                        outcome=f'Passed: TS e_elect above both wells for {rxn.label}',
+                    )
+                elif rxn.ts_species.ts_checks['e_elect'] is False:
+                    self.graph.add_decision_node(
+                        label=rxn.ts_label,
+                        decision_kind=DecisionKind.ts_validation_e_elect,
+                        outcome=f'Warning: TS e_elect not above both wells for {rxn.label}',
+                    )
 
-    def switch_ts(self, label: str):
+    def switch_ts(self, label: str, triggered_by_nid: Optional[str] = None):
         """
         Try the next optimized TS guess in line if a previous TS guess was found to be wrong.
 
         Args:
             label (str): The TS species label.
+            triggered_by_nid (str, optional): Node ID of the validation decision that triggered this switch.
         """
         logger.info(f'Switching a TS guess for {label}...')
         old_chosen = self.species_dict[label].chosen_ts
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
         new_chosen = self.species_dict[label].chosen_ts
         # ── Graph: record TS switch decision ──
-        self.graph.add_decision_node(
+        switch_nid = self.graph.add_decision_node(
             label=label,
             decision_kind=DecisionKind.ts_switch,
             criteria={'old_chosen': old_chosen, 'new_chosen': new_chosen,
@@ -3060,6 +3130,8 @@ class Scheduler(object):
             outcome=f'Switched from TSG #{old_chosen} to #{new_chosen}'
             if new_chosen is not None else 'All TS guesses exhausted',
         )
+        if triggered_by_nid is not None:
+            self.graph.add_edge(triggered_by_nid, switch_nid, EdgeType.triggered_by)
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
@@ -3239,17 +3311,25 @@ class Scheduler(object):
         if len(self.output[ts_label]['paths']['irc']) == 2:
             irc_species_labels = self.species_dict[ts_label].irc_label.split()
             if all(self.output[irc_label]['paths']['geo'] for irc_label in irc_species_labels):
+                rxn = self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None)
                 check_irc_species_and_rxn(
                     xyz_1=self.output[irc_species_labels[0]]['paths']['geo'],
                     xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
-                    rxn=self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None),
+                    rxn=rxn,
                 )
-                # ── Graph: record IRC validation decision ──
+                # ── Graph: record IRC validation decision with actual outcome ──
+                irc_result = rxn.ts_species.ts_checks['IRC'] if rxn is not None else None
+                if irc_result is True:
+                    irc_outcome = 'Passed: IRC endpoints match expected R/P'
+                elif irc_result is False:
+                    irc_outcome = 'Failed: IRC endpoints do not match expected R/P'
+                else:
+                    irc_outcome = 'Inconclusive: could not determine IRC match'
                 self.graph.add_decision_node(
                     label=ts_label,
                     decision_kind=DecisionKind.ts_validation_irc,
-                    criteria={'irc_species': irc_species_labels},
-                    outcome='IRC validation completed',
+                    criteria={'irc_species': irc_species_labels, 'result': irc_result},
+                    outcome=irc_outcome,
                 )
 
     def check_scan_job(self,
@@ -3512,7 +3592,18 @@ class Scheduler(object):
                 logger.debug(f'Species {label} did not converge due to missing output paths.')
                 all_converged = False
         if label in self.output and all_converged:
+            already_converged = self.output[label]['convergence']
             self.output[label]['convergence'] = True
+            # ── Graph: record convergence gate (only once per species) ──
+            if not already_converged:
+                conv_nid = self.graph.add_decision_node(
+                    label=label,
+                    decision_kind=DecisionKind.convergence_confirmed,
+                    outcome='All required calculations converged',
+                )
+                spc_nid = self.graph.find_species_node(label)
+                if spc_nid is not None:
+                    self.graph.add_edge(spc_nid, conv_nid, EdgeType.output_of)
             if self.species_dict[label].is_ts:
                 self.species_dict[label].make_ts_report()
                 logger.info(self.species_dict[label].ts_report + '\n')

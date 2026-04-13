@@ -33,7 +33,9 @@ class TestEnums(unittest.TestCase):
     def test_decision_kind_values(self):
         expected = {'conformer_selection', 'ts_guess_clustering', 'ts_guess_selection',
                     'ts_guess_selection_failed', 'ts_validation_freq', 'ts_validation_nmd',
-                    'ts_validation_irc', 'ts_switch', 'job_troubleshooting', 'ts_method_spawning'}
+                    'ts_validation_irc', 'ts_validation_e0', 'ts_validation_e_elect',
+                    'ts_switch', 'job_troubleshooting', 'ts_method_spawning',
+                    'convergence_confirmed'}
         actual = {dk.value for dk in DecisionKind}
         self.assertEqual(expected, actual)
 
