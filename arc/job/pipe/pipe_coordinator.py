@@ -172,6 +172,7 @@ class PipeCoordinator:
                 pipe.status = PipeRunState.SUBMITTED
                 pipe.submitted_at = time.time()
                 pipe._save_run_metadata()
+                self.sched.server_job_ids.append(job_id)
                 logger.info(f'Pipe run {run_id} submitted as job {job_id}.')
             else:
                 logger.warning(f'Pipe run {run_id}: submission returned status={job_status}. '
@@ -234,6 +235,7 @@ class PipeCoordinator:
                         pipe.submitted_at = time.time()
                         pipe._needs_resubmission = False
                         pipe._save_run_metadata()
+                        self.sched.server_job_ids.append(job_id)
                         logger.info(f'Pipe run {run_id}: resubmitted as job {job_id}.')
                     else:
                         pipe._needs_resubmission = False
