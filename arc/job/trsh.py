@@ -1019,9 +1019,8 @@ def trsh_ess_job(label: str,
 
     elif 'orca' in software:
         if 'dlpno' in level_of_theory.method and (is_monoatomic or is_h):
-            logger.error(f'DLPNO methods are incompatible with monoatomic species {label} in Orca '
-                         f'(no electron pairs to correlate). Cannot troubleshoot.')
-            couldnt_trsh = True
+            raise TrshError(f'DLPNO methods are incompatible with monoatomic species {label} in Orca. '
+                            f'This should have been caught by the Scheduler before job submission.')
         elif 'Memory' in job_status['keywords']:
             # Increase memory allocation.
             # job_status will be for example

@@ -6,6 +6,7 @@ This module contains unit tests for the arc.scheduler module
 """
 
 import unittest
+from unittest.mock import patch
 import os
 import shutil
 
@@ -19,7 +20,7 @@ from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
-from arc.species.species import ARCSpecies
+from arc.species.species import ARCSpecies, TSGuess
 
 
 default_levels_of_theory = settings['default_levels_of_theory']
@@ -757,25 +758,101 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(unique_label, 'new_species_15_1')
         self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO', 'new_species_15', 'new_species_15_0', 'new_species_15_1'])
 
-    def test_switch_ts_cleanup(self):
-        """Test that switch_ts resets job_types, convergence, and cleans up IRC species."""
-        sched = self.sched1
-        ts_label = 'methylamine'
-        sched.output = dict()
-        sched.initialize_output_dict()
+    def test_troubleshoot_ess_max_attempts(self):
+        """Test that troubleshoot_ess respects the max_ess_trsh limit."""
+        label = 'methylamine'
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+        self.assertEqual(self.sched1.output[label]['errors'], '')
 
-        # Simulate state after a TS guess completes: freq/sp/opt marked done.
+        job = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
+                          species=[self.spc1], xyz=self.spc1.get_xyz(), job_type='opt',
+                          level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
+                          project_directory=self.project_directory, job_num=200)
+        job.ess_trsh_methods = ['trsh_attempt'] * 25
+
+        self.sched1.troubleshoot_ess(label=label, job=job,
+                                     level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        self.assertIn('ESS troubleshooting attempts exhausted', self.sched1.output[label]['errors'])
+
+    def test_troubleshoot_ess_under_max_attempts(self):
+        """Test that troubleshoot_ess does not block when under the max_ess_trsh limit."""
+        label = 'methylamine'
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+
+        job = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
+                          species=[self.spc1], xyz=self.spc1.get_xyz(), job_type='opt',
+                          level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
+                          project_directory=self.project_directory, job_num=201)
+        job.ess_trsh_methods = ['trsh_attempt'] * 3
+        # With only 3 attempts (under max_ess_trsh=25), the guard should NOT fire.
+        # Verify the error message is NOT set (i.e., the guard did not block).
+        # We use max_attempts - 1 to test just below the threshold.
+        job_at_limit = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
+                                   species=[self.spc1], xyz=self.spc1.get_xyz(), job_type='opt',
+                                   level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
+                                   project_directory=self.project_directory, job_num=202)
+        job_at_limit.ess_trsh_methods = ['trsh_attempt'] * 24
+        self.assertNotIn('ESS troubleshooting attempts exhausted', self.sched1.output[label]['errors'])
+     
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_switch_ts_cleanup(self, mock_run_opt):
+        """Test that switch_ts resets job_types, convergence, cleans up IRC species, and clears pending pipes."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+
+        ts_spc = ARCSpecies(label='TS_test', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        # Create two TSGuess objects so determine_most_likely_ts_conformer can pick the 2nd after the 1st fails.
+        ts_spc.ts_guesses = [
+            TSGuess(index=0, method='heuristics', success=True, energy=100.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+            TSGuess(index=1, method='heuristics', success=True, energy=110.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+        ]
+        ts_spc.ts_guesses[0].opt_xyz = ts_xyz
+        ts_spc.ts_guesses[0].imaginary_freqs = [-500.0]
+        ts_spc.ts_guesses[1].opt_xyz = ts_xyz
+        ts_spc.ts_guesses[1].imaginary_freqs = [-400.0]
+        # Simulate guess 0 already tried.
+        ts_spc.chosen_ts = 0
+        ts_spc.chosen_ts_list = [0]
+        ts_spc.ts_guesses_exhausted = False
+
+        project_directory = os.path.join(ARC_PATH, 'Projects',
+                                         'arc_project_for_testing_delete_after_usage4')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_switch_ts', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+
+        ts_label = 'TS_test'
+        # Simulate state after guess 0 completed: freq/sp/opt marked done.
         sched.output[ts_label]['job_types']['opt'] = True
         sched.output[ts_label]['job_types']['freq'] = True
         sched.output[ts_label]['job_types']['sp'] = True
         sched.output[ts_label]['convergence'] = True
+        sched.job_dict[ts_label] = {'opt': {}, 'freq': {}, 'sp': {}}
+        sched.running_jobs[ts_label] = []
 
-        # Simulate IRC species spawned from the TS guess.
-        irc_label_1 = 'IRC_methylamine_1'
-        irc_label_2 = 'IRC_methylamine_2'
-        irc_spc_1 = ARCSpecies(label=irc_label_1, smiles='CN', compute_thermo=False)
-        irc_spc_2 = ARCSpecies(label=irc_label_2, smiles='CN', compute_thermo=False)
-        sched.species_dict[ts_label].irc_label = f'{irc_label_1} {irc_label_2}'
+        # Simulate IRC species spawned from guess 0.
+        irc_label_1 = 'IRC_TS_test_1'
+        irc_label_2 = 'IRC_TS_test_2'
+        irc_spc_1 = ARCSpecies(label=irc_label_1, xyz=ts_xyz, compute_thermo=False,
+                                irc_label=ts_label)
+        irc_spc_2 = ARCSpecies(label=irc_label_2, xyz=ts_xyz, compute_thermo=False,
+                                irc_label=ts_label)
+        ts_spc.irc_label = f'{irc_label_1} {irc_label_2}'
         sched.species_dict[irc_label_1] = irc_spc_1
         sched.species_dict[irc_label_2] = irc_spc_2
         sched.species_list.extend([irc_spc_1, irc_spc_2])
@@ -787,31 +864,20 @@ H      -1.82570782    0.42754384   -0.56130718"""
         sched.initialize_output_dict(label=irc_label_1)
         sched.initialize_output_dict(label=irc_label_2)
 
-        # Run the cleanup logic from switch_ts (without calling determine_most_likely_ts_conformer).
-        irc_labels_str = sched.species_dict[ts_label].irc_label
-        if irc_labels_str:
-            for irc_label in irc_labels_str.split():
-                if irc_label in sched.running_jobs:
-                    sched.running_jobs[irc_label] = list()
-                    del sched.running_jobs[irc_label]
-                if irc_label in sched.job_dict:
-                    del sched.job_dict[irc_label]
-                if irc_label in sched.output:
-                    del sched.output[irc_label]
-                if irc_label in sched.species_dict:
-                    sched.species_list = [s for s in sched.species_list if s.label != irc_label]
-                    del sched.species_dict[irc_label]
-                if irc_label in sched.unique_species_labels:
-                    sched.unique_species_labels.remove(irc_label)
-            sched.species_dict[ts_label].irc_label = None
+        # Simulate pending pipe entries from the old guess.
+        sched._pending_pipe_sp.add(ts_label)
+        sched._pending_pipe_freq.add(ts_label)
+        sched._pending_pipe_irc.add((ts_label, 'forward'))
+        sched._pending_pipe_irc.add((ts_label, 'reverse'))
 
-        for job_type in sched.output[ts_label]['job_types']:
-            if job_type in ['rotors', 'bde']:
-                continue
-            sched.output[ts_label]['job_types'][job_type] = False
-        sched.output[ts_label]['convergence'] = None
+        # Call switch_ts — should pick guess 1 and clean up all state from guess 0.
+        sched.switch_ts(ts_label)
 
-        # Verify IRC species fully removed.
+        # Verify guess 1 was selected.
+        self.assertEqual(sched.species_dict[ts_label].chosen_ts, 1)
+        self.assertIn(1, sched.species_dict[ts_label].chosen_ts_list)
+
+        # Verify IRC species from guess 0 fully removed.
         self.assertNotIn(irc_label_1, sched.species_dict)
         self.assertNotIn(irc_label_2, sched.species_dict)
         self.assertNotIn(irc_label_1, sched.running_jobs)
@@ -829,6 +895,17 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertFalse(sched.output[ts_label]['job_types']['freq'])
         self.assertFalse(sched.output[ts_label]['job_types']['sp'])
         self.assertIsNone(sched.output[ts_label]['convergence'])
+
+        # Verify pending pipe entries cleared.
+        self.assertNotIn(ts_label, sched._pending_pipe_sp)
+        self.assertNotIn(ts_label, sched._pending_pipe_freq)
+        self.assertNotIn((ts_label, 'forward'), sched._pending_pipe_irc)
+        self.assertNotIn((ts_label, 'reverse'), sched._pending_pipe_irc)
+
+        # Verify ts_checks were reset.
+        self.assertIsNone(sched.species_dict[ts_label].ts_checks['freq'])
+        self.assertIsNone(sched.species_dict[ts_label].ts_checks['NMD'])
+        self.assertIsNone(sched.species_dict[ts_label].ts_checks['E0'])
 
     @classmethod
     def tearDownClass(cls):

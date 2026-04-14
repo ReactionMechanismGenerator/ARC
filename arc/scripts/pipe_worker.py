@@ -86,7 +86,7 @@ def claim_task(pipe_root: str, worker_id: str):
                                         claimed_by=worker_id,
                                         claim_token=token,
                                         claimed_at=now,
-                                        lease_expires_at=now + pipe_settings.get('lease_duration_s', 86400))
+                                        lease_expires_at=now + pipe_settings.get('lease_duration_hrs', 24) * 3600)
             logger.info(f'Claimed task {task_id}')
             return task_id, updated, token
         except (ValueError, TimeoutError):

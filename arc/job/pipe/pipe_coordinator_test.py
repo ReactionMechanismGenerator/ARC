@@ -30,7 +30,7 @@ def setUpModule():
     """Enable pipe mode for all tests in this module."""
     global _pipe_patches
     pipe_vals = {'enabled': True, 'min_tasks': 10, 'max_workers': 100,
-                 'max_attempts': 3, 'lease_duration_s': 86400}
+                 'max_attempts': 3, 'lease_duration_hrs': 24}
     p = patch.dict('arc.job.pipe.pipe_coordinator.pipe_settings', pipe_vals)
     p.start()
     _pipe_patches.append(p)

@@ -67,9 +67,9 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
-    default_job_types, default_ts_adapters, max_rotor_trsh, rotor_scan_resolution, servers_dict = \
+    default_job_types, default_ts_adapters, max_ess_trsh, max_rotor_trsh, rotor_scan_resolution, servers_dict = \
     settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], \
-    settings['default_job_types'], settings['ts_adapters'], settings['max_rotor_trsh'], \
+    settings['default_job_types'], settings['ts_adapters'], settings['max_ess_trsh'], settings['max_rotor_trsh'], \
     settings['rotor_scan_resolution'], settings['servers']
 
 
@@ -1446,14 +1446,14 @@ class Scheduler(object):
                 return
         if self.species_dict[label].is_monoatomic() and 'dlpno' in level.method:
             species = self.species_dict[label]
-            if species.number_of_atoms == 1 and species.mol.atoms[0].element.symbol in ('H', 'D', 'T'):
-                logger.warning(f'Using HF/{level.basis} for {label} (single electron, no correlation).')
-                level = Level(method='hf', basis=level.basis, software=level.software)
+            if species.mol.atoms[0].element.symbol in ('H', 'D', 'T'):
+                logger.info(f'Using HF/{level.basis} for {label} (single electron, no correlation).')
+                level = Level(method='hf', basis=level.basis, software=level.software, args=level.args)
             else:
                 canonical_method = level.method.replace('dlpno-', '')
-                logger.warning(f'DLPNO methods are incompatible with monoatomic species {label}. '
-                               f'Using {canonical_method}/{level.basis} instead.')
-                level = Level(method=canonical_method, basis=level.basis, software=level.software)
+                logger.info(f'DLPNO methods are incompatible with monoatomic species {label}. '
+                            f'Using {canonical_method}/{level.basis} instead.')
+                level = Level(method=canonical_method, basis=level.basis, software=level.software, args=level.args)
         if self.job_types['sp']:
             if self.species_dict[label].multi_species:
                 if self.output_multi_spc[self.species_dict[label].multi_species].get('sp', False):
@@ -2769,35 +2769,6 @@ class Scheduler(object):
         logger.info(f'Switching a TS guess for {label}...')
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
-        # Clean up IRC species spawned from the invalidated TS guess.
-        irc_labels_str = self.species_dict[label].irc_label
-        if irc_labels_str:
-            for irc_label in irc_labels_str.split():
-                if irc_label in self.running_jobs:
-                    self.delete_all_species_jobs(irc_label)
-                    del self.running_jobs[irc_label]
-                if irc_label in self.job_dict:
-                    del self.job_dict[irc_label]
-                if irc_label in self.output:
-                    del self.output[irc_label]
-                if irc_label in self.species_dict:
-                    self.species_list = [spc for spc in self.species_list if spc.label != irc_label]
-                    del self.species_dict[irc_label]
-                if irc_label in self.unique_species_labels:
-                    self.unique_species_labels.remove(irc_label)
-                logger.info(f'Deleted IRC species {irc_label} from invalidated TS guess.')
-            self.species_dict[label].irc_label = None
-        # Reset job_types so the new guess's pipeline runs from scratch.
-        for job_type in self.output[label]['job_types']:
-            if job_type in ['rotors', 'bde']:
-                continue
-            self.output[label]['job_types'][job_type] = False
-        self.output[label]['convergence'] = None
-        # Discard any pending pipe jobs queued for the OLD guess geometry.
-        self._pending_pipe_sp.discard(label)
-        self._pending_pipe_freq.discard(label)
-        self._pending_pipe_irc.discard((label, 'forward'))
-        self._pending_pipe_irc.discard((label, 'reverse'))
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
             os.remove(freq_path)
@@ -3589,7 +3560,14 @@ class Scheduler(object):
                                f'log file:\n"{job.job_status[1]["line"]}".'
         logger.warning(warning_message)
         if self.species_dict[label].is_ts and conformer is not None:
-            xyz = self.species_dict[label].ts_guesses[conformer].get_xyz()
+            tsg = next((t for t in self.species_dict[label].ts_guesses
+                        if t.conformer_index == conformer), None)
+            if tsg is not None:
+                xyz = tsg.get_xyz()
+            else:
+                logger.warning(f'Could not find TS guess with index {conformer} for {label}; '
+                               f'skipping troubleshooting for this conformer.')
+                return None
         elif conformer is not None:
             xyz = self.species_dict[label].conformers[conformer]
         else:
@@ -3603,6 +3581,15 @@ class Scheduler(object):
         if job.job_adapter == 'gaussian':
             if self.species_dict[label].checkfile is None:
                 self.species_dict[label].checkfile = job.checkfile
+        # Guard against infinite troubleshooting loops.
+        trsh_attempts = job.ess_trsh_methods.count('trsh_attempt')
+        if trsh_attempts >= max_ess_trsh:
+            logger.info(f'Could not troubleshoot {job.job_type} for {label}. '
+                        f'Reached max troubleshooting attempts ({max_ess_trsh}).')
+            self.output[label]['errors'] += f'Error: ESS troubleshooting attempts exhausted for {label} {job.job_type}; '
+            return
+        job.ess_trsh_methods.append('trsh_attempt')
+
         # Determine if the species is a hydrogen atom (or its isotope).
         is_h = self.species_dict[label].number_of_atoms == 1 and \
             self.species_dict[label].mol.atoms[0].element.symbol in ['H', 'D', 'T']
@@ -3614,7 +3601,7 @@ class Scheduler(object):
                          server=job.server,
                          job_status=job.job_status[1],
                          is_h=is_h,
-                         is_monoatomic=bool(self.species_dict[label].is_monoatomic()),
+                         is_monoatomic=self.species_dict[label].is_monoatomic(),
                          job_type=job.job_type,
                          num_heavy_atoms=self.species_dict[label].number_of_heavy_atoms,
                          software=job.job_adapter,
@@ -3740,6 +3727,33 @@ class Scheduler(object):
                     job.delete()
         self.running_jobs[label] = list()
         self.output[label]['paths'] = {key: '' if key != 'irc' else list() for key in self.output[label]['paths'].keys()}
+        for job_type in self.output[label]['job_types']:
+            self.output[label]['job_types'][job_type] = False
+        self.output[label]['convergence'] = None
+        self._pending_pipe_sp.discard(label)
+        self._pending_pipe_freq.discard(label)
+        self._pending_pipe_irc.discard((label, 'forward'))
+        self._pending_pipe_irc.discard((label, 'reverse'))
+        # Clean up any IRC species spawned from this TS.
+        if label in self.species_dict and self.species_dict[label].is_ts:
+            irc_labels_str = self.species_dict[label].irc_label
+            if irc_labels_str:
+                for irc_label in irc_labels_str.split():
+                    if irc_label in self.job_dict and irc_label in self.output:
+                        self.delete_all_species_jobs(irc_label)
+                    if irc_label in self.running_jobs:
+                        del self.running_jobs[irc_label]
+                    if irc_label in self.job_dict:
+                        del self.job_dict[irc_label]
+                    if irc_label in self.output:
+                        del self.output[irc_label]
+                    if irc_label in self.species_dict:
+                        self.species_list = [spc for spc in self.species_list if spc.label != irc_label]
+                        del self.species_dict[irc_label]
+                    if irc_label in self.unique_species_labels:
+                        self.unique_species_labels.remove(irc_label)
+                    logger.info(f'Deleted IRC species {irc_label}.')
+                self.species_dict[label].irc_label = None
 
     def restore_running_jobs(self):
         """

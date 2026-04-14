@@ -278,6 +278,7 @@ inconsistency_az = 5    # maximum allowed inconsistency (kJ/mol) between initial
 inconsistency_ab = 0.3  # maximum allowed inconsistency between consecutive points in the scan given as a fraction
                         # of the maximum scan energy. Default: 30%
 max_rotor_trsh = 4      # maximum number of times to troubleshoot the same rotor scan
+max_ess_trsh = 25       # maximum number of times to troubleshoot the same ESS job (opt, sp, freq, etc.)
 
 # Thresholds for identifying significant changes in bond distance, bond angle,
 # or torsion angle during a rotor scan. For a TS, only 'bond' and 'torsion' are considered.
@@ -312,7 +313,7 @@ pipe_settings = {
     'min_tasks': 10,           # Minimum batch size to trigger pipe mode.
     'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
     'max_attempts': 3,         # Retry budget per task before terminal failure.
-    'lease_duration_s': 86400, # Worker lease duration in seconds (default 24h).
+    'lease_duration_hrs': 1,   # Worker lease duration in hours (default 1h).
     'env_setup': {},           # Engine-specific shell setup commands, e.g.,
                                # {'gaussian': 'source /usr/local/g09/setup.sh',
                                #  'orca': 'source /usr/local/orca-5.0.4/setup.sh && source /usr/local/openmpi-4.1.1/setup.sh'}
