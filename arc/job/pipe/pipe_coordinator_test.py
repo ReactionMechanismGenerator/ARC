@@ -67,6 +67,7 @@ def _make_mock_sched(project_directory):
     """Create a mock Scheduler with the attributes PipeCoordinator needs."""
     sched = MagicMock()
     sched.project_directory = project_directory
+    sched.server_job_ids = list()
     spc = ARCSpecies(label='H2O', smiles='O')
     spc.conformers = [None] * 5
     spc.conformer_energies = [None] * 5
@@ -157,6 +158,14 @@ class TestSubmitPipeRun(unittest.TestCase):
         pipe = self.coord.submit_pipe_run('run_pbs', tasks, cluster_software='pbs')
         self.assertEqual(pipe.cluster_software, 'pbs')
 
+    def test_submit_adds_job_id_to_server_job_ids(self):
+        """Submitted pipe job ID is added to server_job_ids to prevent stale-snapshot race."""
+        tasks = [_make_spec('t_0')]
+        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '12345[]')):
+            pipe = self.coord.submit_pipe_run('run_ids', tasks)
+        self.assertIn('12345[]', self.coord.sched.server_job_ids)
+        self.assertEqual(pipe.scheduler_job_id, '12345[]')
+
 
 class TestRegisterFromDir(unittest.TestCase):
     """Tests for PipeCoordinator.register_pipe_run_from_dir()."""
@@ -221,6 +230,19 @@ class TestPollPipes(unittest.TestCase):
         self.assertEqual(self.coord._pipe_poll_failures.get('run_flaky'), 1)
         self.coord.poll_pipes()  # succeeds this time
         self.assertNotIn('run_flaky', self.coord._pipe_poll_failures)
+
+    def test_resubmission_adds_job_id_to_server_job_ids(self):
+        """Resubmitted pipe job ID is added to server_job_ids."""
+        pipe = self.coord.submit_pipe_run('run_resub', [_make_spec('t_resub')])
+
+        def fake_reconcile():
+            pipe._needs_resubmission = True
+            return {TaskState.PENDING.value: 1}
+
+        with patch.object(pipe, 'reconcile', side_effect=fake_reconcile), \
+             patch.object(pipe, 'submit_to_scheduler', return_value=('submitted', '77777[]')):
+            self.coord.poll_pipes()
+        self.assertIn('77777[]', self.coord.sched.server_job_ids)
 
 
 class TestIngestPipeResults(unittest.TestCase):
