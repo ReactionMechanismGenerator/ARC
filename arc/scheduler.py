@@ -67,9 +67,9 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
-    default_job_types, default_ts_adapters, max_rotor_trsh, rotor_scan_resolution, servers_dict = \
+    default_job_types, default_ts_adapters, max_ess_trsh, max_rotor_trsh, rotor_scan_resolution, servers_dict = \
     settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], \
-    settings['default_job_types'], settings['ts_adapters'], settings['max_rotor_trsh'], \
+    settings['default_job_types'], settings['ts_adapters'], settings['max_ess_trsh'], settings['max_rotor_trsh'], \
     settings['rotor_scan_resolution'], settings['servers']
 
 
@@ -1444,10 +1444,16 @@ class Scheduler(object):
                              level_of_theory='ccsd/cc-pvdz',
                              job_type='sp')
                 return
-        mol = self.species_dict[label].mol
-        if mol is not None and len(mol.atoms) == 1 and mol.atoms[0].element.symbol == 'H' and 'DLPNO' in level.method:
-            # Run only CCSD for an H atom instead of DLPNO-CCSD(T) / etc.
-            level = Level(repr='ccsd/vtz', software=level.software, args=level.args)
+        if self.species_dict[label].is_monoatomic() and 'dlpno' in level.method:
+            species = self.species_dict[label]
+            if species.mol.atoms[0].element.symbol in ('H', 'D', 'T'):
+                logger.info(f'Using HF/{level.basis} for {label} (single electron, no correlation).')
+                level = Level(method='hf', basis=level.basis, software=level.software, args=level.args)
+            else:
+                canonical_method = level.method.replace('dlpno-', '')
+                logger.info(f'DLPNO methods are incompatible with monoatomic species {label}. '
+                            f'Using {canonical_method}/{level.basis} instead.')
+                level = Level(method=canonical_method, basis=level.basis, software=level.software, args=level.args)
         if self.job_types['sp']:
             if self.species_dict[label].multi_species:
                 if self.output_multi_spc[self.species_dict[label].multi_species].get('sp', False):
@@ -3575,6 +3581,15 @@ class Scheduler(object):
         if job.job_adapter == 'gaussian':
             if self.species_dict[label].checkfile is None:
                 self.species_dict[label].checkfile = job.checkfile
+        # Guard against infinite troubleshooting loops.
+        trsh_attempts = job.ess_trsh_methods.count('trsh_attempt')
+        if trsh_attempts >= max_ess_trsh:
+            logger.info(f'Could not troubleshoot {job.job_type} for {label}. '
+                        f'Reached max troubleshooting attempts ({max_ess_trsh}).')
+            self.output[label]['errors'] += f'Error: ESS troubleshooting attempts exhausted for {label} {job.job_type}; '
+            return
+        job.ess_trsh_methods.append('trsh_attempt')
+
         # Determine if the species is a hydrogen atom (or its isotope).
         is_h = self.species_dict[label].number_of_atoms == 1 and \
             self.species_dict[label].mol.atoms[0].element.symbol in ['H', 'D', 'T']
@@ -3586,6 +3601,7 @@ class Scheduler(object):
                          server=job.server,
                          job_status=job.job_status[1],
                          is_h=is_h,
+                         is_monoatomic=self.species_dict[label].is_monoatomic(),
                          job_type=job.job_type,
                          num_heavy_atoms=self.species_dict[label].number_of_heavy_atoms,
                          software=job.job_adapter,
