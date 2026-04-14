@@ -939,6 +939,7 @@
                  <span class="n">cpu_cores</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                  <span class="n">ess_trsh_methods</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                  <span class="n">is_h</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">is_monoatomic</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Troubleshoot issues related to the electronic structure software, such as convergence.</span>
@@ -957,6 +958,7 @@
 <span class="sd">        cpu_cores (int): The total number of cpu cores requested for a job.</span>
 <span class="sd">        ess_trsh_methods (list): The troubleshooting methods tried for this job.</span>
 <span class="sd">        is_h (bool): Whether the species is a hydrogen atom (or its isotope). e.g., H, D, T.</span>
+<span class="sd">        is_monoatomic (bool): Whether the species is monoatomic (single atom).</span>
 
 <span class="sd">    Todo:</span>
 <span class="sd">        - Change server to one that has the same ESS if running out of disk space.</span>
@@ -1117,7 +1119,10 @@
             <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">True</span>
 
     <span class="k">elif</span> <span class="s1">&#39;orca&#39;</span> <span class="ow">in</span> <span class="n">software</span><span class="p">:</span>
-        <span class="k">if</span> <span class="s1">&#39;Memory&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="s1">&#39;dlpno&#39;</span> <span class="ow">in</span> <span class="n">level_of_theory</span><span class="o">.</span><span class="n">method</span> <span class="ow">and</span> <span class="p">(</span><span class="n">is_monoatomic</span> <span class="ow">or</span> <span class="n">is_h</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">TrshError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;DLPNO methods are incompatible with monoatomic species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> in Orca. &#39;</span>
+                            <span class="sa">f</span><span class="s1">&#39;This should have been caught by the Scheduler before job submission.&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="s1">&#39;Memory&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]:</span>
             <span class="c1"># Increase memory allocation.</span>
             <span class="c1"># job_status will be for example</span>
             <span class="c1"># `Error  (ORCA_SCF): Not enough memory available! Please increase MaxCore to more than: 289 MB`.</span>
@@ -1168,9 +1173,6 @@
             <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Troubleshooting </span><span class="si">{</span><span class="n">job_type</span><span class="si">}</span><span class="s1"> job in </span><span class="si">{</span><span class="n">software</span><span class="si">}</span><span class="s1"> for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> using </span><span class="si">{</span><span class="n">cpu_cores</span><span class="si">}</span><span class="s1"> cpu cores.&#39;</span><span class="p">)</span>
             <span class="k">if</span> <span class="s1">&#39;cpu&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
                 <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;cpu&#39;</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="s1">&#39;dlpno&#39;</span> <span class="ow">in</span> <span class="n">level_of_theory</span><span class="o">.</span><span class="n">method</span> <span class="ow">and</span> <span class="n">is_h</span><span class="p">:</span>
-            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s1">&#39;DLPNO method is not supported for H atom (or its isotope D or T) in Orca.&#39;</span><span class="p">)</span>
-            <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">True</span>
 
