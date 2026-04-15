@@ -2773,6 +2773,11 @@ class Scheduler(object):
         if os.path.isfile(freq_path):
             os.remove(freq_path)
         self.species_dict[label].populate_ts_checks()  # Restart the TS checks dict.
+        if self.job_types['rotors'] and self.species_dict[label].rotors_dict is not None:
+            # Reset rotors so they are re-determined from the new TS geometry.
+            # rotors_dict=None is a sentinel meaning "skip rotor scans"; preserve it.
+            self.species_dict[label].rotors_dict = {}
+            self.species_dict[label].number_of_rotors = 0
         if not self.species_dict[label].ts_guesses_exhausted and self.species_dict[label].chosen_ts is not None:
             logger.info(f'Optimizing species {label} again using a different TS guess: '
                         f'conformer {self.species_dict[label].chosen_ts}')
@@ -3728,7 +3733,13 @@ class Scheduler(object):
         self.running_jobs[label] = list()
         self.output[label]['paths'] = {key: '' if key != 'irc' else list() for key in self.output[label]['paths'].keys()}
         for job_type in self.output[label]['job_types']:
-            self.output[label]['job_types'][job_type] = False
+            # rotors and bde are initialised to True (see initialize_output_dict) because
+            # species with no torsional modes / no BDE targets should not be blocked from
+            # convergence.  Preserve that default when resetting job state.
+            if job_type in ['rotors', 'bde']:
+                self.output[label]['job_types'][job_type] = True
+            else:
+                self.output[label]['job_types'][job_type] = False
         self.output[label]['convergence'] = None
         self._pending_pipe_sp.discard(label)
         self._pending_pipe_freq.discard(label)
