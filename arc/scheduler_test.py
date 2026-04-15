@@ -907,6 +907,104 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertIsNone(sched.species_dict[ts_label].ts_checks['NMD'])
         self.assertIsNone(sched.species_dict[ts_label].ts_checks['E0'])
 
+        # Verify rotors convergence flag preserved as True (not blanket-reset to False).
+        self.assertTrue(sched.output[ts_label]['job_types']['rotors'])
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_switch_ts_rotors_reset(self, mock_run_opt):
+        """Test that switch_ts resets rotors_dict when rotors are enabled, and preserves the None sentinel."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+
+        ts_spc = ARCSpecies(label='TS_rot', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.ts_guesses = [
+            TSGuess(index=0, method='heuristics', success=True, energy=100.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+            TSGuess(index=1, method='heuristics', success=True, energy=110.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+        ]
+        ts_spc.ts_guesses[0].opt_xyz = ts_xyz
+        ts_spc.ts_guesses[0].imaginary_freqs = [-500.0]
+        ts_spc.ts_guesses[1].opt_xyz = ts_xyz
+        ts_spc.ts_guesses[1].imaginary_freqs = [-400.0]
+        ts_spc.chosen_ts = 0
+        ts_spc.chosen_ts_list = [0]
+        ts_spc.ts_guesses_exhausted = False
+        # Simulate stale rotors from previous guess.
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'scan_path': '', 'success': True}}
+        ts_spc.number_of_rotors = 1
+
+        project_directory = os.path.join(ARC_PATH, 'Projects',
+                                         'arc_project_for_testing_delete_after_usage5')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_switch_ts_rot', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types2,  # rotors=True
+                          )
+
+        ts_label = 'TS_rot'
+        sched.output[ts_label]['job_types']['opt'] = True
+        sched.output[ts_label]['job_types']['freq'] = True
+        sched.job_dict[ts_label] = {'opt': {}, 'freq': {}, 'sp': {}}
+        sched.running_jobs[ts_label] = []
+
+        sched.switch_ts(ts_label)
+
+        # rotors_dict should be reset so determine_rotors re-runs for the new geometry.
+        self.assertEqual(sched.species_dict[ts_label].rotors_dict, {})
+        self.assertEqual(sched.species_dict[ts_label].number_of_rotors, 0)
+
+        # Now test that rotors_dict=None sentinel is preserved (species marked to skip rotors).
+        ts_spc2 = ARCSpecies(label='TS_norot', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                             compute_thermo=False)
+        ts_spc2.ts_guesses = [
+            TSGuess(index=0, method='heuristics', success=True, energy=100.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+            TSGuess(index=1, method='heuristics', success=True, energy=110.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+        ]
+        ts_spc2.ts_guesses[0].opt_xyz = ts_xyz
+        ts_spc2.ts_guesses[0].imaginary_freqs = [-500.0]
+        ts_spc2.ts_guesses[1].opt_xyz = ts_xyz
+        ts_spc2.ts_guesses[1].imaginary_freqs = [-400.0]
+        ts_spc2.chosen_ts = 0
+        ts_spc2.chosen_ts_list = [0]
+        ts_spc2.ts_guesses_exhausted = False
+        ts_spc2.rotors_dict = None  # Sentinel: skip rotor scans.
+
+        project_directory2 = os.path.join(ARC_PATH, 'Projects',
+                                          'arc_project_for_testing_delete_after_usage6')
+        self.addCleanup(shutil.rmtree, project_directory2, ignore_errors=True)
+        sched2 = Scheduler(project='test_switch_ts_norot', ess_settings=self.ess_settings,
+                           species_list=[ts_spc2],
+                           opt_level=Level(repr=default_levels_of_theory['opt']),
+                           freq_level=Level(repr=default_levels_of_theory['freq']),
+                           sp_level=Level(repr=default_levels_of_theory['sp']),
+                           ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                           project_directory=project_directory2,
+                           testing=True,
+                           job_types=self.job_types2,  # rotors=True
+                           )
+
+        ts_label2 = 'TS_norot'
+        sched2.output[ts_label2]['job_types']['opt'] = True
+        sched2.job_dict[ts_label2] = {'opt': {}, 'freq': {}, 'sp': {}}
+        sched2.running_jobs[ts_label2] = []
+
+        sched2.switch_ts(ts_label2)
+
+        # rotors_dict=None must be preserved — do not re-enable rotor scans.
+        self.assertIsNone(sched2.species_dict[ts_label2].rotors_dict)
+
     @classmethod
     def tearDownClass(cls):
         """
