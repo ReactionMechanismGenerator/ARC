@@ -22,7 +22,6 @@ conformers is a list of dictionaries, each with the following keys::
                            <torsion tuple 1>: angle 1,
      }
 
-
 Module workflow::
 
     generate_conformers
@@ -41,7 +40,6 @@ import logging
 import sys
 import time
 from itertools import product
-from typing import Dict, List, Optional, Tuple, Union
 
 from openbabel import openbabel as ob
 from openbabel import pybel as pyb
@@ -129,14 +127,14 @@ CHEAT_SHEET = {'[H][H]': {'xyz': converter.str_to_xyz("""H  0.0  0.0  0.3715170
                }
 
 
-def cheat_sheet(mol_list: Union[List[Molecule], Molecule]) -> Optional[List[Dict]]:
+def cheat_sheet(mol_list: list[Molecule] | Molecule) -> list[Dict] | None:
     """
     Check if the species is in the cheat sheet, and return its correct xyz if it is.
 
     Args:
-        mol_list (Union[List[Molecule], Molecule]): Molecule objects to consider (or Molecule, resonance structures will be generated).
+        mol_list (list[Molecule] | Molecule): Molecule objects to consider (or Molecule, resonance structures will be generated).
     
-    Returns: Optional[lis[Dict]]
+    Returns: lis[Dict] | None
     """
     mol_list = [mol_list] if not isinstance(mol_list, list) else mol_list
     for smiles in CHEAT_SHEET.keys():
@@ -147,7 +145,7 @@ def cheat_sheet(mol_list: Union[List[Molecule], Molecule]) -> Optional[List[Dict
     return None
 
 
-def generate_conformers(mol_list: Union[List[Molecule], Molecule],
+def generate_conformers(mol_list: list[Molecule] | Molecule,
                         label,
                         xyzs=None,
                         torsions=None,
@@ -166,13 +164,13 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
                         return_all_conformers=False,
                         plot_path=None,
                         print_logs=True,
-                        ) -> Optional[Union[list, Tuple[list, list]]]:
+                        ) -> list | tuple[list, list] | None:
     """
     Generate conformers for (non-TS) species starting from a list of RMG Molecules.
     (resonance structures are assumed to have already been generated and included in the molecule list)
 
     Args:
-        mol_list (Union[List[Molecule], Molecule]): Molecule objects to consider (or Molecule, resonance structures will be generated).
+        mol_list (list[Molecule] | Molecule): Molecule objects to consider (or Molecule, resonance structures will be generated).
         label (str): The species' label.
         xyzs (list), optional: A list of user guess xyzs that will also be taken into account, each in a dict format.
         torsions (list, optional): A list of all possible torsions in the molecule. Will be determined if not given.
@@ -202,7 +200,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         ConformerError: If something goes wrong.
         TypeError: If xyzs has entries of a wrong type.
 
-    Returns: Optional[Union[list, Tuple[list, list]]]
+    Returns: list | tuple[list, list] | None
         - Lowest conformers
         - Lowest conformers and all new conformers.
     """
@@ -330,7 +328,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
                                         will not be considered.
 
     Returns:
-        Tuple[list, dict]:
+        tuple[list, dict]:
             - The deduced conformers.
             - Keys are torsion tuples.
     """
@@ -642,7 +640,7 @@ def generate_force_field_conformers(label,
                                     xyzs=None,
                                     num_confs=None,
                                     force_field='MMFF94s',
-                                    ) -> List[dict]:
+                                    ) -> list[dict]:
     """
     Generate conformers using RDKit and OpenBabel and optimize them using a force field
     Also consider user guesses in `xyzs`.
@@ -730,7 +728,7 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
         force_field (str, optional): The type of force field to use.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - The conformer FF energies corresponding to the list of dihedrals.
             - The conformer xyz geometries corresponding to the list of dihedrals.
     """
@@ -778,7 +776,7 @@ def determine_rotors(mol_list):
         mol_list (list): Localized structures (Molecule objects) by which all rotors will be determined.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - A list of indices of scan pivots.
             - A list of indices of top atoms (including one of the pivotal atoms) corresponding to the torsions.
     """
@@ -798,10 +796,10 @@ def determine_rotors(mol_list):
 def determine_number_of_conformers_to_generate(label: str,
                                                heavy_atoms: int,
                                                torsion_num: int,
-                                               mol: Optional[Molecule] = None,
-                                               xyz: Optional[dict] = None,
+                                               mol: Molecule | None = None,
+                                               xyz: dict | None = None,
                                                minimalist: bool = False,
-                                               ) -> Tuple[int, int]:
+                                               ) -> tuple[int, int]:
     """
     Determine the number of conformers to generate using molecular mechanics.
 
@@ -818,7 +816,7 @@ def determine_number_of_conformers_to_generate(label: str,
         ConformerError: If the number of conformers to generate cannot be determined.
 
     Returns:
-        Tuple[int, int]:
+        tuple[int, int]:
             - The number of conformers to generate.
             - The number of chiral centers.
     """
@@ -904,7 +902,7 @@ def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=No
         symmetry (int, optional): The torsion symmetry number.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - Sampling points for the torsion.
             - Each entry is a well dictionary with the keys
               ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``, ``angles``.
@@ -1074,9 +1072,9 @@ def determine_well_width_tolerance(mean_width):
 
 
 def get_lowest_confs(label: str,
-                     confs: Union[dict, list],
-                     n: Optional[int] = 10,
-                     e: Optional[float] = 5.0,
+                     confs: dict | list,
+                     n: int | None = 10,
+                     e: float | None = 5.0,
                      energy: str = 'FF energy',
                      ) -> list:
     """
@@ -1178,7 +1176,7 @@ def get_force_field_energies(label: str,
                              optimize: bool = True,
                              try_ob: bool = False,
                              suppress_warning: bool = False,
-                             ) -> Tuple[list, list]:
+                             ) -> tuple[list, list]:
     """
     Determine force field energies using RDKit.
     If ``num_confs`` is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
@@ -1199,7 +1197,7 @@ def get_force_field_energies(label: str,
         ConformerError: If conformers could not be generated.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - Entries are xyz coordinates, each in a dict format.
             - Entries are the FF energies (in kJ/mol).
     """
@@ -1243,7 +1241,7 @@ def openbabel_force_field_on_rdkit_conformers(label, rd_mol, force_field='MMFF94
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - Entries are optimized xyz's in a dictionary format.
             - Entries are float numbers representing the energies (in kJ/mol).
     """
@@ -1301,7 +1299,7 @@ def mix_rdkit_and_openbabel_force_field(label,
         try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - Entries are optimized xyz's in a list format.
             - Entries are float numbers representing the energies in kJ/mol.
     """
@@ -1347,7 +1345,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
                                 For method description, see https://openbabel.org/dev-api/group__conformer.shtml
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - Entries are optimized xyz's in a list format.
             - Entries are float numbers representing the energies in kJ/mol.
     """
@@ -1441,7 +1439,7 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
         xyz (dict, optional): The 3D coordinates.
 
     Returns:
-        Optional[RDMol]: An RDKIt molecule with embedded conformers.
+        RDMol | None: An RDKIt molecule with embedded conformers.
     """
     if num_confs is None and xyz is None:
         raise ConformerError(f'Either num_confs or xyz must be set when calling embed_rdkit() for {label}')
@@ -1521,14 +1519,14 @@ def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None):
 
 
 def rdkit_force_field(label: str,
-                      rd_mol: Optional[RDMol],
-                      mol: Optional[Molecule] = None,
-                      num_confs: Optional[int] = None,
+                      rd_mol: RDMol | None,
+                      mol: Molecule | None = None,
+                      num_confs: int | None = None,
                       force_field: str = 'MMFF94s',
                       try_uff: bool = True,
                       optimize: bool = True,
                       try_ob: bool = False,
-                      ) -> Tuple[list, list]:
+                      ) -> tuple[list, list]:
     """
     Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
     For UFF see: https://www.rdkit.org/docs/source/rdkit.Chem.rdForceFieldHelpers.html#rdkit.Chem.rdForceFieldHelpers.UFFOptimizeMoleculeConfs
@@ -1544,7 +1542,7 @@ def rdkit_force_field(label: str,
         try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - Entries are optimized xyz's in a dictionary format.
             - Entries are float numbers representing the energies.
     """
@@ -1833,7 +1831,7 @@ def generate_monoatomic_conformer(symbol: str) -> dict:
 
 def generate_diatomic_conformer(symbol_1: str,
                                 symbol_2: str,
-                                multiplicity: Optional[int] = None,
+                                multiplicity: int | None = None,
                                 ) -> dict:
     """
     Generate a conformer for a diatomic species.
@@ -2011,7 +2009,7 @@ def get_number_of_chiral_centers(label, mol, conformer=None, xyz=None, just_get_
         InputError: If neither ``conformer`` nor ``xyz`` were given.
 
     Returns:
-        Optional[dict, int]:
+        dict, int | None:
             Keys are types of chiral sites ('C' for carbon, 'N' for nitrogen, 'D' for double bond),
             values are the number of chiral centers of each type. If ``just_get_the_number`` is ``True``,
             just returns the number of chiral centers (integer).
@@ -2302,7 +2300,7 @@ def replace_n_with_c_in_mol(mol, chiral_nitrogen_centers):
         ConformerError: If any of the atoms indicated by ``chiral_nitrogen_centers`` could not be a chiral nitrogen atom.
 
     Returns:
-        Tuple[Molecule, list]:
+        tuple[Molecule, list]:
             - A copy of the molecule with replaced N atoms.
             - Elements inserted in addition to the C atom, ordered as in ``chiral_nitrogen_centers``.
     """

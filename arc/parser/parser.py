@@ -4,8 +4,11 @@ A module for parsing information from various files.
 
 import os
 import re
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, Match
+from typing import Any
+from collections.abc import Callable
 
+import numpy as np
+import pandas as pd
 
 from arc.common import get_logger
 from arc.exceptions import InputError, ParserError
@@ -18,7 +21,7 @@ logger = get_logger()
 
 def determine_ess(log_file_path: str,
                   raise_error: bool = True,
-                  ) -> Optional[str]:
+                  ) -> str | None:
     """
     Determine the ESS that generated a specific output file.
 
@@ -26,7 +29,7 @@ def determine_ess(log_file_path: str,
         log_file_path (str): The disk location of the output file of interest.
         raise_error (bool): Whether to raise an error if the ESS cannot be determined.
 
-    Returns: Optional[str]
+    Returns: str | None
         The ESS name, e.g., 'gaussian', 'molpro', 'orca', 'qchem', 'terachem', or 'psi4'. ``None`` if unknown.
     """
     ess_name = None
@@ -69,7 +72,7 @@ def determine_ess(log_file_path: str,
     return ess_name
 
 
-def parse_xyz_from_file(log_file_path: str) -> Optional[Dict[str, tuple]]:
+def parse_xyz_from_file(log_file_path: str) -> dict[str, tuple] | None:
     """
     Fallback for parse_geometry()
 
@@ -83,7 +86,7 @@ def parse_xyz_from_file(log_file_path: str) -> Optional[Dict[str, tuple]]:
     Args:
         log_file_path (str): The file path.
 
-    Returns: Optional[Dict[str, tuple]]
+    Returns: dict[str, tuple] | None
         The parsed cartesian coordinates.
     """
     if not os.path.isfile(log_file_path):
@@ -133,10 +136,10 @@ def parse_xyz_from_file(log_file_path: str) -> Optional[Dict[str, tuple]]:
 
 
 def make_parser(parse_method: str,
-                return_type: Type,
+                return_type: type,
                 error_message: str,
-                fallback: Optional[Callable] = None,
-                ) -> Callable[[str, bool], Optional[Any]]:
+                fallback: Callable | None = None,
+                ) -> Callable[[str, bool], Any | None]:
     """
     Create a parser function for a specific ESS property.
 
@@ -167,102 +170,101 @@ def make_parser(parse_method: str,
         return result
     return parser
 
-
 parse_geometry = make_parser(
     parse_method='parse_geometry',
-    return_type=Optional[Dict[str, tuple]],
+    return_type=dict[str, tuple] | None,
     error_message='Could not parse the geometry from {path} using either an ESS adapter or XYZ parser.',
     fallback=parse_xyz_from_file,
 )
 
 parse_frequencies = make_parser(
     parse_method='parse_frequencies',
-    return_type=Optional['np.ndarray'],
+    return_type=np.ndarray | None,
     error_message='Could not parse frequencies from {path}',
 )
 
 parse_normal_mode_displacement = make_parser(
     parse_method='parse_normal_mode_displacement',
-    return_type=Tuple[Optional['np.ndarray'], Optional['np.ndarray']],
+    return_type=tuple[np.ndarray | None, np.ndarray | None],
     error_message='Could not parse normal mode displacement from {path}',
 )
 
 parse_t1 = make_parser(
     parse_method='parse_t1',
-    return_type=Optional[float],
+    return_type=float | None,
     error_message='Could not parse T1 from {path}',
 )
 
 parse_e_elect = make_parser(
     parse_method='parse_e_elect',
-    return_type=Optional[float],
+    return_type=float | None,
     error_message='Could not parse e_elect from {path}',
 )
 
 parse_zpe_correction = make_parser(
     parse_method='parse_zpe_correction',
-    return_type=Optional[float],
+    return_type=float | None,
     error_message='Could not parse zpe correction from {path}',
 )
 
 parse_1d_scan_energies = make_parser(
     parse_method='parse_1d_scan_energies',
-    return_type=Tuple[Optional[List[float]], Optional[List[float]]],
+    return_type=tuple[list[float] | None, list[float] | None],
     error_message='Could not parse 1d scan energies from {path}',
 )
 
 parse_1d_scan_coords = make_parser(
     parse_method='parse_1d_scan_coords',
-    return_type=Optional[List[Dict[str, tuple]]],
+    return_type=list[dict[str, tuple]] | None,
     error_message='Could not parse 1d scan coords from {path}',
 )
 
 parse_irc_traj = make_parser(
     parse_method='parse_irc_traj',
-    return_type=Optional[List[Dict[str, tuple]]],
+    return_type=list[dict[str, tuple]] | None,
     error_message='Could not parse IRC trajectory from {path}',
 )
 
 parse_scan_conformers = make_parser(
     parse_method='parse_scan_conformers',
-    return_type=Optional['pd.DataFrame'],
+    return_type=pd.DataFrame | None,
     error_message='Could not parse scan conformers from {path}',
 )
 
 parse_nd_scan_energies = make_parser(
     parse_method='parse_nd_scan_energies',
-    return_type=Optional[Dict],
+    return_type=dict | None,
     error_message='Could not parse nd scan energies from {path}',
 )
 
 parse_dipole_moment = make_parser(
     parse_method='parse_dipole_moment',
-    return_type=Optional[float],
+    return_type=float | None,
     error_message='Could not parse dipole moment from {path}',
 )
 
 parse_polarizability = make_parser(
     parse_method='parse_polarizability',
-    return_type=Optional[float],
+    return_type=float | None,
     error_message='Could not parse polarizability from {path}',
 )
 
 parse_opt_steps = make_parser(
     parse_method='parse_opt_steps',
-    return_type=Optional[int],
+    return_type=int | None,
     error_message='Could not parse opt steps from {path}',
 )
 
 parse_ess_version = make_parser(
     parse_method='parse_ess_version',
-    return_type=Optional[str],
+    return_type=str | None,
     error_message='Could not parse ESS version from {path}',
 )
 
 
 def parse_1d_scan_energies_from_specific_angle(log_file_path: str,
                                                initial_angle: float,
-                                               ) -> Tuple[Optional[List[float]], Optional[List[float]]]:
+                                               ) -> tuple[list[float] | None, list[float] | None]:
     """
     Parse the energies of a 1D scan from a specific angle.
 
@@ -270,7 +272,7 @@ def parse_1d_scan_energies_from_specific_angle(log_file_path: str,
         log_file_path (str): The path to the ESS output file.
         initial_angle (float): The initial angle of the scan in degrees.
 
-    Returns: Tuple[Optional[List[float]], Optional[List[float]]]
+    Returns: tuple[list[float] | None, list[float] | None]
         The electronic energy in kJ/mol and the dihedral scan angle in degrees.
     """
     energies, angles = parse_1d_scan_energies(log_file_path=log_file_path)
@@ -338,12 +340,12 @@ def parse_scan_args(file_path: str) -> dict:
 
 
 def parse_str_blocks(file_path: str,
-                     head_pat: Union[Match, str],
-                     tail_pat: Union[Match, str],
+                     head_pat: re.Match | str,
+                     tail_pat: re.Match | str,
                      regex: bool = True,
                      tail_count: int = 1,
                      block_count: int = 1,
-                     ) -> List[str]:
+                     ) -> list[str]:
     """
     Return a list of blocks defined by the head pattern and the tail pattern.
 
@@ -358,7 +360,7 @@ def parse_str_blocks(file_path: str,
     Raises:
         InputError: If the file could not be found.
 
-    Returns: List[str]
+    Returns: list[str]
         List of str blocks.
     """
     if not os.path.isfile(file_path):
@@ -404,7 +406,7 @@ def parse_str_blocks(file_path: str,
         return blks
 
 
-def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
+def parse_trajectory(path: str) -> list[dict[str, tuple]] | None:
     """
     Parse all geometries from an xyz trajectory file or an ESS output file.
 
@@ -414,7 +416,7 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
     Raises:
         ParserError: If the trajectory could not be read.
 
-    Returns: Optional[List[Dict[str, tuple]]]
+    Returns: list[dict[str, tuple]] | None
         Entries are xyz's on the trajectory.
     """
     ess_file, traj = False, None
@@ -465,7 +467,7 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
     return traj
 
 
-def _get_lines_from_file(path: str) -> List[str]:
+def _get_lines_from_file(path: str) -> list[str]:
     """
     A helper function for getting a list of lines from a file.
 
@@ -475,7 +477,7 @@ def _get_lines_from_file(path: str) -> List[str]:
     Raises:
         InputError: If the file could not be read.
 
-    Returns: List[str]
+    Returns: list[str]
         Entries are lines from the file.
     """
     if os.path.isfile(path):
@@ -486,7 +488,7 @@ def _get_lines_from_file(path: str) -> List[str]:
     return lines
 
 
-def process_conformers_file(conformers_path: str) -> Tuple[List[Dict[str, tuple]], List[float]]:
+def process_conformers_file(conformers_path: str) -> tuple[list[dict[str, tuple]], list[float]]:
     """
     Parse coordinates and energies from an ARC conformers file of either species or TSs.
 
@@ -498,7 +500,7 @@ def process_conformers_file(conformers_path: str) -> Tuple[List[Dict[str, tuple]
     Raises:
         InputError: If the file could not be found.
 
-    Returns: Tuple[List[Dict[str, tuple]], List[float]]
+    Returns: tuple[list[dict[str, tuple]], list[float]]
         Conformer coordinates in a dict format, the respective energies in kJ/mol.
     """
     if not os.path.isfile(conformers_path):
@@ -528,22 +530,22 @@ def process_conformers_file(conformers_path: str) -> Tuple[List[Dict[str, tuple]
     return xyzs, energies
 
 
-def parse_active_space(sp_path: str, species: 'ARCSpecies') -> Optional[Dict[str, Union[List[int], Tuple[int, int]]]]:
+def parse_active_space(sp_path: str, species: ARCSpecies) -> dict[str, list[int] | tuple[int, int]] | None:
     """
     Parse the active space (electrons and orbitals) from a Molpro CCSD output file.
 
     Args:
         sp_path (str): The path to the sp job output file.
-        species ('ARCSpecies'): The species to consider.
+        species (ARCSpecies): The species to consider.
 
     Returns:
-        Optional[Dict[str, Union[List[int], Tuple[int, int]]]]:
+        dict[str, list[int] | tuple[int, int]] | None:
             The active orbitals. Possible keys are:
-                 'occ' (List[int]): The occupied orbitals.
-                 'closed' (List[int]): The closed-shell orbitals.
-                 'frozen' (List[int]): The frozen orbitals.
-                 'core' (List[int]): The core orbitals.
-                 'e_o' (Tuple[int, int]): The number of active electrons, determined by the total number
+                 'occ' (list[int]): The occupied orbitals.
+                 'closed' (list[int]): The closed-shell orbitals.
+                 'frozen' (list[int]): The frozen orbitals.
+                 'core' (list[int]): The core orbitals.
+                 'e_o' (tuple[int, int]): The number of active electrons, determined by the total number
                  of electrons minus the core electrons (2 e's per heavy atom), and the number of active
                  orbitals, determined by the number of closed-shell orbitals and active orbitals
                  (w/o core orbitals).

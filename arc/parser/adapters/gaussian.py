@@ -7,7 +7,6 @@ from abc import ABC
 import numpy as np
 import pandas as pd
 import re
-from typing import Dict, List, Match, Optional, Tuple, Union
 
 from arc.common import SYMBOL_BY_NUMBER, is_same_pivot
 from arc.constants import E_h_kJmol, bohr_to_angstrom
@@ -27,11 +26,11 @@ class GaussianParser(ESSAdapter, ABC):
     def __init__(self, log_file_path: str):
         super().__init__(log_file_path=log_file_path)
 
-    def logfile_contains_errors(self) -> Optional[str]:
+    def logfile_contains_errors(self) -> str | None:
         """
         Check if the ESS log file contains any errors.
 
-        Returns: Optional[str]
+        Returns: str | None
             ``None`` if the log file is free of errors, otherwise the error is returned as a string.
         """
         with open(self.log_file_path, 'r') as f:
@@ -72,12 +71,12 @@ class GaussianParser(ESSAdapter, ABC):
             return error
         return None
 
-    def parse_geometry(self) -> Optional[Dict[str, tuple]]:
+    def parse_geometry(self) -> dict[str, tuple] | None:
         """
         Parse the xyz geometry from an ESS log file.
         Try to find the 'Standard orientation:' first, and if not found, fall back to the 'Input orientation:'.
 
-        Returns: Optional[Dict[str, tuple]]
+        Returns: dict[str, tuple] | None
             The cartesian geometry.
         """
         lines = _get_lines_from_file(self.log_file_path)
@@ -114,11 +113,11 @@ class GaussianParser(ESSAdapter, ABC):
             return xyz_from_data(coords=coords, numbers=numbers)
         return None
 
-    def parse_frequencies(self) -> Optional[np.ndarray]:
+    def parse_frequencies(self) -> np.ndarray | None:
         """
         Parse the frequencies from a freq job output file.
 
-        Returns: Optional[np.ndarray]
+        Returns: np.ndarray | None
             The parsed frequencies (in cm^-1).
         """
         frequencies = list()
@@ -136,11 +135,11 @@ class GaussianParser(ESSAdapter, ABC):
             return np.array(frequencies, dtype=np.float64)
         return None
 
-    def parse_normal_mode_displacement(self) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """
         Parse frequencies and normal mode displacement.
 
-        Returns: Tuple[Optional['np.ndarray'], Optional['np.ndarray']]
+        Returns: tuple[np.ndarray | None, np.ndarray | None]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
         freqs, displacements = list(), list()
@@ -186,21 +185,21 @@ class GaussianParser(ESSAdapter, ABC):
 
         return freq_array, disp_array
 
-    def parse_t1(self) -> Optional[float]:
+    def parse_t1(self) -> float | None:
         """
         Parse the T1 parameter from a CC calculation.
 
-        Returns: Optional[float]
+        Returns: float | None
             The T1 parameter.
         """
         # Not implemented for Gaussian.
         return None
 
-    def parse_e_elect(self) -> Optional[float]:
+    def parse_e_elect(self) -> float | None:
         """
         Parse the electronic energy from an sp job output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The electronic energy in kJ/mol.
         """
         lines = _get_lines_from_file(self.log_file_path)
@@ -286,11 +285,11 @@ class GaussianParser(ESSAdapter, ABC):
             return e_elect * E_h_kJmol
         return None
 
-    def parse_zpe_correction(self) -> Optional[float]:
+    def parse_zpe_correction(self) -> float | None:
         """
         Determine the calculated ZPE correction (E0 - e_elect) from a frequency output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The calculated zero point energy in kJ/mol.
         """
         zpe_hartree = None
@@ -323,11 +322,11 @@ class GaussianParser(ESSAdapter, ABC):
             return zpe_hartree * E_h_kJmol
         return None
 
-    def parse_1d_scan_energies(self) -> Tuple[Optional[List[float]], Optional[List[float]]]:
+    def parse_1d_scan_energies(self) -> tuple[list[float] | None, list[float] | None]:
         """
         Parse the 1D torsion scan energies from an ESS log file.
 
-        Returns: Tuple[Optional[List[float]], Optional[List[float]]]
+        Returns: tuple[list[float] | None, list[float] | None]
             The electronic energy in kJ/mol and the dihedral scan angle in degrees.
         """
         opt_freq = False
@@ -397,11 +396,11 @@ class GaussianParser(ESSAdapter, ABC):
 
         return vlist.tolist(), angle
 
-    def parse_1d_scan_coords(self) -> Optional[List[Dict[str, tuple]]]:
+    def parse_1d_scan_coords(self) -> list[dict[str, tuple]] | None:
         """
         Parse the 1D torsion scan coordinates from an ESS log file.
 
-        Returns: List[Dict[str, tuple]]
+        Returns: list[dict[str, tuple]]
             The Cartesian coordinates for each scan point.
         """
 
@@ -455,11 +454,11 @@ class GaussianParser(ESSAdapter, ABC):
 
         return traj if traj else None
 
-    def parse_irc_traj(self) -> Optional[List[Dict[str, tuple]]]:
+    def parse_irc_traj(self) -> list[dict[str, tuple]] | None:
         """
         Parse the IRC trajectory coordinates from an ESS log file.
 
-        Returns: List[Dict[str, tuple]]
+        Returns: list[dict[str, tuple]]
             The Cartesian coordinates for each scan point.
         """
         lines = _get_lines_from_file(self.log_file_path)
@@ -492,7 +491,7 @@ class GaussianParser(ESSAdapter, ABC):
             i += 1
         return traj if traj else None
 
-    def parse_scan_conformers(self) -> Optional[pd.DataFrame]:
+    def parse_scan_conformers(self) -> pd.DataFrame | None:
         """
         Parse all internal coordinates of scan conformers into a DataFrame.
 
@@ -539,11 +538,11 @@ class GaussianParser(ESSAdapter, ABC):
 
         return result if not result.empty else None
 
-    def parse_nd_scan_energies(self) -> Optional[Dict]:
+    def parse_nd_scan_energies(self) -> dict | None:
         """
         Parse the ND torsion scan energies from an ESS log file.
 
-        Returns: Optional[Dict]
+        Returns: dict | None
             The "results" dictionary, which has the following structure::
 
                   results = {'directed_scan_type': <str, used for the fig name>,
@@ -694,11 +693,11 @@ class GaussianParser(ESSAdapter, ABC):
             results['directed_scan'][key] = {'energy': results['directed_scan'][key]['energy'] - min_e}
         return results
 
-    def parse_dipole_moment(self) -> Optional[float]:
+    def parse_dipole_moment(self) -> float | None:
         """
         Parse the dipole moment in Debye from an opt job output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The dipole moment in Debye.
         """
         lines = _get_lines_from_file(self.log_file_path)
@@ -727,11 +726,11 @@ class GaussianParser(ESSAdapter, ABC):
                                     continue
         return dipole_moment
 
-    def parse_polarizability(self) -> Optional[float]:
+    def parse_polarizability(self) -> float | None:
         """
         Parse the polarizability from a freq job output file, returns the value in Angstrom^3.
 
-        Returns: Optional[float]
+        Returns: float | None
             The polarizability in Angstrom^3.
         """
         lines = _get_lines_from_file(self.log_file_path)
@@ -746,14 +745,14 @@ class GaussianParser(ESSAdapter, ABC):
                     continue
         return polarizability
 
-    def parse_opt_steps(self) -> Optional[int]:
+    def parse_opt_steps(self) -> int | None:
         """
         Parse the number of geometry optimization cycles from a Gaussian opt log.
 
         Reads "Step number N" lines and returns the maximum N found.
         Falls back to counting convergence table blocks (anchored on "Maximum Force").
 
-        Returns: Optional[int]
+        Returns: int | None
             The number of optimization steps, or ``None`` if not an opt job.
         """
         lines = _get_lines_from_file(self.log_file_path)
@@ -770,7 +769,7 @@ class GaussianParser(ESSAdapter, ABC):
             return max(step_nums)
         return conv_blocks or None
 
-    def parse_ess_version(self) -> Optional[str]:
+    def parse_ess_version(self) -> str | None:
         """
         Parse the Gaussian version string, e.g. ``'Gaussian 09, Revision D.01'``.
         """
@@ -847,7 +846,6 @@ class GaussianParser(ESSAdapter, ABC):
         return output[0] if len(output) > 0 else []
 
 
-
 def is_float(s: str) -> bool:
     """Check if a string can be converted to float (handles scientific notation with D/E)."""
     try:
@@ -857,7 +855,7 @@ def is_float(s: str) -> bool:
         return False
 
 
-def extract_last_float(line: str) -> Optional[float]:
+def extract_last_float(line: str) -> float | None:
     """Extract the last float (possibly in D notation) from a line."""
     parts = line.split()
     if parts and is_float(parts[-1]):
@@ -865,7 +863,7 @@ def extract_last_float(line: str) -> Optional[float]:
     return None
 
 
-def extract_float_at_index(line: str, idx: int) -> Optional[float]:
+def extract_float_at_index(line: str, idx: int) -> float | None:
     """Extract float at a given index from a split line."""
     parts = line.split()
     if len(parts) > idx and is_float(parts[idx]):
@@ -873,7 +871,7 @@ def extract_float_at_index(line: str, idx: int) -> Optional[float]:
     return None
 
 
-def extract_scf_done(line: str) -> Optional[float]:
+def extract_scf_done(line: str) -> float | None:
     """Extract SCF Done energy from a line."""
     match = re.search(r'E\(.+\)\s+=\s+([-]?\d+\.\d+)', line)
     if match and is_float(match.group(1)):
@@ -881,7 +879,7 @@ def extract_scf_done(line: str) -> Optional[float]:
     return None
 
 
-def extract_zero_point(line: str, lines: list, idx: int) -> Optional[float]:
+def extract_zero_point(line: str, lines: list, idx: int) -> float | None:
     """Extract ZeroPoint energy from a line and possibly the next line."""
     next_line = lines[idx + 1].strip() if idx + 1 < len(lines) else ''
     joined = line.strip() + next_line
@@ -894,7 +892,7 @@ def extract_zero_point(line: str, lines: list, idx: int) -> Optional[float]:
     return None
 
 
-def extract_hf(line: str, lines: list, idx: int) -> Optional[float]:
+def extract_hf(line: str, lines: list, idx: int) -> float | None:
     """Extract HF energy from a line and possibly the next line."""
     next_line = lines[idx + 1].strip() if idx + 1 < len(lines) else ''
     joined = line.strip() + next_line
@@ -907,7 +905,7 @@ def extract_hf(line: str, lines: list, idx: int) -> Optional[float]:
     return None
 
 
-def _extract_scf_energy(line: str) -> Optional[float]:
+def _extract_scf_energy(line: str) -> float | None:
     """Extract SCF energy from Gaussian output line."""
     match = re.search(r'E\([^)]+\)\s+=\s+([-]?\d+\.\d+)', line)
     if match:
@@ -919,12 +917,12 @@ def _extract_scf_energy(line: str) -> Optional[float]:
 
 
 def parse_str_blocks(file_path: str,
-                     head_pat: Union[Match, str],
-                     tail_pat: Union[Match, str],
+                     head_pat: re.Match | str,
+                     tail_pat: re.Match | str,
                      regex: bool = True,
                      tail_count: int = 1,
                      block_count: int = 1,
-                     ) -> List[str]:
+                     ) -> list[str]:
     """
     Return a list of blocks defined by the head pattern and the tail pattern.
 
@@ -939,7 +937,7 @@ def parse_str_blocks(file_path: str,
     Raises:
         InputError: If the file could not be found.
 
-    Returns: List[str]
+    Returns: list[str]
         List of str blocks.
     """
     with open(file_path, 'r') as f:
@@ -1095,7 +1093,7 @@ def parse_ic_info(file_path: str) -> pd.DataFrame:
     return ic_info
 
 
-def parse_ic_values(ic_block: List[str],
+def parse_ic_values(ic_block: list[str],
                     ) -> pd.DataFrame:
     """
     Get the internal coordinates (ic) for an intermediate scan conformer

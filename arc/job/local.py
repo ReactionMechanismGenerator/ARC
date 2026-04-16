@@ -10,7 +10,6 @@ import re
 import shutil
 import subprocess
 import time
-from typing import List, Optional, Tuple, Union
 
 from arc.common import get_logger
 from arc.exceptions import SettingsError
@@ -25,11 +24,11 @@ servers, check_status_command, submit_command, submit_filenames, delete_command,
     settings['delete_command'], settings['output_filenames']
 
 
-def execute_command(command: Union[str, List[str]],
+def execute_command(command: str | list[str],
                     shell: bool = True,
                     no_fail: bool = False,
-                    executable: Optional[str] = None,
-                    ) -> Tuple[Optional[list], Optional[list]]:
+                    executable: str | None = None,
+                    ) -> tuple[list | None, list | None]:
     """
     Execute a command.
 
@@ -38,13 +37,13 @@ def execute_command(command: Union[str, List[str]],
         so that the calling function can debug the situation.
 
     Args:
-        command (Union[str, List[str]]): An array of string commands to send.
+        command (str | list[str]): An array of string commands to send.
         shell (bool, optional): Specifies whether the command should be executed using bash instead of Python.
         no_fail (bool, optional): If ``True`` then ARC will not crash if an error is encountered.
         executable (str, optional): Select a specific shell to run with, e.g., '/bin/bash'.
                                     Default shell of the subprocess command is '/bin/sh'.
 
-    Returns: Tuple[list, list]:
+    Returns: tuple[list, list]:
         - A list of lines of standard output stream.
         - A list of lines of the standard error stream.
     """
@@ -83,15 +82,15 @@ def execute_command(command: Union[str, List[str]],
                         f'sbatch path required in the submit_command dictionary.')
 
 
-def _output_command_error_message(command: List[str],
+def _output_command_error_message(command: list[str],
                                   error: subprocess.CalledProcessError,
-                                  logging_func: Union[logger.warning, logger.error],
+                                  logging_func,
                                   ) -> None:
     """
     Formats and logs the error message returned from a command at the desired logging level
 
     Args:
-        command (List[str]): The command that threw the error.
+        command (list[str]): The command that threw the error.
         error (subprocess.CalledProcessError): The exception caught by python from subprocess.
         logging_func: ``logging.warning`` or ``logging.error`` as a function object.
     """
@@ -107,7 +106,7 @@ def _output_command_error_message(command: List[str],
     logging_func(error.returncode)
 
 
-def _format_stdout(stdout: bytes) -> List[str]:
+def _format_stdout(stdout: bytes) -> list[str]:
     """
     Format the stdout as a list of unicode strings
 
@@ -157,7 +156,7 @@ def check_job_status(job_id: int) -> str:
     return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=server)
 
 
-def delete_job(job_id: Union[int, str]):
+def delete_job(job_id: int | str):
     """
     Deletes a running job.
     """
@@ -175,12 +174,12 @@ def delete_job(job_id: Union[int, str]):
             logger.info(f'Job {job_id} is no longer running.')
 
 
-def check_running_jobs_ids() -> List[str]:
+def check_running_jobs_ids() -> list[str]:
     """
     Check which jobs are still running on the server for this user.
 
     Returns:
-        List[str]: List of job IDs.
+        list[str]: List of job IDs.
     """
     cluster_soft = servers['local']['cluster_soft'].lower()
     if cluster_soft not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
@@ -191,15 +190,15 @@ def check_running_jobs_ids() -> List[str]:
     return running_job_ids
 
 
-def parse_running_jobs_ids(stdout: List[str],
-                           cluster_soft: Optional[str] = None,
-                           ) -> List[str]:
+def parse_running_jobs_ids(stdout: list[str],
+                           cluster_soft: str | None = None,
+                           ) -> list[str]:
     """
     A helper function for parsing job IDs from the stdout of a job status command.
 
     Args:
-        stdout (List[str]): The stdout of a job status command.
-        cluster_soft (Optional[str]): The cluster software.
+        stdout (list[str]): The stdout of a job status command.
+        cluster_soft (str | None): The cluster software.
 
     Returns:
         List(str): List of job IDs.
@@ -219,11 +218,11 @@ def parse_running_jobs_ids(stdout: List[str],
 
 
 def submit_job(path: str,
-               cluster_soft: Optional[str] = None,
-               submit_cmd: Optional[str] = None,
-               submit_filename: Optional[str] = None,
+               cluster_soft: str | None = None,
+               submit_cmd: str | None = None,
+               submit_filename: str | None = None,
                recursion: bool = False,
-               ) -> Tuple[Optional[str], Optional[str]]:
+               ) -> tuple[str | None, str | None]:
     """
     Submit a job.
 
@@ -235,7 +234,7 @@ def submit_job(path: str,
         recursion (bool, optional): Whether this call is within a recursion.
 
     Returns:
-        Tuple[Optional[str], Optional[str]]: job_status, job_id
+        tuple[str | None, str | None]: job_status, job_id
     """
     cluster_soft = cluster_soft or servers['local']['cluster_soft']
     job_status, job_id = '', ''
@@ -283,14 +282,14 @@ def submit_job(path: str,
     return job_status, job_id
 
 
-def _determine_job_id(stdout: List[str],
-                      cluster_soft: Optional[str] = None
+def _determine_job_id(stdout: list[str],
+                      cluster_soft: str | None = None
                       ) -> str:
     """
     Determine the job ID right after it was submitted from the stdout.
 
     Args:
-        stdout (List[str]): The stdout got from submitting a job.
+        stdout (list[str]): The stdout got from submitting a job.
         cluster_soft (str, optional): The server cluster software.
 
     Returns:
@@ -314,8 +313,8 @@ def _determine_job_id(stdout: List[str],
 
 
 def get_last_modified_time(file_path_1: str,
-                           file_path_2: Optional[str] = None,
-                           ) -> Optional[datetime.datetime]:
+                           file_path_2: str | None = None,
+                           ) -> datetime.datetime | None:
     """
     Returns the last modified time of ``file_path_1`` if the file exists,
     else returns the last modified time of ``file_path_2`` if the file exists.
@@ -400,14 +399,14 @@ def change_mode(mode: str,
     execute_command(command=command)
 
 
-def delete_all_local_arc_jobs(jobs: Optional[List[Union[str, int]]] = None) -> None:
+def delete_all_local_arc_jobs(jobs: list[str | int] | None = None) -> None:
     """
     Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from the local server.
     Make sure you know what you're doing, so unrelated jobs won't be deleted...
     Useful when terminating ARC while some (ghost) jobs are still running.
 
     Args:
-        jobs (List[Union[str, int]], optional): Specific ARC job IDs to delete.
+        jobs (list[str | int], optional): Specific ARC job IDs to delete.
     """
     server = 'local'
     if server in servers:

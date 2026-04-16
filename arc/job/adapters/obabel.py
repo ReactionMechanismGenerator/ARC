@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from arc.reaction import ARCReaction
     from arc.species import ARCSpecies
 
+
 logger = get_logger()
 
 default_job_settings, global_ess_settings, input_filenames, output_filenames, servers, submit_filenames, OB_PYTHON = \
@@ -28,6 +29,7 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
     settings['output_filenames'], settings['servers'], settings['submit_filenames'], settings['OB_PYTHON']
 
 OB_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'ob_script.py')
+
 
 class OpenbabelAdapter(JobAdapter):
     """
@@ -95,7 +97,7 @@ class OpenbabelAdapter(JobAdapter):
                  ess_trsh_methods: Optional[List[str]] = None,
                  execution_type: Optional[str] = None,
                  fine: bool = False,
-                 initial_time: Optional[Union['datetime.datetime', str]] = None,
+                 initial_time: Optional[Union[datetime.datetime, str]] = None,
                  irc_direction: Optional[str] = None,
                  job_id: Optional[int] = None,
                  job_memory_gb: float = 14.0,
@@ -105,14 +107,14 @@ class OpenbabelAdapter(JobAdapter):
                  job_status: Optional[List[Union[dict, str]]] = None,
                  level: Optional[Level] = None,
                  max_job_time: Optional[float] = None,
-                 reactions: Optional[List['ARCReaction']] = None,
+                 reactions: Optional[List[ARCReaction]] = None,
                  run_multi_species: bool = False,
                  rotor_index: Optional[int] = None,
                  server: Optional[str] = None,
                  server_nodes: Optional[list] = None,
                  queue: Optional[str] = None,
                  attempted_queues: Optional[List[str]] = None,
-                 species: Optional[List['ARCSpecies']] = None,
+                 species: Optional[List[ARCSpecies]] = None,
                  testing: bool = False,
                  times_rerun: int = 0,
                  torsions: Optional[List[List[int]]] = None,

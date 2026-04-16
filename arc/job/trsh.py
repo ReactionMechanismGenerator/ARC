@@ -4,7 +4,6 @@ The ARC troubleshooting ("trsh") module
 
 import math
 import os
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -40,7 +39,6 @@ from arc.parser.parser import (parse_1d_scan_coords,
 
 logger = get_logger()
 
-
 delete_command, inconsistency_ab, inconsistency_az, maximum_barrier, preserve_params_in_scan, rotor_scan_resolution, \
     servers, submit_filenames = settings['delete_command'], settings['inconsistency_ab'], settings['inconsistency_az'], \
                                 settings['maximum_barrier'], settings['preserve_params_in_scan'], \
@@ -50,9 +48,9 @@ delete_command, inconsistency_ab, inconsistency_az, maximum_barrier, preserve_pa
 def determine_ess_status(output_path: str,
                          species_label: str,
                          job_type: str,
-                         job_log: Optional[str] = None,
-                         software: Optional[str] = None,
-                         ) -> Tuple[str, List[str], str, str]:
+                         job_log: str | None = None,
+                         software: str | None = None,
+                         ) -> tuple[str, list[str], str, str]:
     """
     Determine the reason that caused an ESS job to crash, assign error keywords for troubleshooting.
 
@@ -63,7 +61,7 @@ def determine_ess_status(output_path: str,
         job_log (str, optional): The path to the server job log file (not the ESS output file) or its content.
         software (str, optional): The ESS software.
 
-    Returns: Tuple[str, List[str], str, str]
+    Returns: tuple[str, list[str], str, str]
         - The status. Either 'done' or 'errored'.
         - The standardized error keywords.
         - A description of the error.
@@ -484,14 +482,14 @@ def determine_ess_status(output_path: str,
     return '', list(), '', ''
 
 
-def determine_job_log_memory_issues(job_log: Optional[str] = None) -> Tuple[List[str], str, str]:
+def determine_job_log_memory_issues(job_log: str | None = None) -> tuple[list[str], str, str]:
     """
     Determine the reason that caused an ESS job to crash, assign error keywords for troubleshooting.
 
     Args:
         job_log (str, optional): The path to the server job log file (not the ESS output file) or its content.
 
-    Returns: Tuple[List[str], str, str]
+    Returns: tuple[list[str], str, str]
         - The standardized error keywords.
         - A description of the error.
         - The parsed line from the ESS output file indicating the error.
@@ -542,7 +540,7 @@ def trsh_negative_freq(label: str,
           generate a 360 scan using 30 deg increments and append all 12 results as conformers
           (consider rotor symmetry to append less conformers?)
 
-    Returns: Tuple[list, list, list, list]
+    Returns: tuple[list, list, list, list]
         - The current troubleshooted negative frequencies.
         - The new conformers to try optimizing.
         - Errors to report.
@@ -623,12 +621,12 @@ def trsh_negative_freq(label: str,
 
 
 def trsh_scan_job(label: str,
-                  scan_res: Union[int, float],
+                  scan_res: int | float,
                   scan: list,
                   scan_list: list,
                   methods: dict,
-                  log_file: Optional[str] = None,
-                  ) -> Tuple[str, int]:
+                  log_file: str | None = None,
+                  ) -> tuple[str, int]:
     """
     Troubleshooting rotor scans.
     Using the following methods:
@@ -659,7 +657,7 @@ def trsh_scan_job(label: str,
 
         InputError: Invalid `methods` input.
 
-    Returns: Tuple[str, int]
+    Returns: tuple[str, int]
         - The scan troubleshooting keywords to be appended to the Gaussian input file.
         - The new scan resolution in degrees.
     """
@@ -827,7 +825,7 @@ def trsh_special_rotor(special_rotor: list,
 
 
 def trsh_ess_job(label: str,
-                 level_of_theory: Union[Level, dict, str],
+                 level_of_theory: Level | dict | str,
                  server: str,
                  job_status: dict,
                  job_type: str,
@@ -845,7 +843,7 @@ def trsh_ess_job(label: str,
 
     Args:
         label (str): The species label.
-        level_of_theory (Union[Level, dict, str]): The original level of theory dictionary of the problematic job.
+        level_of_theory (Level | dict | str): The original level of theory dictionary of the problematic job.
         server (str): The server used for this job.
         job_status (dict): The ESS job status dictionary with standardized error keywords
                            as generated using the `determine_ess_status` function.
@@ -1158,7 +1156,7 @@ def trsh_ess_job(label: str,
 
 def trsh_conformer_isomorphism(software: str,
                                ess_trsh_methods: list = None,
-                               ) -> Optional[str]:
+                               ) -> str | None:
     """
     Troubleshoot conformer optimization for a species that failed isomorphic test in
     `determine_most_stable_conformer` by specifying a "good" level of theory.
@@ -1170,7 +1168,7 @@ def trsh_conformer_isomorphism(software: str,
     Raises:
         TrshError: If the requested ``ess_trsh_methods`` is not supported.
 
-    Returns: Optional[str]
+    Returns: str | None
         The level of theory to troubleshoot at.
     """
     ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
@@ -1195,11 +1193,12 @@ def trsh_conformer_isomorphism(software: str,
         break
     return level_of_theory
 
+
 def trsh_job_queue(server: str,
                     job_name: str,
                     max_time: int = 24,
                     attempted_queues: list = None,
-                    ) -> Tuple[dict, bool]:
+                    ) -> tuple[dict, bool]:
     """ A function to troubleshoot job queue issues. This function will attempt to determine if the user has provided a queue that provides more time than the walltime failed queue.
         If not, it will attempt to determine if there are any other queues available on the server that provide more time than the walltime failed queue.
 
@@ -1210,7 +1209,7 @@ def trsh_job_queue(server: str,
         attempted_queues (list, optional): Any queues that have already been attempted to run the job on. Defaults to None.
 
     Returns:
-        Tuple[dict, bool]: A dictionary of the available queues and a boolean indicating if the function was successful.
+        tuple[dict, bool]: A dictionary of the available queues and a boolean indicating if the function was successful.
     """
 
     server_queues = servers[server].get('queues', dict())
@@ -1346,9 +1345,10 @@ def trsh_job_queue(server: str,
         logger.error(f'Could not troubleshoot queue for {job_name} since the server is {cluster_soft} and not PBS.')
         return None, False
 
+
 def trsh_job_on_server(server: str,
                        job_name: str,
-                       job_id: Union[int, str],
+                       job_id: int | str,
                        job_server_status: str,
                        remote_path: str,
                        server_nodes: list = None):
@@ -1363,7 +1363,7 @@ def trsh_job_on_server(server: str,
         remote_path (str): The remote path to the job folder.
         server_nodes (list, optional): The nodes already tried on this server for this job.
 
-    Returns: Tuple[str, bool]
+    Returns: tuple[str, bool]
         - The new node on the server (or None).
         - Whether to re-run the job, `True` to rerun.
     """
@@ -1429,13 +1429,13 @@ def scan_quality_check(label: str,
                        pivots: list,
                        energies: list,
                        scan_res: float = rotor_scan_resolution,
-                       used_methods: Optional[list] = None,
-                       log_file: Optional[str] = None,
-                       species: Optional[ARCSpecies] = None,
-                       preserve_params: Optional[list] = None,
-                       trajectory: Optional[list] = None,
-                       original_xyz: Optional[dict] = None,
-                       ) -> Tuple[bool, str, str, dict]:
+                       used_methods: list | None = None,
+                       log_file: str | None = None,
+                       species: ARCSpecies | None = None,
+                       preserve_params: list | None = None,
+                       trajectory: list | None = None,
+                       original_xyz: dict | None = None,
+                       ) -> tuple[bool, str, str, dict]:
     """
     Checks the scan's quality:
 
@@ -1472,7 +1472,7 @@ def scan_quality_check(label: str,
         trajectory (list, optional): Entries are Cartesian coordinates along the scan trajectory.
         original_xyz (dict, optional): The optimized coordinated for the species.
 
-    Returns: Tuple[bool, str, str, dict]
+    Returns: tuple[bool, str, str, dict]
         - Whether to invalidate this rotor, ``True`` to invalidate.
         - Reason for invalidating this rotor.
         - Error or warning message.
@@ -1751,7 +1751,8 @@ def scan_quality_check(label: str,
 
     return invalidate, invalidation_reason, message, actions
 
-def trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh) -> Tuple[bool, List, bool]:
+
+def trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh) -> tuple[bool, list, bool]:
     """
     Check if the job requires removal of checkfile
     """
@@ -1765,7 +1766,8 @@ def trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh) -> Tuple[
 
     return False, ess_trsh_methods, couldnt_trsh
 
-def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+
+def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
     Check if the job requires change of 2 electron integral accuracy
     """
@@ -1779,7 +1781,8 @@ def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tu
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword: list, couldnt_trsh: bool) -> Tuple[List, List, bool]:
+
+def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword: list, couldnt_trsh: bool) -> tuple[list, list, bool]:
     """
     Check if the job requires change of cartesian coordinate
     """
@@ -1795,7 +1798,8 @@ def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword:
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+
+def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
     Check if the job requires change of scf
     """
@@ -1835,7 +1839,8 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine) -> Tuple[List, List, bool, bool]:
+
+def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine) -> tuple[list, list, bool, bool]:
     """
     Check if the job requires change of scf
     """
@@ -1847,7 +1852,8 @@ def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt
 
     return ess_trsh_methods, trsh_keyword, fine, couldnt_trsh
 
-def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+
+def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
     Check if the job requires change of nosymm
     """
@@ -1861,7 +1867,8 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+
+def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
     Check if the job requires change of opt(maxcycle=200)
     """
@@ -1896,7 +1903,8 @@ def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, could
     
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+
+def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
     Check if the job requires change of inaccurate quadrature
     
@@ -1940,7 +1948,8 @@ def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keywor
     
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_l123(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+
+def trsh_keyword_l123(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
     When a job fails with l123.exe error, there are two possible solutions based upon the error message:
     1. If Delta-X issue, will need to adjust the maxcycle of IRC job. If fails, then change algorithm to LQA.
@@ -1966,7 +1975,8 @@ def trsh_keyword_l123(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) 
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+
+def trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
     Gaussian will check the number of negative frequency after finishing the TS optimization. 
     If there is more than one negative frequency, Gaussian will stop the calculation.
@@ -1977,6 +1987,7 @@ def trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_t
         couldnt_trsh = False
     
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
 
 def prioritize_opt_methods(opt_methods):
 
@@ -1992,7 +2003,8 @@ def prioritize_opt_methods(opt_methods):
 
     return filtered_methods
 
-def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+
+def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
     When a job fails with no qc, there are two possible solutions based upon the error message:
     1. If SCF fails, then try to change the algorithm to LQA.
@@ -2002,6 +2014,5 @@ def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
         ess_trsh_methods.remove('scf=(qc)')
         ess_trsh_methods.append('no_xqc')
         couldnt_trsh = False
-
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh

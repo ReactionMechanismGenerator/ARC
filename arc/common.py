@@ -20,7 +20,8 @@ import time
 import warnings
 import yaml
 from collections import deque
-from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -29,10 +30,8 @@ import pandas as pd
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
 
-
 if TYPE_CHECKING:
     from arc.molecule.molecule import Molecule
-
 
 logger = logging.getLogger('arc')
 logging.getLogger('matplotlib.font_manager').disabled = True
@@ -49,7 +48,7 @@ EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 
 default_job_types, servers, supported_ess = settings['default_job_types'], settings['servers'], settings['supported_ess']
 
 
-def initialize_job_types(job_types: Optional[dict] = None,
+def initialize_job_types(job_types: dict | None = None,
                          specific_job_type: str = '',
                          ) -> dict:
     """
@@ -113,7 +112,7 @@ def initialize_job_types(job_types: Optional[dict] = None,
     return job_types
 
 
-def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
+def check_ess_settings(ess_settings: dict | None = None) -> dict:
     """
     A helper function to convert servers in the ess_settings dict to lists
     Assists in troubleshooting job and trying a different server
@@ -153,7 +152,7 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
 
 def initialize_log(log_file: str,
                    project: str,
-                   project_directory: Optional[str] = None,
+                   project_directory: str | None = None,
                    verbose: int = logging.INFO,
                    ) -> None:
     """
@@ -272,7 +271,7 @@ def log_footer(execution_time: str,
     logger.log(level, f'ARC execution terminated on {time.asctime()}')
 
 
-def get_git_commit(path: Optional[str] = None) -> Tuple[str, str]:
+def get_git_commit(path: str | None = None) -> tuple[str, str]:
     """
     Get the recent git commit to be logged.
 
@@ -296,7 +295,7 @@ def get_git_commit(path: Optional[str] = None) -> Tuple[str, str]:
     return head, date
 
 
-def get_git_branch(path: Optional[str] = None) -> str:
+def get_git_branch(path: str | None = None) -> str:
     """
     Get the git branch to be logged.
 
@@ -320,8 +319,8 @@ def get_git_branch(path: Optional[str] = None) -> str:
 
 
 def read_yaml_file(path: str,
-                   project_directory: Optional[str] = None,
-                   ) -> Union[dict, list]:
+                   project_directory: str | None = None,
+                   ) -> dict | list:
     """
     Read a YAML file (usually an input / restart file, but also conformers file)
     and return the parameters as python variables.
@@ -330,7 +329,7 @@ def read_yaml_file(path: str,
         path (str): The YAML file path to read.
         project_directory (str, optional): The current project directory to rebase upon.
 
-    Returns: Union[dict, list]
+    Returns: dict | list
         The content read from the file.
     """
     if project_directory is not None:
@@ -345,7 +344,7 @@ def read_yaml_file(path: str,
 
 
 def save_yaml_file(path: str,
-                   content: Union[list, dict],
+                   content: list | dict,
                    ) -> None:
     """
     Save a YAML file (usually an input / restart file, but also conformers file).
@@ -363,18 +362,18 @@ def save_yaml_file(path: str,
         f.write(yaml_str)
 
 
-def from_yaml(yaml_str: str) -> Union[dict, list]:
+def from_yaml(yaml_str: str) -> dict | list:
     """
     Read a YAML string and decode to the respective Python object.
     Args:
         yaml_str (str): The YAML string content.
-    Returns: Union[dict, list]
+    Returns: dict | list
         The respective Python object.
     """
     return yaml.load(stream=yaml_str, Loader=yaml.FullLoader)
 
 
-def to_yaml(py_content: Union[list, dict]) -> str:
+def to_yaml(py_content: list | dict) -> str:
     """
     Convert a Python list or dictionary to a YAML string format.
 
@@ -512,11 +511,12 @@ def get_number_with_ordinal_indicator(number: int) -> str:
     """
     return f'{number}{get_ordinal_indicator(number)}'
 
-def read_element_dicts() -> Tuple[dict, dict, dict, dict]:
+
+def read_element_dicts() -> tuple[dict, dict, dict, dict]:
     """
     Read the element dictionaries from the elements.yml data file.
 
-    Returns: Tuple[dict, dict, dict]
+    Returns: tuple[dict, dict, dict]
         - A dictionary of element symbol by name.
         - A dictionary of element number by symbol.
         - A dictionary of element mass by symbol, including isotope and occurrence frequency.
@@ -531,11 +531,10 @@ def read_element_dicts() -> Tuple[dict, dict, dict, dict]:
     covalent_radii = {element['symbol']: element['radius'] for element in covalent_radii}
     return symbol_by_number, number_by_symbol, mass_by_symbol, covalent_radii
 
-
 SYMBOL_BY_NUMBER, NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, COVALENT_RADII = read_element_dicts()
 
 
-def get_atom_radius(symbol: str) -> Optional[float]:
+def get_atom_radius(symbol: str) -> float | None:
     """
     Get the atom covalent radius of an atom in Angstroms.
 
@@ -553,9 +552,9 @@ def get_atom_radius(symbol: str) -> Optional[float]:
     return r
 
 
-def get_element_mass(input_element: Union[int, str],
-                     isotope: Optional[int] = None,
-                     ) -> Tuple[float, int]:
+def get_element_mass(input_element: int | str,
+                     isotope: int | None = None,
+                     ) -> tuple[float, int]:
     """
     Returns the mass and z number of the requested isotope for a given element.
     Data taken from NIST, https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl (accessed October 2018)
@@ -564,7 +563,7 @@ def get_element_mass(input_element: Union[int, str],
         input_element (int, str): The atomic number or symbol of the element.
         isotope (int, optional): The isotope number.
 
-    Returns: Tuple[float, int]
+    Returns: tuple[float, int]
         - The mass of the element in amu.
         - The atomic number of the element.
     """
@@ -610,7 +609,6 @@ def get_element_mass(input_element: Union[int, str],
                     max_weight = iso_mass[2]
                     mass = iso_mass[1]
     return mass, number
-
 
 # A bond length dictionary of single bonds in Angstrom.
 # https://sites.google.com/site/chempendix/bond-lengths
@@ -664,25 +662,25 @@ def get_single_bond_length(symbol_1: str,
 
 def get_bonds_from_dmat(
     dmat: np.ndarray,
-    elements: Union[Tuple[str, ...], List[str]],
-    charges: Optional[List[int]] = None,
+    elements: tuple[str, ...] | list[str],
+    charges: list[int] | None = None,
     tolerance: float = 1.2,
     bond_lone_hydrogens: bool = True,
     n_fragments: int = 1,
-) -> List[Tuple[int, int]]:
+) -> list[tuple[int, int]]:
     """
     Guess the connectivity of a molecule from its distance matrix.
 
     Args:
         dmat (np.ndarray): An NxN matrix of atom distances in Angstrom.
-        elements (List[str]): The corresponding element list in the same atomic order.
-        charges (List[int], optional): A corresponding list of formal atomic charges.
+        elements (list[str]): The corresponding element list in the same atomic order.
+        charges (list[int], optional): A corresponding list of formal atomic charges.
         tolerance (float, optional): Factor by which the single‐bond length threshold is multiplied.
         bond_lone_hydrogens (bool, optional): Whether to bond unassigned H atoms.
         n_fragments (int, optional): Desired number of disconnected fragments. Defaults to 1.
 
     Returns:
-        List[Tuple[int, int]]: Sorted list of bonded atom index pairs.
+        list[tuple[int, int]]: Sorted list of bonded atom index pairs.
     """
     n = dmat.shape[0]
     if len(elements) != n or dmat.shape != (n, n):
@@ -826,7 +824,7 @@ def get_bonds_from_dmat(
     return sorted(bonds)
 
 
-def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', index: int = 1) -> Tuple[list, bool]:
+def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', index: int = 1) -> tuple[list, bool]:
     """
     Determine the indices of a "top group" in a molecule.
     The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
@@ -838,7 +836,7 @@ def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', i
         atom2 (Atom): The beginning of the top relative to atom1 in mol.
         index (int, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.
 
-    Returns: Tuple[list, bool]
+    Returns: tuple[list, bool]
         - The indices of the atoms in the top (either 0-index or 1-index, as requested).
         - Whether the top has heavy atoms (is not just a hydrogen atom). ``True`` if it has heavy atoms.
     """
@@ -861,7 +859,7 @@ def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', i
 
 def extremum_list(lst: list,
                   return_min: bool = True,
-                  ) -> Optional[Union[int, None]]:
+                  ) -> int | None:
     """
     A helper function for finding the extremum (either minimum or maximum) of a list of numbers (int/float)
     where some entries could be ``None``.
@@ -871,7 +869,7 @@ def extremum_list(lst: list,
         return_min (bool, optional): Whether to return the minimum or the maximum.
                                     ``True`` for minimum, ``False`` for maximum, ``True`` by default.
 
-    Returns: Optional[Union[int, None]]
+    Returns: int | None
         The entry with the minimal/maximal value.
     """
     if lst is None or len(lst) == 0 or all([entry is None for entry in lst]):
@@ -886,8 +884,8 @@ def extremum_list(lst: list,
 
 def get_extremum_index(lst: list,
                        return_min: bool = True,
-                       skip_values: Optional[list] = None
-                       ) -> Optional[Union[int, None]]:
+                       skip_values: list | None = None
+                       ) -> int | None:
     """
     A helper function for finding the extremum (either minimum or maximum) of a list of numbers (int/float)
     where some entries could be ``None``.
@@ -898,7 +896,7 @@ def get_extremum_index(lst: list,
                                     ``True`` for minimum, ``False`` for maximum, ``True`` by default.
         skip_values (list, optional): Values to skip when checking for extermum, e.g., 0.
 
-    Returns: Optional[Union[int, None]]
+    Returns: int | None
         The index of an entry with the minimal/maximal value.
     """
     if len(lst) == 0:
@@ -921,9 +919,9 @@ def get_extremum_index(lst: list,
     return extremum_index
 
 
-def sum_list_entries(lst: List[Union[int, float]],
-                     multipliers: Optional[List[Union[int, float]]] = None,
-                     ) -> Optional[float]:
+def sum_list_entries(lst: list[int | float],
+                     multipliers: list[int | float] | None = None,
+                     ) -> float | None:
     """
     Sum all entries in a list. If any entry is ``None``, return ``None``.
     If ``multipliers`` is given, multiply each entry in ``lst`` by the respective multiplier entry.
@@ -933,7 +931,7 @@ def sum_list_entries(lst: List[Union[int, float]],
         multipliers (list, optional): A list of multipliers.
 
     Returns:
-        Optional[float]: The result.
+        float | None: The result.
     """
     if any(entry is None or not isinstance(entry, (int, float)) for entry in lst):
         return None
@@ -942,9 +940,9 @@ def sum_list_entries(lst: List[Union[int, float]],
     return float(np.dot(lst, multipliers + [1] * (len(lst) - len(multipliers))))
 
 
-def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
-                                list2: List[Union[float, int, None]],
-                                ) -> Tuple[List[Union[float, int]], List[Union[float, int]]]:
+def sort_two_lists_by_the_first(list1: list[float | int | None],
+                                list2: list[float | int | None],
+                                ) -> tuple[list[float | int], list[float | int]]:
     """
     Sort two lists in increasing order by the values of the first list.
     Ignoring None entries from list1 and their respective entries in list2.
@@ -959,7 +957,7 @@ def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
     Raises:
         InputError: If types are wrong, or lists are not the same length.
 
-    Returns: Tuple[list, list]
+    Returns: tuple[list, list]
         - Sorted values from list1, ignoring None entries.
         - Respective entries from list2.
     """
@@ -989,7 +987,7 @@ def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
     return sorted_list1, sorted_list2
 
 
-def check_that_all_entries_are_in_list(list_1: Union[list, tuple], list_2: Union[list, tuple]) -> bool:
+def check_that_all_entries_are_in_list(list_1: list | tuple, list_2: list | tuple) -> bool:
     """
     Check that all entries from ``list_2`` are in ``list_1``, and that the lists are the same length.
     Useful for testing that two lists are equal regardless of entry order.
@@ -1032,8 +1030,8 @@ def key_by_val(dictionary: dict,
     raise ValueError(f'Could not find value {value} in the dictionary\n{dictionary}')
 
 
-def almost_equal_lists(iter1: Union[list, tuple, np.ndarray],
-                       iter2: Union[list, tuple, np.ndarray],
+def almost_equal_lists(iter1: list | tuple | np.ndarray,
+                       iter2: list | tuple | np.ndarray,
                        rtol: float = 1e-05,
                        atol: float = 1e-08,
                        ) -> bool:
@@ -1041,8 +1039,8 @@ def almost_equal_lists(iter1: Union[list, tuple, np.ndarray],
     A helper function for checking whether two iterables are almost equal.
 
     Args:
-        iter1 (list, tuple, np.array): An iterable.
-        iter2 (list, tuple, np.array): An iterable.
+        iter1 (list, tuple, np.ndarray): An iterable.
+        iter2 (list, tuple, np.ndarray): An iterable.
         rtol (float, optional): The relative tolerance parameter.
         atol (float, optional): The absolute tolerance parameter.
 
@@ -1096,8 +1094,8 @@ def almost_equal_coords(xyz1: dict,
     return True
 
 
-def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
-                              xyz2: Union[List[dict], dict],
+def almost_equal_coords_lists(xyz1: list[dict] | dict,
+                              xyz2: list[dict] | dict,
                               rtol: float = 1e-03,
                               atol: float = 1e-04,
                               ) -> bool:
@@ -1106,8 +1104,8 @@ def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
     Useful for comparing xyzs in unit tests.
 
     Args:
-        xyz1 (Union[List[dict], dict]): Either a dict-format xyz, or a list of them.
-        xyz2 (Union[List[dict], dict]): Either a dict-format xyz, or a list of them.
+        xyz1 (list[dict] | dict): Either a dict-format xyz, or a list of them.
+        xyz2 (list[dict] | dict): Either a dict-format xyz, or a list of them.
         rtol (float, optional): The relative tolerance parameter.
         atol (float, optional): The absolute tolerance parameter.
 
@@ -1127,8 +1125,8 @@ def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
     return False
 
 
-def is_equal_family_product_dicts(dicts1: List[dict],
-                                  dicts2: List[dict],
+def is_equal_family_product_dicts(dicts1: list[dict],
+                                  dicts2: list[dict],
                                   ) -> bool:
     """
     Compare two lists of family‐product dictionaries for equality.
@@ -1194,7 +1192,7 @@ def is_notebook() -> bool:
         return False  # Probably standard Python interpreter.
 
 
-def is_str_float(value: Optional[str]) -> bool:
+def is_str_float(value: str | None) -> bool:
     """
     Check whether a string can be converted to a floating number.
 
@@ -1211,7 +1209,7 @@ def is_str_float(value: Optional[str]) -> bool:
         return False
 
 
-def is_str_int(value: Optional[str]) -> bool:
+def is_str_int(value: str | None) -> bool:
     """
     Check whether a string can be converted to an integer.
 
@@ -1270,7 +1268,7 @@ def time_lapse(t0) -> str:
 def estimate_orca_mem_cpu_requirement(num_heavy_atoms: int,
                                       server: str = '',
                                       consider_server_limits: bool = False,
-                                      ) -> Tuple[int, float]:
+                                      ) -> tuple[int, float]:
     """
     Estimates memory and cpu requirements for an Orca job.
 
@@ -1279,7 +1277,7 @@ def estimate_orca_mem_cpu_requirement(num_heavy_atoms: int,
         server (str): The name of the server where Orca runs.
         consider_server_limits (bool):  Try to give realistic estimations.
 
-    Returns: Tuple[int, float]:
+    Returns: tuple[int, float]:
         - The amount of total memory (MB)
         - The number of cpu cores required for the Orca job for a given species.
     """
@@ -1309,10 +1307,10 @@ def estimate_orca_mem_cpu_requirement(num_heavy_atoms: int,
 
 
 def check_torsion_change(torsions: pd.DataFrame,
-                         index_1: Union[int, str],
-                         index_2: Union[int, str],
-                         threshold: Union[float, int] = 20.0,
-                         delta: Union[float, int] = 0.0,
+                         index_1: int | str,
+                         index_2: int | str,
+                         threshold: float | int = 20.0,
+                         delta: float | int = 0.0,
                          ) -> pd.DataFrame:
     """
     Compare two sets of torsions (in DataFrame) and check if any entry has a
@@ -1321,10 +1319,10 @@ def check_torsion_change(torsions: pd.DataFrame,
 
     Args:
         torsions (pd.DataFrame): A DataFrame consisting of multiple sets of torsions.
-        index_1 (Union[int, str]): The index of the first conformer.
-        index_2 (Union[int, str]): The index of the second conformer.
-        threshold (Union[float, int]): The threshold used to determine the difference significance.
-        delta (Union[float, int]): A known difference between torsion pairs,
+        index_1 (int | str): The index of the first conformer.
+        index_2 (int | str): The index of the second conformer.
+        threshold (float | int): The threshold used to determine the difference significance.
+        delta (float | int): A known difference between torsion pairs,
                                    delta = tor[index_1] - tor[index_2].
                                    E.g.,for the torsions to be scanned, the
                                    differences are equal to the scan resolution.
@@ -1348,17 +1346,17 @@ def check_torsion_change(torsions: pd.DataFrame,
     return change
 
 
-def is_same_pivot(torsion1: Union[list, str],
-                  torsion2: Union[list, str],
-                  ) -> Optional[bool]:
+def is_same_pivot(torsion1: list | str,
+                  torsion2: list | str,
+                  ) -> bool | None:
     """
     Check if two torsions have the same pivots.
 
     Args:
-        torsion1 (Union[list, str]): The four atom indices representing the first torsion.
+        torsion1 (list | str): The four atom indices representing the first torsion.
         torsion2 (Union: [list, str]): The four atom indices representing the second torsion.
 
-    Returns: Optional[bool]
+    Returns: bool | None
         ``True`` if two torsions share the same pivots.
     """
     torsion1 = ast.literal_eval(torsion1) if isinstance(torsion1, str) else torsion1
@@ -1417,8 +1415,8 @@ def distance_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 def get_ordered_intersection_of_two_lists(l1: list,
                                           l2: list,
-                                          order_by_first_list: Optional[bool] = True,
-                                          return_unique: Optional[bool] = True,
+                                          order_by_first_list: bool | None = True,
+                                          return_unique: bool | None = True,
                                           ) -> list:
     """
     Find the intersection of two lists by order.
@@ -1473,7 +1471,7 @@ def is_angle_linear(angle: float,
     return (180 - tolerance < angle <= 180) or (0 <= angle < tolerance)
 
 
-def is_xyz_linear(xyz: Optional[dict]) -> Optional[bool]:
+def is_xyz_linear(xyz: dict | None) -> bool | None:
     """
     Determine whether the xyz coords represents a linear molecule.
 
@@ -1511,7 +1509,7 @@ FULL_CIRCLE = 360.0
 HALF_CIRCLE = 180.0
 
 def get_angle_in_180_range(angle: float,
-                           round_to: Optional[int] = 2,
+                           round_to: int | None = 2,
                            ) -> float:
     """
     Get the corresponding angle in the -180 to +180 degree range.
@@ -1560,18 +1558,18 @@ def signed_angular_diff(phi_1: float, phi_2: float) -> float:
     return get_angle_in_180_range(phi_1 - phi_2)
 
 
-def get_close_tuple(key_1: Tuple[Union[float, str], ...],
-                    keys: List[Tuple[Union[float, str], ...]],
+def get_close_tuple(key_1: tuple[float | str, ...],
+                    keys: list[tuple[float | str, ...]],
                     tolerance: float = 0.05,
                     raise_error: bool = False,
-                    ) -> Optional[Tuple[Union[float, str], ...]]:
+                    ) -> tuple[float | str, ...] | None:
     """
     Get a key from a list of keys close in value to the given key.
     Even if just one of the items in the key has a close match, use the close value.
 
     Args:
-        key_1 (Tuple[Union[float, str], Union[float, str]]): The key used for the search.
-        keys (List[Tuple[Union[float, str], Union[float, str]]]): The list of keys to search within.
+        key_1 (tuple[float | str, float | str]): The key used for the search.
+        keys (list[tuple[float | str, float | str]]): The list of keys to search within.
         tolerance (float, optional): The tolerance within which keys are determined to be close.
         raise_error (bool, optional): Whether to raise a ValueError if a close key wasn't found.
 
@@ -1580,7 +1578,7 @@ def get_close_tuple(key_1: Tuple[Union[float, str], ...],
         ValueError: If a close key was not found and ``raise_error`` is ``True``.
 
     Returns:
-        Optional[Tuple[Union[float, str], ...]]: A key from the keys list close in value to the given key.
+        tuple[float | str, ...] | None: A key from the keys list close in value to the given key.
     """
     key_1_floats = tuple(float(item) for item in key_1)
     for key_2 in keys:
@@ -1629,9 +1627,9 @@ def timedelta_from_str(time_str: str):
     return datetime.timedelta(**time_params)
 
 
-def torsions_to_scans(descriptor: Optional[List[List[int]]],
+def torsions_to_scans(descriptor: list[list[int]] | None,
                       direction: int = 1,
-                      ) -> Optional[List[List[int]]]:
+                      ) -> list[list[int]] | None:
     """
     Convert torsions to scans or vice versa.
     In ARC we define a torsion as a list of four atoms with 0-indices.
@@ -1643,7 +1641,7 @@ def torsions_to_scans(descriptor: Optional[List[List[int]]],
         direction (int, optional): 1: Convert torsions to scans; -1: Convert scans to torsions.
 
     Returns:
-        Optional[List[List[int]]]: The converted indices.
+        list[list[int]] | None: The converted indices.
     """
     if descriptor is None:
         return None
@@ -1658,7 +1656,7 @@ def torsions_to_scans(descriptor: Optional[List[List[int]]],
     return new_descriptor
 
 
-def convert_list_index_0_to_1(_list: Union[list, tuple], direction: int = 1) -> Union[list, tuple]:
+def convert_list_index_0_to_1(_list: list | tuple, direction: int = 1) -> list | tuple:
     """
     Convert a list from 0-indexed to 1-indexed, or vice versa.
     Ensures positive values in the resulting list.
@@ -1671,7 +1669,7 @@ def convert_list_index_0_to_1(_list: Union[list, tuple], direction: int = 1) -> 
         ValueError: If the new list contains negative values.
 
     Returns:
-        Union[list, tuple]: The converted indices.
+        list | tuple: The converted indices.
     """
     new_list = [item + direction for item in _list]
     if any(val < 0 for val in new_list):
@@ -1681,15 +1679,15 @@ def convert_list_index_0_to_1(_list: Union[list, tuple], direction: int = 1) -> 
     return new_list
 
 
-def calc_rmsd(x: Union[list, np.array],
-              y: Union[list, np.array],
+def calc_rmsd(x: list | np.ndarray,
+              y: list | np.ndarray,
               ) -> float:
     """
     Compute the root-mean-square deviation between two matrices.
 
     Args:
-        x (np.array): Matrix 1.
-        y (np.array): Matrix 2.
+        x (np.ndarray): Matrix 1.
+        y (np.ndarray): Matrix 2.
 
     Returns:
         float: The RMSD score of two matrices.
@@ -1739,7 +1737,7 @@ def safe_copy_file(source: str,
 def dfs(mol: 'Molecule',
         start: int,
         sort_result: bool = True,
-        ) -> List[int]:
+        ) -> list[int]:
     """
     A depth-first search algorithm for graph traversal of a Molecule object instance.
 
@@ -1749,7 +1747,7 @@ def dfs(mol: 'Molecule',
         sort_result (bool, optional): Whether to sort the returned visited indices.
 
     Returns:
-        List[int]: Indices of all atoms connected to the starting atom.
+        list[int]: Indices of all atoms connected to the starting atom.
     """
     if start >= len(mol.atoms):
         raise ValueError(f'Got a wrong start number {start} for a molecule with only {len(mol.atoms)} atoms.')
@@ -1828,10 +1826,10 @@ def convert_to_hours(time_str:str) -> float:
     return h + m / 60 + s / 3600
 
 
-def calculate_arrhenius_rate_coefficient(A: Union[int, float, Sequence[float], np.ndarray],
-                                         n: Union[int, float, Sequence[float], np.ndarray],
-                                         Ea: Union[int, float, Sequence[float], np.ndarray],
-                                         T: Union[int, float, Sequence[float], np.ndarray],
+def calculate_arrhenius_rate_coefficient(A: int | float | Sequence[float] | np.ndarray,
+                                         n: int | float | Sequence[float] | np.ndarray,
+                                         Ea: int | float | Sequence[float] | np.ndarray,
+                                         T: int | float | Sequence[float] | np.ndarray,
                                          Ea_units: str = 'kJ/mol',
                                          ) -> np.ndarray:
     """

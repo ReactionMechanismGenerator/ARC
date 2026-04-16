@@ -15,7 +15,6 @@ import shutil
 import time
 from distutils.spawn import find_executable
 from IPython.display import display
-from typing import Dict, List, Optional, Tuple, Union
 
 from arc.common import (VERSION,
                         ARC_PATH,
@@ -80,7 +79,7 @@ class ARC(object):
         bac_type (str, optional): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
                                   Default: 'p'. ``None`` to not use BAC.
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
-        arkane_level_of_theory (Union[dict, Level, str], optional):
+        arkane_level_of_theory (dict | Level | str, optional):
             The Arkane level of theory to use for AEC and BAC.
 
             Note:
@@ -220,56 +219,56 @@ class ARC(object):
     """
 
     def __init__(self,
-                 adaptive_levels: Optional[dict] = None,
+                 adaptive_levels: dict | None = None,
                  allow_nonisomorphic_2d: bool = False,
-                 arkane_level_of_theory: Optional[Union[dict, Level, str]] = None,
-                 bac_type: Optional[str] = 'p',
-                 bath_gas: Optional[str] = None,
+                 arkane_level_of_theory: dict | Level | str | None = None,
+                 bac_type: str | None = 'p',
+                 bath_gas: str | None = None,
                  calc_freq_factor: bool = True,
                  compare_to_rmg: bool = True,
-                 composite_method: Optional[Union[str, dict, Level]] = None,
+                 composite_method: str | dict | Level | None = None,
                  compute_rates: bool = True,
                  compute_thermo: bool = True,
                  compute_transport: bool = False,
-                 conformer_level: Optional[Union[str, dict, Level]] = None,
-                 conformer_opt_level: Optional[Union[str, dict, Level]] = None,
-                 conformer_sp_level: Optional[Union[str, dict, Level]] = None,
-                 dont_gen_confs: List[str] = None,
+                 conformer_level: str | dict | Level | None = None,
+                 conformer_opt_level: str | dict | Level | None = None,
+                 conformer_sp_level: str | dict | Level | None = None,
+                 dont_gen_confs: list[str] = None,
                  e_confs: float = 5.0,
-                 ess_settings: Dict[str, Union[str, List[str]]] = None,
-                 freq_level: Optional[Union[str, dict, Level]] = None,
-                 freq_scale_factor: Optional[float] = None,
-                 irc_level: Optional[Union[str, dict, Level]] = None,
+                 ess_settings: dict[str, str | list[str]] = None,
+                 freq_level: str | dict | Level | None = None,
+                 freq_scale_factor: float | None = None,
+                 irc_level: str | dict | Level | None = None,
                  keep_checks: bool = False,
                  kinetics_adapter: str = 'Arkane',
-                 job_memory: Optional[int] = None,
-                 job_types: Optional[Dict[str, bool]] = None,
+                 job_memory: int | None = None,
+                 job_types: dict[str, bool] | None = None,
                  level_of_theory: str = '',
-                 max_job_time: Optional[float] = None,
+                 max_job_time: float | None = None,
                  n_confs: int = 10,
-                 opt_level: Optional[Union[str, dict, Level]] = None,
-                 orbitals_level: Optional[Union[str, dict, Level]] = None,
-                 output: Optional[dict] = None,
-                 output_multi_spc: Optional[dict] = None,
-                 project: Optional[str] = None,
-                 project_directory: Optional[str] = None,
-                 reactions: Optional[List[ARCReaction]] = None,
-                 running_jobs: Optional[dict] = None,
-                 scan_level: Optional[Union[str, dict, Level]] = None,
-                 sp_level: Optional[Union[str, dict, Level]] = None,
-                 species: Optional[List[ARCSpecies]] = None,
+                 opt_level: str | dict | Level | None = None,
+                 orbitals_level: str | dict | Level | None = None,
+                 output: dict | None = None,
+                 output_multi_spc: dict | None = None,
+                 project: str | None = None,
+                 project_directory: str | None = None,
+                 reactions: list[ARCReaction] | None = None,
+                 running_jobs: dict | None = None,
+                 scan_level: str | dict | Level | None = None,
+                 sp_level: str | dict | Level | None = None,
+                 species: list[ARCSpecies] | None = None,
                  specific_job_type: str = '',
-                 T_min: Optional[Tuple[float, str]] = None,
-                 T_max: Optional[Tuple[float, str]] = None,
+                 T_min: tuple[float, str] | None = None,
+                 T_max: tuple[float, str] | None = None,
                  T_count: int = 50,
                  thermo_adapter: str = 'Arkane',
                  trsh_ess_jobs: bool = True,
                  trsh_rotors: bool = True,
-                 ts_adapters: List[str] = None,
-                 ts_guess_level: Optional[Union[str, dict, Level]] = None,
+                 ts_adapters: list[str] = None,
+                 ts_guess_level: str | dict | Level | None = None,
                  verbose=logging.INFO,
-                 report_e_elect: Optional[bool] = False,
-                 skip_nmd: Optional[bool] = False,
+                 report_e_elect: bool | None = False,
+                 skip_nmd: bool | None = False,
                  ):
 
         if project is None:
@@ -1258,7 +1257,7 @@ class ARC(object):
             self.output = dict()
 
 
-def process_adaptive_levels(adaptive_levels: Optional[dict]) -> Optional[dict]:
+def process_adaptive_levels(adaptive_levels: dict | None) -> dict | None:
     """
     Process the ``adaptive_levels`` argument.
 
