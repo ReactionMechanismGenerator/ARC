@@ -141,7 +141,7 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
                                 f'strings. Got: {server_list} which is a {type(server_list)}')
     # run checks:
     for ess, server_list in settings_dict.items():
-        if ess.lower() not in supported_ess + ['gcn', 'heuristics', 'autotst', 'kinbot', 'xtb_gsm', 'orca_neb']:
+        if ess.lower() not in supported_ess + ['gcn', 'heuristics', 'autotst', 'kinbot', 'rits', 'xtb_gsm', 'orca_neb']:
             raise SettingsError(f'Recognized ESS software are {supported_ess}. Got: {ess}')
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in [s.lower() for s in servers.keys()]:
