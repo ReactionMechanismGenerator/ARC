@@ -46,19 +46,6 @@ jobs:
           cache-downloads: true
           generate-run-shell: true
 
-      # ── ensure ase is installed (danagroup channel can cause solver to drop it)
-      - name: Ensure ase and list env
-        run: |
-          echo "=== Installed packages ==="
-          micromamba list | head -30
-          echo "=== Checking ase ==="
-          python -c "import ase; print(f'ase {ase.__version__}')" 2>&1 || {
-            echo "ase missing, installing..."
-            micromamba install -y -c conda-forge "ase>=3.22.1"
-            python -c "import ase; print(f'ase {ase.__version__}')"
-          }
-        shell: micromamba-shell {0}
-
       # ── Complie ARC ──────────────────────
       - name: Build ARC in arc_env
         run: make compile -C ARC -j"$(nproc)"
@@ -78,9 +65,10 @@ jobs:
         run: micromamba install -y -n arc_env -c conda-forge libgfortran=3
         shell: micromamba-shell {0}
 
-      # ── verify critical imports ─────────────────────────────────
-      - name: Verify arc imports
-        run: python -c "import ase; print('ase OK'); from arc.common import VERSION; print(f'ARC {VERSION}')"
+      # ── ensure ase is installed (the danagroup channel and/or
+      #    libgfortran install can cause the solver to drop ase)
+      - name: Ensure ase is installed
+        run: pip install "ase>=3.22.1" && python -c "import ase; print(f'ase {ase.__version__} OK')"
         shell: micromamba-shell {0}
 
       # ── build HTML docs ─────────────────────────────────────────
