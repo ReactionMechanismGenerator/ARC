@@ -2022,7 +2022,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                                                                       charge=spc.charge)))
         self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
 
-        cycle = ARCSpecies(label="cycle",smiles= "C(1)CC(1)")
+        cycle = ARCSpecies(label="cycle", smiles="C1CC1")
         cycle.bdes = [(1, 2)]
         cycle.final_xyz = cycle.get_xyz()
         cycle_scissors = cycle.scissors()
