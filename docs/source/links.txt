@@ -4,6 +4,8 @@
 .. _ubuntu: http://releases.ubuntu.com/18.04/
 .. _cluster: https://en.wikipedia.org/wiki/Comparison_of_cluster_software
 .. _anaconda: https://www.anaconda.com/distribution/
+.. _miniconda: https://www.anaconda.com/docs/getting-started/miniconda/main 
+.. _miniforge: https://conda-forge.org/download/
 .. _yaml: https://yaml.org/
 .. _jupyter: https://jupyter.org/
 .. _examplesGitHub: https://github.com/ReactionMechanismGenerator/ARC/tree/main/examples

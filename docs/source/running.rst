@@ -73,8 +73,12 @@ A sample reaction input file with a user-supplied TS geometry guess is::
       - label: NH2
         smiles: '[NH2]'
 
+    # Reactions can be identified by different reaction families.
+    # You may want to specify the 'family' key to clarify which reaction family the reaction belongs to,
+    # especially when a reaction can be identified as multiple reaction families.
     reactions:
       - label: N2H4 + NH <=> N2H3 + NH2
+        family: H_Abstraction
         ts_xyz_guess:
         - |
           N      -0.4465194713     0.6830090994    -0.0932618217
