@@ -6,3 +6,116 @@ requires = [
     "numpy",
 ]
 build-backend = "setuptools.build_meta"
+
+# ---------------------------------------------------------------------------
+# Ruff configuration
+# ---------------------------------------------------------------------------
+# Ruff is the canonical linter for ARC. The selected rule set is intentionally
+# conservative for a working scientific codebase: bug-finding + import-sorting +
+# pyupgrade only. Stylistic rules (line length, naming, docstrings) are left
+# off until the team explicitly opts in. To run locally:
+#
+#     ruff check arc/
+#     ruff check --fix arc/         # auto-fix the safe ones
+#     ruff format --check arc/      # check formatting only (does not modify)
+#
+# CI runs both `ruff check` and `ruff format --check` on every PR via
+# .github/workflows/ruff.yml. Both steps are currently non-blocking; see the
+# workflow file for the plan to make them gating.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+# Match the Python pinned in environment.yml. Bumping this is the right
+# knob to enable newer pyupgrade rewrites once the conda env moves forward.
+target-version = "py312"
+line-length = 120
+extend-exclude = [
+    "build",
+    "dist",
+    "*.egg-info",
+    ".eggs",
+    "ipython",                          # notebook tutorials
+    "arc/molecule",                      # Cython-compiled sources + tightly coupled modules
+]
+
+[tool.ruff.lint]
+# Rule families enabled (kept tight; can grow over time):
+#   E   pycodestyle errors    (real syntactic / structural issues)
+#   F   pyflakes              (unused imports, undefined names, …)
+#   W   pycodestyle warnings  (trailing whitespace, blank-line issues)
+#   I   isort                 (import ordering — auto-fixable)
+#   B   flake8-bugbear        (likely-bug patterns: mutable defaults, …)
+#   UP  pyupgrade             (modernize old syntax for the target Python)
+#   RUF ruff-specific         (small high-signal correctness checks)
+#   C4  flake8-comprehensions (clearer list/set/dict comprehensions)
+select = ["E", "F", "W", "I", "B", "UP", "RUF", "C4"]
+# Per-rule overrides — these are the rules that produce false positives on
+# scientific Python code more often than they catch real bugs, plus the
+# stylistic-modernization rules that would otherwise flood the inbox on a
+# mature codebase. Each ignore is justified inline so future maintainers can
+# see why it was added and revisit if the situation changes.
+ignore = [
+    # --- whitespace / formatting (let `ruff format` handle these) ----------
+    "E501",   # line too long — allow long XYZ blocks, SMILES, docstrings
+    "E731",   # do not assign a lambda — common in numerical code
+    "E741",   # ambiguous variable name (l/I/O) — allowed for math/physics
+    "W291",   # trailing whitespace — formatter's job
+    "W293",   # blank-line whitespace — formatter's job
+    # --- typing modernization (we keep the legacy form for now) -----------
+    "UP006",  # `list` instead of `List` — pre-PEP604 form is in heavy use
+    "UP007",  # `X | Y` instead of `Union[X, Y]` — same reason
+    "UP035",  # `typing.X` deprecated — same reason
+    "UP045",  # `X | None` instead of `Optional[X]` — same reason (1290+ hits)
+    # --- pyupgrade modernizations that aren't worth a churn-PR ------------
+    "UP009",  # UTF-8 encoding declaration — harmless leftover
+    "UP015",  # redundant open mode `'r'` — harmless
+    "UP025",  # unicode kind prefix `u""` — harmless
+    "UP030",  # `format()` literal positional indexes — minor
+    "UP032",  # use f-string instead of `.format()` — minor
+    # --- bugbear false positives on numerical code ------------------------
+    "B007",   # unused loop control variable — common with `for _, x in …`
+    "B008",   # function calls in arg defaults
+    "B905",   # zip() without strict — would require a churn PR
+    # --- comprehension preferences (taste, not bugs) ----------------------
+    "C408",   # unnecessary `dict()` call
+    "C416",   # unnecessary comprehension
+    "C419",   # unnecessary comprehension in `any()`/`all()`/etc.
+    # --- ruff-specific noise on chemistry text ----------------------------
+    "RUF001", # ambiguous unicode in strings — Greek letters in chemistry text
+    "RUF002", # ambiguous unicode in docstrings — same
+    "RUF003", # ambiguous unicode in comments — same
+    "RUF005", # collection literal concatenation — taste
+    "RUF012", # mutable class attributes annotated with ClassVar — too noisy
+    "RUF013", # implicit `Optional` — would need typing-wide cleanup
+    "RUF059", # unused unpacked variable — taste
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests routinely use long literal blocks (XYZ strings, expected dicts, …)
+# and `assert` patterns that some lint rules flag as "useless".
+"**/*test*.py"        = ["E501", "F841", "B017", "RUF015"]
+"arc/testing/**"      = ["E501", "F841"]
+# __init__.py files re-export symbols and need wildcard / unused-import patterns.
+"**/__init__.py"      = ["F401", "F403"]
+# Standalone scripts run inside isolated envs and may import packages not
+# installed in the main env — don't flag those imports.
+"arc/job/adapters/scripts/*.py" = ["F401", "E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["arc"]
+combine-as-imports = true
+force-sort-within-sections = false
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
+[tool.ruff.format]
+# Format settings for `ruff format`. Not enforced by CI yet — the team can
+# opt in to a one-time mass reformat by running `ruff format arc/`.
+quote-style = "single"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = false
