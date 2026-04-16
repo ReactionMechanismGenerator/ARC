@@ -273,6 +273,13 @@ def map_rxn(rxn: 'ARCReaction',
     r_bdes, p_bdes = find_all_breaking_bonds(rxn, r_direction=True, pdi=pdi), find_all_breaking_bonds(rxn, r_direction=False, pdi=pdi)
     r_cuts, p_cuts = cut_species_based_on_atom_indices(reactants, r_bdes), cut_species_based_on_atom_indices(products, p_bdes)
 
+    if r_cuts is None or p_cuts is None:
+        if rxn.product_dicts is not None and len(rxn.product_dicts) - 1 > pdi < MAX_PDI:
+            return map_rxn(rxn, backend=backend, product_dict_index_to_try=pdi + 1)
+        else:
+            logger.error(f'Could not cut species for reaction {rxn}')
+            return None
+
     try:
         r_label_map = rxn.product_dicts[pdi]['r_label_map']
         p_label_map = rxn.product_dicts[pdi]['p_label_map']
