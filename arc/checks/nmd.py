@@ -5,7 +5,7 @@ A module for checking the normal mode displacement of a TS.
 import numpy as np
 from collections import Counter
 from itertools import product
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING
 
 from arc.parser import parser
 from arc.common import get_element_mass, get_logger
@@ -25,11 +25,11 @@ STD_FLOOR = 1e-4
 DIRECTIONALITY_MIN_DELTA = 0.005
 
 
-def analyze_ts_normal_mode_displacement(reaction: 'ARCReaction',
-                                        job: Optional['JobAdapter'],
-                                        amplitude: Union[float, list] = 0.25,
-                                        weights: Union[bool, np.array] = True,
-                                        ) -> Optional[bool]:
+def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
+                                        job: JobAdapter | None,
+                                        amplitude: float | list = 0.25,
+                                        weights: bool | np.ndarray = True,
+                                        ) -> bool | None:
     """
     Analyze the normal mode displacement by identifying bonds that break and form
     and comparing them to the expected given reaction.
@@ -38,14 +38,14 @@ def analyze_ts_normal_mode_displacement(reaction: 'ARCReaction',
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
         job (JobAdapter): The frequency job object instance that points to the respective log file.
-        amplitude (Union[float, list]): The amplitude of the normal mode displacement motion to check.
+        amplitude (float | list): The amplitude of the normal mode displacement motion to check.
                                         If a list, all possible results are returned.
-        weights (Union[bool, np.array]): Whether to use weights for the displacement.
+        weights (bool | np.ndarray): Whether to use weights for the displacement.
                                          If ``False``, use ones as weights. If ``True``, use sqrt of atom masses.
                                          If an array, use the array values it as individual weights per atom.
 
     Returns:
-        Optional[bool]: Whether the TS normal mode displacement is consistent with the desired reaction.
+        bool | None: Whether the TS normal mode displacement is consistent with the desired reaction.
     """
     if job is None:
         return None
@@ -85,9 +85,9 @@ def analyze_ts_normal_mode_displacement(reaction: 'ARCReaction',
     return False
 
 
-def check_bond_directionality(formed_bonds: List[Tuple[int, int]],
-                              broken_bonds: List[Tuple[int, int]],
-                              xyzs: Tuple[dict, dict],
+def check_bond_directionality(formed_bonds: list[tuple[int, int]],
+                              broken_bonds: list[tuple[int, int]],
+                              xyzs: tuple[dict, dict],
                               min_delta: float = DIRECTIONALITY_MIN_DELTA,
                               ) -> bool:
     """
@@ -98,9 +98,9 @@ def check_bond_directionality(formed_bonds: List[Tuple[int, int]],
     Only bonds with ``|delta| > min_delta`` are checked to avoid false failures from numerical noise.
 
     Args:
-        formed_bonds (List[Tuple[int, int]]): The bonds that are formed in the reaction.
-        broken_bonds (List[Tuple[int, int]]): The bonds that are broken in the reaction.
-        xyzs (Tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
+        formed_bonds (list[tuple[int, int]]): The bonds that are formed in the reaction.
+        broken_bonds (list[tuple[int, int]]): The bonds that are broken in the reaction.
+        xyzs (tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
         min_delta (float): Minimum absolute signed difference for a bond to participate in the check.
 
     Returns:
@@ -145,13 +145,13 @@ def check_bond_directionality(formed_bonds: List[Tuple[int, int]],
     return True
 
 
-def is_nmd_correct_for_any_mapping(reaction: 'ARCReaction',
-                                   xyzs: Tuple[dict, dict],
-                                   formed_bonds: List[Tuple[int, int]],
-                                   broken_bonds: List[Tuple[int, int]],
-                                   changed_bonds: List[Tuple[int, int]],
-                                   r_eq_atoms: List[List[int]],
-                                   weights: Optional[np.ndarray],
+def is_nmd_correct_for_any_mapping(reaction: ARCReaction,
+                                   xyzs: tuple[dict, dict],
+                                   formed_bonds: list[tuple[int, int]],
+                                   broken_bonds: list[tuple[int, int]],
+                                   changed_bonds: list[tuple[int, int]],
+                                   r_eq_atoms: list[list[int]],
+                                   weights: np.ndarray | None,
                                    amplitude: float,
                                    ) -> bool:
     """
@@ -159,12 +159,12 @@ def is_nmd_correct_for_any_mapping(reaction: 'ARCReaction',
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
-        xyzs (Tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
-        formed_bonds (List[Tuple[int, int]]): The bonds that are formed in the reaction.
-        broken_bonds (List[Tuple[int, int]]): The bonds that are broken in the reaction.
-        changed_bonds (List[Tuple[int, int]]): The bonds that are changed in the reaction.
-        r_eq_atoms (List[List[int]]): A list of equivalent atoms in the reactants.
-        weights (np.array): The weights for the atoms.
+        xyzs (tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
+        formed_bonds (list[tuple[int, int]]): The bonds that are formed in the reaction.
+        broken_bonds (list[tuple[int, int]]): The bonds that are broken in the reaction.
+        changed_bonds (list[tuple[int, int]]): The bonds that are changed in the reaction.
+        r_eq_atoms (list[list[int]]): A list of equivalent atoms in the reactants.
+        weights (np.ndarray): The weights for the atoms.
         amplitude (float): The motion amplitude.
 
     Returns:
@@ -234,22 +234,22 @@ def is_nmd_correct_for_any_mapping(reaction: 'ARCReaction',
     return False
 
 
-def get_eq_formed_and_broken_bonds(formed_bonds: List[Tuple[int, int]],
-                                   broken_bonds: List[Tuple[int, int]],
-                                   changed_bonds: List[Tuple[int, int]],
-                                   r_eq_atoms: List[List[int]],
-                                   ) -> List[Tuple[List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]]]]:
+def get_eq_formed_and_broken_bonds(formed_bonds: list[tuple[int, int]],
+                                   broken_bonds: list[tuple[int, int]],
+                                   changed_bonds: list[tuple[int, int]],
+                                   r_eq_atoms: list[list[int]],
+                                   ) -> list[tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]]]:
     """
     Get the equivalent formed and broken bonds.
 
     Args:
-         formed_bonds (List[Tuple[int, int]]): The bonds that are formed in the reaction.
-         broken_bonds (List[Tuple[int, int]]): The bonds that are broken in the reaction.
-         changed_bonds (List[Tuple[int, int]]): The bonds that are changed in the reaction.
-         r_eq_atoms (List[List[int]]): A list of equivalent atoms in the reactants.
+         formed_bonds (list[tuple[int, int]]): The bonds that are formed in the reaction.
+         broken_bonds (list[tuple[int, int]]): The bonds that are broken in the reaction.
+         changed_bonds (list[tuple[int, int]]): The bonds that are changed in the reaction.
+         r_eq_atoms (list[list[int]]): A list of equivalent atoms in the reactants.
 
     Returns:
-         List[Tuple[List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]]]]: The equivalent formed and broken bonds.
+         list[tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]]]: The equivalent formed and broken bonds.
     """
     all_changing_indices = list()
     for bond in formed_bonds + broken_bonds:
@@ -263,22 +263,22 @@ def get_eq_formed_and_broken_bonds(formed_bonds: List[Tuple[int, int]],
     return modified_bond_grand_list
 
 
-def translate_all_tuples_simultaneously(list_1: List[Tuple[int, int]],
-                                        list_2: List[Tuple[int, int]],
-                                        list_3: List[Tuple[int, int]],
-                                        equivalences: List[List[int]],
-                                        ) -> List[Tuple[List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]]]]:
+def translate_all_tuples_simultaneously(list_1: list[tuple[int, int]],
+                                        list_2: list[tuple[int, int]],
+                                        list_3: list[tuple[int, int]],
+                                        equivalences: list[list[int]],
+                                        ) -> list[tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]]]:
     """
     Translate all tuples simultaneously using a mapping.
 
     Args:
-        list_1 (List[Tuple[int, int]]): The first list of tuples.
-        list_2 (List[Tuple[int, int]]): The second list of tuples.
-        list_3 (List[Tuple[int, int]]): The third list of tuples.
-        equivalences (List[List[int]]): A list of equivalent atoms.
+        list_1 (list[tuple[int, int]]): The first list of tuples.
+        list_2 (list[tuple[int, int]]): The second list of tuples.
+        list_3 (list[tuple[int, int]]): The third list of tuples.
+        equivalences (list[list[int]]): A list of equivalent atoms.
 
     Returns:
-        List[Tuple[List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]]]]: The translated tuples.
+        list[tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]]]: The translated tuples.
     """
     mapping = create_equivalence_mapping(equivalences)
     all_indices = {i for tup in list_1 + list_2 + list_3 for i in tup}
@@ -301,15 +301,15 @@ def translate_all_tuples_simultaneously(list_1: List[Tuple[int, int]],
     return all_translated_tuples
 
 
-def create_equivalence_mapping(equivalences: List[List[int]]) -> Dict[int, List[int]]:
+def create_equivalence_mapping(equivalences: list[list[int]]) -> dict[int, list[int]]:
     """
     Create a mapping of atom indices to equivalence groups.
 
     Args:
-        equivalences (List[List[int]]): A list of equivalent atoms.
+        equivalences (list[list[int]]): A list of equivalent atoms.
 
     Returns:
-        Dict[int, List[int]]: The mapping of atom indices to equivalence groups
+        dict[int, list[int]]: The mapping of atom indices to equivalence groups
     """
     mapping = dict()
     for group in equivalences:
@@ -319,19 +319,19 @@ def create_equivalence_mapping(equivalences: List[List[int]]) -> Dict[int, List[
 
 
 def get_weights_from_xyz(xyz: dict,
-                         weights: Union[bool, np.array] = True,
-                         ) -> np.array:
+                         weights: bool | np.ndarray = True,
+                         ) -> np.ndarray:
     """
     Get weights for atoms in a molecule.
 
     Args:
         xyz (dict): The Cartesian coordinates.
-        weights (Union[bool, np.array]): Whether to use weights for the displacement.
+        weights (bool | np.ndarray): Whether to use weights for the displacement.
                                          If ``False``, use ones as weights. If ``True``, use sqrt of atom masses.
                                          If an array, use it as weights.
 
     Returns:
-        np.array: The weights for the atoms.
+        np.ndarray: The weights for the atoms.
     """
     if isinstance(weights, bool):
         if weights:
@@ -350,20 +350,20 @@ def get_weights_from_xyz(xyz: dict,
 
 def get_displaced_xyzs(xyz: dict,
                        amplitude: float,
-                       normal_mode_disp: np.array,
-                       weights: np.array,
-                       ) -> Tuple[dict, dict]:
+                       normal_mode_disp: np.ndarray,
+                       weights: np.ndarray,
+                       ) -> tuple[dict, dict]:
     """
     Get the Cartesian coordinates of the TS displaced along a normal mode.
 
     Args:
         xyz (dict): The Cartesian coordinates.
         amplitude (float): The amplitude of the displacement.
-        normal_mode_disp (np.array): The normal mode displacement matrix corresponding to the imaginary frequency.
-        weights (np.array): The weights for the atoms.
+        normal_mode_disp (np.ndarray): The normal mode displacement matrix corresponding to the imaginary frequency.
+        weights (np.ndarray): The weights for the atoms.
 
     Returns:
-        Tuple[dict, dict]: The Cartesian coordinates of the TS displaced along the normal mode.
+        tuple[dict, dict]: The Cartesian coordinates of the TS displaced along the normal mode.
     """
     np_coords = xyz_to_np_array(xyz)
     xyz_1 = xyz_from_data(coords=np_coords - amplitude * normal_mode_disp * weights,
@@ -373,10 +373,10 @@ def get_displaced_xyzs(xyz: dict,
     return xyz_1, xyz_2
 
 
-def get_bond_length_changes_baseline_and_std(non_reactive_bonds: List[Tuple[int, int]],
-                                             xyzs: Tuple[dict, dict],
-                                             weights: Optional[np.array] = None,
-                                             ) -> Tuple[Optional[float], Optional[float]]:
+def get_bond_length_changes_baseline_and_std(non_reactive_bonds: list[tuple[int, int]],
+                                             xyzs: tuple[dict, dict],
+                                             weights: np.ndarray | None = None,
+                                             ) -> tuple[float | None, float | None]:
     """
     Get the baseline and spread of bond length changes for non-reactive bonds using robust statistics.
 
@@ -388,12 +388,12 @@ def get_bond_length_changes_baseline_and_std(non_reactive_bonds: List[Tuple[int,
             non_reactive_bonds = set(r_bonds) & set(p_bonds)
 
     Args:
-        non_reactive_bonds (List[Tuple[int, int]]): The non-reactive bonds.
-        xyzs (Tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
-        weights (np.array): The weights for the atoms.
+        non_reactive_bonds (list[tuple[int, int]]): The non-reactive bonds.
+        xyzs (tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
+        weights (np.ndarray): The weights for the atoms.
 
     Returns:
-        Tuple[Optional[float], Optional[float]]:
+        tuple[float | None, float | None]:
             - The median baseline of bond length differences for non-reactive bonds.
             - The MAD-based spread estimate of bond length differences for non-reactive bonds.
     """
@@ -406,21 +406,21 @@ def get_bond_length_changes_baseline_and_std(non_reactive_bonds: List[Tuple[int,
     return baseline, std
 
 
-def get_bond_length_changes(bonds: Union[List[Tuple[int, int]], Set[Tuple[int, int]]],
-                            xyzs: Tuple[dict, dict],
-                            weights: Optional[np.array] = None,
-                            amplitude: Optional[float] = None,
+def get_bond_length_changes(bonds: list[tuple[int, int]] | set[tuple[int, int]],
+                            xyzs: tuple[dict, dict],
+                            weights: np.ndarray | None = None,
+                            amplitude: float | None = None,
                             return_none_if_change_is_insignificant: bool = False,
                             considered_reactive: bool = False,
-                            ) -> Optional[np.array]:
+                            ) -> np.ndarray | None:
     """
     Get the bond length changes of specific bonds.
 
     Args:
-        bonds (Union[list, tuple]): The bonds to check.
-        xyzs (Tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
-        weights (np.array, optional): The weights for the atoms.
-        amplitude (Optional[float]): The motion amplitude.
+        bonds (list | tuple): The bonds to check.
+        xyzs (tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
+        weights (np.ndarray, optional): The weights for the atoms.
+        amplitude (float | None): The motion amplitude.
         return_none_if_change_is_insignificant (bool, optional): Whether to check for significant motion
                                                                  and return None if motion is insignificant.
                                                                  Relevant for bonds that change during a reaction,
@@ -428,7 +428,7 @@ def get_bond_length_changes(bonds: Union[List[Tuple[int, int]], Set[Tuple[int, i
         considered_reactive (bool): Whether the bonds are considered reactive in the reaction.
 
     Returns:
-        Optional[np.array]: The bond length changes of the specified bonds.
+        np.ndarray | None: The bond length changes of the specified bonds.
     """
     diffs = list()
     report = None
@@ -451,17 +451,17 @@ def get_bond_length_changes(bonds: Union[List[Tuple[int, int]], Set[Tuple[int, i
     return diffs, report
 
 
-def get_bond_length_in_reaction(bond: Union[Tuple[int, int], List[int]],
+def get_bond_length_in_reaction(bond: tuple[int, int] | list[int],
                                 xyz: dict,
-                                weights: Optional[np.array] = None,
-                                ) -> Optional[float]:
+                                weights: np.ndarray | None = None,
+                                ) -> float | None:
     """
     Get the length of a bond in either the reactants or the products of a reaction.
 
     Args:
-        bond (Tuple[int, int]): The bond to check.
+        bond (tuple[int, int]): The bond to check.
         xyz (dict): The Cartesian coordinates mapped to the indices of the reactants.
-        weights (np.array): The weights for the atoms.
+        weights (np.ndarray): The weights for the atoms.
 
     Returns:
         float: The bond length.
@@ -477,9 +477,9 @@ def get_bond_length_in_reaction(bond: Union[Tuple[int, int], List[int]],
     return float(distance)
 
 
-def find_equivalent_atoms(reaction: 'ARCReaction',
+def find_equivalent_atoms(reaction: ARCReaction,
                           reactant_only: bool = True,
-                          ) -> Tuple[List[List[int]], List[List[int]]]:
+                          ) -> tuple[list[list[int]], list[list[int]]]:
     """
     Find equivalent atoms in the reactants and products of a reaction.
     This is a tentative function that should be replaced when atom mapping returns a list.
@@ -490,7 +490,7 @@ def find_equivalent_atoms(reaction: 'ARCReaction',
         reactant_only (bool): Whether to search for equivalent atoms in the reactants only.
 
     Returns:
-        Tuple[List[List[int]], List[List[int]]]:
+        tuple[list[list[int]], list[list[int]]]:
             - A list of equivalent atoms in the reactants.
             - A list of equivalent atoms in the products, indices are atom mapped to the reactants.
     """
@@ -512,18 +512,18 @@ def find_equivalent_atoms(reaction: 'ARCReaction',
 
 def identify_equivalent_atoms_in_molecule(molecule: 'Molecule',
                                           inc: int = 0,
-                                          atom_map: Optional[List[int]] = None,
-                                          ) -> List[List[int]]:
+                                          atom_map: list[int] | None = None,
+                                          ) -> list[list[int]]:
     """
     Identify equivalent atoms in a molecule.
 
     Args:
         molecule (Molecule): The molecule to check.
         inc (int): The increment to be added.
-        atom_map (Optional[List[int]]): The atom map.
+        atom_map (list[int] | None): The atom map.
 
     Returns:
-        List[List[int]]: A list of equivalent atoms.
+        list[list[int]]: A list of equivalent atoms.
     """
     element_counts = Counter([atom.element.number for atom in molecule.atoms])
     repeated_elements = [element for element, count in element_counts.items() if count > 1]
@@ -554,7 +554,7 @@ def identify_equivalent_atoms_in_molecule(molecule: 'Molecule',
 
 def fingerprint_atom(atom_index: int,
                      molecule: 'Molecule',
-                     excluded_atom_indices: Optional[List[int]] = None,
+                     excluded_atom_indices: list[int] | None = None,
                      depth: int = 3,
                      ) -> list:
     """
@@ -563,11 +563,11 @@ def fingerprint_atom(atom_index: int,
     Args:
         atom_index (int): The index of the atom to map.
         molecule (Molecule): The molecule to which the atom belongs.
-        excluded_atom_indices (Optional[List[int]]): Atom indices to exclude from the mapping.
+        excluded_atom_indices (list[int] | None): Atom indices to exclude from the mapping.
         depth (int): The depth of the atom map.
 
     Returns:
-        List[int]: The atom map.
+        list[int]: The atom map.
     """
     atom_0 = molecule.atoms[atom_index]
     fingerprint = [atom_0.element.number]

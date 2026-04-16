@@ -28,7 +28,6 @@ import os
 import time
 import uuid
 from enum import Enum
-from typing import Dict, Optional, Tuple, Union
 
 
 class TaskState(str, Enum):
@@ -81,7 +80,6 @@ class PipeRunState(str, Enum):
     COMPLETED_PARTIAL = 'COMPLETED_PARTIAL'
     FAILED = 'FAILED'
 
-
 # Task families currently supported by the pipe system.
 # Only families listed here pass TaskSpec validation.
 SUPPORTED_TASK_FAMILIES = (
@@ -107,9 +105,8 @@ TASK_FAMILY_TO_JOB_TYPE = {
     'rotor_scan_1d': 'scan',
 }
 
-
 # Allowed transitions: maps each state to the set of states it may transition to.
-TASK_TRANSITIONS: Dict[TaskState, Tuple[TaskState, ...]] = {
+TASK_TRANSITIONS: dict[TaskState, tuple[TaskState, ...]] = {
     TaskState.PENDING: (TaskState.CLAIMED, TaskState.CANCELLED),
     TaskState.CLAIMED: (TaskState.RUNNING, TaskState.ORPHANED, TaskState.CANCELLED),
     TaskState.RUNNING: (TaskState.COMPLETED, TaskState.FAILED_RETRYABLE, TaskState.FAILED_ESS,
@@ -122,7 +119,7 @@ TASK_TRANSITIONS: Dict[TaskState, Tuple[TaskState, ...]] = {
     TaskState.CANCELLED: (),
 }
 
-PIPE_RUN_TRANSITIONS: Dict[PipeRunState, Tuple[PipeRunState, ...]] = {
+PIPE_RUN_TRANSITIONS: dict[PipeRunState, tuple[PipeRunState, ...]] = {
     PipeRunState.CREATED: (PipeRunState.STAGED, PipeRunState.FAILED),
     PipeRunState.STAGED: (PipeRunState.SUBMITTED, PipeRunState.FAILED),
     PipeRunState.SUBMITTED: (PipeRunState.ACTIVE, PipeRunState.FAILED),
@@ -134,8 +131,8 @@ PIPE_RUN_TRANSITIONS: Dict[PipeRunState, Tuple[PipeRunState, ...]] = {
 }
 
 
-def check_valid_transition(current_state: Union[TaskState, PipeRunState],
-                           new_state: Union[TaskState, PipeRunState],
+def check_valid_transition(current_state: TaskState | PipeRunState,
+                           new_state: TaskState | PipeRunState,
                            ) -> None:
     """
     Validate that a state transition is allowed.
@@ -221,7 +218,7 @@ class TaskSpec:
                  required_memory_mb: int,
                  input_payload: dict,
                  ingestion_metadata: dict,
-                 args: Optional[dict] = None,
+                 args: dict | None = None,
                  ):
         self.task_id = task_id
         self.task_family = task_family
@@ -255,7 +252,7 @@ class TaskSpec:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> 'TaskSpec':
+    def from_dict(cls, d: dict) -> TaskSpec:
         """
         Reconstruct a TaskSpec from a dictionary.
 
@@ -309,14 +306,14 @@ class TaskStateRecord:
                  status: str = TaskState.PENDING.value,
                  attempt_index: int = 0,
                  max_attempts: int = 3,
-                 claimed_by: Optional[str] = None,
-                 claim_token: Optional[str] = None,
-                 claimed_at: Optional[float] = None,
-                 lease_expires_at: Optional[float] = None,
-                 started_at: Optional[float] = None,
-                 ended_at: Optional[float] = None,
-                 failure_class: Optional[str] = None,
-                 retry_disposition: Optional[str] = None,
+                 claimed_by: str | None = None,
+                 claim_token: str | None = None,
+                 claimed_at: float | None = None,
+                 lease_expires_at: float | None = None,
+                 started_at: float | None = None,
+                 ended_at: float | None = None,
+                 failure_class: str | None = None,
+                 retry_disposition: str | None = None,
                  ):
         self.status = status
         self.attempt_index = attempt_index
@@ -347,7 +344,7 @@ class TaskStateRecord:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> 'TaskStateRecord':
+    def from_dict(cls, d: dict) -> TaskStateRecord:
         """Reconstruct a TaskStateRecord from a dictionary."""
         return cls(
             status=d['status'],
@@ -368,10 +365,10 @@ def generate_claim_token() -> str:
     """Generate a unique claim token for ownership verification."""
     return uuid.uuid4().hex[:16]
 
-
 # ---------------------------------------------------------------------------
 # Directory & I/O Utilities
 # ---------------------------------------------------------------------------
+
 
 def get_task_dir(pipe_root: str, task_id: str) -> str:
     """
@@ -502,7 +499,7 @@ def _validate_state_invariants(state: TaskStateRecord) -> None:
 
 def update_task_state(pipe_root: str,
                       task_id: str,
-                      new_status: Optional[TaskState] = None,
+                      new_status: TaskState | None = None,
                       lock_timeout: float = 30.0,
                       **fields,
                       ) -> TaskStateRecord:

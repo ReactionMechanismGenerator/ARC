@@ -17,7 +17,6 @@ import os
 import stat
 import sys
 import time
-from typing import Dict, List, Optional
 
 import arc.parser.parser as parser
 from arc.common import get_logger
@@ -49,7 +48,7 @@ class PipeRun:
     Args:
         project_directory (str): Path to the ARC project directory.
         run_id (str): Unique identifier for this pipe run.
-        tasks (List[TaskSpec]): Task specifications to execute.
+        tasks (list[TaskSpec]): Task specifications to execute.
         cluster_software (str): Cluster scheduler type.
         max_workers (int): Maximum number of concurrent array workers.
         max_attempts (int): Maximum retry attempts per task.
@@ -58,11 +57,11 @@ class PipeRun:
     def __init__(self,
                  project_directory: str,
                  run_id: str,
-                 tasks: List[TaskSpec],
+                 tasks: list[TaskSpec],
                  cluster_software: str,
                  max_workers: int = 100,
                  max_attempts: int = 3,
-                 pipe_root: Optional[str] = None,
+                 pipe_root: str | None = None,
                  ):
         self.project_directory = project_directory
         self.run_id = run_id
@@ -118,7 +117,7 @@ class PipeRun:
         os.replace(tmp_path, run_path)
 
     @classmethod
-    def from_dir(cls, pipe_root: str) -> 'PipeRun':
+    def from_dir(cls, pipe_root: str) -> PipeRun:
         """
         Reconstruct a PipeRun from an existing run directory.
 
@@ -279,13 +278,13 @@ class PipeRun:
         )
         return job_status, job_id
 
-    def reconcile(self) -> Dict[str, int]:
+    def reconcile(self) -> dict[str, int]:
         """
         Poll all tasks, detect orphans, schedule retries, and check for completion.
         Does not regress an already-terminal run status.
 
         Returns:
-            Dict[str, int]: Counts of tasks in each state.
+            dict[str, int]: Counts of tasks in each state.
         """
         if self.status in (PipeRunState.COMPLETED, PipeRunState.COMPLETED_PARTIAL, PipeRunState.FAILED):
             return self._count_task_states()
@@ -297,7 +296,7 @@ class PipeRun:
             return {}
 
         now = time.time()
-        counts: Dict[str, int] = {s.value: 0 for s in TaskState}
+        counts: dict[str, int] = {s.value: 0 for s in TaskState}
         retried_pending = 0  # PENDING tasks with attempt_index > 0 (genuinely retried)
         fresh_pending = 0    # PENDING tasks with attempt_index == 0 (awaiting initial workers)
         task_ids = sorted(os.listdir(tasks_dir))
@@ -412,9 +411,9 @@ class PipeRun:
         """Whether the run has PENDING retried tasks but no active workers."""
         return getattr(self, '_needs_resubmission', False)
 
-    def _count_task_states(self) -> Dict[str, int]:
+    def _count_task_states(self) -> dict[str, int]:
         """Read all task states and return counts without modifying anything."""
-        counts: Dict[str, int] = {s.value: 0 for s in TaskState}
+        counts: dict[str, int] = {s.value: 0 for s in TaskState}
         tasks_dir = os.path.join(self.pipe_root, 'tasks')
         if not os.path.isdir(tasks_dir):
             return counts
@@ -428,12 +427,12 @@ class PipeRun:
                 continue
         return counts
 
-
 # ===========================================================================
 # Ingestion helpers
 # ===========================================================================
 
-def find_output_file(attempt_dir: str, engine: str, task_id: str = '') -> Optional[str]:
+
+def find_output_file(attempt_dir: str, engine: str, task_id: str = '') -> str | None:
     """
     Find the output file for a completed task.
 
@@ -738,10 +737,10 @@ def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):
         return
     species.rotors_dict[rotor_index]['scan_path'] = output_file
 
-
 # ===========================================================================
 # Routing helpers
 # ===========================================================================
+
 
 def derive_cluster_software(ess_settings: dict, job_adapter: str) -> str:
     """
@@ -763,8 +762,8 @@ def derive_cluster_software(ess_settings: dict, job_adapter: str) -> str:
 def build_conformer_pipe_tasks(species, label: str, task_family: str,
                                level_dict: dict, job_adapter: str,
                                memory_mb: int,
-                               conformer_indices: Optional[List[int]] = None,
-                               ) -> List[TaskSpec]:
+                               conformer_indices: list[int] | None = None,
+                               ) -> list[TaskSpec]:
     """
     Build TaskSpec objects for conformer pipe tasks (conf_opt or conf_sp).
 
@@ -800,7 +799,7 @@ def build_conformer_pipe_tasks(species, label: str, task_family: str,
 def build_species_leaf_task(species, label: str, task_family: str,
                             level_dict: dict, job_adapter: str,
                             memory_mb: int,
-                            extra_ingestion: Optional[dict] = None) -> TaskSpec:
+                            extra_ingestion: dict | None = None) -> TaskSpec:
     """Build a single TaskSpec for a species-side leaf job (sp, freq, irc)."""
     cores = default_job_settings.get('job_cpu_cores', 8)
     meta = extra_ingestion or {}
@@ -820,7 +819,7 @@ def build_species_leaf_task(species, label: str, task_family: str,
 
 
 def build_tsg_tasks(ts_label: str, method: str, count: int,
-                    rxn_dict: dict, memory_mb: int) -> List[TaskSpec]:
+                    rxn_dict: dict, memory_mb: int) -> list[TaskSpec]:
     """
     Build TaskSpec objects for one TSG method batch.
 
@@ -851,9 +850,9 @@ def build_tsg_tasks(ts_label: str, method: str, count: int,
     return tasks
 
 
-def build_ts_opt_tasks(species, label: str, xyzs: List[dict],
+def build_ts_opt_tasks(species, label: str, xyzs: list[dict],
                        level_dict: dict, job_adapter: str,
-                       memory_mb: int) -> List[TaskSpec]:
+                       memory_mb: int) -> list[TaskSpec]:
     """Build TaskSpec objects for TS optimization tasks."""
     cores = default_job_settings.get('job_cpu_cores', 8)
     species_dict_payload = species.as_dict()
@@ -879,9 +878,9 @@ def build_ts_opt_tasks(species, label: str, xyzs: List[dict],
     return tasks
 
 
-def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: List[int],
+def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: list[int],
                               level_dict: dict, job_adapter: str,
-                              memory_mb: int) -> List[TaskSpec]:
+                              memory_mb: int) -> list[TaskSpec]:
     """Build TaskSpec objects for 1D rotor scan tasks."""
     cores = default_job_settings.get('job_cpu_cores', 8)
     species_dict_payload = species.as_dict()

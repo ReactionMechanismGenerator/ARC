@@ -18,7 +18,7 @@ import shutil
 import time
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -39,7 +39,6 @@ from arc.species.vectors import calculate_dihedral_angle
 
 if TYPE_CHECKING:
     from arc.species import ARCSpecies
-
 
 logger = get_logger()
 
@@ -398,7 +397,7 @@ class JobAdapter(ABC):
                 self.set_initial_and_final_times()
         self.final_time = self.final_time or datetime.datetime.now()
 
-    def set_initial_and_final_times(self, ssh: Optional[SSHClient] = None):
+    def set_initial_and_final_times(self, ssh: SSHClient | None = None):
         """
         Set the end time of the job.
 
@@ -439,7 +438,7 @@ class JobAdapter(ABC):
             self.run_time = None
 
     @staticmethod
-    def _rotate_csv_if_needed(csv_path: str, max_lines: int = 10000, line_count: Optional[int] = None) -> None:
+    def _rotate_csv_if_needed(csv_path: str, max_lines: int = 10000, line_count: int | None = None) -> None:
         """
         Rotate a CSV file if it reaches or exceeds ``max_lines`` lines (including the header).
         The archived file is renamed with a timestamp suffix in the same directory.
@@ -861,7 +860,7 @@ class JobAdapter(ABC):
                     val: str,
                     key1: str = 'keyword',
                     key2: str = 'general',
-                    separator: Optional[str] = None,
+                    separator: str | None = None,
                     check_val_exists: bool = True,
                     ):
         """
@@ -989,16 +988,16 @@ class JobAdapter(ABC):
         return run_job
 
     def save_output_file(self,
-                         key: Optional[str] = None,
-                         val: Optional[Union[float, dict, np.ndarray]] = None,
-                         content_dict: Optional[dict] = None,
+                         key: str | None = None,
+                         val: float | dict | np.ndarray | None = None,
+                         content_dict: dict | None = None,
                          ):
         """
         Save the output of a job to the YAML output file.
 
         Args:
             key (str, optional): The key for the YAML output file.
-            val (Union[float, dict, np.ndarray], optional): The value to be stored.
+            val (float | dict | np.ndarray, optional): The value to be stored.
             content_dict (dict, optional): A dictionary to store.
 
         """

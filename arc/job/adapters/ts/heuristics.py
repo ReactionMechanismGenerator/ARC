@@ -19,7 +19,7 @@ import copy
 import datetime
 import itertools
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any
 
 from arc.common import (ARC_PATH, almost_equal_coords, get_angle_in_180_range, get_logger, is_angle_linear,
                         is_xyz_linear, key_by_val, read_yaml_file)
@@ -70,10 +70,10 @@ class HeuristicsAdapter(JobAdapter):
         constraints (list, optional): A list of constraints to use during an optimization or scan.
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
         dihedral_increment (float, optional): The degrees increment to use when scanning dihedrals of TS guesses.
-        dihedrals (List[float], optional): The dihedral angels corresponding to self.torsions.
+        dihedrals (list[float], optional): The dihedral angels corresponding to self.torsions.
         directed_scan_type (str, optional): The type of the directed scan.
         ess_settings (dict, optional): A dictionary of available ESS and a corresponding server list.
-        ess_trsh_methods (List[str], optional): A list of troubleshooting methods already tried out.
+        ess_trsh_methods (list[str], optional): A list of troubleshooting methods already tried out.
         execution_type (str, optional): The execution type, 'incore', 'queue', or 'pipe'.
         fine (bool, optional): Whether to use fine geometry optimization parameters. Default: ``False``.
         initial_time (datetime.datetime or str, optional): The time at which this job was initiated.
@@ -87,15 +87,15 @@ class HeuristicsAdapter(JobAdapter):
         level (Level, optionnal): The level of theory to use.
         max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
         run_multi_species (bool, optional): Whether to run a job for multiple species in the same input file.
-        reactions (List[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
+        reactions (list[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
         rotor_index (int, optional): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         server (str): The server to run on.
         server_nodes (list, optional): The nodes this job was previously submitted to.
-        species (List[ARCSpecies], optional): Entries are ARCSpecies instances.
+        species (list[ARCSpecies], optional): Entries are ARCSpecies instances.
                                               Either ``reactions`` or ``species`` must be given.
         testing (bool, optional): Whether the object is generated for testing purposes, ``True`` if it is.
         times_rerun (int, optional): Number of times this job was re-run with the same arguments (no trsh methods).
-        torsions (List[List[int]], optional): The 0-indexed atom indices of the torsion(s).
+        torsions (list[list[int]], optional): The 0-indexed atom indices of the torsion(s).
         tsg (int, optional): TSGuess number if optimizing TS guesses.
         xyz (dict, optional): The 3D coordinates to use. If not give, species.get_xyz() will be used.
     """
@@ -103,43 +103,43 @@ class HeuristicsAdapter(JobAdapter):
     def __init__(self,
                  project: str,
                  project_directory: str,
-                 job_type: Union[List[str], str],
-                 args: Optional[dict] = None,
-                 bath_gas: Optional[str] = None,
-                 checkfile: Optional[str] = None,
-                 conformer: Optional[int] = None,
-                 constraints: Optional[List[Tuple[List[int], float]]] = None,
-                 cpu_cores: Optional[str] = None,
-                 dihedral_increment: Optional[float] = None,
-                 dihedrals: Optional[List[float]] = None,
-                 directed_scan_type: Optional[str] = None,
-                 ess_settings: Optional[dict] = None,
-                 ess_trsh_methods: Optional[List[str]] = None,
-                 execution_type: Optional[str] = None,
+                 job_type: list[str] | str,
+                 args: dict | None = None,
+                 bath_gas: str | None = None,
+                 checkfile: str | None = None,
+                 conformer: int | None = None,
+                 constraints: list[tuple[list[int], float]] | None = None,
+                 cpu_cores: str | None = None,
+                 dihedral_increment: float | None = None,
+                 dihedrals: list[float] | None = None,
+                 directed_scan_type: str | None = None,
+                 ess_settings: dict | None = None,
+                 ess_trsh_methods: list[str] | None = None,
+                 execution_type: str | None = None,
                  fine: bool = False,
-                 initial_time: Optional[Union['datetime.datetime', str]] = None,
-                 irc_direction: Optional[str] = None,
-                 job_id: Optional[int] = None,
+                 initial_time: datetime.datetime | str | None = None,
+                 irc_direction: str | None = None,
+                 job_id: int | None = None,
                  job_memory_gb: float = 14.0,
-                 job_name: Optional[str] = None,
-                 job_num: Optional[int] = None,
-                 job_server_name: Optional[str] = None,
-                 job_status: Optional[List[Union[dict, str]]] = None,
-                 level: Optional['Level'] = None,
-                 max_job_time: Optional[float] = None,
+                 job_name: str | None = None,
+                 job_num: int | None = None,
+                 job_server_name: str | None = None,
+                 job_status: list[dict | str] | None = None,
+                 level: Level | None = None,
+                 max_job_time: float | None = None,
                  run_multi_species: bool = False,
-                 reactions: Optional[List['ARCReaction']] = None,
-                 rotor_index: Optional[int] = None,
-                 server: Optional[str] = None,
-                 server_nodes: Optional[list] = None,
-                 queue: Optional[str] = None,
-                 attempted_queues: Optional[List[str]] = None,
-                 species: Optional[List[ARCSpecies]] = None,
+                 reactions: list[ARCReaction] | None = None,
+                 rotor_index: int | None = None,
+                 server: str | None = None,
+                 server_nodes: list | None = None,
+                 queue: str | None = None,
+                 attempted_queues: list[str] | None = None,
+                 species: list[ARCSpecies] | None = None,
                  testing: bool = False,
                  times_rerun: int = 0,
-                 torsions: Optional[List[List[int]]] = None,
-                 tsg: Optional[int] = None,
-                 xyz: Optional[dict] = None,
+                 torsions: list[list[int]] | None = None,
+                 tsg: int | None = None,
+                 xyz: dict | None = None,
                  ):
 
         self.incore_capacity = 50
@@ -321,23 +321,23 @@ class HeuristicsAdapter(JobAdapter):
         self.execute_incore()
 
 
-def combine_coordinates_with_redundant_atoms(xyz_1: Dict[str, Any],
-                                             xyz_2: Dict[str, Any],
+def combine_coordinates_with_redundant_atoms(xyz_1: dict[str, Any],
+                                             xyz_2: dict[str, Any],
                                              mol_1: 'Molecule',
                                              mol_2: 'Molecule',
                                              reactant_2: ARCSpecies,
                                              h1: int,
                                              h2: int,
-                                             c: Optional[int] = None,
-                                             d: Optional[int] = None,
+                                             c: int | None = None,
+                                             d: int | None = None,
                                              r1_stretch: float = 1.2,
                                              r2_stretch: float = 1.2,
                                              a2: float = 180.0,
-                                             d2: Optional[float] = None,
-                                             d3: Optional[float] = None,
+                                             d2: float | None = None,
+                                             d3: float | None = None,
                                              keep_dummy: bool = False,
                                              reactants_reversed: bool = False,
-                                             ) -> Dict[str, Any]:
+                                             ) -> dict[str, Any]:
     """
     Combine two coordinates that share an atom.
     For this redundant atom case, only three additional degrees of freedom (here ``a2``, ``d2``, and ``d3``)
@@ -373,34 +373,34 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Dict[str, Any],
                  'map': {...}}
 
     Args:
-        xyz_1 (Dict[str, Any]): The Cartesian coordinates of ``mol_1`` (including the redundant atom).
-        xyz_2 (Dict[str, Any]): The Cartesian coordinates of ``mol_2`` (including the redundant atom).
+        xyz_1 (dict[str, Any]): The Cartesian coordinates of ``mol_1`` (including the redundant atom).
+        xyz_2 (dict[str, Any]): The Cartesian coordinates of ``mol_2`` (including the redundant atom).
         mol_1 (Molecule): The RMG Molecule instance corresponding to ``xyz1``.
         mol_2 (Molecule): The RMG Molecule instance corresponding to ``xyz2``.
         reactant_2 (ARCSpecies): The other reactant, R(*3) for H_Abstraction, that is not use for generating
                                  the TS coordinates using heuristics. Will be used for atom mapping.
         h1 (int): The 0-index of a terminal redundant H atom in ``xyz1`` (atom H1).
         h2 (int): The 0-index of a terminal redundant H atom in ``xyz2`` (atom H2).
-        c (Optional[int]): The 0-index of an atom in ``xyz1`` connected to either A or H1 which is neither A nor H1
+        c (int | None): The 0-index of an atom in ``xyz1`` connected to either A or H1 which is neither A nor H1
                            (atom C).
-        d (Optional[int]): The 0-index of an atom in ``xyz2`` connected to either B or H2 which is neither B nor H2
+        d (int | None): The 0-index of an atom in ``xyz2`` connected to either B or H2 which is neither B nor H2
                            (atom D).
         r1_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
                                       atom ``h1`` in ``xyz1`` (bond A-H1).
         r2_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
                                       atom ``h2`` in ``xyz2`` (bond B-H2).
         a2 (float, optional): The angle (in degrees) in the combined structure between atoms B-H-A (angle B-H-A).
-        d2 (Optional[float]): The dihedral angle (in degrees) between atoms B-H-A-C (dihedral B-H-A-C).
+        d2 (float | None): The dihedral angle (in degrees) between atoms B-H-A-C (dihedral B-H-A-C).
                               This argument must be given only if the a2 angle is not linear,
                               and mol2 has 3 or more atoms, otherwise it is meaningless.
-        d3 (Optional[float]): The dihedral angel (in degrees) between atoms D-B-H-A (dihedral D-B-H-A).
+        d3 (float | None): The dihedral angel (in degrees) between atoms D-B-H-A (dihedral D-B-H-A).
                               This parameter is mandatory only if atom D exists (i.e., if ``mol2`` has 3 or more atoms)
                               and angle a2 is not linear.
         keep_dummy (bool, optional): Whether to keep a dummy atom if added, ``True`` to keep, ``False`` by default.
         reactants_reversed (bool, optional): Whether the reactants were reversed relative to the RMG template.
 
     Returns:
-        Dict[str, Any]: The combined Cartesian coordinates.
+        dict[str, Any]: The combined Cartesian coordinates.
 
     Todo:
         - Accept xyzs of the radicals as well as E0's of all species, average xyz of atoms by energy similarity
@@ -450,11 +450,11 @@ def _validate_combine_coordinates_with_redundant_atoms_args(xyz_1: dict,
                                                             h1: int,
                                                             h2: int,
                                                             a2: float,
-                                                            d2: Optional[float],
-                                                            d3: Optional[float],
-                                                            c: Optional[int],
-                                                            d: Optional[int],
-                                                            ) -> Tuple[bool, bool, int, int]:
+                                                            d2: float | None,
+                                                            d3: float | None,
+                                                            c: int | None,
+                                                            d: int | None,
+                                                            ) -> tuple[bool, bool, int, int]:
     """
     Validate and normalize all the combine_coordinates… parameters.
 
@@ -502,9 +502,9 @@ def generate_the_two_constrained_zmats(xyz_1: dict,
                                        h2: int,
                                        a: int,
                                        b: int,
-                                       c: Optional[int],
-                                       d: Optional[int],
-                                       ) -> Tuple[dict, dict]:
+                                       c: int | None,
+                                       d: int | None,
+                                       ) -> tuple[dict, dict]:
     """
     Generate the two constrained zmats required for combining coordinates with a redundant atom.
 
@@ -517,11 +517,11 @@ def generate_the_two_constrained_zmats(xyz_1: dict,
         h2 (int): The 0-index of a terminal redundant H atom in ``xyz_2`` (atom H2).
         a (int): The 0-index of an atom in ``xyz_1`` connected to H1 (atom A).
         b (int): The 0-index of an atom in ``xyz_2`` connected to H2 (atom B).
-        c (Optional[int]): The 0-index of an atom in ``xyz_1`` connected to either A or H1 which is neither A nor H1 (atom C).
-        d (Optional[int]): The 0-index of an atom in ``xyz_2`` connected to either B or H2 which is neither B nor H2 (atom D).
+        c (int | None): The 0-index of an atom in ``xyz_1`` connected to either A or H1 which is neither A nor H1 (atom C).
+        d (int | None): The 0-index of an atom in ``xyz_2`` connected to either B or H2 which is neither B nor H2 (atom D).
 
     Returns:
-        Tuple[dict, dict]: The two zmats.
+        tuple[dict, dict]: The two zmats.
     """
     zmat1 = zmat_from_xyz(xyz=xyz_1,
                           mol=mol_1,
@@ -539,7 +539,7 @@ def generate_the_two_constrained_zmats(xyz_1: dict,
 
 
 def stretch_zmat_bond(zmat: dict,
-                      indices: Tuple[int, int],
+                      indices: tuple[int, int],
                       stretch: float):
     """
     Stretch a bond in a zmat.
@@ -557,9 +557,9 @@ def determine_glue_params(zmat: dict,
                           add_dummy: bool,
                           h1: int,
                           a: int,
-                          c: Optional[int],
-                          d: Optional[int],
-                          ) -> Tuple[str, str, str]:
+                          c: int | None,
+                          d: int | None,
+                          ) -> tuple[str, str, str]:
     """
     Determine glue parameters ``a2``, ``d2``, and ``d3`` for combining two zmats.
     Modifies the ``zmat`` argument if a dummy atom needs to be added.
@@ -569,11 +569,11 @@ def determine_glue_params(zmat: dict,
         add_dummy (bool): Whether to add a dummy atom.
         h1 (int): The 0-index of atom H1 (in mol_1).
         a (int): The 0-index of atom A (in mol_1).
-        c (Optional[int]): The 0-index of atom C (in mol_1).
-        d (Optional[int]): The 0-index of atom D (in mol_2).
+        c (int | None): The 0-index of atom C (in mol_1).
+        d (int | None): The 0-index of atom D (in mol_2).
 
     Returns:
-        Tuple[str, str, str]: The a2, d2, and d3 zmat glue parameters.
+        tuple[str, str, str]: The a2, d2, and d3 zmat glue parameters.
     """
     num_atoms_1 = len(zmat['symbols'])  # The number of atoms in zmat1, used to increment the atom indices in zmat2.
     # zh = num_atoms_1 - 1  # The atom index of H in the combined zmat.
@@ -609,15 +609,15 @@ def get_modified_params_from_zmat_2(zmat_1: dict,
                                     zmat_2: dict,
                                     reactant_2: ARCSpecies,
                                     add_dummy: bool,
-                                    glue_params: Tuple[str, str, str],
+                                    glue_params: tuple[str, str, str],
                                     h1: int,
                                     a: int,
-                                    c: Optional[int],
+                                    c: int | None,
                                     a2: float,
-                                    d2: Optional[float],
-                                    d3: Optional[float],
+                                    d2: float | None,
+                                    d3: float | None,
                                     reactants_reversed: bool = False,
-                                    ) -> Tuple[tuple, tuple, dict, dict]:
+                                    ) -> tuple[tuple, tuple, dict, dict]:
     """
     Generate a modified zmat2 (in parts):
     Remove the first atom, change the indices of all existing parameter, and add "glue" parameters.
@@ -628,7 +628,7 @@ def get_modified_params_from_zmat_2(zmat_1: dict,
         reactant_2 (ARCSpecies): The other reactant, R(*3) for H_Abstraction, that is not use for generating
                                  the TS using heuristics. Will be used for atom mapping.
         add_dummy (bool): Whether to add a dummy atom.
-        glue_params (Tuple[str, str, str]): param_a2, param_d2, param_d3.
+        glue_params (tuple[str, str, str]): param_a2, param_d2, param_d3.
         h1 (int): The 0-index of atom H1 (in mol_1).
         a (int): The 0-index of atom A (in mol_1).
         c (int): The 0-index of an atom in ``xyz1`` connected to either A or H1 which is neither A nor H1 (atom C).
@@ -638,7 +638,7 @@ def get_modified_params_from_zmat_2(zmat_1: dict,
         reactants_reversed (bool, optional): Whether the reactants were reversed relative to the RMG template.
 
     Returns:
-        Tuple[tuple, tuple, dict, dict]: new_symbols, new_coords, new_vars, new_map.
+        tuple[tuple, tuple, dict, dict]: new_symbols, new_coords, new_vars, new_map.
     """
     # Remove the redundant H from zmat_2, it's the first atom. No need for further sorting, the zmat map will do that.
     new_symbols = tuple(zmat_1['symbols'] + zmat_2['symbols'][1:])
@@ -689,9 +689,9 @@ def get_modified_params_from_zmat_2(zmat_1: dict,
 
 def get_new_zmat_2_map(zmat_1: dict,
                        zmat_2: dict,
-                       reactant_2: Optional[ARCSpecies],
+                       reactant_2: ARCSpecies | None,
                        reactants_reversed: bool = False,
-                       ) -> Dict[int, Union[int, str]]:
+                       ) -> dict[int, int | str]:
     """
     Get the map of the combined zmat ignoring the redundant H in ``zmat_2``.
 
@@ -710,7 +710,7 @@ def get_new_zmat_2_map(zmat_1: dict,
         reactants_reversed (bool, optional): Whether the reactants were reversed relative to the RMG template.
 
     Returns:
-        Dict[int, Union[int, str]]: The combined zmat map element.
+        dict[int, int | str]: The combined zmat map element.
     """
     new_map = get_new_map_based_on_zmat_1(zmat_1=zmat_1, zmat_2=zmat_2, reactants_reversed=reactants_reversed)
     zmat_2_mod = remove_zmat_atom_0(zmat_2)
@@ -801,7 +801,7 @@ def update_new_map_based_on_zmat_2(new_map: dict,
 
 def find_distant_neighbor(mol: 'Molecule',
                           start: int,
-                          ) -> Optional[int]:
+                          ) -> int | None:
     """
     Find the 0-index of a distant neighbor (2 steps away) if possible from the starting atom.
     Preferably, a heavy atom will be returned.
@@ -811,7 +811,7 @@ def find_distant_neighbor(mol: 'Molecule',
         start (int): The 0-index of the start atom.
 
     Returns:
-        Optional[int]: The 0-index of the distant neighbor.
+        int | None: The 0-index of the distant neighbor.
     """
     if len(mol.atoms) <= 2:
         return None
@@ -826,13 +826,12 @@ def find_distant_neighbor(mol: 'Molecule',
                     return distant_neighbor_index
     return distant_neighbor_h_index
 
-
 # Family-specific heuristics functions:
 
 
-def are_h_abs_wells_reversed(rxn: 'ARCReaction',
+def are_h_abs_wells_reversed(rxn: ARCReaction,
                              product_dict: dict,
-                             ) -> Tuple[bool, bool]:
+                             ) -> tuple[bool, bool]:
     """
     Determine whether the reactants or the products in an H_Abstraction reaction are reversed
     relative to the RMG template: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2)
@@ -842,7 +841,7 @@ def are_h_abs_wells_reversed(rxn: 'ARCReaction',
         product_dict (dict): The product dictionary.
 
     Returns:
-        Tuple[bool, bool]: reactants_reversed, products_reversed.
+        tuple[bool, bool]: reactants_reversed, products_reversed.
     """
     r_star_2 = product_dict['r_label_map']['*2']
     p_star_2 = product_dict['p_label_map']['*2']
@@ -854,12 +853,12 @@ def are_h_abs_wells_reversed(rxn: 'ARCReaction',
     return reactants_reversed, products_reversed
 
 
-def h_abstraction(reaction: 'ARCReaction',
+def h_abstraction(reaction: ARCReaction,
                   r1_stretch: float = 1.2,
                   r2_stretch: float = 1.2,
                   a2: float = 180,
-                  dihedral_increment: Optional[int] = None,
-                  ) -> List[dict]:
+                  dihedral_increment: int | None = None,
+                  ) -> list[dict]:
     """
     Generate TS guesses for reactions of the RMG ``H_Abstraction`` family.
 
@@ -872,7 +871,7 @@ def h_abstraction(reaction: 'ARCReaction',
         a2 (float, optional): The angle (in degrees) in the combined structure between atoms B-H-A (angle B-H-A).
         dihedral_increment (int, optional): The dihedral increment to use for B-H-A-C and D-B-H-C dihedral scans.
 
-    Returns: List[dict]
+    Returns: list[dict]
         Entries are Cartesian coordinates of TS guesses for all reactions.
     """
     xyz_guesses = list()
@@ -956,7 +955,7 @@ def h_abstraction(reaction: 'ARCReaction',
     return xyz_guesses
 
 
-def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict], List[int]]:
+def hydrolysis(reaction: ARCReaction) -> tuple[list[dict], list[dict], list[int]]:
     """
     Generate TS guesses for reactions of the ARC "hydrolysis" families.
 
@@ -965,9 +964,9 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict], List[in
 
     Returns:
         Tuple containing:
-            - List[dict]: Cartesian coordinates of TS guesses.
-            - List[dict]: Reaction families of the TS guesses.
-            - List[int]: Indices of the generated TS guesses.
+            - list[dict]: Cartesian coordinates of TS guesses.
+            - list[dict]: Reaction families of the TS guesses.
+            - list[int]: Indices of the generated TS guesses.
     """
     xyz_guesses_total, zmats_total, reaction_families, guesses_indices = [], [], [], []
     product_dicts, carbonyl_based_and_ether_families = get_products_and_check_families(reaction)
@@ -1064,7 +1063,7 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict], List[in
     return xyz_guesses_total, reaction_families, guesses_indices
 
 
-def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict], bool]:
+def get_products_and_check_families(reaction: ARCReaction) -> tuple[list[dict], bool]:
     """
     Get all reaction products and determine if both carbonyl-based and ether hydrolysis families are present.
 
@@ -1073,7 +1072,7 @@ def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict]
 
     Returns:
         Tuple containing:
-            - List[dict]: Product dictionaries with reaction family information
+            - list[dict]: Product dictionaries with reaction family information
             - bool: True if both carbonyl-based and ether hydrolysis families are present
     """
     product_dicts = get_reaction_family_products(
@@ -1105,7 +1104,7 @@ def load_hydrolysis_parameters() -> dict:
     return read_yaml_file(os.path.join(ARC_PATH, "data", "hydrolysis_families_parameters.yml"))
 
 
-def has_carbonyl_based_hydrolysis(reaction_families: List[dict]) -> bool:
+def has_carbonyl_based_hydrolysis(reaction_families: list[dict]) -> bool:
     """
     Check if carbonyl-based hydrolysis is present in the generated transition state guesses.
 
@@ -1118,9 +1117,9 @@ def has_carbonyl_based_hydrolysis(reaction_families: List[dict]) -> bool:
     return any(family == "carbonyl_based_hydrolysis" for family in reaction_families)
 
 
-def extract_reactant_and_indices(reaction: 'ARCReaction',
+def extract_reactant_and_indices(reaction: ARCReaction,
                                  product_dict: dict,
-                                 is_set_1: bool) -> Tuple[ARCSpecies, ARCSpecies, dict, dict]:
+                                 is_set_1: bool) -> tuple[ARCSpecies, ARCSpecies, dict, dict]:
     """
     Extract the reactant molecules and relevant atomic indices (a,b,e,d,o,h1) for the hydrolysis reaction.
 
@@ -1189,34 +1188,33 @@ def process_chosen_d_indices(initial_xyz: dict,
                              xyz_indices: dict,
                              hydrolysis_parameters: dict,
                              reaction_family: str,
-                             water: 'ARCSpecies',
-                             zmats_total: List[dict],
+                             water: ARCSpecies,
+                             zmats_total: list[dict],
                              is_set_1: bool,
                              is_set_2: bool,
                              dihedrals_to_change_num: int,
                              should_adjust_dihedral: bool,
                              allow_nitrile_dihedrals: bool = False
-                             ) -> Tuple[Dict[str, int], List[Dict[str, Any]], List[Dict[str, Any]], int]:
+                             ) -> tuple[dict[str, int], list[dict[str, Any]], list[dict[str, Any]], int]:
     """
     Iterates over the 'd' indices to process TS guess generation.
 
     Args:
         initial_xyz (dict): Initial Cartesian coordinates.
-        base_xyz_indices (Dict[str, int]): Base indices for TS generation.
-        xyz_indices (Dict[str, List[int]]): All relevant indices including 'd'.
-        hydrolysis_parameters (Dict[str, Any]): Hydrolysis-specific parameters.
+        base_xyz_indices (dict[str, int]): Base indices for TS generation.
+        xyz_indices (dict[str, list[int]]): All relevant indices including 'd'.
+        hydrolysis_parameters (dict[str, Any]): Hydrolysis-specific parameters.
         reaction_family (str): The reaction family.
-        water ('ARCSpecies'): Water molecule info.
-        zmats_total (List[Dict[str, Any]]): List to accumulate Z-matrices.
+        water (ARCSpecies): Water molecule info.
+        zmats_total (list[dict[str, Any]]): List to accumulate Z-matrices.
         is_set_1 (bool): Flag indicating if reaction_family is in set 1.
         is_set_2 (bool): Flag indicating if reaction_family is in set 2.
         dihedrals_to_change_num (int): The current iteration for adjusting dihedrals.
         should_adjust_dihedral (bool): Whether to adjust dihedral angles.
         allow_nitrile_dihedrals (bool, optional): Force-enable dihedral adjustments for nitriles. Defaults to False.
 
-
     Returns:
-        Tuple[Dict[str, int], List[Dict[str, Any]], List[Dict[str, Any]]]:
+        tuple[dict[str, int], list[dict[str, Any]], list[dict[str, Any]]]:
             - Chosen indices for TS generation.
             - List of generated transition state (TS) guesses.
             - Updated list of Z-matrices.
@@ -1281,7 +1279,7 @@ def process_chosen_d_indices(initial_xyz: dict,
     return {}, [], zmats_total, max_dihedrals_found
 
 
-def get_main_reactant_and_water_from_hydrolysis_reaction(reaction: 'ARCReaction') -> Tuple['ARCSpecies', 'ARCSpecies']:
+def get_main_reactant_and_water_from_hydrolysis_reaction(reaction: ARCReaction) -> tuple[ARCSpecies, ARCSpecies]:
     """
     Get main reactant and water species from a given hydrolysis reaction family.
 
@@ -1311,10 +1309,10 @@ def get_main_reactant_and_water_from_hydrolysis_reaction(reaction: 'ARCReaction'
     return arc_reactant, water
 
 
-def get_neighbors_by_electronegativity(spc: 'ARCSpecies',
+def get_neighbors_by_electronegativity(spc: ARCSpecies,
                                        atom_index: int,
                                        exclude_index: int,
-                                       two_neighbors: bool = True) -> Tuple[int, List[int]]:
+                                       two_neighbors: bool = True) -> tuple[int, list[int]]:
     """
     Retrieve the top two neighbors of a given atom in a species, sorted by their effective electronegativity,
     excluding a specified neighbor.
@@ -1333,7 +1331,7 @@ def get_neighbors_by_electronegativity(spc: 'ARCSpecies',
         two_neighbors (bool): Whether to return two neighbors (True) or one (False).
 
     Returns:
-        Tuple[int, List[int]]: A tuple where:
+        tuple[int, list[int]]: A tuple where:
             - The first element is the index of the most electronegative neighbor.
             - The second element is a list of the remaining ranked neighbors (empty if only one neighbor is requested).
 
@@ -1369,7 +1367,7 @@ def get_neighbors_by_electronegativity(spc: 'ARCSpecies',
 
 
 def setup_zmat_indices(initial_xyz: dict,
-                       xyz_indices: dict) -> Tuple[dict, dict]:
+                       xyz_indices: dict) -> tuple[dict, dict]:
     """
     Convert XYZ coordinates to Z-matrix format and set up corresponding indices.
 
@@ -1393,10 +1391,10 @@ def setup_zmat_indices(initial_xyz: dict,
 
 
 def generate_dihedral_variants(zmat: dict,
-                              indices: List[int],
-                              adjustment_factors: List[float],
+                              indices: list[int],
+                              adjustment_factors: list[float],
                               flip: bool = False,
-                              tolerance_degrees: float = 10.0) -> List[dict]:
+                              tolerance_degrees: float = 10.0) -> list[dict]:
     """
    Create variants of a Z-matrix by adjusting dihedral angles using multiple adjustment factors.
 
@@ -1410,14 +1408,14 @@ def generate_dihedral_variants(zmat: dict,
 
     Args:
         zmat (dict): The initial Z-matrix.
-        indices (List[int]): The indices defining the dihedral angle.
-        adjustment_factors (List[float], optional): List of factors to try.
+        indices (list[int]): The indices defining the dihedral angle.
+        adjustment_factors (list[float], optional): List of factors to try.
         flip (bool, optional): Whether to start from a flipped (180°) baseline dihedral angle.
                                Defaults to False.
         tolerance_degrees (float, optional): Tolerance (in degrees) for detecting angles near 0° or ±180°. Defaults to 10.0.
 
     Returns:
-        List[dict]: List of Z-matrix variants with adjusted dihedral angles.
+        list[dict]: List of Z-matrix variants with adjusted dihedral angles.
     """
     variants = []
     parameter_name = get_parameter_from_atom_indices(zmat=zmat, indices=indices, xyz_indexed=False)
@@ -1454,7 +1452,7 @@ def get_matching_dihedrals(zmat: dict,
                           a: int,
                           b: int,
                           e: int,
-                          d: Optional[int]) -> List[List[int]]:
+                          d: int | None) -> list[list[int]]:
     """
     Retrieve all dihedral angles in the Z-matrix that match the given atom indices.
     This function scans the Z-matrix for dihedral parameters (keys starting with 'D_' or 'DX_')
@@ -1465,10 +1463,10 @@ def get_matching_dihedrals(zmat: dict,
         a (int): The first atom index to match.
         b (int): The second atom index to match.
         e (int): The third atom index to match.
-        d (Optional[int]): The fourth atom index to match (optional).
+        d (int | None): The fourth atom index to match (optional).
 
     Returns:
-        List[List[int]]: A list of lists, where each sublist contains the indices of a matching dihedral.
+        list[list[int]]: A list of lists, where each sublist contains the indices of a matching dihedral.
                          Returns an empty list if no matches are found.
     """
     matches = []
@@ -1524,9 +1522,9 @@ def process_family_specific_adjustments(is_set_1: bool,
                                         reaction_family: str,
                                         hydrolysis_parameters: dict,
                                         initial_zmat: dict,
-                                        water: 'ARCSpecies',
+                                        water: ARCSpecies,
                                         xyz_indices: dict,
-                                        zmats_total: List[dict]) -> Tuple[List[dict], List[dict]]:
+                                        zmats_total: list[dict]) -> tuple[list[dict], list[dict]]:
     """
     Process specific adjustments for different hydrolysis reaction families if needed, then generate TS guesses .
 
@@ -1538,10 +1536,10 @@ def process_family_specific_adjustments(is_set_1: bool,
         initial_zmat (dict): Initial Z-matrix of the molecule.
         water (ARCSpecies): Water molecule for the reaction.
         xyz_indices (dict): Dictionary of atom indices in XYZ coordinates.
-        zmats_total (List[dict]): List of existing Z-matrices.
+        zmats_total (list[dict]): List of existing Z-matrices.
 
     Returns:
-        Tuple[List[dict], List[dict]]: Generated XYZ guesses and updated Z-matrices list.
+        tuple[list[dict], list[dict]]: Generated XYZ guesses and updated Z-matrices list.
 
     Raises:
         ValueError: If the reaction family is not supported.
@@ -1566,37 +1564,37 @@ def process_family_specific_adjustments(is_set_1: bool,
 
 
 def generate_hydrolysis_ts_guess(initial_xyz: dict,
-                                 xyz_indices: List[int],
-                                 water: 'ARCSpecies',
-                                 r_atoms: List[int],
-                                 a_atoms: List[List[int]],
-                                 d_atoms: List[List[int]],
-                                 r_value: List[float],
-                                 a_value: List[float],
-                                 d_values: List[List[float]],
-                                 zmats_total: List[dict],
+                                 xyz_indices: list[int],
+                                 water: ARCSpecies,
+                                 r_atoms: list[int],
+                                 a_atoms: list[list[int]],
+                                 d_atoms: list[list[int]],
+                                 r_value: list[float],
+                                 a_value: list[float],
+                                 d_values: list[list[float]],
+                                 zmats_total: list[dict],
                                  is_set_1: bool,
                                  threshold: float
-                                 ) -> Tuple[List[dict], List[dict]]:
+                                 ) -> tuple[list[dict], list[dict]]:
     """
     Generate Z-matrices and Cartesian coordinates for transition state (TS) guesses.
 
     Args:
         initial_xyz (dict): The initial coordinates of the reactant.
-        xyz_indices (List[int]): The indices of the atoms in the initial coordinates.
+        xyz_indices (list[int]): The indices of the atoms in the initial coordinates.
         water (ARCSpecies): The water molecule involved in the reaction.
-        r_atoms (List[int]): Atom pairs for defining bond distances.
-        a_atoms (List[List[int]]): Atom triplets for defining bond angles.
-        d_atoms (List[List[int]]): Atom quartets for defining dihedral angles.
-        r_value (List[float]): Bond distances for each atom pair.
-        a_value (List[float]): Bond angles for each atom triplet.
-        d_values (List[List[float]]): Sets of dihedral angles for TS guesses.
-        zmats_total (List[dict]): Existing Z-matrices to avoid duplicates.
+        r_atoms (list[int]): Atom pairs for defining bond distances.
+        a_atoms (list[list[int]]): Atom triplets for defining bond angles.
+        d_atoms (list[list[int]]): Atom quartets for defining dihedral angles.
+        r_value (list[float]): Bond distances for each atom pair.
+        a_value (list[float]): Bond angles for each atom triplet.
+        d_values (list[list[float]]): Sets of dihedral angles for TS guesses.
+        zmats_total (list[dict]): Existing Z-matrices to avoid duplicates.
         is_set_1 (bool): Whether the reaction belongs to parameter set 1.
         threshold (float): Threshold for atom collision checking.
 
     Returns:
-        Tuple[List[dict], List[dict]]: Unique TS guesses (XYZ coords and Z-matrices).
+        tuple[list[dict], list[dict]]: Unique TS guesses (XYZ coords and Z-matrices).
     """
     xyz_guesses = []
 
@@ -1627,16 +1625,15 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
             xyz_guesses.append(xyz_guess)
             zmats_total.append(xyz_to_zmat(xyz_guess))
 
-
     return xyz_guesses, zmats_total
 
 
-def check_dao_angle(d_indices: List[int], xyz_guess: dict) -> bool:
+def check_dao_angle(d_indices: list[int], xyz_guess: dict) -> bool:
     """
     Check if the angle DAO is close to 0 or 180 degrees in the given XYZ coordinates.
 
     Args:
-        d_indices (List[int]): The indices of atoms defining the angle.
+        d_indices (list[int]): The indices of atoms defining the angle.
         xyz_guess (dict): The XYZ coordinates of the molecule.
 
     Returns:
