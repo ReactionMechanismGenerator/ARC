@@ -99,6 +99,10 @@ jobs:
         env:
           ARC_COVERAGE: 1
           CYTHON_TRACE: 1
+          # Use ctrace so Cython.Coverage plugin works on Python 3.14+
+          # (SysMonitor doesn't support Cython file tracers yet;
+          #  remove once Cython ships sys.monitoring support)
+          COVERAGE_CORE: ctrace
         run: |
           echo "Running Unit Tests..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
@@ -110,6 +114,7 @@ jobs:
         env:
           ARC_COVERAGE: 1
           CYTHON_TRACE: 1
+          COVERAGE_CORE: ctrace
         run: |
           echo "Running Functional Tests from $(pwd)..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
