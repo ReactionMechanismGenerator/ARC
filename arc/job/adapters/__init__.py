@@ -1,4 +1,5 @@
 import arc.job.adapters.common
+import arc.job.adapters.ase
 import arc.job.adapters.cfour
 import arc.job.adapters.gaussian
 import arc.job.adapters.mockter
