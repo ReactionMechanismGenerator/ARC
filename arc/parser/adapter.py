@@ -6,7 +6,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 from arc.common import get_logger
 
@@ -59,97 +59,97 @@ class ESSAdapter(ABC):
         pass
 
     @abstractmethod
-    def parse_geometry(self) -> Optional[Dict[str, tuple]]:
+    def parse_geometry(self) -> dict[str, tuple] | None:
         """
         Parse the xyz geometry from an ESS log file.
 
-        Returns: Optional[Dict[str, tuple]]
+        Returns: dict[str, tuple] | None
             The cartesian geometry.
         """
         pass
 
     @abstractmethod
-    def parse_frequencies(self) -> Optional['np.ndarray']:
+    def parse_frequencies(self) -> np.ndarray | None:
         """
         Parse the frequencies from a freq job output file.
 
-        Returns: Optional[np.ndarray]
+        Returns: np.ndarray | None
             The parsed frequencies (in cm^-1).
         """
         pass
 
     @abstractmethod
-    def parse_normal_mode_displacement(self) -> Tuple[Optional['np.ndarray'], Optional['np.ndarray']]:
+    def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """
         Parse frequencies and normal mode displacement.
 
-        Returns: Tuple[Optional['np.ndarray'], Optional['np.ndarray']]
+        Returns: tuple[np.ndarray | None, np.ndarray | None]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
         pass
 
     @abstractmethod
-    def parse_t1(self) -> Optional[float]:
+    def parse_t1(self) -> float | None:
         """
         Parse the T1 parameter from a CC calculation.
 
-        Returns: Optional[float]
+        Returns: float | None
             The T1 parameter.
         """
         pass
 
     @abstractmethod
-    def parse_e_elect(self) -> Optional[float]:
+    def parse_e_elect(self) -> float | None:
         """
         Parse the electronic energy from an sp job output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The electronic energy in kJ/mol.
         """
         pass
 
     @abstractmethod
-    def parse_zpe_correction(self) -> Optional[float]:
+    def parse_zpe_correction(self) -> float | None:
         """
         Determine the calculated ZPE correction (E0 - e_elect) from a frequency output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The calculated zero point energy in kJ/mol.
         """
         pass
 
     @abstractmethod
-    def parse_1d_scan_energies(self) -> Tuple[Optional[List[float]], Optional[List[float]]]:
+    def parse_1d_scan_energies(self) -> tuple[list[float] | None, list[float] | None]:
         """
         Parse the 1D torsion scan energies from an ESS log file.
 
-        Returns: Tuple[Optional[List[float]], Optional[List[float]]]
+        Returns: tuple[list[float] | None, list[float] | None]
             The electronic energy in kJ/mol and the dihedral scan angle in degrees.
         """
         pass
 
     @abstractmethod
-    def parse_1d_scan_coords(self) -> Optional[List[Dict[str, tuple]]]:
+    def parse_1d_scan_coords(self) -> list[dict[str, tuple]] | None:
         """
         Parse the 1D torsion scan coordinates from an ESS log file.
 
-        Returns: List[Dict[str, tuple]]
+        Returns: list[dict[str, tuple]]
             The Cartesian coordinates.
         """
         pass
 
     @abstractmethod
-    def parse_irc_traj(self) -> Optional[List[Dict[str, tuple]]]:
+    def parse_irc_traj(self) -> list[dict[str, tuple]] | None:
         """
         Parse the IRC trajectory coordinates from an ESS log file.
 
-        Returns: List[Dict[str, tuple]]
+        Returns: list[dict[str, tuple]]
             The Cartesian coordinates.
         """
         pass
 
     @abstractmethod
-    def parse_scan_conformers(self) -> Optional['pd.DataFrame']:
+    def parse_scan_conformers(self) -> 'pd.DataFrame' | None:
         """
         Parse all internal coordinates of scan conformers into a DataFrame.
 
@@ -159,11 +159,11 @@ class ESSAdapter(ABC):
         pass
 
     @abstractmethod
-    def parse_nd_scan_energies(self) -> Optional[Dict]:
+    def parse_nd_scan_energies(self) -> dict | None:
         """
         Parse the ND torsion scan energies from an ESS log file.
 
-        Returns: Optional[Dict]
+        Returns: dict | None
             The "results" dictionary, which has the following structure::
 
                   results = {'directed_scan_type': <str, used for the fig name>,
@@ -179,39 +179,39 @@ class ESSAdapter(ABC):
         pass
 
     @abstractmethod
-    def parse_dipole_moment(self) -> Optional[float]:
+    def parse_dipole_moment(self) -> float | None:
         """
         Parse the dipole moment in Debye from an opt job output file.
 
-        Returns: Optional[float]
+        Returns: float | None
             The dipole moment in Debye.
         """
         pass
 
     @abstractmethod
-    def parse_polarizability(self) -> Optional[float]:
+    def parse_polarizability(self) -> float | None:
         """
         Parse the polarizability from a freq job output file, returns the value in Angstrom^3.
 
-        Returns: Optional[float]
+        Returns: float | None
             The polarizability in Angstrom^3.
         """
         pass
 
-    def parse_opt_steps(self) -> Optional[int]:
+    def parse_opt_steps(self) -> int | None:
         """
         Parse the number of geometry optimization steps from an opt job output file.
 
-        Returns: Optional[int]
+        Returns: int | None
             The number of optimization cycles, or ``None`` if not an opt job or not parseable.
         """
         return None
 
-    def parse_ess_version(self) -> Optional[str]:
+    def parse_ess_version(self) -> str | None:
         """
         Parse the ESS software version string from the log file header.
 
-        Returns: Optional[str]
+        Returns: str | None
             A version string like ``'Gaussian 16, Revision C.01'`` or ``'ORCA 5.0.4'``, or ``None``.
         """
         return None

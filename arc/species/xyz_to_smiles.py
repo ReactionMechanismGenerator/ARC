@@ -6,7 +6,6 @@ Adapted from https://github.com/jensengroup/xyz2mol, DOI: 10.1002/bkcs.10334
 import copy
 import itertools
 from collections import defaultdict
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import networkx as nx
@@ -63,17 +62,17 @@ atomic_valence_electrons[35] = 7
 atomic_valence_electrons[53] = 7
 
 
-def xyz_to_smiles(xyz: Union[dict, str],
+def xyz_to_smiles(xyz: dict | str,
                   charge: int = 0,
                   use_huckel: bool = True,
                   quick: bool = True,
                   embed_chiral: bool = False,
-                  ) -> Optional[List[str]]:
+                  ) -> list[str] | None:
     """
     Convert xyz to 2D SMILES.
 
     Args:
-        xyz (Union[dict, str]): The xyz representation.
+        xyz (dict | str): The xyz representation.
         charge (int, optional): The species electronic charge.
         use_huckel (bool, optional): Whether to use Huckel bond orders to locate bonds.
                                      Otherwise, van der Waals radii are used.
@@ -81,7 +80,7 @@ def xyz_to_smiles(xyz: Union[dict, str],
         embed_chiral (bool, optional): Whether to embed chirality information into the output.
 
     Returns:
-        List[str]: Entries are respective SMILES representation.
+        list[str]: Entries are respective SMILES representation.
     """
     global ATOM_LIST
     atoms = [ATOM_LIST.index(symbol.lower()) + 1 for symbol in xyz['symbols']]
@@ -108,7 +107,7 @@ def xyz_to_smiles(xyz: Union[dict, str],
 
 def get_ua(max_valence_list: list,
            valence_list: list,
-           ) -> Tuple[list, list]:
+           ) -> tuple[list, list]:
     """
     Get unsaturated atoms from knowing the valence and maximum valence for each atom.
 
@@ -117,7 +116,7 @@ def get_ua(max_valence_list: list,
         valence_list (list): The actual valence list.
 
     Returns:
-        Tuple[list, list]:
+        tuple[list, list]:
             - Entries represent unsaturation level of atoms (ua).
             - Entries represent the degree of unsaturation per atom (du).
     """
@@ -185,7 +184,7 @@ def valences_not_too_large(bond_orders: np.ndarray,
 def is_charge_ok(bond_orders: np.ndarray,
                  charge: int,
                  atomic_valence_electrons_: list,
-                 atoms: List[int],
+                 atoms: list[int],
                  allow_charged_fragments: bool = True,
                  ) -> bool:
     """
@@ -195,7 +194,7 @@ def is_charge_ok(bond_orders: np.ndarray,
         bond_orders (np.ndarray): Bond orders.
         charge (int): The overall molecule charge.
         atomic_valence_electrons_ (list): The number of valence electrons per atom.
-        atoms (List[int]): Atoms.
+        atoms (list[int]): Atoms.
         allow_charged_fragments (bool, optional): Whether to allow molecule fragments to be charged.
 
     Returns:
@@ -226,7 +225,7 @@ def bo_is_ok(bond_orders: np.ndarray,
              charge: int,
              unsaturation_degree: list,
              atomic_valence_electrons_: list,
-             atoms: List[int],
+             atoms: list[int],
              valences: list,
              allow_charged_fragments: bool = True,
              ) -> bool:
@@ -239,7 +238,7 @@ def bo_is_ok(bond_orders: np.ndarray,
         charge (int): Overall charge.
         unsaturation_degree (list): degree of unsaturation per atom.
         atomic_valence_electrons_ (list): The number of valence electrons per atom.
-        atoms (List[int]): Atoms.
+        atoms (list[int]): Atoms.
         valences (list): Atom valences. 
         allow_charged_fragments (bool): Whether to allow charged fragments.
 
@@ -288,7 +287,7 @@ def get_atomic_charge(atom: int,
 
 def bo2mol(mol,
            bo_matrix: np.ndarray,
-           atoms: List[int],
+           atoms: list[int],
            atomic_valence_electrons_: dict,
            mol_charge: int,
            allow_charged_fragments: bool = True,
@@ -300,13 +299,13 @@ def bo2mol(mol,
     Args:
         mol (RDMol) An rdkit molecule object instance.
         bo_matrix (np.ndarray): bond order matrix of molecule.
-        atoms (List[int]): Entries are integer atomic symbols.
+        atoms (list[int]): Entries are integer atomic symbols.
         atomic_valence_electrons_ (dict): The number of valence electrons per atom.
         mol_charge (int) The total charge of molecule.
         allow_charged_fragments (bool, optional): Whether to allow charged fragments.
 
     Returns:
-        Optional[RDMol]: An updated rdkit molecule with bond connectivity.
+        RDMol | None: An updated rdkit molecule with bond connectivity.
     """
     l1 = len(bo_matrix)
     l2 = len(atoms)
@@ -343,7 +342,7 @@ def bo2mol(mol,
 
 
 def set_atomic_charges(mol,
-                       atoms: List[int],
+                       atoms: list[int],
                        atomic_valence_electrons_: dict,
                        bo_valences: list,
                        bo_matrix: np.ndarray,
@@ -354,7 +353,7 @@ def set_atomic_charges(mol,
 
     Args:
         mol (RDMol) An rdkit molecule object instance.
-        atoms (List[int]): Entries are integer atomic symbols.
+        atoms (list[int]): Entries are integer atomic symbols.
         atomic_valence_electrons_ (dict): The number of valence electrons per atom.
         bo_valences (list): Bond order valences.
         bo_matrix (np.ndarray): Bond order matrix.
@@ -382,7 +381,7 @@ def set_atomic_charges(mol,
 
 
 def set_atomic_radicals(mol,
-                        atoms: List[int],
+                        atoms: list[int],
                         atomic_valence_electrons_: dict,
                         bo_valences: list,
                         ):
@@ -391,7 +390,7 @@ def set_atomic_radicals(mol,
 
     Args:
         mol (RDMol) An rdkit molecule object instance.
-        atoms (List[int]): Entries are integer atomic symbols.
+        atoms (list[int]): Entries are integer atomic symbols.
         atomic_valence_electrons_ (dict): The number of valence electrons per atom.
         bo_valences (list): Bond order valences.
 
@@ -470,7 +469,7 @@ def ac2bo(atom_connectivity: np.ndarray,
           charge: int,
           allow_charged_fragments: bool = True,
           use_graph: bool = True,
-          ) -> Tuple[Optional[np.ndarray], Optional[dict]]:
+          ) -> tuple[np.ndarray | None, dict | None]:
     """
     Atom connectivity to bond order.
     Implementation of the bond order assignment algorithm shown in Figure 2 of 10.1002/bkcs.10334.
@@ -478,13 +477,13 @@ def ac2bo(atom_connectivity: np.ndarray,
 
     Args:
         atom_connectivity (np.ndarray): Atom connectivity.
-        atoms (List[int]): Entries are integer atomic symbols.
+        atoms (list[int]): Entries are integer atomic symbols.
         charge (int): The molecular charge.
         allow_charged_fragments (bool, optional): Whether to allow charged fragments.
         use_graph (bool, optional): Whether to use the graph representation of the molecule.
 
     Returns:
-        Tuple[np.ndarray, dict]:
+        tuple[np.ndarray, dict]:
             -  Best Bond orders.
             - Atomic valence electrons.
     """
@@ -530,23 +529,23 @@ def ac2bo(atom_connectivity: np.ndarray,
 
 def ac2mol(mol,
            atom_connectivity,
-           atoms: List[int],
+           atoms: list[int],
            charge: int,
            allow_charged_fragments: bool = True,
            use_graph: bool = True,
-           ) -> Optional[list]:
+           ) -> list | None:
     """
 
     Args:
         mol (RDMol) An rdkit molecule object instance.
         atom_connectivity (np.ndarray): Atom connectivity.
-        atoms (List[int]): Entries are integer atomic symbols.
+        atoms (list[int]): Entries are integer atomic symbols.
         charge (int): The molecular charge.
         allow_charged_fragments (bool, optional): Whether to allow charged fragments.
         use_graph (bool, optional): Whether to use the graph representation of the molecule.
 
     Returns:
-        List[RDMol]: Respective RDKit Molecule object instances.
+        list[RDMol]: Respective RDKit Molecule object instances.
     """
     # Convert ac matrix to bond order (bo) matrix.
     bond_orders, atomic_valence_electrons_ = ac2bo(
@@ -578,12 +577,12 @@ def ac2mol(mol,
     return mols
 
 
-def get_proto_mol(atoms: List[int]):
+def get_proto_mol(atoms: list[int]):
     """
     Get a template of an RDKit Molecule object instance.
 
     Args:
-        atoms (List[int]): Entries are integer atomic symbols.
+        atoms (list[int]): Entries are integer atomic symbols.
 
     Returns:
         RDMol: The RDKit Molecule object instance.
@@ -598,7 +597,7 @@ def get_proto_mol(atoms: List[int]):
 
 
 def xyz2ac(atoms,
-           xyz: Union[List[List[float]], Tuple[Tuple[float, float, float], ...]],
+           xyz: list[list[float]] | tuple[tuple[float, float, float], ...],
            charge: int,
            use_huckel: bool = False,
            ) -> tuple:
@@ -606,14 +605,14 @@ def xyz2ac(atoms,
     Atoms and coordinates to atom connectivity (ac).
 
     Args:
-        atoms (List[int]): Entries are integer representations of atom types.
-        xyz (Union[List[List[float]], Tuple[Tuple[float, float, float], ...]]): The coordinates.
+        atoms (list[int]): Entries are integer representations of atom types.
+        xyz (list[list[float]] | tuple[tuple[float, float, float], ...]): The coordinates.
         charge (int): The molecular charge.
         use_huckel (bool, optional): Whether to use Huckel bond orders to locate bonds.
                                      Otherwise, van der Waals radii are used.
 
     Returns:
-        Tuple[np.ndarray, RDMol]:
+        tuple[np.ndarray, RDMol]:
             - The atom connectivity matrix.
             - RDMol.
     """
@@ -631,12 +630,12 @@ def xyz2ac_huckel(atomic_num_list,
     Generate an adjacency matrix from atoms and coordinates using the Huckle method.
 
     Args:
-        atomic_num_list (List[int]): Entries are integer representations of atom types.
-        xyz (Union[List[List[float]], Tuple[Tuple[float, float, float], ...]]): The coordinates.
+        atomic_num_list (list[int]): Entries are integer representations of atom types.
+        xyz (list[list[float]] | tuple[tuple[float, float, float], ...]): The coordinates.
         charge (int): The molecular charge.
 
     Returns:
-        Tuple[np.ndarray, RDMol]:
+        tuple[np.ndarray, RDMol]:
             - The atom connectivity matrix.
             - RDMol.
     """
@@ -663,17 +662,17 @@ def xyz2ac_huckel(atomic_num_list,
 
 
 def xyz2ac_vdw(atoms,
-               xyz: Union[List[List[float]], Tuple[Tuple[float, float, float], ...]],
+               xyz: list[list[float]] | tuple[tuple[float, float, float], ...],
                ) -> tuple:
     """
     Generate an adjacency matrix from atoms and coordinates using the Van der Waals method.
 
     Args:
-        atoms (List[int]): Entries are integer representations of atom types.
-        xyz (Union[List[List[float]], Tuple[Tuple[float, float, float], ...]]): The coordinates.
+        atoms (list[int]): Entries are integer representations of atom types.
+        xyz (list[list[float]] | tuple[tuple[float, float, float], ...]): The coordinates.
 
     Returns:
-        Tuple[np.ndarray, RDMol]:
+        tuple[np.ndarray, RDMol]:
             - The atom connectivity matrix.
             - RDMol.
     """
@@ -729,20 +728,20 @@ def chiral_stereo_check(mol):
     Chem.AssignAtomChiralTagsFromStructure(mol, -1)
 
 
-def xyz2mol(atoms: List[int],
-            coordinates: Union[List[List[float]], Tuple[Tuple[float, float, float], ...]],
+def xyz2mol(atoms: list[int],
+            coordinates: list[list[float]] | tuple[tuple[float, float, float], ...],
             charge: int = 0,
             allow_charged_fragments: bool = True,
             use_graph: bool = True,
             use_huckel: bool = False,
             embed_chiral: bool = True,
-            ) -> Optional[list]:
+            ) -> list | None:
     """
     Generate an RDKit Molecule object instance from atoms, coordinates, and an overall charge.
 
     Args:
-        atoms (List[int]): list of atom types.
-        coordinates (Union[List[List[float]], Tuple[Tuple[float, float, float], ...]]): A 3xN Cartesian coordinates.
+        atoms (list[int]): list of atom types.
+        coordinates (list[list[float]] | tuple[tuple[float, float, float], ...]): A 3xN Cartesian coordinates.
         charge (int, optional): The total charge of the system (default: 0).
         allow_charged_fragments (bool, optional): Alternatively, radicals are made.
         use_graph (bool, optional): Use graph (networkx).
