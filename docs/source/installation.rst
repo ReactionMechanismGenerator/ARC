@@ -26,7 +26,7 @@ Note:
 Clone and setup path
 ^^^^^^^^^^^^^^^^^^^^
 
-- Download and install the `Anaconda Python Platform`__ for Python 3.7 or higher if you haven't already.
+- Download and install the `Anaconda Python Platform`__ for Python 3.14 or higher if you haven't already.
 - Get git and appropriate compilers if you don't have them already by typing ``sudo apt install git gcc g++ make``
   in a terminal.
 - Clone ARC's repository to by typing the following command in the desired folder (e.g., under `~/Code/`)::

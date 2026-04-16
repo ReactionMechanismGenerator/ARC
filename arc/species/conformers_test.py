@@ -1029,7 +1029,15 @@ O       1.40839617    0.14303696    0.00000000"""
 
     def test_to_group(self):
         """Test converting a part of a molecule into a group"""
-        atom_indices = [2, 3, 8]
+        # Find the Cd bonded to O and H (indices may vary across platforms)
+        o_idx = next(i for i, a in enumerate(self.mol1.atoms) if a.is_oxygen())
+        cd_idx = next(i for i in range(len(self.mol1.atoms))
+                      if self.mol1.atoms[i].is_carbon() and o_idx in
+                      [self.mol1.atoms.index(n) for n in self.mol1.atoms[i].edges])
+        h_idx = next(i for i in range(len(self.mol1.atoms))
+                     if self.mol1.atoms[i].is_hydrogen() and cd_idx in
+                     [self.mol1.atoms.index(n) for n in self.mol1.atoms[i].edges])
+        atom_indices = [cd_idx, o_idx, h_idx]
         group0 = conformers.to_group(mol=self.mol1, atom_indices=atom_indices)
 
         atom0 = GroupAtom(atomtype=[ATOMTYPES['Cd']], radical_electrons=[0], charge=[0],
