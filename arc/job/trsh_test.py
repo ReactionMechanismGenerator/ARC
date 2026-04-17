@@ -445,7 +445,7 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(memory, capped_memory_gb)
         self.assertIn('Use a higher-memory node or lower the job cost', output_errors[0])
 
-        # Gaussian: test 7
+        # Gaussian: test 7 - part 1
         job_status = {'keywords': ['SCF', 'GL502', 'NoSymm']}
         ess_trsh_methods = ['scf=(NoDIIS)', 'int=(Acc2E=14)', 'checkfile=None', 'scf=(qc)', 'NoSymm','scf=(NDamp=30)', 'guess=INDO', 'scf=(Fermi)',
                             'scf=(Noincfock)', 'scf=(NoVarAcc)']
@@ -454,10 +454,32 @@ class TestTrsh(unittest.TestCase):
                                                                     job_type, software, fine, memory_gb,
                                                                     num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertTrue(couldnt_trsh)
-        self.assertIn(
-            "Error: Could not troubleshoot opt for ethanol! Tried troubleshooting with the following methods: ['scf=(NoDIIS)', 'int=(Acc2E=14)', 'checkfile=None', 'scf=(qc)', 'NoSymm', 'scf=(NDamp=30)', 'guess=INDO', 'scf=(Fermi)', 'scf=(Noincfock)', 'scf=(NoVarAcc)', 'all_attempted']; ",
-            output_errors,
-        )
+        # assert the output contains the expected troubleshooting summary and final marker
+        self.assertTrue(any('Tried troubleshooting' in e for e in output_errors))
+        self.assertTrue(any('with the following methods' in e for e in output_errors))
+        self.assertTrue(any('all_attempted' in e for e in output_errors))
+        self.assertTrue(all('trsh_attempt' not in e for e in output_errors))
+
+        # Gaussian: test 7 - part 2
+        # verify troubleshoot attempts counting (consolidated)
+        job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
+        ess_trsh_methods = ['trsh_attempt',
+                            'int=(Acc2E=14)', 'opt=(maxcycle=200)',
+                            'trsh_attempt', 'opt=(RFO)',
+                            'trsh_attempt', 'opt=(GDIIS)',
+                            'trsh_attempt', 'opt=(GEDIIS)',
+                            'trsh_attempt']
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                    job_type, software, fine, memory_gb,
+                                                                    num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertTrue(couldnt_trsh)
+        e = output_errors[-1]
+        self.assertIn('Tried troubleshooting 5 time(s)', e)
+        self.assertNotIn('trsh_attempt', e)
+        for opt in ("opt=(maxcycle=200)", "opt=(RFO)", "opt=(GDIIS)", "opt=(GEDIIS)"):
+            self.assertIn(opt, e)
+        self.assertIn('all_attempted', e)
 
         # Gaussian: test 8
         job_status = {'keywords': ['MaxOptCycles', 'GL9999','SCF']}
@@ -809,6 +831,28 @@ class TestTrsh(unittest.TestCase):
                               job_type, software, fine, memory_gb,
                               num_heavy_atoms, cpu_cores, ess_trsh_methods,
                               is_h=True, is_monoatomic=True)
+
+    def test_trsh_ess_job_terachem_trsh_attempt_only(self):
+        """Isolate the terachem trsh_attempt-only case from Gaussian stateful flow."""
+        label = 'ethanol'
+        level_of_theory = {'method': 'ccsd', 'basis': 'vdz'}
+        server = 'server1'
+        job_type = 'opt'
+        software = 'terachem'
+        fine = False
+        memory_gb = 16
+        num_heavy_atoms = 2
+        cpu_cores = 8
+        job_status = {'keywords': []}
+        ess_trsh_methods = ['trsh_attempt']
+
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+
+        self.assertTrue(couldnt_trsh)
+        self.assertTrue(any('No applicable troubleshooting methods found' in out for out in output_errors))
 
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""
