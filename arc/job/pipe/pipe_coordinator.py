@@ -10,12 +10,12 @@ Family-specific task planning lives in ``pipe_planner.py``.
 
 import os
 import time
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from arc.common import get_logger
 from arc.imports import settings
 
-from arc.job.pipe.pipe_run import PipeRun, ingest_completed_task
+from arc.job.pipe.pipe_run import PipeRun, SCHEDULER_VISIBILITY_GRACE, ingest_completed_task
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
     TaskStateRecord, read_task_state,
@@ -189,7 +189,38 @@ class PipeCoordinator:
         self.active_pipes[pipe.run_id] = pipe
         return pipe
 
-    def poll_pipes(self) -> None:
+    @staticmethod
+    def _is_scheduler_job_alive(pipe: PipeRun,
+                                server_job_ids: Optional[List[str]],
+                                ) -> bool:
+        """
+        Check whether a pipe run's scheduler job is still in the cluster queue.
+
+        For PBS/Slurm array jobs the stored ``scheduler_job_id`` is the base
+        ID (e.g. ``'4018898[]'`` for PBS, ``'12345'`` for Slurm), while the
+        queue lists individual elements (``'4018898[0]'`` for PBS,
+        ``'12345_7'`` for Slurm).  We match on the numeric prefix with both
+        ``[`` and ``_`` array separators so both formats are recognised.
+
+        Returns True (optimistic) when *server_job_ids* is unavailable.
+        """
+        if server_job_ids is None or pipe.scheduler_job_id is None:
+            return True  # Cannot determine — assume alive.
+        base = pipe.scheduler_job_id.rstrip('[]')
+        if any(jid == base
+               or jid.startswith(base + '[')
+               or jid.startswith(base + '_')
+               for jid in server_job_ids):
+            return True
+        # Grace period: the scheduler snapshot may not yet list a just-submitted
+        # job (array jobs can take seconds to surface in qstat, and a fresh
+        # get_server_job_ids() call drops any append made by submit).
+        if pipe.submitted_at is not None \
+                and time.time() - pipe.submitted_at < SCHEDULER_VISIBILITY_GRACE:
+            return True
+        return False
+
+    def poll_pipes(self, server_job_ids: Optional[List[str]] = None) -> None:
         """
         Reconcile all active pipe runs.
 
@@ -198,12 +229,19 @@ class PipeCoordinator:
 
         Tolerates up to 3 consecutive reconciliation failures per run before
         marking it as FAILED and removing it.
+
+        Args:
+            server_job_ids: Job IDs currently present in the cluster queue
+                (from ``check_running_jobs_ids``).  Used to detect when a
+                pipe's scheduler job has left the queue so that orphaned
+                tasks can be cleaned up immediately.
         """
         max_consecutive_failures = 3
         for run_id in list(self.active_pipes.keys()):
             pipe = self.active_pipes[run_id]
+            job_alive = self._is_scheduler_job_alive(pipe, server_job_ids)
             try:
-                counts = pipe.reconcile()
+                counts = pipe.reconcile(scheduler_job_alive=job_alive)
             except Exception:
                 n_failures = self._pipe_poll_failures.get(run_id, 0) + 1
                 self._pipe_poll_failures[run_id] = n_failures
