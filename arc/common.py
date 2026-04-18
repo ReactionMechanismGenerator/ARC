@@ -314,6 +314,7 @@ def get_git_branch(path: str | None = None) -> str:
         for branch_name in branch_list:
             if '*' in branch_name.decode():
                 return branch_name.decode()[2:]
+        return ''
     else:
         return ''
 
@@ -1365,6 +1366,7 @@ def is_same_pivot(torsion1: list | str,
         return False
     if torsion1[1:3] == torsion2[1:3] or torsion1[1:3] == torsion2[1:3][::-1]:
         return True
+    return False
 
 
 def is_same_sequence_sublist(child_list: list, parent_list: list) -> bool:
