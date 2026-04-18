@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 from arc.common import get_logger
 from arc.imports import settings
 
-from arc.job.pipe.pipe_run import PipeRun, ingest_completed_task
+from arc.job.pipe.pipe_run import PipeRun, SCHEDULER_VISIBILITY_GRACE, ingest_completed_task
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
     TaskStateRecord, read_task_state,
@@ -207,10 +207,18 @@ class PipeCoordinator:
         if server_job_ids is None or pipe.scheduler_job_id is None:
             return True  # Cannot determine — assume alive.
         base = pipe.scheduler_job_id.rstrip('[]')
-        return any(jid == base
-                   or jid.startswith(base + '[')
-                   or jid.startswith(base + '_')
-                   for jid in server_job_ids)
+        if any(jid == base
+               or jid.startswith(base + '[')
+               or jid.startswith(base + '_')
+               for jid in server_job_ids):
+            return True
+        # Grace period: the scheduler snapshot may not yet list a just-submitted
+        # job (array jobs can take seconds to surface in qstat, and a fresh
+        # get_server_job_ids() call drops any append made by submit).
+        if pipe.submitted_at is not None \
+                and time.time() - pipe.submitted_at < SCHEDULER_VISIBILITY_GRACE:
+            return True
+        return False
 
     def poll_pipes(self, server_job_ids: Optional[List[str]] = None) -> None:
         """

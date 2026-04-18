@@ -36,6 +36,7 @@ from arc.job.pipe.pipe_state import (
 logger = get_logger()
 
 RESUBMIT_GRACE = 120  # seconds – grace period after resubmission before flagging again
+SCHEDULER_VISIBILITY_GRACE = 60  # seconds – trust a just-submitted pipe is alive even if the scheduler snapshot doesn't yet list it
 
 pipe_settings = settings['pipe_settings']
 default_job_settings = settings['default_job_settings']
