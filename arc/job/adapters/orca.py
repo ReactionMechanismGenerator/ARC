@@ -290,11 +290,9 @@ class OrcaAdapter(JobAdapter):
         # Orca requires different blocks for wavefunction methods and DFT methods
         if self.level.method_type == 'dft':
             input_dict['method_class'] = 'KS'
-            # DFT grid must be the same for both opt and freq
-            if self.fine:
-                self.add_to_args(val='defgrid3', key1='keyword')
-            else:
-                self.add_to_args(val='defgrid2', key1='keyword')
+            # DFT grid must be the same for both opt and freq.
+            # Users can override by setting `dft_grid` in args.keyword (e.g. dft_grid: DEFGRID1).
+            self.args['keyword'].setdefault('dft_grid', 'defgrid3' if self.fine else 'defgrid2')
         elif self.level.method_type == 'wavefunction':
             input_dict['method_class'] = 'HF'
             if 'dlpno' in self.level.method:
