@@ -298,14 +298,14 @@ class TestARC(unittest.TestCase):
                    freq_level={'method': 'B3LYP/G', 'basis': 'cc-pVDZ(fi/sf/fw)', 'auxiliary_basis': 'def2-svp/C',
                                'dispersion': 'DEF2-tzvp/c'},
                    sp_level={'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12',
-                             'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS'},
+                             'auxiliary_basis': 'aug-cc-pVTZ/C', 'cabs': 'cc-pVTZ-F12-CABS'},
                    calc_freq_factor=False, compute_thermo=False)
         self.assertEqual(arc9.opt_level.simple(), 'wb97xd/def2tzvp')
         self.assertEqual(str(arc9.freq_level), 'b3lyp/g/cc-pvdz(fi/sf/fw), auxiliary_basis: def2-svp/c, '
                                                'dispersion: def2-tzvp/c, software: gaussian')
         self.assertEqual(str(arc9.sp_level),
-                         'dlpno-ccsd(t)-f12/cc-pvtz-f12, auxiliary_basis: aug-cc-pvtz/c cc-pvtz-f12-cabs, '
-                         'software: orca')
+                         'dlpno-ccsd(t)-f12/cc-pvtz-f12, auxiliary_basis: aug-cc-pvtz/c, '
+                         'cabs: cc-pvtz-f12-cabs, software: orca')
 
         # Test using default frequency and orbital level for composite job, also forbid rotors job
         arc10 = ARC(project='test', composite_method='cbs-qb3', calc_freq_factor=False,
