@@ -255,6 +255,12 @@ class OrcaAdapter(JobAdapter):
         """
         Write the input file to execute the job on the server.
         """
+        if 'f12' in self.level.method and not self.level.cabs:
+            raise ValueError(
+                f"Level '{self.level}' uses an F12 method without a CABS basis. "
+                f"Set `cabs:` in the level spec (e.g. cc-pVTZ-F12-CABS). "
+                f"Without it ORCA runs with DimCABS = 0 and returns non-F12 energies."
+            )
         input_dict = dict()
         for key in ['block',
                     'scan',
