@@ -23,21 +23,21 @@ jobs:
           path: ARC
 
       - name: Clean Ubuntu Image
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@v1.3.1
         with:
           tool-cache: true
           android: true
           dotnet: true
           haskell: true
           large-packages: true
-          swap-storage: true
+          swap-storage: false
 
       - name: Set up micromamba (arc_env)
         uses: mamba-org/setup-micromamba@v3
         with:
           environment-name: arc_env
           environment-file: ARC/environment.yml
-          cache-environment: true
+          cache-environment: false
           cache-downloads: true
           generate-run-shell: true
 
@@ -54,22 +54,6 @@ jobs:
         run: |
           echo "PATH=$PATH:$PWD" >> "$GITHUB_ENV"
           echo "PYTHONPATH=$PYTHONPATH:$PWD" >> "$GITHUB_ENV"
-
-      - name: Install Julia 1.10
-        shell: micromamba-shell {0}
-        run: |
-          echo "::group::Install juliaup + Julia 1.10"
-          # 1) Bootstrap juliaup non-interactively (-y)
-          curl -fsSL https://install.julialang.org | sh -s -- -y
-          # 2) Make juliaup visible *now* (CI shells won’t re-source rc files)
-          export PATH="$HOME/.juliaup/bin:$PATH"
-          # 3) Install & select Julia 1.10
-          juliaup add 1.10
-          juliaup default 1.10
-          # 4) Persist for subsequent steps
-          echo "PATH=$HOME/.juliaup/bin:$PATH" >> "$GITHUB_ENV"
-          echo "::endgroup::"
-          julia --version # Check that Julia is installed correctly
 
       - name: Install all extras - CI
         shell: micromamba-shell {0}
@@ -102,7 +86,7 @@ jobs:
         run: |
           echo "Running Unit Tests..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
-          pytest arc/ --cov --cov-report=xml -ra -vv -n auto
+          pytest arc/ --cov --cov-report=xml -ra -vv -n 4 --dist worksteal
 
       - name: Run Functional Tests
         shell: micromamba-shell {0}
@@ -113,7 +97,7 @@ jobs:
         run: |
           echo "Running Functional Tests from $(pwd)..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
-          pytest functional/ --cov --cov-append --cov-report=xml -ra -vv -n auto
+          pytest functional/ --cov --cov-append --cov-report=xml -ra -vv -n 4 --dist worksteal
 
       - name: Upload coverage data
         uses: codecov/codecov-action@v6
