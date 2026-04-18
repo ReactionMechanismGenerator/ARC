@@ -280,12 +280,12 @@ class OrcaAdapter(JobAdapter):
         input_dict['multiplicity'] = self.multiplicity
         input_dict['xyz'] = xyz_to_str(self.xyz)
 
-        scf_convergence = self.args['keyword'].get('scf_convergence', '').lower() or \
-            orca_default_options_dict['global']['keyword'].get('scf_convergence', '').lower()
-        if not scf_convergence:
+        self.args['keyword'].setdefault(
+            'scf_convergence',
+            orca_default_options_dict['global']['keyword'].get('scf_convergence', '').lower())
+        if not self.args['keyword']['scf_convergence']:
             raise ValueError('Orca SCF convergence is not specified. Please specify this variable either in '
                              'settings.py as default or in the input file as additional options.')
-        self.add_to_args(val=scf_convergence, key1='keyword')
 
         # Orca requires different blocks for wavefunction methods and DFT methods
         if self.level.method_type == 'dft':
@@ -298,12 +298,12 @@ class OrcaAdapter(JobAdapter):
         elif self.level.method_type == 'wavefunction':
             input_dict['method_class'] = 'HF'
             if 'dlpno' in self.level.method:
-                dlpno_threshold = self.args['keyword'].get('dlpno_threshold', '').lower() or \
-                    orca_default_options_dict['global']['keyword'].get('dlpno_threshold', '').lower()
-                if not dlpno_threshold:
+                self.args['keyword'].setdefault(
+                    'dlpno_threshold',
+                    orca_default_options_dict['global']['keyword'].get('dlpno_threshold', '').lower())
+                if not self.args['keyword']['dlpno_threshold']:
                     raise ValueError('Orca DLPNO threshold is not specified. Please specify this variable either in '
                                      'settings.py as default or in the input file as additional options.')
-                self.add_to_args(val=dlpno_threshold, key1='keyword')
         else:
             logger.debug(f'Running {self.level.method_type} {self.level.method} method in Orca.')
 
