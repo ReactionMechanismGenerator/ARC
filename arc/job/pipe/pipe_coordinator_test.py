@@ -231,6 +231,19 @@ class TestPollPipes(unittest.TestCase):
         self.coord.poll_pipes()  # succeeds this time
         self.assertNotIn('run_flaky', self.coord._pipe_poll_failures)
 
+    def test_resubmission_adds_job_id_to_server_job_ids(self):
+        """Resubmitted pipe job ID is added to server_job_ids."""
+        pipe = self.coord.submit_pipe_run('run_resub', [_make_spec('t_resub')])
+
+        def fake_reconcile():
+            pipe._needs_resubmission = True
+            return {TaskState.PENDING.value: 1}
+
+        with patch.object(pipe, 'reconcile', side_effect=fake_reconcile), \
+             patch.object(pipe, 'submit_to_scheduler', return_value=('submitted', '77777[]')):
+            self.coord.poll_pipes()
+        self.assertIn('77777[]', self.coord.sched.server_job_ids)
+
 
 class TestIsSchedulerJobAlive(unittest.TestCase):
     """Tests for PipeCoordinator._is_scheduler_job_alive()."""
