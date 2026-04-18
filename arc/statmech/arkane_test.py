@@ -57,12 +57,13 @@ class TestArkaneAdapter(unittest.TestCase):
         """
         A method that is run before all unit tests in this class.
         """
-        output_path_1 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'output_1')
-        calcs_path_1 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_1')
-        output_path_2 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'output_2')
-        calcs_path_2 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_2')
-        output_path_3 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'output_3')
-        calcs_path_3 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_3')
+        cls.tmpdir = tempfile.mkdtemp(prefix='test_Arkane_')
+        output_path_1 = os.path.join(cls.tmpdir, 'output_1')
+        calcs_path_1 = os.path.join(cls.tmpdir, 'calcs_1')
+        output_path_2 = os.path.join(cls.tmpdir, 'output_2')
+        calcs_path_2 = os.path.join(cls.tmpdir, 'calcs_2')
+        output_path_3 = os.path.join(cls.tmpdir, 'output_3')
+        calcs_path_3 = os.path.join(cls.tmpdir, 'calcs_3')
         for path in [output_path_1, calcs_path_1, output_path_2, calcs_path_2, output_path_3, calcs_path_3]:
             if not os.path.isdir(path):
                 os.makedirs(path)
@@ -126,7 +127,7 @@ class TestArkaneAdapter(unittest.TestCase):
     def test_run_statmech_using_molecular_properties(self):
         """Test running statmech using molecular properties."""
         self.arkane_3.compute_thermo()
-        plot_path = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_3', 'statmech', 'thermo', 'plots', 'iC3H7.pdf')
+        plot_path = os.path.join(self.tmpdir, 'calcs_3', 'statmech', 'thermo', 'plots', 'iC3H7.pdf')
         if not os.path.isfile(plot_path):
             log_dir = os.path.dirname(os.path.dirname(plot_path))
             stdout_log = os.path.join(log_dir, 'stdout.log')
@@ -406,8 +407,8 @@ class TestArkaneAdapter(unittest.TestCase):
         """
         A function that is run ONCE after all unit tests in this class.
         """
-        for folder in ['arkane_tests_delete', 'arkane_input_tests_delete']:
-            shutil.rmtree(os.path.join(ARC_TESTING_PATH, folder), ignore_errors=True)
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'arkane_input_tests_delete'), ignore_errors=True)
 
 
 class TestArkaneOutputParsing(unittest.TestCase):
