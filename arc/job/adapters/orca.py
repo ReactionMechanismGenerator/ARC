@@ -84,13 +84,14 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
 # job_type_2: reserved for Opt + Freq.
 # restricted: 'R' = closed-shell SCF, 'U' = spin unrestricted SCF, 'RO' = open-shell spin restricted SCF
 # auxiliary_basis: required for DLPNO calculations (speed up calculation)
+# cabs: Complementary Auxiliary Basis Set for F12 calculations (e.g., cc-pVTZ-F12-CABS)
 # memory: MB per core (must increase as system gets larger)
 # cpus: must be less than number of electron pairs, defaults to min(heavy atoms, cpus limit)
 # job_options_blocks: input blocks that enable detailed control over program
 # job_options_keywords: input keywords that control the job
 # method_class: 'HF' for wavefunction methods (hf, mp, cc, dlpno ...). 'KS' for DFT methods.
 # options: additional keywords to control job (e.g., TightSCF, NormalPNO ...)
-input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary_basis} ${keywords}
+input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary_basis} ${cabs} ${keywords}
 !${job_type_1} 
 ${job_type_2}
 %%maxcore ${memory}
@@ -264,6 +265,7 @@ class OrcaAdapter(JobAdapter):
             input_dict[key] = ''
         input_dict['auxiliary_basis'] = _format_orca_basis(self.level.auxiliary_basis or '')
         input_dict['basis'] = _format_orca_basis(self.level.basis or '')
+        input_dict['cabs'] = _format_orca_basis(self.level.cabs or '')
         input_dict['charge'] = self.charge
         input_dict['cpus'] = self.cpu_cores
         input_dict['label'] = self.species_label
