@@ -4,6 +4,7 @@
 [![codecov](https://codecov.io/gh/ReactionMechanismGenerator/ARC/branch/main/graph/badge.svg)](https://codecov.io/gh/ReactionMechanismGenerator/ARC)
 [![MIT license](http://img.shields.io/badge/license-MIT-brightgreen.svg)](http://opensource.org/licenses/MIT)
 ![Release](https://img.shields.io/badge/version-1.1.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.14-blue.svg)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3356849.svg)](https://doi.org/10.5281/zenodo.3356849)
 
 <img src="https://github.com/ReactionMechanismGenerator/ARC/blob/main/logo/ARC-logo-small.jpg" alt="ARC logo" width="200"/>

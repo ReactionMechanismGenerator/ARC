@@ -7,9 +7,10 @@ This module contains unit tests of the arc.job.adapters.torchani module
 
 import os
 import shutil
+import tempfile
 import unittest
 
-from arc.common import ARC_TESTING_PATH, almost_equal_coords, almost_equal_lists, read_yaml_file
+from arc.common import almost_equal_coords, almost_equal_lists, read_yaml_file
 from arc.job.adapters.torch_ani import TorchANIAdapter
 from arc.settings.settings import tani_default_options_dict
 from arc.species import ARCSpecies
@@ -26,16 +27,17 @@ class TestTorchANIAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.tmpdir = tempfile.mkdtemp(prefix='test_TorchANI_')
         cls.job_1 = TorchANIAdapter(execution_type='incore',
                                     job_type='sp',
                                     project='test_1',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_TorchANIAdapter_1'),
+                                    project_directory=os.path.join(cls.tmpdir, 'job_1'),
                                     species=[ARCSpecies(label='EtOH', smiles='CCO')],
                                     )
         cls.job_2 = TorchANIAdapter(execution_type='incore',
                                     job_type='opt',
                                     project='test_2',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_TorchANIAdapter_2'),
+                                    project_directory=os.path.join(cls.tmpdir, 'job_2'),
                                     species=[ARCSpecies(label='EtOH', smiles='CCO')],
                                     )
         etoh_xyz = """ C       -0.93790674    0.28066443    0.10572942
@@ -50,50 +52,50 @@ class TestTorchANIAdapter(unittest.TestCase):
         cls.job_3 = TorchANIAdapter(execution_type='incore',
                                     job_type='opt',
                                     project='test_3',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_TorchANIAdapter_3'),
+                                    project_directory=os.path.join(cls.tmpdir, 'job_3'),
                                     species=[ARCSpecies(label='EtOH', smiles='CCO', xyz=etoh_xyz)],
                                     constraints=[([1, 2, 3], 109), ([2, 3], 1.4), [(3, 2, 1, 5), 179.8]],
                                     )
         cls.job_4 = TorchANIAdapter(execution_type='incore',
                                     job_type='opt',
                                     project='test_4',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_TorchANIAdapter_4'),
+                                    project_directory=os.path.join(cls.tmpdir, 'job_4'),
                                     species=[ARCSpecies(label='EtOH', smiles='CCO', xyz=etoh_xyz)],
                                     )
         cls.job_5 = TorchANIAdapter(execution_type='incore',
                                     job_type='sp',
                                     project='test_5',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_TorchANIAdapter_5'),
+                                    project_directory=os.path.join(cls.tmpdir, 'job_5'),
                                     species=[ARCSpecies(label='EtOH', smiles='CCO', xyz=etoh_xyz)],
                                     )
         cls.job_6 = TorchANIAdapter(execution_type='incore',
                                     job_type='freq',
                                     project='test_6',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_TorchANIAdapter_6'),
+                                    project_directory=os.path.join(cls.tmpdir, 'job_6'),
                                     species=[ARCSpecies(label='EtOH', smiles='CCO', xyz=etoh_xyz)],
                                     )
         cls.job_7 = TorchANIAdapter(execution_type='incore',
                                     job_type='optfreq',
                                     project='test_7',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_TorchANIAdapter_7'),
+                                    project_directory=os.path.join(cls.tmpdir, 'job_7'),
                                     species=[ARCSpecies(label='EtOH', smiles='CCO', xyz=etoh_xyz)],
                                     )
         cls.job_8 = TorchANIAdapter(execution_type='incore',
                                     job_type='sp',
                                     project='test_8',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_TorchANIAdapter_8'),
+                                    project_directory=os.path.join(cls.tmpdir, 'job_8'),
                                     species=[ARCSpecies(label='EtOH', smiles='CCO')],
                                     )
         cls.job_9 = TorchANIAdapter(execution_type='incore',
                                     job_type='force',
                                     project='test_9',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_TorchANIAdapter_9'),
+                                    project_directory=os.path.join(cls.tmpdir, 'job_9'),
                                     species=[ARCSpecies(label='EtOH', smiles='CCO')],
                                     )
         cls.job_10 = TorchANIAdapter(execution_type='incore',
                                      job_type='freq',
                                      project='test_10',
-                                     project_directory=os.path.join(ARC_TESTING_PATH, 'test_TorchANIAdapter_10'),
+                                     project_directory=os.path.join(cls.tmpdir, 'job_10'),
                                      species=[ARCSpecies(label='EtOH', smiles='CCO', xyz=etoh_xyz)],
                                      )
         ts_xyz = """O       0.42776400   -1.13025800    0.74130700
@@ -114,7 +116,7 @@ class TestTorchANIAdapter(unittest.TestCase):
         cls.job_ts = TorchANIAdapter(execution_type='incore',
                                      job_type='freq',
                                      project='test_5',
-                                     project_directory=os.path.join(ARC_TESTING_PATH, 'test_TorchANIAdapter_ts'),
+                                     project_directory=os.path.join(cls.tmpdir, 'job_ts'),
                                      species=[ARCSpecies(label='ts', xyz=ts_xyz, is_ts=True)],)
 
     def test_run_sp(self):
@@ -254,9 +256,7 @@ class TestTorchANIAdapter(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        for i in list(range(1, 11))+["ts"]:
-            path = os.path.join(ARC_TESTING_PATH, f'test_TorchANIAdapter_{i}')
-            shutil.rmtree(path, ignore_errors=True)
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
 
 
 if __name__ == '__main__':

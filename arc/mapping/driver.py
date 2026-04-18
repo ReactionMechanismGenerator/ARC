@@ -7,7 +7,7 @@ Strategy:
     3) If the reaction is supported by RMG, it is sent to the driver. Else, it is mapped with map_general_rxn.
 """
 
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING
 
 from arc.common import logger
 from arc.exceptions import ActionError, AtomTypeError
@@ -36,10 +36,10 @@ if TYPE_CHECKING:
 MAX_PDI = 25
 
 
-def map_reaction(rxn: 'ARCReaction',
+def map_reaction(rxn: ARCReaction,
                  backend: str = 'ARC',
                  flip = False,
-                 ) -> Optional[List[int]]:
+                 ) -> list[int] | None:
     """
     Map a reaction.
 
@@ -50,11 +50,11 @@ def map_reaction(rxn: 'ARCReaction',
                                Useful for reactions that are not atom-mapped correctly in the forward direction.
 
     Returns:
-        Optional[List[int]]:
+        list[int] | None:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
-    def try_mapping(r: 'ARCReaction') -> Optional[List[int]]:
+    def try_mapping(r: ARCReaction) -> list[int] | None:
         try:
             return map_rxn(r, backend=backend)
         except ValueError:
@@ -76,15 +76,15 @@ def map_reaction(rxn: 'ARCReaction',
     return check_atom_map_and_return(raw_map)
 
 
-def check_atom_map_and_return(atom_map: Optional[List[int]]) -> Optional[List[int]]:
+def check_atom_map_and_return(atom_map: list[int] | None) -> list[int] | None:
     """
     Check if the atom map is valid and return it.
 
     Args:
-        atom_map (Optional[List[int]]): The atom map to check.
+        atom_map (list[int] | None): The atom map to check.
 
     Returns:
-        Optional[List[int]]: The atom map if it is valid, None otherwise.
+        list[int] | None: The atom map if it is valid, None otherwise.
     """
     if atom_map is None:
         return None
@@ -106,9 +106,9 @@ def check_atom_map_and_return(atom_map: Optional[List[int]]) -> Optional[List[in
     return atom_map
 
 
-def map_general_rxn(rxn: 'ARCReaction',
+def map_general_rxn(rxn: ARCReaction,
                     backend: str = 'ARC',
-                    ) -> Optional[List[int]]:
+                    ) -> list[int] | None:
     """
     Map a general reaction (one that was not categorized into a reaction family by RMG).
     The general method isn't great, a family-specific method should be implemented where possible.
@@ -118,7 +118,7 @@ def map_general_rxn(rxn: 'ARCReaction',
         backend (str, optional): Currently only supports ``'ARC'``.
 
     Returns:
-        Optional[List[int]]:
+        list[int] | None:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
@@ -128,7 +128,7 @@ def map_general_rxn(rxn: 'ARCReaction',
     return atom_map
 
 
-def map_isomerization_reaction(rxn: 'ARCReaction') -> Optional[List[int]]:
+def map_isomerization_reaction(rxn: ARCReaction) -> list[int] | None:
     """
     Map isomerization reaction that has no corresponding RMG family.
 
@@ -136,7 +136,7 @@ def map_isomerization_reaction(rxn: 'ARCReaction') -> Optional[List[int]]:
         rxn (ARCReaction): An ARCReaction object instance.
 
     Returns:
-        Optional[List[int]]:
+        list[int] | None:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
@@ -241,11 +241,10 @@ def map_isomerization_reaction(rxn: 'ARCReaction') -> Optional[List[int]]:
     return map_two_species(reactant, product, map_type='list')
 
 
-
-def map_rxn(rxn: 'ARCReaction',
+def map_rxn(rxn: ARCReaction,
             backend: str = 'ARC',
             product_dict_index_to_try: int = 0,
-            ) -> Optional[List[int]]:
+            ) -> list[int] | None:
     """
     A wrapper function for mapping reaction, uses databases for mapping with the correct reaction family parameters.
     Strategy:
@@ -261,7 +260,7 @@ def map_rxn(rxn: 'ARCReaction',
                                                    Defaults to 0, which is the first product dictionary.
 
     Returns:
-        Optional[List[int]]:
+        list[int] | None:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
@@ -316,20 +315,20 @@ def map_rxn(rxn: 'ARCReaction',
     return atom_map
 
 
-def convert_label_dict(label_dict: Dict[str, int],
-                       reference_mol_list: List['Molecule'],
-                       mol_list: List['Molecule'],
-                       ) -> Optional[Dict[str, int]]:
+def convert_label_dict(label_dict: dict[str, int],
+                       reference_mol_list: list[Molecule],
+                       mol_list: list[Molecule],
+                       ) -> dict[str, int] | None:
     """
     Convert the label dictionary to the correct atom indices in the reaction and reference molecules
 
     Args:
-        label_dict (Dict[str, int]): A dictionary of atom labels (e.g., '*1') to atom indices.
-        reference_mol_list (List[Molecule]): The list of molecules to which label_dict values refer.
-        mol_list (List[Molecule]): The list of molecules to which label_dict values should be converted.
+        label_dict (dict[str, int]): A dictionary of atom labels (e.g., '*1') to atom indices.
+        reference_mol_list (list[Molecule]): The list of molecules to which label_dict values refer.
+        mol_list (list[Molecule]): The list of molecules to which label_dict values should be converted.
 
     Returns:
-        Dict[str, int]: The converted label dictionary.
+        dict[str, int]: The converted label dictionary.
     """
     if len(reference_mol_list) != len(mol_list):
         raise ValueError(f'The number of reference molecules ({len(reference_mol_list)}) '

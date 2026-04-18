@@ -263,10 +263,10 @@ class TestARCReaction(unittest.TestCase):
 3 H u0 p0 c0 {1,S}
 4 H u0 p0 c0 {1,S}""",
                                           'bond_corrections': {'H-N': 2, 'N=N': 1},
-                                          'cheap_conformer': 'N      -0.09766126    0.01379054    0.00058556\n'
-                                                             'N       1.34147594   -0.18942713   -0.00804275\n'
-                                                             'H      -0.74382022   -0.77560691    0.00534230\n'
-                                                             'H      -0.49999445    0.95124349    0.00211489',
+                                          'cheap_conformer': 'N      -0.09608641    0.00717098   -0.00429305\n'
+                                                             'N       1.31984473   -0.09850040   -0.31487335\n'
+                                                             'H      -0.59122841   -0.74658751    0.47254546\n'
+                                                             'H      -0.63252990    0.83791693   -0.25485633',
                                           'label': 'H2NN[S]',
                                           'long_thermo_description': rxn_dict_6['p_species'][1]['long_thermo_description'],
                                           'mol': {'atom_order': rxn_dict_6['p_species'][1]['mol']['atom_order'],

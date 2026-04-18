@@ -30,6 +30,7 @@ examples/
 
 # Unit test files
 .coverage
+.coverage.*
 testing/*
 htmlcov/*
 arc/testing/gcn_tst/

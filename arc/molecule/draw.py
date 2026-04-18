@@ -21,8 +21,6 @@ import numpy as np
 import os.path
 import re
 
-from typing import Optional
-
 import rdkit.Chem as Chem
 from rdkit.Chem import AllChem
 
@@ -128,7 +126,7 @@ class MoleculeDrawer(object):
         self.surface = None
         self.cr = None
 
-    def draw(self, molecule, file_format, target=None) -> Optional[tuple]:
+    def draw(self, molecule, file_format, target=None) -> tuple | None:
         """
         Draw the given `molecule` using the given image `file_format` - pdf, svg, ps, or
         png. If `path` is given, the drawing is saved to that location on disk. The

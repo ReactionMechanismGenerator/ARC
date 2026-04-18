@@ -468,8 +468,8 @@ int;
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        for folder in ['test_MolproAdapter_1', 'test_MolproAdapter_2']:
-            shutil.rmtree(os.path.join(ARC_TESTING_PATH, folder), ignore_errors=True)
+        for i in range(1, 8):
+            shutil.rmtree(os.path.join(ARC_TESTING_PATH, f'test_MolproAdapter_{i}'), ignore_errors=True)
 
 
 if __name__ == '__main__':
