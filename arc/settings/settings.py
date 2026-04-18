@@ -306,6 +306,7 @@ pipe_settings = {
     'enabled': False,          # Set to True to enable pipe mode (it is off by default, use it for large compute campaigns).
     'min_tasks': 10,           # Minimum batch size to trigger pipe mode.
     'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
+    'max_concurrent': None,    # Max array workers running simultaneously (like PBS `%N`). None = unthrottled.
     'max_attempts': 3,         # Retry budget per task before terminal failure.
     'lease_duration_hrs': 1,   # Worker lease duration in hours (default 1h).
     'env_setup': {},           # Engine-specific shell setup commands, e.g.,
