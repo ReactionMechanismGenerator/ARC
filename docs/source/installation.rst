@@ -69,12 +69,17 @@ Install dependencies
     make install-rmg RMG_ARGS="--source --conda"
     make install-rmg RMG_ARGS="--source --pip"
 
-    Optional extras (examples)::
-
-    make install-rmg RMG_ARGS="--rms"
-    make install-rmg RMG_ARGS="--source --rms --ssh"
-
     See ``devtools/install_rmg.sh --help`` for all flags.
+
+    .. note::
+
+       ARC's installer covers RMG-Py + RMG-database + Arkane. It does
+       **not** install RMS (Reaction Mechanism Simulator, the Julia-based
+       pdep / kinetics solver) — that path has been removed from
+       ``install_rmg.sh``. If you need RMS for your workflow, follow the
+       upstream RMG installation guide:
+       `RMG-Py installation docs
+       <https://reactionmechanismgenerator.github.io/RMG-Py/users/rmg/installation/index.html>`_.
 
   - Source install RMG-Py + RMG-database manually, then set `RMG_PY_PATH` and `RMG_DB_PATH` in your shell or
     `.arc/settings.py`.
