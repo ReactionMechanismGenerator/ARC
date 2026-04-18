@@ -154,6 +154,7 @@ class PipeCoordinator:
             tasks=tasks,
             cluster_software=cluster_software,
             max_workers=pipe_settings.get('max_workers', 100),
+            max_concurrent=pipe_settings.get('max_concurrent'),
             max_attempts=pipe_settings.get('max_attempts', 3),
             pipe_root=pipe_root,
         )
