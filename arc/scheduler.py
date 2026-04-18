@@ -1446,14 +1446,17 @@ class Scheduler(object):
                 return
         if self.species_dict[label].is_monoatomic() and 'dlpno' in level.method:
             species = self.species_dict[label]
+            level_dict = level.as_dict()
+            level_dict.pop('method_type', None)  # re-deduce after method change
             if species.mol.atoms[0].element.symbol in ('H', 'D', 'T'):
                 logger.info(f'Using HF/{level.basis} for {label} (single electron, no correlation).')
-                level = Level(method='hf', basis=level.basis, software=level.software, args=level.args)
+                level_dict['method'] = 'hf'
             else:
                 canonical_method = level.method.replace('dlpno-', '')
                 logger.info(f'DLPNO methods are incompatible with monoatomic species {label}. '
                             f'Using {canonical_method}/{level.basis} instead.')
-                level = Level(method=canonical_method, basis=level.basis, software=level.software, args=level.args)
+                level_dict['method'] = canonical_method
+            level = Level(repr=level_dict)
         if self.job_types['sp']:
             if self.species_dict[label].multi_species:
                 if self.output_multi_spc[self.species_dict[label].multi_species].get('sp', False):
