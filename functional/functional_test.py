@@ -23,13 +23,36 @@ class TestFunctional(unittest.TestCase):
     Contains functional tests for ARC.
     """
     @classmethod
+    def _clean_project_dirs(cls):
+        """Remove project directories created by these functional tests.
+
+        Called from BOTH ``setUpClass`` (defensive — wipes any stale
+        artifacts left behind by a previously interrupted run) and
+        ``tearDownClass`` (the normal cleanup path).  This makes the
+        cleanup self-healing: a Ctrl+C, ``kill``, or hard error during
+        a previous run cannot leave the next run inheriting a polluted
+        project directory.
+        """
+        for folder in ['thermo', 'kinetic']:
+            shutil.rmtree(os.path.join(ARC_PATH, 'functional', 'test', folder),
+                          ignore_errors=True)
+        for stray in ('nul', 'run.out'):
+            stray_path = os.path.join(ARC_PATH, 'functional', stray)
+            if os.path.isfile(stray_path):
+                try:
+                    os.remove(stray_path)
+                except OSError:
+                    pass
+
+    @classmethod
     def setUpClass(cls):
         """
         A method that is run before all unit tests in this class.
         """
+        cls._clean_project_dirs()
         cls.maxDiff = None
         cls.has_settings = False
-        
+
         cls.job_types = {'conf_opt': True,
                          'opt': True,
                          'fine_grid': False,
@@ -129,12 +152,7 @@ class TestFunctional(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests.
         """
-        for folder in ['thermo', 'kinetic']:
-            shutil.rmtree(os.path.join(ARC_PATH, 'functional', 'test', folder), ignore_errors=True)
-        file_paths = [os.path.join(ARC_PATH, 'functional', 'nul'), os.path.join(ARC_PATH, 'functional', 'run.out')]
-        for file_path in file_paths:
-            if os.path.isfile(file_path):
-                os.remove(file_path)
+        cls._clean_project_dirs()
 
  
 if __name__ == '__main__':
