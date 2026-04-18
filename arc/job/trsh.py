@@ -388,12 +388,6 @@ def determine_ess_status(output_path: str,
                     keywords.append('GTOInt')
                     keywords.append('Memory')
                     break
-                elif 'F12-CC method not implemented for UHF references' in line:
-                    # ORCA 5.x rejects non-RI F12-CC on open-shell species; the /RI variant works.
-                    keywords = ['F12_UHF']
-                    error = ('ORCA does not support non-RI F12-CC methods on UHF references. '
-                             'Retrying with /RI appended to the method.')
-                    break
             if done:
                 return 'done', keywords, '', ''
             error = error if error else 'Orca job terminated for an unknown reason.'
@@ -1078,16 +1072,6 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {cpu_cores} cpu cores.')
             if 'cpu' not in ess_trsh_methods:
                 ess_trsh_methods.append('cpu')
-        elif 'F12_UHF' in job_status['keywords'] and 'f12_ri' not in ess_trsh_methods:
-            # Non-RI F12-CC on UHF: append '/RI' to the method and retry this job only.
-            level_dict = level_of_theory.as_dict()
-            level_dict.pop('method_type', None)  # re-deduce after method change
-            level_dict['method'] = f"{level_of_theory.method}/ri"
-            level_of_theory = Level(repr=level_dict)
-            ess_trsh_methods.append('f12_ri')
-            logger.info(f"Troubleshooting {job_type} job in {software} for {label}: appending '/RI' to the "
-                        f"method (non-RI F12-CC is unsupported for UHF references in this ORCA version). "
-                        f"Retrying with {level_of_theory.method}.")
         else:
             couldnt_trsh = True
 
