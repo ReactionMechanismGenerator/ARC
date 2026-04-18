@@ -1,16 +1,13 @@
-name: CI
+name: Nightly (Slow Tests)
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 6 * * *'
 
 jobs:
-  build-and-test:
-    name: CI and Functional Tests
+  nightly-slow-tests:
+    name: Nightly Unit Tests (including slow)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -20,6 +17,7 @@ jobs:
       - name: Checkout ARC
         uses: actions/checkout@v6
         with:
+          ref: main
           path: ARC
 
       - name: Clean Ubuntu Image
@@ -59,17 +57,13 @@ jobs:
         shell: micromamba-shell {0}
         run: |
           echo "::group::Install juliaup + Julia 1.10"
-          # 1) Bootstrap juliaup non-interactively (-y)
           curl -fsSL https://install.julialang.org | sh -s -- -y
-          # 2) Make juliaup visible *now* (CI shells won’t re-source rc files)
           export PATH="$HOME/.juliaup/bin:$PATH"
-          # 3) Install & select Julia 1.10
           juliaup add 1.10
           juliaup default 1.10
-          # 4) Persist for subsequent steps
           echo "PATH=$HOME/.juliaup/bin:$PATH" >> "$GITHUB_ENV"
           echo "::endgroup::"
-          julia --version # Check that Julia is installed correctly
+          julia --version
 
       - name: Install all extras - CI
         shell: micromamba-shell {0}
@@ -93,34 +87,13 @@ jobs:
         run: |
           make compile
 
-      - name: Run Unit Tests
+      - name: Run Unit Tests (including slow)
         shell: micromamba-shell {0}
         working-directory: ARC
         env:
           ARC_COVERAGE: 1
           CYTHON_TRACE: 1
         run: |
-          echo "Running Unit Tests..."
+          echo "Running Unit Tests (including slow)..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
-          pytest arc/ --cov --cov-report=xml -ra -vv -n 4 --dist worksteal -m "not slow"
-
-      - name: Run Functional Tests
-        shell: micromamba-shell {0}
-        working-directory: ${{ github.workspace }}/ARC
-        env:
-          ARC_COVERAGE: 1
-          CYTHON_TRACE: 1
-        run: |
-          echo "Running Functional Tests from $(pwd)..."
-          export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
-          pytest functional/ --cov --cov-append --cov-report=xml -ra -vv -n 4 --dist worksteal
-
-      - name: Upload coverage data
-        uses: codecov/codecov-action@v6
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ARC/coverage.xml
-          flags: unittests,functionaltests
-          name: codecov-umbrella
-          verbose: true
-          fail_ci_if_error: false
+          pytest arc/ -ra -vv -n 4 --dist worksteal

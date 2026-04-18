@@ -55,6 +55,10 @@ timer.dat
 # .vscode
 .vscode
 
+# Claude
+CLAUDE.md
+.claude/*
+
 # .trunk folder
 .trunk
 

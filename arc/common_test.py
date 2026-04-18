@@ -31,10 +31,32 @@ class TestCommon(unittest.TestCase):
     Contains unit tests for ARC's common module
     """
     @classmethod
+    def _clean_globalized_restart_artifact(cls):
+        """Remove the globalized restart-paths artifact written by
+        :meth:`test_globalize_paths`.
+
+        Called from BOTH ``setUpClass`` (defensive — wipes a stale
+        artifact left behind by a previously interrupted run) and
+        ``tearDownClass`` (the normal cleanup path).  This makes the
+        cleanup self-healing: a Ctrl+C, ``kill``, or hard error during
+        a previous run cannot leave the next run inheriting the prior
+        ``restart_paths_globalized.yml``.
+        """
+        globalized_restart_path = os.path.join(
+            common.ARC_TESTING_PATH, 'restart', '4_globalized_paths',
+            'restart_paths_globalized.yml')
+        if os.path.isfile(globalized_restart_path):
+            try:
+                os.remove(path=globalized_restart_path)
+            except OSError:
+                pass
+
+    @classmethod
     def setUpClass(cls):
         """
         A method that is run before all unit tests in this class.
         """
+        cls._clean_globalized_restart_artifact()
         cls.maxDiff = None
         cls.default_job_types = {'conf_opt': True,
                                  'opt': True,
@@ -1098,6 +1120,7 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_angle_in_180_range(-270), 90)
         self.assertAlmostEqual(common.get_angle_in_180_range(45.5), 45.5, places=7)
         self.assertAlmostEqual(common.get_angle_in_180_range(719.9), -0.1, places=7)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589, round_to=2), -5.36)
 
     def test_signed_angular_diff(self):
         """Test the signed angular difference between two angles"""
@@ -1396,10 +1419,7 @@ class TestCommon(unittest.TestCase):
         """
         A function that is run ONCE after all unit tests in this class.
         """
-        globalized_restart_path = os.path.join(common.ARC_TESTING_PATH, 'restart', '4_globalized_paths',
-                                               'restart_paths_globalized.yml')
-        if os.path.isfile(globalized_restart_path):
-            os.remove(path=globalized_restart_path)
+        cls._clean_globalized_restart_artifact()
 
 
 if __name__ == '__main__':
