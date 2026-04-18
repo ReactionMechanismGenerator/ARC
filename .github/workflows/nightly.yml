@@ -1,0 +1,99 @@
+name: Nightly (Slow Tests)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * *'
+
+jobs:
+  nightly-slow-tests:
+    name: Nightly Unit Tests (including slow)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - name: Checkout ARC
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: ARC
+
+      - name: Clean Ubuntu Image
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
+      - name: Set up micromamba (arc_env)
+        uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-name: arc_env
+          environment-file: ARC/environment.yml
+          cache-environment: false
+          cache-downloads: true
+          generate-run-shell: true
+
+      - name: Install conda in micromamba base
+        shell: micromamba-shell {0}
+        run: |
+          echo "::group::Install conda in micromamba base"
+          micromamba install -n base -c conda-forge conda
+          echo "::endgroup::"
+
+      - name: Export ARC paths
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          echo "PATH=$PATH:$PWD" >> "$GITHUB_ENV"
+          echo "PYTHONPATH=$PYTHONPATH:$PWD" >> "$GITHUB_ENV"
+
+      - name: Install Julia 1.10
+        shell: micromamba-shell {0}
+        run: |
+          echo "::group::Install juliaup + Julia 1.10"
+          curl -fsSL https://install.julialang.org | sh -s -- -y
+          export PATH="$HOME/.juliaup/bin:$PATH"
+          juliaup add 1.10
+          juliaup default 1.10
+          echo "PATH=$HOME/.juliaup/bin:$PATH" >> "$GITHUB_ENV"
+          echo "::endgroup::"
+          julia --version
+
+      - name: Install all extras - CI
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        env:
+          MAMBA_ALWAYS_YES: "true"
+          CONDA_ALWAYS_YES: "true"
+        run: make install-ci
+
+      - name: Set TS-GCN and AutoTST in PYTHONPATH
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          echo "PYTHONPATH=$(realpath ../TS-GCN):$(realpath ../AutoTST):$PYTHONPATH" >> $GITHUB_ENV
+
+      - name: Compile ARC molecule
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        env:
+          ARC_COVERAGE: 1
+        run: |
+          make compile
+
+      - name: Run Unit Tests (including slow)
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        env:
+          ARC_COVERAGE: 1
+          CYTHON_TRACE: 1
+        run: |
+          echo "Running Unit Tests (including slow)..."
+          export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          pytest arc/ -ra -vv -n 4 --dist worksteal
