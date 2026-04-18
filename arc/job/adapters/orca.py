@@ -91,7 +91,7 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
 # job_options_keywords: input keywords that control the job
 # method_class: 'HF' for wavefunction methods (hf, mp, cc, dlpno ...). 'KS' for DFT methods.
 # options: additional keywords to control job (e.g., TightSCF, NormalPNO ...)
-input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary_basis} ${cabs} ${keywords}
+input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary_basis}${cabs} ${keywords}
 !${job_type_1} 
 ${job_type_2}
 %%maxcore ${memory}
@@ -265,7 +265,7 @@ class OrcaAdapter(JobAdapter):
             input_dict[key] = ''
         input_dict['auxiliary_basis'] = _format_orca_basis(self.level.auxiliary_basis or '')
         input_dict['basis'] = _format_orca_basis(self.level.basis or '')
-        input_dict['cabs'] = _format_orca_basis(self.level.cabs or '')
+        input_dict['cabs'] = f' {_format_orca_basis(self.level.cabs)}' if self.level.cabs else ''
         input_dict['charge'] = self.charge
         input_dict['cpus'] = self.cpu_cores
         input_dict['label'] = self.species_label
