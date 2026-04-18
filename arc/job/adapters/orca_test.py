@@ -188,6 +188,47 @@ end
 """
         self.assertEqual(content_3, job_3_expected_input_file)
 
+    def test_write_input_file_f12_with_cabs(self):
+        """F12 sp_level with a cabs basis emits the CABS token on the ! line."""
+        job_f12 = OrcaAdapter(execution_type='queue',
+                              job_type='sp',
+                              level=Level(method='DLPNO-CCSD(T)-F12',
+                                          basis='cc-pVTZ-F12',
+                                          auxiliary_basis='aug-cc-pVTZ/C',
+                                          cabs='cc-pVTZ-F12-CABS'),
+                              project='test_f12',
+                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                              species=[ARCSpecies(label='O_atom', smiles='[O]',
+                                                  xyz='O 0.0 0.0 0.0')],
+                              testing=True,
+                              )
+        job_f12.write_input_file()
+        with open(os.path.join(job_f12.local_path, input_filenames[job_f12.job_adapter]), 'r') as f:
+            content = f.read()
+        bang_line = content.splitlines()[0]
+        self.assertIn('dlpno-ccsd(t)-f12', bang_line)
+        self.assertIn('cc-pvtz-f12', bang_line)
+        self.assertIn('aug-cc-pvtz/c', bang_line)
+        self.assertIn('cc-pvtz-f12-cabs', bang_line)
+
+    def test_write_input_file_f12_without_cabs_raises(self):
+        """F12 sp_level without a cabs basis raises at input-file generation."""
+        # _initialize_adapter calls set_files() which calls write_input_file(),
+        # so the guard fires during OrcaAdapter construction — wrap the whole
+        # thing in assertRaises.
+        with self.assertRaises(ValueError):
+            OrcaAdapter(execution_type='queue',
+                        job_type='sp',
+                        level=Level(method='DLPNO-CCSD(T)-F12',
+                                    basis='cc-pVTZ-F12',
+                                    auxiliary_basis='aug-cc-pVTZ/C'),
+                        project='test_f12_bad',
+                        project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                        species=[ARCSpecies(label='O_atom', smiles='[O]',
+                                            xyz='O 0.0 0.0 0.0')],
+                        testing=True,
+                        )
+
     def test_format_orca_method(self):
         """Test ORCA method formatting helper."""
         self.assertEqual(_format_orca_method('wb97xd3'), 'wb97x-d3')
