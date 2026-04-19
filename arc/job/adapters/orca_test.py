@@ -99,6 +99,34 @@ class TestOrcaAdapter(unittest.TestCase):
         expected_memory = math.ceil(14 * 1024 / 8)
         self.assertEqual(self.job_1.input_file_memory, expected_memory)
 
+    def test_set_input_file_memory_with_configured_core_count(self):
+        """Test ORCA %%maxcore calculation for a configured total memory and cpu count."""
+        original_memory = self.job_1.job_memory_gb
+        original_cpu_cores = self.job_1.cpu_cores
+        self.job_1.job_memory_gb = 250
+        self.job_1.cpu_cores = 22
+        self.job_1.set_input_file_memory()
+        self.assertEqual(self.job_1.input_file_memory, math.ceil(250 * 1024 / 22))
+        self.job_1.job_memory_gb = original_memory
+        self.job_1.cpu_cores = original_cpu_cores
+        self.job_1.set_input_file_memory()
+
+    def test_write_input_file_with_configured_core_count(self):
+        """Test rendering ORCA input for a configured total memory and cpu count."""
+        original_memory = self.job_1.job_memory_gb
+        original_cpu_cores = self.job_1.cpu_cores
+        self.job_1.job_memory_gb = 250
+        self.job_1.cpu_cores = 22
+        self.job_1.set_input_file_memory()
+        self.job_1.write_input_file()
+        with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('%maxcore 11637', content)
+        self.assertIn('%pal nprocs 22 end', content)
+        self.job_1.job_memory_gb = original_memory
+        self.job_1.cpu_cores = original_cpu_cores
+        self.job_1.set_input_file_memory()
+
     def test_write_input_file(self):
         """Test writing Orca input files"""
         self.job_1.write_input_file()
