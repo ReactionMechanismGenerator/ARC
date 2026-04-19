@@ -677,7 +677,7 @@ class TestTrsh(unittest.TestCase):
         # Test Orca
         # Orca: test 1
         # Test troubleshooting insufficient memory issue
-        # Automatically increase memory provided not exceeding maximum available memory
+        # Keep total memory fixed and reduce cpu cores so %%maxcore increases
         label = 'test'
         level_of_theory = {'method': 'dlpno-ccsd(T)'}
         server = 'server1'
@@ -697,8 +697,8 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(cpu_cores, 32)
-        self.assertAlmostEqual(memory, 327)
+        self.assertEqual(cpu_cores, 24)
+        self.assertAlmostEqual(memory, 250)
 
         # Orca: test 2
         # Test troubleshooting insufficient memory issue
@@ -723,8 +723,8 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(cpu_cores, 22)
-        self.assertAlmostEqual(memory, 227)
+        self.assertEqual(cpu_cores, 24)
+        self.assertAlmostEqual(memory, 250)
 
         # Orca: test 3
         # Test troubleshooting insufficient memory issue
@@ -753,6 +753,28 @@ class TestTrsh(unittest.TestCase):
         self.assertLess(cpu_cores, 1)  # can't really run job with less than 1 cpu ^o^
 
         # Orca: test 4
+        # Test troubleshooting a capped-memory boundary where 1 cpu core is still viable
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server1'
+        job_type = 'sp'
+        software = 'orca'
+        fine = True
+        memory_gb = 10
+        cpu_cores = 2
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['memory']
+        job_status = {'keywords': ['MDCI', 'Memory', 'max_total_job_memory'],
+                      'error': 'Orca suggests to increase per cpu core memory to 10000 MB.'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertEqual(couldnt_trsh, False)
+        self.assertEqual(cpu_cores, 1)
+        self.assertEqual(memory, 10)
+
+        # Orca: test 5
         # Test troubleshooting too many cpu cores
         # Automatically reduce cpu cores
         label = 'test'
@@ -776,7 +798,95 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('cpu', ess_trsh_methods)
         self.assertEqual(cpu_cores, 10)
 
-        # Orca: test 5
+        # Orca: test 6
+        # Test troubleshooting old Orca memory message without a numeric MaxCore suggestion
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server1'
+        job_type = 'sp'
+        software = 'orca'
+        fine = True
+        memory_gb = 16
+        cpu_cores = 8
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['memory']
+        job_status = {'keywords': ['MDCI', 'Memory'],
+                      'error': 'Insufficient job memory.'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertEqual(couldnt_trsh, False)
+        self.assertEqual(cpu_cores, 6)
+        self.assertEqual(memory, 16)
+
+        # Orca: test 7
+        # Test troubleshooting generic Orca memory errors without resubmitting identical resources
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server1'
+        job_type = 'sp'
+        software = 'orca'
+        fine = True
+        memory_gb = 25
+        cpu_cores = 8
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['memory']
+        job_status = {'keywords': ['MDCI', 'Memory'],
+                      'error': 'Insufficient job memory.'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertEqual(couldnt_trsh, False)
+        self.assertEqual(cpu_cores, 6)
+        self.assertEqual(memory, 25)
+
+        # Orca: test 8
+        # Test stepping from 2 cpu cores down to 1 for generic Orca memory errors
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server1'
+        job_type = 'sp'
+        software = 'orca'
+        fine = True
+        memory_gb = 25
+        cpu_cores = 2
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['memory']
+        job_status = {'keywords': ['MDCI', 'Memory'],
+                      'error': 'Insufficient job memory.'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertEqual(couldnt_trsh, False)
+        self.assertEqual(cpu_cores, 1)
+        self.assertEqual(memory, 25)
+
+        # Orca: test 9
+        # Test troubleshooting old Orca cpu-limit message without a numeric pair count
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server1'
+        job_type = 'sp'
+        software = 'orca'
+        fine = True
+        memory_gb = 16
+        cpu_cores = 16
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['cpu']
+        job_status = {'keywords': ['MDCI', 'cpu'],
+                      'error': 'Orca cannot utilize cpu cores more than electron pairs in a molecule. ARC will '
+                               'estimate the number of cpu cores needed based on the number of heavy atoms in the '
+                               'molecule.'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertEqual(cpu_cores, 10)
+
+        # Orca: test 10
         # Test that DLPNO + monoatomic species raises TrshError
         label = 'H'
         level_of_theory = {'method': 'dlpno-ccsd(T)'}
