@@ -63,6 +63,10 @@ WORKER_ID=$SLURM_ARRAY_TASK_ID
 
 {python_exe} -m arc.scripts.pipe_worker --pipe_root {pipe_root} --worker_id $WORKER_ID
 """,
+    # ARC passes a base-2-derived MiB integer into the PBS template. On our PBS
+    # systems, the `mb` suffix is interpreted accordingly, so the directive
+    # remains `mem={memory}mb` even though ARC's internal conversion uses
+    # 1 GiB = 1024 MiB.
     'pbs': """#!/bin/bash -l
 #PBS -N {name}
 #PBS -q {queue}
@@ -104,6 +108,9 @@ queue {max_task_num}
 # Submission scripts stored as a dictionary with server and software as primary and secondary keys
 submit_scripts = {
     'local': {
+        # ARC passes a base-2-derived MiB integer into this sample PBS
+        # template. On our PBS systems, the `mb` suffix is interpreted in
+        # base-2, so the directive stays `mem={memory}mb`.
         'gaussian': """#!/bin/bash -l
 #SBATCH -p normal
 #SBATCH -J {name}
