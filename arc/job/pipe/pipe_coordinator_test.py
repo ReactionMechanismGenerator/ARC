@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.job.pipe.pipe_coordinator module
 """
 
+import json
 import os
 import shutil
 import tempfile
@@ -66,7 +67,10 @@ def _make_spec(task_id, task_family='conf_opt', engine='mockter', level=None,
 def _make_mock_sched(project_directory):
     """Create a mock Scheduler with the attributes PipeCoordinator needs."""
     sched = MagicMock()
+    sched.project = 'pipe_test_project'
     sched.project_directory = project_directory
+    sched.ess_settings = {'orca': ['local'], 'mockter': ['local']}
+    sched.testing = True
     sched.server_job_ids = list()
     spc = ARCSpecies(label='H2O', smiles='O')
     spc.conformers = [None] * 5
@@ -347,6 +351,62 @@ class TestIngestPipeResults(unittest.TestCase):
         # Remove state.json to simulate corruption
         os.remove(os.path.join(pipe.pipe_root, 'tasks', 't_missing', 'state.json'))
         self.coord.ingest_pipe_results(pipe)  # should not raise
+
+    @patch('arc.job.pipe.pipe_coordinator.job_factory')
+    def test_failed_ess_ejects_to_scheduler_troubleshooting_with_parser_summary(self, mock_job_factory):
+        """FAILED_ESS tasks with parser_summary should be troubleshooted immediately, not blindly rerun."""
+        task = _make_spec('t_ess', task_family='species_sp', engine='orca', cores=12, mem=37888)
+        pipe = self.coord.submit_pipe_run('run_ess', [task])
+        now = time.time()
+        update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok',
+                          claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.FAILED_ESS,
+                          ended_at=now + 1, failure_class='ess_error')
+        result_path = os.path.join(pipe.pipe_root, 'tasks', 't_ess', 'attempts', '0', 'result.json')
+        os.makedirs(os.path.dirname(result_path), exist_ok=True)
+        with open(result_path, 'w') as f:
+            json.dump({'parser_summary': {'status': 'errored',
+                                          'keywords': ['MDCI', 'Memory', 'max_total_job_memory'],
+                                          'error': 'Orca suggests to increase per cpu core memory to 10218 MB.',
+                                          'line': 'Please increase MaxCore'}}, f)
+
+        fake_job = MagicMock()
+        mock_job_factory.return_value = fake_job
+
+        self.coord.ingest_pipe_results(pipe)
+
+        self.coord.sched.troubleshoot_ess.assert_called_once()
+        self.coord.sched.run_job.assert_not_called()
+        kwargs = self.coord.sched.troubleshoot_ess.call_args.kwargs
+        self.assertEqual(kwargs['label'], 'H2O')
+        self.assertIs(kwargs['job'], fake_job)
+        self.assertEqual(kwargs['conformer'], 0)
+        mock_job_factory.assert_called_once()
+        factory_kwargs = mock_job_factory.call_args.kwargs
+        self.assertEqual(factory_kwargs['cpu_cores'], 12)
+        self.assertAlmostEqual(factory_kwargs['job_memory_gb'], 37.0)
+
+    def test_failed_ess_without_parser_summary_preserves_resources_on_rerun(self):
+        """FAILED_ESS tasks without parser_summary fall back to Scheduler.run_job with original resources."""
+        task = _make_spec('t_ess_fallback', task_family='species_sp', engine='orca', cores=10, mem=20480)
+        pipe = self.coord.submit_pipe_run('run_ess_fallback', [task])
+        now = time.time()
+        update_task_state(pipe.pipe_root, 't_ess_fallback', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok',
+                          claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 't_ess_fallback', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 't_ess_fallback', new_status=TaskState.FAILED_ESS,
+                          ended_at=now + 1, failure_class='ess_error')
+
+        self.coord.ingest_pipe_results(pipe)
+
+        self.coord.sched.troubleshoot_ess.assert_not_called()
+        self.coord.sched.run_job.assert_called_once()
+        kwargs = self.coord.sched.run_job.call_args.kwargs
+        self.assertEqual(kwargs['cpu_cores'], 10)
+        self.assertAlmostEqual(kwargs['memory'], 20.0)
 
 
 class TestComputePipeRoot(unittest.TestCase):
