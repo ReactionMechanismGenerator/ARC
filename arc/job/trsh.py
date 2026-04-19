@@ -42,9 +42,11 @@ logger = get_logger()
 
 
 delete_command, inconsistency_ab, inconsistency_az, maximum_barrier, preserve_params_in_scan, rotor_scan_resolution, \
-    servers, submit_filenames = settings['delete_command'], settings['inconsistency_ab'], settings['inconsistency_az'], \
-                                settings['maximum_barrier'], settings['preserve_params_in_scan'], \
-                                settings['rotor_scan_resolution'], settings['servers'], settings['submit_filenames']
+    servers, submit_filenames, default_job_settings = settings['delete_command'], settings['inconsistency_ab'], \
+                                                      settings['inconsistency_az'], settings['maximum_barrier'], \
+                                                      settings['preserve_params_in_scan'], \
+                                                      settings['rotor_scan_resolution'], settings['servers'], \
+                                                      settings['submit_filenames'], settings['default_job_settings']
 
 
 def determine_ess_status(output_path: str,
@@ -980,11 +982,24 @@ def trsh_ess_job(label: str,
             # Increase memory allocation
             couldnt_trsh = False
             max_mem = servers[server].get('memory', 128)  # Node memory in GB, defaults to 128 if not specified
-            memory = min(memory_gb * 2, max_mem * 0.95)
+            max_mem_allocation = max_mem * default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
+            memory = min(memory_gb * 2, max_mem_allocation)
             if memory > memory_gb:
                 logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                             f'instead of {memory_gb} GB')
                 ess_trsh_methods.append('memory')
+            else:
+                couldnt_trsh = True
+                output_errors.append(
+                    f'Error: Could not troubleshoot {job_type} for {label}! Gaussian exhausted memory even after ARC '
+                    f'reached the configured node-memory cap ({max_mem_allocation:.2f} GB total allocation) while '
+                    f'still reserving scheduler headroom. Use a higher-memory node or lower the job cost; '
+                )
+                logger.error(
+                    f'Could not troubleshoot {job_type} job in {software} for {label}. ARC already reached the '
+                    f'configured node-memory cap ({max_mem_allocation:.2f} GB total allocation) and still preserved '
+                    f'Gaussian headroom.'
+                )
 
         if attempted_ess_trsh_methods:
             if attempted_ess_trsh_methods == ess_trsh_methods:
