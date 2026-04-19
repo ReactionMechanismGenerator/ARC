@@ -183,6 +183,7 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.server_nodes = server_nodes or list()
     obj.species = [species] if species is not None and not isinstance(species, list) else species
     obj.submit_script_memory = None
+    obj.submit_script_memory_mib = None
     obj.testing = testing
     obj.times_rerun = times_rerun
     obj.torsions = [torsions] if torsions is not None and not isinstance(torsions[0], list) else torsions
