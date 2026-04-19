@@ -1494,7 +1494,7 @@ class TestEjectToSchedulerJobType(unittest.TestCase):
         from arc.job.pipe.pipe_coordinator import PipeCoordinator
         coord = self.sched.pipe_coordinator
         task = _make_task_spec('t_ts', task_family='ts_opt', species_label='H2O', conformer_index=0)
-        state = type('MockState', (), {'failure_class': 'ess_error'})()
+        state = type('MockState', (), {'failure_class': 'ess_error', 'attempt_index': 0})()
         pipe = MagicMock()
         pipe.run_id = 'test'
         with patch.object(self.sched, 'run_job') as mock_run:
@@ -1505,7 +1505,7 @@ class TestEjectToSchedulerJobType(unittest.TestCase):
 
     def test_species_sp_ejects_as_sp(self):
         task = _make_task_spec('t_sp', task_family='species_sp', species_label='H2O')
-        state = type('MockState', (), {'failure_class': 'ess_error'})()
+        state = type('MockState', (), {'failure_class': 'ess_error', 'attempt_index': 0})()
         pipe = MagicMock()
         pipe.run_id = 'test'
         with patch.object(self.sched, 'run_job') as mock_run:
@@ -1516,7 +1516,7 @@ class TestEjectToSchedulerJobType(unittest.TestCase):
     def test_unknown_species_warns(self):
         task = _make_task_spec('t_bad', task_family='ts_opt', species_label='NONEXISTENT')
         task.owner_key = 'NONEXISTENT'
-        state = type('MockState', (), {'failure_class': 'ess_error'})()
+        state = type('MockState', (), {'failure_class': 'ess_error', 'attempt_index': 0})()
         pipe = MagicMock()
         pipe.run_id = 'test'
         # Should not crash, just warn.

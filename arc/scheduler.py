@@ -1069,7 +1069,8 @@ class Scheduler(object):
                 if job_name in self.running_jobs[label]:
                     self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
 
-        if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['memory']:
+        if job.job_status[1]['status'] == 'errored' and len(job.job_status[1]['keywords']) == 1 \
+                and job.job_status[1]['keywords'][0].lower() == 'memory':
             original_mem = job.job_memory_gb
             if 'insufficient job memory' in job.job_status[1]['error'].lower():
                 job.job_memory_gb *= 3
