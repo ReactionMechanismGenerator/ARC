@@ -1165,21 +1165,31 @@ def update_xyz(species: List[ARCSpecies]) -> List[ARCSpecies]:
     return new
 
 
-def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies) -> bool:
+def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies, strict: bool = False) -> bool:
     """
     A function for checking if the reactant and product are the same molecule.
 
     Args:
         reactant (ARCSpecies): An ARCSpecies. might be as a result of scissors()
         product_ (ARCSpecies): an ARCSpecies. might be as a result of scissors()
+        strict (bool, optional): When ``True``, require full graph isomorphism. When ``False`` (default),
+            accept either fingerprint (formula) match or graph isomorphism — the looser criterion lets
+            downstream ``map_two_species`` recover atom correspondence in rearrangements whose cut
+            fragments are not strictly isomorphic. Strict mode is used as a first pass in
+            ``pairing_reactants_and_products_for_mapping`` to avoid pairing constitutional isomers
+            that share a molecular formula but differ in graph structure.
 
     Returns:
         bool: ``True`` if they are isomorphic, ``False`` otherwise.
     """
     res1 = generate_resonance_structures_safely(reactant.mol, save_order=True)
     for res in res1:
-        if res.fingerprint == product_.mol.fingerprint or product_.mol.is_isomorphic(res, save_order=True):
-            return True
+        if strict:
+            if product_.mol.is_isomorphic(res, save_order=True):
+                return True
+        else:
+            if res.fingerprint == product_.mol.fingerprint or product_.mol.is_isomorphic(res, save_order=True):
+                return True
     return False
 
 
@@ -1189,6 +1199,12 @@ def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
     """
     A function for matching reactants and products in scissored products.
 
+    Greedy two-pass pairing:
+        1) Strict graph isomorphism — avoids pairing constitutional isomers that merely share a
+           molecular formula (e.g. α- vs β-radical positional isomers in H-abstraction).
+        2) Loose fingerprint-or-isomorphic fallback — for rearrangements whose cut fragments are
+           not strictly isomorphic but can still be aligned by ``map_two_species``.
+
     Args:
         r_cuts (List[ARCSpecies]): A list of the scissored species in the reactants
         p_cuts (List[ARCSpecies]): A list of the scissored species in the reactants
@@ -1197,7 +1213,16 @@ def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
         List[Tuple[ARCSpecies,ARCSpecies]]: A list of paired reactant and products, to be sent to map_two_species.
     """
     pairs: List[Tuple[ARCSpecies, ARCSpecies]] = list()
+    unmatched_r: List[ARCSpecies] = list()
     for react in r_cuts:
+        for idx, prod in enumerate(p_cuts):
+            if r_cut_p_cut_isomorphic(react, prod, strict=True):
+                pairs.append((react, prod))
+                p_cuts.pop(idx)
+                break
+        else:
+            unmatched_r.append(react)
+    for react in unmatched_r:
         for idx, prod in enumerate(p_cuts):
             if r_cut_p_cut_isomorphic(react, prod):
                 pairs.append((react, prod))
@@ -1236,28 +1261,34 @@ def label_species_atoms(species: List['ARCSpecies']) -> None:
             index += 1
 
 
-def glue_maps(maps: List[List[int]],
+def glue_maps(maps: List[Optional[List[int]]],
               pairs: List[Tuple[ARCSpecies, ARCSpecies]],
               r_label_map: Dict[str, int],
               p_label_map: Dict[str, int],
               total_atoms: int,
-              ) -> List[int]:
+              ) -> Optional[List[int]]:
     """
     Join the maps from the parts of a bimolecular reaction.
 
     Args:
-        maps (List[List[int]]): The list of all maps of the isomorphic cuts.
+        maps (List[Optional[List[int]]]): The per-pair maps of the isomorphic cuts. An entry may
+            be ``None`` when ``map_two_species`` could not produce a map for that pair; in that
+            case ``glue_maps`` aborts and returns ``None`` so the caller can fall back.
         pairs (List[Tuple[ARCSpecies, ARCSpecies]]): The pairs of the reactants and products.
         r_label_map (Dict[str, int]): A dictionary mapping the reactant labels to their indices.
         p_label_map (Dict[str, int]): A dictionary mapping the product labels to their indices.
         total_atoms (int): The total number of atoms across all reactants.
 
     Returns:
-        List[int]: An Atom Map of the complete reaction.
+        Optional[List[int]]: The complete atom map, or ``None`` if any per-pair map is ``None``.
     """
     # 1) Build base map
     am_dict: Dict[int,int] = {}
     for map_list, (r_cut, p_cut) in zip(maps, pairs):
+        if map_list is None:
+            logger.warning(f'glue_maps: received a None per-pair map for '
+                           f'{r_cut.mol.smiles} -> {p_cut.mol.smiles}; cannot build atom map.')
+            return None
         for local_i, r_atom in enumerate(r_cut.mol.atoms):
             r_glob = int(r_atom.label)
             p_glob = int(p_cut.mol.atoms[map_list[local_i]].label)
