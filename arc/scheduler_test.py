@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.scheduler module
 """
 
+import math
 import unittest
 from unittest.mock import MagicMock, patch
 import os
@@ -18,6 +19,7 @@ from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_has_sp, species_has_sp_and_freq
 from arc.imports import settings
+from arc.settings.settings import input_filenames
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess
@@ -865,6 +867,63 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(kwargs['cpu_cores'], 24)
         self.assertEqual(kwargs['memory'], 250)
         self.assertIn('memory', kwargs['ess_trsh_methods'])
+
+    def test_troubleshoot_ess_orca_rewrites_input_with_reduced_cores_and_higher_maxcore(self):
+        """Test ORCA troubleshooting end-to-end from failure to rewritten input file."""
+        label = 'methylamine'
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+
+        job = MagicMock()
+        job.job_name = 'sp_a205'
+        job.job_type = 'sp'
+        job.job_adapter = 'orca'
+        job.level = Level(repr={'method': 'dlpno-ccsd(T)'})
+        job.server = 'server1'
+        job.fine = True
+        job.cpu_cores = 32
+        job.job_memory_gb = 250
+        job.ess_trsh_methods = list()
+        job.torsions = None
+        job.dihedrals = None
+        job.directed_scan_type = None
+        job.rotor_index = None
+        job.job_status = ['done', {'status': 'errored',
+                                   'keywords': ['MDCI', 'Memory', 'max_total_job_memory'],
+                                   'error': 'Orca suggests to increase per cpu core memory to 10218 MB.',
+                                   'line': 'Please increase MaxCore'}]
+
+        with patch.object(self.sched1, 'run_job') as mock_run_job, \
+                patch.object(self.sched1, 'save_restart_dict'):
+            self.sched1.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+
+        kwargs = mock_run_job.call_args.kwargs
+        temp_project_dir = os.path.join(ARC_TESTING_PATH, 'test_scheduler_orca_trsh_input')
+        try:
+            rerun_job = job_factory(job_adapter=kwargs['job_adapter'],
+                                    project='project_test_scheduler_orca_trsh_input',
+                                    ess_settings=self.ess_settings,
+                                    species=[self.spc1],
+                                    xyz=self.spc1.get_xyz(),
+                                    job_type=kwargs['job_type'],
+                                    level=kwargs['level_of_theory'],
+                                    project_directory=temp_project_dir,
+                                    cpu_cores=kwargs['cpu_cores'],
+                                    job_memory_gb=kwargs['memory'],
+                                    ess_trsh_methods=kwargs['ess_trsh_methods'],
+                                    execution_type='incore',
+                                    fine=kwargs['fine'],
+                                    server=job.server,
+                                    testing=True)
+            rerun_job.write_input_file()
+            with open(os.path.join(rerun_job.local_path, input_filenames[rerun_job.job_adapter]), 'r') as f:
+                content = f.read()
+            original_maxcore = math.ceil(rerun_job.job_memory_gb * 1024 / job.cpu_cores)
+            self.assertIn('%pal nprocs 24 end', content)
+            self.assertIn(f'%maxcore {rerun_job.input_file_memory}', content)
+            self.assertGreater(rerun_job.input_file_memory, original_maxcore)
+        finally:
+            shutil.rmtree(temp_project_dir, ignore_errors=True)
      
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
