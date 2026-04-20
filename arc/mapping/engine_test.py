@@ -1576,6 +1576,33 @@ class TestMappingEngine(unittest.TestCase):
         self.assertTrue(engine.r_cut_p_cut_isomorphic(ARCSpecies(label="r1", smiles="F[C]F", multiplicity=1),
                                                ARCSpecies(label="r1", smiles="F[C]F", multiplicity=3)))
 
+    def test_r_cut_p_cut_isomorphic_strict(self):
+        """Strict mode rejects constitutional isomers that share a molecular formula."""
+        alpha = ARCSpecies(label='alpha', smiles='C[CH]OCCC')  # α-radical
+        beta = ARCSpecies(label='beta', smiles='CC[CH]OCC')    # β-radical
+        self.assertTrue(engine.r_cut_p_cut_isomorphic(alpha, beta, strict=False))
+        self.assertFalse(engine.r_cut_p_cut_isomorphic(alpha, beta, strict=True))
+        same_a = ARCSpecies(label='a', smiles='CC[CH]OCC')
+        same_b = ARCSpecies(label='b', smiles='CC[CH]OCC')
+        self.assertTrue(engine.r_cut_p_cut_isomorphic(same_a, same_b, strict=True))
+
+    def test_pairing_prefers_strict_match_for_formula_isomers(self):
+        """
+        H-abstraction where abstractor = same species on both sides and the two
+        radicals on the radical side are α/β positional isomers of the same
+        skeleton. Strict-first pairing must match intact radicals with their
+        isomorphic cut-fragment counterparts, not with the wrong intact radical.
+        """
+        r_1 = ARCSpecies(label='r1', smiles='CC[CH]OCC')
+        r_2 = ARCSpecies(label='r2', smiles='CCCOCC')
+        p_1 = ARCSpecies(label='p1', smiles='C[CH]OCCC')
+        p_2 = ARCSpecies(label='p2', smiles='CCCOCC')
+        rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        atom_map = rxn.atom_map
+        self.assertIsNotNone(atom_map)
+        self.assertEqual(len(atom_map), sum(s.number_of_atoms for s in rxn.r_species))
+
     def test_pairing_reactants_and_products_for_mapping(self):
         """Test the pairing_reactants_and_products_for_mapping() function"""
         smiles = ['CC(=O)O[CH]CN', '[H]', '[CH3]']
