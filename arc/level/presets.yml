@@ -1,0 +1,83 @@
+# sp_composite presets shipped with ARC.
+#
+# Each entry defines a CompositeProtocol that ARC can instantiate via
+# `sp_composite: <preset_name>` in the project YAML. The shape of each entry
+# matches the explicit form accepted by CompositeProtocol.from_user_input:
+#   - base:        a level (string "method/basis" or dict)
+#   - corrections: a list of term dicts (each with type / label / level fields)
+#   - reference:   a free-text citation including a DOI, surfaced in logs,
+#                  notebook provenance headers, and validated by the test suite.
+#
+# Notes on the recipes themselves:
+#
+# These presets are *adapted for ARC use* — the canonical Tajti-et-al HEAT
+# protocol was designed for atomization energies of small molecules, with the
+# HF energy itself CBS-extrapolated to the basis-set limit. ARC's
+# CompositeProtocol pins the absolute base to a single SinglePointTerm, so
+# the recipes below pick a sensible high-quality "anchor" SP (CCSD(T)-F12 in
+# the cc-pVTZ-F12 basis) and apply the post-(T) and other corrections on top.
+# This matches the typical focal-point workflow when refining TS barriers
+# (see e.g. Nguyen, Stanton, Barker for CHO2 PES).
+
+HEAT-345:
+  reference: "Inspired by Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1804498. Adapted for use as a TS barrier refinement protocol within ARC."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_CV
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {fc: '0'}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {fc: '1'}, block: {}}}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {rel: dkh2}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pVTZ}
+
+HEAT-345Q:
+  reference: "Inspired by the HEAT-345(Q) protocol used by Nguyen, Stanton, Barker for the CHO2 PES (citing Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1804498). Adds a perturbative δ[CCSDT(Q)] term on top of HEAT-345."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_Q
+      type: delta
+      high: {method: ccsdt(q), basis: cc-pVDZ}
+      low:  {method: ccsdt,    basis: cc-pVDZ}
+    - label: delta_CV
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {fc: '0'}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {fc: '1'}, block: {}}}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {rel: dkh2}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pVTZ}
+
+FPA-min:
+  reference: "Minimal Allen / East / Császár focal-point analysis recipe; review: East, Allen, J. Chem. Phys. 99, 4638 (1993); DOI: 10.1063/1.466062."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: cbs_corr
+      type: cbs_extrapolation
+      formula: helgaker_corr_2pt
+      # components currently must be "total"; adapter-level correlation-only
+      # parsing is a future addition. The formula name (`helgaker_corr_2pt`)
+      # still documents intent for the user.
+      components: total
+      levels:
+        - {method: ccsd(t), basis: cc-pVTZ}
+        - {method: ccsd(t), basis: cc-pVQZ}
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,   basis: cc-pVDZ}
+      low:  {method: ccsd(t), basis: cc-pVDZ}
