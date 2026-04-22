@@ -288,8 +288,11 @@ class Level(object):
                                      f'Got {arg} which is a {type(arg)} in {self.args}.')
             self.args = ' '.join([arg.lower() for arg in self.args])
         if isinstance(self.args, str):
-            self.args = {'keyword': {'general': args.lower()}, 'block': dict()}
-        elif self.args is not None and not isinstance(args, dict):
+            # Phase 5.5 fix: previously ``args.lower()`` (the local *dict*), which
+            # raised AttributeError. The intent is to lowercase the user-supplied
+            # string that was just assigned to self.args.
+            self.args = {'keyword': {'general': self.args.lower()}, 'block': dict()}
+        elif self.args is not None and not isinstance(self.args, dict):
             raise ValueError(f'The args argument must be either a string, an iterable or a dictionary.\n'
                              f'Got {self.args} which is a {type(self.args)}.')
 
