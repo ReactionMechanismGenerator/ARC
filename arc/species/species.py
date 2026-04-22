@@ -1432,6 +1432,7 @@ class ARCSpecies(object):
                                              multiplicity=self.multiplicity,
                                              n_radicals=self.number_of_radicals,
                                              n_fragments=self.get_n_fragments(),
+                                             is_ts=self.is_ts,
                                              )
         if chk_rotor_list:
             for rotor in self.rotors_dict.values():
@@ -1639,6 +1640,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
             if perceived_mol is not None:
                 if self.is_ts:
@@ -1673,6 +1675,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
             if perceived_mol is None and self.is_ts:
                 perceived_mol = perceive_molecule_from_xyz(xyz,
@@ -1680,6 +1683,7 @@ class ARCSpecies(object):
                                                            multiplicity=self.multiplicity,
                                                            n_radicals=self.number_of_radicals,
                                                            n_fragments=2,
+                                                           is_ts=True,
                                                            )
             if perceived_mol is not None:
                 self.mol = perceived_mol
@@ -1853,6 +1857,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
 
             # 2. A. Check isomorphism with bond orders using b_mol
