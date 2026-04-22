@@ -922,7 +922,10 @@ class LinearAdapter(JobAdapter):
 
         self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
         for rxn in self.reactions:
-            if rxn.family not in supported_families or not rxn.is_unimolecular():
+            if not rxn.is_unimolecular():
+                logger.warning(f'The linear TS search adapter requires a unimolecular reaction; skipping {rxn}.')
+                continue
+            if rxn.family is not None and rxn.family not in supported_families:
                 logger.warning(f'The linear TS search adapter does not support the {rxn.family} reaction family.')
                 continue
             rxn.ts_species = rxn.ts_species or ARCSpecies(label='TS',
