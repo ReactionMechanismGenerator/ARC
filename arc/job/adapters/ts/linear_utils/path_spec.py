@@ -268,10 +268,6 @@ def _xyz_distance(xyz: dict, i: int, j: int) -> Optional[float]:
     return float(np.linalg.norm(a - b))
 
 
-def _bond_present(bond_orders: Dict[CanonicalBond, float], i: int, j: int) -> bool:
-    return _canon(i, j) in bond_orders
-
-
 def _safe_order(bond_orders: Dict[CanonicalBond, float], i: int, j: int) -> Optional[float]:
     return bond_orders.get(_canon(i, j))
 
