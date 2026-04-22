@@ -21,6 +21,11 @@ frequencies = Log('{freq_path}')
 
 """,
 
+    # Historical template. ARC's live Arkane renderer uses the Mako
+    # ``species_input_template`` defined in ``arc/statmech/arkane.py`` and
+    # branches inline on ``e_elect_hartree`` when ``sp_composite`` is active.
+    # This string-format variant is kept only as a reference for external
+    # scripts that might still import it; it is not invoked by ARC itself.
     'arkane_input_species_explicit_e': """#!/usr/bin/env python3
 # encoding: utf-8
 
