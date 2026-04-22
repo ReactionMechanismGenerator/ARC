@@ -13,6 +13,7 @@ from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, ch
 from arc.species.converter import check_xyz_dict
 from arc.exceptions import SpeciesError
 from arc.level import Level
+from arc.level.protocol import CompositeProtocol
 from arc.molecule.molecule import Molecule
 from arc.parser.parser import parse_e_elect
 from arc.plotter import save_conformers_file
@@ -2842,6 +2843,107 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         # Test incorrect map_ length
         with self.assertRaises(SpeciesError):
             self.spc1.kabsch(self.spc1, [0, 1, 2])
+
+
+class TestARCSpeciesSpComposite(unittest.TestCase):
+    """
+    Phase 2 tests for the three-state per-species ``sp_composite`` model.
+
+    * No kwarg passed    → ``sp_composite_state == "inherit"`` (fall back to project default)
+    * ``sp_composite=None`` passed → ``sp_composite_state == "opt_out"`` (bypass project default)
+    * ``sp_composite`` is a str/dict/CompositeProtocol → ``sp_composite_state == "explicit"``
+    """
+
+    def test_inherit_is_the_default_state(self):
+        spc = ARCSpecies(label="H2", smiles="[H][H]")
+        self.assertEqual(spc.sp_composite_state, "inherit")
+        self.assertIsNone(spc.sp_composite)
+
+    def test_opt_out_state(self):
+        spc = ARCSpecies(label="H2", smiles="[H][H]", sp_composite=None)
+        self.assertEqual(spc.sp_composite_state, "opt_out")
+        self.assertIsNone(spc.sp_composite)
+
+    def test_explicit_state_from_preset_name(self):
+        spc = ARCSpecies(label="H2", smiles="[H][H]", sp_composite="HEAT-345Q")
+        self.assertEqual(spc.sp_composite_state, "explicit")
+        self.assertIsInstance(spc.sp_composite, CompositeProtocol)
+
+    def test_explicit_state_from_recipe_dict(self):
+        recipe = {
+            "base": {"method": "hf", "basis": "cc-pVTZ"},
+            "corrections": [],
+        }
+        spc = ARCSpecies(label="H2", smiles="[H][H]", sp_composite=recipe)
+        self.assertEqual(spc.sp_composite_state, "explicit")
+        self.assertIsInstance(spc.sp_composite, CompositeProtocol)
+        self.assertEqual(spc.sp_composite.base.level.method, "hf")
+
+    def test_explicit_state_from_already_built_protocol(self):
+        proto = CompositeProtocol.from_user_input({
+            "base": {"method": "hf", "basis": "cc-pVTZ"},
+            "corrections": [],
+        })
+        spc = ARCSpecies(label="H2", smiles="[H][H]", sp_composite=proto)
+        self.assertEqual(spc.sp_composite_state, "explicit")
+        self.assertIs(spc.sp_composite, proto)
+
+    def test_as_dict_omits_key_when_inheriting(self):
+        spc = ARCSpecies(label="H2", smiles="[H][H]")
+        self.assertNotIn("sp_composite", spc.as_dict())
+
+    def test_as_dict_emits_null_when_opting_out(self):
+        spc = ARCSpecies(label="H2", smiles="[H][H]", sp_composite=None)
+        d = spc.as_dict()
+        self.assertIn("sp_composite", d)
+        self.assertIsNone(d["sp_composite"])
+
+    def test_as_dict_emits_protocol_when_explicit(self):
+        spc = ARCSpecies(label="H2", smiles="[H][H]", sp_composite="HEAT-345Q")
+        d = spc.as_dict()
+        self.assertIn("sp_composite", d)
+        self.assertIsInstance(d["sp_composite"], dict)
+        self.assertIn("base", d["sp_composite"])
+        self.assertIn("corrections", d["sp_composite"])
+
+    def test_round_trip_inherit(self):
+        original = ARCSpecies(label="H2", smiles="[H][H]")
+        rebuilt = ARCSpecies(species_dict=original.as_dict())
+        self.assertEqual(rebuilt.sp_composite_state, "inherit")
+        self.assertIsNone(rebuilt.sp_composite)
+
+    def test_round_trip_opt_out(self):
+        original = ARCSpecies(label="H2", smiles="[H][H]", sp_composite=None)
+        rebuilt = ARCSpecies(species_dict=original.as_dict())
+        self.assertEqual(rebuilt.sp_composite_state, "opt_out")
+        self.assertIsNone(rebuilt.sp_composite)
+
+    def test_e_elect_source_defaults_to_none(self):
+        spc = ARCSpecies(label="H2", smiles="[H][H]")
+        self.assertIsNone(spc.e_elect_source)
+
+    def test_e_elect_source_round_trips_when_set(self):
+        spc = ARCSpecies(label="H2", smiles="[H][H]")
+        spc.e_elect = -123.456
+        spc.e_elect_source = "sp_composite"
+        rebuilt = ARCSpecies(species_dict=spc.as_dict())
+        self.assertEqual(rebuilt.e_elect_source, "sp_composite")
+
+    def test_e_elect_source_round_trips_when_unset(self):
+        spc = ARCSpecies(label="H2", smiles="[H][H]")
+        rebuilt = ARCSpecies(species_dict=spc.as_dict())
+        self.assertIsNone(rebuilt.e_elect_source)
+
+    def test_round_trip_explicit(self):
+        original = ARCSpecies(label="H2", smiles="[H][H]", sp_composite="HEAT-345Q")
+        rebuilt = ARCSpecies(species_dict=original.as_dict())
+        self.assertEqual(rebuilt.sp_composite_state, "explicit")
+        self.assertIsInstance(rebuilt.sp_composite, CompositeProtocol)
+        # Same structure preserved.
+        self.assertEqual(
+            [t.label for t in rebuilt.sp_composite.corrections],
+            [t.label for t in original.sp_composite.corrections],
+        )
 
 
 class TestTSGuess(unittest.TestCase):
