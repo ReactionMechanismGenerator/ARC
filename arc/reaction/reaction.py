@@ -390,7 +390,7 @@ class ARCReaction(object):
 
     def is_isomerization(self):
         """
-        Determine whether this is an isomerization reaction.
+        Determine whether this is an isomerization reaction (i.e., A <=> B).
 
         Returns:
             bool: Whether this is an isomerization reaction.
@@ -400,7 +400,7 @@ class ARCReaction(object):
 
     def is_unimolecular(self):
         """
-        Determine whether this is a unimolecular reaction.
+        Determine whether this is a unimolecular reaction (e.g., A <=> B or A <=> B + C or A + B <=> C).
 
         Returns:
             bool: Whether this is a unimolecular reaction.
