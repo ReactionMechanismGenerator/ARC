@@ -91,6 +91,11 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'linear'],
                              }
 
 all_families_ts_adapters = []
+
+# Adapters that may run on any unimolecular reaction when RMG fails to assign a
+# family. These adapters must tolerate rxn.family being None or unknown.
+ts_adapters_for_unknown_unimolecular = ['linear']
+
 adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
