@@ -34,7 +34,10 @@ from arc.exceptions import (InputError,
                             TrshError,
                             )
 from arc.imports import settings
-from arc.job.adapters.common import all_families_ts_adapters, default_incore_adapters, ts_adapters_by_rmg_family
+from arc.job.adapters.common import (all_families_ts_adapters,
+                                      default_incore_adapters,
+                                      ts_adapters_by_rmg_family,
+                                      ts_adapters_for_unknown_unimolecular)
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
@@ -1714,10 +1717,13 @@ class Scheduler(object):
                     rxn.ts_species.tsg_spawned = True
                     tsg_index = 0
                     for method in self.ts_adapters:
-                        if method in all_families_ts_adapters or \
-                                (rxn.family is not None
-                                 and rxn.family in list(ts_adapters_by_rmg_family.keys())
-                                 and method in ts_adapters_by_rmg_family[rxn.family]) \
+                        family_known = (rxn.family is not None
+                                        and rxn.family in ts_adapters_by_rmg_family)
+                        if method in all_families_ts_adapters \
+                                or (family_known and method in ts_adapters_by_rmg_family[rxn.family]) \
+                                or (not family_known
+                                    and method in ts_adapters_for_unknown_unimolecular
+                                    and rxn.is_unimolecular()) \
                                 or 'mock' in method:
                             self.run_job(job_type='tsg',
                                          job_adapter=method,
