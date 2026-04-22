@@ -1684,6 +1684,43 @@ H       1.32129900    0.71837500    0.38017700
             radical_count += atom.radical_electrons
         self.assertEqual(radical_count, 2)
 
+    def test_ts_mol_from_xyz_skips_isomorphism_enforcement(self):
+        """Test that a TS accepts the perceived xyz-derived molecule even if a stored 2D graph disagrees."""
+        xyz = {'symbols': ('O', 'O', 'H', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+               'isotopes': (16, 16, 1, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+               'coords': ((1.570004, 0.919237, -0.063628), (2.346384, -0.215837, 0.116826),
+                          (2.578713, -0.467096, -0.784756), (-0.673058, -1.117816, -1.045216),
+                          (-0.76037, -0.036132, 0.001231), (-0.850886, -0.54288, 1.418092),
+                          (-1.694638, 1.099253, -0.333714), (-1.612555, -1.681809, -1.088997),
+                          (-0.491563, -0.700452, -2.03735), (0.122945, -1.827698, -0.811666),
+                          (0.427835, 0.508898, -0.034066), (-0.034676, -1.231859, 1.641118),
+                          (-1.795224, -1.080235, 1.568607), (-0.814118, 0.27711, 2.136337),
+                          (-2.733958, 0.749029, -0.320335), (-1.610541, 1.910407, 0.391085),
+                          (-1.494252, 1.501954, -1.327915))}
+        adj = """multiplicity 2
+1  O u0 p2 c0 {2,S} {17,S}
+2  O u1 p2 c0 {1,S}
+3  C u0 p0 c0 {4,S} {5,S} {6,S} {7,S}
+4  C u0 p0 c0 {3,S} {8,S} {9,S} {10,S}
+5  C u0 p0 c0 {3,S} {11,S} {12,S} {13,S}
+6  C u0 p0 c0 {3,S} {14,S} {15,S} {16,S}
+7  H u0 p0 c0 {3,S}
+8  H u0 p0 c0 {4,S}
+9  H u0 p0 c0 {4,S}
+10 H u0 p0 c0 {4,S}
+11 H u0 p0 c0 {5,S}
+12 H u0 p0 c0 {5,S} {17,vdW}
+13 H u0 p0 c0 {5,S}
+14 H u0 p0 c0 {6,S}
+15 H u0 p0 c0 {6,S}
+16 H u0 p0 c0 {6,S}
+17 H u0 p0 c0 {1,S} {12,vdW}"""
+
+        spc = ARCSpecies(label='TS0', adjlist=adj, xyz=xyz, is_ts=True, multiplicity=2, charge=0)
+        self.assertIn('3  H u0 p0 c0 {2,S}', spc.mol.to_adjacency_list())
+        self.assertIn('11 H u0 p0 c0 {1,S} {5,S}', spc.mol.to_adjacency_list())
+        self.assertNotIn('{17,vdW}', spc.mol.to_adjacency_list())
+
     def test_consistent_atom_order(self):
         """Test that the atom order is preserved whether starting from SMILES or from xyz"""
         xyz9 = """O      -1.17310019   -0.30822930    0.16269772

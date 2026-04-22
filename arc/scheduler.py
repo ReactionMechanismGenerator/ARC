@@ -828,7 +828,7 @@ class Scheduler(object):
 
             # Poll active pipe runs (per-run failures are handled inside poll_pipes).
             if self.active_pipes:
-                self.pipe_coordinator.poll_pipes()
+                self.pipe_coordinator.poll_pipes(server_job_ids=self.server_job_ids)
 
             # Flush deferred pipe batches (SP, freq, IRC, conf_sp) after all
             # newly-ready work has been discovered and before the loop sleeps.
@@ -1069,7 +1069,8 @@ class Scheduler(object):
                 if job_name in self.running_jobs[label]:
                     self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
 
-        if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['memory']:
+        if job.job_status[1]['status'] == 'errored' and len(job.job_status[1]['keywords']) == 1 \
+                and job.job_status[1]['keywords'][0].lower() == 'memory':
             original_mem = job.job_memory_gb
             if 'insufficient job memory' in job.job_status[1]['error'].lower():
                 job.job_memory_gb *= 3
@@ -1444,16 +1445,15 @@ class Scheduler(object):
                              level_of_theory='ccsd/cc-pvdz',
                              job_type='sp')
                 return
-        if self.species_dict[label].is_monoatomic() and 'dlpno' in level.method:
-            species = self.species_dict[label]
-            if species.mol.atoms[0].element.symbol in ('H', 'D', 'T'):
-                logger.info(f'Using HF/{level.basis} for {label} (single electron, no correlation).')
-                level = Level(method='hf', basis=level.basis, software=level.software, args=level.args)
-            else:
-                canonical_method = level.method.replace('dlpno-', '')
-                logger.info(f'DLPNO methods are incompatible with monoatomic species {label}. '
-                            f'Using {canonical_method}/{level.basis} instead.')
-                level = Level(method=canonical_method, basis=level.basis, software=level.software, args=level.args)
+        if self.species_dict[label].is_monoatomic() and 'dlpno' in level.method \
+                and self.species_dict[label].mol.atoms[0].element.symbol in ('H', 'D', 'T'):
+            # DLPNO needs electron pairs; fall back to HF for single-electron atoms only.
+            # Heavier monoatomics (e.g. [O], [N]) run DLPNO fine in ORCA and are left alone.
+            logger.info(f'Using HF/{level.basis} for {label} (single electron, no correlation).')
+            level_dict = level.as_dict()
+            level_dict.pop('method_type', None)  # re-deduce after method change
+            level_dict['method'] = 'hf'
+            level = Level(repr=level_dict)
         if self.job_types['sp']:
             if self.species_dict[label].multi_species:
                 if self.output_multi_spc[self.species_dict[label].multi_species].get('sp', False):
@@ -3100,9 +3100,12 @@ class Scheduler(object):
                 # a lower conformation was found
                 deg_increment = actions[1]
                 self.species_dict[label].set_dihedral(scan=scan, index=1, deg_increment=deg_increment)
-                is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
-                    allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                    xyz=self.species_dict[label].initial_xyz)
+                if self.species_dict[label].is_ts:
+                    is_isomorphic = True
+                else:
+                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
+                        allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                        xyz=self.species_dict[label].initial_xyz)
                 if is_isomorphic:
                     self.delete_all_species_jobs(label)
                     # Remove all completed rotor calculation information
@@ -3162,7 +3165,10 @@ class Scheduler(object):
         """
         if job.job_status[1]['status'] == 'done':
             xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
-            is_isomorphic = self.species_dict[label].check_xyz_isomorphism(xyz=xyz, verbose=False)
+            if self.species_dict[label].is_ts:
+                is_isomorphic = True
+            else:
+                is_isomorphic = self.species_dict[label].check_xyz_isomorphism(xyz=xyz, verbose=False)
             for rotor_dict in self.species_dict[label].rotors_dict.values():
                 if rotor_dict['pivots'] == job.pivots:
                     key = tuple(f'{dihedral:.2f}' for dihedral in job.dihedrals)
@@ -3395,9 +3401,12 @@ class Scheduler(object):
                     break
             else:
                 # If 'change conformer' is not used, check for isomorphism.
-                is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
-                    allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                    xyz=new_xyz)
+                if self.species_dict[label].is_ts:
+                    is_isomorphic = True
+                else:
+                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
+                        allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                        xyz=new_xyz)
                 if is_isomorphic:
                     self.species_dict[label].final_xyz = new_xyz
                     # Remove all completed rotor calculation information.

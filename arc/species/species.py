@@ -1432,6 +1432,7 @@ class ARCSpecies(object):
                                              multiplicity=self.multiplicity,
                                              n_radicals=self.number_of_radicals,
                                              n_fragments=self.get_n_fragments(),
+                                             is_ts=self.is_ts,
                                              )
         if chk_rotor_list:
             for rotor in self.rotors_dict.values():
@@ -1617,6 +1618,8 @@ class ARCSpecies(object):
         Important for TS searches and for identifying rotor indices.
         This works by generating a molecule from xyz and using the
         2D structure to confirm that the perceived molecule is correct.
+        For TSs, the perceived molecule is accepted without enforcing
+        2D-graph isomorphism, since TS connectivity is not strictly defined.
         If ``xyz`` is not given, the species xyz attribute will be used.
 
         Args:
@@ -1637,36 +1640,42 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
             if perceived_mol is not None:
-                allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
-                                         or self.mol.has_charge() or perceived_mol.has_charge() \
-                                         or (self.multiplicity is not None and self.multiplicity >= 3) \
-                                         or self.mol.multiplicity >= 3 or perceived_mol.multiplicity >= 3
-                isomorphic = self.check_xyz_isomorphism(mol=perceived_mol,
-                                                        xyz=xyz,
-                                                        allow_nonisomorphic_2d=allow_nonisomorphic_2d)
-                if not isomorphic:
-                    logger.warning(f'XYZ and the 2D graph representation for {self.label} are not isomorphic.\nGot '
-                                   f'xyz:\n{xyz}\n\nwhich corresponds to {self.mol.copy(deep=True).to_smiles()}\n'
-                                   f'{self.mol.copy(deep=True).to_adjacency_list()}\n\nand: '
-                                   f'{self.mol.copy(deep=True).to_smiles()}\n'
-                                   f'{self.mol.copy(deep=True).to_adjacency_list()}')
-                    raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
-                if not self.keep_mol:
-                    if is_mol_valid(perceived_mol, charge=self.charge, multiplicity=self.multiplicity, n_radicals=self.number_of_radicals):
+                if self.is_ts:
+                    if not self.keep_mol:
                         self.mol = perceived_mol
-                    else:
-                        try:
-                            order_atoms(ref_mol=perceived_mol, mol=self.mol)
-                        except SanitizationError:
+                else:
+                    allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
+                                             or self.mol.has_charge() or perceived_mol.has_charge() \
+                                             or (self.multiplicity is not None and self.multiplicity >= 3) \
+                                             or self.mol.multiplicity >= 3 or perceived_mol.multiplicity >= 3
+                    isomorphic = self.check_xyz_isomorphism(mol=perceived_mol,
+                                                            xyz=xyz,
+                                                            allow_nonisomorphic_2d=allow_nonisomorphic_2d)
+                    if not isomorphic:
+                        logger.warning(f'XYZ and the 2D graph representation for {self.label} are not isomorphic.\nGot '
+                                       f'xyz:\n{xyz}\n\nwhich corresponds to {self.mol.copy(deep=True).to_smiles()}\n'
+                                       f'{self.mol.copy(deep=True).to_adjacency_list()}\n\nand: '
+                                       f'{perceived_mol.copy(deep=True).to_smiles()}\n'
+                                       f'{perceived_mol.copy(deep=True).to_adjacency_list()}')
+                        raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
+                    if not self.keep_mol:
+                        if is_mol_valid(perceived_mol, charge=self.charge, multiplicity=self.multiplicity, n_radicals=self.number_of_radicals):
                             self.mol = perceived_mol
+                        else:
+                            try:
+                                order_atoms(ref_mol=perceived_mol, mol=self.mol)
+                            except SanitizationError:
+                                self.mol = perceived_mol
         else:
             perceived_mol = perceive_molecule_from_xyz(xyz,
                                                        charge=self.charge,
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
             if perceived_mol is None and self.is_ts:
                 perceived_mol = perceive_molecule_from_xyz(xyz,
@@ -1674,6 +1683,7 @@ class ARCSpecies(object):
                                                            multiplicity=self.multiplicity,
                                                            n_radicals=self.number_of_radicals,
                                                            n_fragments=2,
+                                                           is_ts=True,
                                                            )
             if perceived_mol is not None:
                 self.mol = perceived_mol
@@ -1847,6 +1857,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
 
             # 2. A. Check isomorphism with bond orders using b_mol

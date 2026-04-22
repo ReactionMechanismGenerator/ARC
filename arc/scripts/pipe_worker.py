@@ -43,6 +43,44 @@ pipe_settings, output_filenames = settings['pipe_settings'], settings.get('outpu
 
 logger = logging.getLogger('pipe_worker')
 
+_diagnostics_logged = False
+
+
+def _log_node_diagnostics() -> None:
+    """Dump hostname, PBS/Slurm array context, PATH, PYTHONPATH, TMPDIR, and
+    group membership on first task failure. A dead compute node otherwise
+    leaves no trace of *which* node it was — the PBS `.e` file records the
+    array index but not the hostname, and ``tracejob`` is admin-only on
+    many sites. Logging once per worker process keeps the volume bounded
+    when one bad node drains many tasks.
+    """
+    global _diagnostics_logged
+    if _diagnostics_logged:
+        return
+    _diagnostics_logged = True
+    import socket
+    import subprocess
+    try:
+        host = socket.gethostname()
+    except Exception:
+        host = 'unknown'
+    logger.error('--- NODE DIAGNOSTICS (first task failure on this worker) ---')
+    logger.error(f'hostname={host}')
+    for k in ('PBS_JOBID', 'PBS_ARRAY_INDEX', 'PBS_O_WORKDIR',
+              'SLURM_JOB_ID', 'SLURM_ARRAY_TASK_ID', 'SLURM_NODELIST'):
+        v = os.environ.get(k)
+        if v is not None:
+            logger.error(f'{k}={v}')
+    logger.error(f'PATH={os.environ.get("PATH", "")}')
+    logger.error(f'PYTHONPATH={os.environ.get("PYTHONPATH", "")}')
+    logger.error(f'TMPDIR={os.environ.get("TMPDIR", "")}')
+    try:
+        id_out = subprocess.run(['id'], capture_output=True, text=True, timeout=5).stdout.strip()
+        logger.error(f'id={id_out}')
+    except Exception as exc:
+        logger.error(f'id=<failed: {exc}>')
+    logger.error('--- END NODE DIAGNOSTICS ---')
+
 
 def setup_logging(log_path: str) -> None:
     """Configure logging. Safe to call multiple times."""
@@ -202,6 +240,7 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
         failure_class = type(e).__name__
         ended_at = time.time()
         logger.error(f'Task {task_id} failed: {failure_class}: {e}')
+        _log_node_diagnostics()
         if scratch_dir:
             _copy_outputs(scratch_dir, attempt_dir)
         result = locals().get('result') or _make_result_template(task_id, state.attempt_index, started_at)

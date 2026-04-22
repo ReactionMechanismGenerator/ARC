@@ -180,6 +180,12 @@ class TestJobAdapter(unittest.TestCase):
                                     server='server3',
                                     testing=True,
                                     )
+        os.makedirs(cls.job_5.local_path, exist_ok=True)
+        fixture_path = os.path.join(ARC_TESTING_PATH, 'trsh', 'wall_exceeded.txt')
+        with open(fixture_path, 'r') as f:
+            log_content = f.read()
+        with open(os.path.join(cls.job_5.local_path, 'out.txt'), 'w') as f:
+            f.write(log_content)
         cls.job_6 = GaussianAdapter(execution_type='queue',
                                     job_name='opt_101',
                                     job_type='opt',
@@ -247,6 +253,24 @@ class TestJobAdapter(unittest.TestCase):
         expected_memory = math.ceil(14 * 1024 * 1.1) * 1E6
         self.assertEqual(self.job_4.submit_script_memory, expected_memory)
         self.job_4.server = 'local'
+
+    def test_set_cpu_and_mem_marks_max_total_job_memory(self):
+        """Test tagging jobs whose requested memory is clipped to the node cap."""
+        job = GaussianAdapter(execution_type='queue',
+                              job_type='opt',
+                              level=Level(method='cbs-qb3'),
+                              project='test',
+                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                              species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                              server='server2',
+                              job_memory_gb=300,
+                              testing=True,
+                              )
+
+        job.set_cpu_and_mem()
+
+        self.assertAlmostEqual(job.job_memory_gb, 256 * 0.95)
+        self.assertIn('max_total_job_memory', job.job_status[1]['keywords'])
 
     def test_set_file_paths(self):
         """Test setting up the job's paths"""
@@ -320,6 +344,42 @@ class TestJobAdapter(unittest.TestCase):
         self.assertEqual(self.job_5.job_status[0], 'done')
         self.assertEqual(self.job_5.job_status[1]['status'], 'errored')
         self.assertEqual(self.job_5.job_status[1]['keywords'], ['ServerTimeLimit'])
+
+    @patch('arc.job.adapter.determine_ess_status')
+    def test_preserve_max_total_job_memory_keyword(self, mock_determine_ess_status):
+        """Test preserving the max_total_job_memory marker across ESS status parsing."""
+        self.job_4.job_status[1]['keywords'] = ['max_total_job_memory']
+        self.job_4.initial_time = datetime.datetime.now() - datetime.timedelta(minutes=2)
+        self.job_4.final_time = datetime.datetime.now() - datetime.timedelta(minutes=1)
+        os.makedirs(self.job_4.local_path, exist_ok=True)
+        with open(self.job_4.local_path_to_output_file, 'w') as f:
+            f.write('dummy output')
+        mock_determine_ess_status.return_value = (
+            'errored',
+            ['MDCI', 'Memory'],
+            'Insufficient job memory.',
+            'Please increase MaxCore',
+        )
+
+        self.job_4._check_job_ess_status()
+
+        self.assertEqual(self.job_4.job_status[1]['status'], 'errored')
+        self.assertEqual(self.job_4.job_status[1]['keywords'], ['MDCI', 'Memory', 'max_total_job_memory'])
+
+    def test_check_job_ess_status_without_output_uses_job_log_memory_error(self):
+        """Test detecting server-reported memory errors even when the output file is absent."""
+        if os.path.isfile(self.job_4.local_path_to_output_file):
+            os.remove(self.job_4.local_path_to_output_file)
+        self.job_4.initial_time = datetime.datetime.now() - datetime.timedelta(minutes=2)
+        self.job_4.final_time = datetime.datetime.now() - datetime.timedelta(minutes=1)
+        self.job_4.additional_job_info = '\tMEMORY EXCEEDED\n'
+
+        with patch.object(self.job_4, '_get_additional_job_info'):
+            self.job_4._check_job_ess_status()
+
+        self.assertEqual(self.job_4.job_status[1]['status'], 'errored')
+        self.assertEqual(self.job_4.job_status[1]['keywords'], ['Memory'])
+        self.assertEqual(self.job_4.job_status[1]['error'], 'Insufficient job memory.')
 
     @patch(
         "arc.job.trsh.servers",

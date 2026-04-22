@@ -5,8 +5,9 @@
 This module contains unit tests for the arc.scheduler module
 """
 
+import math
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import os
 import shutil
 
@@ -18,6 +19,7 @@ from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_has_sp, species_has_sp_and_freq
 from arc.imports import settings
+from arc.settings.settings import input_filenames
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess
@@ -786,15 +788,142 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
                           project_directory=self.project_directory, job_num=201)
         job.ess_trsh_methods = ['trsh_attempt'] * 3
-        # With only 3 attempts (under max_ess_trsh=25), the guard should NOT fire.
-        # Verify the error message is NOT set (i.e., the guard did not block).
-        # We use max_attempts - 1 to test just below the threshold.
-        job_at_limit = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
-                                   species=[self.spc1], xyz=self.spc1.get_xyz(), job_type='opt',
-                                   level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
-                                   project_directory=self.project_directory, job_num=202)
-        job_at_limit.ess_trsh_methods = ['trsh_attempt'] * 24
+        job.job_status[1] = {'status': 'errored', 'keywords': ['SCF'], 'error': 'some error', 'line': 'line'}
+        with patch('arc.scheduler.trsh_ess_job', return_value=([], ['trsh_attempt', 'mock'], False,
+                                                               Level(repr='wb97xd/def2tzvp'), 'gaussian', 'opt',
+                                                               False, '', 14, '', 8, False)) as mock_trsh, \
+                patch.object(self.sched1, 'run_job') as mock_run_job, \
+                patch.object(self.sched1, 'save_restart_dict'):
+            self.sched1.troubleshoot_ess(label=label, job=job,
+                                         level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        mock_trsh.assert_called_once()
+        mock_run_job.assert_called_once()
         self.assertNotIn('ESS troubleshooting attempts exhausted', self.sched1.output[label]['errors'])
+
+    def test_troubleshoot_ess_orca_reduces_cpu_when_memory_is_capped(self):
+        """Test that ORCA troubleshooting preserves capped total memory and reduces cpu cores."""
+        label = 'methylamine'
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+
+        job = MagicMock()
+        job.job_name = 'sp_a203'
+        job.job_type = 'sp'
+        job.job_adapter = 'orca'
+        job.level = Level(repr={'method': 'dlpno-ccsd(T)'})
+        job.server = 'server1'
+        job.fine = True
+        job.cpu_cores = 32
+        job.job_memory_gb = 250
+        job.ess_trsh_methods = list()
+        job.torsions = None
+        job.dihedrals = None
+        job.directed_scan_type = None
+        job.rotor_index = None
+        job.job_status = ['done', {'status': 'errored',
+                                   'keywords': ['MDCI', 'Memory', 'max_total_job_memory'],
+                                   'error': 'Orca suggests to increase per cpu core memory to 10218 MB.',
+                                   'line': 'Please increase MaxCore'}]
+
+        with patch.object(self.sched1, 'run_job') as mock_run_job, \
+                patch.object(self.sched1, 'save_restart_dict'):
+            self.sched1.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+
+        kwargs = mock_run_job.call_args.kwargs
+        self.assertEqual(kwargs['cpu_cores'], 24)
+        self.assertEqual(kwargs['memory'], 250)
+        self.assertIn('cpu', kwargs['ess_trsh_methods'])
+
+    def test_troubleshoot_ess_orca_increases_total_memory_when_not_capped(self):
+        """Test that ORCA troubleshooting increases total memory when the node cap was not hit."""
+        label = 'methylamine'
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+
+        job = MagicMock()
+        job.job_name = 'sp_a204'
+        job.job_type = 'sp'
+        job.job_adapter = 'orca'
+        job.level = Level(repr={'method': 'dlpno-ccsd(T)'})
+        job.server = 'server1'
+        job.fine = True
+        job.cpu_cores = 32
+        job.job_memory_gb = 250
+        job.ess_trsh_methods = list()
+        job.torsions = None
+        job.dihedrals = None
+        job.directed_scan_type = None
+        job.rotor_index = None
+        job.job_status = ['done', {'status': 'errored',
+                                   'keywords': ['MDCI', 'Memory'],
+                                   'error': 'Orca suggests to increase per cpu core memory to 10218 MB.',
+                                   'line': 'Please increase MaxCore'}]
+
+        with patch.object(self.sched1, 'run_job') as mock_run_job, \
+                patch.object(self.sched1, 'save_restart_dict'):
+            self.sched1.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+
+        kwargs = mock_run_job.call_args.kwargs
+        self.assertEqual(kwargs['cpu_cores'], 24)
+        self.assertEqual(kwargs['memory'], 250)
+        self.assertIn('memory', kwargs['ess_trsh_methods'])
+
+    def test_troubleshoot_ess_orca_rewrites_input_with_reduced_cores_and_higher_maxcore(self):
+        """Test ORCA troubleshooting end-to-end from failure to rewritten input file."""
+        label = 'methylamine'
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+
+        job = MagicMock()
+        job.job_name = 'sp_a205'
+        job.job_type = 'sp'
+        job.job_adapter = 'orca'
+        job.level = Level(repr={'method': 'dlpno-ccsd(T)'})
+        job.server = 'server1'
+        job.fine = True
+        job.cpu_cores = 32
+        job.job_memory_gb = 250
+        job.ess_trsh_methods = list()
+        job.torsions = None
+        job.dihedrals = None
+        job.directed_scan_type = None
+        job.rotor_index = None
+        job.job_status = ['done', {'status': 'errored',
+                                   'keywords': ['MDCI', 'Memory', 'max_total_job_memory'],
+                                   'error': 'Orca suggests to increase per cpu core memory to 10218 MB.',
+                                   'line': 'Please increase MaxCore'}]
+
+        with patch.object(self.sched1, 'run_job') as mock_run_job, \
+                patch.object(self.sched1, 'save_restart_dict'):
+            self.sched1.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+
+        kwargs = mock_run_job.call_args.kwargs
+        temp_project_dir = os.path.join(ARC_TESTING_PATH, 'test_scheduler_orca_trsh_input')
+        try:
+            rerun_job = job_factory(job_adapter=kwargs['job_adapter'],
+                                    project='project_test_scheduler_orca_trsh_input',
+                                    ess_settings=self.ess_settings,
+                                    species=[self.spc1],
+                                    xyz=self.spc1.get_xyz(),
+                                    job_type=kwargs['job_type'],
+                                    level=kwargs['level_of_theory'],
+                                    project_directory=temp_project_dir,
+                                    cpu_cores=kwargs['cpu_cores'],
+                                    job_memory_gb=kwargs['memory'],
+                                    ess_trsh_methods=kwargs['ess_trsh_methods'],
+                                    execution_type='incore',
+                                    fine=kwargs['fine'],
+                                    server=job.server,
+                                    testing=True)
+            rerun_job.write_input_file()
+            with open(os.path.join(rerun_job.local_path, input_filenames[rerun_job.job_adapter]), 'r') as f:
+                content = f.read()
+            original_maxcore = math.ceil(rerun_job.job_memory_gb * 1024 / job.cpu_cores)
+            self.assertIn('%pal nprocs 24 end', content)
+            self.assertIn(f'%maxcore {rerun_job.input_file_memory}', content)
+            self.assertGreater(rerun_job.input_file_memory, original_maxcore)
+        finally:
+            shutil.rmtree(temp_project_dir, ignore_errors=True)
      
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
@@ -1004,6 +1133,91 @@ H      -1.82570782    0.42754384   -0.56130718"""
 
         # rotors_dict=None must be preserved — do not re-enable rotor scans.
         self.assertIsNone(sched2.species_dict[ts_label2].rotors_dict)
+
+    def test_check_directed_scan_job_skips_isomorphism_for_ts(self):
+        """check_directed_scan_job must not call check_xyz_isomorphism for a TS; is_isomorphic is recorded as True."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_spc = ARCSpecies(label='TS_dirscan', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'directed_scan': {}}}
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_ts_iso_dirscan')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_ts_iso_dirscan', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+
+        job_mock = MagicMock()
+        job_mock.job_status = [None, {'status': 'done'}]
+        job_mock.local_path_to_output_file = '/fake/path.log'
+        job_mock.pivots = [1, 2]
+        job_mock.dihedrals = [45.0]
+        job_mock.ess_trsh_methods = []
+
+        with patch('arc.species.species.ARCSpecies.check_xyz_isomorphism') as mock_iso, \
+                patch('arc.scheduler.parser.parse_geometry', return_value=ts_xyz), \
+                patch('arc.scheduler.parser.parse_e_elect', return_value=-123.45):
+            sched.check_directed_scan_job(label='TS_dirscan', job=job_mock)
+
+        mock_iso.assert_not_called()
+        recorded = sched.species_dict['TS_dirscan'].rotors_dict[0]['directed_scan'][('45.00',)]
+        self.assertTrue(recorded['is_isomorphic'])
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_troubleshoot_scan_job_skips_isomorphism_for_ts(self, mock_run_opt):
+        """troubleshoot_scan_job must not call check_xyz_isomorphism for a TS when applying 'change conformer'."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        new_xyz = str_to_xyz("""N       0.91000000    0.52000000    0.00000000
+        H       1.81000000    1.04000000    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91000000    1.23000000    0.72000000""")
+        ts_spc = ARCSpecies(label='TS_trsh', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'scan': [3, 1, 2, 4], 'scan_path': '',
+                                  'invalidation_reason': '', 'success': None, 'symmetry': None,
+                                  'times_dihedral_set': 0, 'trsh_methods': [], 'trsh_counter': 0}}
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_ts_iso_trsh')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_ts_iso_trsh', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.trsh_ess_jobs = True
+        sched.trsh_rotors = True
+
+        job_mock = MagicMock()
+        job_mock.species_label = 'TS_trsh'
+        job_mock.rotor_index = 0
+        job_mock.torsions = [[3, 1, 2, 4]]
+        job_mock.job_name = 'scan_a200'
+
+        with patch('arc.species.species.ARCSpecies.check_xyz_isomorphism') as mock_iso, \
+                patch('arc.scheduler.Scheduler.delete_all_species_jobs'):
+            sched.troubleshoot_scan_job(job=job_mock, methods={'change conformer': new_xyz})
+
+        mock_iso.assert_not_called()
+        self.assertEqual(sched.species_dict['TS_trsh'].final_xyz, new_xyz)
+        mock_run_opt.assert_called_once()
 
     @classmethod
     def tearDownClass(cls):

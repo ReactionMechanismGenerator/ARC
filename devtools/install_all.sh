@@ -26,6 +26,8 @@ run_devtool () { bash "$DEVTOOLS_DIR/$1" "${@:2}"; }
 SKIP_CLEAN=false
 SKIP_EXT=false
 SKIP_ARC=false
+SKIP_RMG=false
+ARC_INSTALLED=false
 RMG_ARGS=()
 ARC_ARGS=()
 EXT_ARGS=()
@@ -36,6 +38,7 @@ while [[ $# -gt 0 ]]; do
         --no-clean) SKIP_CLEAN=true ;;
         --no-ext)   SKIP_EXT=true  ;;
         --no-arc)   SKIP_ARC=true  ;;
+        --no-rmg)   SKIP_RMG=true  ;;
         --rmg-*)    RMG_ARGS+=("--${1#--rmg-}") ;;
         --arc-*)    ARC_ARGS+=("--${1#--arc-}") ;;
         --ext-*)    EXT_ARGS+=("--${1#--ext-}") ;;
@@ -44,6 +47,7 @@ while [[ $# -gt 0 ]]; do
 Usage: $0 [global-flags] [--rmg-xxx] [--arc-yyy] [--ext-zzz]
   --no-clean          Skip micromamba/conda cache cleanup
   --no-ext            Skip external tools (AutoTST, KinBot, …)
+  --no-rmg            Skip RMG-Py entirely
   --rmg-path          Forward '--path' to RMG installer
   --rmg-pip           Forward '--pip'  to RMG installer
   ...
@@ -67,16 +71,15 @@ echo "    EXT sub-flags : ${EXT_ARGS[*]:-(none)}"
 echo ">>> Beginning full ARC external repo installation…"
 pushd . >/dev/null
 
-# 1) RMG
-echo "=== Installing RMG ==="
-run_devtool install_rmg.sh "${RMG_ARGS[@]}"
+# 1) RMG (optional)
+if [[ $SKIP_RMG == false ]]; then
+    echo "=== Installing RMG ==="
+    run_devtool install_rmg.sh "${RMG_ARGS[@]}"
+else
+    echo "ℹ️  --no-rmg flag set. Skipping RMG installation."
+fi
 
-
- # 2) PyRDL
- echo "=== Installing PyRDL ==="
- bash devtools/install_pyrdl.sh
-
-# 3) ARC itself (skip env creation in CI or if user requests it)
+# 2) ARC itself (skip env creation in CI or if user requests it)
 if [[ "${CI:-false}" != "true" && "${SKIP_ARC:-false}" != "true" ]]; then
     if [[ $SKIP_CLEAN == false ]]; then
         echo "=== Cleaning up old ARC build artifacts ==="
@@ -88,8 +91,21 @@ if [[ "${CI:-false}" != "true" && "${SKIP_ARC:-false}" != "true" ]]; then
 
     echo "=== Installing ARC ==="
     run_devtool install_arc.sh "${ARC_ARGS[@]}"
+    ARC_INSTALLED=true
 else
+    ARC_INSTALLED=false
     echo ":information_source:  CI detected or --no-arc flag set. Skip cleaning ARC installation."
+fi
+
+# 3) PyRDL (needs arc_env, but not ARC install)
+if [[ "${CI:-false}" == "true" ]]; then
+    echo "=== Installing PyRDL (CI) ==="
+    bash devtools/install_pyrdl.sh
+elif [[ $ARC_INSTALLED == true ]]; then
+    echo "=== Installing PyRDL ==="
+    bash devtools/install_pyrdl.sh
+else
+    echo "ℹ️  Skipping PyRDL install because ARC installation was skipped."
 fi
 
 if [[ $SKIP_EXT == false ]]; then
@@ -100,6 +116,7 @@ if [[ $SKIP_EXT == false ]]; then
         [KinBot]=install_kinbot.sh
         [OpenBabel]=install_ob.sh
         [xtb]=install_xtb.sh
+        [CREST]=install_crest.sh
         [Sella]=install_sella.sh
         [TorchANI]=install_torchani.sh
     )

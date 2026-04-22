@@ -57,7 +57,8 @@ def to_rdkit_mol(mol, remove_h=True, return_mapping=False, sanitize=True, save_o
     # Add the bonds
     for atom1 in mol.vertices:
         for atom2, bond in atom1.edges.items():
-            if bond.is_hydrogen_bond():
+            # Skip non-covalent bonds RDKit cannot represent (H-bonds, vdW, reaction bonds).
+            if bond.is_hydrogen_bond() or bond.is_van_der_waals() or bond.is_reaction_bond():
                 continue
             index1 = atoms.index(atom1)
             index2 = atoms.index(atom2)
