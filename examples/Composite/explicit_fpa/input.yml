@@ -1,0 +1,41 @@
+# Form 3 — fully explicit recipe, with a CBS extrapolation term.
+#
+# A minimal Allen-style focal-point analysis:
+#   E_final = E[CCSD(T)-F12/cc-pVTZ-F12]            (base)
+#           + E_CBS(CCSD(T) corr) − E[CCSD(T)/cc-pVTZ]   (CBS extrapolation)
+#           + δ[CCSDT]                              (post-(T) correction)
+#
+# Does NOT require MRCC. CCSDT at cc-pVDZ runs in CFOUR (NCC) or Molpro.
+# CBS term uses Helgaker 2-point correlation-energy formula:
+#   (X^3·E_X − Y^3·E_Y) / (X^3 − Y^3)
+# See Helgaker, Klopper, Koch, Noga, J. Chem. Phys. 106, 9639 (1997).
+#
+# The top-level ``reference`` key carries a user-supplied citation; it flows
+# into the generated provenance notebook's References block.
+project: composite_explicit_fpa
+
+sp_composite:
+  reference: >-
+    Minimal focal-point analysis; cites Helgaker et al.
+    J. Chem. Phys. 106, 9639 (1997); DOI: 10.1063/1.473863.
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: cbs_corr
+      type: cbs_extrapolation
+      formula: helgaker_corr_2pt
+      # Only ``components: total`` is currently supported — adapter-level
+      # correlation-only parsing is a future addition. Formula name documents intent.
+      components: total
+      levels:
+        - {method: ccsd(t), basis: cc-pVTZ}
+        - {method: ccsd(t), basis: cc-pVQZ}
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,   basis: cc-pVDZ}
+      low:  {method: ccsd(t), basis: cc-pVDZ}
+
+species:
+  - label: OH
+    smiles: '[OH]'
