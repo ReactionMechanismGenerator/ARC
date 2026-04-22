@@ -55,22 +55,6 @@ jobs:
           echo "PATH=$PATH:$PWD" >> "$GITHUB_ENV"
           echo "PYTHONPATH=$PYTHONPATH:$PWD" >> "$GITHUB_ENV"
 
-      - name: Install Julia 1.10
-        shell: micromamba-shell {0}
-        run: |
-          echo "::group::Install juliaup + Julia 1.10"
-          # 1) Bootstrap juliaup non-interactively (-y)
-          curl -fsSL https://install.julialang.org | sh -s -- -y
-          # 2) Make juliaup visible *now* (CI shells won’t re-source rc files)
-          export PATH="$HOME/.juliaup/bin:$PATH"
-          # 3) Install & select Julia 1.10
-          juliaup add 1.10
-          juliaup default 1.10
-          # 4) Persist for subsequent steps
-          echo "PATH=$HOME/.juliaup/bin:$PATH" >> "$GITHUB_ENV"
-          echo "::endgroup::"
-          julia --version # Check that Julia is installed correctly
-
       - name: Install all extras - CI
         shell: micromamba-shell {0}
         working-directory: ARC
