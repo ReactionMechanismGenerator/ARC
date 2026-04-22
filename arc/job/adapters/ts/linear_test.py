@@ -4398,6 +4398,36 @@ H      -0.15810977   -1.84238058   -0.97429551
 H       0.49026533   -0.61960200    1.22593576"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
+    def test_interpolate_family_none_unimolecular(self):
+        """interpolate() must produce at least one TS guess for a unimolecular reaction RMG cannot classify.
+
+        Validates the family-agnostic fallback: when ``rxn.family is None``, the scheduler
+        admits the linear adapter via ``ts_adapters_for_unknown_unimolecular`` and the
+        adapter's internal guard accepts the reaction rather than skipping it.
+
+        Reaction: ``[O][O] + [O] <=> [O-][O+]=O`` (O2 + O → O3). RMG has no family for this
+        triatomic recombination, so ``rxn.family`` returns None naturally — no forcing.
+        """
+        o2_xyz = {'symbols': ('O', 'O'), 'isotopes': (16, 16),
+                  'coords': ((0.0, 0.0, 0.6487420), (0.0, 0.0, -0.6487420))}
+        o_xyz = {'symbols': ('O',), 'isotopes': (16,), 'coords': ((0.0, 0.0, 0.0),)}
+        o3_xyz = {'symbols': ('O', 'O', 'O'), 'isotopes': (16, 16, 16),
+                  'coords': ((-1.0886, 0.0, 0.6697),
+                             (0.0, 0.0, 0.0),
+                             (1.0886, 0.0, 0.6697))}
+        r1 = ARCSpecies(label='O2', smiles='[O][O]', xyz=o2_xyz)
+        r2 = ARCSpecies(label='O', smiles='[O]', xyz=o_xyz)
+        p = ARCSpecies(label='O3', smiles='[O-][O+]=O', xyz=o3_xyz)
+        rxn = ARCReaction(r_species=[r1, r2], p_species=[p])
+        self.assertIsNone(rxn.family, msg=f'Expected RMG to leave family=None; got {rxn.family!r}')
+        self.assertTrue(rxn.is_unimolecular())
+        ts_xyzs = interpolate(rxn)
+        self.assertIsNotNone(ts_xyzs)
+        self.assertGreaterEqual(len(ts_xyzs), 1)
+        for ts_xyz in ts_xyzs:
+            self.assertEqual(len(ts_xyz['symbols']), 3)
+            self.assertFalse(colliding_atoms(ts_xyz))
+
     @pytest.mark.slow
     def test_interpolate_xy_addition_multiplebond(self):
         """Test the interpolate_isomerization() function for XY_Addition_MultipleBond: CC(F)F <=> C=CF + F"""
