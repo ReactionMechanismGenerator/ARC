@@ -17,13 +17,11 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     PAULING_DELTA,
     has_detached_hydrogen,
     has_too_many_fragments,
-    validate_ts_guess,
 )
 from arc.job.adapters.ts.linear_utils.path_spec import (
     ReactionPathSpec,
     insertion_ring_extra_stretch,
     validate_addition_guess,
-    validate_guess_against_path_spec,
 )
 
 
@@ -577,10 +575,10 @@ def stretch_bond(uni_xyz: dict,
             across different fragments (used for insertion-ring detection).
         weight (float): Interpolation weight (0=reactant-like, 1=product-like).
         label (str): Logging label.
-        path_spec (ReactionPathSpec, optional):  path-spec; when
-            provided, validation is routed through
-            :func:`validate_guess_against_path_spec`.  When ``None`` the
-            legacy :func:`validate_ts_guess` is used (degraded mode).
+        path_spec (ReactionPathSpec, optional):  path-spec forwarded to
+            :func:`validate_addition_guess`, which routes validation through
+            the path-spec-aware checker when ``path_spec`` is provided, and
+            falls back to the generic TS validator otherwise.
 
     Returns:
         Optional[dict]: TS guess XYZ, or None if validation fails.
@@ -724,9 +722,9 @@ def try_insertion_ring(uni_xyz: dict,
         cross_bonds (List[Tuple[int, int]]): Bonds connecting atoms across fragments.
         weight (float): Interpolation weight.
         n_atoms (int): Total number of atoms.
-        path_spec (ReactionPathSpec, optional):  path-spec; when
-            provided, validation routes through
-            :func:`validate_guess_against_path_spec`.
+        path_spec (ReactionPathSpec, optional):  path-spec forwarded to
+            :func:`validate_addition_guess`, which routes validation through
+            the path-spec-aware checker when provided.
 
     Returns:
         Optional[dict]: TS guess XYZ, or None if the pattern doesn't apply.

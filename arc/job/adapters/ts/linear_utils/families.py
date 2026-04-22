@@ -40,7 +40,6 @@ from arc.species.species import colliding_atoms
 
 if TYPE_CHECKING:
     from rmgpy.molecule.molecule import Molecule
-    from arc.job.adapters.ts.linear_utils.path_spec import ReactionPathSpec
 
 logger = logging.getLogger(__name__)
 

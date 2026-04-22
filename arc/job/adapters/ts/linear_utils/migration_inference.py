@@ -31,7 +31,6 @@ The helpers are pure: they accept dicts/molecules and return new dicts
 or ``None``; they never mutate inputs.
 """
 
-from collections import deque
 from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
