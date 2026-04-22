@@ -222,6 +222,7 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     validate_ts_guess,
 )
 from arc.job.adapters.ts.linear_utils.path_spec import (
+    PathChemistry,  # noqa: F401  — exported as part of this module's public API
     ReactionPathSpec,
     classify_path_chemistry,
     score_guess_against_path_spec,
