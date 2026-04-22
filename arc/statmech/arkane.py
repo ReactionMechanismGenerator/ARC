@@ -12,6 +12,7 @@ from mako.template import Template
 
 import arc.plotter as plotter
 from arc.common import ARC_PATH, get_logger, read_yaml_file
+from arc.constants import E_h_kJmol
 from arc.exceptions import InputError
 from arc.imports import incore_commands, settings
 from arc.job.local import execute_command
@@ -100,7 +101,14 @@ species_input_template = """#!/usr/bin/env python
 linear = ${linear}
 spinMultiplicity = ${spin_multiplicity}
 
+%if e_elect_hartree is not None:
+# Electronic energy supplied explicitly (Hartree) from ${e_elect_source or 'explicit numeric value'}.
+# Arkane reads a bare ``energy = <float>`` as Hartree. The original ARC value was
+# ${e_elect_kJmol_display} kJ/mol (converted via E_h_kJmol).
+energy = ${e_elect_hartree}
+%else:
 energy = Log('${sp_path}')
+%endif
 geometry = Log('${freq_path}')
 frequencies = Log('${freq_path}')
 
@@ -437,6 +445,23 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             os.remove(file_path)
         rotors = [rotor for rotor in species.rotors_dict.values() if rotor['success']] if species.rotors_dict else list()
         use_rotors = not skip_rotors and bool(rotors)
+        # Composite protocols (sp_composite) bypass Arkane's file-based energy
+        # parser and inject the numeric total directly. species.e_elect is in
+        # kJ/mol per ARC convention; Arkane expects Hartree for a bare `energy`
+        # value, so convert at this boundary via E_h_kJmol.
+        e_elect_source = getattr(species, "e_elect_source", None)
+        e_elect_hartree = None
+        e_elect_kJmol_display = None
+        if e_elect_source == 'sp_composite':
+            if species.e_elect is None:
+                raise ValueError(
+                    f"Species {species.label} has e_elect_source='sp_composite' but "
+                    f"species.e_elect is None. Cannot render Arkane species file: the "
+                    f"composite protocol must complete and set e_elect before statmech "
+                    f"runs."
+                )
+            e_elect_hartree = species.e_elect / E_h_kJmol
+            e_elect_kJmol_display = f"{species.e_elect:.6f}"
         content = Template(species_input_template).render(
             linear=species.is_linear,
             spin_multiplicity=species.multiplicity,
@@ -444,6 +469,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             freq_path=self.output_dict[species.label]['paths']['freq'] or self.output_dict[species.label]['paths']['sp'],
             use_hindered_rotors=use_rotors,
             rotors=rotors,
+            e_elect_hartree=e_elect_hartree,
+            e_elect_source=e_elect_source,
+            e_elect_kJmol_display=e_elect_kJmol_display,
         )
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
