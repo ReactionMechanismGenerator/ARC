@@ -199,6 +199,21 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(assign_frequency_scale_factor(Level(method='CBS-QB3')), 1.004)
         self.assertEqual(assign_frequency_scale_factor(Level(method='PM6')), 1.093)
 
+    def test_level_accepts_string_args(self):
+        """Regression: Level.lower() used to crash on string `args` because the
+        code called ``.lower()`` on the local args dict instead of self.args."""
+        level = Level(method='B3LYP', basis='cc-pVTZ', args='EmpiricalDispersion=GD3')
+        self.assertIsInstance(level.args, dict)
+        self.assertEqual(level.args['keyword']['general'], 'empiricaldispersion=gd3')
+        self.assertEqual(level.args['block'], {})
+
+    def test_level_accepts_iterable_args(self):
+        """Iterable → space-joined string → dict path should also work."""
+        level = Level(method='B3LYP', basis='cc-pVTZ',
+                      args=['EmpiricalDispersion=GD3', 'Int=UltraFine'])
+        self.assertEqual(level.args['keyword']['general'],
+                         'empiricaldispersion=gd3 int=ultrafine')
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
