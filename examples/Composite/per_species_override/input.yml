@@ -1,0 +1,28 @@
+# Form 4 — per-species override (three distinguishable states).
+#
+# * H2     → no ``sp_composite`` key     ⇒ inherits the project-wide HEAT-345Q
+# * H2O    → ``sp_composite: null``      ⇒ opt out; plain ``sp_level`` is used
+# * OH     → species-specific ``sp_composite`` ⇒ a cheap MP2-only "composite"
+#
+# The three states are distinguishable in ARCSpecies: ``sp_composite_state``
+# is "inherit" / "opt_out" / "explicit" respectively. All three survive the
+# restart-dict round-trip.
+project: composite_per_species_override
+
+sp_composite: HEAT-345Q          # project-wide default
+sp_level: wb97xd/def2-tzvp        # used by the opt-out species ("H2O" below)
+
+species:
+  - label: H2
+    smiles: '[H][H]'
+    # (inherit the project-wide HEAT-345Q protocol)
+
+  - label: H2O
+    smiles: O
+    sp_composite: null             # opt out — use plain sp_level above
+
+  - label: OH
+    smiles: '[OH]'
+    sp_composite:
+      base: {method: mp2, basis: cc-pVTZ}
+      corrections: []
