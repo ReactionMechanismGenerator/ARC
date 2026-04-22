@@ -6,11 +6,13 @@ This module contains unit tests for ARC's statmech.arkane module
 """
 
 import os
+import re
 import shutil
 import tempfile
 import unittest
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH
+from arc.constants import E_h_kJmol
 from arc.exceptions import InputError
 from arc.level import Level
 from arc.reaction import ARCReaction
@@ -679,6 +681,157 @@ class TestCheckArkaneCorrections(unittest.TestCase):
             with self.assertLogs('arc', level='INFO') as cm:
                 result = check_arkane_bacs(sp_level=level, bac_type='p')
         self.assertTrue(result)
+
+
+class TestArkaneSpCompositeRendering(unittest.TestCase):
+    """
+    Phase 4: verify the Arkane species-file rendering branch for species whose
+    ``e_elect_source == 'sp_composite'``. The composite total (kJ/mol) must be
+    converted to Hartree and written as a bare ``energy = <float>`` assignment
+    so Arkane consumes it directly (not via ``Log(...)``).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.mkdtemp(prefix="arkane_composite_")
+        cls.opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        cls.freq_path = os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out')
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def _make_adapter(self, species):
+        output_dir = os.path.join(self.tmpdir, "output", species.label)
+        calcs_dir = os.path.join(self.tmpdir, "calcs", species.label)
+        for d in (output_dir, calcs_dir):
+            os.makedirs(d, exist_ok=True)
+        return ArkaneAdapter(
+            output_directory=output_dir,
+            calcs_directory=calcs_dir,
+            output_dict={species.label: {'paths': {
+                'freq': self.freq_path, 'sp': self.opt_path, 'opt': self.opt_path,
+                'composite': '',
+            }}},
+            bac_type=None,
+            species=[species],
+            sp_level=Level('gfn2'),
+            freq_level=Level('gfn2'),
+            freq_scale_factor=1.0,
+        )
+
+    def test_composite_species_renders_explicit_numeric_energy(self):
+        """``energy = <hartree_float>``, NOT ``energy = Log('...')``."""
+        species = ARCSpecies(label='H2comp', smiles='[H][H]')
+        species.e_elect = -200512.34  # kJ/mol (arbitrary realistic value)
+        species.e_elect_source = 'sp_composite'
+        adapter = self._make_adapter(species)
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        # Must NOT use Log() for energy; must contain a bare numeric assignment.
+        self.assertNotIn("energy = Log(", content)
+        expected_hartree = species.e_elect / E_h_kJmol
+        # Arkane's file-format expects Hartree. Avoid an exact-string match
+        # against ``str(expected_hartree)`` — Python's float repr and Mako's
+        # formatting can differ in trailing digits / scientific-notation choice.
+        # Extract the rendered value and compare numerically.
+        match = re.search(r"^energy = ([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)$",
+                          content, re.MULTILINE)
+        self.assertIsNotNone(match, f"No bare numeric ``energy = …`` line:\n{content}")
+        self.assertAlmostEqual(float(match.group(1)), expected_hartree, places=9)
+        # Geometry / frequencies still use Log().
+        self.assertIn("geometry = Log(", content)
+        self.assertIn("frequencies = Log(", content)
+        # The template's provenance comment mentions sp_composite.
+        self.assertIn("sp_composite", content)
+        self.assertIn("kJ/mol", content)
+
+    def test_noncomposite_species_unchanged_energy_log_path(self):
+        """Species without sp_composite must render the legacy ``energy = Log('sp_path')``."""
+        species = ARCSpecies(label='iC3H7_legacy', smiles='C[CH]C')
+        # e_elect_source stays None; e_elect is not set/relevant to legacy rendering.
+        adapter = self._make_adapter(species)
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        self.assertIn(f"energy = Log('{self.opt_path}')", content)
+        self.assertNotIn("sp_composite", content)
+
+    def test_composite_species_with_missing_e_elect_raises(self):
+        """e_elect_source='sp_composite' but no e_elect → clear error, not a silently broken file."""
+        species = ARCSpecies(label='H2broken', smiles='[H][H]')
+        species.e_elect = None
+        species.e_elect_source = 'sp_composite'
+        adapter = self._make_adapter(species)
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        with self.assertRaises(ValueError) as ctx:
+            adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        self.assertIn("sp_composite", str(ctx.exception))
+        self.assertIn("e_elect is None", str(ctx.exception))
+
+    def test_composite_rendered_energy_equals_kJmol_over_E_h_kJmol(self):
+        """Round-trip: hartree written = (kJ/mol stored) / E_h_kJmol, to within fp precision."""
+        species = ARCSpecies(label='H2precise', smiles='[H][H]')
+        species.e_elect = -123456.789012
+        species.e_elect_source = 'sp_composite'
+        adapter = self._make_adapter(species)
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        match = re.search(r"^energy = (-?\d+\.\d+(?:e[+-]?\d+)?)$", content, re.MULTILINE)
+        self.assertIsNotNone(match, f"No ``energy = <float>`` line in:\n{content}")
+        rendered = float(match.group(1))
+        self.assertAlmostEqual(rendered, species.e_elect / E_h_kJmol, places=9)
+
+
+class TestReactionDhRxnConsumesKJmol(unittest.TestCase):
+    """
+    Phase 5: lock the invariant that ``set_reaction_dh_rxn`` consumes
+    ``spc.e_elect`` in kJ/mol after an sp_composite finalization. The Hartree
+    conversion happens *only* at the Arkane species-file rendering boundary
+    (``generate_species_file``); everywhere else — including reaction ΔH and
+    reaction energetics — ``spc.e_elect`` stays in kJ/mol.
+    """
+
+    def test_dh_rxn_uses_kJmol_e_elect_for_composite_species(self):
+        tmpdir = tempfile.mkdtemp(prefix="arkane_dhrxn_")
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        # Two composite-finalized "species" standing in as reactant + product.
+        reactant = ARCSpecies(label='R', smiles='[H][H]')
+        reactant.e_elect = -200000.0            # kJ/mol
+        reactant.e_elect_source = 'sp_composite'
+        reactant.thermo = None                  # force the e_elect branch
+        product = ARCSpecies(label='P', smiles='[H][H]')
+        product.e_elect = -200100.0             # kJ/mol
+        product.e_elect_source = 'sp_composite'
+        product.thermo = None
+        rxn = ARCReaction(r_species=[reactant], p_species=[product])
+        rxn.thermo = None
+        adapter = ArkaneAdapter(
+            output_directory=tmpdir,
+            calcs_directory=tmpdir,
+            output_dict={},
+            bac_type=None,
+            species=[reactant, product],
+            reactions=[rxn],
+            sp_level=Level('gfn2'),
+            freq_level=Level('gfn2'),
+            freq_scale_factor=1.0,
+        )
+        adapter.set_reaction_dh_rxn(estimate_dh_rxn=True)
+        # dh_rxn298 = (product.e_elect - reactant.e_elect) * 1e3 (J/mol conversion).
+        expected_J = (product.e_elect - reactant.e_elect) * 1e3
+        self.assertAlmostEqual(rxn.dh_rxn298, expected_J, places=6)
+        # Sanity: the raw kJ/mol difference is -100; dh_rxn298 should be -1e5 J/mol.
+        self.assertAlmostEqual(rxn.dh_rxn298, -1e5, places=6)
 
 
 if __name__ == '__main__':
