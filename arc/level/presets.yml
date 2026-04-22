@@ -1,0 +1,377 @@
+# sp_composite presets shipped with ARC.
+#
+# Each entry defines a CompositeProtocol that ARC can instantiate via
+# `sp_composite: <preset_name>` in the project YAML. The shape of each entry
+# matches the explicit form accepted by CompositeProtocol.from_user_input:
+#   - base:        a level (string "method/basis" or dict)
+#   - corrections: a list of term dicts (each with type / label / level fields)
+#   - reference:   a free-text citation including a DOI, surfaced in logs,
+#                  notebook provenance headers, and validated by the test suite.
+#
+# Notes on the recipes themselves:
+#
+# These presets are *adapted for ARC use* — the canonical Tajti-et-al HEAT
+# protocol was designed for atomization energies of small molecules, with the
+# HF energy itself CBS-extrapolated to the basis-set limit. ARC's
+# CompositeProtocol pins the absolute base to a single SinglePointTerm, so
+# the recipes below pick a sensible high-quality "anchor" SP (CCSD(T)-F12 in
+# the cc-pVTZ-F12 basis) and apply the post-(T) and other corrections on top.
+# This matches the typical focal-point workflow when refining TS barriers
+# (see e.g. Nguyen, Stanton, Barker for CHO2 PES).
+#
+# ESS-specific syntax used below
+# ------------------------------
+# The δ_CV (core-valence) and δ_rel (scalar-relativistic, DKH2) corrections
+# require ESS-specific keywords to be injected into the SP input. Native ARC
+# presets target Molpro syntax via ``args.keyword``:
+#
+#   * δ_CV "high" leg = all-electron correlation:
+#       ``args.keyword.core: 'core,0,0,0,0,0,0,0,0;'``
+#     places ``core,0,0,0,0,0,0,0,0;`` between the basis declaration and the
+#     ``int;`` directive in the Molpro template, setting the global frozen-core
+#     specification to zero in every irreducible representation. Trailing zeros
+#     are harmless for lower-symmetry point groups (Molpro reads only the
+#     irreps that exist).
+#
+#   * δ_CV "low" leg = Molpro's default frozen-core (no extra args). For
+#     first-row elements this freezes 1s; for second-row 1s2s2p.
+#
+#   * δ_rel "high" leg = DKH2 scalar-relativistic on the cc-pVTZ-DK
+#     recontracted basis:
+#       ``args.keyword.dkho: 'SET,DKHO=2;'``
+#     The Molpro manual (https://www.molpro.net/manual/doku.php?id=relativistic_corrections)
+#     explicitly recommends ``SET,DKHO=n`` over the legacy ``DKROLL`` form
+#     ("In order to avoid confusion, it is recommended only to use DKHO and
+#     never set DKROLL"). The directive is placed before ``int;`` so the
+#     integrals are evaluated with the DK-transformed Hamiltonian. The
+#     ``cc-pVTZ-DK`` recontracted basis is required — without ``SET,DKHO=2``
+#     Molpro uses the standard non-relativistic Hamiltonian on it.
+#
+#   * δ_rel "low" leg = vanilla CCSD(T)/cc-pVTZ.
+#
+# Other ESSes (CFOUR/Orca) have different syntax for these corrections; the
+# presets below will write the wrong directives if pointed at a non-Molpro
+# adapter for the δ_CV/δ_rel SPs. Until a per-ESS preset family lands, users
+# running through CFOUR/Orca should either supply an explicit recipe or use
+# the ``HEAT-345_noC`` / ``HEAT-345Q_noC`` variants below, which omit the
+# δ_CV term (the most ESS-syntax-sensitive one).
+
+HEAT-345:
+  reference: "Inspired by Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1811608. Adapted for use as a TS barrier refinement protocol within ARC. The δ_CV and δ_rel terms below assume a Molpro adapter (see preset comment header for ESS-specific syntax)."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_CV
+      type: delta
+      # All-electron CCSD(T)/cc-pCVTZ via Molpro's ``core,0,...`` directive.
+      high: {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      # Frozen-core CCSD(T)/cc-pCVTZ — Molpro's default, no extra args.
+      low:  {method: ccsd(t),  basis: cc-pCVTZ}
+    - label: delta_rel
+      type: delta
+      # DKH2 scalar-relativistic CCSD(T)/cc-pVTZ-DK via Molpro's ``dkroll=2`` directive.
+      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      # Non-relativistic CCSD(T)/cc-pVTZ.
+      low:  {method: ccsd(t),  basis: cc-pVTZ}
+
+HEAT-345Q:
+  reference: "Inspired by the HEAT-345(Q) protocol used by Nguyen, Stanton, Barker for the CHO2 PES (citing Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1811608). Adds a perturbative δ[CCSDT(Q)] term on top of HEAT-345. The δ_CV and δ_rel terms below assume a Molpro adapter."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_Q
+      type: delta
+      high: {method: ccsdt(q), basis: cc-pVDZ}
+      low:  {method: ccsdt,    basis: cc-pVDZ}
+    - label: delta_CV
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pCVTZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pVTZ}
+
+# "_noC" variants drop the core-valence (δ_CV) correction but keep everything
+# else. Use these when you cannot run an all-electron CCSD(T)/cc-pCVTZ pair
+# (e.g. when targeting an ESS other than Molpro and you don't have CFOUR/Orca
+# core-valence syntax wired up). These variants are NOT silently equivalent
+# to HEAT-345 / HEAT-345Q — the missing δ_CV is acknowledged in the name and
+# in the reference string so users can cite the protocol honestly.
+
+HEAT-345_noC:
+  reference: "Inspired by Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1811608. Adapted for ARC, with the δ_CV (core-valence) correction OMITTED — see preset name. Suitable when the ESS lacks a clean all-electron syntax or when the core-valence contribution is known to be negligible (e.g. first-row systems where δ_CV is typically < 0.5 kJ/mol)."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pVTZ}
+
+HEAT-345Q_noC:
+  reference: "Inspired by HEAT-345(Q) (Nguyen/Stanton/Barker for CHO2; Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1811608) with the δ_CV (core-valence) correction OMITTED — see preset name. Use when ESS-specific all-electron syntax is unavailable; cite as 'HEAT-345Q_noC' to make the omission explicit rather than as 'HEAT-345Q'."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_Q
+      type: delta
+      high: {method: ccsdt(q), basis: cc-pVDZ}
+      low:  {method: ccsdt,    basis: cc-pVDZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pVTZ}
+
+# HEAT-345QP extends HEAT-345Q with full quadruples (CCSDTQ) and perturbative
+# pentuples (CCSDTQ(P)) corrections. The δ_QQ and δ_P legs route through the
+# MRCC interface — modern Molpro builds with the MRCC interface linked in
+# accept ``ccsdtq`` and ``ccsdtq(p)`` directly (the same path used today for
+# ``ccsdt`` and ``ccsdt(q)`` in HEAT-345Q). CFOUR-NCC is an alternative back
+# end. A plain Molpro install without MRCC will not run these sub-jobs.
+HEAT-345QP:
+  reference: "Extension of HEAT-345Q (Bomble, Vázquez, Kállay, Michauk, Szalay, Császár, Gauss, Stanton, J. Chem. Phys. 125, 064108 (2006); DOI: 10.1063/1.2206789) with full-quadruples and perturbative-pentuples post-(T) corrections. The δ_QQ (CCSDTQ) and δ_P (CCSDTQ(P)) legs require an ESS that exposes those methods — Molpro built with the MRCC interface, or CFOUR-NCC. δ_CV and δ_rel assume a Molpro adapter."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,     basis: cc-pVDZ}
+      low:  {method: ccsd(t),   basis: cc-pVDZ}
+    - label: delta_Q
+      type: delta
+      high: {method: ccsdt(q),  basis: cc-pVDZ}
+      low:  {method: ccsdt,     basis: cc-pVDZ}
+    - label: delta_QQ
+      type: delta
+      high: {method: ccsdtq,    basis: cc-pVDZ}
+      low:  {method: ccsdt(q),  basis: cc-pVDZ}
+    - label: delta_P
+      type: delta
+      high: {method: ccsdtq(p), basis: cc-pVDZ}
+      low:  {method: ccsdtq,    basis: cc-pVDZ}
+    - label: delta_CV
+      type: delta
+      high: {method: ccsd(t),   basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      low:  {method: ccsd(t),   basis: cc-pCVTZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t),   basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t),   basis: cc-pVTZ}
+
+# HEAT-456Q has the same correction structure as HEAT-345Q but a tighter HF/
+# CCSD(T) CBS reference (cardinals {Q,5,6} rather than {T,Q,5}). ARC's
+# CompositeProtocol pins the absolute base to a single SinglePointTerm, so
+# this adaptation tightens the anchor by promoting the F12 base from
+# cc-pVTZ-F12 to cc-pVQZ-F12 (effectively near-CBS quality at QZ-5Z-6Z).
+HEAT-456Q:
+  reference: "Inspired by HEAT-456Q (Bomble, Vázquez, Kállay, Michauk, Szalay, Császár, Gauss, Stanton, J. Chem. Phys. 125, 064108 (2006); DOI: 10.1063/1.2206789). Same correction structure as HEAT-345Q with a tighter base — ARC adaptation pins the anchor to CCSD(T)-F12/cc-pVQZ-F12 to mirror the {Q,5,6}-cardinal HF/CCSD(T) extrapolation. δ_CV and δ_rel assume a Molpro adapter."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVQZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_Q
+      type: delta
+      high: {method: ccsdt(q), basis: cc-pVDZ}
+      low:  {method: ccsdt,    basis: cc-pVDZ}
+    - label: delta_CV
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pCVTZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pVTZ}
+
+FPA-min:
+  reference: "Minimal Allen / East / Császár focal-point analysis recipe; review: East, Allen, J. Chem. Phys. 99, 4638 (1993); DOI: 10.1063/1.466062."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: cbs_corr
+      type: cbs_extrapolation
+      formula: helgaker_corr_2pt
+      # components currently must be "total"; adapter-level correlation-only
+      # parsing is a future addition. The formula name (`helgaker_corr_2pt`)
+      # still documents intent for the user.
+      components: total
+      levels:
+        - {method: ccsd(t), basis: cc-pVTZ}
+        - {method: ccsd(t), basis: cc-pVQZ}
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,   basis: cc-pVDZ}
+      low:  {method: ccsd(t), basis: cc-pVDZ}
+
+# ----------------------------------------------------------------------- #
+# Weizmann-n (W2, W3, W4) family — Karton/Martin and predecessors.
+#
+# The canonical W*n* protocols build their absolute energy from a stack of
+# basis-set CBS extrapolations (HF, CCSD, (T) at progressively smaller
+# basis) plus δ-corrections. ARC's CompositeProtocol pins the absolute
+# base to a single SinglePointTerm, so the recipes below pick a high-
+# quality CCSD(T) or CCSD(T)-F12 anchor and apply the canonical post-(T)
+# / δ_CV / δ_rel corrections on top. The original W*n* basis-cardinal
+# extrapolations of the (T) component are absorbed into the anchor —
+# this is faithful to the W*n* spirit (stacked corrections beyond
+# CCSD(T)/CBS) but not byte-identical to the published prescription.
+# Cite as 'W2 (ARC adaptation)' etc. to acknowledge the difference.
+#
+# As with the HEAT family, δ_CV and δ_rel use Molpro-specific
+# ``args.keyword`` directives (see the file header for syntax notes).
+# ----------------------------------------------------------------------- #
+
+W2:
+  reference: "Inspired by W2 (Martin, de Oliveira, J. Chem. Phys. 111, 1843 (1999); DOI: 10.1063/1.479454). ARC adaptation pins the anchor to CCSD(T)/aug-cc-pVQZ and applies the canonical δ_CV (core-valence) and δ_rel (DKH2 scalar-relativistic) corrections; the original W2 HF/CCSD/(T) basis-cardinal CBS extrapolations are absorbed into the anchor (single-anchor model). δ_CV and δ_rel assume a Molpro adapter."
+  base:
+    method: ccsd(t)
+    basis: aug-cc-pVQZ
+  corrections:
+    - label: delta_CV
+      type: delta
+      high: {method: ccsd(t), basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pCVTZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t), basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pVTZ}
+
+W2-F12:
+  reference: "Inspired by W2-F12 (Karton, Martin, J. Chem. Phys. 136, 124114 (2012); DOI: 10.1063/1.3697678). F12-accelerated W2; ARC adaptation pins the anchor to CCSD(T)-F12/cc-pVQZ-F12 (near-CBS quality from a single SP) and applies the canonical δ_CV and δ_rel corrections. δ_CV and δ_rel assume a Molpro adapter."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVQZ-f12
+  corrections:
+    - label: delta_CV
+      type: delta
+      high: {method: ccsd(t), basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pCVTZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t), basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pVTZ}
+
+W3:
+  reference: "Inspired by W3 (Boese, Oren, Atasoylu, Martin, Kállay, Gauss, J. Chem. Phys. 120, 4129 (2004); DOI: 10.1063/1.1638736). Adds a δ[CCSDT] post-(T) correction on top of W2. ARC adaptation pins the anchor to CCSD(T)/aug-cc-pVQZ. δ_CV and δ_rel assume a Molpro adapter."
+  base:
+    method: ccsd(t)
+    basis: aug-cc-pVQZ
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_CV
+      type: delta
+      high: {method: ccsd(t), basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pCVTZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t), basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pVTZ}
+
+W3-F12:
+  reference: "ARC-defined extension of the W*n*-F12 family by analogy: 'W3 = W2 + δ[CCSDT]' (Boese et al., J. Chem. Phys. 120, 4129 (2004); DOI: 10.1063/1.1638736) applied to the F12 anchor introduced in W2-F12 (Karton, Martin, J. Chem. Phys. 136, 124114 (2012); DOI: 10.1063/1.3697678). There is no canonical primary publication titled 'W3-F12'; cite as 'W3-F12 (ARC adaptation)'. δ_CV and δ_rel assume a Molpro adapter."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVQZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_CV
+      type: delta
+      high: {method: ccsd(t), basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pCVTZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t), basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pVTZ}
+
+# W4 and W4-F12 add δ[CCSDT(Q)] and δ[CCSDTQ] (full quadruples) on top of
+# the W3 stack. The δ_QQ leg routes through the MRCC interface — modern
+# Molpro builds with MRCC linked in accept ``ccsdtq`` directly (same path
+# already used for ``ccsdt`` / ``ccsdt(q)`` in W3 / HEAT-345Q). CFOUR-NCC
+# is the alternative back end. A plain Molpro install without MRCC cannot
+# run these sub-jobs. Cite as 'W4 (ARC adaptation)' etc.
+
+W4:
+  reference: "Inspired by W4 (Karton, Rabinovich, Martin, Ruscic, J. Chem. Phys. 125, 144108 (2006); DOI: 10.1063/1.2348881). Adds δ[CCSDT(Q)] and δ[CCSDTQ] on top of W3. The δ_QQ (CCSDTQ) leg requires an ESS that exposes the method — Molpro built with the MRCC interface, or CFOUR-NCC. δ_CV and δ_rel assume a Molpro adapter."
+  base:
+    method: ccsd(t)
+    basis: aug-cc-pVQZ
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_Q
+      type: delta
+      high: {method: ccsdt(q), basis: cc-pVDZ}
+      low:  {method: ccsdt,    basis: cc-pVDZ}
+    - label: delta_QQ
+      type: delta
+      high: {method: ccsdtq,   basis: cc-pVDZ}
+      low:  {method: ccsdt(q), basis: cc-pVDZ}
+    - label: delta_CV
+      type: delta
+      high: {method: ccsd(t), basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pCVTZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t), basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pVTZ}
+
+W4-F12:
+  reference: "Inspired by W4-F12 (Sylvetsky, Peterson, Karton, Martin, J. Chem. Phys. 144, 214101 (2016); DOI: 10.1063/1.4952410, 'Toward a W4-F12 approach: Can explicitly correlated and orbital-based ab initio CCSD(T) limits be reconciled?'). F12-accelerated W4. The δ_QQ (CCSDTQ) leg requires an ESS that exposes the method — Molpro built with the MRCC interface, or CFOUR-NCC. δ_CV and δ_rel assume a Molpro adapter."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVQZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_Q
+      type: delta
+      high: {method: ccsdt(q), basis: cc-pVDZ}
+      low:  {method: ccsdt,    basis: cc-pVDZ}
+    - label: delta_QQ
+      type: delta
+      high: {method: ccsdtq,   basis: cc-pVDZ}
+      low:  {method: ccsdt(q), basis: cc-pVDZ}
+    - label: delta_CV
+      type: delta
+      high: {method: ccsd(t), basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pCVTZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t), basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t), basis: cc-pVTZ}
