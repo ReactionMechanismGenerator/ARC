@@ -215,7 +215,6 @@ from arc.job.adapters.ts.linear_utils.math_zmat import get_r_constraints, get_we
 from arc.job.adapters.ts.linear_utils.postprocess import (
     adjust_reactive_bond_distances,
     has_broken_nonreactive_bond,
-    has_close_h_pair_on_same_parent,
     has_excessive_backbone_drift,
     has_misdirected_migrating_h,
     orient_h_on_reactive_centers,
@@ -223,7 +222,6 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     validate_ts_guess,
 )
 from arc.job.adapters.ts.linear_utils.path_spec import (
-    PathChemistry,
     ReactionPathSpec,
     classify_path_chemistry,
     score_guess_against_path_spec,
@@ -252,11 +250,8 @@ from arc.job.adapters.ts.linear_utils.addition import (
 )
 from arc.job.adapters.ts.linear_utils.local_geometry import (
     apply_reactive_center_cleanup,
-    clean_migrating_h,
     is_internal_reactive_ch2_misoriented,
     orient_h_away_from_axis,
-    regularize_terminal_h_geometry,
-    restore_terminal_h_symmetry,
 )
 from arc.job.adapters.ts.linear_utils.migration_inference import (
     identify_h_migration_pairs,
