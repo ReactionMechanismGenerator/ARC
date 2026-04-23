@@ -29,17 +29,12 @@ from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 import numpy as np
 
 from arc.common import get_single_bond_length
-from arc.job.adapters.ts.linear_utils.geom_utils import (
-    bfs_fragment,
-    dihedral_deg,
-    mol_to_adjacency,
-    rotate_atoms,
-)
+from arc.job.adapters.ts.linear_utils.geom_utils import bfs_fragment, dihedral_deg, mol_to_adjacency, rotate_atoms
 from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
 from arc.species.species import colliding_atoms
 
 if TYPE_CHECKING:
-    from rmgpy.molecule.molecule import Molecule
+    from arc.molecule.molecule import Molecule
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +46,8 @@ PAULING_DELTA: float = 0.42
 # ---------------------------------------------------------------------------
 
 def _dihedral_angle(coords: np.ndarray, a: int, b: int, c: int, d: int) -> float:
-    """Return the dihedral angle A-B-C-D in degrees (-180, 180].
-
+    """
+    Return the dihedral angle A-B-C-D in degrees (-180, 180].
     Delegates to :func:`geom_utils.dihedral_deg`.
     """
     return dihedral_deg(coords[a], coords[b], coords[c], coords[d])
@@ -64,8 +59,8 @@ def _rotate_fragment(coords: np.ndarray,
                      angle_deg: float,
                      moving_atoms: Set[int],
                      ) -> np.ndarray:
-    """Rotate *moving_atoms* by *angle_deg* around the axis origin→end.
-
+    """
+    Rotate *moving_atoms* by *angle_deg* around the axis origin→end.
     Delegates to :func:`geom_utils.rotate_atoms`.
     """
     axis = coords[axis_end] - coords[axis_origin]
@@ -310,11 +305,9 @@ def build_xy_elimination_ts(uni_xyz: dict,
         coords[h_alpha] = hh_mid - hh_dir * d_hh_target * 0.5
         coords[h_hydroxyl] = hh_mid + hh_dir * d_hh_target * 0.5
 
-    ts_xyz = {
-        'symbols': symbols,
-        'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
-        'coords': tuple(tuple(float(x) for x in row) for row in coords),
-    }
+    ts_xyz = {'symbols': symbols,
+              'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
+              'coords': tuple(tuple(float(x) for x in row) for row in coords)}
     return ts_xyz
 
 
@@ -323,13 +316,13 @@ def build_xy_elimination_ts(uni_xyz: dict,
 # ---------------------------------------------------------------------------
 
 
-def build_1_3_sigmatropic_rearrangement_ts(
-        r_xyz: dict,
-        r_mol: 'Molecule',
-        breaking_bonds: List[Tuple[int, int]],
-        forming_bonds: List[Tuple[int, int]],
-) -> Optional[dict]:
-    """Build a compact TS for a 1,3-sigmatropic rearrangement.
+def build_1_3_sigmatropic_rearrangement_ts(r_xyz: dict,
+                                           r_mol: 'Molecule',
+                                           breaking_bonds: List[Tuple[int, int]],
+                                           forming_bonds: List[Tuple[int, int]],
+                                           ) -> Optional[dict]:
+    """
+    Build a compact TS for a 1,3-sigmatropic rearrangement.
 
     In a [1,3]-sigmatropic shift one atom (the *migrating atom*) moves
     from the *origin* to the *target* via the allylic/heteroallylic
@@ -560,11 +553,9 @@ def build_1_3_sigmatropic_rearrangement_ts(
                              f'returning None.')
                 return None
 
-    ts_xyz = {
-        'symbols': symbols,
-        'isotopes': r_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
-        'coords': tuple(tuple(float(c) for c in row) for row in coords),
-    }
+    ts_xyz = {'symbols': symbols,
+              'isotopes': r_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
+              'coords': tuple(tuple(float(c) for c in row) for row in coords)}
     return ts_xyz
 
 
@@ -573,12 +564,12 @@ def build_1_3_sigmatropic_rearrangement_ts(
 # ---------------------------------------------------------------------------
 
 
-def build_baeyer_villiger_step2_ts(
-        uni_xyz: dict,
-        uni_mol: 'Molecule',
-        split_bonds: List[Tuple[int, int]],
-) -> Optional[dict]:
-    """Build a concerted TS for the Baeyer-Villiger step 2 rearrangement.
+def build_baeyer_villiger_step2_ts(uni_xyz: dict,
+                                   uni_mol: 'Molecule',
+                                   split_bonds: List[Tuple[int, int]],
+                                   ) -> Optional[dict]:
+    """
+    Build a concerted TS for the Baeyer-Villiger step 2 rearrangement.
 
     In BV step 2, a Criegee intermediate rearranges concertedly:
     the O-O peroxide bond breaks, an alkyl group on the *other*
@@ -590,18 +581,16 @@ def build_baeyer_villiger_step2_ts(
 
     1. ``split_bonds`` must contain at least one O-O peroxide cut.
     2. One peroxide O (*carbonyl-side O*) is bonded to a C with a C=O.
-    3. The other peroxide O (*other-side O*) is bonded to a *quaternary-
-       like C* (the origin of the migrating group).
+    3. The other peroxide O (*other-side O*) is bonded to a *quaternary-like C*
+       (the origin of the migrating group).
     4. The migrating group root is a non-O, non-H neighbor of the
        quaternary C.  When there are multiple candidates (e.g. two
-       CH₃ groups), each is tried and the first non-colliding guess
-       is returned.
+       CH₃ groups), each is tried and the first non-colliding guess is returned.
     5. If any of these conditions are not met, return ``None``.
 
     Geometry construction (calibrated to DFT-curated TS):
 
-    1. Stretch O-O to ~2.02 Å (``sbl + 2 × 0.27``; calibrated from
-       the curated TS).
+    1. Stretch O-O to ~2.02 Å (``sbl + 2 × 0.27``; calibrated from the curated TS).
     2. Stretch C_parent-C_migrating to ~2.30 Å (``sbl + 0.76``;
        calibrated — the migrating group is leaving its parent).
     3. Contract C_migrating toward O_other to ~2.16 Å
@@ -612,13 +601,11 @@ def build_baeyer_villiger_step2_ts(
     Args:
         uni_xyz: Criegee intermediate XYZ dict.
         uni_mol: Criegee intermediate RMG Molecule.
-        split_bonds: Fragmentation bond cuts (from
-            :func:`find_split_bonds_by_fragmentation`).
+        split_bonds: Fragmentation bond cuts (from :func:`find_split_bonds_by_fragmentation`).
 
     Returns:
         TS XYZ dict, or ``None`` if the BV motif cannot be identified.
     """
-
     symbols = uni_xyz['symbols']
     n_atoms = len(symbols)
 
