@@ -1455,7 +1455,7 @@ def find_smart_anchors(mol: 'Molecule',
 
     if spectators_near_core:
         anchor0 = max(spectators_near_core, key=_weight)
-        # Anchor 1: neighbour of anchor0, prefer spectators.
+        # Anchor 1: neighbor of anchor0, prefer spectators.
         anchor1_candidates = [nbr for nbr in connectivity[anchor0]]
         tier1 = [nbr for nbr in anchor1_candidates if nbr in spectators and not _is_breaking(anchor0, nbr)]
         tier2 = [nbr for nbr in anchor1_candidates if not _is_breaking(anchor0, nbr)]
@@ -1484,7 +1484,7 @@ def find_smart_anchors(mol: 'Molecule',
         # Step 4: no spectators – entire molecule is reactive.              #
         # ---------------------------------------------------------------- #
         anchor0 = max(range(n), key=_weight)
-        # Prefer a non-breaking neighbour for anchor1.
+        # Prefer a non-breaking neighbor for anchor1.
         nbrs = connectivity[anchor0]
         non_break = [nbr for nbr in nbrs if not _is_breaking(anchor0, nbr)]
         anchor1_pool = non_break if non_break else nbrs
@@ -1495,8 +1495,8 @@ def find_smart_anchors(mol: 'Molecule',
 
     # If anchor1 is sp-hybridised (linear geometry), the triple
     # anchor0–anchor1–anchor2 would be collinear.  Detect sp by checking
-    # for exactly 2 neighbours that are ALL heavy atoms (no H).  Atoms
-    # like O in H₂O₂ have 2 neighbours but include H, so they are sp3.
+    # for exactly 2 neighbors that are ALL heavy atoms (no H).  Atoms
+    # like O in H₂O₂ have 2 neighbors but include H, so they are sp3.
     if anchor2 is not None and anchor1 is not None:
         nbrs_1 = connectivity[anchor1]
         if len(nbrs_1) == 2 and all(mol.atoms[nbr].symbol != 'H' for nbr in nbrs_1):

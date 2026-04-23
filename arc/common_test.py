@@ -35,7 +35,7 @@ class TestCommon(unittest.TestCase):
         """Remove the globalized restart-paths artifact written by
         :meth:`test_globalize_paths`.
 
-        Called from BOTH ``setUpClass`` (defensive — wipes a stale
+        Called from BOTH ``setUpClass`` (defensive: wipes a stale
         artifact left behind by a previously interrupted run) and
         ``tearDownClass`` (the normal cleanup path).  This makes the
         cleanup self-healing: a Ctrl+C, ``kill``, or hard error during

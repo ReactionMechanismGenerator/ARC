@@ -21,18 +21,18 @@ Pipeline
 --------
 For each reaction path (product_dict) the adapter runs the following steps:
 
-1.  **Atom mapping** — ``map_rxn`` finds the atom-to-atom correspondence between the
+1.  **Atom mapping**: ``map_rxn`` finds the atom-to-atom correspondence between the
     reactant and product for the specific reaction path (e.g., which of several
     equivalent H's is migrating).  A global fallback map is used if the per-path call
     fails.
 
-2.  **Near-attack conformation** — ``get_near_attack_xyz`` pre-rotates the reactant (and
+2.  **Near-attack conformation**: ``get_near_attack_xyz`` pre-rotates the reactant (and
     product) geometry so that the reactive atoms are physically close to each other before
     any Z-matrix is built.  Without this step, the equilibrium conformations of reactant
     and product are often far from the TS ring geometry, and interpolation produces a poor
     guess.  See *Near-attack geometry* below for details.
 
-3.  **Z-matrix chimeras** — Two independent TS guesses are built per path:
+3.  **Z-matrix chimeras**: Two independent TS guesses are built per path:
 
     * **Type R** (reactant topology): A Z-matrix is constructed from the near-attack
       reactant geometry.  The near-attack product geometry (in reactant atom ordering) is
@@ -42,25 +42,25 @@ For each reaction path (product_dict) the adapter runs the following steps:
       participating in a forming or breaking bond are interpolated; all other
       coordinates are taken unchanged from the reactant Z-matrix.
 
-    * **Type P** (product topology): Symmetric to Type R — built from the near-attack
+    * **Type P** (product topology): Symmetric to Type R built from the near-attack
       product geometry and blended at ``1 − weight``.
 
     Anchor atoms for both Z-matrices are chosen by ``find_smart_anchors``, which prefers
     spectator atoms adjacent to the reactive core so the coordinate frame is stable across
     interpolation.
 
-4.  **Weight grid** — ``get_weight_grid`` returns the set of interpolation weights to try
+4.  **Weight grid**: ``get_weight_grid`` returns the set of interpolation weights to try
     (default ``(0.35, 0.50, 0.65)``).  If reactant and/or product energies (E0 or
     e_elect) are available, the grid is biased toward the Hammond/Marcus-predicted TS
     position (early TS for exothermic reactions, late TS for endothermic), with ±0.10
     spread around the prediction.
 
-5.  **Geometry post-processing and validation** — Each candidate XYZ that emerges from
+5.  **Geometry post-processing and validation**: Each candidate XYZ that emerges from
     ``zmat_to_xyz`` is corrected and validated before being added to the output list:
 
     * **H-transfer distance correction** (``fix_forming_bond_distances``): for each
-      forming bond involving a hydrogen, the migrating H is placed by triangulation —
-      at the intersection of two spheres centred on the donor and acceptor with
+      forming bond involving a hydrogen, the migrating H is placed by triangulation
+      at the intersection of two spheres centerd on the donor and acceptor with
       Pauling-estimated TS radii (d0 + 0.42 Å), preserving the approach direction
       from the interpolation.
 
@@ -99,7 +99,7 @@ For each reaction path (product_dict) the adapter runs the following steps:
       donor–H, acceptor–H, or donor–acceptor distances fall outside physically
       reasonable TS windows.
 
-6.  **Deduplication** — Near-identical surviving guesses (compared pairwise by
+6.  **Deduplication**: Near-identical surviving guesses (compared pairwise by
     ``almost_equal_coords``) are collapsed to a single entry, preventing symmetry-
     equivalent paths from flooding the output.
 
@@ -111,12 +111,12 @@ and simple Z-matrix interpolation cannot bridge that gap.  The near-attack step 
 the backbone dihedral angles so the molecule folds into the ring-like TS geometry before
 the Z-matrix is built.
 
-**Ring size** — the number of atoms in the cyclic TS (including the migrating atom and
+**Ring size**: the number of atoms in the cyclic TS (including the migrating atom and
 the acceptor) equals the length of the shortest BFS path from the migrating atom to the
 acceptor: N = len(path).  Example: for CCCOO intra-H migration the ring is
 [H, C, C, C, O, O] → N = 6.
 
-**Per-position dihedral targets** — ``_TS_RING_DIHEDRALS`` maps each ring size N to a
+**Per-position dihedral targets**: ``_TS_RING_DIHEDRALS`` maps each ring size N to a
 list of (N − 3) target dihedral magnitudes, one for each rotatable interior bond (ordered
 from the donor end inward).  The values obey the empirical sum rule:
 
@@ -137,16 +137,16 @@ bond is used.
     |         |  100.0]                   |                    |
     +---------+---------------------------+--------------------+
 
-**Sign selection** — for each interior bond the function trials both +T and −T rotations
+**Sign selection**: for each interior bond the function trials both +T and −T rotations
 (where T is the target magnitude) and applies the one that brings the donor atom and
 acceptor atom closer together.  This is done by a fast Rodrigues in-place rotation on a
 copy of the coordinate array; the actual geometry is updated only once the better
 direction is known.  Non-rotatable bonds (double, triple, aromatic, in-ring) are skipped.
 
-**Terminal-group orientation** (H-migration only) — after backbone rotation, the migrating
+**Terminal-group orientation** (H-migration only): after backbone rotation, the migrating
 hydrogen has not yet been moved (it is upstream of all interior bonds).  A second pass
 scans ±60° (in 5° steps) around the bond connecting the donor carbon to the next backbone
-atom and selects the angle that minimises the H–acceptor distance.  Only the H atoms and
+atom and selects the angle that minimizes the H–acceptor distance.  Only the H atoms and
 other substituents on the donor carbon are moved; the backbone remains unchanged.  This
 step is restricted to reactions where the migrating atom is hydrogen, to avoid disturbing
 heavy-atom rearrangements (e.g., NO₂ ↔ ONO conversions) where the same rotation would
@@ -222,7 +222,7 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     validate_ts_guess,
 )
 from arc.job.adapters.ts.linear_utils.path_spec import (
-    PathChemistry,  # noqa: F401  — exported as part of this module's public API
+    PathChemistry,  # noqa: F401, exported as part of this module's public API
     ReactionPathSpec,
     classify_path_chemistry,
     score_guess_against_path_spec,
@@ -309,7 +309,7 @@ class GuessRecord:
 
     Carries the XYZ geometry together with the path-specific bonds,
     strategy label, and optional validation anchors through the entire
-    pipeline — eliminating parallel arrays and making per-guess
+    pipeline, eliminating parallel arrays and making per-guess
     post-processing safe.
     """
     xyz: dict
@@ -380,22 +380,22 @@ def _apply_internal_ch2_cleanup_to_isomerization_record(
     :func:`apply_reactive_center_cleanup` orchestrator (which itself
     routes through the terminal-group asymmetry detector and the
     internal-CH₂ misorientation detector) around an opt-in selection of
-    centres derived from each guess's changing bonds.
+    centers derived from each guess's changing bonds.
 
     The pass is **strictly opt-in** and runs only when ALL of:
 
     1. The record has at least one heavy-heavy changing bond (pure
-       H-migration reactions are excluded — their migrating H is
+       H-migration reactions are excluded: their migrating H is
        carefully placed by upstream helpers and any orchestrator
        perturbation around the donor/acceptor would risk regression).
     2. A 1-bond expansion from any reactive heavy endpoint brings in an
-       internal CH₂ neighbour (heavy degree 2 + H count 2 in the
-       reactant graph) — without an expansion the orchestrator would
+       internal CH₂ neighbor (heavy degree 2 + H count 2 in the
+       reactant graph): without an expansion the orchestrator would
        only see endpoints already handled by
        :func:`orient_h_on_reactive_centers`.
     3. The  :func:`is_internal_reactive_ch2_misoriented` detector
-       fires on at least one expansion centre in the current TS
-       geometry — when every candidate centre is already well-oriented
+       fires on at least one expansion center in the current TS
+       geometry: when every candidate center is already well-oriented
        the orchestrator is not called at all.
 
     Args:
@@ -432,7 +432,7 @@ def _apply_internal_ch2_cleanup_to_isomerization_record(
                 reactive_iso.add(ai)
     if not reactive_iso or not has_heavy_heavy_change:
         return rec.xyz
-    # 1-bond expansion to immediate internal-CH₂ neighbours of each
+    # 1-bond expansion to immediate internal-CH₂ neighbors of each
     # reactive heavy endpoint.
     expansion_iso: Set[int] = set()
     for center_iso in reactive_iso:
@@ -455,7 +455,7 @@ def _apply_internal_ch2_cleanup_to_isomerization_record(
     if not expansion_iso:
         return rec.xyz
     # Detector pre-check: only call the orchestrator on the subset
-    # of expansion centres that the detector flags as
+    # of expansion centers that the detector flags as
     # misoriented in this guess's geometry.
     misoriented_iso: Set[int] = set()
     for cand in expansion_iso:
@@ -511,7 +511,7 @@ def _postprocess_isomerization_records(unique: List['GuessRecord'],
 
     The pipeline runs in this fixed order:
 
-    1. **Global ring repair** — :func:`_fix_broken_ring_bonds` repairs
+    1. **Global ring repair**: :func:`_fix_broken_ring_bonds` repairs
        ring bonds broken by Z-matrix interpolation.
     2. **Path-local geometric correction** — for each record, repairs
        the forming-bond path, adjusts reactive bond distances, and
@@ -1860,8 +1860,7 @@ def interpolate_addition(rxn: 'ARCReaction',
                     # stretched away from the large product (e.g. C-O in
                     # HO2 elimination).
                     ts_xyz = stretch_core_from_large(
-                        ts_xyz, uni_mol, split_bonds, core, large_prod_atoms,
-                        small_prod_atoms, weight)
+                        ts_xyz, split_bonds, core, large_prod_atoms, weight)
                     # Reset migrating atoms to their pre-stretch positions
                     # before calling migrate_verified_atoms.  stretch_bond
                     # may have moved them in the wrong direction.

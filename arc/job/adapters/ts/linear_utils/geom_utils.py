@@ -9,12 +9,9 @@ anywhere without circular-dependency issues.
 
 Graph/fragment utilities:
 
-* :func:`mol_to_adjacency` — build an ``{int: Set[int]}`` adjacency dict
-  from an RMG Molecule.
-* :func:`bfs_fragment` — BFS from a start atom, blocking specified atoms,
-  returning the reachable fragment.
-* :func:`split_mol_at_bonds` — split a molecule into connected components
-  after removing specified bonds.
+* :func:`mol_to_adjacency`: build an ``{int: Set[int]}`` adjacency dict from an RMG Molecule.
+* :func:`bfs_fragment`: BFS from a start atom, blocking specified atoms, returning the reachable fragment.
+* :func:`split_mol_at_bonds`: split a molecule into connected components after removing specified bonds.
 """
 
 from collections import deque
@@ -125,7 +122,7 @@ def bfs_path(adj: List[List[int]], src: int, dst: int) -> Optional[List[int]]:
     """Return the shortest path from *src* to *dst* using the adjacency list *adj*.
 
     Args:
-        adj: Atom adjacency list (``adj[i]`` lists neighbours of atom *i*).
+        adj: Atom adjacency list (``adj[i]`` lists neighbors of atom *i*).
         src: Source atom index.
         dst: Destination atom index.
 

@@ -9,14 +9,14 @@ closure, fragment rotation, etc.).
 
 Supported families:
 
-* ``XY_elimination`` — 4-center concerted elimination.
-* ``1,3_sigmatropic_rearrangement`` — ring-atom reconstruction.
-* ``Baeyer-Villiger_step2`` — concerted peroxide rearrangement.
-* ``Singlet_Carbene_Intra_Disproportionation`` — carbene H-shift.
-* ``Korcek_step1`` — keto-peroxide ring closure + H transfer.
-* ``Intra_OH_migration`` — early-TS ring closure for OH migration.
-* ``intra_substitutionS_isomerization`` — concerted S bond-swap.
-* ``Retroene`` — 6-membered ring fragmentation.
+* ``XY_elimination``: 4-center concerted elimination.
+* ``1,3_sigmatropic_rearrangement``: ring-atom reconstruction.
+* ``Baeyer-Villiger_step2``: concerted peroxide rearrangement.
+* ``Singlet_Carbene_Intra_Disproportionation``: carbene H-shift.
+* ``Korcek_step1``: keto-peroxide ring closure + H transfer.
+* ``Intra_OH_migration``: early-TS ring closure for OH migration.
+* ``intra_substitutionS_isomerization``: concerted S bond-swap.
+* ``Retroene``: 6-membered ring fragmentation.
 
 All builders return ``None`` when the motif cannot be identified
 unambiguously or the resulting geometry collides.
@@ -158,7 +158,7 @@ def build_xy_elimination_ts(uni_xyz: dict,
             bond_orders[key] = bond.order
 
     # --- Step 1: Identify the 6-membered ring atoms ---
-    # Find C_carb: a carbon with one =O neighbour and one -OH neighbour.
+    # Find C_carb: a carbon with one =O neighbor and one -OH neighbor.
     c_carb = o_double = o_hydroxyl = h_hydroxyl = c_beta = c_alpha = h_alpha = None
 
     for i, sym in enumerate(symbols):
@@ -187,13 +187,13 @@ def build_xy_elimination_ts(uni_xyz: dict,
     if c_carb is None:
         return None
 
-    # Find C_beta: a C neighbour of C_carb.
+    # Find C_beta: a C neighbor of C_carb.
     c_beta_candidates = [j for j in adj[c_carb] if symbols[j] == 'C']
     if not c_beta_candidates:
         return None
     c_beta = c_beta_candidates[0]
 
-    # Find C_alpha: a C neighbour of C_beta that is not C_carb.
+    # Find C_alpha: a C neighbor of C_beta that is not C_carb.
     c_alpha_candidates = [j for j in adj[c_beta] if symbols[j] == 'C' and j != c_carb]
     if not c_alpha_candidates:
         return None

@@ -4,25 +4,25 @@ This module owns the small, deterministic, *immediate-shell* utilities
 that the addition and isomerization pipelines use to clean up post-
 generation TS geometries before they reach the final-stage path-spec
 wrapper.  The helpers operate on a single named heavy center and its
-direct H/heavy neighbours; they never scan the whole molecule.
+direct H/heavy neighbors; they never scan the whole molecule.
 
 Helper categories:
 
-* **Bond-length regularizers** — :func:`regularize_terminal_h_geometry`
+* **Bond-length regularizers**: :func:`regularize_terminal_h_geometry`
   snaps clearly over-stretched or compressed terminal H atoms back to
   ``sbl(C, H)``.
-* **Spectator-H reorientation** — :func:`orient_h_away_from_axis`
+* **Spectator-H reorientation**: :func:`orient_h_away_from_axis`
   reflects a non-migrating H atom away from a donor → acceptor reaction
   axis when it currently sits in the blocking pocket.
-* **Migrating-H triangulation** — :func:`clean_migrating_h` re-places a
+* **Migrating-H triangulation**: :func:`clean_migrating_h` re-places a
   single migrating H at the donor-acceptor Pauling-triangulated TS
   position.
-* **Terminal CH₂/CH₃ asymmetry detection and repair** —
+* **Terminal CH₂/CH₃ asymmetry detection and repair**:
   :func:`is_terminal_group_asymmetric` and
-  :func:`restore_terminal_h_symmetry`.  Detect umbrella inversion and
+  :func:`restore_terminal_h_symmetry`. Detect umbrella inversion and
   azimuthal distortion, then repair while preserving each H's original
   bond length to the parent.
-* **Internal reactive CH₂ detection and repair** —
+* **Internal reactive CH₂ detection and repair**:
   :func:`is_internal_reactive_ch2_misoriented` and
   :func:`repair_internal_reactive_ch2`.  Detect heavy-corridor
   crowding, squeezing and sp³ plane violations on internal CH₂ shells,
@@ -584,7 +584,7 @@ def restore_terminal_h_symmetry(xyz: dict,
 
     The repair stays strictly local: the parent atom and any atoms
     not in the H neighbor list are read-only.  Non-H atoms are never
-    moved.  When the eligibility check fails (non-terminal centre,
+    moved.  When the eligibility check fails (non-terminal center,
     degenerate axis, missing basis, ``r_i = 0``) the function returns
     the original ``xyz`` unchanged.
 

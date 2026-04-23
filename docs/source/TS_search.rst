@@ -82,7 +82,7 @@ reaction path identified from the RMG template:
        the interpolation weight, and converts back to Cartesian coordinates.
        Only coordinates referencing reactive atoms are interpolated; spectator
        coordinates are kept from the source geometry.
-   * - 3-centre shift
+   * - 3-center shift
      - Repositions a migrating atom (e.g., halogen, sulfur) between its
        donor and acceptor for 1,2-shift reactions.
 

@@ -820,14 +820,13 @@ def try_insertion_ring(uni_xyz: dict,
 
 
 def stretch_core_from_large(ts_xyz: dict,
-                             uni_mol: 'Molecule',
                              split_bonds: List[Tuple[int, int]],
                              core: Set[int],
                              large_prod_atoms: Set[int],
-                             small_prod_atoms: Set[int],
                              weight: float = 0.5,
                              ) -> dict:
-    """Stretch the core of the small product away from the large product.
+    """
+    Stretch the core of the small product away from the large product.
 
     When fragmenting the reactant produces 3+ fragments (e.g. in elimination
     reactions), ``stretch_bond`` only moves the smallest fragment.  This
@@ -839,11 +838,9 @@ def stretch_core_from_large(ts_xyz: dict,
 
     Args:
         ts_xyz: Current TS guess XYZ (after ``stretch_bond``).
-        uni_mol: RMG Molecule of the unimolecular species.
         split_bonds: All breaking bonds.
         core: Atom indices forming the connected core of the small product.
         large_prod_atoms: Atom indices belonging to the large product.
-        small_prod_atoms: All atoms belonging to the small product (core + migrating).
         weight: Interpolation weight (0 = reactant-like, 1 = product-like).
 
     Returns:
@@ -874,8 +871,7 @@ def stretch_core_from_large(ts_xyz: dict,
         return ts_xyz
     direction /= norm
 
-    target_dists = []
-    current_dists = []
+    target_dists, current_dists = [], []
     for ca, la in zip(core_anchors, large_anchors):
         sbl = get_single_bond_length(symbols[ca], symbols[la])
         target_dists.append(sbl + PAULING_DELTA)
@@ -1201,7 +1197,7 @@ def migrate_h_between_fragments(ts_xyz: dict,
             if donor_heavy is None:
                 continue
 
-            # Triangulate: place H at the intersection of two spheres centred
+            # Triangulate: place H at the intersection of two spheres centerd
             # on donor and acceptor with TS-like radii, choosing the point
             # closest to the current H position. This produces a non-collinear
             # D-H-A geometry that avoids passing through atoms between donor

@@ -4,7 +4,7 @@
 """Integration / regression tests for the linear TS-guess adapter.
 
 This file owns the large per-family integration suite for
-:mod:`arc.job.adapters.ts.linear` — tests that exercise the full
+:mod:`arc.job.adapters.ts.linear`: tests that exercise the full
 ``interpolate``, ``interpolate_isomerization``, ``interpolate_addition``,
 and ``LinearAdapter`` pipelines on real reactant/product XYZ inputs
 and assert that the produced TS guesses match curated expected
@@ -12,11 +12,11 @@ geometries (or family-specific quality invariants).
 
 Companion test files:
 
-* ``linear_invariants_test.py`` — production-path invariant
+* ``linear_invariants_test.py``: production-path invariant
   mini-suite (carbene consistency, terminal-group cleanup invariant,
   isomerization H-migration invariant, frag-fallback structural
   invariant, degraded-mode smoke test).
-* ``linear_debug_dump_test.py`` — quarantine tests for the
+* ``linear_debug_dump_test.py``: quarantine tests for the
   developer-only ``_save_debug_geometries`` helper, which is inert
   by default and only writes anything when the
   ``ARC_LINEAR_DEBUG_DUMP`` environment variable is set.
@@ -102,7 +102,7 @@ def _save_debug_geometries(ts_xyzs, rxn, out_dir: Optional[str] = None) -> None:
       non-empty, non-``"0"`` value, OR
     * the output directory (default ``~/Desktop/xyz/linear/``) already
       exists (a pre-created directory signals the developer wants output
-      without needing to set an env var — convenient for PyCharm
+      without needing to set an env var, convenient for PyCharm
       and other IDE runners).
 
     In all other cases the helper is inert and does not touch the
@@ -436,7 +436,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertIsNotNone(result)
         d_interp = result['vars']['D_3_2_1_0']
         self.assertAlmostEqual(abs(d_interp), 180.0, places=2, msg=f'Expected ±180°, got {d_interp}°.')
-        self.assertNotAlmostEqual(d_interp, 0.0, places=1, msg='Dihedral wrapped to 0° — shortest-path arithmetic failed.')
+        self.assertNotAlmostEqual(d_interp, 0.0, places=1, msg='Dihedral wrapped to 0°, shortest-path arithmetic failed.')
 
     def test_average_zmat_params_angle_singularity_clamping(self):
         """
@@ -5495,10 +5495,10 @@ H       1.16560000    0.49640000    0.85960000"""))
         The isomerization wiring is the late call inside
         :func:`interpolate_isomerization` that feeds the orchestrator
         the heavy atoms in each guess's changing bonds, plus a one-bond
-        expansion to immediate internal-CH₂ neighbours.  The wiring is
+        expansion to immediate internal-CH₂ neighbors.  The wiring is
         *strictly opt-in*: the orchestrator is only invoked
         when the internal-CH₂ misorientation detector
-        actually fires on a candidate centre.
+        actually fires on a candidate center.
 
         This test traces the wiring with a real isomerization-route
         reaction (``Intra_RH_Add_Endocyclic``: ``OCCCC=C <=>
@@ -5508,11 +5508,11 @@ H       1.16560000    0.49640000    0.85960000"""))
 
           (1) the detector must be called at least once for an
               internal CH₂ atom in the reactant graph (proving the
-              wiring identifies the correct candidate centres), and
+              wiring identifies the correct candidate centers), and
           (2) ``apply_reactive_center_cleanup`` must be called at
               least once with that internal CH₂ atom in its
               ``reactive_centers`` set (proving the wiring forwards
-              flagged centres to the orchestrator).
+              flagged centers to the orchestrator).
 
         The test exercises the wiring with a deterministic forced
         signal so it does not depend on the natural geometric
@@ -5653,8 +5653,8 @@ H       0.97222065   -1.40727159   -1.00427440"""
     def test_isomerization_late_cleanup_does_not_touch_unrelated_atoms(self):
         """Non-regression: when  cleanup runs on an
         isomerization guess, it must NOT mutate atoms outside the
-        immediate first shell of the reactive heavy centres or their
-        1-bond internal-CH₂ neighbours.
+        immediate first shell of the reactive heavy centers or their
+        1-bond internal-CH₂ neighbors.
 
         This guards against accidentally broadening the cleanup to
         unrelated atoms (the explicit "no broad cleanup expansion"
@@ -5663,7 +5663,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
         We exercise this with the same Intra_RH_Add_Endocyclic
         reaction used by the coverage-audit test and verify that
         atoms more than one graph hop away from the changing bonds
-        — and that are not internal CH₂ neighbours — are unchanged
+        — and that are not internal CH₂ neighbors — are unchanged
         when we run the wired orchestrator on the surviving guesses.
         """
         from unittest.mock import patch
@@ -5760,7 +5760,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
                     np.allclose(call['in'][idx], call['out'][idx], atol=1e-9),
                     msg=f'atom {idx} was mutated by the cleanup '
                         f'pass even though it is outside the immediate '
-                        f'first shell of the reactive centres '
+                        f'first shell of the reactive centers '
                         f'{reactive}')
 
     @pytest.mark.slow
@@ -5770,7 +5770,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
         The late-cleanup wiring is strictly opt-in: it only invokes the
         internal-CH₂ detector when (a) there is at least one
         heavy-heavy changing bond on the guess, and (b) the one-bond
-        expansion brings in a centre that satisfies the internal CH₂
+        expansion brings in a center that satisfies the internal CH₂
         graph condition.
 
         This test runs a real targeted isomerization reaction
@@ -5873,7 +5873,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
             msg=' wiring did not naturally invoke the '
                 'internal-CH₂ detector for the OCCCC=C reaction — the '
                 'production-path wiring is not being exercised '
-                f'(natural detector invocations on any centre: '
+                f'(natural detector invocations on any center: '
                 f'{natural_detector_calls}, expected internal CH₂ '
                 f'atoms: {internal_ch2_atoms})')
 
@@ -5907,7 +5907,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
         )
         #  selection on a synthetic "C0–C1 forming bond" guess
         # would expand from {C0} (terminal) by 1 bond to its internal-CH₂
-        # neighbour (the middle C).  Pass that exact set to the
+        # neighbor (the middle C).  Pass that exact set to the
         # orchestrator and confirm nothing moves.
         from arc.job.adapters.ts.linear_utils.local_geometry import (
             apply_reactive_center_cleanup,

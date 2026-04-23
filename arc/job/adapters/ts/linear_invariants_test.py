@@ -73,17 +73,10 @@ class TestProductionPathInvariants(unittest.TestCase):
         p = ARCSpecies(label='P', smiles='[CH2]C')
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn, weight=0.5)
-        # Trivial-symmetry reaction; the pipeline may legitimately
-        # return zero or more guesses. Either outcome is acceptable —
-        # the invariant is "no collisions in any guess that *is*
-        # produced", not "must produce at least one".
         if not ts_xyzs:
-            self.skipTest('Symmetric H-migration produced no guesses '
-                          '— invariant is vacuously satisfied.')
+            self.skipTest('Symmetric H-migration produced no guesses, invariant is vacuously satisfied.')
         for ts in ts_xyzs:
-            self.assertFalse(
-                colliding_atoms(ts),
-                msg=f'collision in production-path TS guess: {ts}')
+            self.assertFalse(colliding_atoms(ts), msg=f'collision in production-path TS guess: {ts}')
 
     def test_invariant_terminal_group_cleanup_unchanged_for_clean_input(self):
         """Production path: when an already-clean ethane is passed
@@ -190,9 +183,8 @@ class TestProductionPathInvariants(unittest.TestCase):
 
         This is the frag-fallback H-migration *structural* invariant
         the cleanup preserved across the extraction of the
-        helper into :mod:`migration_inference`.  We do NOT assert a
-        specific chemistry outcome — only that the contract shape is
-        intact.
+        helper into :mod:`migration_inference`. We do NOT assert a
+        specific chemistry outcome, only that the contract shape is intact.
         """
         from arc.species import ARCSpecies
         from arc.job.adapters.ts.linear_utils.migration_inference import (

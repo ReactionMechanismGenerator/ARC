@@ -657,7 +657,7 @@ class TestGeometryFixers(unittest.TestCase):
         """
         from arc.job.adapters.ts.linear_utils.postprocess import orient_h_on_reactive_centers
         from arc.species import ARCSpecies
-        # Simplified: N0-C1(-H3,-H4)-C2  where C1 is the reactive centre
+        # Simplified: N0-C1(-H3,-H4)-C2  where C1 is the reactive center
         # and the forming bond is (C1, O_phantom) in the N direction.
         # Put both H's on C1 pointing TOWARD N0.
         mol = ARCSpecies(label='test', smiles='NCC', xyz={
@@ -688,7 +688,7 @@ class TestGeometryFixers(unittest.TestCase):
         self.assertGreater(h4_x, 0, f'H4 should point away from N: x={h4_x:.3f}')
 
     def test_orient_h_on_reactive_centers(self):
-        """Test that H atoms on reactive centres are flipped away from the reactive direction."""
+        """Test that H atoms on reactive centers are flipped away from the reactive direction."""
         from arc.job.adapters.ts.linear_utils.postprocess import orient_h_on_reactive_centers
         from arc.species import ARCSpecies
         # Simple case: CH3 radical approaching a C atom.

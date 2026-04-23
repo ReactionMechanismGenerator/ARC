@@ -665,8 +665,8 @@ class TestStretchCoreFromLarge(unittest.TestCase):
         c_idx = [i for i, s in enumerate(symbols) if s == 'C']
         # core and large_prod_atoms don't share a split bond endpoint
         result = stretch_core_from_large(
-            xyz, mol, split_bonds=[(c_idx[0], c_idx[1])],
-            core={c_idx[0]}, large_prod_atoms=set(), small_prod_atoms={c_idx[0]},
+            xyz, split_bonds=[(c_idx[0], c_idx[1])],
+            core={c_idx[0]}, large_prod_atoms=set(),
             weight=0.5)
         self.assertEqual(result, xyz)
 
@@ -697,9 +697,8 @@ class TestStretchCoreFromLarge(unittest.TestCase):
         split_bonds = [(c_idx[1], c_idx[2])]
 
         result = stretch_core_from_large(
-            xyz, mol, split_bonds=split_bonds,
-            core=core, large_prod_atoms=large,
-            small_prod_atoms=core, weight=0.5)
+            xyz, split_bonds=split_bonds,
+            core=core, large_prod_atoms=large, weight=0.5)
         # The core atom c_idx[2] should have moved away from the large product
         orig_d = np.linalg.norm(
             np.array(xyz['coords'][c_idx[2]]) - np.array(xyz['coords'][c_idx[1]]))
@@ -720,9 +719,8 @@ class TestStretchCoreFromLarge(unittest.TestCase):
             'coords': coords,
         }
         result = stretch_core_from_large(
-            xyz, mol, split_bonds=[(c_idx[0], c_idx[1])],
-            core={c_idx[1]}, large_prod_atoms={c_idx[0]},
-            small_prod_atoms={c_idx[1], c_idx[2]}, weight=0.5)
+            xyz, split_bonds=[(c_idx[0], c_idx[1])],
+            core={c_idx[1]}, large_prod_atoms={c_idx[0]}, weight=0.5)
         self.assertEqual(result['symbols'], xyz['symbols'])
 
 

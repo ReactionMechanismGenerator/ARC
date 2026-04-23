@@ -221,7 +221,7 @@ def path_has_cumulated_bonds(mol: 'Molecule',
     """Check whether the BFS path between forming-bond atoms passes through
     a cumulated double-bond segment (e.g. C=C=C).
 
-    Cumulated double bonds are geometrically linear (sp-hybridised centre),
+    Cumulated double bonds are geometrically linear (sp-hybridized center),
     which makes Z-matrix dihedral interpolation ill-defined.  When this
     function returns ``True``, the ring-closure algorithm should be used
     instead of Z-matrix interpolation.
@@ -554,7 +554,7 @@ def ring_closure_xyz(xyz: dict,
 
     # Compute per-angle flexibility from bond orders when the path contains
     # a cumulated double-bond segment (e.g. C=C=C).  Such segments are
-    # geometrically linear (sp centre) and must stay nearly linear during
+    # geometrically linear (sp center) and must stay nearly linear during
     # ring closure while the remaining angles absorb the bending.
     # Cumulated angles get near-zero flex (0.1); non-cumulated angles get
     # 1/mean_bo, giving a gentle gradient.
@@ -722,8 +722,8 @@ def ring_closure_xyz(xyz: dict,
     coords[:] = best_coords
 
     # --- Step 4: detect H atoms entrapped inside the forming ring and flip
-    ring_centre = coords[path].mean(axis=0)
-    ring_coords = coords[path] - ring_centre
+    ring_center = coords[path].mean(axis=0)
+    ring_coords = coords[path] - ring_center
     _, _, vh = np.linalg.svd(ring_coords)
     ring_normal = vh[-1]
     rn_norm = np.linalg.norm(ring_normal)
@@ -747,9 +747,9 @@ def ring_closure_xyz(xyz: dict,
             out_of_plane = abs(np.dot(to_h, ring_normal))
             if out_of_plane > in_plane_len * 0.5:
                 continue
-            to_centre = ring_centre - coords[atom_idx]
-            in_plane_centre = to_centre - ring_normal * np.dot(to_centre, ring_normal)
-            if np.dot(in_plane, in_plane_centre) > 0:
+            to_center = ring_center - coords[atom_idx]
+            in_plane_center = to_center - ring_normal * np.dot(to_center, ring_normal)
+            if np.dot(in_plane, in_plane_center) > 0:
                 entrapped.append(h_idx)
         if not entrapped:
             continue
@@ -829,7 +829,7 @@ def ring_closure_xyz(xyz: dict,
             bend_ax = np.cross(rot_ax, v_to_opp)
             bn = np.linalg.norm(bend_ax)
             if bn < 1e-8:
-                bend_ax = np.cross(rot_ax, ring_centre - coords[endpoint])
+                bend_ax = np.cross(rot_ax, ring_center - coords[endpoint])
                 bn = np.linalg.norm(bend_ax)
             if bn < 1e-8:
                 continue

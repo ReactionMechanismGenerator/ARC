@@ -6,22 +6,22 @@ pipelines share for path-local reasoning.  It owns:
 
 **Data model**
 
-* :class:`ReactionPathSpec` — a deterministic, path-local description of one
+* :class:`ReactionPathSpec`: a deterministic, path-local description of one
   reaction channel: which bonds break, which form, which change order, which
   unchanged near-core bonds must be preserved, plus per-bond reactant- and
   product-side reference distances and bond orders.
-* :class:`PathChemistry` and :func:`classify_path_chemistry` — coarse path
+* :class:`PathChemistry` and :func:`classify_path_chemistry`: coarse path
   chemistry classification (H_TRANSFER, CYCLOADDITION_OR_RING_CLOSURE,
   SUBSTITUTION_LIKE, GENERIC) used to dispatch sub-checks.
 
 **Target geometry**
 
-* :func:`get_ts_target_distance` — role-aware target distance helper used by
+* :func:`get_ts_target_distance`: role-aware target distance helper used by
   downstream geometry stages.  Roles are ``breaking``, ``forming``,
   ``changed``, and ``unchanged_near_core``.  Family-aware: when the family
   has a builder-side calibration, the same calibration is mirrored here so
   the scorer/validator and the builder cannot drift apart.
-* :func:`insertion_ring_extra_stretch` — single source of truth for the
+* :func:`insertion_ring_extra_stretch`: single source of truth for the
   family-specific extra stretch applied to insertion-ring TS edges
   (currently calibrated for ``1,2_Insertion_carbene``).  Both the builder
   in :mod:`arc.job.adapters.ts.linear_utils.addition` and
@@ -30,23 +30,23 @@ pipelines share for path-local reasoning.  It owns:
 
 **Path-local validation gates**
 
-* :func:`has_recipe_channel_mismatch` — failed-to-break / failed-to-form /
+* :func:`has_recipe_channel_mismatch`: failed-to-break / failed-to-form /
   snapped-spectator gates.
 * :func:`has_bad_changed_bond_length`, :func:`has_bad_unchanged_near_core_bond`,
   :func:`has_inward_blocking_h_on_forming_axis`,
   :func:`has_bad_reactive_core_planarity`,
   :func:`has_wrong_h_migration_committed`,
-  :func:`has_committed_spectator_group` —  /  sub-checks.
+  :func:`has_committed_spectator_group`: sub-checks.
 
 **Scoring and orchestration entry points**
 
-* :func:`score_guess_against_path_spec` — the analytic ``(score, +inf)`` helper
+* :func:`score_guess_against_path_spec`: the analytic ``(score, +inf)`` helper
   the unified finalizer uses to triage guesses.
-* :func:`validate_guess_against_path_spec` — the single orchestration-level
+* :func:`validate_guess_against_path_spec`: the single orchestration-level
   validation entry point used by both the addition and isomerization
   pipelines.  Composes :func:`validate_ts_guess` with all the path-local
   sub-checks.
-* :func:`validate_addition_guess` — the single canonical addition-side
+* :func:`validate_addition_guess`: the single canonical addition-side
   validation gateway shared by leaf builders in
   :mod:`arc.job.adapters.ts.linear_utils.addition` and the orchestration
   loop in :func:`arc.job.adapters.ts.linear.interpolate_addition`.  Routes

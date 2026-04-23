@@ -50,7 +50,7 @@ class TestGeometryHelpers(unittest.TestCase):
         """Dihedral with a linear segment (collinear B-C) returns 0."""
         coords = np.array([[0, 1, 0], [0, 0, 0], [0, 0, 0.001], [0, -1, 0]], dtype=float)
         dih = _dihedral_angle(coords, 0, 1, 2, 3)
-        # Near-zero or zero — should not crash.
+        # Near-zero or zero, should not crash.
         self.assertIsInstance(dih, float)
 
     def test_rotate_fragment_180(self):

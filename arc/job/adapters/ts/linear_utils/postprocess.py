@@ -99,7 +99,7 @@ def adjust_reactive_bond_distances(xyz: dict,
     that is shorter than 90 % of the single-bond length (over-compressed),
     push the endpoints apart.
 
-    Bonds involving hydrogen are skipped — those are handled by
+    Bonds involving hydrogen are skipped: those are handled by
     :func:`fix_forming_bond_distances` with Pauling triangulation.
 
     The function moves only the two atoms of each bond (half the displacement
@@ -125,7 +125,7 @@ def adjust_reactive_bond_distances(xyz: dict,
             continue
         sbl = get_single_bond_length(symbols[a], symbols[b]) or 1.5
         d_target = sbl + PAULING_DELTA
-        # Only stretch if the bond is at or below equilibrium length — meaning
+        # Only stretch if the bond is at or below equilibrium length, meaning
         # the interpolation completely failed to stretch it. Well-interpolated
         # TSs already have some stretching and should not be modified.
         if d_cur < sbl:
@@ -162,7 +162,7 @@ def orient_h_on_reactive_centers(xyz: dict,
                                  forming_bonds: List[Tuple[int, int]],
                                  ) -> dict:
     """
-    Orient H atoms on reactive heavy-atom centres away from the reaction axis.
+    Orient H atoms on reactive heavy-atom centers away from the reaction axis.
 
     For each heavy atom that participates in a forming or breaking bond, the
     function checks whether its H substituents point *toward* the reactive
@@ -171,7 +171,7 @@ def orient_h_on_reactive_centers(xyz: dict,
     the opposite (chemically correct) hemisphere.
 
     This produces the standard geometry where, for example, the CH₂ group
-    on a radical centre points away from the forming bond, and H atoms on a
+    on a radical center points away from the forming bond, and H atoms on a
     carbon adjacent to a breaking bond point away from the leaving group.
 
     Args:
@@ -214,7 +214,7 @@ def orient_h_on_reactive_centers(xyz: dict,
             continue
 
         # Compute the reactive direction: only toward partners that are direct
-        # graph neighbours. Distant partners (e.g. the acceptor in H-migration)
+        # graph neighbors. Distant partners (e.g. the acceptor in H-migration)
         # should not influence the orientation of non-migrating H atoms.
         bonded_indices = {atom_to_idx[nbr] for nbr in mol.atoms[heavy_idx].bonds}
         heavy_partners = [p for p in partners
@@ -245,9 +245,9 @@ def orient_h_on_reactive_centers(xyz: dict,
         h_avg /= h_avg_norm
 
         # Check if H atoms point toward the reactive direction.
-        # For terminal groups (≤1 heavy neighbour): flip when the average
+        # For terminal groups (≤1 heavy neighbor): flip when the average
         # strongly points toward the partner (dot > 0.5).
-        # For internal groups (≥2 heavy neighbours): only flip when ALL H's
+        # For internal groups (≥2 heavy neighbors): only flip when ALL H's
         # individually point toward the reactive partner — a single misplaced H
         # in a tetrahedral group should not trigger a full flip.
         n_heavy_nbr = sum(1 for nbr in mol.atoms[heavy_idx].bonds
@@ -256,7 +256,7 @@ def orient_h_on_reactive_centers(xyz: dict,
         if n_heavy_nbr <= 1:
             should_flip = dot > 0.5
         else:
-            # Internal centre: require ALL H's to have positive dot.
+            # Internal center: require ALL H's to have positive dot.
             per_h_dots = []
             for hi in h_indices:
                 v = coords[hi] - coords[heavy_idx]
@@ -302,7 +302,7 @@ def has_broken_nonreactive_bond(xyz: dict,
     symbols = xyz['symbols']
     coords_arr = np.array(xyz['coords'], dtype=float)
     atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
-    # Exempt bonds involving atoms within 2 hops of the reactive centre —
+    # Exempt bonds involving atoms within 2 hops of the reactive center —
     # Z-mat interpolation naturally distorts nearby bonds.
     reactive_atoms = set()
     for a, b in reactive_bonds:
@@ -466,7 +466,7 @@ def _has_detached_heavy_atom(xyz: dict,
                              ) -> bool:
     """
     Return ``True`` if any heavy atom is farther than *max_bond_stretch* Å
-    from **all** of its graph-bonded neighbours.
+    from **all** of its graph-bonded neighbors.
 
     Unlike :func:`has_too_many_fragments` (distance-based adjacency), this
     check uses the molecular graph so it catches atoms that drifted far from
@@ -476,7 +476,7 @@ def _has_detached_heavy_atom(xyz: dict,
         xyz: XYZ coordinate dictionary.
         mol: Reactant RMG Molecule providing bond topology.
         max_bond_stretch: Maximum acceptable distance to at least one bonded
-            neighbour (Å).  Default 2.5 — generous enough for TS partial bonds
+            neighbor (Å).  Default 2.5 — generous enough for TS partial bonds
             but catches truly detached atoms.
         exempt_indices: Atom indices to skip (e.g. reactive atoms that are
             expected to be far from their original partners).
@@ -491,11 +491,11 @@ def _has_detached_heavy_atom(xyz: dict,
     for i, sym in enumerate(symbols):
         if sym == 'H' or i in exempt:
             continue
-        neighbours = list(mol.atoms[i].bonds.keys())
-        if not neighbours:
+        neighbors = list(mol.atoms[i].bonds.keys())
+        if not neighbors:
             continue
         min_d = min(float(np.linalg.norm(coords_arr[i] - coords_arr[atom_to_idx[nbr]]))
-                    for nbr in neighbours)
+                    for nbr in neighbors)
         if min_d > max_bond_stretch:
             return True
     return False
@@ -510,7 +510,7 @@ def has_too_many_fragments(xyz: dict,
     fragments.
 
     A transition state may legitimately have two fragments (e.g. a
-    migrating group between two heavy-atom centres with stretched bonds),
+    migrating group between two heavy-atom centers with stretched bonds),
     but three or more fragments indicates a failed interpolation where
     atoms have drifted into space.
 
@@ -773,7 +773,7 @@ def fix_forming_bond_distances(xyz: dict,
 
         d_TS(X–H) = d0(X–H) + 0.42 Å
 
-    The hydrogen is placed at the intersection of the two spheres centred on
+    The hydrogen is placed at the intersection of the two spheres centerd on
     the donor and acceptor with the respective target radii.  Among the
     resulting circle of solutions the point closest to the *current* H
     position is chosen, preserving the approach direction from the
@@ -952,7 +952,7 @@ def fix_crowded_h_atoms(xyz: dict,
     ``fix_nonreactive_h_distances`` corrects radial distances but not angular
     positions.  This function detects heavy atoms whose bonded H atoms are closer
     than 1.3 Å to each other and redistributes them at evenly spaced dihedral
-    angles around the heavy-atom → backbone-neighbour axis, preserving the
+    angles around the heavy-atom → backbone-neighbor axis, preserving the
     equilibrium bond length and a tetrahedral (or appropriate) valence angle.
 
     Args:
@@ -961,7 +961,7 @@ def fix_crowded_h_atoms(xyz: dict,
         skip_h_indices: H atom indices to exclude (e.g. migrating H's whose
             positions were set by ``fix_forming_bond_distances``).
         redistribute_ch2: When ``True``, also redistribute CH₂ groups
-            (heavy atoms with exactly 2 non-H neighbours).  Used for
+            (heavy atoms with exactly 2 non-H neighbors).  Used for
             families where hybridisation changes (e.g. sp → sp2) make
             Z-matrix interpolation of CH₂ H positions unreliable.
 
@@ -1101,10 +1101,10 @@ def fix_h_nonbonded_clashes(xyz: dict,
     Fix H atoms that are unreasonably close to non-bonded heavy atoms.
 
     Z-matrix interpolation can misplace H atoms angularly so they end up
-    closer to a neighbouring heavy atom than any physically reasonable
+    closer to a neighboring heavy atom than any physically reasonable
     distance (e.g. a ring H pushed into the ring plane).  This function
     detects such clashes and repositions the offending H perpendicular to
-    the plane of its bonded heavy atom's backbone neighbours, preserving
+    the plane of its bonded heavy atom's backbone neighbors, preserving
     the equilibrium bond length.
 
     A default threshold of 1.10 Å catches H atoms that are essentially
@@ -1127,10 +1127,10 @@ def fix_h_nonbonded_clashes(xyz: dict,
     symbols = xyz['symbols']
     coords = np.array(xyz['coords'], dtype=float)
 
-    bonded_neighbours: Dict[int, Set[int]] = {}
+    bonded_neighbors: Dict[int, Set[int]] = {}
     for atom in mol.atoms:
         idx = atom_to_idx[atom]
-        bonded_neighbours[idx] = {atom_to_idx[nbr] for nbr in atom.bonds}
+        bonded_neighbors[idx] = {atom_to_idx[nbr] for nbr in atom.bonds}
 
     for i, sym in enumerate(symbols):
         if sym != 'H' or i in skip:
@@ -1150,7 +1150,7 @@ def fix_h_nonbonded_clashes(xyz: dict,
 
         has_clash = False
         for j, jsym in enumerate(symbols):
-            if jsym == 'H' or j == bonded_heavy or j in bonded_neighbours.get(i, set()):
+            if jsym == 'H' or j == bonded_heavy or j in bonded_neighbors.get(i, set()):
                 continue
             if float(np.linalg.norm(h_pos - coords[j])) < threshold:
                 has_clash = True
@@ -1337,7 +1337,7 @@ def fix_migrating_group_umbrella(xyz: dict,
     The algorithm:
 
     1. Identify migrating heavy atoms (present in both breaking and forming bonds).
-    2. Collect their non-reactive H neighbours from the reactant topology.
+    2. Collect their non-reactive H neighbors from the reactant topology.
     3. Compute the umbrella axis (average H direction from the migrating atom).
     4. Place a dummy point on the anti-backbone side (opposite the H average).
     5. For each H, compute ``angle(dummy, migrating_C, H)``.  If > 90° the H is
@@ -1397,7 +1397,7 @@ def stagger_donor_terminal_h(xyz: dict,
 
     For each forming bond involving hydrogen, this function identifies the
     donor heavy atom (bonded to the migrating H in the reactant) and its
-    backbone neighbour.  Non-migrating H atoms on the donor are then rotated
+    backbone neighbor.  Non-migrating H atoms on the donor are then rotated
     around the donor–backbone bond axis to sit at ±120° from the migrating H
     dihedral, choosing the direction that requires the smaller rotation.
 

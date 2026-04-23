@@ -29,7 +29,7 @@ class TestDebugDumpQuarantine(unittest.TestCase):
     def _make_dummy_rxn_and_xyz(self):
         """Build a tiny rxn + xyz pair for the helper to receive.
 
-        The helper does not care about chemistry — it just iterates
+        The helper does not care about chemistry, it just iterates
         ``rxn.r_species``, ``rxn.p_species`` and the supplied
         ``ts_xyzs`` list and feeds each one through ``save_geo``.
         """
@@ -46,8 +46,7 @@ class TestDebugDumpQuarantine(unittest.TestCase):
 
         Uses a non-existent ``out_dir`` inside a temp directory so
         the helper's ``enabled_by_dir`` gate is False and the real
-        inertness contract is observed directly on the filesystem —
-        no mocks required.
+        inertness contract is observed directly on the filesystem.
         """
         from arc.job.adapters.ts.linear_test import _save_debug_geometries
         rxn, ts_dummy = self._make_dummy_rxn_and_xyz()

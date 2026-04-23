@@ -67,7 +67,7 @@ def get_all_referenced_atoms(var_name: str) -> List[int]:
     Return every atom index referenced anywhere in a Z-matrix variable name.
 
     Unlike :func:`get_all_zmat_rows`, which returns only the *defined* row(s),
-    this helper returns **all** atom indices encoded in the variable name —
+    this helper returns **all** atom indices encoded in the variable name,
     including the reference atoms used for distance, angle, and dihedral
     definitions.
 
@@ -148,9 +148,9 @@ def average_zmat_params(zmat_1: dict,
 
     Interpolation rules:
 
-    * **Dihedrals** — circular shortest-path via :func:`interp_dihedral_deg`.
+    * **Dihedrals**: circular shortest-path via :func:`interp_dihedral_deg`.
       The wrap-around discontinuity at ±180° is handled automatically.
-    * **Angles** — linear, then clamped to ``[1.0°, 179.0°]`` to keep the Z-matrix
+    * **Angles**: linear, then clamped to ``[1.0°, 179.0°]`` to keep the Z-matrix
       frame away from the mathematical singularities at 0° and 180°.
     * **Bond lengths** — linear, then clamped to ≥ 0.4 Å (shortest valid chemical
       bond).  A ``WARNING`` is emitted if clamping occurs.
