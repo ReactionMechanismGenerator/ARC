@@ -19,9 +19,15 @@ from arc.job.adapters.ts.linear_utils.families import (
     _set_bond_distance,
     build_1_3_sigmatropic_rearrangement_ts,
     build_baeyer_villiger_step2_ts,
+    build_intra_oh_migration_ts,
+    build_intra_substitution_s_isomerization_ts,
+    build_korcek_step1_ts,
+    build_retroene_ts,
+    build_singlet_carbene_intra_disproportionation_ts,
     build_xy_elimination_ts,
     PAULING_DELTA,
 )
+from arc.species.species import colliding_atoms
 
 
 class TestGeometryHelpers(unittest.TestCase):
@@ -375,6 +381,311 @@ class TestBuildBaeyerVilligerStep2TS(unittest.TestCase):
         # O-O bond exists but no adjacent carbonyl.
         ts = build_baeyer_villiger_step2_ts(
             r.get_xyz(), r.mol, split_bonds=[(0, 1)])
+        self.assertIsNone(ts)
+
+
+class TestBuildSingletCarbeneIntraDisproportionationTS(unittest.TestCase):
+    """Unit tests for the bespoke Singlet_Carbene_Intra_Disproportionation builder."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up the cyclopentadiene carbene reactant used in the builder tests."""
+        cls.r_xyz = str_to_xyz("""C      -1.75380171    0.48873088   -0.19068706
+C      -0.47932309    0.10898312   -0.05277466
+C       0.65826648    1.02120016    0.10389800
+C       1.80731799    0.33759624    0.21908285
+C       1.46131594   -1.02335073    0.14235481
+C       0.04527758   -1.32931253   -0.03040690
+H      -2.03784850    1.53610489   -0.19562618
+H      -2.54598297   -0.24449127   -0.30238247
+H       0.56818218    2.09730281    0.12230795
+H       2.80053789    0.73996491    0.34529891
+H      -0.15810977   -1.84238058   -0.97429551
+H      -0.36583394   -1.89034834    0.81324667""")
+        cls.r = ARCSpecies(label='R', smiles='C=C1C=C[C]C1', xyz=cls.r_xyz, multiplicity=1)
+
+    def test_returns_xyz_dict(self):
+        """The builder returns a valid XYZ dict for the carbene cyclopentadiene motif."""
+        ts = build_singlet_carbene_intra_disproportionation_ts(self.r_xyz, self.r.mol)
+        self.assertIsNotNone(ts)
+        self.assertIn('symbols', ts)
+        self.assertIn('coords', ts)
+        self.assertEqual(ts['symbols'], self.r_xyz['symbols'])
+        self.assertEqual(len(ts['coords']), len(self.r_xyz['coords']))
+        self.assertFalse(colliding_atoms(ts), 'TS has colliding atoms')
+
+    def test_migrating_h_pauling_triangulation(self):
+        """The migrating H sits near Pauling-triangulated distance from donor C and carbene C."""
+        ts = build_singlet_carbene_intra_disproportionation_ts(self.r_xyz, self.r.mol)
+        self.assertIsNotNone(ts)
+        coords = np.array(ts['coords'], dtype=float)
+        # H atoms on the donor C (C5) are at indices 10 and 11 in the reactant xyz.
+        # The carbene C has no H; in C=C1C=C[C]C1 the carbene is the divalent C
+        # with zero bonded H atoms.  One of H10/H11 should be at the Pauling
+        # distance (~1.51 Å) from both the donor and the carbene C.
+        found_good = False
+        for hi in (10, 11):
+            for ci in range(6):
+                for di in range(6):
+                    if ci == di:
+                        continue
+                    d_ci = float(np.linalg.norm(coords[ci] - coords[hi]))
+                    d_di = float(np.linalg.norm(coords[di] - coords[hi]))
+                    if abs(d_ci - 1.51) < 0.15 and abs(d_di - 1.51) < 0.15:
+                        found_good = True
+                        break
+                if found_good:
+                    break
+            if found_good:
+                break
+        self.assertTrue(
+            found_good,
+            msg='No H at Pauling-triangulated ~1.51 Å from a C-C pair in the TS')
+
+    def test_returns_none_for_non_carbene(self):
+        """The builder returns None for a molecule without a carbene center."""
+        ethane_xyz = str_to_xyz(
+            'C 0 0 0\nC 1.54 0 0\nH -0.5 0.9 0\nH -0.5 -0.9 0\nH -0.5 0 0.9\n'
+            'H 2.04 0.9 0\nH 2.04 -0.9 0\nH 2.04 0 0.9')
+        ethane = ARCSpecies(label='ethane', smiles='CC', xyz=ethane_xyz)
+        ts = build_singlet_carbene_intra_disproportionation_ts(
+            ethane.get_xyz(), ethane.mol)
+        self.assertIsNone(ts)
+
+
+class TestBuildKorcekStep1TS(unittest.TestCase):
+    """Unit tests for the bespoke Korcek_step1 builder."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up the O=CCC(C)OO reactant from the Korcek_step1 integration test."""
+        cls.r_xyz = str_to_xyz(""" O                  1.46497838    1.17312399    1.00181460
+ C                  1.63040685    0.08031738    0.40016878
+ C                  0.49825841   -0.49996593   -0.46765101
+ C                 -0.86289713   -0.06281239    0.10484561
+ C                 -2.13626342   -0.60649676   -0.56935436
+ O                 -0.92704228    1.07619940    0.96707386
+ O                 -0.14402929    0.88182922    2.01182784
+ H                  2.55769100   -0.44569700    0.49156341
+ H                  0.55938930   -1.56821700   -0.46602353
+ H                  0.59624284   -0.13863526   -1.47001781
+ H                 -0.90052678    0.75408974   -0.58519419
+ H                 -2.10690866   -1.67606688   -0.57697447
+ H                 -2.99649767   -0.27717524   -0.02488731
+ H                 -2.19012545   -0.24400290   -1.57463893
+ H                  0.76017293    0.75570075    1.71499461""")
+        cls.r = ARCSpecies(label='R', smiles='O=CCC(C)OO', xyz=cls.r_xyz)
+
+    def test_returns_xyz_dict(self):
+        """The builder returns a valid XYZ dict for the keto-peroxide motif."""
+        ts = build_korcek_step1_ts(self.r_xyz, self.r.mol)
+        self.assertIsNotNone(ts)
+        self.assertIn('symbols', ts)
+        self.assertIn('coords', ts)
+        self.assertEqual(ts['symbols'], self.r_xyz['symbols'])
+        self.assertEqual(len(ts['coords']), len(self.r_xyz['coords']))
+        self.assertFalse(colliding_atoms(ts), 'TS has colliding atoms')
+
+    def test_reactive_distances_sane(self):
+        """Forming C-O ring bond is near target; O-O stays chemically sane."""
+        ts = build_korcek_step1_ts(self.r_xyz, self.r.mol)
+        self.assertIsNotNone(ts)
+        coords = np.array(ts['coords'], dtype=float)
+        # Peroxide O-O pair are atoms 5 and 6.
+        d_oo = float(np.linalg.norm(coords[5] - coords[6]))
+        self.assertGreater(d_oo, 1.2, msg=f'O-O distance {d_oo:.3f} collapsed')
+        self.assertLess(d_oo, 2.2, msg=f'O-O distance {d_oo:.3f} overstretched')
+        # The forming C-O ring-closure bond brings the carbonyl C (index 1)
+        # close to the terminal peroxide O (index 6).  It should be near the
+        # Pauling target ~1.85 Å and markedly shorter than the reactant
+        # distance (≥ 3 Å in the open chain).
+        d_co_form = float(np.linalg.norm(coords[1] - coords[6]))
+        self.assertLess(d_co_form, 2.5, msg=f'forming C-O too long: {d_co_form:.3f}')
+
+    def test_returns_none_without_peroxide(self):
+        """The builder returns None for a molecule without a peroxide O-O bond."""
+        propanal = ARCSpecies(label='propanal', smiles='CCC=O')
+        ts = build_korcek_step1_ts(propanal.get_xyz(), propanal.mol)
+        self.assertIsNone(ts)
+
+
+class TestBuildIntraOHMigrationTS(unittest.TestCase):
+    """Unit tests for the bespoke Intra_OH_migration builder."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up the [CH2]COO reactant from the Intra_OH_migration integration test."""
+        cls.r_xyz = str_to_xyz("""C      -1.40886397    0.22567351   -0.37379668
+C       0.06280787    0.04097694   -0.38515682
+O       0.44130326   -0.57668419    0.84260864
+O       1.89519755   -0.66754203    0.80966180
+H      -1.87218376    0.90693511   -1.07582340
+H      -2.03646287   -0.44342165    0.20255768
+H       0.35571681   -0.60165457   -1.22096147
+H       0.56095122    1.01161503   -0.47393734
+H       2.05354047   -0.10415729    1.58865243""")
+        cls.r = ARCSpecies(label='R', smiles='[CH2]COO', xyz=cls.r_xyz)
+
+    def test_returns_xyz_dict(self):
+        """The builder returns a valid XYZ dict for the OH-migration motif."""
+        ts = build_intra_oh_migration_ts(
+            self.r_xyz, self.r.mol,
+            breaking_bonds=[(2, 3)], forming_bonds=[(0, 3)])
+        self.assertIsNotNone(ts)
+        self.assertEqual(ts['symbols'], self.r_xyz['symbols'])
+        self.assertEqual(len(ts['coords']), len(self.r_xyz['coords']))
+        self.assertFalse(colliding_atoms(ts), 'TS has colliding atoms')
+
+    def test_reactive_distances_early_ts(self):
+        """Forming C-O is ~2.08 Å (early TS) and breaking O-O stretches past reactant."""
+        ts = build_intra_oh_migration_ts(
+            self.r_xyz, self.r.mol,
+            breaking_bonds=[(2, 3)], forming_bonds=[(0, 3)])
+        self.assertIsNotNone(ts)
+        coords = np.array(ts['coords'], dtype=float)
+        d_c0_o3 = float(np.linalg.norm(coords[0] - coords[3]))
+        d_o2_o3 = float(np.linalg.norm(coords[2] - coords[3]))
+        # Builder targets an early-TS C-O distance of ~2.08 Å.
+        self.assertAlmostEqual(d_c0_o3, 2.08, delta=0.35,
+                               msg=f'forming C0-O3={d_c0_o3:.3f} deviates from ~2.08')
+        # Breaking O-O stretches toward sbl(O-O)+PAULING_DELTA ≈ 1.90 Å.
+        self.assertGreater(d_o2_o3, 1.55,
+                           msg=f'breaking O2-O3={d_o2_o3:.3f} not stretched')
+
+    def test_returns_none_when_no_co_forming_bond(self):
+        """The builder returns None when forming_bonds has no C-O bond."""
+        ts = build_intra_oh_migration_ts(
+            self.r_xyz, self.r.mol,
+            breaking_bonds=[(2, 3)], forming_bonds=[(2, 3)])
+        self.assertIsNone(ts)
+
+
+class TestBuildIntraSubstitutionSIsomerizationTS(unittest.TestCase):
+    """Unit tests for the bespoke intra_substitutionS_isomerization builder."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up the [CH2]SSC reactant from the intra_substitutionS integration test."""
+        cls.r_xyz = str_to_xyz("""C       2.02473594    0.05810114    0.12967514
+S       0.94173618    1.38848441   -0.00439602
+S       1.99155683    2.55179194   -1.33352089
+C       3.05975458    3.50692441   -0.22777177
+H       1.79171393   -0.74186961    0.82204853
+H       2.90913559   -0.02956306   -0.49048675
+H       3.72773084    2.84617735    0.33119562
+H       3.67272000    4.18684912   -0.82584520
+H       2.46084746    4.10465096    0.46458235""")
+        cls.r = ARCSpecies(label='R', smiles='[CH2]SSC', xyz=cls.r_xyz)
+
+    def test_returns_xyz_dict(self):
+        """The builder returns a valid XYZ dict for the [CH2]SSC motif."""
+        ts = build_intra_substitution_s_isomerization_ts(
+            self.r_xyz, self.r.mol,
+            breaking_bonds=[(1, 2)], forming_bonds=[(0, 2)])
+        self.assertIsNotNone(ts)
+        self.assertEqual(ts['symbols'], self.r_xyz['symbols'])
+        self.assertEqual(len(ts['coords']), len(self.r_xyz['coords']))
+        self.assertFalse(colliding_atoms(ts), 'TS has colliding atoms')
+
+    def test_bond_swap_distances(self):
+        """Forming C-S contracts toward TS; spectator C-S bond length is preserved."""
+        ts = build_intra_substitution_s_isomerization_ts(
+            self.r_xyz, self.r.mol,
+            breaking_bonds=[(1, 2)], forming_bonds=[(0, 2)])
+        self.assertIsNotNone(ts)
+        coords = np.array(ts['coords'], dtype=float)
+        r_coords = np.array(self.r_xyz['coords'], dtype=float)
+        d_c0s2 = float(np.linalg.norm(coords[0] - coords[2]))
+        d_c0s2_r = float(np.linalg.norm(r_coords[0] - r_coords[2]))
+        # Forming C-S bond must contract (strictly) toward the Pauling target.
+        self.assertLess(d_c0s2, d_c0s2_r,
+                        msg=f'C-S did not contract: {d_c0s2_r:.3f}→{d_c0s2:.3f}')
+        # Resulting C-S distance should be in a physically reasonable early-TS
+        # window for a sulfur substitution (between sbl(C-S) and reactant).
+        self.assertGreater(d_c0s2, 1.5,
+                           msg=f'forming C-S collapsed: {d_c0s2:.3f}')
+        # Spectator C3-S2 bond length preserved near its reactant value: the
+        # migrating S carries its fragment rigidly so S2-C3 should be intact.
+        d_c3s2 = float(np.linalg.norm(coords[3] - coords[2]))
+        d_c3s2_r = float(np.linalg.norm(r_coords[3] - r_coords[2]))
+        self.assertAlmostEqual(d_c3s2, d_c3s2_r, delta=0.3,
+                               msg=f'C3-S2 spectator changed: {d_c3s2_r:.3f}→{d_c3s2:.3f}')
+
+    def test_returns_none_when_no_shared_atom(self):
+        """The builder returns None when bb and fb share no common atom."""
+        ts = build_intra_substitution_s_isomerization_ts(
+            self.r_xyz, self.r.mol,
+            breaking_bonds=[(1, 2)], forming_bonds=[(0, 3)])
+        self.assertIsNone(ts)
+
+
+class TestBuildRetroeneTS(unittest.TestCase):
+    """Unit tests for the bespoke Retroene builder."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up the CC(=O)OCC(C)C reactant from the Retroene integration test."""
+        cls.r_xyz = str_to_xyz("""C       3.35667786   -0.45750645    0.53734155
+C       2.24637997    0.53978750    0.40948895
+O       1.25975689    0.57306185    1.13089404
+O       2.50287461    1.39127766   -0.62065548
+C       1.49459134    2.39153372   -0.82368155
+C       1.91261725    3.29478901   -1.99081538
+C       0.80109651    4.28894041   -2.32015085
+C       3.21525767    4.03633978   -1.68259648
+H       3.43311587   -1.04672504   -0.37989445
+H       4.29738508    0.05945342    0.74281567
+H       3.14204808   -1.13410174    1.36950420
+H       0.54531269    1.89542863   -1.05959703
+H       1.37410296    2.98316125    0.09229590
+H       2.09390077    2.66518822   -2.87130726
+H       0.58969251    4.94565033   -1.46936402
+H       1.08099112    4.91761290   -3.17205390
+H      -0.12413795    3.76494190   -2.58209260
+H       4.03739144    3.33548500   -1.50498669
+H       3.50375149    4.67779028   -2.52219673
+H       3.11088096    4.66875130   -0.79438064""")
+        cls.r = ARCSpecies(label='R', smiles='CC(=O)OCC(C)C', xyz=cls.r_xyz)
+
+    def test_returns_xyz_dict(self):
+        """The builder returns a valid XYZ dict for the retroene 6-membered ring motif."""
+        ts = build_retroene_ts(
+            self.r_xyz, self.r.mol,
+            breaking_bonds=[(3, 4), (5, 13)], forming_bonds=[(3, 13)])
+        self.assertIsNotNone(ts)
+        self.assertEqual(ts['symbols'], self.r_xyz['symbols'])
+        self.assertEqual(len(ts['coords']), len(self.r_xyz['coords']))
+        self.assertFalse(colliding_atoms(ts), 'TS has colliding atoms')
+
+    def test_ring_distances(self):
+        """The 6-membered ring TS has stretched breaking bonds and a migrating H."""
+        ts = build_retroene_ts(
+            self.r_xyz, self.r.mol,
+            breaking_bonds=[(3, 4), (5, 13)], forming_bonds=[(3, 13)])
+        self.assertIsNotNone(ts)
+        coords = np.array(ts['coords'], dtype=float)
+        # O3-C4 sigma is stretched (breaking): target ~2.5 Å.
+        d_o3c4 = float(np.linalg.norm(coords[3] - coords[4]))
+        self.assertGreater(d_o3c4, 1.8,
+                           msg=f'O3-C4 sigma not stretched: {d_o3c4:.3f}')
+        # Migrating H13 sits between donor C5 and ester O3 at Pauling-like distances.
+        d_c5h13 = float(np.linalg.norm(coords[5] - coords[13]))
+        d_o3h13 = float(np.linalg.norm(coords[3] - coords[13]))
+        self.assertLess(d_c5h13, 1.8,
+                        msg=f'migrating C5-H13 too long: {d_c5h13:.3f}')
+        self.assertLess(d_o3h13, 2.5,
+                        msg=f'forming O3-H13 too long: {d_o3h13:.3f}')
+
+    def test_returns_none_when_bond_counts_wrong(self):
+        """The builder returns None when bb has != 2 entries or fb has != 1."""
+        ts = build_retroene_ts(
+            self.r_xyz, self.r.mol,
+            breaking_bonds=[(3, 4)], forming_bonds=[(3, 13)])
+        self.assertIsNone(ts)
+        ts = build_retroene_ts(
+            self.r_xyz, self.r.mol,
+            breaking_bonds=[(3, 4), (5, 13)],
+            forming_bonds=[(3, 13), (2, 4)])
         self.assertIsNone(ts)
 
 

@@ -16,6 +16,13 @@ from arc.species import ARCSpecies
 
 from arc.job.adapters.ts.linear_utils.postprocess import (
     PAULING_DELTA,
+    _get_migrating_group_info,
+    _has_detached_heavy_atom,
+    _orient_donor_h_away_from_acceptor,
+    _postprocess_cc_shift,
+    _postprocess_group_shift,
+    _repair_crowded_ch2,
+    _validate_group_shift,
     build_zmat_with_retry,
     has_detached_hydrogen,
     _has_h_close_contact,
@@ -31,9 +38,7 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     fix_nonreactive_h_distances,
     fix_crowded_h_atoms,
     fix_h_nonbonded_clashes,
-    has_inward_migrating_group_h,
     fix_migrating_group_umbrella,
-    postprocess_generic,
     postprocess_ts_guess,
     stagger_donor_terminal_h,
     postprocess_h_migration,
@@ -1385,6 +1390,317 @@ class TestBuildZmatWithRetry(unittest.TestCase):
             anchors=None, constraints=bad_constraints, label='retry')
         self.assertIsNotNone(zmat)
         self.assertGreater(len(zmat['vars']), 0)
+
+
+class TestHasDetachedHeavyAtom(unittest.TestCase):
+    """``_has_detached_heavy_atom`` returns ``True`` when a heavy atom is
+    farther than *max_bond_stretch* from all of its graph neighbors."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ethane_spc = ARCSpecies(label='ethane', smiles='CC')
+
+    def test_compact_molecule_returns_false(self):
+        """An as-built ethane geometry has no detached heavy atoms."""
+        self.assertFalse(
+            _has_detached_heavy_atom(self.ethane_spc.get_xyz(),
+                                      self.ethane_spc.mol))
+
+    def test_detached_carbon_returns_true(self):
+        """A carbon moved 100 Å away from its bonded partner is detached."""
+        xyz = self.ethane_spc.get_xyz()
+        coords = list(map(list, xyz['coords']))
+        c_indices = [i for i, s in enumerate(xyz['symbols']) if s == 'C']
+        # Move C0 far away.
+        coords[c_indices[0]] = [100.0, 0.0, 0.0]
+        detached = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        self.assertTrue(
+            _has_detached_heavy_atom(detached, self.ethane_spc.mol))
+
+
+class TestGetMigratingGroupInfo(unittest.TestCase):
+    """``_get_migrating_group_info`` identifies migrating heavy atoms that
+    appear in both a breaking and a forming bond."""
+
+    def test_h_migration_motif_returns_empty_for_pure_h_transfer(self):
+        """In a pure H-transfer motif, the *only* atom shared between a
+        breaking and forming bond is the hydrogen itself; the helper
+        rejects H shared atoms, so the result is empty."""
+        sp = ARCSpecies(label='ethanol', smiles='CCO')
+        symbols = sp.get_xyz()['symbols']
+        # Pick an H bonded to the first C.
+        h_idx = next(i for i, s in enumerate(symbols) if s == 'H')
+        # Bonds: H breaks from its C and forms to O.  The H is the
+        # migrating atom — but it is an H, so the helper returns [].
+        c_of_h = next(
+            i for i, a in enumerate(sp.mol.atoms)
+            if a is list(sp.mol.atoms[h_idx].bonds.keys())[0]
+        )
+        o_idx = symbols.index('O')
+        breaking = [(c_of_h, h_idx)]
+        forming = [(h_idx, o_idx)]
+        out = _get_migrating_group_info(sp.get_xyz(), sp.mol, breaking, forming)
+        self.assertEqual(out, [])
+
+    def test_group_shift_motif_finds_migrating_heavy(self):
+        """A 1,2-C shift: C1 breaks from C0 and forms to C2 — so C1 is
+        the migrating heavy atom with ≥1 non-reactive H child."""
+        sp = ARCSpecies(label='propane', smiles='CCC')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        c_indices = [i for i, s in enumerate(symbols) if s == 'C']
+        # C1 (middle) moves from C0 to C2 in this synthetic scheme.
+        c0, c1, c2 = c_indices[0], c_indices[1], c_indices[2]
+        breaking = [(c0, c1)]
+        forming = [(c1, c2)]
+        out = _get_migrating_group_info(xyz, sp.mol, breaking, forming)
+        self.assertEqual(len(out), 1)
+        info = out[0]
+        self.assertEqual(info['mig_idx'], c1)
+        self.assertEqual(info['backbone_indices'], {c0, c2})
+        self.assertTrue(all(symbols[h] == 'H' for h in info['h_indices']))
+
+
+class TestRepairCrowdedCh2(unittest.TestCase):
+    """``_repair_crowded_ch2`` fixes CH₂ groups whose H···H is too short
+    or H-C-H too wide."""
+
+    def test_crowded_ch2_gets_redistributed(self):
+        """Two H atoms nearly on top of each other around the middle C of
+        propane are redistributed to a wider H-C-H opening."""
+        sp = ARCSpecies(label='propane', smiles='CCC')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        atom_to_idx = {atom: idx for idx, atom in enumerate(sp.mol.atoms)}
+        # Find the middle carbon (has 2 C neighbors).
+        c_idx = None
+        for a in sp.mol.atoms:
+            if a.element.symbol == 'C':
+                n_c = sum(1 for nb in a.bonds if nb.element.symbol == 'C')
+                if n_c == 2:
+                    c_idx = atom_to_idx[a]
+                    break
+        self.assertIsNotNone(c_idx)
+        # Identify the 2 H atoms on the middle C.
+        h_idxs_mid = [
+            atom_to_idx[nb] for nb in sp.mol.atoms[c_idx].bonds
+            if nb.element.symbol == 'H'
+        ]
+        self.assertEqual(len(h_idxs_mid), 2)
+        # Crowd the two H's on top of each other, 0.5 Å from middle C.
+        coords = list(map(list, xyz['coords']))
+        mid = np.array(coords[c_idx])
+        coords[h_idxs_mid[0]] = (mid + np.array([0.0, 0.5, 0.0])).tolist()
+        coords[h_idxs_mid[1]] = (mid + np.array([0.0, 0.5, 0.05])).tolist()
+        crowded = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+        # Sanity: H···H crowded below 1.3 Å pre-repair.
+        d_pre = float(np.linalg.norm(
+            np.array(crowded['coords'][h_idxs_mid[0]])
+            - np.array(crowded['coords'][h_idxs_mid[1]])))
+        self.assertLess(d_pre, 1.3)
+
+        out = _repair_crowded_ch2(crowded, sp.mol, skip_h_indices=set())
+        d_post = float(np.linalg.norm(
+            np.array(out['coords'][h_idxs_mid[0]])
+            - np.array(out['coords'][h_idxs_mid[1]])))
+        self.assertGreater(d_post, 1.3)
+
+
+class TestOrientDonorHAwayFromAcceptor(unittest.TestCase):
+    """``_orient_donor_h_away_from_acceptor`` reorients non-migrating H's
+    on a terminal donor so they point away from the acceptor."""
+
+    def test_inward_donor_hs_are_flipped_away(self):
+        """Starting from a geometry where the donor's non-migrating H's
+        sit on the *acceptor* side, the helper should move them so that
+        afterwards none of them has an acute angle to the donor→acceptor
+        axis."""
+        sp = ARCSpecies(label='ethanol', smiles='CCO')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        atom_to_idx = {atom: idx for idx, atom in enumerate(sp.mol.atoms)}
+        # Donor = terminal C (1 heavy neighbor), acceptor = O.
+        o_idx = symbols.index('O')
+        donor = None
+        for a in sp.mol.atoms:
+            if a.element.symbol == 'C':
+                n_heavy = sum(1 for nb in a.bonds if nb.element.symbol != 'H')
+                if n_heavy == 1:
+                    donor = atom_to_idx[a]
+                    break
+        self.assertIsNotNone(donor)
+        # Pick one H on the donor as the "migrating" H.
+        donor_hs = [
+            atom_to_idx[nb] for nb in sp.mol.atoms[donor].bonds
+            if nb.element.symbol == 'H'
+        ]
+        self.assertGreaterEqual(len(donor_hs), 2)
+        h_mig = donor_hs[0]
+
+        # Place donor at origin, acceptor along +x, and the other two
+        # donor H's on the +x side (inward — the bad initial state).
+        coords = list(map(list, xyz['coords']))
+        coords[donor] = [0.0, 0.0, 0.0]
+        coords[o_idx] = [3.0, 0.0, 0.0]
+        # Backbone neighbor of donor (non-H, non-acceptor): the other C.
+        backbone = None
+        for nb in sp.mol.atoms[donor].bonds:
+            ni = atom_to_idx[nb]
+            if nb.element.symbol != 'H' and ni != h_mig:
+                backbone = ni
+                break
+        self.assertIsNotNone(backbone)
+        coords[backbone] = [-1.54, 0.0, 0.0]
+        # Migrating H pointing at the acceptor.
+        coords[h_mig] = [1.0, 0.3, 0.0]
+        # Inward donor H's.
+        coords[donor_hs[1]] = [0.60, 0.85, 0.0]
+        if len(donor_hs) > 2:
+            coords[donor_hs[2]] = [0.60, -0.85, 0.0]
+        bad = {**xyz, 'coords': tuple(tuple(row) for row in coords)}
+
+        out = _orient_donor_h_away_from_acceptor(
+            bad, sp.mol,
+            forming_bonds=[(h_mig, o_idx)],
+            migrating_hs={h_mig},
+        )
+        # All non-migrating donor H's should now have a non-positive
+        # x-projection (no longer pointing inward toward +x acceptor).
+        d_pos = np.array(out['coords'][donor])
+        a_pos = np.array(out['coords'][o_idx])
+        axis = a_pos - d_pos
+        for hi in donor_hs[1:]:
+            v = np.array(out['coords'][hi]) - d_pos
+            # cos θ between the H-vector and donor→acceptor axis.
+            self.assertLessEqual(float(np.dot(v, axis)), 1e-6)
+
+
+class TestPostprocessGroupShift(unittest.TestCase):
+    """``_postprocess_group_shift`` returns (xyz, empty_set) and preserves
+    atom count for a sensible group-shift input."""
+
+    def test_group_shift_preserves_atom_count(self):
+        sp = ARCSpecies(label='propane', smiles='CCC')
+        xyz = sp.get_xyz()
+        out_xyz, migrating = _postprocess_group_shift(
+            xyz, sp.mol,
+            forming_bonds=[(1, 2)],
+            breaking_bonds=[(0, 1)],
+        )
+        self.assertEqual(len(out_xyz['symbols']), len(xyz['symbols']))
+        self.assertEqual(out_xyz['symbols'], xyz['symbols'])
+        self.assertEqual(migrating, set())
+
+
+class TestPostprocessCcShift(unittest.TestCase):
+    """``_postprocess_cc_shift`` returns (xyz, empty_set) and preserves
+    atom count."""
+
+    def test_cc_shift_preserves_atom_count(self):
+        sp = ARCSpecies(label='propene', smiles='C=CC')
+        xyz = sp.get_xyz()
+        out_xyz, migrating = _postprocess_cc_shift(
+            xyz, sp.mol,
+            forming_bonds=[(1, 2)],
+            breaking_bonds=[(0, 1)],
+        )
+        self.assertEqual(len(out_xyz['symbols']), len(xyz['symbols']))
+        self.assertEqual(migrating, set())
+
+
+class TestValidateGroupShift(unittest.TestCase):
+    """``_validate_group_shift`` accepts TS-range forming bonds and
+    rejects out-of-range ones."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.spc = ARCSpecies(label='propane', smiles='CCC')
+        cls.xyz = cls.spc.get_xyz()
+
+    def test_in_range_forming_bond_passes(self):
+        """A forming bond at ~2.5 Å (inside [1.5, 4.0]) passes."""
+        symbols = self.xyz['symbols']
+        coords = list(map(list, self.xyz['coords']))
+        # Place atom 0 and atom 1 2.5 Å apart along x, far from all H's.
+        coords[0] = [0.0, 0.0, 0.0]
+        coords[1] = [2.5, 0.0, 0.0]
+        xyz = {**self.xyz, 'coords': tuple(tuple(row) for row in coords)}
+        ok, reason = _validate_group_shift(
+            xyz, migrating_hs=set(),
+            forming_bonds=[(0, 1)],
+            r_mol=self.spc.mol, label='in-range')
+        # Either pass or fails on H-close-contact.  We only enforce that
+        # the forming-bond-distance branch did NOT fire.
+        self.assertNotIn('forming bond distance', reason)
+
+    def test_out_of_range_forming_bond_fails(self):
+        """A forming bond at 5.0 Å (outside [1.5, 4.0]) is rejected."""
+        coords = list(map(list, self.xyz['coords']))
+        coords[0] = [0.0, 0.0, 0.0]
+        coords[1] = [5.0, 0.0, 0.0]
+        xyz = {**self.xyz, 'coords': tuple(tuple(row) for row in coords)}
+        ok, reason = _validate_group_shift(
+            xyz, migrating_hs=set(),
+            forming_bonds=[(0, 1)],
+            r_mol=self.spc.mol, label='out-of-range')
+        self.assertFalse(ok)
+        self.assertIn('forming bond distance', reason)
+
+
+class TestMinBackboneDistViaFixFormingBondDistances(unittest.TestCase):
+    """The nested ``_min_backbone_dist`` closure inside
+    ``fix_forming_bond_distances`` picks the candidate H position whose
+    minimum distance to non-H backbone atoms is largest.  Test it by
+    placing an additional heavy atom symmetric-but-closer to one of the
+    two candidate H positions; the function should choose the candidate
+    whose minimum backbone distance is larger."""
+
+    def test_fix_forming_bond_picks_farther_candidate(self):
+        """Two candidate triangulated H positions exist on either side
+        of the donor-acceptor axis.  A backbone atom is placed closer to
+        cand_minus; ``_min_backbone_dist`` must therefore pick
+        cand_plus."""
+        # Minimal hand-rolled atoms to control the geometry exactly.
+        # donor (C, idx 0) — acceptor (O, idx 1) — H (idx 2) —
+        # backbone C (idx 3) placed near cand_minus side.
+        class _A:
+            def __init__(self, sym, bonds=None):
+                class _E:
+                    def __init__(self, s):
+                        self.symbol = s
+                self.element = _E(sym)
+                self.bonds = bonds or {}
+        c0 = _A('C'); o1 = _A('O'); h2 = _A('H'); c3 = _A('C')
+        # Bond graph: H is bonded to C0 (donor).  C3 is bonded to C0 so
+        # it is NOT skipped (the skip check keys on h_atom, donor_idx,
+        # acceptor_atom only).
+        c0.bonds = {h2: 1, c3: 1}
+        h2.bonds = {c0: 1}
+        c3.bonds = {c0: 1}
+        o1.bonds = {}
+        class _M:
+            atoms = [c0, o1, h2, c3]
+
+        # donor at origin, acceptor 2.4 Å along +x (overlap sphere ok).
+        # Current H pre-placement is nearly along +x (off-axis very
+        # slightly in +y) so the perpendicular basis is +y.  Place c3
+        # very close to the cand_minus (-y) side so the -y candidate
+        # has a much smaller minimum backbone distance than +y.
+        xyz = {
+            'symbols': ('C', 'O', 'H', 'C'),
+            'isotopes': (12, 16, 1, 12),
+            'coords': (
+                (0.0, 0.0, 0.0),        # donor C
+                (2.4, 0.0, 0.0),        # acceptor O
+                (1.2, 0.1, 0.0),        # migrating H (on +y side)
+                (1.2, -0.8, 0.0),       # backbone C — crowds -y cand
+            ),
+        }
+        out = fix_forming_bond_distances(xyz, _M(), bonds=[(2, 1)])
+        h_post = np.array(out['coords'][2])
+        # The chosen candidate should be on the +y side (farther from
+        # the crowding C3 on -y).
+        self.assertGreater(float(h_post[1]), 0.0)
 
 
 if __name__ == '__main__':

@@ -15,8 +15,11 @@ from arc.job.adapters.ts.linear_utils.geom_utils import (
     bfs_path,
     dihedral_deg,
     downstream,
+    mol_to_adjacency,
     rotate_atoms,
+    split_mol_at_bonds,
 )
+from arc.molecule.molecule import Molecule
 
 
 class TestGeomUtils(unittest.TestCase):
@@ -262,6 +265,117 @@ class TestGeomUtils(unittest.TestCase):
             d = dihedral_deg(*points)
             self.assertGreaterEqual(d, -180.0)
             self.assertLessEqual(d, 180.0)
+
+
+class TestMolToAdjacency(unittest.TestCase):
+    """Tests for the mol_to_adjacency function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_single_atom_methane_has_four_h_neighbors(self):
+        """Methane: the single C atom must have 4 H neighbors, each H has one C neighbor."""
+        mol = Molecule().from_smiles('C')
+        adj = mol_to_adjacency(mol)
+        self.assertEqual(len(adj), 5)
+        c_idx = next(i for i, a in enumerate(mol.atoms) if a.symbol == 'C')
+        h_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'H']
+        self.assertEqual(adj[c_idx], set(h_indices))
+        for h in h_indices:
+            self.assertEqual(adj[h], {c_idx})
+
+    def test_ethane_adjacency_is_symmetric(self):
+        """Ethane: adjacency is symmetric (if a in adj[b] then b in adj[a])."""
+        mol = Molecule().from_smiles('CC')
+        adj = mol_to_adjacency(mol)
+        for i, nbrs in adj.items():
+            for j in nbrs:
+                self.assertIn(i, adj[j])
+
+    def test_ethane_cc_bond_present(self):
+        """Ethane: both C atoms are neighbors of each other."""
+        mol = Molecule().from_smiles('CC')
+        adj = mol_to_adjacency(mol)
+        c_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        self.assertEqual(len(c_indices), 2)
+        self.assertIn(c_indices[1], adj[c_indices[0]])
+        self.assertIn(c_indices[0], adj[c_indices[1]])
+
+    def test_return_type_is_dict_of_sets(self):
+        """mol_to_adjacency returns Dict[int, Set[int]]."""
+        mol = Molecule().from_smiles('C')
+        adj = mol_to_adjacency(mol)
+        self.assertIsInstance(adj, dict)
+        for k, v in adj.items():
+            self.assertIsInstance(k, int)
+            self.assertIsInstance(v, set)
+
+    def test_cyclopropane_each_c_has_two_c_neighbors(self):
+        """Cyclopropane: each C is bonded to the other two Cs (plus Hs)."""
+        mol = Molecule().from_smiles('C1CC1')
+        adj = mol_to_adjacency(mol)
+        c_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        self.assertEqual(len(c_indices), 3)
+        for ci in c_indices:
+            c_neighbors = [j for j in adj[ci] if mol.atoms[j].symbol == 'C']
+            self.assertEqual(len(c_neighbors), 2)
+
+
+class TestSplitMolAtBonds(unittest.TestCase):
+    """Tests for the split_mol_at_bonds function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_no_cut_returns_single_component(self):
+        """With no bonds removed, all atoms stay in one connected component."""
+        mol = Molecule().from_smiles('CC')
+        fragments = split_mol_at_bonds(mol, [])
+        self.assertEqual(len(fragments), 1)
+        self.assertEqual(fragments[0], set(range(len(mol.atoms))))
+
+    def test_ethane_cc_cut_produces_two_methyl_fragments(self):
+        """Cutting the C-C bond in ethane produces exactly two methyl fragments of equal size."""
+        mol = Molecule().from_smiles('CC')
+        c_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        fragments = split_mol_at_bonds(mol, [(c_indices[0], c_indices[1])])
+        self.assertEqual(len(fragments), 2)
+        sizes = sorted(len(f) for f in fragments)
+        self.assertEqual(sizes, [4, 4])
+        # Each fragment must contain exactly one carbon.
+        for frag in fragments:
+            self.assertEqual(sum(1 for i in frag if mol.atoms[i].symbol == 'C'), 1)
+
+    def test_propane_two_cc_cuts_produces_three_fragments(self):
+        """Cutting both C-C bonds in propane produces three fragments."""
+        mol = Molecule().from_smiles('CCC')
+        c_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        fragments = split_mol_at_bonds(
+            mol, [(c_indices[0], c_indices[1]), (c_indices[1], c_indices[2])])
+        self.assertEqual(len(fragments), 3)
+
+    def test_union_of_fragments_covers_all_atoms(self):
+        """The union of all fragments equals the full atom index set."""
+        mol = Molecule().from_smiles('CO')
+        c_idx = next(i for i, a in enumerate(mol.atoms) if a.symbol == 'C')
+        o_idx = next(i for i, a in enumerate(mol.atoms) if a.symbol == 'O')
+        fragments = split_mol_at_bonds(mol, [(c_idx, o_idx)])
+        union: set = set()
+        for frag in fragments:
+            union |= frag
+        self.assertEqual(union, set(range(len(mol.atoms))))
+
+    def test_cutting_nonexistent_bond_leaves_graph_intact(self):
+        """Cutting a pair of already-non-adjacent atoms leaves the graph as one component."""
+        mol = Molecule().from_smiles('CCC')
+        c_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        # C0 and C2 are not directly bonded in propane.
+        fragments = split_mol_at_bonds(mol, [(c_indices[0], c_indices[2])])
+        self.assertEqual(len(fragments), 1)
 
 
 if __name__ == '__main__':

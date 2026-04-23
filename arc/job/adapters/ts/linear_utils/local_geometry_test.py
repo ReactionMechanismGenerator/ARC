@@ -11,6 +11,9 @@ from arc.common import get_single_bond_length
 from arc.species import ARCSpecies
 
 from arc.job.adapters.ts.linear_utils.local_geometry import (
+    _h_neighbors,
+    _heavy_neighbors,
+    _xyz_with_coords,
     apply_reactive_center_cleanup,
     clean_migrating_h,
     identify_h_migration_pairs,
@@ -1511,8 +1514,6 @@ class TestInferFragFallbackHMigration(unittest.TestCase):
 
         Used as the canonical S1+S2+S3+S4+S5 success case.
         """
-        from arc.species import ARCSpecies
-        from arc.reaction import ARCReaction
         # Acetic acid → CH4 + CO2 (1,3_Insertion_CO2-style toy reaction).
         # Atom indices in CC(=O)O:
         #   0 C (methyl)
@@ -1812,6 +1813,113 @@ class TestInferFragFallbackHMigration(unittest.TestCase):
             multi_species=None, label='S5-rival',
         )
         self.assertIsNone(out)
+
+
+class TestXyzWithCoords(unittest.TestCase):
+    """``_xyz_with_coords`` returns a new XYZ dict with replaced coords and
+    preserves the original symbols/isotopes tuple."""
+
+    def test_returns_new_dict_with_replaced_coords(self):
+        """The returned dict carries the new coords and the original symbols."""
+        xyz = {
+            'symbols': ('C', 'H'),
+            'isotopes': (12, 1),
+            'coords': ((0.0, 0.0, 0.0), (1.09, 0.0, 0.0)),
+        }
+        new_coords = np.array([[0.5, 0.0, 0.0], [1.5, 0.0, 0.0]])
+        out = _xyz_with_coords(xyz, new_coords)
+        self.assertEqual(out['symbols'], xyz['symbols'])
+        self.assertEqual(out['isotopes'], xyz['isotopes'])
+        self.assertEqual(out['coords'], ((0.5, 0.0, 0.0), (1.5, 0.0, 0.0)))
+        # Original input is not mutated.
+        self.assertEqual(xyz['coords'], ((0.0, 0.0, 0.0), (1.09, 0.0, 0.0)))
+
+
+class TestHeavyNeighbors(unittest.TestCase):
+    """``_heavy_neighbors`` returns only non-H graph neighbors."""
+
+    def test_methanol_heavy_neighbors_of_carbon(self):
+        """Methanol's C has exactly one heavy (O) neighbor."""
+        sp = ARCSpecies(label='methanol', smiles='CO')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        c_idx = symbols.index('C')
+        o_idx = symbols.index('O')
+        nbrs = _heavy_neighbors(sp.mol, c_idx, symbols)
+        self.assertEqual(nbrs, [o_idx])
+
+
+class TestHNeighbors(unittest.TestCase):
+    """``_h_neighbors`` returns only H graph neighbors."""
+
+    def test_methane_h_neighbors_of_carbon(self):
+        """Methane's C has exactly four H neighbors."""
+        sp = ARCSpecies(label='CH4', smiles='C')
+        xyz = sp.get_xyz()
+        symbols = xyz['symbols']
+        c_idx = symbols.index('C')
+        h_idxs = _h_neighbors(sp.mol, c_idx, symbols)
+        expected = [i for i, s in enumerate(symbols) if s == 'H']
+        self.assertEqual(sorted(h_idxs), sorted(expected))
+        self.assertEqual(len(h_idxs), 4)
+
+
+class TestArcCostViaRepairInternalReactiveCh2(unittest.TestCase):
+    """Validate the nested ``_arc_cost`` sticky pairing by feeding an input
+    whose H directions make the *identity* pairing clearly cheaper than the
+    swapped pairing, then checking that each input H ends up near its
+    already-closer target slot after the repair."""
+
+    def test_sticky_pairing_identity_wins(self):
+        """H_0 sits slightly above +n_hat and H_1 slightly below; both
+        bond lengths are ~1.09 Å and the two heavy neighbors lie along
+        ±x (so ``w_hat = +x̂``).  Target directions are
+        ``-x̂/√3 ± √(2/3) n̂`` where ``n̂ = ẑ``.  With H_0 biased to +z,
+        the identity pairing (H_0 → target0, H_1 → target1) has lower
+        arc cost than the swap, so H_0 should end up in the +z target
+        slot and H_1 in the -z slot."""
+        # Two heavy neighbors along ±x.  Center C at origin.
+        # Two H atoms at ±z with a small backside tilt into -x, so the
+        # direction from the H to the center already matches the target
+        # directions reasonably well.
+        symbols = ('C', 'C', 'C', 'H', 'H')
+        coords = [
+            (0.0, 0.0, 0.0),        # center (C, index 0)
+            (1.5, 0.0, 0.0),        # heavy neighbor (+x)
+            (-1.5, 0.0, 0.0),       # heavy neighbor (-x)
+            (-0.3, 0.0, 1.05),      # H_0 — toward +z, slightly backside
+            (-0.3, 0.0, -1.05),     # H_1 — toward -z, slightly backside
+        ]
+        xyz = {
+            'symbols': symbols,
+            'isotopes': (12, 12, 12, 1, 1),
+            'coords': tuple(coords),
+        }
+        # Build a minimal Molecule with the necessary bond graph.
+        class _A:
+            def __init__(self, sym, bonds=None):
+                class _E:
+                    def __init__(self, s):
+                        self.symbol = s
+                self.element = _E(sym)
+                self.bonds = bonds or {}
+        c0 = _A('C'); c1 = _A('C'); c2 = _A('C'); h0 = _A('H'); h1 = _A('H')
+        c0.bonds = {c1: 1, c2: 1, h0: 1, h1: 1}
+        c1.bonds = {c0: 1}
+        c2.bonds = {c0: 1}
+        h0.bonds = {c0: 1}; h1.bonds = {c0: 1}
+        class _M:
+            atoms = [c0, c1, c2, h0, h1]
+        out = repair_internal_reactive_ch2(
+            xyz, center_idx=0, heavy_nbr_indices=[1, 2], h_indices=[3, 4])
+        # H_0 should end up at +z side; H_1 at -z side.
+        h0_post = np.array(out['coords'][3])
+        h1_post = np.array(out['coords'][4])
+        self.assertGreater(h0_post[2], 0.0)
+        self.assertLess(h1_post[2], 0.0)
+        # Bond lengths preserved (±fp tolerance).
+        self.assertAlmostEqual(float(np.linalg.norm(h0_post)), 1.09, places=1)
+        self.assertAlmostEqual(float(np.linalg.norm(h1_post)), 1.09, places=1)
 
 
 if __name__ == '__main__':

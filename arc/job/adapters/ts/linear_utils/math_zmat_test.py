@@ -13,7 +13,6 @@ from arc.reaction import ARCReaction
 
 from arc.job.adapters.ts.linear_utils.math_zmat import (
     BASE_WEIGHT_GRID,
-    HAMMOND_DELTA,
     clip01,
     get_all_referenced_atoms,
     get_all_zmat_rows,

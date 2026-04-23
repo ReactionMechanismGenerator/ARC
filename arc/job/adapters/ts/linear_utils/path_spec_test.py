@@ -16,13 +16,18 @@ from arc.job.adapters.ts.linear_utils.path_spec import (
     PAULING_DELTA,
     PathChemistry,
     ReactionPathSpec,
+    _all_bonds,
     _build_adjacency,
     _bond_order_map,
     _canon,
     _canon_list,
     _compute_changed_bonds,
     _compute_unchanged_near_core,
+    _heavy_forming_bonds,
     _multi_source_bfs,
+    _safe_order,
+    _shared_atoms_between_bb_and_fb,
+    _xyz_distance,
     classify_path_chemistry,
     get_ts_target_distance,
     has_bad_changed_bond_length,
@@ -2634,6 +2639,208 @@ class TestUnifiedAdditionGateway(unittest.TestCase):
         from arc.job.adapters.ts import linear as L
         from arc.job.adapters.ts.linear_utils import path_spec as PS
         self.assertIs(L.validate_addition_guess, PS.validate_addition_guess)
+
+
+class TestAllBonds(unittest.TestCase):
+    """``_all_bonds`` returns a sorted list of canonical bond tuples."""
+
+    def test_ethane_has_seven_bonds(self):
+        """Ethane has 1 C-C + 6 C-H = 7 bonds, and the list is sorted."""
+        sp = ARCSpecies(label='ethane', smiles='CC')
+        bonds = _all_bonds(sp.mol)
+        self.assertEqual(len(bonds), 7)
+        # Canonical ordering: each tuple has min index first, list is sorted.
+        for (i, j) in bonds:
+            self.assertLess(i, j)
+        self.assertEqual(bonds, sorted(bonds))
+
+
+class TestXyzDistance(unittest.TestCase):
+    """``_xyz_distance`` returns the Euclidean distance between two atoms,
+    or ``None`` on missing/bad input."""
+
+    def test_known_pair_distance(self):
+        xyz = {
+            'symbols': ('C', 'C'),
+            'isotopes': (12, 12),
+            'coords': ((0.0, 0.0, 0.0), (3.0, 4.0, 0.0)),
+        }
+        self.assertAlmostEqual(_xyz_distance(xyz, 0, 1), 5.0, places=6)
+
+    def test_none_xyz_returns_none(self):
+        self.assertIsNone(_xyz_distance(None, 0, 1))
+
+    def test_out_of_range_returns_none(self):
+        xyz = {
+            'symbols': ('C',),
+            'isotopes': (12,),
+            'coords': ((0.0, 0.0, 0.0),),
+        }
+        self.assertIsNone(_xyz_distance(xyz, 0, 5))
+
+
+class TestSafeOrder(unittest.TestCase):
+    """``_safe_order`` looks up a canonical bond-order from a dict,
+    returning ``None`` on a miss."""
+
+    def test_hit_and_miss(self):
+        bond_orders = {(0, 1): 2.0, (1, 3): 1.0}
+        # Hit: canonical ordering swaps the input.
+        self.assertEqual(_safe_order(bond_orders, 1, 0), 2.0)
+        self.assertEqual(_safe_order(bond_orders, 3, 1), 1.0)
+        # Miss.
+        self.assertIsNone(_safe_order(bond_orders, 0, 5))
+
+
+class TestHeavyFormingBonds(unittest.TestCase):
+    """``_heavy_forming_bonds`` returns only forming bonds whose endpoints
+    are both heavy."""
+
+    def test_filters_out_h_endpoints(self):
+        symbols = ('C', 'O', 'H', 'N')
+        bonds = [(0, 1), (0, 2), (1, 3), (2, 3)]
+        # Only (0,1) and (1,3) have both endpoints heavy.
+        out = _heavy_forming_bonds(bonds, symbols)
+        self.assertEqual(out, [(0, 1), (1, 3)])
+
+
+class TestSharedAtomsBetweenBbAndFb(unittest.TestCase):
+    """``_shared_atoms_between_bb_and_fb`` returns atoms shared between a
+    breaking-bond list and a forming-bond list."""
+
+    def test_with_shared_atoms(self):
+        """Atom 1 is in both a breaking and a forming bond."""
+        shared = _shared_atoms_between_bb_and_fb(
+            breaking_bonds=[(0, 1), (2, 3)],
+            forming_bonds=[(1, 4)],
+        )
+        self.assertEqual(shared, {1})
+
+    def test_without_shared_atoms(self):
+        """No atoms are shared — the two bond sets are disjoint."""
+        shared = _shared_atoms_between_bb_and_fb(
+            breaking_bonds=[(0, 1)],
+            forming_bonds=[(2, 3)],
+        )
+        self.assertEqual(shared, set())
+
+
+class TestIsFrontierExempt(unittest.TestCase):
+    """Exercise the nested ``_is_frontier_exempt`` closure inside
+    ``has_bad_changed_bond_length`` via crafted :class:`ReactionPathSpec`
+    instances.  The exemption requires BOTH a |Δbo| ≥ 0.5 shift AND that
+    the changed bond share an atom with a breaking/forming bond."""
+
+    def test_both_conditions_hold_is_exempt(self):
+        """Large bond-order shift and adjacency to the reactive core →
+        the exemption short-circuits the distance check, so a geometry
+        that would otherwise fail returns ``(False, '')``."""
+        symbols = ('C', 'C', 'H')
+        spec = ReactionPathSpec(
+            breaking_bonds=[(0, 2)],           # shares atom 0 with changed
+            forming_bonds=[],
+            changed_bonds=[(0, 1)],
+            unchanged_near_core_bonds=[],
+            reactive_atoms={0, 1, 2},
+            weight=0.5,
+            family=None,
+            bond_order_r={(0, 1): 1.0, (0, 2): 1.0},
+            bond_order_p={(0, 1): 2.0, (0, 2): 0.0},  # Δbo=1.0 on (0,1)
+            ref_dist_r={(0, 1): 1.54},
+            ref_dist_p={(0, 1): 1.33},
+        )
+        # Deliberately-bad geometry: (0,1) far from any sensible target.
+        xyz = {
+            'symbols': symbols,
+            'isotopes': (12, 12, 1),
+            'coords': ((0.0, 0.0, 0.0), (5.0, 0.0, 0.0), (-0.5, 0.0, 0.0)),
+        }
+        bad, reason = has_bad_changed_bond_length(spec, xyz, symbols)
+        self.assertFalse(bad)
+        self.assertEqual(reason, '')
+
+    def test_missing_adjacency_is_not_exempt(self):
+        """Large Δbo but the changed bond shares no atom with breaking /
+        forming → NOT exempt; a far-off distance is rejected."""
+        symbols = ('C', 'C', 'C', 'H')
+        spec = ReactionPathSpec(
+            breaking_bonds=[(2, 3)],           # no shared atom with (0,1)
+            forming_bonds=[],
+            changed_bonds=[(0, 1)],
+            unchanged_near_core_bonds=[],
+            reactive_atoms={2, 3},
+            weight=0.5,
+            family=None,
+            bond_order_r={(0, 1): 1.0, (2, 3): 1.0},
+            bond_order_p={(0, 1): 2.0, (2, 3): 0.0},
+            ref_dist_r={(0, 1): 1.54},
+            ref_dist_p={(0, 1): 1.33},
+        )
+        xyz = {
+            'symbols': symbols,
+            'isotopes': (12, 12, 12, 1),
+            'coords': ((0.0, 0.0, 0.0), (5.0, 0.0, 0.0),
+                        (10.0, 0.0, 0.0), (11.0, 0.0, 0.0)),
+        }
+        bad, reason = has_bad_changed_bond_length(spec, xyz, symbols)
+        self.assertTrue(bad)
+        self.assertIn('bad-changed-bond', reason)
+
+
+class TestBondDistViaScoreGuess(unittest.TestCase):
+    """Exercise the nested ``_bond_dist`` closure inside
+    ``score_guess_against_path_spec`` by scoring a geometry whose
+    breaking-bond distance is a known Euclidean value."""
+
+    def test_bond_dist_feeds_into_score(self):
+        """A geometry with exactly the breaking-bond target distance
+        contributes zero to the score; shifting by 0.35 Å contributes 1.0."""
+        symbols = ('C', 'C', 'H', 'H')
+        # An almost-empty spec with a single breaking bond (0,1).
+        spec = ReactionPathSpec(
+            breaking_bonds=[(0, 1)],
+            forming_bonds=[],
+            changed_bonds=[],
+            unchanged_near_core_bonds=[],
+            reactive_atoms={0, 1},
+            weight=0.5,
+            family=None,
+            bond_order_r={(0, 1): 1.0},
+            bond_order_p={(0, 1): 0.0},
+            ref_dist_r={(0, 1): 1.54},
+            ref_dist_p={(0, 1): 3.00},
+        )
+        # target = sbl(C,C) + PAULING_DELTA.
+        target = get_ts_target_distance(
+            bond=(0, 1), role='breaking', symbols=symbols,
+            d_r=1.54, d_p=3.00, bo_r=1.0, bo_p=0.0,
+            weight=0.5, family=None)
+        # On-target: bond at exactly `target` along x.
+        xyz_on = {
+            'symbols': symbols,
+            'isotopes': (12, 12, 1, 1),
+            'coords': ((0.0, 0.0, 0.0), (target, 0.0, 0.0),
+                        (10.0, 0.0, 0.0), (11.0, 0.0, 0.0)),
+        }
+        score_on = score_guess_against_path_spec(
+            spec, xyz_on, r_mol=None, symbols=symbols,
+            chemistry=PathChemistry.GENERIC)
+        # Score = |d - target| / 0.35 + penalty(planarity)
+        # + penalty(blocking).  With no r_mol, planarity/blocking helpers
+        # should return False (no penalties).
+        self.assertAlmostEqual(score_on, 0.0, places=6)
+
+        # Shift the bond by +0.35 Å → |d - target| / 0.35 = 1.0.
+        xyz_off = {
+            'symbols': symbols,
+            'isotopes': (12, 12, 1, 1),
+            'coords': ((0.0, 0.0, 0.0), (target + 0.35, 0.0, 0.0),
+                        (10.0, 0.0, 0.0), (11.0, 0.0, 0.0)),
+        }
+        score_off = score_guess_against_path_spec(
+            spec, xyz_off, r_mol=None, symbols=symbols,
+            chemistry=PathChemistry.GENERIC)
+        self.assertAlmostEqual(score_off, 1.0, places=4)
 
 
 if __name__ == '__main__':

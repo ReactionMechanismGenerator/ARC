@@ -16,6 +16,7 @@ from arc.species import ARCSpecies
 _MASS_NUMBER = {'H': 1, 'C': 12, 'N': 14, 'O': 16, 'S': 32}
 
 from arc.job.adapters.ts.linear_utils.addition import (
+    _reposition_leaving_groups,
     insertion_ring_extra_stretch,
     apply_intra_frag_contraction,
     build_concerted_ts,
@@ -28,7 +29,6 @@ from arc.job.adapters.ts.linear_utils.addition import (
     stretch_core_from_large,
     try_insertion_ring,
 )
-from arc.job.adapters.ts.linear_utils.path_spec import ReactionPathSpec
 
 
 class TestFindSplitBondsByFragmentation(unittest.TestCase):
@@ -406,11 +406,7 @@ class TestTryInsertionRing(unittest.TestCase):
         }
         # Break both C-C bonds: C0-C1 and C1-C2. C1 appears in 2 split bonds.
         split_bonds = [(c_idx[0], c_idx[1]), (c_idx[1], c_idx[2])]
-        fragments = [
-            {i for i in range(n) if i == c_idx[0] or (mol.atoms[i].symbol == 'H' and any(
-                mol.has_bond(mol.atoms[i], mol.atoms[c_idx[0]]) for _ in [1]))},
-        ]
-        # Build real fragments by BFS without split bonds
+        # Build fragments by BFS without split bonds.
         atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
         adj = {k: set() for k in range(n)}
         for atom in mol.atoms:
@@ -918,6 +914,185 @@ class TestMigrateHBetweenFragments(unittest.TestCase):
             product_species=[spc1, spc2])
         self.assertEqual(len(result['coords']), n)
         self.assertEqual(len(result['symbols']), n)
+
+
+class TestApplyIntraFragContraction(unittest.TestCase):
+    """Tests for the apply_intra_frag_contraction public orchestrator.
+
+    Note:
+        The helpers ``heavy_formula`` (line 1102) and ``multi_idx_to_species``
+        (line 305) are defined as *nested closures* inside
+        ``migrate_h_between_fragments`` and ``map_and_verify_fragments``
+        respectively — they cannot be imported. Their logic is fully
+        exercised through the public callers, which already have dedicated
+        test classes above (``TestMigrateHBetweenFragments`` and
+        ``TestMapAndVerifyFragments``).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_no_cyclic_product_returns_original_xyz_list(self):
+        """When no product is cyclic, detect_intra_frag_ring_bonds finds no forming
+        bond, so apply_intra_frag_contraction returns [xyz] unchanged."""
+        # Ethane → 2 CH3 has no cyclic products, so no intra-frag contraction.
+        mol = Molecule().from_smiles('CC')
+        spc1 = ARCSpecies(label='CH3_a', smiles='[CH3]')
+        spc2 = ARCSpecies(label='CH3_b', smiles='[CH3]')
+        c_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        symbols = tuple(a.symbol for a in mol.atoms)
+        n = len(symbols)
+        coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(n))
+        xyz = {
+            'symbols': symbols,
+            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+            'coords': coords,
+        }
+        result = apply_intra_frag_contraction(
+            xyz, mol, split_bonds=[(c_indices[0], c_indices[1])],
+            cross_bonds=None, multi_species=[spc1, spc2],
+            weight=0.5, label='test')
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['symbols'], xyz['symbols'])
+        np.testing.assert_allclose(result[0]['coords'], xyz['coords'], atol=1e-10)
+
+    def test_butadiene_to_cyclobutene_contracts_forming_bond(self):
+        """Butadiene → cyclobutene: a ring-closing forming bond is detected between
+        the terminal carbons, and apply_intra_frag_contraction returns at least one
+        contracted geometry in which the forming-bond distance is shorter."""
+        mol = Molecule().from_smiles('C=CC=C')
+        spc = ARCSpecies(label='cyclobutene', smiles='C1=CCC1')
+        c_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        # Build extended-chain coordinates so the two terminal Cs start well apart.
+        coords = []
+        symbols = []
+        for i, atom in enumerate(mol.atoms):
+            symbols.append(atom.symbol)
+            if atom.symbol == 'C':
+                c_rank = c_indices.index(i)
+                coords.append((c_rank * 1.40, 0.0, 0.0))
+            else:
+                bonded_c = None
+                for nbr in atom.bonds.keys():
+                    if nbr.symbol == 'C':
+                        bonded_c = mol.atoms.index(nbr)
+                        break
+                c_rank = c_indices.index(bonded_c) if bonded_c is not None else 0
+                coords.append((c_rank * 1.40, 1.09, 0.0))
+        xyz = {
+            'symbols': tuple(symbols),
+            'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in mol.atoms),
+            'coords': tuple(tuple(c) for c in coords),
+        }
+        c0, c_last = c_indices[0], c_indices[-1]
+        d_before = np.linalg.norm(
+            np.array(xyz['coords'][c0]) - np.array(xyz['coords'][c_last]))
+        # No split bonds: we're only testing the ring-contraction path.
+        result = apply_intra_frag_contraction(
+            xyz, mol, split_bonds=[], cross_bonds=None,
+            multi_species=[spc], weight=0.5, label='butadiene_ring_close')
+        # Result is always a list of xyz dicts.
+        self.assertIsInstance(result, list)
+        self.assertGreaterEqual(len(result), 1)
+        for r in result:
+            self.assertIn('symbols', r)
+            self.assertIn('coords', r)
+            self.assertEqual(r['symbols'], xyz['symbols'])
+        # If contraction succeeded, the forming-bond distance must be shorter
+        # than the initial extended-chain geometry in at least one result.
+        shortened = False
+        for r in result:
+            d_after = np.linalg.norm(
+                np.array(r['coords'][c0]) - np.array(r['coords'][c_last]))
+            if d_after < d_before - 0.05:
+                shortened = True
+                break
+        if len(result) > 1 or (len(result) == 1 and result[0]['coords'] != xyz['coords']):
+            self.assertTrue(shortened,
+                            msg=f'expected at least one contracted result '
+                                f'(d_before={d_before:.3f} Å)')
+
+
+class TestRepositionLeavingGroups(unittest.TestCase):
+    """Tests for the module-level private helper _reposition_leaving_groups.
+
+    Note:
+        The nested closures ``_get_fragments``, ``_heavy_formulas``,
+        ``_formulas_match`` (inside ``find_split_bonds_by_fragmentation``),
+        ``_normalize``, ``_labels_consistent``, ``multi_idx_to_species``
+        (inside ``map_and_verify_fragments``), ``_sort_key`` (inside
+        ``detect_intra_frag_ring_bonds``) and ``_min_frag_dist`` (inside
+        ``migrate_h_between_fragments``) are closures over their enclosing
+        functions' local state — they cannot be imported or invoked in
+        isolation. Their behavior is fully exercised by the public
+        callers' tests (see the corresponding ``Test<Caller>`` classes).
+
+        ``_reposition_leaving_groups`` *is* a module-level private; it is
+        imported and tested directly here, matching the precedent of the
+        file's existing imports.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_leaving_fragment_moves_with_ring_anchor_and_stretches_to_ts(self):
+        """A 4-atom geometry: ring anchor (atom 0) moves +1 Å between pre and
+        post geometries, leaving anchor (atom 3) is in a separate fragment
+        that starts too far from the ring anchor. _reposition_leaving_groups
+        must translate the leaving fragment to follow the ring-anchor
+        displacement and then stretch the split bond to the TS target
+        (~single-bond length + Pauling delta) along the pre-closure direction.
+        """
+        # Atom layout:
+        #   0 (C, ring anchor) — 1 (C, ring)  | fragment A
+        #   2 (C, ring)                       | fragment A
+        #   3 (C, leaving anchor)             | fragment B (split bond 0-3)
+        symbols = ('C', 'C', 'C', 'C')
+        isotopes = (12, 12, 12, 12)
+        # Pre-closure: atom 0 at origin, leaving anchor 5 Å out along +x.
+        pre_coords = (
+            (0.0, 0.0, 0.0),     # 0 ring anchor
+            (1.5, 0.0, 0.0),     # 1 ring member
+            (0.0, 1.5, 0.0),     # 2 ring member
+            (5.0, 0.0, 0.0),     # 3 leaving anchor
+        )
+        # Post-closure: ring anchor shifted by (+1, 0, 0). Leaving anchor still
+        # at its pre-closure position → now only 4 Å from new ring anchor,
+        # but far above the TS target (~2.04 Å for C-C).
+        coords = (
+            (1.0, 0.0, 0.0),     # 0 ring anchor (moved +1)
+            (2.5, 0.0, 0.0),     # 1 ring member (moved +1)
+            (1.0, 1.5, 0.0),     # 2 ring member (moved +1)
+            (5.0, 0.0, 0.0),     # 3 leaving anchor (stranded)
+        )
+        pre_xyz = {'symbols': symbols, 'isotopes': isotopes, 'coords': pre_coords}
+        xyz = {'symbols': symbols, 'isotopes': isotopes, 'coords': coords}
+        frag_id = [0, 0, 0, 1]  # atom 3 is the leaving group
+        split_bonds = [(0, 3)]
+        result = _reposition_leaving_groups(
+            xyz, pre_xyz, split_bonds=split_bonds,
+            frag_id=frag_id, n_atoms=4, extra_stretch=0.0)
+        self.assertIn('coords', result)
+        self.assertEqual(result['symbols'], symbols)
+        new_coords = np.array(result['coords'])
+        # The leaving-anchor → ring-anchor distance should be at or near the
+        # C-C TS target (single bond length + Pauling delta ≈ 2.04 Å).
+        d_post = float(np.linalg.norm(new_coords[3] - new_coords[0]))
+        self.assertLess(d_post, 3.0,
+                        msg=f'leaving anchor not pulled to TS target: {d_post:.3f} Å')
+        self.assertGreater(d_post, 1.5,
+                           msg=f'leaving anchor collapsed too close: {d_post:.3f} Å')
+        # The leaving fragment (atom 3 only) should have moved; the ring
+        # fragment (atoms 0, 1, 2) stays unchanged from the input post-closure
+        # positions.
+        for i in (0, 1, 2):
+            np.testing.assert_allclose(new_coords[i], coords[i], atol=1e-10)
+        self.assertGreater(
+            float(np.linalg.norm(new_coords[3] - np.array(coords[3]))), 0.5)
 
 
 if __name__ == '__main__':

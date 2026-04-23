@@ -1334,13 +1334,13 @@ def _reposition_leaving_groups(xyz: dict,
 
 
 def apply_intra_frag_contraction(xyz: dict,
-                                  mol: 'Molecule',
-                                  split_bonds: List[Tuple[int, int]],
-                                  cross_bonds: Optional[List[Tuple[int, int]]],
-                                  multi_species: List[ARCSpecies],
-                                  weight: float = 0.5,
-                                  label: str = '',
-                                  ) -> List[dict]:
+                                 mol: 'Molecule',
+                                 split_bonds: List[Tuple[int, int]],
+                                 cross_bonds: Optional[List[Tuple[int, int]]],  # linear passes cross_bonds in some calls. maybe we SHOULD use it here?
+                                 multi_species: List[ARCSpecies],
+                                 weight: float = 0.5,
+                                 label: str = '',
+                                 ) -> List[dict]:
     """
     Apply angular ring contraction for intra-fragment forming bonds.
 
@@ -1396,17 +1396,13 @@ def apply_intra_frag_contraction(xyz: dict,
         fid += 1
 
     # Identify split-bond endpoints that also participate in a forming bond.
-    # When bond formation and bond breaking happen at the same atom (e.g. SN2-
-    # like or ring-closure-with-leaving-group), both the forming and breaking
-    # bonds are elongated at the TS compared to the simple ring-closure case.
     split_endpoints: Set[int] = set()
     for sb in split_bonds:
         split_endpoints.update(sb)
 
     # Determine whether a genuine leaving group exists by checking fragment
     # sizes. A small fragment (≤ 4 heavy atoms) on the far side of a split
-    # bond is treated as a leaving group (e.g. CH3 in ExoTetCyclic). Large
-    # fragments (both halves of a Diels–Alder retro-fragmentation) are not.
+    # bond is treated as a leaving group (e.g. CH3 in ExoTetCyclic).
     _MAX_LG_HEAVY = 1
     has_small_leaving_frag = False
     for sb_a, sb_b in split_bonds:
@@ -1438,16 +1434,8 @@ def apply_intra_frag_contraction(xyz: dict,
         # Strained rings (3-4 membered) have an earlier TS due to ring
         # strain energy, so the forming bond is longer at the TS.
         ring_correction = 0.15 if ring_size == 3 else (0.08 if ring_size == 4 else 0.0)
-        # When a ring-closure endpoint also participates in a split bond
-        # (leaving group departure), the TS is earlier: both bonds sharing
-        # the central atom are longer than in a pure ring-closure TS.
-        # Only apply when a genuine small leaving group exists (not for
-        # Diels–Alder where both fragments are large) and when
-        # ring_correction is zero (avoid stacking corrections for strained
-        # rings that already account for an early TS).
-        has_leaving_group = bool(
-            has_small_leaving_frag and ({a, b} & split_endpoints) and ring_correction == 0.0
-        )
+        # When a ring-closure endpoint also participates in a split bond (leaving group departure), the TS is earlier
+        has_leaving_group = bool(has_small_leaving_frag and ({a, b} & split_endpoints) and ring_correction == 0.0)
         leaving_group_correction = 0.25 if has_leaving_group else 0.0
         ts_target = sbl + PAULING_DELTA + ring_correction + leaving_group_correction
         target = current_dist + (ts_target - current_dist) * min(2.0 * weight, 1.0)
@@ -1467,21 +1455,19 @@ def apply_intra_frag_contraction(xyz: dict,
             # group is too FAR (stranded); when it is too close,
             # ``stretch_bond()`` downstream will handle the distance.
             if has_leaving_group:
-                contracted = _reposition_leaving_groups(
-                    contracted, xyz, split_bonds, frag_id, n_atoms,
-                    extra_stretch=leaving_group_correction)
+                contracted = _reposition_leaving_groups(contracted, xyz, split_bonds, frag_id, n_atoms,
+                                                        extra_stretch=leaving_group_correction)
             results.append(contracted)
     return results if results else [xyz]
 
 
 def detect_intra_frag_ring_bonds(mol: 'Molecule',
-                                  split_bonds: List[Tuple[int, int]],
-                                  multi_species: List[ARCSpecies],
-                                  xyz: dict,
-                                  ) -> List[Tuple[Tuple[int, int], int]]:
+                                 split_bonds: List[Tuple[int, int]],
+                                 multi_species: List[ARCSpecies],
+                                 xyz: dict,
+                                 ) -> List[Tuple[Tuple[int, int], int]]:
     """
-    Detect bonds that should form within a fragment (ring closure) to match
-    product ring topology.
+    Detect bonds that should form within a fragment (ring closure) to match product ring topology.
 
     After severing ``split_bonds``, each remaining connected component is a
     fragment.  If any product species is cyclic, this function searches for
@@ -1495,18 +1481,14 @@ def detect_intra_frag_ring_bonds(mol: 'Molecule',
 
     Args:
         mol (Molecule): RMG Molecule of the unimolecular species.
-        split_bonds (List[Tuple[int, int]]): Bonds already severed by
-            ``stretch_bond()``.
-        multi_species (List[ARCSpecies]): Product species on the
-            multi-species side.
+        split_bonds (List[Tuple[int, int]]): Bonds already severed by ``stretch_bond()``.
+        multi_species (List[ARCSpecies]): Product species on the multi-species side.
         xyz (dict): Current XYZ coordinates (used for distance-based sorting).
 
     Returns:
-        List[Tuple[Tuple[int, int], int]]: Intra-fragment forming-bond
-            candidates as ``((i, j), ring_size)`` pairs, where ``i < j``
-            and ``ring_size`` is the BFS path length (number of ring atoms).
+        List[Tuple[Tuple[int, int], int]]: Intra-fragment forming-bond candidates as ``((i, j), ring_size)`` pairs,
+            where ``i < j`` and ``ring_size`` is the BFS path length (number of ring atoms).
     """
-    # Only relevant when at least one product has a ring.
     product_ring_sizes: Set[int] = set()
     for sp in multi_species:
         if sp.mol.is_cyclic():
