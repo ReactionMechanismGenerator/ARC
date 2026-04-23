@@ -2915,7 +2915,7 @@ class Group(Graph):
         This function takes `other` :class:Group object and returns a merged :class:Group object based
         on overlapping labeled atoms between self and other
 
-        Currently, assumes `other` can be merged at the closest labelled atom
+        Currently, assumes `other` can be merged at the closest labeled atom
         if keep_identical_labels=True merge_groups will not try to merge atoms with the same labels
         """
         labeled1 = self.get_all_labeled_atoms()
@@ -2938,7 +2938,7 @@ class Group(Graph):
         """
         The following loop will move bonds that are exclusively in the new backbone so that
         they connect to the backbone. For example, assume backbone has bond atomA-atomB,
-        where atomB is labelled as *2 and there is an atomC in the end analgously labelled
+        where atomB is labeled as *2 and there is an atomC in the end analgously labeled
         *2. We need to remove the bond between atomA and atomB. Then we need to add a bond
         between atomA and atomC.
         """
