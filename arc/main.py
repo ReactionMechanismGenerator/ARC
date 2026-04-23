@@ -32,6 +32,7 @@ from arc.common import (VERSION,
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.level import Level, assign_frequency_scale_factor
+from arc.level.protocol import CompositeProtocol
 from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import SSHClient
 from arc.output import write_output_yml
@@ -256,6 +257,7 @@ class ARC(object):
                  reactions: Optional[List[ARCReaction]] = None,
                  running_jobs: Optional[dict] = None,
                  scan_level: Optional[Union[str, dict, Level]] = None,
+                 sp_composite: Optional[Union[str, dict, CompositeProtocol]] = None,
                  sp_level: Optional[Union[str, dict, Level]] = None,
                  species: Optional[List[ARCSpecies]] = None,
                  specific_job_type: str = '',
@@ -339,6 +341,7 @@ class ARC(object):
         self.opt_level = opt_level or None
         self.freq_level = freq_level or None
         self.sp_level = sp_level or None
+        self.sp_composite = sp_composite or None
         self.scan_level = scan_level or None
         self.ts_guess_level = ts_guess_level or None
         self.irc_level = irc_level or None
@@ -450,6 +453,12 @@ class ARC(object):
             restart_dict['compare_to_rmg'] = self.compare_to_rmg
         if self.composite_method is not None:
             restart_dict['composite_method'] = self.composite_method.as_dict()
+        if self.sp_composite is not None:
+            restart_dict['sp_composite'] = (
+                self.sp_composite.as_dict()
+                if isinstance(self.sp_composite, CompositeProtocol)
+                else self.sp_composite
+            )
         if not self.compute_rates:
             restart_dict['compute_rates'] = self.compute_rates
         if not self.compute_thermo:
@@ -582,6 +591,7 @@ class ARC(object):
                                    opt_level=self.opt_level,
                                    freq_level=self.freq_level,
                                    sp_level=self.sp_level,
+                                   sp_composite=self.sp_composite,
                                    scan_level=self.scan_level,
                                    ts_guess_level=self.ts_guess_level,
                                    irc_level=self.irc_level,
@@ -1004,6 +1014,34 @@ class ARC(object):
             self.ts_guess_level = Level(repr=self.ts_guess_level)
             logger.info(f'TS guesses:{default_flag} {self.ts_guess_level}')
 
+        if self.sp_composite is not None:
+            # Phase 2: parse the composite protocol, validate mutual exclusions,
+            # and backfill sp_level from the protocol's base level when omitted.
+            if self.composite_method is not None:
+                raise InputError(
+                    "sp_composite and composite_method are mutually exclusive. "
+                    "composite_method refers to Gaussian-style single-job composites "
+                    "(e.g. CBS-QB3, G4); sp_composite refers to multi-SP focal-point "
+                    "protocols. Pick one."
+                )
+            if self.adaptive_levels is not None:
+                raise InputError(
+                    "sp_composite is not supported together with adaptive_levels in "
+                    "this release. Drop one of them."
+                )
+            if not isinstance(self.sp_composite, CompositeProtocol):
+                self.sp_composite = CompositeProtocol.from_user_input(self.sp_composite)
+            logger.info(
+                f'sp_composite protocol resolved: base={self.sp_composite.base.level.simple()}, '
+                f'{len(self.sp_composite.corrections)} correction(s).'
+            )
+            if self.sp_level is None:
+                self.sp_level = self.sp_composite.base.level
+                logger.info(
+                    f'sp_level not set explicitly; derived from sp_composite.base.level: '
+                    f'{self.sp_level.simple()}'
+                )
+
         if self.composite_method is not None:
             self.composite_method = Level(repr=self.composite_method)
             if self.composite_method.method_type != "composite":
@@ -1200,27 +1238,40 @@ class ARC(object):
     def check_arkane_level_of_theory(self):
         """
         Check that the level of theory has AEC in Arkane.
+
+        When ``sp_composite`` is active, route the AEC lookup through the protocol's
+        ``base.level`` and skip the BAC lookup entirely with a single warning — BAC
+        corrections were derived for a single LoT and are not meaningful on top of
+        a composite that already applies δ-corrections. Per-species AEC/BAC variants
+        are not supported in this release; the lookup stays global.
         """
         explicitly_set = self.arkane_level_of_theory is not None
         if self.arkane_level_of_theory is None:
-            self.arkane_level_of_theory = self.composite_method if self.composite_method is not None \
-                else self.sp_level if self.sp_level is not None else None
+            if self.sp_composite is not None:
+                self.arkane_level_of_theory = self.sp_composite.base.level
+            elif self.composite_method is not None:
+                self.arkane_level_of_theory = self.composite_method
+            elif self.sp_level is not None:
+                self.arkane_level_of_theory = self.sp_level
         if self.arkane_level_of_theory is None:
             logger.warning('Could not determine a level of theory to be used for Arkane!')
         else:
             if explicitly_set:
                 source = ''
+            elif self.sp_composite is not None:
+                source = ' (from sp_composite.base.level)'
             elif self.composite_method is not None:
                 source = ' (from composite method)'
             else:
                 source = ' (from sp level)'
             logger.info(f'Arkane level of theory:{source} {self.arkane_level_of_theory}')
-            if self.bac_type is not None:
-                check_arkane_bacs(sp_level=self.arkane_level_of_theory, bac_type=self.bac_type,
-                                  raise_error=self.compute_thermo)
+            if self.sp_composite is not None:
+                logger.warning('BAC lookup is skipped because sp_composite is active.')
+                check_arkane_aec(sp_level=self.arkane_level_of_theory, raise_error=self.compute_thermo)
+            elif self.bac_type is not None:
+                check_arkane_bacs(sp_level=self.arkane_level_of_theory, bac_type=self.bac_type, raise_error=self.compute_thermo)
             else:
-                check_arkane_aec(sp_level=self.arkane_level_of_theory,
-                                 raise_error=self.compute_thermo)
+                check_arkane_aec(sp_level=self.arkane_level_of_theory, raise_error=self.compute_thermo)
 
     def backup_restart(self):
         """
