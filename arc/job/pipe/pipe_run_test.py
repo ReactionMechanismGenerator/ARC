@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import time
 import unittest
+import uuid
 
 from arc.job.adapters.mockter import MockAdapter
 from arc.job.pipe.pipe_state import TaskState, PipeRunState, TaskSpec, read_task_state, update_task_state
@@ -134,12 +135,14 @@ class TestPipeRunWriteSubmitScript(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def _make_run(self, cluster_software, max_workers=10, n_tasks=None):
+    def _make_run(self, cluster_software, max_workers=10, n_tasks=None,
+                  max_concurrent=None, run_id=None):
         n = n_tasks if n_tasks is not None else max_workers
         tasks = [_make_spec(f't_{i}') for i in range(n)]
-        run = PipeRun(project_directory=self.tmpdir, run_id='sub_test',
+        run = PipeRun(project_directory=self.tmpdir,
+                      run_id=run_id or f'sub_test_{uuid.uuid4().hex[:8]}',
                       tasks=tasks, cluster_software=cluster_software,
-                      max_workers=max_workers)
+                      max_workers=max_workers, max_concurrent=max_concurrent)
         run.stage()
         return run
 
@@ -169,6 +172,104 @@ class TestPipeRunWriteSubmitScript(unittest.TestCase):
         with open(path) as f:
             content = f.read()
         self.assertIn('queue 12', content)
+
+    def test_slurm_throttle(self):
+        run = self._make_run('slurm', max_workers=100, n_tasks=100, max_concurrent=8)
+        with open(run.write_submit_script()) as f:
+            content = f.read()
+        self.assertIn('#SBATCH --array=1-100%8', content)
+
+    def test_pbs_throttle(self):
+        run = self._make_run('pbs', max_workers=50, n_tasks=50, max_concurrent=4)
+        with open(run.write_submit_script()) as f:
+            content = f.read()
+        self.assertIn('#PBS -J 1-50%4', content)
+
+    def test_sge_throttle_uses_tc_directive(self):
+        run = self._make_run('sge', max_workers=20, n_tasks=20, max_concurrent=5)
+        with open(run.write_submit_script()) as f:
+            content = f.read()
+        self.assertIn('#$ -t 1-20', content)
+        self.assertIn('#$ -tc 5', content)
+
+    def test_htcondor_throttle_uses_max_materialize(self):
+        run = self._make_run('htcondor', max_workers=12, n_tasks=12, max_concurrent=3)
+        with open(run.write_submit_script()) as f:
+            content = f.read()
+        self.assertIn('queue 12', content)
+        self.assertIn('max_materialize = 3', content)
+
+    def test_throttle_clamped_to_array_size(self):
+        # max_concurrent > array_size should clamp to array_size (no-op throttle).
+        run = self._make_run('slurm', max_workers=6, n_tasks=6, max_concurrent=99)
+        with open(run.write_submit_script()) as f:
+            content = f.read()
+        self.assertIn('#SBATCH --array=1-6%6', content)
+
+    def test_unthrottled_has_no_throttle_markers(self):
+        """Regression guard: unthrottled submit scripts contain no throttle syntax."""
+        array_line_markers = {
+            'slurm':    '#SBATCH --array=',
+            'pbs':      '#PBS -J ',
+            'sge':      '#$ -t ',
+            'htcondor': 'queue ',
+        }
+        for cs, marker in array_line_markers.items():
+            with self.subTest(cluster_software=cs):
+                run = self._make_run(cs, max_workers=10, n_tasks=10, max_concurrent=None)
+                with open(run.write_submit_script()) as f:
+                    content = f.read()
+                array_line = next(line for line in content.splitlines() if marker in line)
+                self.assertNotIn('%', array_line)
+                self.assertNotIn('-tc ', content)
+                self.assertNotIn('max_materialize', content)
+
+    def test_oge_routes_to_sge_throttle(self):
+        """cluster_software='oge' should use the SGE throttle directive."""
+        run = self._make_run('oge', max_workers=15, n_tasks=15, max_concurrent=4)
+        with open(run.write_submit_script()) as f:
+            content = f.read()
+        self.assertIn('#$ -t 1-15', content)
+        self.assertIn('#$ -tc 4', content)
+
+    def test_invalid_max_concurrent_values_raise(self):
+        """Only None and positive integers are accepted."""
+        for max_concurrent in (-1, 0, -2, 1.5, '3', True, False):
+            with self.subTest(max_concurrent=max_concurrent):
+                with self.assertRaisesRegex(ValueError, 'max_concurrent'):
+                    PipeRun(project_directory=self.tmpdir,
+                            run_id=f'invalid_{uuid.uuid4().hex[:8]}',
+                            tasks=[_make_spec('t_0')],
+                            cluster_software='slurm',
+                            max_concurrent=max_concurrent)
+
+    def test_render_throttle_branching_matrix(self):
+        """Unit-test _render_throttle directly across scheduler × throttle combos."""
+        run = self._make_run('slurm', max_workers=1, n_tasks=1)
+        cases = [
+            ('slurm',    100, None, {'array_range': '1-100',   'extra_directives': ''}),
+            ('slurm',    100, 8,    {'array_range': '1-100%8', 'extra_directives': ''}),
+            ('pbs',      50,  4,    {'array_range': '1-50%4',  'extra_directives': ''}),
+            ('sge',      20,  None, {'array_range': '1-20',    'extra_directives': ''}),
+            ('sge',      20,  5,    {'array_range': '1-20',    'extra_directives': '#$ -tc 5'}),
+            ('oge',      20,  5,    {'array_range': '1-20',    'extra_directives': '#$ -tc 5'}),
+            ('htcondor', 12,  None, {'array_range': '12',      'extra_directives': ''}),
+            ('htcondor', 12,  3,    {'array_range': '12',      'extra_directives': 'max_materialize = 3'}),
+        ]
+        for cs, array_size, throttle, expected in cases:
+            with self.subTest(cluster_software=cs, throttle=throttle):
+                run.cluster_software = cs
+                self.assertEqual(run._render_throttle(array_size, throttle), expected)
+
+    def test_from_dir_round_trip_preserves_max_concurrent(self):
+        """Persist max_concurrent through run.json so crash-recovered runs keep their throttle."""
+        run = self._make_run('slurm', max_workers=20, n_tasks=20, max_concurrent=7)
+        run.write_submit_script()
+        reloaded = PipeRun.from_dir(run.pipe_root)
+        self.assertEqual(reloaded.max_concurrent, 7)
+        with open(reloaded.write_submit_script()) as f:
+            content = f.read()
+        self.assertIn('#SBATCH --array=1-20%7', content)
 
     def test_overwrite_is_safe(self):
         run = self._make_run('slurm')
