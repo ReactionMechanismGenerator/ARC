@@ -726,15 +726,11 @@ class TestMigrateVerifiedAtoms(unittest.TestCase):
                'coords': tuple(tuple(c) for c in coords_list)}
 
         # Pick an H bonded to a C atom (donor in large_prod) to migrate toward O (in core)
-        atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
         migrating_h = None
-        donor_c = None
         for hi in h_idx:
             for nbr in mol.atoms[hi].bonds.keys():
-                nbr_idx = atom_to_idx[nbr]
                 if nbr.symbol == 'C':
                     migrating_h = hi
-                    donor_c = nbr_idx
                     break
             if migrating_h is not None:
                 break
@@ -786,7 +782,6 @@ class TestMigrateHBetweenFragments(unittest.TestCase):
         spc2 = ARCSpecies(label='CH3_b', smiles='[CH3]')
         c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
         symbols = tuple(a.symbol for a in mol.atoms)
-        n = len(symbols)
         coords_list = []
         for i, atom in enumerate(mol.atoms):
             if atom.symbol == 'C':
@@ -819,10 +814,7 @@ class TestMigrateHBetweenFragments(unittest.TestCase):
         # Products: H2 and CO2
         spc_h2 = ARCSpecies(label='H2', smiles='[H][H]')
         spc_co2 = ARCSpecies(label='CO2', smiles='O=C=O')
-
-        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
         h_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'H']
-        o_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'O']
 
         # Build coordinates with fragments well-separated
         coords_list = []
