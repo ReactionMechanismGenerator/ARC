@@ -267,7 +267,7 @@ def calculate_axis_symmetry_number(molecule):
             continue
 
         # Find terminal atoms in axis
-        # Terminal atoms labelled T:  T=C=C=C=T
+        # Terminal atoms labeled T:  T=C=C=C=T
         axis = []
         for bond in bonds:
             axis.extend(bond)

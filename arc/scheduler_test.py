@@ -870,7 +870,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         sched._pending_pipe_irc.add((ts_label, 'forward'))
         sched._pending_pipe_irc.add((ts_label, 'reverse'))
 
-        # Call switch_ts — should pick guess 1 and clean up all state from guess 0.
+        # Call switch_ts, should pick guess 1 and clean up all state from guess 0.
         sched.switch_ts(ts_label)
 
         # Verify guess 1 was selected.

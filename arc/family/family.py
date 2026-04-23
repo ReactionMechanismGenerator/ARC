@@ -891,8 +891,8 @@ def split_entries(groups_str: str) -> list[str]:
 
     This helper does a small character-by-character scan that tracks
     parenthesis depth while skipping over single-quoted, double-quoted,
-    and triple-quoted string literals.  The body returned for each entry
-    is the text between the opening ``entry(`` and the matching ``)`` —
+    and triple-quoted string literals. The body returned for each entry
+    is the text between the opening ``entry(`` and the matching ``)``:
     exactly what the original ``re.findall`` was supposed to return.
     """
     bodies: list[str] = []
@@ -948,7 +948,7 @@ def split_entries(groups_str: str) -> list[str]:
                     continue
                 j += 1
         if depth != 0:
-            # Unmatched ``entry(`` — give up rather than mis-attribute.
+            # Unmatched ``entry(``, give up rather than mis-attribute.
             break
         bodies.append(groups_str[body_start:j])
         pos = j + 1
