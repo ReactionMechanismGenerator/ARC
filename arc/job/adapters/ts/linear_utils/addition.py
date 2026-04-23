@@ -887,30 +887,29 @@ def stretch_core_from_large(ts_xyz: dict,
     for idx in core:
         coords[idx] += direction * delta
 
-    return {
-        'symbols': ts_xyz['symbols'],
-        'isotopes': ts_xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
-        'coords': tuple(tuple(float(x) for x in row) for row in coords),
-    }
+    return {'symbols': ts_xyz['symbols'],
+            'isotopes': ts_xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
+            'coords': tuple(tuple(float(x) for x in row) for row in coords)}
 
 
 def migrate_verified_atoms(ts_xyz: dict,
-                            uni_mol: 'Molecule',
-                            migrating_atoms: Set[int],
-                            core: Set[int],
-                            large_prod_atoms: Set[int],
-                            cross_bonds: Optional[List[Tuple[int, int]]] = None,
-                            ) -> dict:
-    """Migrate specific atoms identified by ``map_and_verify_fragments``.
+                           uni_mol: 'Molecule',
+                           migrating_atoms: Set[int],
+                           core: Set[int],
+                           large_prod_atoms: Set[int],
+                           cross_bonds: Optional[List[Tuple[int, int]]] = None,
+                           ) -> dict:
+    """
+    Migrate specific atoms identified by ``map_and_verify_fragments``.
 
     Unlike ``migrate_h_between_fragments`` (which guesses which H to move by
     composition matching), this function moves exactly the atoms in
-    *migrating_atoms* — the set of atom indices that belong to one product but
+    *migrating_atoms*: the set of atom indices that belong to one product but
     are bonded only to atoms in the other product in the reactant graph.
 
     Each migrating atom is placed at a TS-like position between its current
     heavy-atom donor (in *large_prod_atoms*) and its acceptor in *core*,
-    using triangulation when the spheres overlap.  The acceptor is determined
+    using triangulation when the spheres overlap. The acceptor is determined
     from *cross_bonds* (forming bonds) when available, falling back to the
     nearest heavy atom in *core*.
 
@@ -920,9 +919,7 @@ def migrate_verified_atoms(ts_xyz: dict,
         migrating_atoms: Atom indices that need to move between product groups.
         core: Atom indices forming the connected core of the small product.
         large_prod_atoms: Atom indices belonging to the large product.
-        weight: Interpolation weight (0 = reactant-like, 1 = product-like).
-        cross_bonds: Forming bonds absent from uni_mol (used to identify the
-            exact acceptor atom for each migrating atom).
+        cross_bonds: Forming bonds absent from uni_mol (used to identify the exact acceptor atom for each migrating atom).
 
     Returns:
         dict: Modified XYZ with migrating atoms partially displaced.
@@ -1016,11 +1013,9 @@ def migrate_verified_atoms(ts_xyz: dict,
         # the intermediate path passes through the donor atom.
         ts_coords[h_idx] = ideal
 
-    return {
-        'symbols': ts_xyz['symbols'],
-        'isotopes': ts_xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
-        'coords': tuple(tuple(float(x) for x in row) for row in ts_coords),
-    }
+    return {'symbols': ts_xyz['symbols'],
+            'isotopes': ts_xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
+            'coords': tuple(tuple(float(x) for x in row) for row in ts_coords)}
 
 
 def migrate_h_between_fragments(ts_xyz: dict,
@@ -1053,11 +1048,9 @@ def migrate_h_between_fragments(ts_xyz: dict,
         uni_mol: RMG Molecule of the unimolecular species.
         split_bonds: Bonds that were cut to create fragments.
         product_species: Product species for composition matching.
-        weight: Interpolation weight (0 = reactant-like, 1 = product-like).
 
     Returns:
-        dict: Modified XYZ with H atoms partially migrated, or the original
-            XYZ unchanged if no migration is needed.
+        dict: Modified XYZ with H atoms partially migrated, or the original XYZ unchanged if no migration is needed.
     """
     n_atoms = len(ts_xyz['symbols'])
     n_products = len(product_species)
@@ -1185,8 +1178,7 @@ def migrate_h_between_fragments(ts_xyz: dict,
         h_dists.sort(key=lambda x: (x[3], x[1]))
 
         for h_idx, _, nearest_heavy, _ in h_dists[:n_to_move]:
-            # Find the donor heavy atom: the heavy atom bonded to this H in the
-            # source fragment.
+            # Find the donor heavy atom: the heavy atom bonded to this H in the source fragment.
             donor_heavy = None
             for nbr in uni_mol.atoms[h_idx].bonds.keys():
                 nbr_idx = atom_to_idx[nbr]
@@ -1197,7 +1189,7 @@ def migrate_h_between_fragments(ts_xyz: dict,
             if donor_heavy is None:
                 continue
 
-            # Triangulate: place H at the intersection of two spheres centerd
+            # Triangulate: place H at the intersection of two spheres centered
             # on donor and acceptor with TS-like radii, choosing the point
             # closest to the current H position. This produces a non-collinear
             # D-H-A geometry that avoids passing through atoms between donor
@@ -1252,11 +1244,9 @@ def migrate_h_between_fragments(ts_xyz: dict,
 
             ts_coords[h_idx] = new_h
 
-    result = {
-        'symbols': ts_xyz['symbols'],
-        'isotopes': ts_xyz['isotopes'],
-        'coords': tuple(tuple(float(x) for x in row) for row in ts_coords),
-    }
+    result = {'symbols': ts_xyz['symbols'],
+              'isotopes': ts_xyz['isotopes'],
+              'coords': tuple(tuple(float(x) for x in row) for row in ts_coords)}
 
     if colliding_atoms(result):
         return ts_xyz  # Fall back to the original if migration causes collisions.
