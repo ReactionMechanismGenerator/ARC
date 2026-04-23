@@ -424,8 +424,7 @@ def build_concerted_ts(uni_xyz: dict,
         else:
             cross_targets[(a, b)] = sbl + PAULING_DELTA
 
-    # Also identify bonds between ring atoms that should strengthen
-    # (e.g. C-C becoming C=C, C-O becoming C=O in CO₂).
+    # Also identify bonds between ring atoms that should strengthen (e.g. C-C becoming C=C, C-O becoming C=O in CO₂).
     ring_atoms = set()
     for a, b in split_bonds + cross_bonds:
         ring_atoms.update((a, b))
@@ -442,8 +441,7 @@ def build_concerted_ts(uni_xyz: dict,
             key = (ia, ib)
             if key in split_targets or key in cross_targets:
                 continue
-            # This is a ring bond that isn't split or cross — it may
-            # strengthen (single→double). Shorten by 5%.
+            # This is a ring bond that isn't split or cross, it may strengthen (single→double). Shorten by 5%.
             sbl = get_single_bond_length(symbols[ia], symbols[ib]) or 1.5
             strengthen_targets[key] = sbl * 0.95
 
@@ -616,8 +614,7 @@ def stretch_bond(uni_xyz: dict,
         return None
     direction /= norm
 
-    target_dists = []
-    current_dists = []
+    target_dists, current_dists= [], []
     for a, b in split_bonds:
         if a in small_frag or b in small_frag:
             sym_a = uni_xyz['symbols'][a]
@@ -1170,10 +1167,7 @@ def migrate_h_between_fragments(ts_xyz: dict,
             dists = np.linalg.norm(deficit_heavy_coords - ts_coords[h_idx], axis=1)
             min_dist = float(dists.min())
             nearest_heavy = deficit_heavy[int(dists.argmin())]
-            on_anchor = any(
-                atom_to_idx[nbr] in split_anchors_in_frag
-                for nbr in uni_mol.atoms[h_idx].bonds.keys()
-            )
+            on_anchor = any(atom_to_idx[nbr] in split_anchors_in_frag for nbr in uni_mol.atoms[h_idx].bonds.keys())
             h_dists.append((h_idx, min_dist, nearest_heavy, on_anchor))
         h_dists.sort(key=lambda x: (x[3], x[1]))
 

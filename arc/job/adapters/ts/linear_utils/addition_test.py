@@ -118,8 +118,7 @@ class TestStretchBond(unittest.TestCase):
         c_indices = [i for i, a in enumerate(cls.ethane_mol.atoms) if a.symbol == 'C']
         cls.ethane_c_indices = c_indices
 
-        coords = []
-        symbols = []
+        coords, symbols = [], []
         for i, atom in enumerate(cls.ethane_mol.atoms):
             symbols.append(atom.symbol)
             if atom.symbol == 'C':
@@ -143,11 +142,9 @@ class TestStretchBond(unittest.TestCase):
                 else:
                     coords.append((0.0, 1.09, 0.0))
 
-        cls.ethane_xyz = {
-            'symbols': tuple(symbols),
-            'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in cls.ethane_mol.atoms),
-            'coords': tuple(tuple(c) for c in coords),
-        }
+        cls.ethane_xyz = {'symbols': tuple(symbols),
+                          'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in cls.ethane_mol.atoms),
+                          'coords': tuple(tuple(c) for c in coords)}
 
     def test_stretch_bond_increases_distance(self):
         """Stretching the C-C bond in ethane increases the distance."""
@@ -176,15 +173,13 @@ class TestStretchBond(unittest.TestCase):
     def test_stretch_bond_returns_none_for_no_fragments(self):
         """If the split doesn't create separable fragments, may return None."""
         mol = Molecule().from_smiles('C')
-        xyz = {
-            'symbols': ('C', 'H', 'H', 'H', 'H'),
-            'isotopes': (12, 1, 1, 1, 1),
-            'coords': ((0.0, 0.0, 0.0),
-                       (1.09, 0.0, 0.0),
-                       (-0.363, 1.028, 0.0),
-                       (-0.363, -0.514, 0.890),
-                       (-0.363, -0.514, -0.890)),
-        }
+        xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+               'isotopes': (12, 1, 1, 1, 1),
+               'coords': ((0.0, 0.0, 0.0),
+                          (1.09, 0.0, 0.0),
+                          (-0.363, 1.028, 0.0),
+                          (-0.363, -0.514, 0.890),
+                          (-0.363, -0.514, -0.890))}
         result = stretch_bond(xyz, mol, [(0, 1)], weight=0.5, label='test')
         if result is not None:
             self.assertIn('coords', result)
@@ -203,8 +198,7 @@ class TestDetectIntraFragRingBonds(unittest.TestCase):
         mol = Molecule().from_smiles('C=CC=C')
         c_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
         spc = ARCSpecies(label='cyclobutene', smiles='C1=CCC1')
-        coords = []
-        symbols = []
+        coords, symbols = [], []
         for i, atom in enumerate(mol.atoms):
             symbols.append(atom.symbol)
             if atom.symbol == 'C':
@@ -221,11 +215,9 @@ class TestDetectIntraFragRingBonds(unittest.TestCase):
                     coords.append((c_rank * 1.40, 1.09, 0.0))
                 else:
                     coords.append((0.0, 1.09, 0.0))
-        xyz = {
-            'symbols': tuple(symbols),
-            'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in mol.atoms),
-            'coords': tuple(tuple(c) for c in coords),
-        }
+        xyz = {'symbols': tuple(symbols),
+               'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in mol.atoms),
+               'coords': tuple(tuple(c) for c in coords)}
         result = detect_intra_frag_ring_bonds(mol, [], [spc], xyz)
         if result:
             for (a, b), ring_size in result:
@@ -245,14 +237,12 @@ class TestBuildConcertedTs(unittest.TestCase):
     def test_no_bonds_returns_none(self):
         """No split or cross bonds yields None."""
         mol = Molecule().from_smiles('CC')
-        xyz = {
-            'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
-            'isotopes': (12, 12, 1, 1, 1, 1, 1, 1),
-            'coords': ((0.0, 0.0, 0.0), (1.54, 0.0, 0.0),
-                       (-0.39, 1.03, 0.0), (-0.39, -0.51, 0.89),
-                       (-0.39, -0.51, -0.89), (1.93, 1.03, 0.0),
-                       (1.93, -0.51, 0.89), (1.93, -0.51, -0.89)),
-        }
+        xyz = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
+               'isotopes': (12, 12, 1, 1, 1, 1, 1, 1),
+               'coords': ((0.0, 0.0, 0.0), (1.54, 0.0, 0.0),
+                          (-0.39, 1.03, 0.0), (-0.39, -0.51, 0.89),
+                          (-0.39, -0.51, -0.89), (1.93, 1.03, 0.0),
+                          (1.93, -0.51, 0.89), (1.93, -0.51, -0.89))}
         result = build_concerted_ts(xyz, mol, split_bonds=[], cross_bonds=[])
         self.assertIsNone(result)
 
@@ -261,8 +251,7 @@ class TestBuildConcertedTs(unittest.TestCase):
         mol = Molecule().from_smiles('CC')
         c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
         c0, c1 = c_idx[0], c_idx[1]
-        symbols = []
-        coords = []
+        coords, symbols = [], []
         for i, atom in enumerate(mol.atoms):
             symbols.append(atom.symbol)
             if atom.symbol == 'C':
@@ -280,11 +269,9 @@ class TestBuildConcertedTs(unittest.TestCase):
                           and mol.has_bond(a2, mol.atoms[bonded_c])]
                 h_rank = h_list.index(i) if i in h_list else 0
                 coords.append((c_rank * 1.54, 1.09 * ((-1) ** h_rank), 0.5 * (h_rank // 2)))
-        xyz = {
-            'symbols': tuple(symbols),
-            'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in mol.atoms),
-            'coords': tuple(tuple(c) for c in coords),
-        }
+        xyz = {'symbols': tuple(symbols),
+               'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in mol.atoms),
+               'coords': tuple(tuple(c) for c in coords)}
         d_before = np.linalg.norm(np.array(xyz['coords'][c0]) - np.array(xyz['coords'][c1]))
         result = build_concerted_ts(xyz, mol, split_bonds=[(c0, c1)], cross_bonds=[])
         self.assertIsNotNone(result)
@@ -296,8 +283,7 @@ class TestBuildConcertedTs(unittest.TestCase):
         """Symbols are preserved through the concerted TS builder."""
         mol = Molecule().from_smiles('CC')
         c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
-        symbols = []
-        coords = []
+        coords, symbols = [], []
         for i, atom in enumerate(mol.atoms):
             symbols.append(atom.symbol)
             if atom.symbol == 'C':
@@ -311,11 +297,9 @@ class TestBuildConcertedTs(unittest.TestCase):
                         break
                 c_rank = c_idx.index(bonded_c) if bonded_c is not None else 0
                 coords.append((c_rank * 1.54, 1.09, 0.0))
-        xyz = {
-            'symbols': tuple(symbols),
-            'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in mol.atoms),
-            'coords': tuple(tuple(c) for c in coords),
-        }
+        xyz = {'symbols': tuple(symbols),
+               'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in mol.atoms),
+               'coords': tuple(tuple(c) for c in coords)}
         result = build_concerted_ts(xyz, mol, split_bonds=[(c_idx[0], c_idx[1])], cross_bonds=[])
         if result is not None:
             self.assertEqual(result['symbols'], xyz['symbols'])
@@ -331,11 +315,9 @@ class TestBuildConcertedTs(unittest.TestCase):
         coords_list = []
         for i, atom in enumerate(mol.atoms):
             coords_list.append((float(i) * 1.5, 0.0, 0.0))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': tuple(tuple(c) for c in coords_list),
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': tuple(tuple(c) for c in coords_list)}
         # Find C-C bond to break and an O atom to form bond with
         c_indices = [i for i, s in enumerate(symbols) if s == 'C']
         o_indices = [i for i, s in enumerate(symbols) if s == 'O']
@@ -365,11 +347,9 @@ class TestTryInsertionRing(unittest.TestCase):
         symbols = tuple(a.symbol for a in mol.atoms)
         n = len(symbols)
         coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(n))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': coords,
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': coords}
         c_idx = [i for i, s in enumerate(symbols) if s == 'C']
         # Only 1 split bond means no atom appears in 2+
         fragments = [{c_idx[0]}, {c_idx[1]}]
@@ -399,11 +379,9 @@ class TestTryInsertionRing(unittest.TestCase):
                         break
                 c_rank = c_idx.index(bonded_c) if bonded_c is not None else 0
                 coords_list.append((c_rank * 1.54, 1.09, 0.0))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': tuple(tuple(c) for c in coords_list),
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': tuple(tuple(c) for c in coords_list)}
         # Break both C-C bonds: C0-C1 and C1-C2. C1 appears in 2 split bonds.
         split_bonds = [(c_idx[0], c_idx[1]), (c_idx[1], c_idx[2])]
         # Build fragments by BFS without split bonds.
@@ -460,11 +438,9 @@ class TestTryInsertionRing(unittest.TestCase):
                         break
                 c_rank = c_idx.index(bonded_c) if bonded_c is not None else 0
                 coords_list.append((c_rank * 2.0, 1.09, 0.0))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': tuple(tuple(c) for c in coords_list),
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': tuple(tuple(c) for c in coords_list)}
         split_bonds = [(c_idx[0], c_idx[1]), (c_idx[1], c_idx[2])]
         cross_bonds = [(c_idx[0], c_idx[2])]
         # Build fragments
@@ -564,11 +540,9 @@ class TestInsertionRingExtraStretch(unittest.TestCase):
             coords[h_idx] = [2.0 * c_rank,
                              1.09 * float(np.cos(phase)),
                              1.09 * float(np.sin(phase))]
-        xyz = {
-            'symbols': symbols,
-            'isotopes': sp.get_xyz()['isotopes'],
-            'coords': tuple(tuple(row) for row in coords),
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': sp.get_xyz()['isotopes'],
+               'coords': tuple(tuple(row) for row in coords)}
         split_bonds = [(c_idx[0], c_idx[1]), (c_idx[1], c_idx[2])]
         cross_bonds = [(c_idx[0], c_idx[2])]
         # Build fragments without split bonds.
@@ -597,23 +571,19 @@ class TestInsertionRingExtraStretch(unittest.TestCase):
             fragments.append(component)
 
         # Run 1: explicitly NOT a carbene family.
-        result_other = try_insertion_ring(
-            xyz, sp.mol, [set(f) for f in fragments],
-            split_bonds=split_bonds,
-            cross_bonds=cross_bonds,
-            weight=0.5,
-            n_atoms=n,
-            family='1,2_Insertion_CO',
-        )
+        result_other = try_insertion_ring(xyz, sp.mol, [set(f) for f in fragments],
+                                          split_bonds=split_bonds,
+                                          cross_bonds=cross_bonds,
+                                          weight=0.5,
+                                          n_atoms=n,
+                                          family='1,2_Insertion_CO')
         # Run 2: explicitly the carbene family.
-        result_carbene = try_insertion_ring(
-            xyz, sp.mol, [set(f) for f in fragments],
-            split_bonds=split_bonds,
-            cross_bonds=cross_bonds,
-            weight=0.5,
-            n_atoms=n,
-            family='1,2_Insertion_carbene',
-        )
+        result_carbene = try_insertion_ring(xyz, sp.mol, [set(f) for f in fragments],
+                                            split_bonds=split_bonds,
+                                            cross_bonds=cross_bonds,
+                                            weight=0.5,
+                                            n_atoms=n,
+                                            family='1,2_Insertion_carbene')
 
         # Both runs should produce a TS guess.
         self.assertIsNotNone(result_other,
@@ -652,11 +622,9 @@ class TestStretchCoreFromLarge(unittest.TestCase):
         mol = Molecule().from_smiles('CC')
         symbols = tuple(a.symbol for a in mol.atoms)
         coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(len(symbols)))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': coords,
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': coords}
         c_idx = [i for i, s in enumerate(symbols) if s == 'C']
         # core and large_prod_atoms don't share a split bond endpoint
         result = stretch_core_from_large(
@@ -678,11 +646,9 @@ class TestStretchCoreFromLarge(unittest.TestCase):
         coords_list = []
         for i in range(n):
             coords_list.append((float(i) * 1.5, 0.0, 0.0))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': tuple(tuple(c) for c in coords_list),
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': tuple(tuple(c) for c in coords_list)}
         # Let core = {c_idx[2], o_idx[0], o_idx[1]}, large = {c_idx[0], c_idx[1]}
         # Split bond between c_idx[1] and c_idx[2]
         core = {c_idx[2]}
@@ -708,11 +674,9 @@ class TestStretchCoreFromLarge(unittest.TestCase):
         n = len(symbols)
         c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
         coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(n))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': coords,
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': coords}
         result = stretch_core_from_large(
             xyz, split_bonds=[(c_idx[0], c_idx[1])],
             core={c_idx[1]}, large_prod_atoms={c_idx[0]}, weight=0.5)
@@ -733,11 +697,9 @@ class TestMigrateVerifiedAtoms(unittest.TestCase):
         symbols = tuple(a.symbol for a in mol.atoms)
         n = len(symbols)
         coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(n))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': coords,
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': coords}
         c_idx = [i for i, s in enumerate(symbols) if s == 'C']
         result = migrate_verified_atoms(
             xyz, mol, migrating_atoms=set(),
@@ -759,11 +721,9 @@ class TestMigrateVerifiedAtoms(unittest.TestCase):
         coords_list = []
         for i in range(n):
             coords_list.append((float(i) * 1.5, 0.0, 0.0))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': tuple(tuple(c) for c in coords_list),
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': tuple(tuple(c) for c in coords_list)}
 
         # Pick an H bonded to a C atom (donor in large_prod) to migrate toward O (in core)
         atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
@@ -799,11 +759,9 @@ class TestMigrateVerifiedAtoms(unittest.TestCase):
         symbols = tuple(a.symbol for a in mol.atoms)
         n = len(symbols)
         coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(n))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': coords,
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': coords}
         c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
         o_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'O']
         result = migrate_verified_atoms(
@@ -841,11 +799,9 @@ class TestMigrateHBetweenFragments(unittest.TestCase):
                         break
                 c_rank = c_idx.index(bonded_c) if bonded_c is not None else 0
                 coords_list.append((c_rank * 3.0, 1.09, 0.0))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': tuple(tuple(c) for c in coords_list),
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': tuple(tuple(c) for c in coords_list)}
         result = migrate_h_between_fragments(
             xyz, mol, split_bonds=[(c_idx[0], c_idx[1])],
             product_species=[spc1, spc2])
@@ -872,11 +828,9 @@ class TestMigrateHBetweenFragments(unittest.TestCase):
         coords_list = []
         for i in range(n):
             coords_list.append((float(i) * 2.0, 0.0, 0.0))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': tuple(tuple(c) for c in coords_list),
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': tuple(tuple(c) for c in coords_list)}
 
         # Find C-H bond to break
         atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
@@ -891,7 +845,6 @@ class TestMigrateHBetweenFragments(unittest.TestCase):
             result = migrate_h_between_fragments(
                 xyz, mol, split_bonds=split_bond,
                 product_species=[spc_h2, spc_co2])
-            # The function returns an xyz dict (possibly unchanged if formulas don't match)
             self.assertIn('symbols', result)
             self.assertIn('coords', result)
 
@@ -904,11 +857,9 @@ class TestMigrateHBetweenFragments(unittest.TestCase):
         symbols = tuple(a.symbol for a in mol.atoms)
         n = len(symbols)
         coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(n))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': coords,
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': coords}
         result = migrate_h_between_fragments(
             xyz, mol, split_bonds=[(c_idx[0], c_idx[1])],
             product_species=[spc1, spc2])
@@ -945,11 +896,9 @@ class TestApplyIntraFragContraction(unittest.TestCase):
         symbols = tuple(a.symbol for a in mol.atoms)
         n = len(symbols)
         coords = tuple((float(i) * 1.5, 0.0, 0.0) for i in range(n))
-        xyz = {
-            'symbols': symbols,
-            'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
-            'coords': coords,
-        }
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(_MASS_NUMBER.get(s, 12) for s in symbols),
+               'coords': coords}
         result = apply_intra_frag_contraction(
             xyz, mol, split_bonds=[(c_indices[0], c_indices[1])],
             multi_species=[spc1, spc2],
@@ -966,8 +915,7 @@ class TestApplyIntraFragContraction(unittest.TestCase):
         spc = ARCSpecies(label='cyclobutene', smiles='C1=CCC1')
         c_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
         # Build extended-chain coordinates so the two terminal Cs start well apart.
-        coords = []
-        symbols = []
+        coords, symbols = [], []
         for i, atom in enumerate(mol.atoms):
             symbols.append(atom.symbol)
             if atom.symbol == 'C':
@@ -981,11 +929,9 @@ class TestApplyIntraFragContraction(unittest.TestCase):
                         break
                 c_rank = c_indices.index(bonded_c) if bonded_c is not None else 0
                 coords.append((c_rank * 1.40, 1.09, 0.0))
-        xyz = {
-            'symbols': tuple(symbols),
-            'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in mol.atoms),
-            'coords': tuple(tuple(c) for c in coords),
-        }
+        xyz = {'symbols': tuple(symbols),
+               'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in mol.atoms),
+               'coords': tuple(tuple(c) for c in coords)}
         c0, c_last = c_indices[0], c_indices[-1]
         d_before = np.linalg.norm(
             np.array(xyz['coords'][c0]) - np.array(xyz['coords'][c_last]))
@@ -1010,9 +956,7 @@ class TestApplyIntraFragContraction(unittest.TestCase):
                 shortened = True
                 break
         if len(result) > 1 or (len(result) == 1 and result[0]['coords'] != xyz['coords']):
-            self.assertTrue(shortened,
-                            msg=f'expected at least one contracted result '
-                                f'(d_before={d_before:.3f} Å)')
+            self.assertTrue(shortened, msg=f'expected at least one contracted result (d_before={d_before:.3f} Å)')
 
 
 class TestRepositionLeavingGroups(unittest.TestCase):
@@ -1040,8 +984,8 @@ class TestRepositionLeavingGroups(unittest.TestCase):
         cls.maxDiff = None
 
     def test_leaving_fragment_moves_with_ring_anchor_and_stretches_to_ts(self):
-        """A 4-atom geometry: ring anchor (atom 0) moves +1 Å between pre and
-        post geometries, leaving anchor (atom 3) is in a separate fragment
+        """A 4-atom geometry: ring anchor (atom 0) moves +1 Å between pre- and
+        post-geometries, leaving anchor (atom 3) is in a separate fragment
         that starts too far from the ring anchor. _reposition_leaving_groups
         must translate the leaving fragment to follow the ring-anchor
         displacement and then stretch the split bond to the TS target
