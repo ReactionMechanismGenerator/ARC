@@ -3500,6 +3500,62 @@ def _strategy_3center_shift(ctx: _PathContext) -> _StrategyResult:
     return _StrategyResult()
 
 
+def trivial_fallback_scaffold_sound(
+        ts_xyz: dict,
+        r_mol: 'Molecule',
+        breaking_bonds: List[Tuple[int, int]],
+        forming_bonds: List[Tuple[int, int]],
+) -> bool:
+    """Reject trivial-map fallback Z-matrix guesses with implausibly broken local geometry.
+
+    The trivial-map fallback (``zmat_R_fallback`` / ``zmat_P_fallback``) runs with
+    an identity atom map.  In that regime the Z-matrix interpolation can scramble
+    spectator bond lengths — producing crushed double bonds (e.g. an allene C=C
+    at ~1 Å) or hydrogens detached from their parent carbon.  This narrow
+    predicate scans every reactant-topology bond that the TS should have
+    preserved (i.e., every non-reactive bond) and returns ``False`` if any is
+    implausibly compressed or a C-H is detached.
+
+    It is deliberately applied ONLY at the trivial-fallback call sites; the
+    thresholds (heavy-heavy < 1.15 Å, C-H > 1.30 Å or < 0.85 Å) are loose enough
+    that a chemically valid TS for any family cannot trip them — they only
+    catch the specific failure mode the Z-matrix blend produces under the
+    identity map.
+
+    Args:
+        ts_xyz (dict): Candidate TS xyz.
+        r_mol (Molecule): Reactant molecule (source of ground-truth bond topology).
+        breaking_bonds (List[Tuple[int, int]]): Pairs that are breaking (per the
+            trivial-map detection).
+        forming_bonds (List[Tuple[int, int]]): Pairs that are forming.
+
+    Returns:
+        bool: True if the scaffold is chemically sound; False if it should be rejected.
+    """
+    reactive_pairs: Set[Tuple[int, int]] = set()
+    for a, b in list(breaking_bonds) + list(forming_bonds):
+        reactive_pairs.add((min(a, b), max(a, b)))
+    syms = ts_xyz['symbols']
+    coords = np.array(ts_xyz['coords'], dtype=float)
+    atom_to_idx = {atom: idx for idx, atom in enumerate(r_mol.atoms)}
+    for atom in r_mol.atoms:
+        i = atom_to_idx[atom]
+        for nbr in atom.bonds:
+            j = atom_to_idx[nbr]
+            if i >= j:
+                continue
+            if (i, j) in reactive_pairs:
+                continue
+            d = float(np.linalg.norm(coords[i] - coords[j]))
+            if syms[i] == 'H' or syms[j] == 'H':
+                if d > 1.30 or d < 0.85:
+                    return False
+            else:
+                if d < 1.15:
+                    return False
+    return True
+
+
 def _try_bespoke_family_fallbacks(
         r_xyz: dict,
         r_mol: 'Molecule',
@@ -4322,9 +4378,15 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     if ts_r is not None and not has_excessive_backbone_drift(
                             ts_r, r_xyz_na, max_mean_heavy_disp=3.0,
                             reactive_indices=reactive_xyz_indices):
-                        ts_xyzs.append(GuessRecord(
-                            xyz=ts_r, bb=list(bb), fb=list(fb),
-                            strategy='zmat_R_fallback'))
+                        if trivial_fallback_scaffold_sound(
+                                ts_r, r_mol, list(bb), list(fb)):
+                            ts_xyzs.append(GuessRecord(
+                                xyz=ts_r, bb=list(bb), fb=list(fb),
+                                strategy='zmat_R_fallback'))
+                        else:
+                            logger.debug(f'Linear (rxn={rxn.label}, trivial, w={weight}, type=R): '
+                                         f'discarded — broken local scaffold '
+                                         f'(crushed spectator bond or detached H).')
                     elif ts_r is not None:
                         logger.debug(f'Linear (rxn={rxn.label}, trivial, w={weight}, type=R): '
                                      f'discarded — excessive backbone drift from anchor.')
@@ -4340,9 +4402,15 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     if ts_p is not None and not has_excessive_backbone_drift(
                             ts_p, op_xyz_na, max_mean_heavy_disp=3.0,
                             reactive_indices=reactive_xyz_indices):
-                        ts_xyzs.append(GuessRecord(
-                            xyz=ts_p, bb=list(bb), fb=list(fb),
-                            strategy='zmat_P_fallback'))
+                        if trivial_fallback_scaffold_sound(
+                                ts_p, r_mol, list(bb), list(fb)):
+                            ts_xyzs.append(GuessRecord(
+                                xyz=ts_p, bb=list(bb), fb=list(fb),
+                                strategy='zmat_P_fallback'))
+                        else:
+                            logger.debug(f'Linear (rxn={rxn.label}, trivial, w={weight}, type=P): '
+                                         f'discarded — broken local scaffold '
+                                         f'(crushed spectator bond or detached H).')
                     elif ts_p is not None:
                         logger.debug(f'Linear (rxn={rxn.label}, trivial, w={weight}, type=P): '
                                      f'discarded — excessive backbone drift from anchor.')
