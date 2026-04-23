@@ -1444,16 +1444,15 @@ class Scheduler(object):
                              level_of_theory='ccsd/cc-pvdz',
                              job_type='sp')
                 return
-        if self.species_dict[label].is_monoatomic() and 'dlpno' in level.method:
-            species = self.species_dict[label]
-            if species.mol.atoms[0].element.symbol in ('H', 'D', 'T'):
-                logger.info(f'Using HF/{level.basis} for {label} (single electron, no correlation).')
-                level = Level(method='hf', basis=level.basis, software=level.software, args=level.args)
-            else:
-                canonical_method = level.method.replace('dlpno-', '')
-                logger.info(f'DLPNO methods are incompatible with monoatomic species {label}. '
-                            f'Using {canonical_method}/{level.basis} instead.')
-                level = Level(method=canonical_method, basis=level.basis, software=level.software, args=level.args)
+        if self.species_dict[label].is_monoatomic() and 'dlpno' in level.method \
+                and self.species_dict[label].mol.atoms[0].element.symbol in ('H', 'D', 'T'):
+            # DLPNO needs electron pairs; fall back to HF for single-electron atoms only.
+            # Heavier monoatomics (e.g. [O], [N]) run DLPNO fine in ORCA and are left alone.
+            logger.info(f'Using HF/{level.basis} for {label} (single electron, no correlation).')
+            level_dict = level.as_dict()
+            level_dict.pop('method_type', None)  # re-deduce after method change
+            level_dict['method'] = 'hf'
+            level = Level(repr=level_dict)
         if self.job_types['sp']:
             if self.species_dict[label].multi_species:
                 if self.output_multi_spc[self.species_dict[label].multi_species].get('sp', False):

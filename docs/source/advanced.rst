@@ -88,13 +88,17 @@ Another example::
 
     sp_level: {'method': 'DLPNO-CCSD(T)-F12',
                'basis': 'cc-pVTZ-F12',
-               'auxiliary_basis': 'aug-cc-pVTZ/C cc-pVTZ-F12-CABS',
+               'auxiliary_basis': 'aug-cc-pVTZ/C',
+               'cabs': 'cc-pVTZ-F12-CABS',
                'args': {'keyword' :{'opt_convergence': 'TightOpt'}},
                'software': 'orca',
                }
 
-specifies ``DLPNO-CCSD(T)-F12/cc-pVTZ-F12`` model chemistry along with two auxiliary basis sets,
-``aug-cc-pVTZ/C`` and ``cc-pVTZ-F12-CABS``, with ``TightOpt`` for a single point energy calculation.
+specifies ``DLPNO-CCSD(T)-F12/cc-pVTZ-F12`` model chemistry along with an
+auxiliary basis ``aug-cc-pVTZ/C`` and a complementary auxiliary basis (CABS)
+``cc-pVTZ-F12-CABS``, with ``TightOpt`` for a single point energy calculation.
+The ``cabs`` argument is the single source of truth for F12 complementary
+auxiliary basis sets; do not pack the CABS token into ``auxiliary_basis``.
 You can also provide a 4-digit ``year`` on ``arkane_level_of_theory`` to distinguish method variants
 in the Arkane database (e.g., ``b97d3`` vs ``b97d32023``)::
 
@@ -118,9 +122,10 @@ The following are examples for **equivalent** definitions::
     conformer_opt_level = {'method': 'PM6'}
 
 
-Note that the ``cabs`` and ``solvation_scheme_level`` arguments currently have no effect
-and will be implemented in future versions. The ``software`` argument is automatically determined
-unless specified by the user.
+Note that the ``solvation_scheme_level`` argument currently has no effect and
+will be implemented in future versions. The ``cabs`` argument is consumed by
+the ORCA and Molpro adapters for F12 calculations; it is ignored by other ESS.
+The ``software`` argument is automatically determined unless specified by the user.
 
 ARC also supports an additional shortcut argument, ``level_of_theory``,
 to simultaneously specify ``opt_level``, ``freq_level``, ``sp_level``, and ``scan_level``.

@@ -84,13 +84,14 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
 # job_type_2: reserved for Opt + Freq.
 # restricted: 'R' = closed-shell SCF, 'U' = spin unrestricted SCF, 'RO' = open-shell spin restricted SCF
 # auxiliary_basis: required for DLPNO calculations (speed up calculation)
+# cabs: Complementary Auxiliary Basis Set for F12 calculations (e.g., cc-pVTZ-F12-CABS)
 # memory: MB per core (must increase as system gets larger)
 # cpus: must be less than number of electron pairs, defaults to min(heavy atoms, cpus limit)
 # job_options_blocks: input blocks that enable detailed control over program
 # job_options_keywords: input keywords that control the job
 # method_class: 'HF' for wavefunction methods (hf, mp, cc, dlpno ...). 'KS' for DFT methods.
 # options: additional keywords to control job (e.g., TightSCF, NormalPNO ...)
-input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary_basis} ${keywords}
+input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary_basis}${cabs} ${keywords}
 !${job_type_1} 
 ${job_type_2}
 %%maxcore ${memory}
@@ -254,6 +255,12 @@ class OrcaAdapter(JobAdapter):
         """
         Write the input file to execute the job on the server.
         """
+        if 'f12' in self.level.method and not self.level.cabs:
+            raise ValueError(
+                f"Level '{self.level}' uses an F12 method without a CABS basis. "
+                f"Set `cabs:` in the level spec (e.g. cc-pVTZ-F12-CABS). "
+                f"Without it ORCA runs with DimCABS = 0 and returns non-F12 energies."
+            )
         input_dict = dict()
         for key in ['block',
                     'scan',
@@ -264,6 +271,7 @@ class OrcaAdapter(JobAdapter):
             input_dict[key] = ''
         input_dict['auxiliary_basis'] = _format_orca_basis(self.level.auxiliary_basis or '')
         input_dict['basis'] = _format_orca_basis(self.level.basis or '')
+        input_dict['cabs'] = f' {_format_orca_basis(self.level.cabs)}' if self.level.cabs else ''
         input_dict['charge'] = self.charge
         input_dict['cpus'] = self.cpu_cores
         input_dict['label'] = self.species_label
@@ -272,30 +280,28 @@ class OrcaAdapter(JobAdapter):
         input_dict['multiplicity'] = self.multiplicity
         input_dict['xyz'] = xyz_to_str(self.xyz)
 
-        scf_convergence = self.args['keyword'].get('scf_convergence', '').lower() or \
-            orca_default_options_dict['global']['keyword'].get('scf_convergence', '').lower()
-        if not scf_convergence:
+        self.args['keyword'].setdefault(
+            'scf_convergence',
+            orca_default_options_dict['global']['keyword'].get('scf_convergence', '').lower())
+        if not self.args['keyword']['scf_convergence']:
             raise ValueError('Orca SCF convergence is not specified. Please specify this variable either in '
                              'settings.py as default or in the input file as additional options.')
-        self.add_to_args(val=scf_convergence, key1='keyword')
 
         # Orca requires different blocks for wavefunction methods and DFT methods
         if self.level.method_type == 'dft':
             input_dict['method_class'] = 'KS'
-            # DFT grid must be the same for both opt and freq
-            if self.fine:
-                self.add_to_args(val='defgrid3', key1='keyword')
-            else:
-                self.add_to_args(val='defgrid2', key1='keyword')
+            # DFT grid must be the same for both opt and freq.
+            # Users can override by setting `dft_grid` in args.keyword (e.g. dft_grid: DEFGRID1).
+            self.args['keyword'].setdefault('dft_grid', 'defgrid3' if self.fine else 'defgrid2')
         elif self.level.method_type == 'wavefunction':
             input_dict['method_class'] = 'HF'
             if 'dlpno' in self.level.method:
-                dlpno_threshold = self.args['keyword'].get('dlpno_threshold', '').lower() or \
-                    orca_default_options_dict['global']['keyword'].get('dlpno_threshold', '').lower()
-                if not dlpno_threshold:
+                self.args['keyword'].setdefault(
+                    'dlpno_threshold',
+                    orca_default_options_dict['global']['keyword'].get('dlpno_threshold', '').lower())
+                if not self.args['keyword']['dlpno_threshold']:
                     raise ValueError('Orca DLPNO threshold is not specified. Please specify this variable either in '
                                      'settings.py as default or in the input file as additional options.')
-                self.add_to_args(val=dlpno_threshold, key1='keyword')
         else:
             logger.debug(f'Running {self.level.method_type} {self.level.method} method in Orca.')
 

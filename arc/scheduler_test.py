@@ -1089,6 +1089,33 @@ H      -1.82570782    0.42754384   -0.56130718"""
         mock_iso.assert_not_called()
         self.assertEqual(sched.species_dict['TS_trsh'].final_xyz, new_xyz)
         mock_run_opt.assert_called_once()
+    @patch('arc.scheduler.Scheduler.run_job')
+    def test_run_sp_monoatomic_dlpno(self, mock_run_job):
+        """Monoatomic H falls back to HF; heavier atoms (O) keep DLPNO intact."""
+        dlpno_level = Level(method='DLPNO-CCSD(T)-F12', basis='cc-pVTZ-F12',
+                            auxiliary_basis='aug-cc-pVTZ/C', cabs='cc-pVTZ-F12-CABS',
+                            software='orca')
+
+        for label, smiles in [('H_atom', '[H]'), ('O_atom', '[O]')]:
+            self.sched1.species_dict[label] = ARCSpecies(label=label, smiles=smiles)
+            self.sched1.job_dict[label] = {}
+            self.sched1.output[label] = {'paths': {}, 'job_types': {},
+                                         'errors': '', 'warnings': '', 'conformers': ''}
+
+        # Single-electron atom → HF fallback, aux/cabs preserved.
+        self.sched1.run_sp_job(label='H_atom', level=dlpno_level)
+        h_level = mock_run_job.call_args.kwargs['level_of_theory']
+        self.assertEqual(h_level.method, 'hf')
+        self.assertEqual(h_level.basis, 'cc-pvtz-f12')
+        self.assertEqual(h_level.auxiliary_basis, 'aug-cc-pvtz/c')
+        self.assertEqual(h_level.cabs, 'cc-pvtz-f12-cabs')
+
+        # Heavier monoatomic → DLPNO level unchanged.
+        mock_run_job.reset_mock()
+        self.sched1.run_sp_job(label='O_atom', level=dlpno_level)
+        o_level = mock_run_job.call_args.kwargs['level_of_theory']
+        self.assertEqual(o_level.method, 'dlpno-ccsd(t)-f12')
+        self.assertEqual(o_level.cabs, 'cc-pvtz-f12-cabs')
 
     @classmethod
     def tearDownClass(cls):
