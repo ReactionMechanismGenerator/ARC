@@ -464,7 +464,7 @@ class ARCSpecies(object):
                         self.multiplicity = self.mol.multiplicity
                     if self.charge is None:
                         self.charge = self.mol.get_net_charge()
-            if regen_mol:
+            if regen_mol and not (self.mol is not None and self.keep_mol):
                 # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
                 # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
                 if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
@@ -1982,13 +1982,23 @@ class ARCSpecies(object):
                 sort_atoms_in_descending_label_order(split)
 
         if len(mol_splits) == 1:  # If cutting leads to only one split, then the split is cyclic.
+            mol1 = mol_splits[0]
+            for atom in mol1.atoms:
+                theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
+                                     - atom.get_total_bond_order() \
+                                     - atom.radical_electrons - \
+                                     2 * atom.lone_pairs
+                if theoretical_charge == atom.charge + 1:
+                    atom.radical_electrons += 1
+            mol1.update_multiplicity()
             spc1 = ARCSpecies(label=self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_cyclic',
-                              mol=mol_splits[0],
-                              multiplicity=mol_splits[0].multiplicity,
-                              charge=mol_splits[0].get_net_charge(),
+                              mol=mol1,
+                              xyz=self.final_xyz,
+                              multiplicity=mol1.multiplicity,
+                              charge=mol1.get_net_charge(),
                               compute_thermo=False,
-                              e0_only=True)
-            spc1.generate_conformers()
+                              e0_only=True,
+                              keep_mol=True)
             return [spc1]
         elif len(mol_splits) == 2:
             mol1, mol2 = mol_splits
@@ -2043,7 +2053,6 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc1.generate_conformers()
         spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
                           mol=mol2,
@@ -2053,7 +2062,6 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc2.generate_conformers()
         spc2.rotors_dict = None
 
         return [spc1, spc2]

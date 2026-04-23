@@ -111,10 +111,13 @@ class ARCReaction(object):
         self.kinetics = kinetics
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
-        if check_family_name(family):
-            self.family = family
-        else:
-            raise ValueError(f"Invalid family name: {family}")
+        self._family = None
+        self._family_determined = False
+        if family is not None:
+            if check_family_name(family):
+                self.family = family
+            else:
+                raise ValueError(f"Invalid family name: {family}")
         self._family_own_reverse = False
         self.ts_label = ts_label
         self.dh_rxn298 = None
@@ -216,14 +219,16 @@ class ARCReaction(object):
     @property
     def family(self):
         """The RMG reaction family"""
-        if self._family is None:
+        if not self._family_determined:
             self._family, self._family_own_reverse = self.determine_family()
+            self._family_determined = True
         return self._family
 
     @family.setter
     def family(self, value):
         """Allow setting family"""
         self._family = value
+        self._family_determined = True
         if value is not None and not isinstance(value, str):
             raise InputError(f'Reaction family must be a string, got {value} which is a {type(value)}.')
 
