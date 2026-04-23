@@ -45,6 +45,7 @@ from arc.job.adapters.ts.linear import (LinearAdapter,
                                         interpolate,
                                         interpolate_addition,
                                         interpolate_isomerization,
+                                        trivial_fallback_scaffold_sound,
                                         )
 from arc.job.adapters.ts.linear_utils.math_zmat import (BASE_WEIGHT_GRID,
                                                          HAMMOND_DELTA,
@@ -1974,6 +1975,12 @@ H      -3.45748522    2.76905533    2.12408680
 H      -4.90530362    1.06944723    1.09388673
 H      -3.93867196   -0.86818047   -0.12814075
 H      -2.05805178    0.77427910   -1.09392182""")
+        # Every emitted guess MUST satisfy the scaffold-sound chemistry — the
+        # previously-wrong ``zmat_P_fallback`` geometry (allene crushed to ~1.03 Å,
+        # H detached to ~1.78 Å) is expected to be rejected by the trivial-fallback
+        # scaffold-soundness gate in the production code.  Asserting per-guess here
+        # guarantees production safety: no downstream consumer that submits ALL
+        # surviving guesses can carry a broken scaffold forward.
         best_ts = None
         best_rmsd = float('inf')
         for ts_xyz in ts_xyzs:
@@ -1988,32 +1995,78 @@ H      -2.05805178    0.77427910   -1.09392182""")
             d_1_9 = float(np.linalg.norm(coords[1] - coords[9]))
             # Allene double bond (spectator): MUST be preserved near reactant value.
             d_0_1 = float(np.linalg.norm(coords[0] - coords[1]))
-            # Hydrogen attached to terminal allene CH2 (atom 0, H atoms 10 and 11):
-            # MUST stay bonded (rejects the previously observed detached-H scaffold).
+            # Hydrogens on the terminal allene CH2 (atom 0, H atoms 10 and 11):
+            # MUST stay bonded.  Rejects the previously observed detached-H scaffold.
             d_h10_0 = float(np.linalg.norm(coords[10] - coords[0]))
             d_h11_0 = float(np.linalg.norm(coords[11] - coords[0]))
-            if not (1.25 <= d_0_1 <= 1.45):
-                continue  # allene crushed/stretched — reject
-            if not (0.95 <= d_h10_0 <= 1.25) or not (0.95 <= d_h11_0 <= 1.25):
-                continue  # H detached from its C — reject
-            if not (1.70 <= d_1_9 <= 2.60):
-                continue  # breaking bond outside TS range — reject
-            # Among surviving guesses, select the one closest to the fixture.
+            self.assertTrue(1.25 <= d_0_1 <= 1.45,
+                            msg=f'surviving guess has allene d(C0=C1)={d_0_1:.3f} Å '
+                                f'outside the [1.25, 1.45] chemistry window — '
+                                f'the broken zmat fallback scaffold is back.')
+            self.assertTrue(0.95 <= d_h10_0 <= 1.25 and 0.95 <= d_h11_0 <= 1.25,
+                            msg=f'surviving guess has terminal-H distances '
+                                f'd(C0,H10)={d_h10_0:.3f} d(C0,H11)={d_h11_0:.3f} Å — '
+                                f'expected both in [0.95, 1.25]; detached-H scaffold survived.')
+            self.assertTrue(1.70 <= d_1_9 <= 2.60,
+                            msg=f'surviving guess has breaking bond d(C1,C9)={d_1_9:.3f} Å '
+                                f'outside the [1.70, 2.60] TS window.')
             c_exp = np.array(expected_ts_xyz['coords'])
             rmsd = float(np.sqrt(np.mean(np.sum((coords - c_exp) ** 2, axis=1))))
             if rmsd < best_rmsd:
                 best_ts = ts_xyz
                 best_rmsd = rmsd
-        self.assertIsNotNone(
-            best_ts,
-            msg='No TS guess satisfies the 1,4_Cyclic_birad_scission chemistry: '
-                'the scaffold must have d(C0=C1) in [1.25,1.45] Å (allene preserved), '
-                'terminal H atoms bonded at 0.95-1.25 Å (no detached H), and '
-                'breaking bond d(C1,C9) in [1.70,2.60] Å (TS range).')
+        self.assertIsNotNone(best_ts, msg='No TS guess survived the chemistry assertions.')
         self.assertLess(
             best_rmsd, 0.35,
             msg=f'Best TS RMSD vs the expected TS is {best_rmsd:.2f} Å, '
                 f'above the 0.35 Å budget — scaffold drifted from intended chemistry.')
+
+    def test_trivial_fallback_scaffold_sound_rejects_broken_geometry(self):
+        """``trivial_fallback_scaffold_sound`` must reject the exact broken scaffold
+        that ``zmat_P_fallback`` produces for 1,4_Cyclic_birad_scission (crushed
+        allene C=C at ~1.03 Å and an H detached at ~1.78 Å), and accept a clean
+        scaffold that preserves every non-reactive R bond."""
+        r = ARCSpecies(label='R', smiles='C=C=C', xyz="""C  0.0 0.0  0.0
+C  0.0 0.0  1.32
+C  0.0 0.0  2.64
+H -0.94 0.0 -0.55
+H  0.94 0.0 -0.55
+H -0.94 0.0  3.19
+H  0.94 0.0  3.19""")
+        clean = {'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H'),
+                 'isotopes': (12, 12, 12, 1, 1, 1, 1),
+                 'coords': ((0.0, 0.0, 0.0),
+                            (0.0, 0.0, 1.32),
+                            (0.0, 0.0, 2.64),
+                            (-0.94, 0.0, -0.55),
+                            (0.94, 0.0, -0.55),
+                            (-0.94, 0.0, 3.19),
+                            (0.94, 0.0, 3.19))}
+        self.assertTrue(trivial_fallback_scaffold_sound(clean, r.mol,
+                                                        breaking_bonds=[], forming_bonds=[]))
+        crushed_cc = dict(clean)
+        crushed_cc['coords'] = ((0.0, 0.0, 0.0), (0.0, 0.0, 1.03),  # C=C crushed
+                                (0.0, 0.0, 2.64),
+                                (-0.94, 0.0, -0.55), (0.94, 0.0, -0.55),
+                                (-0.94, 0.0, 3.19), (0.94, 0.0, 3.19))
+        self.assertFalse(trivial_fallback_scaffold_sound(crushed_cc, r.mol,
+                                                         breaking_bonds=[], forming_bonds=[]))
+        detached_h = dict(clean)
+        detached_h['coords'] = ((0.0, 0.0, 0.0), (0.0, 0.0, 1.32),
+                                 (0.0, 0.0, 2.64),
+                                 (-1.60, 0.0, -0.90),  # H displaced > 1.3 Å from C0
+                                 (0.94, 0.0, -0.55),
+                                 (-0.94, 0.0, 3.19), (0.94, 0.0, 3.19))
+        self.assertFalse(trivial_fallback_scaffold_sound(detached_h, r.mol,
+                                                         breaking_bonds=[], forming_bonds=[]))
+        # A reactive bond is allowed to be elongated — it must not trip the gate.
+        elongated_reactive = dict(clean)
+        elongated_reactive['coords'] = ((0.0, 0.0, 0.0), (0.0, 0.0, 1.32),
+                                         (0.0, 0.0, 4.80),  # pretend C1-C2 is breaking
+                                         (-0.94, 0.0, -0.55), (0.94, 0.0, -0.55),
+                                         (-0.94, 0.0, 5.35), (0.94, 0.0, 5.35))
+        self.assertTrue(trivial_fallback_scaffold_sound(elongated_reactive, r.mol,
+                                                        breaking_bonds=[(1, 2)], forming_bonds=[]))
 
     def test_interpolate_1_4_linear_birad_scission(self):
         """Test the interpolate_isomerization() function for 1,4_Linear_birad_scission: C=C[CH]CC[CH]C=C <=> 2 * C=CC=C"""
