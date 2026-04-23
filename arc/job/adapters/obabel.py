@@ -6,6 +6,7 @@ http://openbabel.org/docs/current/
 import datetime
 import os
 import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 from arc.common import ARC_PATH, get_logger, save_yaml_file, read_yaml_file
@@ -27,6 +28,25 @@ logger = get_logger()
 default_job_settings, global_ess_settings, input_filenames, output_filenames, servers, submit_filenames, OB_PYTHON = \
     settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
     settings['output_filenames'], settings['servers'], settings['submit_filenames'], settings['OB_PYTHON']
+
+# Fall back to current Python if ob_env is not available or has broken OB.
+# OB may be in the main env (e.g., danagroup build in arc_env).
+if OB_PYTHON is not None and OB_PYTHON != sys.executable:
+    import subprocess as _sp
+    try:
+        _result = _sp.run([OB_PYTHON, '-c',
+                           'from openbabel import openbabel; '
+                           + 'assert openbabel.OBForceField.FindForceField("MMFF94s") is not None'],
+                          capture_output=True, timeout=10,
+                          env={**os.environ,
+                               'BABEL_LIBDIR': os.environ.get('BABEL_LIBDIR', ''),
+                               'BABEL_DATADIR': os.environ.get('BABEL_DATADIR', '')})
+        if _result.returncode != 0:
+            OB_PYTHON = sys.executable
+    except Exception:
+        OB_PYTHON = sys.executable
+elif OB_PYTHON is None:
+    OB_PYTHON = sys.executable
 
 OB_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'ob_script.py')
 
@@ -245,11 +265,9 @@ class OpenbabelAdapter(JobAdapter):
                              f'Fix input file or settings and try again.')
 
         self.write_input_file(ob_default_settings)
-        commands = ['source ~/.bashrc',
-                   f'{OB_PYTHON} {OB_SCRIPT_PATH} '
-                   f'--yml_path {self.local_path}']
-        command = '; '.join(commands)
-        output = subprocess.run(command, shell=True, executable='/bin/bash')
+        # BABEL_LIBDIR/BABEL_DATADIR are set by arc.settings.settings at import time
+        output = subprocess.run(
+            [OB_PYTHON, OB_SCRIPT_PATH, '--yml_path', self.local_path])
         if output.returncode:
             logger.warning(f'Openbabel subprocess ran and did not '
                            f'give a successful return code for {self.job_id}.\n'
