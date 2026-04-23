@@ -1,6 +1,7 @@
 # Automated Rate Calculator | ARC
 
 ![Build Status](https://github.com/ReactionMechanismGenerator/ARC/actions/workflows/cont_int.yml/badge.svg)
+[![Ruff](https://github.com/ReactionMechanismGenerator/ARC/actions/workflows/ruff.yml/badge.svg)](https://github.com/ReactionMechanismGenerator/ARC/actions/workflows/ruff.yml)
 [![codecov](https://codecov.io/gh/ReactionMechanismGenerator/ARC/branch/main/graph/badge.svg)](https://codecov.io/gh/ReactionMechanismGenerator/ARC)
 [![MIT license](http://img.shields.io/badge/license-MIT-brightgreen.svg)](http://opensource.org/licenses/MIT)
 ![Release](https://img.shields.io/badge/version-1.1.0-blue.svg)
