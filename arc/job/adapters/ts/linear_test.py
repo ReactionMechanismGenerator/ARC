@@ -2282,7 +2282,7 @@ H       1.45458039    5.93140659   -4.71125121"""
  H                 -1.01810056    2.77655786   -5.58770202
  H                 -1.90841763    1.34528125   -3.75140886
  H                 -0.25775968    1.59319508   -3.22619270"""
-        r = ARCSpecies(label='R', smiles='[CH2]C=CCC[CH]C=C', xyz=r_xyz)
+        r = ARCSpecies(label='R', smiles='[CH2]C=CCC[CH]C=C', xyz=r_xyz, multiplicity=1)
         p = ARCSpecies(label='P', smiles='C=CC1CC=CCC1', xyz=p_xyz)
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = []
