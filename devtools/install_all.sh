@@ -26,6 +26,7 @@ run_devtool () { bash "$DEVTOOLS_DIR/$1" "${@:2}"; }
 SKIP_CLEAN=false
 SKIP_EXT=false
 SKIP_ARC=false
+SKIP_RITS=false
 RMG_ARGS=()
 ARC_ARGS=()
 EXT_ARGS=()
@@ -36,6 +37,7 @@ while [[ $# -gt 0 ]]; do
         --no-clean) SKIP_CLEAN=true ;;
         --no-ext)   SKIP_EXT=true  ;;
         --no-arc)   SKIP_ARC=true  ;;
+        --no-rits)  SKIP_RITS=true ;;
         --rmg-*)    RMG_ARGS+=("--${1#--rmg-}") ;;
         --arc-*)    ARC_ARGS+=("--${1#--arc-}") ;;
         --ext-*)    EXT_ARGS+=("--${1#--ext-}") ;;
@@ -44,6 +46,7 @@ while [[ $# -gt 0 ]]; do
 Usage: $0 [global-flags] [--rmg-xxx] [--arc-yyy] [--ext-zzz]
   --no-clean          Skip micromamba/conda cache cleanup
   --no-ext            Skip external tools (AutoTST, KinBot, …)
+  --no-rits           Skip the RitS installer (heavy ML stack — usually run in its own CI lane)
   --rmg-path          Forward '--path' to RMG installer
   --rmg-pip           Forward '--pip'  to RMG installer
   ...
@@ -102,7 +105,14 @@ if [[ $SKIP_EXT == false ]]; then
         [xtb]=install_xtb.sh
         [Sella]=install_sella.sh
         [TorchANI]=install_torchani.sh
+        [RitS]=install_rits.sh
     )
+
+    # Optionally drop RitS — used by `make install-ci` since CI runs RitS in its own lane
+    if [[ $SKIP_RITS == true ]]; then
+        unset 'EXT_INSTALLERS[RitS]'
+        echo "ℹ️  --no-rits: skipping RitS installer (run `make install-rits` or the rits CI lane separately)"
+    fi
 
         # installer-specific flag whitelists
     declare -A EXT_FLAG_WHITELIST=(

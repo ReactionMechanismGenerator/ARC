@@ -9,7 +9,7 @@ DEVTOOLS_DIR := devtools
 .PHONY: all help clean test test-unittests test-functional test-all \
         install-all install-ci install-pyrdl install-rmg install-rmgdb install-autotst install-gcn \
         install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-ob \
-        lite check-env compile
+        install-rits lite check-env compile
 
 
 # Default target
@@ -38,6 +38,7 @@ help:
 	@echo "  install-xtb      Install xTB"
 	@echo "  install-torchani Install TorchANI"
 	@echo "  install-ob       Install OpenBabel"
+	@echo "  install-rits     Install RitS (TS guesser, ~3 GB env + 364 MB checkpoint)"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  lite             Run lite installation (no tests)"
@@ -66,8 +67,8 @@ install:
 	bash $(DEVTOOLS_DIR)/install_all.sh --rmg-rms
 
 install-ci:
-	@echo "Installing all external ARC dependencies for CI (no clean)..."
-	bash $(DEVTOOLS_DIR)/install_all.sh --no-clean
+	@echo "Installing all external ARC dependencies for CI (no clean, no RitS — RitS runs in its own CI lane)..."
+	bash $(DEVTOOLS_DIR)/install_all.sh --no-clean --no-rits
 
 install-lite:
 	@echo "Installing ARC's lite version (no external dependencies)..."
@@ -105,6 +106,9 @@ install-torchani:
 
 install-ob:
 	bash $(DEVTOOLS_DIR)/install_ob.sh
+
+install-rits:
+	bash $(DEVTOOLS_DIR)/install_rits.sh
 
 lite:
 	bash $(DEVTOOLS_DIR)/lite.sh
