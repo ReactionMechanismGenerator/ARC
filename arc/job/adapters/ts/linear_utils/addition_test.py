@@ -17,7 +17,6 @@ _MASS_NUMBER = {'H': 1, 'C': 12, 'N': 14, 'O': 16, 'S': 32}
 
 from arc.job.adapters.ts.linear_utils.addition import (
     insertion_ring_extra_stretch,
-    _reposition_leaving_groups,
     apply_intra_frag_contraction,
     build_concerted_ts,
     detect_intra_frag_ring_bonds,

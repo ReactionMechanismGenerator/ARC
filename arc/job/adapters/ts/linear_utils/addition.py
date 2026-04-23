@@ -1255,9 +1255,7 @@ def migrate_h_between_fragments(ts_xyz: dict,
 
 def _reposition_leaving_groups(xyz: dict,
                                pre_xyz: dict,
-                               mol: 'Molecule',
                                split_bonds: List[Tuple[int, int]],
-                               adj: List[List[int]],
                                frag_id: List[int],
                                n_atoms: int,
                                extra_stretch: float = 0.0,
@@ -1280,9 +1278,7 @@ def _reposition_leaving_groups(xyz: dict,
     Args:
         xyz: Post-ring-closure XYZ geometry.
         pre_xyz: Pre-ring-closure XYZ geometry (for original bond directions).
-        mol: RMG Molecule.
         split_bonds: Bonds that were cut to create fragments.
-        adj: Adjacency list (with split bonds excluded).
         frag_id: Fragment assignment per atom.
         n_atoms: Number of atoms.
         extra_stretch: Additional stretch (Å) beyond the Pauling TS estimate,
@@ -1295,7 +1291,7 @@ def _reposition_leaving_groups(xyz: dict,
     pre_coords = np.array(pre_xyz['coords'], dtype=float)
     for sb_a, sb_b in split_bonds:
         if frag_id[sb_a] == frag_id[sb_b]:
-            continue  # Both atoms are in the same fragment — not a true split.
+            continue  # Both atoms are in the same fragment: not a true split.
         # Identify which side is the smaller (leaving) fragment.
         frag_a = [i for i in range(n_atoms) if frag_id[i] == frag_id[sb_a]]
         frag_b = [i for i in range(n_atoms) if frag_id[i] == frag_id[sb_b]]
@@ -1310,16 +1306,10 @@ def _reposition_leaving_groups(xyz: dict,
         sym_b = xyz['symbols'][leaving_anchor]
         ts_target = get_single_bond_length(sym_a, sym_b) + PAULING_DELTA + extra_stretch
 
-        # Only reposition when the leaving group is stranded TOO FAR from
-        # the ring anchor after closure. When the distance is too short
-        # (leaving group followed the anchor, e.g. via centroid correction
-        # in small rings), ``stretch_bond()`` downstream will stretch it
-        # to the TS target — no repositioning needed here.
         if current_dist <= ts_target + 0.5:
             continue
 
-        # Step 1: Translate the leaving fragment to follow the ring anchor's
-        # displacement during ring closure.
+        # Step 1: Translate the leaving fragment to follow the ring anchor's displacement during ring closure.
         anchor_displacement = coords[ring_anchor] - pre_coords[ring_anchor]
         for idx in leaving_frag:
             coords[idx] += anchor_displacement
@@ -1338,11 +1328,9 @@ def _reposition_leaving_groups(xyz: dict,
         for idx in leaving_frag:
             coords[idx] += shift
 
-    return {
-        'symbols': xyz['symbols'],
-        'isotopes': xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
-        'coords': tuple(tuple(float(x) for x in row) for row in coords),
-    }
+    return {'symbols': xyz['symbols'],
+            'isotopes': xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
+            'coords': tuple(tuple(float(x) for x in row) for row in coords)}
 
 
 def apply_intra_frag_contraction(xyz: dict,
@@ -1480,7 +1468,7 @@ def apply_intra_frag_contraction(xyz: dict,
             # ``stretch_bond()`` downstream will handle the distance.
             if has_leaving_group:
                 contracted = _reposition_leaving_groups(
-                    contracted, xyz, mol, split_bonds, adj, frag_id, n_atoms,
+                    contracted, xyz, split_bonds, frag_id, n_atoms,
                     extra_stretch=leaving_group_correction)
             results.append(contracted)
     return results if results else [xyz]
