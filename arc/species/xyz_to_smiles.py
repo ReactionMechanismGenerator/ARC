@@ -493,7 +493,7 @@ def ac2bo(atom_connectivity: np.ndarray,
     valences_list_of_lists = []
     ac_valence = list(atom_connectivity.sum(axis=1))
     for i, (atomic_num, valence) in enumerate(zip(atoms, ac_valence)):
-        # The valence cannot be smaller than the number of neighbours.
+        # The valence cannot be smaller than the number of neighbors.
         possible_valence = [x for x in atomic_valence[atomic_num] if x >= valence]
         if not possible_valence:
             logger.warning(f'Valence of atom {i} is {valence}, which bigger than the allowed max '
