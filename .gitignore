@@ -70,3 +70,5 @@ build/*
 
 # AI Agent files
 AGENTS.md
+
+spec.md

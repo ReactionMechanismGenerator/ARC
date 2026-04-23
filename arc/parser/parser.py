@@ -114,6 +114,9 @@ def parse_xyz_from_file(log_file_path: str) -> Optional[Dict[str, tuple]]:
                 splits = line.split()
                 if len(splits) == 2 and all([s.isdigit() for s in splits]):
                     start_parsing = True
+    elif file_extension in ['.yml', '.yaml']:
+        ess_adapter = ess_factory(log_file_path=log_file_path, ess_adapter='yaml')
+        xyz = ess_adapter.parse_geometry()
     else:
         record = False
         for line in lines:
