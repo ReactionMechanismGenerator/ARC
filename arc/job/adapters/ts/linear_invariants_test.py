@@ -118,7 +118,7 @@ class TestProductionPathInvariants(unittest.TestCase):
     def test_invariant_carbene_target_consistency(self):
         """Production-path consistency invariant: the scorer's
         ``get_ts_target_distance`` and the builder-side
-        ``addition._insertion_ring_extra_stretch`` produce numerically
+        ``addition.insertion_ring_extra_stretch`` produce numerically
         identical targets for ``1,2_Insertion_carbene`` on a forming
         C–C bond.
 
@@ -142,7 +142,7 @@ class TestProductionPathInvariants(unittest.TestCase):
             bond=(0, 1), role='forming', symbols=symbols,
             family='1,2_Insertion_carbene')
         # The builder-side target the insertion-ring builder produces.
-        builder_extra = A._insertion_ring_extra_stretch('1,2_Insertion_carbene')
+        builder_extra = A.insertion_ring_extra_stretch('1,2_Insertion_carbene')
         builder_target = sbl + PAULING_DELTA + builder_extra
         # And the canonical helper.
         canonical_extra = insertion_ring_extra_stretch('1,2_Insertion_carbene')

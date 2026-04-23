@@ -1,6 +1,5 @@
 """
 Fragment-based addition / dissociation TS geometry builders
-extracted from ``arc.job.adapters.ts.linear``.
 """
 
 from collections import deque
@@ -10,29 +9,11 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 import numpy as np
 
 from arc.common import get_logger, get_single_bond_length
-from arc.species.species import ARCSpecies, colliding_atoms
-
 from arc.job.adapters.ts.linear_utils.geom_utils import bfs_path, mol_to_adjacency
-from arc.job.adapters.ts.linear_utils.postprocess import (
-    PAULING_DELTA,
-    has_detached_hydrogen,
-    has_too_many_fragments,
-)
-from arc.job.adapters.ts.linear_utils.path_spec import (
-    ReactionPathSpec,
-    insertion_ring_extra_stretch,
-    validate_addition_guess,
-)
-
-
 from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
-
-
-# Backwards-compatible alias for ``addition_test.py``, which still
-# imports the underscored name. Production code in this module imports
-# the canonical :func:`insertion_ring_extra_stretch` directly from
-# :mod:`arc.job.adapters.ts.linear_utils.path_spec`.
-_insertion_ring_extra_stretch = insertion_ring_extra_stretch
+from arc.job.adapters.ts.linear_utils.path_spec import ReactionPathSpec, insertion_ring_extra_stretch, validate_addition_guess
+from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA, has_detached_hydrogen, has_too_many_fragments
+from arc.species.species import ARCSpecies, colliding_atoms
 
 if TYPE_CHECKING:
     from arc.molecule import Molecule
@@ -46,8 +27,8 @@ logger = get_logger()
 # ---------------------------------------------------------------------------
 
 def find_split_bonds_by_fragmentation(uni_mol: 'Molecule',
-                                       product_species: List[ARCSpecies],
-                                       ) -> List[List[Tuple[int, int]]]:
+                                      product_species: List[ARCSpecies],
+                                      ) -> List[List[Tuple[int, int]]]:
     """
     Find bonds in the unimolecular species that, when removed, fragment it
     into components matching the product species by element composition.
@@ -59,19 +40,16 @@ def find_split_bonds_by_fragmentation(uni_mol: 'Molecule',
 
     Args:
         uni_mol (Molecule): RMG Molecule of the unimolecular species.
-        product_species (List[ARCSpecies]): The product species on the
-            multi-species side.
+        product_species (List[ARCSpecies]): The product species on the multi-species side.
 
     Returns:
-        List[List[Tuple[int, int]]]: Each entry is a list of (i, j) bond
-            tuples that, when removed, yield a valid fragmentation.
-            Returns an empty list if no valid cut is found.
+        List[List[Tuple[int, int]]]: Each entry is a list of (i, j) bond tuples that, when removed,
+            yield a valid fragmentation. Returns an empty list if no valid cut is found.
     """
     n_products = len(product_species)
     if n_products < 2:
         return []
 
-    # Target: sorted list of element-count dicts for each product.
     target_formulas: List[Dict[str, int]] = []
     for sp in product_species:
         formula: Dict[str, int] = {}
@@ -80,14 +58,10 @@ def find_split_bonds_by_fragmentation(uni_mol: 'Molecule',
         target_formulas.append(formula)
     target_sorted = sorted(target_formulas, key=lambda d: sorted(d.items()))
 
-    # Build adjacency and bond list from uni_mol.
     n_atoms = len(uni_mol.atoms)
     adj = mol_to_adjacency(uni_mol)
-    bonds: List[Tuple[int, int]] = sorted(
-        {(min(a, b), max(a, b)) for a, nbrs in adj.items() for b in nbrs}
-    )
+    bonds: List[Tuple[int, int]] = sorted({(min(a, b), max(a, b)) for a, nbrs in adj.items() for b in nbrs})
 
-    # Atom symbols for fragment formula checking.
     symbols = tuple(atom.element.symbol for atom in uni_mol.atoms)
 
     def _get_fragments(removed: List[Tuple[int, int]]) -> List[Set[int]]:
@@ -115,8 +89,7 @@ def find_split_bonds_by_fragmentation(uni_mol: 'Molecule',
 
     def _heavy_formulas(formulas: List[Dict[str, int]]) -> List[Dict[str, int]]:
         """Strip H counts from element-count dicts."""
-        return sorted(({k: v for k, v in f.items() if k != 'H'} for f in formulas),
-                       key=lambda d: sorted(d.items()))
+        return sorted(({k: v for k, v in f.items() if k != 'H'} for f in formulas), key=lambda d: sorted(d.items()))
 
     target_heavy = _heavy_formulas(target_formulas)
     target_total_h = sum(f.get('H', 0) for f in target_formulas)
@@ -178,12 +151,12 @@ def find_split_bonds_by_fragmentation(uni_mol: 'Molecule',
 
 
 def map_and_verify_fragments(uni_mol: 'Molecule',
-                              split_bonds: List[Tuple[int, int]],
-                              multi_species: List[ARCSpecies],
-                              cross_bonds: Optional[List[Tuple[int, int]]] = None,
-                              product_dict: Optional[dict] = None,
-                              uni_is_reactant: bool = True,
-                              ) -> Optional[Dict[int, Tuple[int, int]]]:
+                             split_bonds: List[Tuple[int, int]],
+                             multi_species: List[ARCSpecies],
+                             cross_bonds: Optional[List[Tuple[int, int]]] = None,
+                             product_dict: Optional[dict] = None,
+                             uni_is_reactant: bool = True,
+                             ) -> Optional[Dict[int, Tuple[int, int]]]:
     """
     Validate that severing *split_bonds* (and reconnecting *cross_bonds*) in
     *uni_mol* produces fragments that topologically match *multi_species*.
@@ -197,11 +170,11 @@ def map_and_verify_fragments(uni_mol: 'Molecule',
        into the fragment they belong to in the product.
     3. Calling ``split()`` on the modified graph and checking that the number of
        connected components equals the number of product species.
-    4. Using connectivity-normalised ``is_isomorphic`` (bond orders and radical
+    4. Using connectivity-normalized ``is_isomorphic`` (bond orders and radical
        electrons removed) with ``strict=False`` to match each fragment to exactly
        one product species.
     5. Validating against the RMG reaction-family label maps (``r_label_map`` and
-       ``p_label_map`` from *product_dict*): all labelled atoms that belong to the
+       ``p_label_map`` from *product_dict*): all labeled atoms that belong to the
        same product must end up in the same fragment.
 
     Args:
@@ -214,8 +187,8 @@ def map_and_verify_fragments(uni_mol: 'Molecule',
         uni_is_reactant: True when *uni_mol* is the reactant.
 
     Returns:
-        Dict mapping *uni_mol* atom index → ``(species_list_index,
-        atom_index_in_species)`` if validation succeeds, else ``None``.
+        Dict mapping *uni_mol* atom index → ``(species_list_index, atom_index_in_species)`` if validation succeeds,
+            else ``None``.
     """
     n_atoms = len(uni_mol.atoms)
 
@@ -281,7 +254,7 @@ def map_and_verify_fragments(uni_mol: 'Molecule',
             orig_indices.append(found)
         frag_data.append((frag, orig_indices))
 
-    # ---- 5. Connectivity-normalised isomorphism ----
+    # ---- 5. Connectivity-normalized isomorphism ----
     def _normalize(mol: 'Molecule') -> 'Molecule':
         """Strip bond orders, radicals, charges and lone pairs."""
         m = mol.copy(deep=True)
@@ -296,7 +269,7 @@ def map_and_verify_fragments(uni_mol: 'Molecule',
 
     n_species = len(multi_species)
 
-    # Pre-compute normalised product molecules.
+    # Pre-compute normalized product molecules.
     norm_prods = [_normalize(sp.mol) for sp in multi_species]
     norm_prod_atoms = [list(np_mol.atoms) for np_mol in norm_prods]
 
@@ -335,7 +308,7 @@ def map_and_verify_fragments(uni_mol: 'Molecule',
                     return k
             return None
 
-        # Group labelled uni_mol atom indices by their multi-side species.
+        # Group labeled uni_mol atom indices by their multi-side species.
         label_groups: Dict[int, Set[int]] = {}
         for label, uni_idx in uni_lmap.items():
             m_idx = multi_lmap.get(label)
@@ -386,9 +359,6 @@ def map_and_verify_fragments(uni_mol: 'Molecule',
         if not all_ok or len(iso_per_frag) != len(frag_data):
             continue
 
-        # Try all isomorphism combinations until one is label-consistent.
-        # For most cases only one fragment has multiple isomorphisms, so
-        # this is fast.  Use itertools.product for deterministic ordering.
         for combo in product(*(maps for maps, _, _, _, _ in iso_per_frag)):
             candidate_map: Dict[int, Tuple[int, int]] = {}
             for iso_map, (_, nf_atoms, np_atoms_i, orig_idx, sp_idx) in zip(combo, iso_per_frag):
@@ -425,7 +395,6 @@ def build_concerted_ts(uni_xyz: dict,
         uni_mol: RMG Molecule of the unimolecular species.
         split_bonds: Bonds to break (stretch).
         cross_bonds: Bonds to form (contract).
-        weight: Interpolation weight (0 = reactant-like, 1 = product-like).
 
     Returns:
         TS guess XYZ dictionary, or ``None`` if validation fails.
@@ -435,9 +404,6 @@ def build_concerted_ts(uni_xyz: dict,
     symbols = uni_xyz['symbols']
     coords = np.array(uni_xyz['coords'], dtype=float)
 
-    # Compute element-aware target distances.
-    # Breaking (split) bonds: heavy-heavy bonds stretch MORE than X-H bonds.
-    # Forming (cross) bonds: H-H forms quickly (target close to equilibrium).
     split_targets: Dict[Tuple[int, int], float] = {}
     for a, b in split_bonds:
         sbl = get_single_bond_length(symbols[a], symbols[b]) or 1.5
@@ -527,7 +493,7 @@ def build_concerted_ts(uni_xyz: dict,
                 d = float(np.linalg.norm(coords[i] - coords[j]))
                 sbl_ij = get_single_bond_length(symbols[i], symbols[j]) or 1.5
                 min_d = sbl_ij * 0.7
-                if d < min_d and d > 1e-6:
+                if 1e-6 < d < min_d:
                     any_collision = True
                     vec = coords[j] - coords[i]
                     direction = vec / d
@@ -537,11 +503,9 @@ def build_concerted_ts(uni_xyz: dict,
         if not any_collision:
             break
 
-    ts_xyz = {
-        'symbols': symbols,
-        'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
-        'coords': tuple(tuple(float(x) for x in row) for row in coords),
-    }
+    ts_xyz = {'symbols': symbols,
+              'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
+              'coords': tuple(tuple(float(x) for x in row) for row in coords)}
     if colliding_atoms(ts_xyz):
         return None
     return ts_xyz
@@ -563,7 +527,7 @@ def stretch_bond(uni_xyz: dict,
     translated away along the inter-fragment axis so that each split bond
     reaches its Pauling TS estimate (single-bond length + ``PAULING_DELTA``).
 
-    For 3+-fragment splits with a cross bond (insertion/elimination pattern),
+    For 3+ fragment splits with a cross bond (insertion/elimination pattern),
     the insertion-ring geometry builder is used instead: the mobile and migrating
     fragments are repositioned to form a 3-membered TS ring.
 
@@ -579,6 +543,7 @@ def stretch_bond(uni_xyz: dict,
             :func:`validate_addition_guess`, which routes validation through
             the path-spec-aware checker when ``path_spec`` is provided, and
             falls back to the generic TS validator otherwise.
+        family (str, optional): Reaction family label for validation context.
 
     Returns:
         Optional[dict]: TS guess XYZ, or None if validation fails.
@@ -586,7 +551,6 @@ def stretch_bond(uni_xyz: dict,
     n_atoms = len(uni_xyz['symbols'])
     cross_bonds = cross_bonds or []
 
-    # Build adjacency, remove split bonds, find fragments.
     adj = mol_to_adjacency(uni_mol)
     for a, b in split_bonds:
         adj[a].discard(b)
@@ -637,7 +601,6 @@ def stretch_bond(uni_xyz: dict,
         elif b in small_frag:
             small_anchors.append(b)
             large_anchors.append(a)
-        # Bonds between two non-small fragments: skip for direction calc.
 
     if not small_anchors:
         logger.debug(f'Linear addition ({label}): no anchors in small fragment.')
@@ -677,11 +640,9 @@ def stretch_bond(uni_xyz: dict,
     for idx in small_frag:
         ts_coords[idx] += displacement
 
-    ts_xyz: dict = {
-        'symbols': uni_xyz['symbols'],
-        'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
-        'coords': tuple(tuple(float(x) for x in row) for row in ts_coords),
-    }
+    ts_xyz: dict = {'symbols': uni_xyz['symbols'],
+                    'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
+                    'coords': tuple(tuple(float(x) for x in row) for row in ts_coords)}
 
     # split_bonds are passed as forming_bonds: for addition the TS "forms"
     # the bonds that are being stretched apart, so both names refer to the
@@ -697,15 +658,15 @@ def stretch_bond(uni_xyz: dict,
 
 
 def try_insertion_ring(uni_xyz: dict,
-                        uni_mol: 'Molecule',
-                        fragments: List[Set[int]],
-                        split_bonds: List[Tuple[int, int]],
-                        cross_bonds: List[Tuple[int, int]],
-                        weight: float,
-                        n_atoms: int,
-                        path_spec: Optional['ReactionPathSpec'] = None,
-                        family: Optional[str] = None,
-                        ) -> Optional[dict]:
+                       uni_mol: 'Molecule',
+                       fragments: List[Set[int]],
+                       split_bonds: List[Tuple[int, int]],
+                       cross_bonds: List[Tuple[int, int]],
+                       weight: float,
+                       n_atoms: int,
+                       path_spec: Optional['ReactionPathSpec'] = None,
+                       family: Optional[str] = None,
+                       ) -> Optional[dict]:
     """
     Attempt to build a 3-membered insertion-ring TS geometry.
 
@@ -725,6 +686,7 @@ def try_insertion_ring(uni_xyz: dict,
         path_spec (ReactionPathSpec, optional):  path-spec forwarded to
             :func:`validate_addition_guess`, which routes validation through
             the path-spec-aware checker when provided.
+        family (str, optional): Reaction family label for validation context.
 
     Returns:
         Optional[dict]: TS guess XYZ, or None if the pattern doesn't apply.
@@ -783,24 +745,8 @@ def try_insertion_ring(uni_xyz: dict,
     coords = np.array(uni_xyz['coords'], dtype=float)
     ts_coords = coords.copy()
 
-    # limited family-aware insertion-ring target calibration.
-    # Highly exothermic carbene insertions have a markedly *earlier* TS
-    # than the standard ``sbl + PAULING_DELTA`` predicts. When the
-    # ``family`` argument or ``path_spec.family`` identifies the family
-    # as one of those calibrated cases, add a small positive Å delta to
-    # *every* reactive edge of the 3-membered ring so the resulting TS
-    # is at the appropriate looser scale. For all other families this
-    # delta is 0.0 and behavior is unchanged. An explicit ``family``
-    # kwarg takes precedence — that is the canonical channel for the
-    # template-guided block in :mod:`arc.job.adapters.ts.linear`, where
-    # ``stretch_bond`` (the immediate caller of this function) does not
-    # carry a path-spec at all.
     family_for_calibration = family if family is not None else (
         path_spec.family if path_spec is not None else None)
-    # Canonical source of truth lives in
-    # :mod:`arc.job.adapters.ts.linear_utils.path_spec`; the
-    # ``_insertion_ring_extra_stretch`` alias below is kept only for
-    # backwards-compatibility with ``addition_test.py``.
     extra_stretch = insertion_ring_extra_stretch(family_for_calibration)
 
     sym_mob = uni_xyz['symbols'][mobile_atom]
@@ -850,40 +796,22 @@ def try_insertion_ring(uni_xyz: dict,
     for idx in mig_frag:
         ts_coords[idx] += mig_disp
 
-    ts_xyz: dict = {
-        'symbols': uni_xyz['symbols'],
-        'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
-        'coords': tuple(tuple(float(c) for c in row) for row in ts_coords),
-    }
-    is_valid, reason = validate_addition_guess(
-        xyz=ts_xyz, uni_mol=uni_mol, forming_bonds=split_bonds,
-        label='insertion-ring', path_spec=path_spec)
+    ts_xyz: dict = {'symbols': uni_xyz['symbols'],
+                    'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
+                    'coords': tuple(tuple(float(c) for c in row) for row in ts_coords)}
+    is_valid, reason = validate_addition_guess(xyz=ts_xyz, uni_mol=uni_mol, forming_bonds=split_bonds,
+                                               label='insertion-ring', path_spec=path_spec)
     if not is_valid:
-        # when the calibrated insertion-ring builder is in
-        # use, the standard ``has_too_many_fragments`` heavy-heavy
-        # threshold (2.0 Å) is just barely above the un-calibrated
-        # Pauling target. A calibrated carbene insertion ring sits at
-        # ~2.16 Å on its mobile-anchor C–C edge, which trips that
-        # threshold even though the geometry is the textbook earlier-TS
-        # the calibration was supposed to produce. Re-validate with a
-        # locally-loosened heavy-heavy threshold strictly when the
-        # rejection is the fragments check AND the family is calibrated.
-        # All other rejection reasons (collisions, detached H, drift,
-        # planarity, recipe mismatch) still gate the guess.
         if extra_stretch > 0.0 and 'too many fragments' in (reason or ''):
             relaxed_max_heavy = 2.0 + extra_stretch + 0.10
             if not has_too_many_fragments(
                     ts_xyz, max_heavy_heavy=relaxed_max_heavy):
-                # Re-run only the rest of the generic checks. We do
-                # NOT skip collisions or detached-H — we only widen the
-                # fragment-count threshold by the calibration delta.
                 if (not colliding_atoms(ts_xyz)
                         and not has_detached_hydrogen(ts_xyz, max_h_heavy_dist=3.0)):
-                    logger.debug(
-                        f'Linear (insertion-ring): calibration ({family_for_calibration},'
-                        f' +{extra_stretch:.2f} Å) — accepting via relaxed '
-                        f'heavy-heavy threshold {relaxed_max_heavy:.2f} Å '
-                        f'after generic-validator fragments rejection.')
+                    logger.debug(f'Linear (insertion-ring): calibration ({family_for_calibration},'
+                                 f' +{extra_stretch:.2f} Å): accepting via relaxed '
+                                 f'heavy-heavy threshold {relaxed_max_heavy:.2f} Å '
+                                 f'after generic-validator fragments rejection.')
                     return ts_xyz
         logger.debug(f'Linear (insertion-ring): rejected (family={family_for_calibration}, '
                      f'extra_stretch={extra_stretch}) — {reason}.')

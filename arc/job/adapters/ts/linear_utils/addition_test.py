@@ -16,7 +16,7 @@ from arc.species import ARCSpecies
 _MASS_NUMBER = {'H': 1, 'C': 12, 'N': 14, 'O': 16, 'S': 32}
 
 from arc.job.adapters.ts.linear_utils.addition import (
-    _insertion_ring_extra_stretch,
+    insertion_ring_extra_stretch,
     _reposition_leaving_groups,
     apply_intra_frag_contraction,
     build_concerted_ts,
@@ -514,19 +514,19 @@ class TestTryInsertionRing(unittest.TestCase):
 class TestInsertionRingExtraStretch(unittest.TestCase):
     """limited family-aware insertion-ring target calibration.
 
-    The helper :func:`_insertion_ring_extra_stretch` returns the
+    The helper :func:`insertion_ring_extra_stretch` returns the
     family-specific positive Å delta added to *every* reactive edge of
     the 3-membered insertion ring inside :func:`try_insertion_ring`.
     """
 
     def test_returns_zero_for_unknown_family(self):
-        self.assertEqual(_insertion_ring_extra_stretch(None), 0.0)
-        self.assertEqual(_insertion_ring_extra_stretch(''), 0.0)
-        self.assertEqual(_insertion_ring_extra_stretch('1,2_Insertion_CO'), 0.0)
-        self.assertEqual(_insertion_ring_extra_stretch('Diels_alder_addition'), 0.0)
+        self.assertEqual(insertion_ring_extra_stretch(None), 0.0)
+        self.assertEqual(insertion_ring_extra_stretch(''), 0.0)
+        self.assertEqual(insertion_ring_extra_stretch('1,2_Insertion_CO'), 0.0)
+        self.assertEqual(insertion_ring_extra_stretch('Diels_alder_addition'), 0.0)
 
     def test_returns_positive_delta_for_carbene(self):
-        delta = _insertion_ring_extra_stretch('1,2_Insertion_carbene')
+        delta = insertion_ring_extra_stretch('1,2_Insertion_carbene')
         self.assertGreater(delta, 0.0)
         # The calibration target is +0.20 Å on each edge of the
         # insertion ring (looser, earlier TS for carbene insertions).

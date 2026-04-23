@@ -2481,7 +2481,7 @@ class TestCarbeneTargetConsistency(unittest.TestCase):
     ``1,2_Insertion_carbene``.
 
     Before the cleanup, the builder applied a +0.20 Å carbene
-    extra stretch via :func:`addition._insertion_ring_extra_stretch`,
+    extra stretch via :func:`addition.insertion_ring_extra_stretch`,
     but :func:`get_ts_target_distance` ignored its ``family`` parameter
     entirely.  As a result, the scorer judged carbene guesses against
     the un-calibrated default target while the builder produced
@@ -2545,21 +2545,21 @@ class TestCarbeneTargetConsistency(unittest.TestCase):
                         f'(expected {baseline:.4f}, got {target:.4f})')
 
     def test_builder_and_scorer_share_same_helper(self):
-        """The builder-side ``addition._insertion_ring_extra_stretch``
+        """The builder-side ``addition.insertion_ring_extra_stretch``
         alias must resolve to the canonical
         ``path_spec.insertion_ring_extra_stretch``.  This is the
         cleanup invariant that prevents the two sides from
         drifting apart again."""
         from arc.job.adapters.ts.linear_utils import addition as A
         from arc.job.adapters.ts.linear_utils import path_spec as PS
-        self.assertIs(A._insertion_ring_extra_stretch,
+        self.assertIs(A.insertion_ring_extra_stretch,
                       PS.insertion_ring_extra_stretch)
         # And both call sites produce the same numerical answer for
         # the same input.
         for fam in (None, '1,2_Insertion_carbene', '1,2_Insertion_CO',
                     '1,3_Insertion_RSR'):
             self.assertEqual(
-                A._insertion_ring_extra_stretch(fam),
+                A.insertion_ring_extra_stretch(fam),
                 PS.insertion_ring_extra_stretch(fam),
                 msg=f'builder/scorer extra-stretch mismatch for family={fam!r}')
 

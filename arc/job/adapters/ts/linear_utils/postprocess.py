@@ -1533,7 +1533,7 @@ def postprocess_generic(xyz: dict,
         r_mol: Reactant RMG Molecule (bond topology reference).
         forming_bonds: List of (i, j) index pairs for bonds that form.
         breaking_bonds: List of (i, j) index pairs for bonds that break.
-        r_label_map: Family-labelled atom map (unused in generic handler).
+        r_label_map: Family-labeled atom map (unused in generic handler).
 
     Returns:
         Tuple of (corrected XYZ dict, empty set of migrating H indices).
@@ -1839,7 +1839,7 @@ def postprocess_h_migration(xyz: dict,
         r_mol: Reactant RMG Molecule (bond topology reference).
         forming_bonds: List of (i, j) index pairs for bonds that form.
         breaking_bonds: List of (i, j) index pairs for bonds that break.
-        r_label_map: Family-labelled atom map (unused in this handler).
+        r_label_map: Family-labeled atom map (unused in this handler).
 
     Returns:
         Tuple of (corrected XYZ dict, set of migrating H atom indices).
@@ -1906,7 +1906,7 @@ def _postprocess_group_shift(xyz: dict,
         r_mol: Reactant RMG Molecule (bond topology reference).
         forming_bonds: List of (i, j) index pairs for bonds that form.
         breaking_bonds: List of (i, j) index pairs for bonds that break.
-        r_label_map: Family-labelled atom map (unused in this handler).
+        r_label_map: Family-labeled atom map (unused in this handler).
 
     Returns:
         Tuple of (corrected XYZ dict, empty set — no migrating H atoms).
@@ -1945,7 +1945,7 @@ def _postprocess_cc_shift(xyz: dict,
         r_mol: Reactant RMG Molecule (bond topology reference).
         forming_bonds: List of (i, j) index pairs for bonds that form.
         breaking_bonds: List of (i, j) index pairs for bonds that break.
-        r_label_map: Family-labelled atom map (unused in this handler).
+        r_label_map: Family-labeled atom map (unused in this handler).
 
     Returns:
         Tuple of (corrected XYZ dict, empty set — no migrating H atoms).
@@ -2091,7 +2091,7 @@ def postprocess_ts_guess(xyz: dict,
         forming_bonds: List of (i, j) index pairs for bonds that form.
         breaking_bonds: List of (i, j) index pairs for bonds that break.
         family: RMG reaction family name (e.g. ``'intra_H_migration'``).
-        r_label_map: Family-labelled atom map from the product_dict
+        r_label_map: Family-labeled atom map from the product_dict
             (e.g. ``{'*1': 3, '*2': 7, '*3': 0}``).
 
     Returns:

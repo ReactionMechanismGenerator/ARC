@@ -566,7 +566,7 @@ def _get_ts_imag_freq(spc) -> Optional[float]:
 
 
 def _thermo_to_dict(thermo) -> Dict:
-    """Convert a ThermoData object to a plain, unit-labelled dict."""
+    """Convert a ThermoData object to a plain, unit-labeled dict."""
     def _scalar(x):
         """Extract the numeric value from a (value, units) tuple or a plain number."""
         if isinstance(x, (list, tuple)) and len(x) >= 1:

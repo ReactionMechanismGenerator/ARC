@@ -1129,7 +1129,7 @@ def generate_zmat_branch(anchor_xyz: dict,
             reactive and H repairs would perturb the geometry.
         family: RMG reaction family name, used to dispatch to the appropriate
             post-processing and validation handlers.
-        r_label_map: Family-labelled atom map from the product_dict.
+        r_label_map: Family-labeled atom map from the product_dict.
         redistribute_ch2: If ``True``, run an additional CH₂ redistribution
             pass after postprocessing to fix collapsed CH₂ groups adjacent
             to reactive atoms.
