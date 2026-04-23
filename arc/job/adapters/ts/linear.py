@@ -1828,7 +1828,7 @@ def interpolate_addition(rxn: 'ARCReaction',
             # correct geometry.  When no contraction applies, bases is
             # just [uni_xyz] (identity).
             bases = apply_intra_frag_contraction(
-                uni_xyz, uni_mol, split_bonds, cross_bonds, multi_species,
+                uni_xyz, uni_mol, split_bonds, multi_species,
                 weight, label=f'rxn={rxn.label}, path={i}')
             # When contraction produced modified geometries, also keep
             # the uncontracted original as a fallback candidate.
@@ -2008,7 +2008,7 @@ def interpolate_addition(rxn: 'ARCReaction',
             # Also try ring contraction then stretch for reactions that need
             # it (e.g. cyclic ether formation).
             ring_xyzs = apply_intra_frag_contraction(
-                uni_xyz, uni_mol, split_bonds, cross_bonds, multi_species,
+                uni_xyz, uni_mol, split_bonds, multi_species,
                 weight, label=f'rxn={rxn.label}, path={i}-fallback')
             for ring_xyz in ring_xyzs:
                 ts_xyz = stretch_bond(ring_xyz, uni_mol, split_bonds,
@@ -2422,7 +2422,7 @@ def interpolate_addition(rxn: 'ARCReaction',
 
         # Apply ring contraction on original geometry first, then stretch.
         ring_xyzs = apply_intra_frag_contraction(
-            uni_xyz, uni_mol, cut, None, multi_species,
+            uni_xyz, uni_mol, cut, multi_species,
             weight, label=f'rxn={rxn.label}, frag-fallback')
         for ring_xyz in ring_xyzs:
             pre_migrate_xyz = stretch_bond(

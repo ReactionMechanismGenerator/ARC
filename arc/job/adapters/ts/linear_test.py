@@ -1071,6 +1071,7 @@ H       2.05354047   -0.10415729    1.58865243"""
     # Tests for specific RMG families ***
     # -----------------------------------------------------------------------
 
+    @pytest.mark.slow  # ~12 s
     def test_interpolate_1_plus_2_cycloaddition(self):
         """Test the interpolate_addition() function for 1+2_Cycloaddition: CH2 + C=C=C <=> C=C1CC1"""
         ch2_xyz = """C       0.00000000    0.00000000    0.10513200
@@ -1428,6 +1429,7 @@ H       2.26228063    0.30987172   -1.68227239
 H       2.89130493   -0.59895508   -0.29374226"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
+    @pytest.mark.slow  # ~15 s
     def test_interpolate_1_2_shift_c(self):
         """Test the interpolate_isomerization() function for 1,2_shiftC: CC[C]1C=CC=C1 <=> [CH2]C1(C)C=CC=C1"""
         r_xyz = """C      -2.08011725   -0.87098529   -0.24102896
@@ -1510,6 +1512,7 @@ H       3.06757417   -0.71677188    1.38813917
 H       0.58240767   -0.91755259    2.25688920"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
+    @pytest.mark.slow  # ~17 s
     def test_interpolate_1_2_shift_s(self):
         """Test the interpolate_isomerization() function for 1,2_shiftS: CS[C]1C=CC=C1 <=> [S]C1(C)C=CC=C1"""
         r_xyz = """C       2.48151944    0.27794621    0.08255979
@@ -3228,6 +3231,7 @@ H       5.06076895    3.33665721   -0.06290139
 H       6.03724721    2.13554246   -0.93004450"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
+    @pytest.mark.slow  # ~16 s
     def test_interpolate_intra_r_add_exo_scission(self):
         """Test the interpolate_isomerization() function for Intra_R_Add_Exo_scission: C#C[CH]Cc1ccccc1 <=> C#CC([CH2])c1ccccc1"""
         r_xyz = """C       4.23346824   -0.94993099    0.35203386
@@ -4058,6 +4062,7 @@ H      -2.02043853   -0.22627433   -0.06082781"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts_1)) for ts in ts_xyzs))
         self.assertEqual(len(ts_xyzs), 2)
 
+    @pytest.mark.slow  # ~13 s
     def test_interpolate_r_addition_multiplebond_7(self):
         """Test the interpolate_isomerization() function for R_Addition_MultipleBond: C2H4 + NH2 <=> [CH2]CN"""
         r1 = ARCSpecies(label='R1`', smiles='C=C')
@@ -4333,6 +4338,7 @@ H       1.80251143    1.03132880   -1.10238169"""
  H                  1.00524898    4.53585118    0.93109285"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
+    @pytest.mark.slow  # ~17 s
     def test_interpolate_singlet_carbene_intra_disproportionation(self):
         """Test the interpolate_isomerization() function for Singlet_Carbene_Intra_Disproportionation: C=C1C=C[C]C1 <=> C=C1C=CC=C1"""
         r_xyz = """C      -1.75380171    0.48873088   -0.19068706
@@ -4398,6 +4404,7 @@ H      -0.15810977   -1.84238058   -0.97429551
 H       0.49026533   -0.61960200    1.22593576"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
+    @pytest.mark.slow  # ~19 s
     def test_interpolate_family_none_unimolecular(self):
         """interpolate() must produce at least one TS guess for a unimolecular reaction RMG cannot classify.
 
@@ -4472,6 +4479,7 @@ H      -1.12089093    1.00131310   -0.21289037"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts_0)) for ts in ts_xyzs))
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts_1)) for ts in ts_xyzs))
 
+    @pytest.mark.slow  # ~16 s
     def test_interpolate_xy_elimination_hydroxyl(self):
         """Test the interpolate_isomerization() function for XY_elimination_hydroxyl: CCC(=O)O <=> C=C + [H][H] + O=C=O"""
         r_xyz = """C      -1.44342440    0.21938567    0.14134495
@@ -4916,6 +4924,7 @@ H       0.55885409    1.00752875   -0.47356358
 H      -1.14754281   -1.14702973    2.44393242"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
+    @pytest.mark.slow  # ~17 s
     def test_interpolate_intra_halogen_migration(self):
         """Test the interpolate_isomerization() function for intra_halogen_migration: FCCC[C](F)F <=> [CH2]CCC(F)(F)F"""
         r_xyz = """F       1.93592759   -1.04813200    0.17239309
@@ -5243,6 +5252,7 @@ H       0.94413319   -0.68860760   -0.83098698"""
                     f'{xyz_to_str(ts_xyz)}',
             )
 
+    @pytest.mark.slow  # ~14 s
     def test_interpolate_isomerization_degenerate_dedup(self):
         """Integration test 2: degenerate 1,5-H shift — dedup removes near-identical chimeras.
 

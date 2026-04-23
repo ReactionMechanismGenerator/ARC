@@ -952,7 +952,7 @@ class TestApplyIntraFragContraction(unittest.TestCase):
         }
         result = apply_intra_frag_contraction(
             xyz, mol, split_bonds=[(c_indices[0], c_indices[1])],
-            cross_bonds=None, multi_species=[spc1, spc2],
+            multi_species=[spc1, spc2],
             weight=0.5, label='test')
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]['symbols'], xyz['symbols'])
@@ -991,7 +991,7 @@ class TestApplyIntraFragContraction(unittest.TestCase):
             np.array(xyz['coords'][c0]) - np.array(xyz['coords'][c_last]))
         # No split bonds: we're only testing the ring-contraction path.
         result = apply_intra_frag_contraction(
-            xyz, mol, split_bonds=[], cross_bonds=None,
+            xyz, mol, split_bonds=[],
             multi_species=[spc], weight=0.5, label='butadiene_ring_close')
         # Result is always a list of xyz dicts.
         self.assertIsInstance(result, list)

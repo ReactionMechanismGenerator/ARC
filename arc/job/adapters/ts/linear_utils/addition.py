@@ -1336,7 +1336,6 @@ def _reposition_leaving_groups(xyz: dict,
 def apply_intra_frag_contraction(xyz: dict,
                                  mol: 'Molecule',
                                  split_bonds: List[Tuple[int, int]],
-                                 cross_bonds: Optional[List[Tuple[int, int]]],  # linear passes cross_bonds in some calls. maybe we SHOULD use it here?
                                  multi_species: List[ARCSpecies],
                                  weight: float = 0.5,
                                  label: str = '',
@@ -1345,21 +1344,24 @@ def apply_intra_frag_contraction(xyz: dict,
     Apply angular ring contraction for intra-fragment forming bonds.
 
     After ``stretch_bond()`` separates fragments by stretching the split bonds,
-    any forming bond (cross bond) whose two atoms remain in the same fragment
-    requires angular contraction to bring them closer together.  This function
+    any forming bond whose two atoms remain in the same fragment requires
+    angular contraction to bring them closer together.  This function
     identifies such bonds and applies ``ring_closure_xyz()`` for each one,
     returning a separate TS guess per candidate forming bond.
 
     Forming bonds are detected from product ring topology via
-    ``detect_intra_frag_ring_bonds()``.  When multiple candidates exist
-    (e.g. due to resonance-equivalent atom assignments), each produces an
-    independent TS guess so that the best one can be selected downstream.
+    ``detect_intra_frag_ring_bonds()``.  Inter-fragment forming bonds (the
+    ``cross_bonds`` used elsewhere in the addition pipeline) are orthogonal
+    to this function's concern and are handled by ``stretch_bond()``.
+
+    When multiple candidates exist (e.g. due to resonance-equivalent atom
+    assignments), each produces an independent TS guess so that the best
+    one can be selected downstream.
 
     Args:
         xyz: Post-stretch XYZ geometry.
         mol: RMG Molecule of the unimolecular species.
         split_bonds: Bonds severed by ``stretch_bond()``.
-        cross_bonds: Unused (kept for call-site compatibility).
         multi_species: Product species (multi-species side).
         weight: Interpolation weight (0 = no contraction, 0.5 = TS-like).
         label: Debug label for logging.
