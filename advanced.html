@@ -189,14 +189,18 @@ Make sure to pass the correct format based on the intended ESS that should be us
 <p>Another example:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sp_level</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;DLPNO-CCSD(T)-F12&#39;</span><span class="p">,</span>
            <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;cc-pVTZ-F12&#39;</span><span class="p">,</span>
-           <span class="s1">&#39;auxiliary_basis&#39;</span><span class="p">:</span> <span class="s1">&#39;aug-cc-pVTZ/C cc-pVTZ-F12-CABS&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;auxiliary_basis&#39;</span><span class="p">:</span> <span class="s1">&#39;aug-cc-pVTZ/C&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;cabs&#39;</span><span class="p">:</span> <span class="s1">&#39;cc-pVTZ-F12-CABS&#39;</span><span class="p">,</span>
            <span class="s1">&#39;args&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;keyword&#39;</span> <span class="p">:{</span><span class="s1">&#39;opt_convergence&#39;</span><span class="p">:</span> <span class="s1">&#39;TightOpt&#39;</span><span class="p">}},</span>
            <span class="s1">&#39;software&#39;</span><span class="p">:</span> <span class="s1">&#39;orca&#39;</span><span class="p">,</span>
            <span class="p">}</span>
 </pre></div>
 </div>
-<p>specifies <code class="docutils literal notranslate"><span class="pre">DLPNO-CCSD(T)-F12/cc-pVTZ-F12</span></code> model chemistry along with two auxiliary basis sets,
-<code class="docutils literal notranslate"><span class="pre">aug-cc-pVTZ/C</span></code> and <code class="docutils literal notranslate"><span class="pre">cc-pVTZ-F12-CABS</span></code>, with <code class="docutils literal notranslate"><span class="pre">TightOpt</span></code> for a single point energy calculation.
+<p>specifies <code class="docutils literal notranslate"><span class="pre">DLPNO-CCSD(T)-F12/cc-pVTZ-F12</span></code> model chemistry along with an
+auxiliary basis <code class="docutils literal notranslate"><span class="pre">aug-cc-pVTZ/C</span></code> and a complementary auxiliary basis (CABS)
+<code class="docutils literal notranslate"><span class="pre">cc-pVTZ-F12-CABS</span></code>, with <code class="docutils literal notranslate"><span class="pre">TightOpt</span></code> for a single point energy calculation.
+The <code class="docutils literal notranslate"><span class="pre">cabs</span></code> argument is the single source of truth for F12 complementary
+auxiliary basis sets; do not pack the CABS token into <code class="docutils literal notranslate"><span class="pre">auxiliary_basis</span></code>.
 You can also provide a 4-digit <code class="docutils literal notranslate"><span class="pre">year</span></code> on <code class="docutils literal notranslate"><span class="pre">arkane_level_of_theory</span></code> to distinguish method variants
 in the Arkane database (e.g., <code class="docutils literal notranslate"><span class="pre">b97d3</span></code> vs <code class="docutils literal notranslate"><span class="pre">b97d32023</span></code>):</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">arkane_level_of_theory</span><span class="p">:</span>
@@ -217,9 +221,10 @@ atom energy or bond additivity corrections.</p>
 <span class="n">conformer_opt_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;PM6&#39;</span><span class="p">}</span>
 </pre></div>
 </div>
-<p>Note that the <code class="docutils literal notranslate"><span class="pre">cabs</span></code> and <code class="docutils literal notranslate"><span class="pre">solvation_scheme_level</span></code> arguments currently have no effect
-and will be implemented in future versions. The <code class="docutils literal notranslate"><span class="pre">software</span></code> argument is automatically determined
-unless specified by the user.</p>
+<p>Note that the <code class="docutils literal notranslate"><span class="pre">solvation_scheme_level</span></code> argument currently has no effect and
+will be implemented in future versions. The <code class="docutils literal notranslate"><span class="pre">cabs</span></code> argument is consumed by
+the ORCA and Molpro adapters for F12 calculations; it is ignored by other ESS.
+The <code class="docutils literal notranslate"><span class="pre">software</span></code> argument is automatically determined unless specified by the user.</p>
 <p>ARC also supports an additional shortcut argument, <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code>,
 to simultaneously specify <code class="docutils literal notranslate"><span class="pre">opt_level</span></code>, <code class="docutils literal notranslate"><span class="pre">freq_level</span></code>, <code class="docutils literal notranslate"><span class="pre">sp_level</span></code>, and <code class="docutils literal notranslate"><span class="pre">scan_level</span></code>.</p>
 <p>For example:</p>

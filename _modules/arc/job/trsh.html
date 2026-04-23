@@ -1119,8 +1119,8 @@
             <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">True</span>
 
     <span class="k">elif</span> <span class="s1">&#39;orca&#39;</span> <span class="ow">in</span> <span class="n">software</span><span class="p">:</span>
-        <span class="k">if</span> <span class="s1">&#39;dlpno&#39;</span> <span class="ow">in</span> <span class="n">level_of_theory</span><span class="o">.</span><span class="n">method</span> <span class="ow">and</span> <span class="p">(</span><span class="n">is_monoatomic</span> <span class="ow">or</span> <span class="n">is_h</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="n">TrshError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;DLPNO methods are incompatible with monoatomic species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> in Orca. &#39;</span>
+        <span class="k">if</span> <span class="s1">&#39;dlpno&#39;</span> <span class="ow">in</span> <span class="n">level_of_theory</span><span class="o">.</span><span class="n">method</span> <span class="ow">and</span> <span class="n">is_h</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TrshError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;DLPNO methods are incompatible with single-electron species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> in Orca. &#39;</span>
                             <span class="sa">f</span><span class="s1">&#39;This should have been caught by the Scheduler before job submission.&#39;</span><span class="p">)</span>
         <span class="k">elif</span> <span class="s1">&#39;Memory&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]:</span>
             <span class="c1"># Increase memory allocation.</span>
