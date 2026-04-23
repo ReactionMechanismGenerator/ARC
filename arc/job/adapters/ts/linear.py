@@ -4197,6 +4197,113 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                             logger.debug(f'Linear (rxn={rxn.label}): trivial-fallback direct-contraction '
                                          f'(mover={mover}, target={target}).')
 
+                # Direct stretch: symmetric to direct_contraction above.  When the
+                # trivial fallback identifies breaking bonds and NO forming bonds
+                # (simple scission / singlet-biradical cyclization from a closed-
+                # shell R), build the TS by taking the reactant geometry and
+                # elongating just the breaking bond(s) along the bond axis to the
+                # Pauling TS distance.  If removing the breaking edge SPLITS the
+                # molecule, rigidly translate the smaller fragment — this preserves
+                # every non-reactive bond and every C-H distance exactly.  If the
+                # breaking edge is part of a ring/cycle (common for biradical
+                # cyclizations where R already has the closing contact at bond
+                # length), the split fails; fall back to symmetric single-atom
+                # displacements on both endpoints so only the two breaking-bond
+                # atoms move (all other atoms stay at their R positions).
+                # Narrow: only fires when bb and not fb, and only when the breaking
+                # bond is currently at bond length.
+                if bb and not fb:
+                    for bond_pair_st in bb:
+                        r_coords_st = np.array(r_xyz['coords'], dtype=float)
+                        a0, a1 = bond_pair_st
+                        site_d_st = float(np.linalg.norm(r_coords_st[a0] - r_coords_st[a1]))
+                        if site_d_st < 1e-6 or site_d_st > 2.5:
+                            continue  # Already broken or degenerate — skip
+                        r_syms_st = r_xyz['symbols']
+                        sbl_st = (get_single_bond_length(r_syms_st[a0], r_syms_st[a1]) or 1.54)
+                        d_tgt_st = sbl_st + 0.42  # Pauling TS (single-bond length + Δ).
+                        if d_tgt_st <= site_d_st + 0.05:
+                            continue  # R is already at or past TS range — nothing to do.
+                        shift_total_st = (d_tgt_st - site_d_st) * (weight / 0.5)
+                        # Attempt fragment-split approach first (xyz-distance adjacency
+                        # so the breaking edge is treated as currently bonded even
+                        # when RMG mol missed it).
+                        mol_adj_st: Dict[int, Set[int]] = {k: set() for k in range(n_atoms)}
+                        for i in range(n_atoms):
+                            for j in range(i + 1, n_atoms):
+                                dij = float(np.linalg.norm(r_coords_st[i] - r_coords_st[j]))
+                                cut = 1.3 if r_syms_st[i] == 'H' or r_syms_st[j] == 'H' else 1.75
+                                if dij < cut:
+                                    mol_adj_st[i].add(j)
+                                    mol_adj_st[j].add(i)
+                        mol_adj_st[a0].discard(a1)
+                        mol_adj_st[a1].discard(a0)
+                        side_st: Set[int] = set()
+                        q_st = deque([a0])
+                        while q_st:
+                            nd = q_st.popleft()
+                            if nd in side_st:
+                                continue
+                            side_st.add(nd)
+                            q_st.extend(mol_adj_st[nd] - side_st)
+                        vec_st = r_coords_st[a1] - r_coords_st[a0]
+                        hat_st = vec_st / site_d_st
+                        if a1 not in side_st:
+                            # Proper split — translate the smaller fragment apart.
+                            side_other_st: Set[int] = set(range(n_atoms)) - side_st
+                            mover_side = side_st if len(side_st) <= len(side_other_st) else side_other_st
+                            mover_anchor = a0 if a0 in mover_side else a1
+                            other_anchor = a1 if mover_anchor == a0 else a0
+                            sign = 1.0 if mover_anchor == a1 else -1.0
+                            for k in mover_side:
+                                r_coords_st[k] = r_coords_st[k] + sign * hat_st * shift_total_st
+                            note_st = f'split, moved {len(mover_side)} atoms'
+                        else:
+                            # Breaking edge is part of a cycle (R already has the
+                            # closing contact at bond length).  Split-and-shift is
+                            # impossible as a graph partition.  Pin the breaking-
+                            # bond endpoint with the FEWER heavy neighbors (plus
+                            # its H neighbors) as the stationary anchor, and shift
+                            # all other atoms rigidly along the bond axis away
+                            # from that anchor.  This preserves every C-H bond
+                            # length and every bond between moved atoms exactly —
+                            # the only stretched distance is the breaking bond
+                            # (plus any bond directly connecting the pinned anchor
+                            # to a moved atom, which is an expected consequence of
+                            # the cyclic constraint).
+                            heavy_nbrs_a0 = sum(1 for n in mol_adj_st[a0]
+                                                if r_syms_st[n] != 'H')
+                            heavy_nbrs_a1 = sum(1 for n in mol_adj_st[a1]
+                                                if r_syms_st[n] != 'H')
+                            pin = a0 if heavy_nbrs_a0 < heavy_nbrs_a1 else a1
+                            mover_anchor = a1 if pin == a0 else a0
+                            pin_set: Set[int] = {pin}
+                            # Pin's bonded H atoms also stay (use distance adjacency
+                            # since mol_adj_st already excludes the breaking edge).
+                            for n in mol_adj_st[pin]:
+                                if r_syms_st[n] == 'H':
+                                    pin_set.add(n)
+                            direction = r_coords_st[mover_anchor] - r_coords_st[pin]
+                            d_pm = float(np.linalg.norm(direction))
+                            if d_pm < 1e-6:
+                                continue
+                            hat_pm = direction / d_pm  # points from pin toward mover_anchor
+                            for k in range(n_atoms):
+                                if k in pin_set:
+                                    continue
+                                r_coords_st[k] = r_coords_st[k] + hat_pm * shift_total_st
+                            note_st = f'cyclic, pinned {sorted(pin_set)}'
+                        ts_st = {'symbols': r_xyz['symbols'],
+                                 'isotopes': r_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
+                                 'coords': tuple(tuple(float(c) for c in row) for row in r_coords_st)}
+                        if not colliding_atoms(ts_st):
+                            ts_xyzs.append(GuessRecord(
+                                xyz=ts_st, bb=list(bb), fb=[],
+                                strategy='direct_stretch_fallback'))
+                            logger.debug(f'Linear (rxn={rxn.label}): trivial-fallback direct-stretch '
+                                         f'(breaking={bond_pair_st}, d={site_d_st:.2f}→{d_tgt_st:.2f} Å, '
+                                         f'{note_st}).')
+
                 if not used_ring_closure and not needs_ring_closure:
                     # With the backbone atom map the reactive set is small and
                     # accurate, so postprocessing (H distance fix, etc.) is safe

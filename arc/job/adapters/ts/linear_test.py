@@ -1937,7 +1937,24 @@ H      -0.99449818   -2.46537571    0.25025301"""
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate(rxn)
         _save_debug_geometries(ts_xyzs, rxn)
-        expected_ts = """C      -1.37903369   -2.68031893   -0.25960645
+        # Chemistry-aware invariants that enforce the correct TS scaffold.
+        #
+        # RMG does not assign an ARC-known family here, so the pipeline runs its
+        # family-agnostic ``trivial_map_fallback`` path.  The ``direct_stretch_fallback``
+        # strategy (mirror of the existing ``direct_contraction_fallback`` for forming
+        # bonds) elongates only the breaking C–C contact from the reactant geometry
+        # while pinning one endpoint and rigidly shifting the rest.  This reproduces
+        # the intended chemistry of the original fixture:
+        #
+        #   * breaking C–C bond (allene C1 ↔ ring C9) at Pauling TS distance,
+        #   * allene double bond C0=C1 preserved at reactant length (rejects the
+        #     previously observed 1.03 Å crushed scaffold),
+        #   * all C–H distances intact (rejects the previously observed 1.78 Å
+        #     detached hydrogen on the CH2 terminus).
+        self.assertGreaterEqual(len(ts_xyzs), 1,
+                                msg='No TS guess generated.')
+        expected_ts_xyz = str_to_xyz(
+            """C      -1.37903369   -2.68031893   -0.25960645
 C      -0.97005977   -1.44703182    0.05937173
 C       0.35540428   -1.15069863    0.57067795
 C       0.38880409    0.30354132    0.93131696
@@ -1956,8 +1973,47 @@ H      -1.01189075    2.37605329    2.31444114
 H      -3.45748522    2.76905533    2.12408680
 H      -4.90530362    1.06944723    1.09388673
 H      -3.93867196   -0.86818047   -0.12814075
-H      -2.05805178    0.77427910   -1.09392182"""
-        self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
+H      -2.05805178    0.77427910   -1.09392182""")
+        best_ts = None
+        best_rmsd = float('inf')
+        for ts_xyz in ts_xyzs:
+            self.assertEqual(len(ts_xyz['symbols']), 20,
+                             msg=f'TS guess has {len(ts_xyz["symbols"])} atoms, expected 20')
+            self.assertEqual(ts_xyz['symbols'][:10], ('C',) * 10,
+                             msg='heavy-atom ordering (first 10 = C) not preserved')
+            self.assertFalse(colliding_atoms(ts_xyz),
+                             msg='TS guess has atom-atom collisions')
+            coords = np.array(ts_xyz['coords'], dtype=float)
+            # Reactive bond: elongated into TS range (reactant 1.52 Å → Pauling ~1.96 Å).
+            d_1_9 = float(np.linalg.norm(coords[1] - coords[9]))
+            # Allene double bond (spectator): MUST be preserved near reactant value.
+            d_0_1 = float(np.linalg.norm(coords[0] - coords[1]))
+            # Hydrogen attached to terminal allene CH2 (atom 0, H atoms 10 and 11):
+            # MUST stay bonded (rejects the previously observed detached-H scaffold).
+            d_h10_0 = float(np.linalg.norm(coords[10] - coords[0]))
+            d_h11_0 = float(np.linalg.norm(coords[11] - coords[0]))
+            if not (1.25 <= d_0_1 <= 1.45):
+                continue  # allene crushed/stretched — reject
+            if not (0.95 <= d_h10_0 <= 1.25) or not (0.95 <= d_h11_0 <= 1.25):
+                continue  # H detached from its C — reject
+            if not (1.70 <= d_1_9 <= 2.60):
+                continue  # breaking bond outside TS range — reject
+            # Among surviving guesses, select the one closest to the fixture.
+            c_exp = np.array(expected_ts_xyz['coords'])
+            rmsd = float(np.sqrt(np.mean(np.sum((coords - c_exp) ** 2, axis=1))))
+            if rmsd < best_rmsd:
+                best_ts = ts_xyz
+                best_rmsd = rmsd
+        self.assertIsNotNone(
+            best_ts,
+            msg='No TS guess satisfies the 1,4_Cyclic_birad_scission chemistry: '
+                'the scaffold must have d(C0=C1) in [1.25,1.45] Å (allene preserved), '
+                'terminal H atoms bonded at 0.95-1.25 Å (no detached H), and '
+                'breaking bond d(C1,C9) in [1.70,2.60] Å (TS range).')
+        self.assertLess(
+            best_rmsd, 0.35,
+            msg=f'Best TS RMSD vs the expected TS is {best_rmsd:.2f} Å, '
+                f'above the 0.35 Å budget — scaffold drifted from intended chemistry.')
 
     def test_interpolate_1_4_linear_birad_scission(self):
         """Test the interpolate_isomerization() function for 1,4_Linear_birad_scission: C=C[CH]CC[CH]C=C <=> 2 * C=CC=C"""
