@@ -1538,7 +1538,6 @@ H 0.93760911 -0.05885406 -0.10079043"""
         p2 = ARCSpecies(label='ethylene', smiles='C=C')
         return ARCReaction(r_species=[r], p_species=[p1, p2])
 
-    @pytest.mark.slow  # ~9 s
     def test_interpolate_addition_uses_guess_records_internally(self):
         """A live ``interpolate_addition`` run produces guesses that
         round-trip through ``_finalize_ts_guesses``.  We trace the
@@ -2041,7 +2040,6 @@ class TestFiniteScorePromotion(unittest.TestCase):
     post-migration template-guided guess now reaches the finalizer with
     a real finite score (not the +inf)."""
 
-    @pytest.mark.slow  # ~6 s
     def test_template_post_migration_now_carries_finite_score(self):
         from arc.species import ARCSpecies
         from arc.reaction import ARCReaction
@@ -2142,7 +2140,6 @@ class TestDegradedPreservation(unittest.TestCase):
         )
         self.assertIsNone(spec)
 
-    @pytest.mark.slow  # ~15 s
     def test_xy_elimination_remains_degraded_no_crash(self):
         """The XY-elimination dedicated motif builder is explicitly
         out-of-scope for  enrichment.  Verify the call still
@@ -2237,7 +2234,6 @@ O 1.37316735 -0.34819332 0.00000000"""
 
     # ---- #1: inference success → finite score ---------------
 
-    @pytest.mark.slow  # ~19 s
     def test_frag_fallback_single_h_now_carries_finite_score(self):
         """For 1,3_Insertion_CO2, the frag-fallback branch produces
         exactly one frag-fallback record carrying an enriched
@@ -2291,7 +2287,6 @@ O 1.37316735 -0.34819332 0.00000000"""
 
     # ---- #2: ambiguity preservation -------------------------
 
-    @pytest.mark.slow  # ~6 s
     def test_pure_cc_dissociation_does_not_get_h_enriched(self):
         """Ethane → 2 CH3• is a pure C-C cleavage with NO H migration.
         The  helper must NOT enrich any frag-fallback record
@@ -2368,7 +2363,6 @@ O 1.37316735 -0.34819332 0.00000000"""
 
     # ---- #4: template-guided stability ----------------------
 
-    @pytest.mark.slow  # ~6 s
     def test_template_guided_finite_score_promotion_unchanged(self):
         """the template-guided enrichment for ``1,3_NH3_elimination``
         must continue to fire and produce a finite score after .
@@ -2419,7 +2413,6 @@ H -1.31312338 0.19118810 2.16873833"""
 
     # ---- #5: dedicated motif degraded mode unchanged --------
 
-    @pytest.mark.slow  # ~14 s
     def test_xy_elimination_remains_degraded(self):
         """The XY-elimination dedicated motif builder is still
         explicitly out of scope. Verify the call still completes."""
