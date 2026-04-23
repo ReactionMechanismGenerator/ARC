@@ -8,18 +8,20 @@ This module owns the lifecycle of pipe runs once they are created.
 Family-specific task planning lives in ``pipe_planner.py``.
 """
 
+import json
 import os
 import time
 from typing import TYPE_CHECKING, Dict, List
 
 from arc.common import get_logger
 from arc.imports import settings
-
+from arc.job.factory import job_factory
 from arc.job.pipe.pipe_run import PipeRun, ingest_completed_task
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
-    TaskStateRecord, read_task_state,
+    TaskStateRecord, get_task_attempt_dir, read_task_state,
 )
+from arc.level import Level
 
 if TYPE_CHECKING:
     from arc.scheduler import Scheduler
@@ -370,6 +372,19 @@ class PipeCoordinator:
             else:
                 self.sched.run_composite_job(label)
 
+    def _read_task_parser_summary(self, pipe_root: str, task_id: str, attempt_index: int) -> Dict:
+        """Read parser_summary from a worker-written result.json for a failed task attempt."""
+        result_path = os.path.join(get_task_attempt_dir(pipe_root, task_id, attempt_index), 'result.json')
+        if not os.path.isfile(result_path):
+            return {}
+        try:
+            with open(result_path, 'r') as f:
+                result_data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return {}
+        parser_summary = result_data.get('parser_summary')
+        return parser_summary if isinstance(parser_summary, dict) else {}
+
     def _eject_to_scheduler(self, pipe: 'PipeRun', spec: TaskSpec,
                             state: 'TaskStateRecord') -> None:
         """
@@ -402,6 +417,7 @@ class PipeCoordinator:
             return
         payload = spec.input_payload or {}
         meta = spec.ingestion_metadata or {}
+        parser_summary = self._read_task_parser_summary(pipe.pipe_root, spec.task_id, state.attempt_index)
         kwargs = {
             'job_type': job_type,
             'label': label,
@@ -409,6 +425,8 @@ class PipeCoordinator:
             'job_adapter': spec.engine,
             'xyz': payload.get('xyz'),
             'conformer': meta.get('conformer_index'),
+            'cpu_cores': spec.required_cores,
+            'memory': spec.required_memory_mb / 1024.0,
         }
         if spec.task_family == 'irc':
             kwargs['irc_direction'] = meta.get('irc_direction')
@@ -416,9 +434,45 @@ class PipeCoordinator:
             kwargs['rotor_index'] = meta.get('rotor_index')
             kwargs['torsions'] = payload.get('torsions')
         try:
-            logger.info(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
-                        f'ejecting to Scheduler as individual {job_type} job for {label}.')
-            self.sched.run_job(**kwargs)
+            if parser_summary:
+                job = job_factory(
+                    job_adapter=spec.engine,
+                    project=self.sched.project,
+                    project_directory=self.sched.project_directory,
+                    job_type=job_type,
+                    level=Level(repr=spec.level),
+                    ess_settings=self.sched.ess_settings,
+                    species=[self.sched.species_dict[label]],
+                    xyz=payload.get('xyz'),
+                    conformer=meta.get('conformer_index'),
+                    cpu_cores=spec.required_cores,
+                    job_memory_gb=spec.required_memory_mb / 1024.0,
+                    ess_trsh_methods=list(),
+                    execution_type='queue',
+                    irc_direction=meta.get('irc_direction'),
+                    rotor_index=meta.get('rotor_index'),
+                    torsions=payload.get('torsions'),
+                    args=spec.args,
+                    testing=getattr(self.sched, 'testing', False),
+                )
+                parser_summary.setdefault('status', 'errored')
+                parser_summary.setdefault('keywords', list())
+                parser_summary.setdefault('error', '')
+                parser_summary.setdefault('line', '')
+                job.job_status = ['done', parser_summary]
+                logger.info(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                            f'ejecting to Scheduler for immediate troubleshooting as individual '
+                            f'{job_type} job for {label}.')
+                self.sched.troubleshoot_ess(
+                    label=label,
+                    job=job,
+                    level_of_theory=Level(repr=spec.level),
+                    conformer=meta.get('conformer_index'),
+                )
+            else:
+                logger.info(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                            f'ejecting to Scheduler as individual {job_type} job for {label}.')
+                self.sched.run_job(**kwargs)
         except Exception:
             logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                          f'failed to eject to Scheduler.', exc_info=True)

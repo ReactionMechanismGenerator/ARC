@@ -5,8 +5,9 @@
 This module contains unit tests for the arc.scheduler module
 """
 
+import math
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import os
 import shutil
 
@@ -18,6 +19,7 @@ from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_has_sp, species_has_sp_and_freq
 from arc.imports import settings
+from arc.settings.settings import input_filenames
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess
@@ -786,15 +788,142 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
                           project_directory=self.project_directory, job_num=201)
         job.ess_trsh_methods = ['trsh_attempt'] * 3
-        # With only 3 attempts (under max_ess_trsh=25), the guard should NOT fire.
-        # Verify the error message is NOT set (i.e., the guard did not block).
-        # We use max_attempts - 1 to test just below the threshold.
-        job_at_limit = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
-                                   species=[self.spc1], xyz=self.spc1.get_xyz(), job_type='opt',
-                                   level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
-                                   project_directory=self.project_directory, job_num=202)
-        job_at_limit.ess_trsh_methods = ['trsh_attempt'] * 24
+        job.job_status[1] = {'status': 'errored', 'keywords': ['SCF'], 'error': 'some error', 'line': 'line'}
+        with patch('arc.scheduler.trsh_ess_job', return_value=([], ['trsh_attempt', 'mock'], False,
+                                                               Level(repr='wb97xd/def2tzvp'), 'gaussian', 'opt',
+                                                               False, '', 14, '', 8, False)) as mock_trsh, \
+                patch.object(self.sched1, 'run_job') as mock_run_job, \
+                patch.object(self.sched1, 'save_restart_dict'):
+            self.sched1.troubleshoot_ess(label=label, job=job,
+                                         level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        mock_trsh.assert_called_once()
+        mock_run_job.assert_called_once()
         self.assertNotIn('ESS troubleshooting attempts exhausted', self.sched1.output[label]['errors'])
+
+    def test_troubleshoot_ess_orca_reduces_cpu_when_memory_is_capped(self):
+        """Test that ORCA troubleshooting preserves capped total memory and reduces cpu cores."""
+        label = 'methylamine'
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+
+        job = MagicMock()
+        job.job_name = 'sp_a203'
+        job.job_type = 'sp'
+        job.job_adapter = 'orca'
+        job.level = Level(repr={'method': 'dlpno-ccsd(T)'})
+        job.server = 'server1'
+        job.fine = True
+        job.cpu_cores = 32
+        job.job_memory_gb = 250
+        job.ess_trsh_methods = list()
+        job.torsions = None
+        job.dihedrals = None
+        job.directed_scan_type = None
+        job.rotor_index = None
+        job.job_status = ['done', {'status': 'errored',
+                                   'keywords': ['MDCI', 'Memory', 'max_total_job_memory'],
+                                   'error': 'Orca suggests to increase per cpu core memory to 10218 MB.',
+                                   'line': 'Please increase MaxCore'}]
+
+        with patch.object(self.sched1, 'run_job') as mock_run_job, \
+                patch.object(self.sched1, 'save_restart_dict'):
+            self.sched1.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+
+        kwargs = mock_run_job.call_args.kwargs
+        self.assertEqual(kwargs['cpu_cores'], 24)
+        self.assertEqual(kwargs['memory'], 250)
+        self.assertIn('cpu', kwargs['ess_trsh_methods'])
+
+    def test_troubleshoot_ess_orca_increases_total_memory_when_not_capped(self):
+        """Test that ORCA troubleshooting increases total memory when the node cap was not hit."""
+        label = 'methylamine'
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+
+        job = MagicMock()
+        job.job_name = 'sp_a204'
+        job.job_type = 'sp'
+        job.job_adapter = 'orca'
+        job.level = Level(repr={'method': 'dlpno-ccsd(T)'})
+        job.server = 'server1'
+        job.fine = True
+        job.cpu_cores = 32
+        job.job_memory_gb = 250
+        job.ess_trsh_methods = list()
+        job.torsions = None
+        job.dihedrals = None
+        job.directed_scan_type = None
+        job.rotor_index = None
+        job.job_status = ['done', {'status': 'errored',
+                                   'keywords': ['MDCI', 'Memory'],
+                                   'error': 'Orca suggests to increase per cpu core memory to 10218 MB.',
+                                   'line': 'Please increase MaxCore'}]
+
+        with patch.object(self.sched1, 'run_job') as mock_run_job, \
+                patch.object(self.sched1, 'save_restart_dict'):
+            self.sched1.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+
+        kwargs = mock_run_job.call_args.kwargs
+        self.assertEqual(kwargs['cpu_cores'], 24)
+        self.assertEqual(kwargs['memory'], 250)
+        self.assertIn('memory', kwargs['ess_trsh_methods'])
+
+    def test_troubleshoot_ess_orca_rewrites_input_with_reduced_cores_and_higher_maxcore(self):
+        """Test ORCA troubleshooting end-to-end from failure to rewritten input file."""
+        label = 'methylamine'
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+
+        job = MagicMock()
+        job.job_name = 'sp_a205'
+        job.job_type = 'sp'
+        job.job_adapter = 'orca'
+        job.level = Level(repr={'method': 'dlpno-ccsd(T)'})
+        job.server = 'server1'
+        job.fine = True
+        job.cpu_cores = 32
+        job.job_memory_gb = 250
+        job.ess_trsh_methods = list()
+        job.torsions = None
+        job.dihedrals = None
+        job.directed_scan_type = None
+        job.rotor_index = None
+        job.job_status = ['done', {'status': 'errored',
+                                   'keywords': ['MDCI', 'Memory', 'max_total_job_memory'],
+                                   'error': 'Orca suggests to increase per cpu core memory to 10218 MB.',
+                                   'line': 'Please increase MaxCore'}]
+
+        with patch.object(self.sched1, 'run_job') as mock_run_job, \
+                patch.object(self.sched1, 'save_restart_dict'):
+            self.sched1.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+
+        kwargs = mock_run_job.call_args.kwargs
+        temp_project_dir = os.path.join(ARC_TESTING_PATH, 'test_scheduler_orca_trsh_input')
+        try:
+            rerun_job = job_factory(job_adapter=kwargs['job_adapter'],
+                                    project='project_test_scheduler_orca_trsh_input',
+                                    ess_settings=self.ess_settings,
+                                    species=[self.spc1],
+                                    xyz=self.spc1.get_xyz(),
+                                    job_type=kwargs['job_type'],
+                                    level=kwargs['level_of_theory'],
+                                    project_directory=temp_project_dir,
+                                    cpu_cores=kwargs['cpu_cores'],
+                                    job_memory_gb=kwargs['memory'],
+                                    ess_trsh_methods=kwargs['ess_trsh_methods'],
+                                    execution_type='incore',
+                                    fine=kwargs['fine'],
+                                    server=job.server,
+                                    testing=True)
+            rerun_job.write_input_file()
+            with open(os.path.join(rerun_job.local_path, input_filenames[rerun_job.job_adapter]), 'r') as f:
+                content = f.read()
+            original_maxcore = math.ceil(rerun_job.job_memory_gb * 1024 / job.cpu_cores)
+            self.assertIn('%pal nprocs 24 end', content)
+            self.assertIn(f'%maxcore {rerun_job.input_file_memory}', content)
+            self.assertGreater(rerun_job.input_file_memory, original_maxcore)
+        finally:
+            shutil.rmtree(temp_project_dir, ignore_errors=True)
      
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
