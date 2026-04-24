@@ -1127,6 +1127,7 @@ class ARCSpecies(object):
                             n_confs: int = 10,
                             e_confs: float = 5,
                             plot_path: str = None,
+                            economic_generation: bool = False,
                             ) -> None:
         """
         Generate conformers.
@@ -1138,6 +1139,10 @@ class ARCSpecies(object):
                                        (unique) generated conformers will be stored in the .conformers attribute.
             plot_path (str, optional): A folder path in which the plot will be saved.
                                        If None, the plot will not be shown (nor saved).
+            economic_generation (bool, optional): Use a scaled-down (but still n_rotors / n_heavy-dependent)
+                                                  conformer count. Intended for cheap use-cases such as BDE
+                                                  scissors fragments and atom-mapping fingerprints, where
+                                                  full auto-scaling is wasteful.
         """
         if self.is_ts:
             return
@@ -1158,6 +1163,7 @@ class ARCSpecies(object):
                                                       return_all_conformers=False,
                                                       plot_path=plot_path,
                                                       diastereomers=diastereomers,
+                                                      economic_generation=economic_generation,
                                                       )
         if len(lowest_confs):
             self.conformers.extend([conf['xyz'] for conf in lowest_confs])
@@ -1997,7 +2003,7 @@ class ARCSpecies(object):
                               charge=mol_splits[0].get_net_charge(),
                               compute_thermo=False,
                               e0_only=True)
-            spc1.generate_conformers()
+            spc1.generate_conformers(economic_generation=True)
             return [spc1]
         elif len(mol_splits) == 2:
             mol1, mol2 = mol_splits
@@ -2052,7 +2058,7 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc1.generate_conformers()
+        spc1.generate_conformers(economic_generation=True)
         spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
                           mol=mol2,
@@ -2062,7 +2068,7 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc2.generate_conformers()
+        spc2.generate_conformers(economic_generation=True)
         spc2.rotors_dict = None
 
         return [spc1, spc2]
