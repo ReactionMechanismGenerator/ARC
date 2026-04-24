@@ -541,6 +541,48 @@ H       0.68104300    0.74807180    0.61546062""")]
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=30, torsion_num=10,
                                                                                label='', mol=mol), (7500, 3))
 
+    def test_determine_number_of_conformers_to_generate_minimalist(self):
+        """Test the minimalist (economic) branch of determine_number_of_conformers_to_generate."""
+        # Trivial: smallest bucket — minimalist has no room to shrink, so it matches the default.
+        num_min, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=0, torsion_num=0, label='', minimalist=True)
+        num_def, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=0, torsion_num=0, label='')
+        self.assertEqual(num_min, 75)
+        self.assertEqual(num_min, num_def)
+
+        # Normal: minimalist should pick the smaller bucket and stay under the 250 cap,
+        # while the default picks the larger.
+        num_min, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=15, torsion_num=3, label='', minimalist=True)
+        num_def, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=15, torsion_num=3, label='')
+        self.assertEqual(num_min, 250)
+        self.assertEqual(num_def, 1000)
+        self.assertLess(num_min, num_def)
+
+        # Wild-type: chiral-center multiplier still scales the minimalist count,
+        # but the base count remains much smaller than the default path.
+        mol = Molecule(smiles='CNC(O)(S)C=CO')
+        num_min, chiral_min = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=30, torsion_num=10, label='', mol=mol, minimalist=True)
+        num_def, chiral_def = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=30, torsion_num=10, label='', mol=mol)
+        self.assertEqual(chiral_min, chiral_def)
+        self.assertGreater(chiral_min, 2)
+        self.assertEqual(num_min, 250 * chiral_min)
+        self.assertEqual(num_def, 2500 * chiral_def)
+        self.assertLess(num_min, num_def)
+
+        # Extreme: very large, very flexible species — minimalist is capped at 250,
+        # default shoots to the top of both bucket tables.
+        num_min, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=150, torsion_num=50, label='', minimalist=True)
+        num_def, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=150, torsion_num=50, label='')
+        self.assertEqual(num_min, 250)
+        self.assertEqual(num_def, 7500)
+
     def test_openbabel_force_field(self):
         """Test Open Babel force field"""
         xyz = """S      -0.19093478    0.57933906    0.00000000
