@@ -55,7 +55,7 @@ RUN micromamba run -n rmg_env bash -c "\
     "
 
 WORKDIR /home/mambauser/Code/ARC
-RUN micromamba create -y -v -n arc_env python=3.12 -f environment.yml && \
+RUN micromamba create -y -v -n arc_env python=3.14 -c conda-forge -c danagroup -f environment.yml && \
     micromamba install -y -v -n arc_env -c conda-forge pytest && \
     micromamba clean --all -f -y
 

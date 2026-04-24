@@ -368,6 +368,19 @@ RMG_ENV_NAME = 'rmg_env'
 RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')
 
+# Ensure BABEL_LIBDIR and BABEL_DATADIR are set before any openbabel import.
+# The danagroup conda build doesn't ship activate scripts that configure these.
+# Remove once the danagroup package is fixed upstream.
+_ob_prefix = os.environ.get('CONDA_PREFIX', sys.prefix)
+if not os.environ.get('BABEL_LIBDIR'):
+    _ob_lib_dirs = glob.glob(os.path.join(_ob_prefix, 'lib', 'openbabel', '*'))
+    if _ob_lib_dirs and os.path.isdir(_ob_lib_dirs[0]):
+        os.environ['BABEL_LIBDIR'] = _ob_lib_dirs[0]
+if not os.environ.get('BABEL_DATADIR'):
+    _ob_data_dirs = glob.glob(os.path.join(_ob_prefix, 'share', 'openbabel', '*'))
+    if _ob_data_dirs and os.path.isdir(_ob_data_dirs[0]):
+        os.environ['BABEL_DATADIR'] = _ob_data_dirs[0]
+
 # Set RMG_DB_PATH with fallback methods
 rmg_db_candidates, rmg_candidates = list(), list()
 

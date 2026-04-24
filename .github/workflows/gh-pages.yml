@@ -37,16 +37,24 @@ jobs:
         with:
           environment-name: arc_env
           environment-file: ARC/environment.yml
+          condarc: |
+            channels:
+              - conda-forge
+              - danagroup
           cache-environment: true
+          cache-environment-key: py314v3-arc-env
           cache-downloads: true
+          generate-run-shell: true
 
       # ── Complie ARC ──────────────────────
       - name: Build ARC in arc_env
-        run: micromamba run -n arc_env make compile -C ARC -j"$(nproc)"
-      
+        run: make compile -C ARC -j"$(nproc)"
+        shell: micromamba-shell {0}
+
       # ── Install pyrdl ──────────────────────
       - name: Install pyrdl
-        run: micromamba run -n arc_env make install-pyrdl -C ARC -j"$(nproc)"
+        run: make install-pyrdl -C ARC -j"$(nproc)"
+        shell: micromamba-shell {0}
 
       # ── minimal TeX for png‑math in Sphinx ──────────────────────
       - name: System TeX tools
@@ -55,6 +63,12 @@ jobs:
       # ── add legacy ABI runtime for NumPy/PyDAS ─────────────────
       - name: Add legacy gfortran runtime
         run: micromamba install -y -n arc_env -c conda-forge libgfortran=3
+        shell: micromamba-shell {0}
+
+      # ── ensure ase is installed (the danagroup channel and/or
+      #    libgfortran install can cause the solver to drop ase)
+      - name: Ensure ase is installed
+        run: pip install "ase>=3.22.1" && python -c "import ase; print(f'ase {ase.__version__} OK')"
         shell: micromamba-shell {0}
 
       # ── build HTML docs ─────────────────────────────────────────

@@ -4,7 +4,6 @@ Processor module for computing thermodynamic properties and rate coefficients us
 
 import os
 import shutil
-from typing import Optional
 
 import arc.plotter as plotter
 from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file
@@ -21,7 +20,7 @@ KINETICS_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_kinetics.py
 EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 4.184e+3}
 
 
-def resolve_neb_level(ts_adapters: list) -> Optional[Level]:
+def resolve_neb_level(ts_adapters: list) -> Level | None:
     """Determine the NEB level of theory if NEB was a configured TS adapter."""
     if ts_adapters and 'orca_neb' in (a.lower() for a in ts_adapters):
         orca_neb_settings = settings.get('orca_neb_settings', {})
@@ -38,9 +37,9 @@ def process_arc_project(thermo_adapter: str,
                         species_dict: dict,
                         reactions: list,
                         output_dict: dict,
-                        bac_type: Optional[str] = None,
-                        sp_level: Optional[Level] = None,
-                        freq_level: Optional[Level] = None,
+                        bac_type: str | None = None,
+                        sp_level: Level | None = None,
+                        freq_level: Level | None = None,
                         freq_scale_factor: float = 1.0,
                         compute_thermo: bool = True,
                         compute_rates: bool = True,

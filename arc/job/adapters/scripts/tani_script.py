@@ -6,8 +6,6 @@ A standalone script to run TorhANI,
 should be run under the tani environment.
 """
 
-from typing import Optional
-
 import argparse
 import os
 import yaml
@@ -79,7 +77,7 @@ def run_opt(xyz,
             model,
             constraints: dict = None,
             fmax: float = 0.001,
-            steps: Optional[int] = None,
+            steps: int | None = None,
             engine: str = 'SciPyFminBFGS',
             ):
     """
@@ -307,7 +305,7 @@ def xyz_to_coords_list(xyz_dict: dict):
     Args:
         xyz_dict (dict): The ARC xyz format.
 
-    Returns: Optional[List[List[float]]]
+    Returns: List[List[float]] | None
         The coordinates.
     """
     if xyz_dict is None:

@@ -50,6 +50,8 @@ jobs:
           push: false
           load: true
           tags: arc:test
+          build-args: |
+            ARC_BRANCH=${{ github.head_ref || github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -18,7 +18,6 @@ import os
 import shutil
 import tempfile
 import time
-from typing import Optional
 
 from arc.imports import settings
 from arc.job.factory import job_factory
@@ -38,8 +37,8 @@ from arc.level import Level
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 
-pipe_settings, output_filenames = settings['pipe_settings'], settings.get('output_filenames', {})
 
+pipe_settings, output_filenames = settings['pipe_settings'], settings.get('output_filenames', {})
 
 logger = logging.getLogger('pipe_worker')
 
@@ -99,7 +98,6 @@ def claim_task(pipe_root: str, worker_id: str):
 # deterministic and should be ejected to the Scheduler for troubleshooting.
 _TRANSIENT_ESS_KEYWORDS = {'NoOutput', 'ServerTimeLimit', 'DiskSpace'}
 
-
 def _is_deterministic_ess_error(ess_info: dict) -> bool:
     """Return True if the ESS error is deterministic (same input will always fail)."""
     if not ess_info or ess_info['status'] == 'done':
@@ -108,7 +106,7 @@ def _is_deterministic_ess_error(ess_info: dict) -> bool:
     return not keywords.issubset(_TRANSIENT_ESS_KEYWORDS)
 
 
-def _parse_ess_error(attempt_dir: str, spec) -> Optional[dict]:
+def _parse_ess_error(attempt_dir: str, spec) -> dict | None:
     """
     Parse ESS error info from the output file in an attempt directory.
     Returns a dict with 'status', 'keywords', 'error', 'line', or None.
@@ -251,10 +249,10 @@ def _make_result_template(task_id: str, attempt_index: int, started_at: float) -
         'result_fields': {},
     }
 
-
 # ---------------------------------------------------------------------------
 # Task-family execution dispatch
 # ---------------------------------------------------------------------------
+
 
 def _get_family_extra_kwargs(spec: TaskSpec) -> dict:
     """
@@ -385,7 +383,7 @@ def _verify_ownership(pipe_root: str, task_id: str,
     return True
 
 
-def _find_canonical_output(attempt_dir: str, engine: str) -> Optional[str]:
+def _find_canonical_output(attempt_dir: str, engine: str) -> str | None:
     """Try to find the canonical output file path within the attempt calcs tree."""
     target = output_filenames.get(engine, 'output.out')
     calcs_dir = os.path.join(attempt_dir, 'calcs')

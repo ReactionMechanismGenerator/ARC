@@ -35,7 +35,8 @@ directives = {
     'linetrace': BUILD_FOR_COVERAGE,
 }
 
-macros = [('CYTHON_TRACE', '1'), ('CYTHON_TRACE_NOGIL', '1')] if BUILD_FOR_COVERAGE else []
+macros = [('CYTHON_TRACE', '1'), ('CYTHON_TRACE_NOGIL', '1'),
+          ('CYTHON_USE_SYS_MONITORING', '0')] if BUILD_FOR_COVERAGE else []
 
 ext_modules = [
     Extension('arc.molecule.atomtype', ['arc/molecule/atomtype.py'], include_dirs=['.'], define_macros=macros),

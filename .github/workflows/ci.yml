@@ -99,6 +99,7 @@ jobs:
         env:
           ARC_COVERAGE: 1
           CYTHON_TRACE: 1
+          COVERAGE_CORE: ctrace
         run: |
           echo "Running Unit Tests..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
@@ -110,6 +111,7 @@ jobs:
         env:
           ARC_COVERAGE: 1
           CYTHON_TRACE: 1
+          COVERAGE_CORE: ctrace
         run: |
           echo "Running Functional Tests from $(pwd)..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
