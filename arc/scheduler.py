@@ -3553,7 +3553,8 @@ class Scheduler(object):
 
         level_of_theory = Level(repr=level_of_theory)
         logger.info('\n')
-        warning_message = f'Troubleshooting {label} job {job.job_name} which failed'
+        # log job failure information before troubleshooting
+        warning_message = f'{label} Job {job.job_name} failed'
         if job.job_status[1]["status"] and job.job_status[1]["status"] != 'done':
             warning_message += f' with status: "{job.job_status[1]["status"]},"'
         if job.job_status[1]["keywords"]:
@@ -3592,6 +3593,8 @@ class Scheduler(object):
                         f'Reached max troubleshooting attempts ({max_ess_trsh}).')
             self.output[label]['errors'] += f'Error: ESS troubleshooting attempts exhausted for {label} {job.job_type}; '
             return
+        logger.warning(f'Troubleshooting {label} job {job.job_name} '
+                           f'(attempt number {trsh_attempts + 1}).')
         job.ess_trsh_methods.append('trsh_attempt')
 
         # Determine if the species is a hydrogen atom (or its isotope).

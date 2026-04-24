@@ -445,6 +445,27 @@ class TestTrsh(unittest.TestCase):
             output_errors,
         )
 
+        # Gaussian: test 6b - verify troubleshoot attempts counting
+        job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
+        ess_trsh_methods = ['trsh_attempt',
+                            'int=(Acc2E=14)', 'opt=(maxcycle=200)',
+                            'trsh_attempt', 'opt=(RFO)',
+                            'trsh_attempt', 'opt=(GDIIS)',
+                            'trsh_attempt', 'opt=(GEDIIS)',
+                            'trsh_attempt']
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                    job_type, software, fine, memory_gb,
+                                                                    num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertTrue(couldnt_trsh)
+        self.assertIn('Tried troubleshooting 5 times, with the following methods:', output_errors[-1])
+        self.assertNotIn('trsh_attempt', output_errors[-1])
+        self.assertIn("opt=(maxcycle=200)", output_errors[-1])
+        self.assertIn("opt=(RFO)", output_errors[-1])
+        self.assertIn("opt=(GDIIS)", output_errors[-1])
+        self.assertIn("opt=(GEDIIS)", output_errors[-1])
+        self.assertIn('all_attempted', output_errors[-1])
+
         # Gaussian: test 7
         job_status = {'keywords': ['MaxOptCycles', 'GL9999','SCF']}
         ess_trsh_methods = ['int=(Acc2E=14)']
