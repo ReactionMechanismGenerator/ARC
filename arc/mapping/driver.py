@@ -304,6 +304,12 @@ def map_rxn(rxn: 'ARCReaction',
         return None
 
     fragment_maps = map_pairs(pairs)
+    if any(m is None for m in fragment_maps):
+        logger.error(f'Could not map all scissored pairs for reaction {rxn} ({rxn.family}); '
+                     f'{sum(1 for m in fragment_maps if m is None)}/{len(fragment_maps)} pair(s) failed.')
+        if rxn.product_dicts is not None and len(rxn.product_dicts) - 1 > pdi < MAX_PDI:
+            return map_rxn(rxn, backend=backend, product_dict_index_to_try=pdi + 1)
+        return None
     total_atoms = sum(len(sp.mol.atoms) for sp in reactants)
     atom_map = glue_maps(maps=fragment_maps,
                          pairs=pairs,
