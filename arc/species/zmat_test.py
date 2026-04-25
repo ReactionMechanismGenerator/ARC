@@ -9,6 +9,8 @@ import unittest
 
 import arc.species.zmat as zmat
 from arc.exceptions import ZMatError
+from arc.molecule.molecule import Molecule
+from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 
 
@@ -2081,6 +2083,319 @@ class TestZMat(unittest.TestCase):
         self.assertEqual(zmat.map_index_to_int('X5486'), 5486)
         with self.assertRaises(TypeError):
             zmat.map_index_to_int('XY5486')
+
+    def test_check_ordered_zmats(self):
+        """Test the check_ordered_zmats() function."""
+        zmat_1 = {'symbols': ('H', 'C', 'H', 'H', 'H'),
+                  'coords': ((None, None, None),
+                             ('R_1_0', None, None),
+                             ('R_2_1', 'A_2_1_0', None),
+                             ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                             ('R_4_1', 'A_4_1_0', 'D_4_1_0_3')),
+                  'vars': {'R_1_0': 1.3106392449517583, 'R_2_1': 1.0921994253661749, 'A_2_1_0': 109.47121834780573,
+                           'R_3_1': 1.092199370793132, 'A_3_1_2': 109.47122048587586, 'D_3_1_2_0': 120.0000002999208,
+                           'R_4_1': 1.0921994253661749, 'A_4_1_0': 109.47122150322166, 'D_4_1_0_3': 239.99999891956398},
+                  'map': {0: 4, 1: 0, 2: 1, 3: 2, 4: 3}}
+        zmat_2 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                  'coords': ((None, None, None),
+                             ('R_1_0', None, None),
+                             ('R_2_1', 'A_2_1_0', None),
+                             ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                             ('R_4_1', 'A_4_1_0', 'D_4_1_0_3')),
+                  'vars': {'R_1_0': 1.3106392449517583, 'R_2_1': 1.0921994253661749, 'A_2_1_0': 109.47121834780573,
+                           'R_3_1': 1.092199370793132, 'A_3_1_2': 109.47122048587586, 'D_3_1_2_0': 120.0000002999208,
+                           'R_4_1': 1.0921994253661749, 'A_4_1_0': 109.47122150322166, 'D_4_1_0_3': 239.99999891956398},
+                  'map': {0: 4, 1: 0, 2: 1, 3: 2, 4: 3}}
+        zmat_3 = {'symbols': ('H', 'C', 'H', 'H', 'H'),
+                  'coords': ((None, None, None),
+                             ('R_1_0', None, None),
+                             ('R_2_1', 'A_2_1_0', None),
+                             ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                             ('R_4_1', 'A_4_1_0', 'D_4_1_0_3')),
+                  'vars': {'R_1_0': 2.0, 'R_2_1': 5, 'A_2_1_0': 200,
+                           'R_3_1': 1.2, 'A_3_1_2': 80, 'D_3_1_2_0': 90,
+                           'R_4_1': 0.8, 'A_4_1_0': 150, 'D_4_1_0_3': 250},
+                  'map': {0: 4, 1: 0, 2: 1, 3: 2, 4: 3}}
+        self.assertTrue(zmat.check_ordered_zmats(zmat_1, zmat_1))
+        self.assertTrue(zmat.check_ordered_zmats(zmat_2, zmat_2))
+        self.assertTrue(zmat.check_ordered_zmats(zmat_3, zmat_3))
+        self.assertFalse(zmat.check_ordered_zmats(zmat_1, zmat_2))
+        self.assertFalse(zmat.check_ordered_zmats(zmat_2, zmat_3))
+        self.assertTrue(zmat.check_ordered_zmats(zmat_1, zmat_3))
+
+    def test_update_zmat_by_xyz(self):
+        """Test the update_zmat_by_xyz() function."""
+        xyz_1 = str_to_xyz("""C                 -2.02459021    0.31147541    0.00000000
+                              H                 -1.66791737    0.81587360    0.87365150
+                              H                 -3.09459021    0.31148859    0.00000000
+                              N                 -1.53460703   -1.07445983    0.00000000
+                              H                 -1.86794423   -1.54585934    0.81649790
+                              H                 -1.86794803   -1.54586068   -0.81649557
+                              O                 -1.54791529    0.98557766   -1.16759033
+                              H                 -1.82476883    1.90445028   -1.14258591""")
+        zmat_1 = zmat.xyz_to_zmat(xyz=xyz_1, mol=ARCSpecies(label='NCO', xyz=xyz_1).mol, consolidate=False)
+        xyz_2 = str_to_xyz("""C                 -2.12697003    0.60106045    0.00000000
+                              H                 -1.77029719    1.10545864    0.87365150
+                              H                 -3.19697003    0.60107363    0.00000000
+                              N                 -1.43222721   -1.36404487    0.00000000
+                              H                 -1.76556441   -1.83544438    0.81649790
+                              H                 -1.76556821   -1.83544572   -0.81649557
+                              O                 -1.65029511    1.27516270   -1.16759033
+                              H                 -1.11689351    0.67210652   -1.69047270""")
+        zmat_2 = zmat.update_zmat_by_xyz(zmat_1, xyz_2)
+        expected_zmat_2 = {'symbols': ('N', 'C', 'O', 'H', 'H', 'H', 'H', 'H'),
+                           'coords': ((None, None, None),
+                                      ('R_1_0', None, None),
+                                      ('R_2_1', 'A_2_1_0', None),
+                                      ('R_3_1', 'A_3_1_0', 'D_3_1_0_2'),
+                                      ('R_4_1', 'A_4_1_0', 'D_4_1_0_3'),
+                                      ('R_5_0', 'A_5_0_1', 'D_5_0_1_4'),
+                                      ('R_6_0', 'A_6_0_1', 'D_6_0_1_5'),
+                                      ('R_7_2', 'A_7_2_1', 'D_7_2_1_0')),
+                           'vars': {'A_2_1_0': 109.47120138885585, 'A_3_1_0': 109.47119974631076,
+                                    'A_4_1_0': 109.47123024500976, 'A_5_0_1': 109.47119888440865,
+                                    'A_6_0_1': 109.47120176378891, 'A_7_2_1': 109.49999787419641,
+                                    'D_3_1_0_2': 239.9999860097654, 'D_4_1_0_3': 240.00000689317258,
+                                    'D_5_0_1_4': 299.9998481421676, 'D_6_0_1_5': 120.00001661106755,
+                                    'D_7_2_1_0': 359.9999980909041, 'R_1_0': 2.084299994953611,
+                                    'R_2_1': 1.4300000625556986, 'R_3_1': 1.0700000390382562,
+                                    'R_4_1': 1.0699999276277037, 'R_5_0': 0.9999999701976772,
+                                    'R_6_0': 1.000000059604643, 'R_7_2': 0.9599999917546908},
+                           'map': {0: 3, 1: 0, 2: 6, 3: 1, 4: 2, 5: 4, 6: 5, 7: 7}}
+        self.assertTrue(zmat._compare_zmats(zmat_2, expected_zmat_2, r_tol=0.01, a_tol=0.01, d_tol=0.01))
+
+        xyz_3 = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                 'isotopes': (12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                 'coords': ((2.3646193, 2.47614099, -0.28244424), (1.99604231, 1.3322929, -0.27285987),
+                            (1.54413882, -0.07391351, -0.26910014), (2.23688538, -0.8185755, 0.83009369),
+                            (0.03108541, -0.1836364, -0.17163035), (-0.69688127, -0.82392311, -1.18801718),
+                            (-2.08662674, -0.93685605, -1.10708839), (-2.76791137, -0.41299498, -0.01050932),
+                            (-2.06176492, 0.22460524, 1.00687539), (-0.67253825, 0.33861613, 0.92823056),
+                            (2.68644091, 3.49178442, -0.29058723), (1.8704942, -0.52966109, -1.21308108),
+                            (3.24746658, -0.55865176, 1.12244838), (1.78706966, -1.70886735, 1.25422569),
+                            (-0.18547358, -1.23966395, -2.05345409), (-2.63770469, -1.43352626, -1.90142994),
+                            (-3.84933084, -0.50063791, 0.05076577), (-2.59152597, 0.63498118, 1.86245464),
+                            (-0.13614794, 0.84056704, 1.73128084))}
+        zmat_3 = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'X', 'C', 'X', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'C', 'C'),
+                  'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
+                             ('R_3_1', 'A_3_1_0', 'D_3_1_0_2'), ('R_4_3', 'A_4_3_1', 'D_4_3_1_0'),
+                             ('R_5_3', 'A_5_3_1', 'D_5_3_1_0'), ('R_6_4', 'A_6_4_5', 'D_6_4_5_3'),
+                             ('RX_7_6', 'AX_7_6_4', 'DX_7_6_4_5'), ('R_8_6', 'AX_8_6_7', 'DX_8_6_7_4'),
+                             ('RX_9_8', 'AX_9_8_6', 'DX_9_8_6_5'), ('R_10_8', 'AX_10_8_9', 'DX_10_8_9_6'),
+                             ('R_11_4', 'A_11_4_6', 'D_11_4_6_5'), ('R_12_11', 'A_12_11_4', 'D_12_11_4_6'),
+                             ('R_13_12', 'A_13_12_11', 'D_13_12_11_4'), ('R_14_0', 'A_14_0_1', 'D_14_0_1_13'),
+                             ('R_15_1', 'A_15_1_0', 'D_15_1_0_14'), ('R_16_3', 'A_16_3_1', 'D_16_3_1_0'),
+                             ('R_17_5', 'A_17_5_3', 'D_17_5_3_1'), ('R_18_2', 'A_18_2_5', 'D_18_2_5_3'),
+                             ('R_19_4', 'A_19_4_6', 'D_19_4_6_12'), ('R_20_19', 'A_20_19_4', 'D_20_19_4_6')),
+                  'vars': {'R_1_0': 1.3956693410873413, 'R_2_1': 2.7896358966827393, 'A_2_1_0': 60.00026321411133,
+                           'R_3_1': 1.3935459852218628, 'A_3_1_0': 120.04830932617188, 'D_3_1_0_2': 359.9269973156051,
+                           'R_4_3': 5.0659403800964355, 'A_4_3_1': 58.73280334472656, 'D_4_3_1_0': 18.63210016579748,
+                           'R_5_3': 1.3937134742736816, 'A_5_3_1': 119.96495056152344, 'D_5_3_1_0': 0.1290093426128289,
+                           'R_6_4': 1.418687105178833, 'A_6_4_5': 150.8554229736328, 'D_6_4_5_3': 350.2477213689811,
+                           'RX_7_6': 1.0, 'AX_7_6_4': 90.0, 'DX_7_6_4_5': 180, 'R_8_6': 1.1998496055603027,
+                           'AX_8_6_7': 90.0, 'DX_8_6_7_4': 180.0, 'RX_9_8': 1.0, 'AX_9_8_6': 90.0, 'DX_9_8_6_5': 180,
+                           'R_10_8': 1.065192699432373, 'AX_10_8_9': 90.0, 'DX_10_8_9_6': 180.0,
+                           'R_11_4': 1.0848870277404785, 'A_11_4_6': 118.59700012207031,
+                           'D_11_4_6_5': 242.2138213049598, 'R_12_11': 3.117723226547241,
+                           'A_12_11_4': 21.880233764648438, 'D_12_11_4_6': 179.938074446269,
+                           'R_13_12': 1.7501718997955322, 'A_13_12_11': 56.66421127319336,
+                           'D_13_12_11_4': 137.70711614360704, 'R_14_0': 1.088062047958374,
+                           'A_14_0_1': 119.32203674316406, 'D_14_0_1_13': 170.6494302010823,
+                           'R_15_1': 1.0867830514907837, 'A_15_1_0': 119.93069458007812,
+                           'D_15_1_0_14': 0.2612240332400453, 'R_16_3': 1.086713194847107,
+                           'A_16_3_1': 120.00505828857422, 'D_16_3_1_0': 179.94785005538517,
+                           'R_17_5': 1.0868372917175293, 'A_17_5_3': 119.95221710205078,
+                           'D_17_5_3_1': 179.78123576550246, 'R_18_2': 1.087601900100708,
+                           'A_18_2_5': 119.15081787109375, 'D_18_2_5_3': 179.74804192832136,
+                           'R_19_4': 1.4956960678100586, 'A_19_4_6': 122.56241607666016,
+                           'D_19_4_6_12': 1.2677249069817538, 'R_20_19': 1.5097754001617432,
+                           'A_20_19_4': 112.33853912353516, 'D_20_19_4_6': 235.01456712015184},
+                  'map': {0: 5, 1: 6, 2: 9, 3: 7, 4: 2, 5: 8, 6: 1, 7: 'X19', 8: 0, 9: 'X20', 10: 10, 11: 11, 12: 12,
+                          13: 13, 14: 14, 15: 15, 16: 16, 17: 17, 18: 18, 19: 3, 20: 4}}
+        zmat_3_updated = zmat.update_zmat_by_xyz(zmat_3, xyz_3)
+        expected_zmat_3_updated = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'X', 'C', 'X', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'C', 'C'),
+                                   'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
+                                              ('R_3_1', 'A_3_1_0', 'D_3_1_0_2'), ('R_4_3', 'A_4_3_1', 'D_4_3_1_0'),
+                                              ('R_5_3', 'A_5_3_1', 'D_5_3_1_0'), ('R_6_4', 'A_6_4_5', 'D_6_4_5_3'),
+                                              ('RX_7_6', 'AX_7_6_4', 'DX_7_6_4_5'), ('R_8_6', 'AX_8_6_7', 'DX_8_6_7_4'),
+                                              ('RX_9_8', 'AX_9_8_6', 'DX_9_8_6_5'),
+                                              ('R_10_8', 'AX_10_8_9', 'DX_10_8_9_6'),
+                                              ('R_11_4', 'A_11_4_6', 'D_11_4_6_5'),
+                                              ('R_12_11', 'A_12_11_4', 'D_12_11_4_6'),
+                                              ('R_13_12', 'A_13_12_11', 'D_13_12_11_4'),
+                                              ('R_14_0', 'A_14_0_1', 'D_14_0_1_13'),
+                                              ('R_15_1', 'A_15_1_0', 'D_15_1_0_14'),
+                                              ('R_16_3', 'A_16_3_1', 'D_16_3_1_0'),
+                                              ('R_17_5', 'A_17_5_3', 'D_17_5_3_1'),
+                                              ('R_18_2', 'A_18_2_5', 'D_18_2_5_3'),
+                                              ('R_19_4', 'A_19_4_6', 'D_19_4_6_12'),
+                                              ('R_20_19', 'A_20_19_4', 'D_20_19_4_6')),
+                                   'vars': {'R_1_0': 1.3966730833053589, 'R_2_1': 2.78729248046875,
+                                            'A_2_1_0': 60.032588958740234, 'R_3_1': 1.3932210206985474,
+                                            'A_3_1_0': 120.11767578125, 'D_3_1_0_2': 359.99994325134134,
+                                            'R_4_3': 4.333084583282471, 'A_4_3_1': 59.72349548339844,
+                                            'D_4_3_1_0': 359.9035475048833, 'R_5_3': 1.392928123474121,
+                                            'A_5_3_1': 119.94007873535156, 'D_5_3_1_0': 0.004875308207128551,
+                                            'R_6_4': 1.4770400524139404, 'A_6_4_5': 102.37580871582031,
+                                            'D_6_4_5_3': 124.81370384497377, 'RX_7_6': 1.0, 'AX_7_6_4': 90.0,
+                                            'DX_7_6_4_5': 180, 'R_8_6': 1.2018024921417236, 'AX_8_6_7': 90.0,
+                                            'DX_8_6_7_4': 180.0, 'RX_9_8': 1.0, 'AX_9_8_6': 90.0, 'DX_9_8_6_5': 180,
+                                            'R_10_8': 1.0654422044754028, 'AX_10_8_9': 90.0, 'DX_10_8_9_6': 180.0,
+                                            'R_11_4': 1.0978678464889526, 'A_11_4_6': 107.58233642578125,
+                                            'D_11_4_6_5': 135.347144757215, 'R_12_11': 2.711381673812866,
+                                            'A_12_11_4': 54.180206298828125, 'D_12_11_4_6': 92.50474646894473,
+                                            'R_13_12': 1.863631010055542, 'A_13_12_11': 70.70341491699219,
+                                            'D_13_12_11_4': 72.43731139586306, 'R_14_0': 1.0878233909606934,
+                                            'A_14_0_1': 118.88050842285156, 'D_14_0_1_13': 128.61620139663245,
+                                            'R_15_1': 1.086897611618042, 'A_15_1_0': 119.94087982177734,
+                                            'D_15_1_0_14': 359.980770198747, 'R_16_3': 1.0866940021514893,
+                                            'A_16_3_1': 120.04512786865234, 'D_16_3_1_0': 179.938022672011,
+                                            'R_17_5': 1.0867708921432495, 'A_17_5_3': 120.04910278320312,
+                                            'D_17_5_3_1': 179.92332044800935, 'R_18_2': 1.0883744955062866,
+                                            'A_18_2_5': 119.11103820800781, 'D_18_2_5_3': 179.94482737628158,
+                                            'R_19_4': 1.4975467920303345, 'A_19_4_6': 109.49634552001953,
+                                            'D_19_4_6_12': 12.876787187626103, 'R_20_19': 2.5044264793395996,
+                                            'A_20_19_4': 34.199951171875, 'D_20_19_4_6': 124.89545081648696},
+                                   'map': {0: 5, 1: 6, 2: 9, 3: 7, 4: 2, 5: 8, 6: 1, 7: 'X19', 8: 0, 9: 'X20', 10: 10,
+                                           11: 11, 12: 12, 13: 13, 14: 14, 15: 15, 16: 16, 17: 17, 18: 18, 19: 3,
+                                           20: 4}}
+        self.assertTrue(zmat._compare_zmats(zmat_3_updated, expected_zmat_3_updated, r_tol=0.01, a_tol=0.01, d_tol=0.01))
+
+    def test_xyz_to_zmat_single_anchor(self):
+        """Test that a single anchor forces the specified atom to Z-matrix position 0."""
+        # Ethanol (CCO): C(0), C(1), O(2), H(3-8)
+        ethanol = str_to_xyz("""C  -1.2194  -0.1447   0.0000
+C  -0.2341   1.0116   0.0000
+O   1.0720   0.6110   0.0000
+H  -2.2384   0.2170   0.0000
+H  -1.1447  -0.7733   0.8890
+H  -1.1447  -0.7733  -0.8890
+H  -0.3823   1.6293   0.8823
+H  -0.3823   1.6293  -0.8823
+H   1.6795   1.3494   0.0000""")
+        result = zmat.xyz_to_zmat(ethanol, anchors=[2])
+        # The oxygen (xyz index 2) must be at zmat position 0.
+        self.assertEqual(result['map'][0], 2)
+
+    def test_xyz_to_zmat_full_anchor_triad(self):
+        """Test that three valid non-collinear anchors define the first three Z-matrix rows."""
+        # Isobutane: C(0 central), C(1), C(2), C(3), H(4-13)
+        isobutane = str_to_xyz("""C   0.0000   0.0000   0.0000
+C   0.8900   1.2572   0.0000
+C  -1.4960   0.2052   0.0000
+C   0.3030  -0.7312   1.2760
+H   0.3030  -0.7312  -1.0260
+H   0.8900   1.8772   0.8823
+H   0.8900   1.8772  -0.8823
+H   1.9100   0.9172   0.0000
+H  -1.8160   0.8252   0.8823
+H  -1.8160   0.8252  -0.8823
+H  -2.1160  -0.7148   0.0000
+H  -0.3170  -1.6512   1.2760
+H   0.3030  -0.1112   2.1583
+H   1.3230  -1.0712   1.2760""")
+        anchors = [1, 0, 2]
+        result = zmat.xyz_to_zmat(isobutane, anchors=anchors)
+        self.assertEqual(result['map'][0], anchors[0])
+        self.assertEqual(result['map'][1], anchors[1])
+        self.assertEqual(result['map'][2], anchors[2])
+
+    def test_xyz_to_zmat_collinear_anchor_raises(self):
+        """Test that a collinear anchor triad raises a ValueError."""
+        # CO2 is linear: O(0) - C(1) - O(2) with angle ~180° at C.
+        with self.assertRaises(ValueError):
+            zmat.xyz_to_zmat(self.co2, anchors=[0, 1, 2])
+
+    def test_find_smart_anchors_spectator_backbone(self):
+        """
+        Test 1: 1-pentanol (CCCCCO) with a breaking C-O bond.
+
+        The reactive core is {O, C_bonded_to_O}.  The algorithm must return 3 contiguous
+        carbon atoms from the spectator alkyl tail — none of which belong to the core.
+        """
+        mol = Molecule(smiles='CCCCCO')
+        connectivity = zmat.get_connectivity(mol)
+
+        # Locate the O atom and the C directly bonded to it.
+        o_idx = next(i for i, a in enumerate(mol.atoms) if a.symbol == 'O')
+        c_adj_o = next(
+            mol.atoms.index(nbr)
+            for nbr in mol.atoms[o_idx].edges
+            if nbr.symbol == 'C'
+        )
+        breaking_bonds = [(o_idx, c_adj_o)]
+        core = {o_idx, c_adj_o}
+
+        result = zmat.find_smart_anchors(mol, breaking_bonds=breaking_bonds)
+
+        # Must return exactly 3 anchors.
+        self.assertEqual(len(result), 3, msg=f'Expected 3 anchors, got {result}')
+        # No duplicates.
+        self.assertEqual(len(result), len(set(result)))
+        # All anchors are spectators (not in reactive core).
+        for idx in result:
+            self.assertNotIn(idx, core, msg=f'Anchor {idx} is in the reactive core {core}')
+        # All anchors are carbon atoms.
+        for idx in result:
+            self.assertEqual(mol.atoms[idx].symbol, 'C',
+                             msg=f'Anchor {idx} is {mol.atoms[idx].symbol}, expected C')
+        # Contiguous chain: result[k] bonded to result[k+1].
+        for k in range(len(result) - 1):
+            self.assertIn(result[k + 1], connectivity[result[k]],
+                          msg=f'Atoms {result[k]} and {result[k+1]} are not bonded')
+
+    def test_find_smart_anchors_fully_reactive(self):
+        """
+        Test 2: Hydrogen peroxide (OO) with the O-O bond breaking.
+
+        The entire heavy-atom backbone is in the reactive core.  The algorithm must fall
+        back and still return 3 unique, contiguous indices (two O atoms and one H).
+        """
+        mol = Molecule(smiles='OO')
+        connectivity = zmat.get_connectivity(mol)
+
+        # Locate the two O atoms.
+        o_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'O']
+        self.assertEqual(len(o_indices), 2, msg='Expected exactly 2 O atoms in H2O2')
+        breaking_bonds = [tuple(o_indices)]
+
+        result = zmat.find_smart_anchors(mol, breaking_bonds=breaking_bonds)
+
+        # Must return exactly 3 anchors.
+        self.assertEqual(len(result), 3, msg=f'Expected 3 anchors, got {result}')
+        # No duplicates.
+        self.assertEqual(len(result), len(set(result)))
+        # The result must contain both O atoms and exactly one H.
+        result_symbols = [mol.atoms[i].symbol for i in result]
+        self.assertEqual(result_symbols.count('O'), 2,
+                         msg=f'Expected 2 O atoms in result, got {result_symbols}')
+        self.assertEqual(result_symbols.count('H'), 1,
+                         msg=f'Expected 1 H atom in result, got {result_symbols}')
+        # Contiguous chain.
+        for k in range(len(result) - 1):
+            self.assertIn(result[k + 1], connectivity[result[k]],
+                          msg=f'Atoms {result[k]} and {result[k+1]} are not bonded')
+
+    def test_find_smart_anchors_diatomic(self):
+        """
+        Test 3: Carbon monoxide ([C-]#[O+]) — a diatomic molecule.
+
+        The function must return exactly 2 indices without raising an IndexError.
+        """
+        mol = Molecule(smiles='[C-]#[O+]')
+        connectivity = zmat.get_connectivity(mol)
+
+        result = zmat.find_smart_anchors(mol)
+
+        # Diatomic: can only return 2 anchors.
+        self.assertEqual(len(result), 2, msg=f'Expected 2 anchors for diatomic, got {result}')
+        # No duplicates.
+        self.assertEqual(len(result), len(set(result)))
+        # Both atoms of the molecule are present.
+        self.assertEqual(sorted(result), [0, 1])
+        # They must be bonded.
+        self.assertIn(result[1], connectivity[result[0]],
+                      msg=f'Atoms {result[0]} and {result[1]} are not bonded')
 
 
 if __name__ == '__main__':

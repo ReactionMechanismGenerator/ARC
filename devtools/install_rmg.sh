@@ -9,34 +9,31 @@ echo ">>> Starting RMG-Py installer..."
 # default values ────────────────────────────────────────────────────────────
 MODE=package        # {package|source}
 SOURCE_MODE=path    # {path|pip|conda} (only used when MODE=source)
-INSTALL_RMS=false
 USE_SSH=false
 ENV_NAME="rmg_env"
 RMG_VERSION="${RMG_VERSION:-3.3.0}"
 
-TEMP=$(getopt -o prschS --long pip,conda,rms,ssh,source,help -- "$@")
+TEMP=$(getopt -o pschS --long pip,conda,ssh,source,help -- "$@")
 [[ $? -eq 0 ]] || { echo "Flag parsing failed"; exit 1; }
 eval set -- "$TEMP"
 while true; do
     case "$1" in
         -p|--pip)    MODE=source; SOURCE_MODE=pip; shift ;;
         -c|--conda)  MODE=source; SOURCE_MODE=conda; shift ;;
-        -r|--rms)    INSTALL_RMS=true; shift ;;
         -s|--ssh)    USE_SSH=true; shift ;;
         -S|--source) MODE=source; shift ;;
         -h|--help)
 cat <<EOF
-Usage: $0 [--source] [--pip] [--conda] [--rms] [--ssh]
+Usage: $0 [--source] [--pip] [--conda] [--ssh]
 
   default       install packaged RMG (RMG-Py + database + Arkane) into rmg_env
   -S, --source  install RMG-Py from source and build in rmg_env
   -p, --pip     (source) install RMG-Py as an editable pip package
   -c, --conda   (source) export RMG-Py & database into conda activation/deactivation hooks
-  -r, --rms     also install Reaction Mechanism Simulator
   -s, --ssh     clone via git@… instead of https://
 
 Notes:
-  - Examples: --source --conda | --source --pip | --rms | --source --rms --ssh
+  - Examples: --source --conda | --source --pip | --source --ssh
   - Override rmg version with RMG_VERSION=3.3.0 (or similar) in the environment.
 EOF
             exit 0 ;;
@@ -243,135 +240,5 @@ if [[ "$MODE" == "source" ]]; then
     fi
 fi
 
-
-###############################################################################
-# INSTALL JULIA & RMS
-###############################################################################
-if [ "$INSTALL_RMS" = true ]; then
-    if [[ -z "${RC:-}" ]]; then
-        case "$SHELL" in
-            */zsh) RC=~/.zshrc ;;
-            *)     RC=~/.bashrc ;;
-        esac
-        if [[ ! -f "$RC" ]]; then
-            echo "❌ Shell configuration file not found: $RC"
-            exit 1
-        fi
-    fi
-    echo "📦 Installing RMS (Reaction Mechanism Simulator) in $ENV_NAME"
-    # Check if juliaup is installed - juliaup &> /dev/null
-    if ! command -v juliaup &> /dev/null; then
-        echo "    juliaup not found. Installing it now."
-        if ! curl -fsSL https://install.julialang.org | bash 2>/dev/null; then
-            echo "❌ Failed to install juliaup. Skipping RMS installation."
-            echo "ℹ️  You can manually install Julia 1.10+ and try again."
-            exit 1
-        fi
-        export PATH="$HOME/.juliaup/bin:$PATH"
-        # Add it to bashrc/zshrc
-        echo 'export PATH="$HOME/.juliaup/bin:$PATH"' >> "$RC"
-        # juliaup 1.10
-        if ! juliaup add 1.10 2>/dev/null || ! juliaup default 1.10 2>/dev/null; then
-            echo "❌ Failed to configure Julia 1.10. Skipping RMS installation."
-            exit 1
-        fi
-        juliaup remove release 2>/dev/null || true
-    else
-        echo "✔️ juliaup is already installed."
-        export PATH="$HOME/.juliaup/bin:$PATH"
-        
-        echo "Checking for Julia 1.10..."
-        if ! "$HOME/.juliaup/bin/julialauncher" --version 2>/dev/null | grep -q "1\.10"; then
-            echo "    Julia 1.10 not found. Installing it now..."
-            "$HOME/.juliaup/bin/juliaup" add 1.10
-            "$HOME/.juliaup/bin/juliaup" default 1.10
-            # Verify installation
-            if ! "$HOME/.juliaup/bin/julialauncher" --version 2>/dev/null | grep -q "1\.10"; then
-                echo "❌ Failed to install Julia 1.10. Skipping RMS installation."
-                exit 1
-            fi
-            echo "✔️ Julia 1.10 installed successfully."
-        else
-            echo "✔️ Julia 1.10 is already installed."
-        fi
-        # Get julia path via julialauncher - already set to 1.10 as default
-        JULIA_PATH="$HOME/.juliaup/bin/julialauncher"
-        if [[ ! -f "$JULIA_PATH" ]]; then
-            echo "❌ Julia launcher not found at $JULIA_PATH. Skipping RMS installation."
-            exit 1
-        fi
-        
-        echo "Using Julia launcher: $JULIA_PATH (1.10 is default)"
-        # Set the micromamba/conda/mamba env config vars
-        # Find the base path - check COMMAND_PKG is micromamba, mamba, or conda
-        if [ "$COMMAND_PKG" = "micromamba" ]; then
-            BASE_PATH=$(micromamba info --base | awk -F': +' '/base environment/ {print $2; exit}')
-        elif [ "$COMMAND_PKG" = "mamba" ] || [ "$COMMAND_PKG" = "conda" ]; then
-            BASE_PATH=$(conda info --base)
-        else
-            echo "❌ Unknown command: $COMMAND_PKG"
-            exit 1
-        fi
-
-        # Check if COMMAND_PKG is not micromamba
-        if [ "$COMMAND_PKG" != "micromamba" ]; then
-            conda env config vars set -n "$ENV_NAME" \
-                JULIA_CONDAPKG_BACKEND=Null \
-                JULIA_PYTHONCALL_EXE=$BASE_PATH/envs/$ENV_NAME/bin/python \
-                PYTHON_JULIAPKG_EXE="$JULIA_PATH" \
-                PYTHON_JULIAPKG_PROJECT=$BASE_PATH/envs/$ENV_NAME/julia_env
-        else
-            mkdir -p "$BASE_PATH/envs/$ENV_NAME/etc/conda/activate.d"
-            cat > "$BASE_PATH/envs/$ENV_NAME/etc/conda/activate.d/julia_vars.sh" <<'EOF'
-export JULIA_CONDAPKG_BACKEND=Null
-export JULIA_PYTHONCALL_EXE="$CONDA_PREFIX/bin/python"
-export PYTHON_JULIAPKG_EXE="$HOME/.juliaup/bin/julialauncher"
-export PYTHON_JULIAPKG_PROJECT="$CONDA_PREFIX/julia_env"
-EOF
-        
-        fi
-
-        # Now export the variables to the current shell
-        export JULIA_CONDAPKG_BACKEND=Null
-        export JULIA_PYTHONCALL_EXE=$BASE_PATH/envs/$ENV_NAME/bin/python
-        export PYTHON_JULIAPKG_EXE="$JULIA_PATH"
-        export PYTHON_JULIAPKG_PROJECT=$BASE_PATH/envs/$ENV_NAME/julia_env
-
-        # install pyjuliacall
-        echo "📦 Installing PyJuliaCall in $ENV_NAME"
-        $COMMAND_PKG install -n "$ENV_NAME" -c conda-forge pyjuliacall -y
-
-        # Ensure Julia uses conda's libstdc++
-        echo "🔧 Configuring Julia to use conda's libstdc++..."
-        JDIR="$("$JULIA_PATH" -e 'println(joinpath(Sys.BINDIR,"..","lib","julia"))')"
-        [ -f "$JDIR/libstdc++.so.6.bak" ] || mv "$JDIR/libstdc++.so.6" "$JDIR/libstdc++.so.6.bak" 2>/dev/null || true
-        ln -sf "$BASE_PATH/envs/$ENV_NAME/lib/libstdc++.so.6" "$JDIR/libstdc++.so.6" || \
-            cp -L "$BASE_PATH/envs/$ENV_NAME/lib/libstdc++.so.6" "$JDIR/libstdc++.so.6"
-
-        export RMS_BRANCH=${RMS_BRANCH:-for_rmg}
-        echo "📦 Installing ReactionMechanismSimulator - BRANCH: $RMS_BRANCH"
-        "$JULIA_PATH" -e '
-            using Pkg;
-            Pkg.add(Pkg.PackageSpec(
-                name="ReactionMechanismSimulator",
-                url="https://github.com/ReactionMechanismGenerator/ReactionMechanismSimulator.jl.git",
-                rev=ENV["RMS_BRANCH"]
-            ));
-            using ReactionMechanismSimulator;
-            Pkg.instantiate();
-        '
-        echo "Checking if RMS is installed..."
-ENV_NAME="$ENV_NAME" $COMMAND_PKG run -n "$ENV_NAME" python - <<'PY'
-from juliacall import Main
-import os
-import sys
-pk_ok = Main.seval('Base.identify_package("ReactionMechanismSimulator") !== nothing')
-print(f"RMS visible to Python in {os.environ.get('ENV_NAME', 'rmg_env')}" if pk_ok else "RMS NOT found")
-sys.exit(0 if pk_ok else 1)
-PY
-fi
-else
-    echo "ℹ️ Skipping RMS installation as INSTALL_RMS is set to false."
-fi
 
 echo "✅ RMG-Py installation complete."

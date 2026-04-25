@@ -1127,6 +1127,7 @@ class ARCSpecies(object):
                             n_confs: int = 10,
                             e_confs: float = 5,
                             plot_path: str = None,
+                            economic_generation: bool = False,
                             ) -> None:
         """
         Generate conformers.
@@ -1138,6 +1139,10 @@ class ARCSpecies(object):
                                        (unique) generated conformers will be stored in the .conformers attribute.
             plot_path (str, optional): A folder path in which the plot will be saved.
                                        If None, the plot will not be shown (nor saved).
+            economic_generation (bool, optional): Use a scaled-down (but still n_rotors / n_heavy-dependent)
+                                                  conformer count. Intended for cheap use-cases such as BDE
+                                                  scissors fragments and atom-mapping fingerprints, where
+                                                  full auto-scaling is wasteful.
         """
         if self.is_ts:
             return
@@ -1158,6 +1163,7 @@ class ARCSpecies(object):
                                                       return_all_conformers=False,
                                                       plot_path=plot_path,
                                                       diastereomers=diastereomers,
+                                                      economic_generation=economic_generation,
                                                       )
         if len(lowest_confs):
             self.conformers.extend([conf['xyz'] for conf in lowest_confs])
@@ -1632,10 +1638,19 @@ class ARCSpecies(object):
             if len(self.mol.atoms) != len(xyz['symbols']):
                 raise SpeciesError(f'The number of atoms in the molecule and in the coordinates of {self.label} is different.'
                                    f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
+            # Use the mol's radical count as a perception hint only when
+            # the user didn't specify n_radicals AND the mol's multiplicity
+            # matches the species multiplicity (avoids e.g., forcing triplet
+            # perception on a user-specified singlet O atom).
+            _n_rad_for_perception = self.number_of_radicals
+            if _n_rad_for_perception is None and self.multiplicity is not None:
+                _mol_n_rad = sum(a.radical_electrons for a in self.mol.atoms)
+                if _mol_n_rad and self.mol.multiplicity == self.multiplicity:
+                    _n_rad_for_perception = _mol_n_rad
             perceived_mol = perceive_molecule_from_xyz(xyz,
                                                        charge=self.charge,
                                                        multiplicity=self.multiplicity,
-                                                       n_radicals=self.number_of_radicals,
+                                                       n_radicals=_n_rad_for_perception,
                                                        n_fragments=self.get_n_fragments(),
                                                        )
             if perceived_mol is not None:
@@ -1988,7 +2003,7 @@ class ARCSpecies(object):
                               charge=mol_splits[0].get_net_charge(),
                               compute_thermo=False,
                               e0_only=True)
-            spc1.generate_conformers()
+            spc1.generate_conformers(economic_generation=True)
             return [spc1]
         elif len(mol_splits) == 2:
             mol1, mol2 = mol_splits
@@ -2043,7 +2058,7 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc1.generate_conformers()
+        spc1.generate_conformers(economic_generation=True)
         spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
                           mol=mol2,
@@ -2053,7 +2068,7 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc2.generate_conformers()
+        spc2.generate_conformers(economic_generation=True)
         spc2.rotors_dict = None
 
         return [spc1, spc2]
