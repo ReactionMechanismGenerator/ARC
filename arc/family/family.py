@@ -4,6 +4,7 @@ A module for working with RMG reaction families.
 
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 import ast
+import functools
 import os
 import re
 
@@ -41,9 +42,38 @@ def get_rmg_db_subpath(*parts: str, must_exist: bool = False) -> str:
     return candidates[0]
 
 
+@functools.lru_cache(maxsize=None)
+def _read_groups_file_lines(label: str, consider_arc_families: bool) -> Tuple[str, ...]:
+    """
+    Read the ``groups.py`` file for an RMG/ARC reaction family, cached per process.
+
+    Returns a tuple of lines (immutable) so the cache cannot be mutated by callers.
+
+    Args:
+        label (str): The reaction family label.
+        consider_arc_families (bool): Whether to consider ARC's custom families.
+
+    Returns:
+        Tuple[str, ...]: The contents of the groups file, one tuple element per line.
+    """
+    groups_path = get_rmg_db_subpath('kinetics', 'families', label, 'groups.py', must_exist=True)
+    if not os.path.isfile(groups_path):
+        if consider_arc_families:
+            groups_path = os.path.join(ARC_FAMILIES_PATH, f'{label}.py')
+        if not os.path.isfile(groups_path):
+            raise FileNotFoundError(f'Could not find the groups file for family {label}')
+    with open(groups_path, 'r') as f:
+        return tuple(f.readlines())
+
+
 class ReactionFamily(object):
     """
     A class for representing a reaction family.
+
+    Instances are cached per ``(label, consider_arc_families)`` so the
+    family ``groups.py`` file is read and parsed at most once per process.
+    The cached object is treated as immutable; do not mutate its public
+    attributes after construction.
 
     Args:
         label (str): The reaction family label.
@@ -54,12 +84,28 @@ class ReactionFamily(object):
         label (str): The reaction family label.
     """
 
+    _cache: Dict[Tuple[str, bool], 'ReactionFamily'] = dict()
+
+    def __new__(cls,
+                label: str,
+                consider_arc_families: bool = True,
+                ):
+        if label is None:
+            raise ValueError('Cannot initialize a ReactionFamily object without a label')
+        key = (label, consider_arc_families)
+        cached = cls._cache.get(key)
+        if cached is not None:
+            return cached
+        instance = super().__new__(cls)
+        cls._cache[key] = instance
+        return instance
+
     def __init__(self,
                  label: str,
                  consider_arc_families: bool = True,
                  ):
-        if label is None:
-            raise ValueError('Cannot initialize a ReactionFamily object without a label')
+        if getattr(self, '_initialized', False):
+            return
         self.label = label
         self.groups_as_lines = self.get_groups_file_as_lines(consider_arc_families=consider_arc_families)
         self.reversible = is_reversible(self.groups_as_lines)
@@ -72,6 +118,7 @@ class ReactionFamily(object):
             entry_labels.extend(reactant_group)
         self.entries = get_entries(self.groups_as_lines, entry_labels=entry_labels)
         self.actions = get_recipe_actions(self.groups_as_lines)
+        self._initialized = True
 
     def __str__(self):
         """
@@ -90,15 +137,7 @@ class ReactionFamily(object):
         Returns:
             List[str]: The groups file as a list of lines.
         """
-        groups_path = get_rmg_db_subpath('kinetics', 'families', self.label, 'groups.py', must_exist=True)
-        if not os.path.isfile(groups_path):
-            if consider_arc_families:
-                groups_path = os.path.join(ARC_FAMILIES_PATH, f'{self.label}.py')
-            if not os.path.isfile(groups_path):
-                raise FileNotFoundError(f'Could not find the groups file for family {self.label}')
-        with open(groups_path, 'r') as f:
-            groups_as_lines = f.readlines()
-        return groups_as_lines
+        return _read_groups_file_lines(self.label, consider_arc_families)
 
     def generate_products(self,
                           reactants: List['ARCSpecies'],
@@ -689,6 +728,7 @@ def get_all_families(rmg_family_set: Union[List[str], str] = 'default',
     return rmg_families + arc_families if rmg_families is not None else arc_families
 
 
+@functools.lru_cache(maxsize=1)
 def get_rmg_recommended_family_sets() -> Dict[str, str]:
     """
     Get the recommended RMG family sets from RMG-database/input/kinetics/families/recommended.py.
