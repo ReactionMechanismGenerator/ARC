@@ -4,6 +4,7 @@ A module for working with RMG reaction families.
 
 from typing import TYPE_CHECKING
 import ast
+import functools
 import os
 import re
 
@@ -40,27 +41,71 @@ def get_rmg_db_subpath(*parts: str, must_exist: bool = False) -> str:
     return candidates[0]
 
 
+@functools.lru_cache(maxsize=None)
+def read_groups_file_lines(label: str, consider_arc_families: bool = True) -> tuple[str, ...]:
+    """
+    Read the ``groups.py`` file for an RMG/ARC reaction family, cached per process.
+
+    Returns a tuple of lines (immutable) so the cache cannot be mutated by callers.
+
+    Args:
+        label (str): The reaction family label.
+        consider_arc_families (bool, optional): Whether to consider ARC's custom families.
+
+    Returns:
+        tuple[str, ...]: The contents of the groups file, one tuple element per line.
+    """
+    groups_path = get_rmg_db_subpath('kinetics', 'families', label, 'groups.py', must_exist=True)
+    if not os.path.isfile(groups_path):
+        if consider_arc_families:
+            groups_path = os.path.join(ARC_FAMILIES_PATH, f'{label}.py')
+        if not os.path.isfile(groups_path):
+            raise FileNotFoundError(f'Could not find the groups file for family {label}')
+    with open(groups_path, 'r') as f:
+        return tuple(f.readlines())
+
+
 class ReactionFamily(object):
     """
     A class for representing a reaction family.
 
+    Instances are cached per ``(label, consider_arc_families)`` so the
+    family ``groups.py`` file is read and parsed at most once per process.
+    The cached object is treated as immutable; do not mutate its public attributes after construction.
+
     Args:
         label (str): The reaction family label.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families
-                                                 when searching for the family groups file.
+                                                when searching for the family groups file.
 
     Attributes:
         label (str): The reaction family label.
     """
 
+    _cache: dict[tuple[str, bool], ReactionFamily] = dict()
+
+    def __new__(cls,
+                label: str,
+                consider_arc_families: bool = True,
+                ):
+        if label is None:
+            raise ValueError('Cannot initialize a ReactionFamily object without a label')
+        key = (label, consider_arc_families)
+        cached = cls._cache.get(key)
+        if cached is not None:
+            return cached
+        instance = super().__new__(cls)
+        cls._cache[key] = instance
+        return instance
+
     def __init__(self,
                  label: str,
                  consider_arc_families: bool = True,
                  ):
-        if label is None:
-            raise ValueError('Cannot initialize a ReactionFamily object without a label')
+        if getattr(self, '_initialized', False):
+            return
         self.label = label
-        self.groups_as_lines = self.get_groups_file_as_lines(consider_arc_families=consider_arc_families)
+        self.groups_as_lines = read_groups_file_lines(label, consider_arc_families)
         self.reversible = is_reversible(self.groups_as_lines)
         self.own_reverse = is_own_reverse(self.groups_as_lines)
         self.reactants = get_reactant_groups_from_template(self.groups_as_lines)
@@ -70,34 +115,18 @@ class ReactionFamily(object):
         for reactant_group in self.reactants:
             entry_labels.extend(reactant_group)
         self.entries = get_entries(self.groups_as_lines, entry_labels=entry_labels)
+        self.groups_by_label: dict[str, Group] = {
+            label: Group().from_adjacency_list(adjlist)
+            for label, adjlist in self.entries.items()
+        }
         self.actions = get_recipe_actions(self.groups_as_lines)
+        self._initialized = True
 
     def __str__(self):
         """
         A string representation of the object.
         """
         return f'ReactionFamily(label={self.label})'
-
-    def get_groups_file_as_lines(self, consider_arc_families: bool = True) -> list[str]:
-        """
-        Get the groups file as a list of lines.
-        Precedence is given to RMG families (ARC families should therefore have distinct names than RMG's)
-
-        Args:
-            consider_arc_families (bool, optional): Whether to consider ARC's custom families.
-
-        Returns:
-            list[str]: The groups file as a list of lines.
-        """
-        groups_path = get_rmg_db_subpath('kinetics', 'families', self.label, 'groups.py', must_exist=True)
-        if not os.path.isfile(groups_path):
-            if consider_arc_families:
-                groups_path = os.path.join(ARC_FAMILIES_PATH, f'{self.label}.py')
-            if not os.path.isfile(groups_path):
-                raise FileNotFoundError(f'Could not find the groups file for family {self.label}')
-        with open(groups_path, 'r') as f:
-            groups_as_lines = f.readlines()
-        return groups_as_lines
 
     def generate_products(self,
                           reactants: list[ARCSpecies],
@@ -125,8 +154,7 @@ class ReactionFamily(object):
         for reactant_idx, reactant in enumerate(reactants):
             for groups_idx, group_labels in enumerate(self.reactants):
                 for group_label in group_labels:
-                    group = Group().from_adjacency_list(
-                        get_group_adjlist(self.groups_as_lines, entry_label=group_label))
+                    group = self.groups_by_label[group_label]
                     for mol in reactant.mol_list or [reactant.mol]:
                         splits = group.split()
                         if mol.is_subgraph_isomorphic(other=group, save_order=True) \
@@ -193,8 +221,7 @@ class ReactionFamily(object):
         reactant_to_group_maps = reactant_to_group_maps[0]
         for mol in reactants[0].mol_list or [reactants[0].mol]:
             for reactant_to_group_map in reactant_to_group_maps:
-                group = Group().from_adjacency_list(get_group_adjlist(self.groups_as_lines,
-                                                                      entry_label=reactant_to_group_map['subgroup']))
+                group = self.groups_by_label[reactant_to_group_map['subgroup']]
                 isomorphic_subgraphs = mol.find_subgraph_isomorphisms(other=group, save_order=True)
                 if len(isomorphic_subgraphs):
                     for isomorphic_subgraph in isomorphic_subgraphs:
@@ -248,8 +275,7 @@ class ReactionFamily(object):
         isomorphic_subgraph_dicts = list()
         for mol_1 in reactants[0].mol_list or [reactants[0].mol]:
             for mol_2 in reactants[1].mol_list or [reactants[1].mol]:
-                splits = Group().from_adjacency_list(
-                    get_group_adjlist(self.groups_as_lines, entry_label=reactant_to_group_maps[0][0]['subgroup'])).split()
+                splits = self.groups_by_label[reactant_to_group_maps[0][0]['subgroup']].split()
                 if len(splits) > 1:
                     for i in [0, 1]:
                         isomorphic_subgraphs_1 = mol_1.find_subgraph_isomorphisms(other=splits[i], save_order=True)
@@ -266,11 +292,9 @@ class ReactionFamily(object):
                                                                                         mol_2)})
                     continue
                 for reactant_to_group_map_1 in reactant_to_group_maps[0]:
-                    group_1 = Group().from_adjacency_list(get_group_adjlist(self.groups_as_lines,
-                                                                            entry_label=reactant_to_group_map_1['subgroup']))
+                    group_1 = self.groups_by_label[reactant_to_group_map_1['subgroup']]
                     for reactant_to_group_map_2 in reactant_to_group_maps[1]:
-                        group_2 = Group().from_adjacency_list(get_group_adjlist(self.groups_as_lines,
-                                                                                entry_label=reactant_to_group_map_2['subgroup']))
+                        group_2 = self.groups_by_label[reactant_to_group_map_2['subgroup']]
                         isomorphic_subgraphs_1 = mol_1.find_subgraph_isomorphisms(other=group_1, save_order=True)
                         isomorphic_subgraphs_2 = mol_2.find_subgraph_isomorphisms(other=group_2, save_order=True)
                         if len(isomorphic_subgraphs_1) and len(isomorphic_subgraphs_2):
@@ -671,7 +695,7 @@ def get_all_families(rmg_family_set: list[str] | str = 'default',
         return rmg_family_set
     rmg_families, arc_families = list(), list()
     if consider_rmg_families:
-        if not isinstance(rmg_families, list) and rmg_family_set not in list(family_sets) + ['all']:
+        if not isinstance(rmg_family_set, list) and rmg_family_set not in list(family_sets) + ['all']:
             raise ValueError(f'Invalid RMG family set: {rmg_family_set}')
         if rmg_family_set == 'all':
             for family_set_label, families in family_sets.items():
@@ -688,6 +712,7 @@ def get_all_families(rmg_family_set: list[str] | str = 'default',
     return rmg_families + arc_families if rmg_families is not None else arc_families
 
 
+@functools.lru_cache(maxsize=1)
 def get_rmg_recommended_family_sets() -> dict[str, str]:
     """
     Get the recommended RMG family sets from RMG-database/input/kinetics/families/recommended.py.
