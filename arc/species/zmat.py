@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 from arc.common import get_logger, is_angle_linear, key_by_val
 from arc.exceptions import ZMatError, VectorsError
 from arc.molecule.molecule import Molecule
-from arc.species.vectors import calculate_param, get_vector_length
+from arc.species import vectors
 
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom
@@ -244,7 +244,7 @@ def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
                 atom_list_to_explore1, atom_list_to_explore2 = atom_list_to_explore2, []
                 if len(top) >= 2:
                     # Calculate the angle formed with the index_atom.
-                    angle = calculate_param(coords=xyz['coords'], atoms=[atom_index] + top[-2:], index=0)
+                    angle = vectors.calculate_param(coords=xyz['coords'], atoms=[atom_index] + top[-2:], index=0)
                     if not is_angle_linear(angle, tolerance=TOL_180):
                         linear = False
                         if len(top) >= 3:
@@ -519,7 +519,7 @@ def determine_d_atoms(zmat: Dict[str, Union[dict, tuple]],
         if len(d_atoms) < 4:
             for i in reversed(range(len(xyz['symbols']))):
                 if i not in d_atoms and i in list(zmat['map'].keys()):
-                    angle = calculate_param(coords=coords, atoms=[zmat['map'][z_index]
+                    angle = vectors.calculate_param(coords=coords, atoms=[zmat['map'][z_index]
                                                                   for z_index in d_atoms[1:] + [i]])
                     if not is_angle_linear(angle, tolerance=TOL_180):
                         d_atoms.append(i)
@@ -555,7 +555,7 @@ def determine_d_atoms_without_connectivity(zmat: dict,
     for i in reversed(range(n)):
         if i not in d_atoms and i in list(zmat['map'].keys()) and (i >= len(zmat['symbols']) or not is_dummy(zmat, i)):
             try:
-                angle = calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
+                angle = vectors.calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
             except VectorsError:
                 continue
             if not is_angle_linear(angle, tolerance=TOL_180):
@@ -566,7 +566,7 @@ def determine_d_atoms_without_connectivity(zmat: dict,
         for i in reversed(range(n)):
             if i not in d_atoms and i in list(zmat['map'].keys()):
                 try:
-                    angle = calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
+                    angle = vectors.calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
                 except VectorsError:
                     continue
                 if not is_angle_linear(angle, tolerance=TOL_180):
@@ -632,7 +632,7 @@ def determine_d_atoms_from_connectivity(zmat: dict,
                 i = 0
                 atom_a, atom_b, atom_c = atom, zmat['map'][d_atoms[2]], zmat['map'][d_atoms[1]]
                 while i < len(list(connectivity.keys())):
-                    angle = calculate_param(coords=coords, atoms=[atom_a, atom_b, atom_c])
+                    angle = vectors.calculate_param(coords=coords, atoms=[atom_a, atom_b, atom_c])
                     if is_angle_linear(angle, tolerance=TOL_180):
                         num_of_neighbors = len(list(connectivity[atom_a]))
                         if num_of_neighbors == 1:
@@ -648,7 +648,7 @@ def determine_d_atoms_from_connectivity(zmat: dict,
                             a_neighbors = connectivity[atom_a]
                             atom_e = a_neighbors[0] if a_neighbors[0] != atom_b else a_neighbors[1]
                             if atom_e in list(zmat['map'].values()):
-                                angle = calculate_param(coords=coords, atoms=[atom_e, atom_b, atom_c])
+                                angle = vectors.calculate_param(coords=coords, atoms=[atom_e, atom_b, atom_c])
                                 if is_angle_linear(angle, tolerance=TOL_180):
                                     # E -- B -- C is linear, change indices and test angle F -- B -- C.
                                     atom_a = atom_e
@@ -660,7 +660,7 @@ def determine_d_atoms_from_connectivity(zmat: dict,
                             # Atom A is connected to at least one other atom not in this linear chain.
                             for a_neighbor in connectivity[atom_a]:
                                 if a_neighbor != atom_b:
-                                    angle = calculate_param(coords=coords, atoms=[a_neighbor, atom_b, atom_c])
+                                    angle = vectors.calculate_param(coords=coords, atoms=[a_neighbor, atom_b, atom_c])
                                     if not is_angle_linear(angle, tolerance=TOL_180) \
                                             and a_neighbor in list(zmat['map'].values()) \
                                             and key_by_val(zmat['map'], a_neighbor) not in d_atoms:
@@ -683,7 +683,7 @@ def determine_d_atoms_from_connectivity(zmat: dict,
     if len(d_atoms) == 3 and len(connectivity[atom_index]) > 2 \
             and connectivity[atom_index][2] in list(zmat['map'].values()) \
             and connectivity[atom_index][2] not in [zmat['map'][d_atom] for d_atom in d_atoms[1:]]:
-        angle = calculate_param(coords=coords, atoms=[zmat['map'][d_atom] for d_atom in d_atoms[1:]]
+        angle = vectors.calculate_param(coords=coords, atoms=[zmat['map'][d_atom] for d_atom in d_atoms[1:]]
                                                      + [connectivity[atom_index][2]])
         if not is_angle_linear(angle, tolerance=TOL_180) \
                 and connectivity[atom_index][2] in list(zmat['map'].values()) \
@@ -795,7 +795,7 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
         # Calculate the angle, add a dummy atom if needed.
         added_dummy = False
         if a_atoms is not None and all([not re.match(r'X\d', str(zmat['map'][atom])) for atom in a_atoms[1:]]):
-            angle = calculate_param(coords=coords, atoms=[atom_index] + [zmat['map'][atom] for atom in a_atoms[1:]])
+            angle = vectors.calculate_param(coords=coords, atoms=[atom_index] + [zmat['map'][atom] for atom in a_atoms[1:]])
             if is_angle_linear(angle, tolerance=TOL_180):
                 # The angle is too close to 180 (or 0) degrees, add a dummy atom.
                 zmat, coords, n, r_atoms, a_atoms, specific_last_d_atom = \
@@ -885,12 +885,12 @@ def update_zmat_with_new_atom(zmat: dict,
         raise ZMatError(f'zmat atom specifications must not have repetitions, got:\n'
                         f'r_atoms = {r_atoms}, a_atoms = {a_atoms}, d_atoms ={d_atoms}')
     if r_atoms is not None:
-        zmat['vars'][r_str] = calculate_param(coords=coords, atoms=[zmat['map'][atom] for atom in r_atoms])
+        zmat['vars'][r_str] = vectors.calculate_param(coords=coords, atoms=[zmat['map'][atom] for atom in r_atoms])
     if added_dummy:
         zmat['vars'][a_str] = 90.0
         # The dihedral angle could be either 0 or 180 degrees, depends on the relative position of atom D and B, C
         # d_atoms represent the zmat indices of atoms D, C, X, and B.
-        bcd_angle = calculate_param(coords=coords, atoms=[zmat['map'][d_atoms[3]], zmat['map'][d_atoms[1]],
+        bcd_angle = vectors.calculate_param(coords=coords, atoms=[zmat['map'][d_atoms[3]], zmat['map'][d_atoms[1]],
                                                           zmat['map'][d_atoms[0]]], index=0)
         if 180 - TOL_180 < bcd_angle <= 180:
             zmat['vars'][d_str] = 180.0
@@ -901,9 +901,9 @@ def update_zmat_with_new_atom(zmat: dict,
                             f'Expected a linear sequence when using a dummy atom.')
     else:
         if a_atoms is not None:
-            zmat['vars'][a_str] = calculate_param(coords=coords, atoms=[zmat['map'][atom] for atom in a_atoms])
+            zmat['vars'][a_str] = vectors.calculate_param(coords=coords, atoms=[zmat['map'][atom] for atom in a_atoms])
         if d_atoms is not None:
-            zmat['vars'][d_str] = calculate_param(coords=coords, atoms=[zmat['map'][atom]
+            zmat['vars'][d_str] = vectors.calculate_param(coords=coords, atoms=[zmat['map'][atom]
                                                                         for atom in d_atoms])
     return zmat
 
@@ -1101,7 +1101,7 @@ def _add_nth_atom_to_coords(zmat: dict,
                      if indices[0] == i][0]
         a_index, b_index, c_index = d_indices[3], d_indices[2], d_indices[1]
         # Atoms B and C aren't necessarily connected in the zmat, calculate from coords.
-        bc_length = get_vector_length([coords[c_index][0] - coords[b_index][0],
+        bc_length = vectors.get_vector_length([coords[c_index][0] - coords[b_index][0],
                                        coords[c_index][1] - coords[b_index][1],
                                        coords[c_index][2] - coords[b_index][2]])
         cd_length = zmat['vars'][zmat['coords'][i][0]]
@@ -1116,7 +1116,7 @@ def _add_nth_atom_to_coords(zmat: dict,
                (coords[c_index][1] - coords[b_index][1]) / bc_length,
                (coords[c_index][2] - coords[b_index][2]) / bc_length]
         n = np.cross(ab, ubc)
-        un = n / get_vector_length(n)
+        un = n / vectors.get_vector_length(n)
         un_cross_ubc = np.cross(un, ubc)
 
         # The transformation matrix:
@@ -1649,7 +1649,7 @@ def is_atom_in_linear_angle(i: int, xyz: Optional[dict], mol: Molecule, tol: flo
                     continue  # avoid redundant pairs and self-pairs
                 if i not in (a, b, c):
                     continue
-                angle = calculate_param(coords=xyz['coords'], atoms=[a, b, c])
+                angle = vectors.calculate_param(coords=xyz['coords'], atoms=[a, b, c])
                 if is_angle_linear(angle, tolerance=tol):
                     return True
     return False
@@ -2141,7 +2141,7 @@ def purge_references_to_atom_0(zmat: dict) -> dict:
 
     def safe_calc_param(atoms):
         try:
-            return calculate_param(coords=xyz_coords, atoms=atoms)
+            return vectors.calculate_param(coords=xyz_coords, atoms=atoms)
         except (ValueError, IndexError, VectorsError):
             return None
 
