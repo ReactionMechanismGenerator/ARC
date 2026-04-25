@@ -783,15 +783,31 @@ shortDesc = ""
 longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
 """
     species_dict = dict()
+    iso_seen = list()  # entries: (mol, multiplicity, canonical_label)
     if not len(species_list) or not any(spc.thermo for spc in species_list):
         logger.warning('No species to save in the thermo library.')
         return
 
     for i, spc in enumerate(species_list):
         if spc.thermo.data and spc.include_in_thermo_lib:
-            if spc.label not in species_dict:
-                adjlist = spc.adjlist or spc.mol_list[0].copy(deep=True).to_adjacency_list()
-                species_dict[spc.label] = adjlist
+            if spc.label in species_dict:
+                continue
+            duplicate_of = None
+            spc_mol = spc.mol_list[0] if spc.mol_list else spc.mol
+            if spc_mol is not None:
+                for seen_mol, seen_mult, seen_label in iso_seen:
+                    if seen_mult == spc.multiplicity and seen_mol.is_isomorphic(spc_mol):
+                        duplicate_of = seen_label
+                        break
+            if duplicate_of is not None:
+                logger.info(f"Thermo library dedup: skipping species '{spc.label}' because its "
+                            f"adjacency-list and multiplicity ({spc.multiplicity}) match "
+                            f"'{duplicate_of}'.")
+                continue
+            adjlist = spc.adjlist or spc.mol_list[0].copy(deep=True).to_adjacency_list()
+            species_dict[spc.label] = adjlist
+            if spc_mol is not None:
+                iso_seen.append((spc_mol, spc.multiplicity, spc.label))
             spc.long_thermo_description += (
                 f'\nExternal symmetry: {spc.external_symmetry}, '
                 f'optical isomers: {spc.optical_isomers}\n'

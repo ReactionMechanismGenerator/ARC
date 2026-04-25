@@ -88,7 +88,7 @@ kinetics(label='${rxn.label}',
 % endif
 
 % if compute_thermo:
-% for spc in species_list:
+% for spc in thermo_species_list:
 thermo('${spc['label']}', 'NASA')
 % endfor
 % endif
@@ -333,13 +333,30 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0. Default: ``False``.
         """
         species_list = list()
+        thermo_species_list = list()
+        thermo_seen = list()  # entries: (mol, multiplicity, canonical_label)
         for spc in self.species:
             if e0_only or spc.compute_thermo:
-                species_list.append({'label': spc.label,
-                                     'path': spc.yml_path or os.path.join(statmech_dir, 'species', f'{spc.label}.py'),
-                                     'smiles': spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else '',
-                                     'multiplicity': spc.multiplicity,
-                                     })
+                entry = {'label': spc.label,
+                         'path': spc.yml_path or os.path.join(statmech_dir, 'species', f'{spc.label}.py'),
+                         'smiles': spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else '',
+                         'multiplicity': spc.multiplicity,
+                         }
+                species_list.append(entry)
+                duplicate_of = None
+                if not spc.is_ts and spc.mol is not None:
+                    for seen_mol, seen_mult, seen_label in thermo_seen:
+                        if seen_mult == spc.multiplicity and seen_mol.is_isomorphic(spc.mol):
+                            duplicate_of = seen_label
+                            break
+                if duplicate_of is not None:
+                    logger.info(f"Arkane thermo dedup: species '{spc.label}' shares an "
+                                f"adjacency-list and multiplicity ({spc.multiplicity}) with "
+                                f"'{duplicate_of}'; emitting thermo() only for '{duplicate_of}'.")
+                else:
+                    thermo_species_list.append(entry)
+                    if not spc.is_ts and spc.mol is not None:
+                        thermo_seen.append((spc.mol, spc.multiplicity, spc.label))
         ts_list = [{'label': rxn.ts_species.label,
                      'path': rxn.ts_species.yml_path or os.path.join(statmech_dir, 'TSs', f'{rxn.ts_species.label}.py')}
                      for rxn in self.reactions] if self.reactions else list()
@@ -377,6 +394,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             use_bac=True if self.bac_type is not None and bool(model_chemistry or atom_energies) else False,
             bac_type=self.bac_type,
             species_list=species_list,
+            thermo_species_list=thermo_species_list,
             ts_list=ts_list,
             reaction_list=self.reactions or list(),
             compute_thermo=calc_type == 'thermo' and not e0_only,

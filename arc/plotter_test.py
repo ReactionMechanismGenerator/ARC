@@ -81,6 +81,74 @@ H      -1.16115119    0.31478894   -0.81506145
         content_1 = read_yaml_file(path=n4h6_yml_path_copy)
         self.assertIn('mol', content_1.keys())
 
+    def test_save_thermo_lib_dedups_isomorphic(self):
+        """
+        Regression: save_thermo_lib must skip species whose adjacency-list and
+        multiplicity match an already-included entry, even when their labels
+        differ. Mirrors the rmg_rxn_341 H-abstraction shape (CCCOCC appearing
+        as both r2 and p2 with identical graphs).
+        """
+        project = 'arc_project_for_testing_delete_after_usage_thermo_dedup'
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        os.makedirs(project_directory, exist_ok=True)
+
+        xyz = """C  -2.5  0.5 0.0
+C  -1.2 -0.2 0.0
+C   0.0  0.6 0.0
+O   1.2 -0.2 0.0
+C   2.4  0.5 0.0
+C   3.7 -0.2 0.0
+H  -2.5  1.1  0.9
+H  -2.5  1.1 -0.9
+H  -3.4 -0.1  0.0
+H  -1.2 -0.8  0.9
+H  -1.2 -0.8 -0.9
+H   0.0  1.2  0.9
+H   0.0  1.2 -0.9
+H   2.4  1.1  0.9
+H   2.4  1.1 -0.9
+H   3.7 -0.8  0.9
+H   3.7 -0.8 -0.9
+H   4.6  0.4  0.0"""
+
+        def make_spc(label, smiles):
+            spc = ARCSpecies(label=label, smiles=smiles)
+            spc.final_xyz = str_to_xyz(xyz) if smiles == 'CCCOCC' else None
+            spc.thermo.data = "fake_thermo_data"
+            spc.long_thermo_description = ''
+            spc.external_symmetry = 1
+            spc.optical_isomers = 1
+            return spc
+
+        r2 = make_spc('r2', 'CCCOCC')
+        p2 = make_spc('p2', 'CCCOCC')
+        for spc in (r2, p2):
+            # Final xyz is required by the long_thermo_description block; provide a tiny one.
+            spc.final_xyz = str_to_xyz('C 0.0 0.0 0.0')
+
+        with self.assertLogs('arc', level='INFO') as cm:
+            plotter.save_thermo_lib(species_list=[r2, p2],
+                                    path=project_directory,
+                                    name='test_dedup_lib',
+                                    lib_long_desc='regression for isomorphic dedup')
+
+        thermo_file = os.path.join(project_directory, 'thermo', 'test_dedup_lib.py')
+        species_dict_path = os.path.join(project_directory, 'thermo', 'species_dictionary.txt')
+        self.assertTrue(os.path.isfile(thermo_file))
+        with open(thermo_file, 'r') as f:
+            thermo_content = f.read()
+        # Only r2 should be emitted; p2 should be deduped out.
+        self.assertEqual(thermo_content.count('label = "r2"'), 1)
+        self.assertEqual(thermo_content.count('label = "p2"'), 0)
+        with open(species_dict_path, 'r') as f:
+            dict_content = f.read()
+        self.assertIn('r2', dict_content)
+        self.assertNotIn('\np2\n', dict_content)
+        self.assertTrue(any("Thermo library dedup" in msg and "'p2'" in msg and "'r2'" in msg
+                            for msg in cm.output),
+                        f"Dedup INFO log not emitted. Logs: {cm.output}")
+
     def test_save_conformers_file(self):
         """test the save_conformers_file function"""
         project = 'arc_project_for_testing_delete_after_usage'

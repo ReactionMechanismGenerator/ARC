@@ -401,6 +401,57 @@ class TestArkaneAdapter(unittest.TestCase):
         for expected_line in expected_lines:
             self.assertIn(expected_line + '\n', lines, f"Expected line '{expected_line}' not found in {input_path}")
 
+    def test_render_arkane_input_dedups_isomorphic_thermo(self):
+        """
+        Regression: intermolecular H-abstraction between α- and β-radicals of pentyl ether
+        produces two species with identical adjacency-list and multiplicity under different
+        labels (rmg_rxn_341 shape). All species() blocks must remain, but only ONE thermo()
+        call may be emitted for the duplicated graph or Arkane crashes.
+
+        Exercises the thermo-only render path (reactions=None) — that's the path that
+        actually emits thermo() blocks and triggers the underlying Arkane crash.
+        """
+        statmech_dir = os.path.join(ARC_TESTING_PATH, 'arkane_thermo_dedup_delete')
+        self.addCleanup(shutil.rmtree, statmech_dir, ignore_errors=True)
+        os.makedirs(statmech_dir, exist_ok=True)
+
+        r1 = ARCSpecies(label='r1', smiles='CC[CH]OCC')
+        r2 = ARCSpecies(label='r2', smiles='CCCOCC')
+        p1 = ARCSpecies(label='p1', smiles='C[CH]OCCC')
+        p2 = ARCSpecies(label='p2', smiles='CCCOCC')
+
+        adapter = ArkaneAdapter(output_directory=statmech_dir,
+                                calcs_directory=statmech_dir,
+                                output_dict=dict(),
+                                bac_type=None,
+                                sp_level=Level('gfn2'),
+                                freq_level=Level('gfn2'),
+                                freq_scale_factor=1.0,
+                                species=[r1, r2, p1, p2])
+
+        with self.assertLogs('arc', level='INFO') as cm:
+            content = adapter.render_arkane_input_template(statmech_dir=statmech_dir)
+
+        # Every species still has a species() block; downstream Arkane reaction()
+        # blocks reference these labels and removing one would dangle a reference.
+        for label in ('r1', 'r2', 'p1', 'p2'):
+            self.assertIn(f"species('{label}',", content,
+                          f"species() block for {label} missing.")
+
+        # The α- and β-radicals are NOT isomorphic; both keep their thermo() call.
+        self.assertEqual(content.count("thermo('r1', 'NASA')"), 1)
+        self.assertEqual(content.count("thermo('p1', 'NASA')"), 1)
+
+        # CCCOCC appears under labels r2 and p2 with identical adjlist + multiplicity.
+        # Exactly one of the two should remain in the thermo() block; r2 wins (first seen).
+        self.assertEqual(content.count("thermo('r2', 'NASA')"), 1)
+        self.assertEqual(content.count("thermo('p2', 'NASA')"), 0)
+
+        # The dedup decision is logged so users can trace what happened.
+        self.assertTrue(any("Arkane thermo dedup" in msg and "'p2'" in msg and "'r2'" in msg
+                            for msg in cm.output),
+                        f"Dedup INFO log not emitted. Logs: {cm.output}")
+
     @classmethod
     def tearDownClass(cls):
         """
