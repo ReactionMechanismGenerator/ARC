@@ -6,3 +6,7 @@ requires = [
     "numpy",
 ]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+addopts = "-n auto --dist=worksteal -ra"
+testpaths = ["arc", "functional"]
