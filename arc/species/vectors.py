@@ -9,7 +9,6 @@ from typing import List, Union
 from arc.common import logger
 from arc.exceptions import VectorsError
 from arc.molecule.molecule import Molecule
-from arc.species import converter
 
 
 def get_normal(v1: List[float],
@@ -361,11 +360,9 @@ def get_vector(pivot: int,
     Returns: list
          A vector pointing from the pivotal atom towards the anchor atom.
     """
-    x, y, z = converter.xyz_to_x_y_z(xyz)
-    dx = x[anchor] - x[pivot]
-    dy = y[anchor] - y[pivot]
-    dz = z[anchor] - z[pivot]
-    return [dx, dy, dz]
+    px, py, pz = xyz['coords'][pivot]
+    ax, ay, az = xyz['coords'][anchor]
+    return [ax - px, ay - py, az - pz]
 
 
 def get_lp_vector(label: str,
