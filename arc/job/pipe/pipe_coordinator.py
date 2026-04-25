@@ -21,7 +21,7 @@ from arc.job.factory import job_factory
 from arc.job.pipe.pipe_run import PipeRun, ingest_completed_task
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
-    TaskStateRecord, get_task_attempt_dir, read_task_state,
+    TaskStateRecord, get_task_attempt_dir, get_task_dir, read_task_state,
 )
 from arc.level import Level
 
@@ -322,9 +322,16 @@ class PipeCoordinator:
                 self._eject_to_scheduler(pipe, spec, state)
                 ejected_count += 1
             elif state.status == TaskState.FAILED_TERMINAL.value:
-                logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
-                             f'failed terminally (failure_class={state.failure_class}). '
-                             f'Manual troubleshooting required.')
+                # First, try to salvage an orphaned-but-completed result.json from
+                # any prior attempt directory (e.g. lease-expiry casualties where
+                # the worker actually finished after its lease lapsed).
+                if self._salvage_failed_terminal(pipe, spec, state):
+                    continue
+                logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                               f'failed terminally (failure_class={state.failure_class}); '
+                               f'no salvageable on-disk result. Ejecting to Scheduler.')
+                self._eject_to_scheduler(pipe, spec, state)
+                ejected_count += 1
             elif state.status == TaskState.CANCELLED.value:
                 logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                                f'was cancelled.')
@@ -343,9 +350,10 @@ class PipeCoordinator:
           - ts_opt: determine best TS conformer, then run opt job
           - conf_opt: determine most stable conformer, then run opt job
           - conf_sp: determine most stable conformer (sp_flag), then run opt job
-
-        Other families (species_sp, species_freq, irc, rotor_scan_1d) are
-        leaf jobs with no batch-level post-processing.
+          - rotor_scan_1d: re-dispatch any rotor whose scan_path is still empty
+          - irc: re-dispatch any missing IRC direction
+          - species_sp: re-run if e_elect is still missing
+          - species_freq: re-run if the freq path is still missing
         """
         if not pipe.tasks:
             return
@@ -359,6 +367,14 @@ class PipeCoordinator:
             self._post_ingest_conf_opt(label)
         elif task_family == 'conf_sp':
             self._post_ingest_conf_sp(label)
+        elif task_family == 'rotor_scan_1d':
+            self._post_ingest_rotor_scan_1d(pipe, label)
+        elif task_family == 'irc':
+            self._post_ingest_irc(pipe, label)
+        elif task_family == 'species_sp':
+            self._post_ingest_species_sp(label)
+        elif task_family == 'species_freq':
+            self._post_ingest_species_freq(label)
 
     def _post_ingest_ts_opt(self, label: str) -> None:
         """After all TS opt tasks, pick the best conformer and run proper opt."""
@@ -411,6 +427,122 @@ class PipeCoordinator:
                 self.sched.run_opt_job(label, fine=self.sched.fine_only)
             else:
                 self.sched.run_composite_job(label)
+
+    def _salvage_failed_terminal(self, pipe: 'PipeRun', spec: TaskSpec,
+                                 state: 'TaskStateRecord') -> bool:
+        """
+        Attempt to salvage a FAILED_TERMINAL task by scanning its on-disk attempt
+        directories for a ``result.json`` with ``status == 'COMPLETED'``.
+
+        This recovers the common lease-expiry pattern where a worker actually
+        completed the task after its lease lapsed: the coordinator orphaned and
+        re-PENDed the task, but the original worker's ``result.json`` is on disk
+        and contains a usable result.
+
+        Returns:
+            True if a salvageable attempt was found and ingested, False otherwise.
+        """
+        task_dir = get_task_dir(pipe.pipe_root, spec.task_id)
+        attempts_dir = os.path.join(task_dir, 'attempts')
+        if not os.path.isdir(attempts_dir):
+            return False
+        candidate_indices = []
+        for entry in os.listdir(attempts_dir):
+            if entry.isdigit():
+                candidate_indices.append(int(entry))
+        for attempt_index in sorted(candidate_indices, reverse=True):
+            result_path = os.path.join(attempts_dir, str(attempt_index), 'result.json')
+            if not os.path.isfile(result_path):
+                continue
+            try:
+                with open(result_path, 'r') as f:
+                    result_data = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if str(result_data.get('status', '')).upper() != TaskState.COMPLETED.value:
+                continue
+            salvaged_state = TaskStateRecord(
+                status=TaskState.COMPLETED.value,
+                attempt_index=attempt_index,
+                max_attempts=state.max_attempts,
+            )
+            try:
+                ingest_completed_task(pipe.run_id, pipe.pipe_root, spec, salvaged_state,
+                                      self.sched.species_dict, self.sched.output)
+            except Exception:
+                logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                             f'salvage of attempt {attempt_index} raised an exception.',
+                             exc_info=True)
+                return False
+            logger.info(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                        f'salvaged orphaned result.json from attempt {attempt_index}.')
+            return True
+        return False
+
+    def _post_ingest_rotor_scan_1d(self, pipe: 'PipeRun', label: str) -> None:
+        """Re-dispatch rotor scans that the pipe failed to complete."""
+        species = self.sched.species_dict[label]
+        if not hasattr(species, 'rotors_dict') or not isinstance(species.rotors_dict, dict):
+            return
+        missing = [ri for ri, rotor in species.rotors_dict.items()
+                   if not rotor.get('scan_path')]
+        if not missing:
+            return
+        logger.info(f'Pipe run {pipe.run_id}: {len(missing)} rotor scan(s) for {label} '
+                    f'were not produced by the pipe; re-dispatching via Scheduler.')
+        try:
+            self.sched.run_scan_jobs(label)
+        except Exception:
+            logger.error(f'Pipe run {pipe.run_id}: failed to re-dispatch missing rotor scans '
+                         f'for {label}.', exc_info=True)
+
+    def _post_ingest_irc(self, pipe: 'PipeRun', label: str) -> None:
+        """Re-dispatch any IRC directions the pipe failed to ingest."""
+        produced = self.sched.output.get(label, {}).get('paths', {}).get('irc', []) or []
+        expected_directions = set()
+        for spec in pipe.tasks:
+            meta = spec.ingestion_metadata or {}
+            direction = meta.get('irc_direction')
+            if direction is not None:
+                expected_directions.add(direction)
+        missing_count = max(0, len(expected_directions) - len(produced))
+        if missing_count == 0:
+            return
+        logger.info(f'Pipe run {pipe.run_id}: {missing_count} IRC direction(s) for {label} '
+                    f'were not produced by the pipe; re-dispatching via Scheduler.')
+        produced_directions = set()
+        if len(expected_directions) - len(produced) < len(expected_directions):
+            produced_directions = set(list(expected_directions)[:len(produced)])
+        for direction in sorted(expected_directions - produced_directions):
+            try:
+                self.sched.run_irc_job(label=label, irc_direction=direction)
+            except Exception:
+                logger.error(f'Pipe run {pipe.run_id}: failed to re-dispatch IRC '
+                             f'direction={direction} for {label}.', exc_info=True)
+
+    def _post_ingest_species_sp(self, label: str) -> None:
+        """Re-dispatch a species sp job if the pipe did not populate e_elect."""
+        species = self.sched.species_dict[label]
+        if getattr(species, 'e_elect', None) is not None:
+            return
+        logger.info(f'Pipe run for species_sp on {label}: e_elect still missing; '
+                    f're-dispatching sp job via Scheduler.')
+        try:
+            self.sched.run_sp_job(label=label)
+        except Exception:
+            logger.error(f'Failed to re-dispatch sp job for {label}.', exc_info=True)
+
+    def _post_ingest_species_freq(self, label: str) -> None:
+        """Re-dispatch a freq job if the pipe did not populate the freq path."""
+        freq_path = self.sched.output.get(label, {}).get('paths', {}).get('freq')
+        if freq_path:
+            return
+        logger.info(f'Pipe run for species_freq on {label}: freq path still missing; '
+                    f're-dispatching freq job via Scheduler.')
+        try:
+            self.sched.run_freq_job(label)
+        except Exception:
+            logger.error(f'Failed to re-dispatch freq job for {label}.', exc_info=True)
 
     def _read_task_parser_summary(self, pipe_root: str, task_id: str, attempt_index: int) -> Dict:
         """Read parser_summary from a worker-written result.json for a failed task attempt."""
@@ -468,6 +600,11 @@ class PipeCoordinator:
             'cpu_cores': spec.required_cores,
             'memory': spec.required_memory_mb / 1024.0,
         }
+        # FAILED_TERMINAL ejections are commonly walltime/lease evictions. Mark
+        # the pipe's queue as already attempted so the Scheduler's existing
+        # troubleshoot_queue path picks a longer queue on the first failure.
+        if state.status == TaskState.FAILED_TERMINAL.value and pipe.submit_queue:
+            kwargs['attempted_queues'] = [pipe.submit_queue]
         if spec.task_family == 'irc':
             kwargs['irc_direction'] = meta.get('irc_direction')
         elif spec.task_family == 'rotor_scan_1d':

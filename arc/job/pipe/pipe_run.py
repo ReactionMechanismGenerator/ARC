@@ -78,6 +78,7 @@ class PipeRun:
         self.submitted_at = None
         self.completed_at = None
         self.scheduler_job_id = None
+        self.submit_queue: Optional[str] = None
 
     def _save_run_metadata(self) -> None:
         """Write run-level metadata to ``run.json`` under ``self.pipe_root``."""
@@ -112,6 +113,7 @@ class PipeRun:
             'submitted_at': self.submitted_at,
             'completed_at': self.completed_at,
             'scheduler_job_id': self.scheduler_job_id,
+            'submit_queue': self.submit_queue,
         }
         tmp_path = run_path + '.tmp'
         with open(tmp_path, 'w') as f:
@@ -155,6 +157,7 @@ class PipeRun:
         run.submitted_at = data.get('submitted_at')
         run.completed_at = data.get('completed_at')
         run.scheduler_job_id = data.get('scheduler_job_id')
+        run.submit_queue = data.get('submit_queue')
         return run
 
     def stage(self) -> None:
@@ -219,6 +222,7 @@ class PipeRun:
         cpus, memory_mb, array_size = self._submission_resources()
         server = servers_dict.get('local', {})
         queue, _ = next(iter(server.get('queues', {}).items()), ('', None))
+        self.submit_queue = queue or None
         engine = self.tasks[0].engine if self.tasks else ''
         env_setup = pipe_settings.get('env_setup', {}).get(engine, '')
         scratch_base = pipe_settings.get('scratch_base', '')

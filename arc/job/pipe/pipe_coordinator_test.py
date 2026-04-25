@@ -409,6 +409,153 @@ class TestIngestPipeResults(unittest.TestCase):
         self.assertAlmostEqual(kwargs['memory'], 20.0)
 
 
+class TestFailedTerminalSalvageAndEject(unittest.TestCase):
+    """Tests for FAILED_TERMINAL salvage from on-disk result.json and eject fallback."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_failed_term_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, True)
+        self.sched = _make_mock_sched(self.tmpdir)
+        self.coord = PipeCoordinator(self.sched)
+
+    def _set_failed_terminal(self, pipe_root, task_id):
+        now = time.time()
+        update_task_state(pipe_root, task_id, new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok',
+                          claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe_root, task_id, new_status=TaskState.RUNNING,
+                          started_at=now)
+        update_task_state(pipe_root, task_id, new_status=TaskState.FAILED_TERMINAL,
+                          ended_at=now + 1)
+
+    def _write_attempt_result(self, pipe_root, task_id, attempt_index, status):
+        attempt_dir = os.path.join(pipe_root, 'tasks', task_id, 'attempts', str(attempt_index))
+        os.makedirs(attempt_dir, exist_ok=True)
+        result_path = os.path.join(attempt_dir, 'result.json')
+        with open(result_path, 'w') as f:
+            json.dump({'status': status}, f)
+
+    def test_failed_terminal_salvages_completed_result(self):
+        """A FAILED_TERMINAL task with a COMPLETED result.json is salvaged, not ejected."""
+        task = _make_spec('t_salvage', conformer_index=1)
+        pipe = self.coord.submit_pipe_run('run_salvage', [task])
+        self._set_failed_terminal(pipe.pipe_root, 't_salvage')
+        self._write_attempt_result(pipe.pipe_root, 't_salvage', 0, 'COMPLETED')
+
+        with patch('arc.job.pipe.pipe_coordinator.ingest_completed_task') as mock_ingest:
+            self.coord.ingest_pipe_results(pipe)
+
+        mock_ingest.assert_called_once()
+        self.coord.sched.troubleshoot_ess.assert_not_called()
+        self.coord.sched.run_job.assert_not_called()
+
+    def test_failed_terminal_without_salvageable_result_ejects(self):
+        """A FAILED_TERMINAL task with no salvageable result.json is ejected to the Scheduler."""
+        task = _make_spec('t_no_salvage', conformer_index=0)
+        pipe = self.coord.submit_pipe_run('run_no_salvage', [task])
+        self._set_failed_terminal(pipe.pipe_root, 't_no_salvage')
+
+        with patch.object(self.coord, '_eject_to_scheduler') as mock_eject, \
+                patch('arc.job.pipe.pipe_coordinator.ingest_completed_task') as mock_ingest:
+            self.coord.ingest_pipe_results(pipe)
+
+        mock_eject.assert_called_once()
+        mock_ingest.assert_not_called()
+
+    def test_failed_terminal_with_only_running_result_does_not_salvage(self):
+        """A result.json with status != COMPLETED must not be salvaged."""
+        task = _make_spec('t_mixed', conformer_index=0)
+        pipe = self.coord.submit_pipe_run('run_mixed', [task])
+        self._set_failed_terminal(pipe.pipe_root, 't_mixed')
+        self._write_attempt_result(pipe.pipe_root, 't_mixed', 0, 'RUNNING')
+
+        with patch.object(self.coord, '_eject_to_scheduler') as mock_eject, \
+                patch('arc.job.pipe.pipe_coordinator.ingest_completed_task') as mock_ingest:
+            self.coord.ingest_pipe_results(pipe)
+
+        mock_eject.assert_called_once()
+        mock_ingest.assert_not_called()
+
+    def test_failed_terminal_eject_marks_pipe_queue_as_attempted(self):
+        """Ejecting a FAILED_TERMINAL task should pre-populate attempted_queues with the pipe queue."""
+        task = _make_spec('t_q', task_family='rotor_scan_1d')
+        # rotor_scan_1d requires rotor_index in ingestion_metadata.
+        task.ingestion_metadata = {'rotor_index': 0}
+        task.input_payload = {'torsions': [[0, 1, 2, 3]]}
+        pipe = self.coord.submit_pipe_run('run_q', [task])
+        pipe.submit_queue = 'short_q'
+        self._set_failed_terminal(pipe.pipe_root, 't_q')
+
+        self.coord.ingest_pipe_results(pipe)
+
+        self.coord.sched.run_job.assert_called_once()
+        kwargs = self.coord.sched.run_job.call_args.kwargs
+        self.assertEqual(kwargs.get('attempted_queues'), ['short_q'])
+
+
+class TestPostIngestRedispatch(unittest.TestCase):
+    """Tests for the per-family _post_ingest_* re-dispatch hooks."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_post_ingest_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, True)
+        self.sched = _make_mock_sched(self.tmpdir)
+        self.coord = PipeCoordinator(self.sched)
+
+    def _make_rotor_scan_pipe(self):
+        task1 = _make_spec('t_r0', task_family='rotor_scan_1d')
+        task1.ingestion_metadata = {'rotor_index': 0}
+        task1.input_payload = {'torsions': [[0, 1, 2, 3]]}
+        task2 = _make_spec('t_r1', task_family='rotor_scan_1d')
+        task2.ingestion_metadata = {'rotor_index': 1}
+        task2.input_payload = {'torsions': [[1, 2, 3, 4]]}
+        pipe = self.coord.submit_pipe_run('run_rs', [task1, task2])
+        return pipe
+
+    def test_post_ingest_rotor_scan_1d_redispatches_only_missing(self):
+        """If some rotor scans landed but others didn't, re-dispatch only what's missing."""
+        pipe = self._make_rotor_scan_pipe()
+        self.sched.species_dict['H2O'].rotors_dict = {
+            0: {'scan_path': '/tmp/scan0.log', 'success': True, 'torsion': [0, 1, 2, 3]},
+            1: {'scan_path': '', 'success': None, 'torsion': [1, 2, 3, 4]},
+        }
+        self.coord._post_ingest_rotor_scan_1d(pipe, 'H2O')
+        self.sched.run_scan_jobs.assert_called_once_with('H2O')
+
+    def test_post_ingest_rotor_scan_1d_no_redispatch_when_all_present(self):
+        pipe = self._make_rotor_scan_pipe()
+        self.sched.species_dict['H2O'].rotors_dict = {
+            0: {'scan_path': '/tmp/scan0.log', 'success': True, 'torsion': [0, 1, 2, 3]},
+            1: {'scan_path': '/tmp/scan1.log', 'success': True, 'torsion': [1, 2, 3, 4]},
+        }
+        self.coord._post_ingest_rotor_scan_1d(pipe, 'H2O')
+        self.sched.run_scan_jobs.assert_not_called()
+
+    def test_post_ingest_pipe_run_dispatches_to_rotor_scan_handler(self):
+        """_post_ingest_pipe_run should route rotor_scan_1d tasks to the rotor handler."""
+        pipe = self._make_rotor_scan_pipe()
+        self.sched.species_dict['H2O'].rotors_dict = {
+            0: {'scan_path': '', 'success': None, 'torsion': [0, 1, 2, 3]},
+        }
+        with patch.object(self.coord, '_post_ingest_rotor_scan_1d') as mock_rs:
+            self.coord._post_ingest_pipe_run(pipe)
+        mock_rs.assert_called_once_with(pipe, 'H2O')
+
+    def test_post_ingest_species_freq_redispatches_when_missing(self):
+        task = _make_spec('t_freq', task_family='species_freq')
+        task.ingestion_metadata = {}
+        pipe = self.coord.submit_pipe_run('run_freq', [task])
+        self.sched.output['H2O'] = {'paths': {}}
+        self.coord._post_ingest_species_freq('H2O')
+        self.sched.run_freq_job.assert_called_once_with('H2O')
+
+    def test_post_ingest_species_sp_redispatches_when_missing(self):
+        spc = self.sched.species_dict['H2O']
+        spc.e_elect = None
+        self.coord._post_ingest_species_sp('H2O')
+        self.sched.run_sp_job.assert_called_once_with(label='H2O')
+
+
 class TestComputePipeRoot(unittest.TestCase):
     """Tests for PipeCoordinator._compute_pipe_root()."""
 

@@ -3651,13 +3651,17 @@ class Scheduler(object):
                          shift=shift,
                          )
         elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted \
-                and conformer is None:
+                and conformer is None and job.job_type not in ('scan', 'irc'):
             # Only switch TS guess when a full optimization fails, not when a single
             # conformer search job fails. Other conformers may still be running.
             logger.info(f'TS {label} did not converge. '
                         f'Status is:\n{self.species_dict[label].ts_checks}\n'
                         f'Searching for a better TS conformer...')
             self.switch_ts(label=label)
+        elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted \
+                and conformer is None and job.job_type in ('scan', 'irc'):
+            logger.info(f'TS {label} {job.job_type} job {job.job_name} could not be troubleshooted, '
+                        f'but the TS itself is already validated. Preserving the TS.')
         elif conformer is not None and couldnt_trsh:
             logger.warning(f'Could not troubleshoot conformer {conformer} for {label}. '
                            f'Abandoning this conformer; waiting for others to finish.')

@@ -925,6 +925,126 @@ H      -1.82570782    0.42754384   -0.56130718"""
         finally:
             shutil.rmtree(temp_project_dir, ignore_errors=True)
      
+    def test_troubleshoot_ess_preserves_ts_on_scan_failure(self):
+        """A TS scan that cannot be troubleshooted must NOT trigger switch_ts to discard the TS."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_spc = ARCSpecies(label='TS_scan_preserve', is_ts=True, xyz=ts_xyz, multiplicity=1,
+                            charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, energy=100.0,
+                                     xyz=ts_xyz, execution_time='0:00:01')]
+        ts_spc.ts_guesses[0].opt_xyz = ts_xyz
+        ts_spc.chosen_ts = 0
+        ts_spc.ts_guesses_exhausted = False
+
+        project_directory = os.path.join(ARC_PATH, 'Projects',
+                                         'arc_project_for_testing_delete_after_usage_ts_scan_preserve')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_ts_scan_preserve', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types2,
+                          )
+
+        job = MagicMock()
+        job.job_name = 'scan_a999'
+        job.job_type = 'scan'
+        job.job_adapter = 'gaussian'
+        job.level = Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'})
+        job.server = 'server1'
+        job.fine = False
+        job.cpu_cores = 8
+        job.job_memory_gb = 14
+        job.ess_trsh_methods = list()
+        job.torsions = [[0, 1, 2, 3]]
+        job.dihedrals = None
+        job.directed_scan_type = None
+        job.rotor_index = 0
+        job.job_status = ['done', {'status': 'errored',
+                                   'keywords': ['Unconverged'],
+                                   'error': 'scan failed',
+                                   'line': ''}]
+
+        with patch('arc.scheduler.trsh_ess_job',
+                   return_value=([], ['trsh_attempt'], False,
+                                 Level(repr='wb97xd/def2tzvp'), 'gaussian', 'scan',
+                                 False, '', 14, '', 8, True)) as mock_trsh, \
+                patch.object(sched, 'switch_ts') as mock_switch_ts, \
+                patch.object(sched, 'run_job') as mock_run_job, \
+                patch.object(sched, 'save_restart_dict'):
+            sched.troubleshoot_ess(label='TS_scan_preserve', job=job,
+                                   level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        mock_trsh.assert_called_once()
+        mock_switch_ts.assert_not_called()
+        mock_run_job.assert_not_called()
+
+    def test_troubleshoot_ess_preserves_ts_on_irc_failure(self):
+        """A TS IRC that cannot be troubleshooted must NOT trigger switch_ts to discard the TS."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_spc = ARCSpecies(label='TS_irc_preserve', is_ts=True, xyz=ts_xyz, multiplicity=1,
+                            charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, energy=100.0,
+                                     xyz=ts_xyz, execution_time='0:00:01')]
+        ts_spc.ts_guesses[0].opt_xyz = ts_xyz
+        ts_spc.chosen_ts = 0
+        ts_spc.ts_guesses_exhausted = False
+
+        project_directory = os.path.join(ARC_PATH, 'Projects',
+                                         'arc_project_for_testing_delete_after_usage_ts_irc_preserve')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_ts_irc_preserve', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+
+        job = MagicMock()
+        job.job_name = 'irc_a888'
+        job.job_type = 'irc'
+        job.job_adapter = 'gaussian'
+        job.level = Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'})
+        job.server = 'server1'
+        job.fine = False
+        job.cpu_cores = 8
+        job.job_memory_gb = 14
+        job.ess_trsh_methods = list()
+        job.torsions = None
+        job.dihedrals = None
+        job.directed_scan_type = None
+        job.rotor_index = None
+        job.job_status = ['done', {'status': 'errored',
+                                   'keywords': ['Unconverged'],
+                                   'error': 'irc failed',
+                                   'line': ''}]
+
+        with patch('arc.scheduler.trsh_ess_job',
+                   return_value=([], ['trsh_attempt'], False,
+                                 Level(repr='wb97xd/def2tzvp'), 'gaussian', 'irc',
+                                 False, '', 14, '', 8, True)), \
+                patch.object(sched, 'switch_ts') as mock_switch_ts, \
+                patch.object(sched, 'run_job') as mock_run_job, \
+                patch.object(sched, 'save_restart_dict'):
+            sched.troubleshoot_ess(label='TS_irc_preserve', job=job,
+                                   level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        mock_switch_ts.assert_not_called()
+        mock_run_job.assert_not_called()
+
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
         """Test that switch_ts resets job_types, convergence, cleans up IRC species, and clears pending pipes."""
