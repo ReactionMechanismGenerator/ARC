@@ -93,7 +93,6 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">VectorsError</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.molecule.molecule</span><span class="w"> </span><span class="kn">import</span> <span class="n">Molecule</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">converter</span>
 
 
 <div class="viewcode-block" id="get_normal">
@@ -477,11 +476,9 @@
 <span class="sd">    Returns: list</span>
 <span class="sd">         A vector pointing from the pivotal atom towards the anchor atom.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">xyz_to_x_y_z</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span>
-    <span class="n">dx</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">anchor</span><span class="p">]</span> <span class="o">-</span> <span class="n">x</span><span class="p">[</span><span class="n">pivot</span><span class="p">]</span>
-    <span class="n">dy</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">anchor</span><span class="p">]</span> <span class="o">-</span> <span class="n">y</span><span class="p">[</span><span class="n">pivot</span><span class="p">]</span>
-    <span class="n">dz</span> <span class="o">=</span> <span class="n">z</span><span class="p">[</span><span class="n">anchor</span><span class="p">]</span> <span class="o">-</span> <span class="n">z</span><span class="p">[</span><span class="n">pivot</span><span class="p">]</span>
-    <span class="k">return</span> <span class="p">[</span><span class="n">dx</span><span class="p">,</span> <span class="n">dy</span><span class="p">,</span> <span class="n">dz</span><span class="p">]</span></div>
+    <span class="n">px</span><span class="p">,</span> <span class="n">py</span><span class="p">,</span> <span class="n">pz</span> <span class="o">=</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">pivot</span><span class="p">]</span>
+    <span class="n">ax</span><span class="p">,</span> <span class="n">ay</span><span class="p">,</span> <span class="n">az</span> <span class="o">=</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">anchor</span><span class="p">]</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">ax</span> <span class="o">-</span> <span class="n">px</span><span class="p">,</span> <span class="n">ay</span> <span class="o">-</span> <span class="n">py</span><span class="p">,</span> <span class="n">az</span> <span class="o">-</span> <span class="n">pz</span><span class="p">]</span></div>
 
 
 
