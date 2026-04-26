@@ -9,6 +9,7 @@ import glob
 import os
 import string
 import sys
+from typing import Optional
 
 # Users should update the following server dictionary.
 # Instructions for RSA key generation can be found here:
@@ -72,6 +73,7 @@ global_ess_settings = {
     'cfour': 'local',
     'gaussian': ['local', 'server2'],
     'gcn': 'local',
+    'rits': 'local',
     'mockter': 'local',
     'molpro': ['local', 'server2'],
     'onedmin': 'server1',
@@ -89,7 +91,7 @@ global_ess_settings = {
 supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
-ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
+ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'RitS', 'xtb_gsm', 'orca_neb']
 
 # List here job types to execute by default
 default_job_types = {'conf_opt': True,        # defaults to True if not specified
@@ -172,6 +174,7 @@ input_filenames = {'cfour': 'ZMAT',
 output_filenames = {'cfour': 'output.out',
                     'gaussian': 'input.log',
                     'gcn': 'output.yml',
+                    'rits': 'output.yml',
                     'mockter': 'output.yml',
                     'molpro': 'input.out',
                     'onedmin': 'output.out',
@@ -322,8 +325,9 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
 # Default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
-    None, None, None, None, None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, RITS_PYTHON, RITS_REPO_PATH, RITS_CKPT_PATH, \
+    ARC_PYTHON, XTB, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
+    None, None, None, None, None, None, None, None, None, None, None, None
 
 home = os.getenv("HOME") or os.path.expanduser("~")
 
@@ -363,10 +367,71 @@ TANI_PYTHON = find_executable('tani_env')
 OB_PYTHON = find_executable('ob_env')
 TS_GCN_PYTHON = find_executable('ts_gcn')
 AUTOTST_PYTHON = find_executable('tst_env')
+RITS_PYTHON = find_executable('rits_env')
 ARC_PYTHON = find_executable('arc_env')
 RMG_ENV_NAME = 'rmg_env'
 RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')
+
+
+def find_rits_repo() -> Optional[str]:
+    """
+    Locate a RitS source checkout. Used by the RitS TS adapter to find
+    'scripts/sample_transition_state.py' and 'scripts/conf/rits.yaml',
+    which are not part of the importable 'megalodon' package.
+
+    Search order:
+        1. ``ARC_RITS_REPO`` environment variable (explicit override).
+        2. ``~/Code/RitS`` (default for ARC dev machines).
+        3. Sibling-of-ARC location ``<parent-of-arc-repo>/RitS`` —
+           matches what ``devtools/install_rits.sh`` produces.
+
+    Returns:
+        Optional[str]: Absolute path to the repo root, or ``None`` if
+        nothing was found. The repo is considered "found" only if it
+        contains ``scripts/sample_transition_state.py``.
+    """
+    candidates = list()
+    env_override = os.getenv('ARC_RITS_REPO')
+    if env_override:
+        candidates.append(env_override)
+    candidates.append(os.path.join(home, 'Code', 'RitS'))
+    arc_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    candidates.append(os.path.join(os.path.dirname(arc_root), 'RitS'))
+    for path in candidates:
+        if path and os.path.isfile(os.path.join(path, 'scripts', 'sample_transition_state.py')):
+            return os.path.abspath(path)
+    return None
+
+
+def find_rits_ckpt(repo_path: Optional[str] = None) -> Optional[str]:
+    """
+    Locate the pretrained RitS checkpoint file ('rits.ckpt').
+
+    Search order:
+        1. ``ARC_RITS_CKPT`` environment variable (explicit override).
+        2. ``<repo_path>/data/rits.ckpt`` — what ``install_rits.sh`` writes.
+
+    Args:
+        repo_path (Optional[str]): The RitS repo path returned by
+            ``find_rits_repo()``. If ``None``, only the env-var override
+            is consulted.
+
+    Returns:
+        Optional[str]: Absolute path to the checkpoint, or ``None``.
+    """
+    env_override = os.getenv('ARC_RITS_CKPT')
+    if env_override and os.path.isfile(env_override):
+        return os.path.abspath(env_override)
+    if repo_path:
+        candidate = os.path.join(repo_path, 'data', 'rits.ckpt')
+        if os.path.isfile(candidate):
+            return os.path.abspath(candidate)
+    return None
+
+
+RITS_REPO_PATH = find_rits_repo()
+RITS_CKPT_PATH = find_rits_ckpt(RITS_REPO_PATH)
 
 # Set RMG_DB_PATH with fallback methods
 rmg_db_candidates, rmg_candidates = list(), list()
