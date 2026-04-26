@@ -1,0 +1,10 @@
+ Entering Gaussian System, Link 0=g16
+ Initial command:
+ /usr/local/g16/l1.exe "/scratch/Gau-l601.inp" -scrdir="/scratch/"
+ ----------------
+ # opt freq m062x
+ ----------------
+ Charge =  0 Multiplicity = 1
+ RdWrB1: read garbage pointers; chk/rwf collision detected.
+ Error termination via Lnk1e in /usr/local/g16/l601.exe at Wed Apr 22 18:23:01 2026.
+ Job cpu time:       0 days  0 hours  0 minutes  3.2 seconds.

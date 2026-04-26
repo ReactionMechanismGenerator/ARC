@@ -127,6 +127,13 @@ def determine_ess_status(output_path: str,
                         keywords = ['GL301']
                     elif 'l401.exe' in line:
                         keywords = ['GL401']
+                    elif 'l601.exe' in line:
+                        # L601 with RdWrB1 typically signals a checkpoint/read-write file
+                        # collision (e.g., concurrent jobs sharing a chk path) — Gaussian
+                        # cannot read the chk safely, so the next attempt must rebuild it.
+                        keywords = ['CheckFile', 'GL601']
+                        error = ('Gaussian L601 read-write error, often from a chk/rwf '
+                                 'collision between concurrent jobs.')
                     elif 'l502.exe' in line:
                         # Check if Inaccurate quadrature in CalDSu
                         inacc_quad = False

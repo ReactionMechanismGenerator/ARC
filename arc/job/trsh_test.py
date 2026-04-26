@@ -97,6 +97,16 @@ class TestTrsh(unittest.TestCase):
         self.assertIn("Error termination via Lnk1e", line)
         self.assertIn("g09/l401.exe", line)
 
+        path = os.path.join(self.base_path["gaussian"], "l601.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="Zr2O4H", job_type="opt"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["CheckFile", "GL601"])
+        self.assertIn("L601", error)
+        self.assertIn("Error termination via Lnk1e", line)
+        self.assertIn("l601.exe", line)
+
         path = os.path.join(self.base_path["gaussian"], "l9999.out")
         status, keywords, error, line = trsh.determine_ess_status(
             output_path=path, species_label="Zr2O4H", job_type="opt"
