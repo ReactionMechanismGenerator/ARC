@@ -912,7 +912,18 @@ def trsh_ess_job(label: str,
         # - Changing Computational Parameters
         remove_checkfile, ess_trsh_methods, couldnt_trsh = trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh)
         if remove_checkfile:
-             logger_info.append('that failed with "Basis set data is not on the checkpoint file" by removing the checkfile.')
+            chk_drop_keywords = job_status.get('keywords', []) or []
+            if 'CheckFile' in chk_drop_keywords:
+                chk_drop_reason = '"Basis set data is not on the checkpoint file"'
+            elif 'BasisSet' in chk_drop_keywords:
+                chk_drop_reason = 'a failed basis-set projection from the prior checkpoint'
+            elif 'SCF' in chk_drop_keywords:
+                chk_drop_reason = 'an unconverged SCF in the prior job'
+            elif 'Unconverged' in chk_drop_keywords:
+                chk_drop_reason = 'an unconverged wavefunction in the prior job'
+            else:
+                chk_drop_reason = 'a checkpoint-related issue'
+            logger_info.append(f'that failed with {chk_drop_reason} by removing the checkfile.')
 
         # Check if InternalCoordinateError is in the keyword or opt=(cartesian)
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword,couldnt_trsh)
