@@ -54,10 +54,10 @@ pipe_submit = {
 #SBATCH -N 1
 #SBATCH -n {cpus}
 #SBATCH --mem={memory}
-#SBATCH --array=1-{max_task_num}
+#SBATCH --array={array_range}
 #SBATCH -o {pipe_root}/out_%a.txt
 #SBATCH -e {pipe_root}/err_%a.txt
-
+{extra_directives}
 {env_setup}
 WORKER_ID=$SLURM_ARRAY_TASK_ID
 
@@ -68,8 +68,8 @@ WORKER_ID=$SLURM_ARRAY_TASK_ID
 #PBS -q {queue}
 #PBS -l ncpus={cpus}
 #PBS -l mem={memory}mb
-#PBS -J 1-{max_task_num}
-
+#PBS -J {array_range}
+{extra_directives}
 {env_setup}
 WORKER_ID="$PBS_ARRAY_INDEX"
 
@@ -80,10 +80,10 @@ WORKER_ID="$PBS_ARRAY_INDEX"
 #$ -q {queue}
 #$ -pe smp {cpus}
 #$ -l h_vmem={memory}M
-#$ -t 1-{max_task_num}
+#$ -t {array_range}
 #$ -o {pipe_root}/out_$SGE_TASK_ID.txt
 #$ -e {pipe_root}/err_$SGE_TASK_ID.txt
-
+{extra_directives}
 {env_setup}
 WORKER_ID=$SGE_TASK_ID
 
@@ -96,7 +96,8 @@ request_memory = {memory}
 output = {pipe_root}/out_$(Process).txt
 error = {pipe_root}/err_$(Process).txt
 log = {pipe_root}/condor.log
-queue {max_task_num}
+{extra_directives}
+queue {array_range}
 """,
 }
 
