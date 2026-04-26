@@ -1754,9 +1754,17 @@ def scan_quality_check(label: str,
 
 def trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh) -> tuple[bool, list, bool]:
     """
-    Check if the job requires removal of checkfile
+    Check if the job requires removal of checkfile.
+
+    Drops the checkfile when the prior job either could not read it
+    ('CheckFile' from L301/L401), produced a non-converged wavefunction
+    ('SCF' from L502, 'Unconverged' from L508), or reported a failed
+    basis projection ('BasisSet' from L401). Reusing MOs from a
+    non-converged or basis-incompatible chk re-seeds the same failure.
     """
-    if 'CheckFile' in job_status.get('keywords', '') and 'checkfile=None' not in ess_trsh_methods:
+    keywords = job_status.get('keywords', []) or []
+    bad_wavefunction = any(k in keywords for k in ('CheckFile', 'SCF', 'Unconverged', 'BasisSet'))
+    if bad_wavefunction and 'checkfile=None' not in ess_trsh_methods:
         ess_trsh_methods.append('checkfile=None')
         couldnt_trsh = False
         return True, ess_trsh_methods, couldnt_trsh

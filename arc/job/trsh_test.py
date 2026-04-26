@@ -796,6 +796,25 @@ class TestTrsh(unittest.TestCase):
                               num_heavy_atoms, cpu_cores, ess_trsh_methods,
                               is_h=True, is_monoatomic=True)
 
+    def test_trsh_keyword_checkfile_drops_on_bad_wavefunction(self):
+        """SCF/Unconverged failures must drop the checkfile so the rerun uses guess=mix."""
+        for kw in ('CheckFile', 'SCF', 'Unconverged', 'BasisSet'):
+            ess_trsh_methods = []
+            remove, ess_trsh_methods, couldnt = trsh.trsh_keyword_checkfile(
+                {'keywords': [kw]}, ess_trsh_methods, couldnt_trsh=True,
+            )
+            self.assertTrue(remove, f'{kw} should drop the checkfile')
+            self.assertIn('checkfile=None', ess_trsh_methods)
+            self.assertFalse(couldnt)
+
+        # Failures unrelated to wavefunction quality must keep the checkfile.
+        for kw in ('MaxOptCycles', 'InternalCoordinateError', 'DiskSpace', 'OptOrientation'):
+            remove, methods, _ = trsh.trsh_keyword_checkfile(
+                {'keywords': [kw]}, ess_trsh_methods=[], couldnt_trsh=True,
+            )
+            self.assertFalse(remove, f'{kw} must not drop the checkfile')
+            self.assertNotIn('checkfile=None', methods)
+
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""
         job_log_path_1 = os.path.join(ARC_TESTING_PATH, 'job_log', 'no_issues.log')
