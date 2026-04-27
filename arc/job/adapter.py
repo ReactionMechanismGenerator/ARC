@@ -758,20 +758,20 @@ class JobAdapter(ABC):
         content = ''
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         if cluster_soft in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
+            # job.log is HTCondor's native event log; other clusters don't produce one.
+            include_job_log = cluster_soft == 'htcondor'
             local_file_path_1 = os.path.join(self.local_path, 'out.txt')
             local_file_path_2 = os.path.join(self.local_path, 'err.txt')
-            local_file_path_3 = os.path.join(self.local_path, 'job.log')
+            local_file_path_3 = os.path.join(self.local_path, 'job.log') if include_job_log else None
             if self.server != 'local' and self.remote_path is not None and not self.testing:
-                remote_file_path_1 = os.path.join(self.remote_path, 'out.txt')
-                remote_file_path_2 = os.path.join(self.remote_path, 'err.txt')
-                remote_file_path_3 = os.path.join(self.remote_path, 'job.log')
+                remote_paths = [os.path.join(self.remote_path, 'out.txt'),
+                                os.path.join(self.remote_path, 'err.txt')]
+                local_paths = [local_file_path_1, local_file_path_2]
+                if include_job_log:
+                    remote_paths.append(os.path.join(self.remote_path, 'job.log'))
+                    local_paths.append(local_file_path_3)
                 with SSHClient(self.server) as ssh:
-                    for local_file_path, remote_file_path in zip([local_file_path_1,
-                                                                  local_file_path_2,
-                                                                  local_file_path_3],
-                                                                 [remote_file_path_1,
-                                                                  remote_file_path_2,
-                                                                  remote_file_path_3]):
+                    for local_file_path, remote_file_path in zip(local_paths, remote_paths):
                         try:
                             ssh.download_file(remote_file_path=remote_file_path,
                                               local_file_path=local_file_path)
@@ -781,7 +781,7 @@ class JobAdapter(ABC):
                                            f'flags with stdout and stderr of out.txt and err.txt, respectively '
                                            f'(e.g., "#SBATCH -o out.txt"). Error message:')
                             logger.warning(e)
-            for local_file_path in [local_file_path_1, local_file_path_2, local_file_path_3]:
+            for local_file_path in filter(None, [local_file_path_1, local_file_path_2, local_file_path_3]):
                 if os.path.isfile(local_file_path):
                     with open(local_file_path, 'r') as f:
                         lines = f.readlines()
