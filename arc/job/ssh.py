@@ -370,16 +370,16 @@ class SSHClient(object):
         """
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.load_system_host_keys(filename=self.key)
+        ssh.load_system_host_keys()
         try:
             # If the server accepts the connection but the SSH daemon doesn't respond in
             # 15 seconds (default in paramiko) due to network congestion, faulty switches,
             # etc..., common solution is enlarging the timeout variable.
-            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
+            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200, key_filename=self.key)
         except:
             # This sometimes gives "SSHException: Error reading SSH protocol banner[Error 104] Connection reset by peer"
             # Try again:
-            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
+            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200, key_filename=self.key)
         sftp = ssh.open_sftp()
         return sftp, ssh
 
