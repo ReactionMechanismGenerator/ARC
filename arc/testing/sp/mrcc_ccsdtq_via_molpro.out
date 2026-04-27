@@ -1,0 +1,32 @@
+ Primary working directories    : /scratch/user/54321
+ Secondary working directories  : /scratch/user/54321
+
+ PROGRAM SYSTEM MOLPRO
+
+ Variables initialized (889), CPU time= 0.01 sec
+ Commands  initialized (702), CPU time= 0.01 sec
+
+ Recomputing integrals since basis changed
+
+
+ PROGRAM * RHF-SCF (OPEN SHELL)
+
+ Final occupancy:   4   1
+
+ !RHF STATE  1.1 Energy                -75.012345678901
+ Nuclear energy                        12.34567890
+ One-electron energy                 -123.45678901
+ Two-electron energy                   36.09876543
+
+ Executing external program mrcc ...
+
+ Total CCSDT(Q) energy [au]:           -75.123456789012
+
+ RESULTS
+ =======
+
+  CCSDT(Q)        =       -75.123456789012
+
+ Variable memory released
+
+ Molpro calculation terminated
