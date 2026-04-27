@@ -932,7 +932,10 @@ class ARCSpecies(object):
                 if self.bond_corrections:
                     self.long_thermo_description += f'Bond corrections: {self.bond_corrections}\n'
             if self.multiplicity is None:
-                self.multiplicity = self.mol.multiplicity
+                if self.is_ts and self.get_xyz(generate=False):
+                    self.determine_multiplicity_from_xyz()
+                else:
+                    self.multiplicity = self.mol.multiplicity
             if self.charge is None:
                 self.charge = self.mol.get_net_charge()
         if 'conformers' in species_dict:
