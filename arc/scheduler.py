@@ -29,6 +29,7 @@ from arc.common import (extremum_list,
                         torsions_to_scans,
                         )
 from arc.exceptions import (InputError,
+                            JobError,
                             SchedulerError,
                             SpeciesError,
                             TrshError,
@@ -1061,7 +1062,7 @@ class Scheduler(object):
         if job.job_status[0] != 'done' or job.job_status[1]['status'] != 'done':
             try:
                 job.determine_job_status()  # Also downloads the output file.
-            except IOError:
+            except (IOError, JobError):
                 if job.job_type not in ['orbitals']:
                     logger.warning(f'Tried to determine status of job {job.job_name}, '
                                    f'but it seems like the job never ran. Re-running job.')
