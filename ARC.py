@@ -11,6 +11,7 @@ import os
 
 from arc.common import read_yaml_file
 from arc.main import ARC
+from arc.tckdb.config import TCKDBConfig
 
 
 def parse_command_line_arguments(command_line_args=None):
@@ -59,7 +60,13 @@ def main():
     input_dict['verbose'] = input_dict['verbose'] if 'verbose' in input_dict else verbose
     if 'project_directory' not in input_dict or not input_dict['project_directory']:
         input_dict['project_directory'] = project_directory
+
+    tckdb_config = TCKDBConfig.from_dict(input_dict.pop('tckdb', None))
+
     arc_object = ARC(**input_dict)
+    arc_object.tckdb_config = tckdb_config
+    if tckdb_config is not None:
+        logging.info('TCKDB integration enabled: %s', tckdb_config.base_url)
     arc_object.execute()
 
 
