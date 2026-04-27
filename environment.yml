@@ -33,6 +33,7 @@ dependencies:
   - conda-forge::matplotlib
   - conda-forge::networkx
   - danagroup::openbabel >=3
+  - danagroup::py-rdl
   - conda-forge::pandas
   - conda-forge::paramiko >=2.6.0
   - conda-forge::py3dmol >=0.8.0

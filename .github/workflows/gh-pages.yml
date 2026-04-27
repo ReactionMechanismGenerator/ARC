@@ -51,11 +51,6 @@ jobs:
         run: make compile -C ARC -j"$(nproc)"
         shell: micromamba-shell {0}
 
-      # ── Install pyrdl ──────────────────────
-      - name: Install pyrdl
-        run: make install-pyrdl -C ARC -j"$(nproc)"
-        shell: micromamba-shell {0}
-
       # ── minimal TeX for png‑math in Sphinx ──────────────────────
       - name: System TeX tools
         run: sudo apt-get update -y && sudo apt-get -y install texlive-latex-extra dvipng
