@@ -63,11 +63,12 @@ def _make_spec(task_id, task_family='conf_opt', engine='mockter', level=None,
     )
 
 
-def _make_mock_sched(project_directory):
+def _make_mock_sched(project_directory, ess_settings=None):
     """Create a mock Scheduler with the attributes PipeCoordinator needs."""
     sched = MagicMock()
     sched.project_directory = project_directory
     sched.server_job_ids = list()
+    sched.ess_settings = ess_settings if ess_settings is not None else {'mockter': ['local']}
     spc = ARCSpecies(label='H2O', smiles='O')
     spc.conformers = [None] * 5
     spc.conformer_energies = [None] * 5
@@ -126,6 +127,13 @@ class TestShouldUsePipe(unittest.TestCase):
     def test_false_when_disabled(self):
         tasks = [_make_spec(f't_{i}') for i in range(15)]
         self.assertFalse(self.coord.should_use_pipe(tasks))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'zeus': {'cluster_soft': 'PBS', 'address': 'z.example.edu', 'un': 'u'}}})
+    def test_false_when_engine_resolves_to_remote_server(self):
+        coord = PipeCoordinator(_make_mock_sched(self.tmpdir, ess_settings={'mockter': ['zeus']}))
+        tasks = [_make_spec(f't_{i}') for i in range(15)]
+        self.assertFalse(coord.should_use_pipe(tasks))
 
 
 class TestSubmitPipeRun(unittest.TestCase):
