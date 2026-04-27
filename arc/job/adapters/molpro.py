@@ -35,6 +35,20 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
     settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
     settings['output_filenames'], settings['servers'], settings['submit_filenames']
 
+# Methods that native Molpro does not support but its MRCC plugin does.
+# When the level's method matches one of these (case-insensitive), the adapter
+# emits a ``{mrcc,method=...}`` plugin call instead of a bare directive that
+# Molpro's input parser would reject with "Unknown command or directive".
+# Compared against the lowercased ``Level.method``.
+MRCC_ROUTED_METHODS = frozenset({
+    'ccsdt',
+    'ccsdt(q)',
+    'ccsdtq',
+    'ccsdtq(p)',
+    'ccsdtqp',
+})
+
+
 input_template = """***,${label}
 memory,Total=${memory},m;
 
@@ -232,6 +246,12 @@ class MolproAdapter(JobAdapter):
 
         if not is_restricted(self):
             input_dict['restricted'] = 'u'
+
+        if self.level.method in MRCC_ROUTED_METHODS:
+            # Restriction is implicit from the preceding {hf;...} block; the
+            # MRCC plugin call does not accept a 'u'/'r' prefix.
+            input_dict['method'] = '{mrcc,method=' + self.level.method.upper() + '}'
+            input_dict['restricted'] = ''
 
         # Job type specific options
         if self.job_type in ['opt', 'optfreq', 'conf_opt']:
