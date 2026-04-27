@@ -397,6 +397,16 @@ class JobAdapter(ABC):
                 self.set_initial_and_final_times()
         self.final_time = self.final_time or datetime.datetime.now()
 
+    def remove_remote_files(self):
+        """
+        Remove the job's remote work directory after a successful run, to keep cluster quota in check.
+        No-op for local servers or when no remote_path is set.
+        """
+        if self.server is None or self.server == 'local' or not self.remote_path:
+            return
+        with SSHClient(self.server) as ssh:
+            ssh.remove_dir(remote_path=self.remote_path)
+
     def set_initial_and_final_times(self, ssh: SSHClient | None = None):
         """
         Set the end time of the job.

@@ -1143,6 +1143,10 @@ class Scheduler(object):
                 for rotors_dict in self.species_dict[label].rotors_dict.values():
                     if rotors_dict['pivots'] in [job.pivots, job.pivots[0]]:
                         rotors_dict['scan_path'] = job.local_path_to_output_file
+            try:
+                job.remove_remote_files()
+            except Exception as e:
+                logger.warning(f'Could not remove remote files for job {job.job_name}: {e}')
             self.save_restart_dict()
             return True
 
