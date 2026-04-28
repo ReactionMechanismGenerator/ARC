@@ -827,7 +827,7 @@ def get_bonds_from_dmat(
     return sorted(bonds)
 
 
-def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', index: int = 1) -> tuple[list, bool]:
+def determine_top_group_indices(mol: Molecule, atom1: Atom, atom2: Atom, index: int = 1) -> tuple[list, bool]:
     """
     Determine the indices of a "top group" in a molecule.
     The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
@@ -1736,7 +1736,7 @@ def safe_copy_file(source: str,
             break
 
 
-def dfs(mol: 'Molecule',
+def dfs(mol: Molecule,
         start: int,
         sort_result: bool = True,
         ) -> list[int]:
@@ -1767,7 +1767,7 @@ def dfs(mol: 'Molecule',
     return visited
 
 
-def sort_atoms_in_descending_label_order(mol: 'Molecule') -> None:
+def sort_atoms_in_descending_label_order(mol: Molecule) -> None:
     """
     If all atoms in the molecule object have a label, this function reassign the
     .atoms in Molecule with a list of atoms with the orders based on the labels of the atoms.
@@ -1786,7 +1786,7 @@ def sort_atoms_in_descending_label_order(mol: 'Molecule') -> None:
         return None
 
 
-def is_xyz_mol_match(mol: 'Molecule',
+def is_xyz_mol_match(mol: Molecule,
                      xyz: dict) -> bool:
     """
     A helper function that matches RMG's Molecule object to an xyz,

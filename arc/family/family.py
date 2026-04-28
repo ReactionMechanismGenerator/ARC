@@ -751,7 +751,7 @@ def get_rmg_recommended_family_sets() -> dict[str, str]:
     return family_sets
 
 
-def add_labels_to_molecule(mol: 'Molecule',
+def add_labels_to_molecule(mol: Molecule,
                            isomorphic_subgraph: dict,
                            ) -> Molecule:
     """
@@ -1040,8 +1040,8 @@ def get_group_adjlist(groups_as_lines: list[str],
 
 def get_isomorphic_subgraph(isomorphic_subgraph_1: dict,
                             isomorphic_subgraph_2: dict,
-                            mol_1: 'Molecule',
-                            mol_2: 'Molecule',
+                            mol_1: Molecule,
+                            mol_2: Molecule,
                             ) -> dict:
     """
     Get the isomorphic subgraph from two isomorphic subgraphs and the corresponding molecules.

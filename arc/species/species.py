@@ -2472,7 +2472,7 @@ class TSGuess(object):
             xyz = xyz_to_str(xyz)
         return xyz
 
-    def almost_equal_tsgs(self, other: 'TSGuess') -> bool:
+    def almost_equal_tsgs(self, other: TSGuess) -> bool:
         """
         Determine whether two TSGuess object instances represent the same geometry.
 
