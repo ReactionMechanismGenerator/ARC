@@ -97,6 +97,16 @@ class TestTrsh(unittest.TestCase):
         self.assertIn("Error termination via Lnk1e", line)
         self.assertIn("g09/l401.exe", line)
 
+        path = os.path.join(self.base_path["gaussian"], "l601.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="Zr2O4H", job_type="opt"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["CheckFile", "GL601"])
+        self.assertIn("L601", error)
+        self.assertIn("Error termination via Lnk1e", line)
+        self.assertIn("l601.exe", line)
+
         path = os.path.join(self.base_path["gaussian"], "l9999.out")
         status, keywords, error, line = trsh.determine_ess_status(
             output_path=path, species_label="Zr2O4H", job_type="opt"
@@ -795,6 +805,25 @@ class TestTrsh(unittest.TestCase):
                               job_type, software, fine, memory_gb,
                               num_heavy_atoms, cpu_cores, ess_trsh_methods,
                               is_h=True, is_monoatomic=True)
+
+    def test_trsh_keyword_checkfile_drops_on_bad_wavefunction(self):
+        """SCF/Unconverged failures must drop the checkfile so the rerun uses guess=mix."""
+        for kw in ('CheckFile', 'SCF', 'Unconverged', 'BasisSet'):
+            ess_trsh_methods = []
+            remove, ess_trsh_methods, couldnt = trsh.trsh_keyword_checkfile(
+                {'keywords': [kw]}, ess_trsh_methods, couldnt_trsh=True,
+            )
+            self.assertTrue(remove, f'{kw} should drop the checkfile')
+            self.assertIn('checkfile=None', ess_trsh_methods)
+            self.assertFalse(couldnt)
+
+        # Failures unrelated to wavefunction quality must keep the checkfile.
+        for kw in ('MaxOptCycles', 'InternalCoordinateError', 'DiskSpace', 'OptOrientation'):
+            remove, methods, _ = trsh.trsh_keyword_checkfile(
+                {'keywords': [kw]}, ess_trsh_methods=[], couldnt_trsh=True,
+            )
+            self.assertFalse(remove, f'{kw} must not drop the checkfile')
+            self.assertNotIn('checkfile=None', methods)
 
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""

@@ -127,6 +127,13 @@ def determine_ess_status(output_path: str,
                         keywords = ['GL301']
                     elif 'l401.exe' in line:
                         keywords = ['GL401']
+                    elif 'l601.exe' in line:
+                        # L601 with RdWrB1 typically signals a checkpoint/read-write file
+                        # collision (e.g., concurrent jobs sharing a chk path) — Gaussian
+                        # cannot read the chk safely, so the next attempt must rebuild it.
+                        keywords = ['CheckFile', 'GL601']
+                        error = ('Gaussian L601 read-write error, often from a chk/rwf '
+                                 'collision between concurrent jobs.')
                     elif 'l502.exe' in line:
                         # Check if Inaccurate quadrature in CalDSu
                         inacc_quad = False
@@ -912,7 +919,18 @@ def trsh_ess_job(label: str,
         # - Changing Computational Parameters
         remove_checkfile, ess_trsh_methods, couldnt_trsh = trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh)
         if remove_checkfile:
-             logger_info.append('that failed with "Basis set data is not on the checkpoint file" by removing the checkfile.')
+            chk_drop_keywords = job_status.get('keywords', []) or []
+            if 'CheckFile' in chk_drop_keywords:
+                chk_drop_reason = '"Basis set data is not on the checkpoint file"'
+            elif 'BasisSet' in chk_drop_keywords:
+                chk_drop_reason = 'a failed basis-set projection from the prior checkpoint'
+            elif 'SCF' in chk_drop_keywords:
+                chk_drop_reason = 'an unconverged SCF in the prior job'
+            elif 'Unconverged' in chk_drop_keywords:
+                chk_drop_reason = 'an unconverged wavefunction in the prior job'
+            else:
+                chk_drop_reason = 'a checkpoint-related issue'
+            logger_info.append(f'that failed with {chk_drop_reason} by removing the checkfile.')
 
         # Check if InternalCoordinateError is in the keyword or opt=(cartesian)
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword,couldnt_trsh)
@@ -1754,9 +1772,17 @@ def scan_quality_check(label: str,
 
 def trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh) -> tuple[bool, list, bool]:
     """
-    Check if the job requires removal of checkfile
+    Check if the job requires removal of checkfile.
+
+    Drops the checkfile when the prior job either could not read it
+    ('CheckFile' from L301/L401), produced a non-converged wavefunction
+    ('SCF' from L502, 'Unconverged' from L508), or reported a failed
+    basis projection ('BasisSet' from L401). Reusing MOs from a
+    non-converged or basis-incompatible chk re-seeds the same failure.
     """
-    if 'CheckFile' in job_status.get('keywords', '') and 'checkfile=None' not in ess_trsh_methods:
+    keywords = job_status.get('keywords', []) or []
+    bad_wavefunction = any(k in keywords for k in ('CheckFile', 'SCF', 'Unconverged', 'BasisSet'))
+    if bad_wavefunction and 'checkfile=None' not in ess_trsh_methods:
         ess_trsh_methods.append('checkfile=None')
         couldnt_trsh = False
         return True, ess_trsh_methods, couldnt_trsh
