@@ -25,7 +25,7 @@ This module contains three tiers of functionality:
     based on the ``FAMILY_POSTPROCESSORS`` registry.
 """
 
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 
@@ -65,6 +65,41 @@ _EQ_BOND_TO_H_DEFAULT: float = 1.09
 
 # At a symmetric TS (bond order n = 0.5), Pauling's equation gives d_TS = d0 - 0.6 * ln(n) = d0 + 0.6 * ln(2) ≈ d0 + 0.42 Å.
 PAULING_DELTA: float = 0.42
+
+
+def _min_distance_to_heavy_backbone(pos: np.ndarray,
+                                    coords: Sequence,
+                                    symbols: Sequence[str],
+                                    exclude_indices: Set[int],
+                                    ) -> float:
+    """
+    Return the smallest distance from a point to any heavy backbone atom.
+
+    Iterates over every atom in ``symbols`` and returns the minimum
+    distance from ``pos`` to any non-hydrogen atom whose index is not in
+    ``exclude_indices``. Hydrogens are always skipped — only heavy
+    backbone atoms count toward the clearance.
+
+    Args:
+        pos (np.ndarray): The candidate point to score, shape ``(3,)``.
+        coords (Sequence): Per-atom coordinates as a sequence of 3-tuples
+            or arrays. Indexed by atom index.
+        symbols (Sequence[str]): Per-atom element symbols, indexed by
+            atom index.
+        exclude_indices (Set[int]): Atom indices to skip in addition to
+            all hydrogens (typically the donor, acceptor, and the
+            migrating H itself).
+
+    Returns:
+        float: The smallest backbone clearance, or ``float('inf')`` when
+            no eligible atom exists.
+    """
+    md = float('inf')
+    for k_idx, sym_k in enumerate(symbols):
+        if k_idx in exclude_indices or sym_k == 'H':
+            continue
+        md = min(md, float(np.linalg.norm(pos - np.array(coords[k_idx], dtype=float))))
+    return md
 
 
 # ---------------------------------------------------------------------------
@@ -816,16 +851,10 @@ def fix_forming_bond_distances(xyz: dict,
             cand_plus = d_pos + x * da_unit + h_perp * n_perp
             cand_minus = d_pos + x * da_unit - h_perp * n_perp
 
-            def _min_backbone_dist(pos):
-                md = float('inf')
-                for k_idx, sym_k in enumerate(symbols):
-                    if k_idx in (h_atom, donor_idx, acceptor_atom) or sym_k == 'H':
-                        continue
-                    md = min(md, float(np.linalg.norm(pos - np.array(coords[k_idx], dtype=float))))
-                return md
-
-            new_h_pos = cand_plus if _min_backbone_dist(cand_plus) >= _min_backbone_dist(cand_minus) \
-                else cand_minus
+            exclude = {h_atom, donor_idx, acceptor_atom}
+            clearance_plus = _min_distance_to_heavy_backbone(cand_plus, coords, symbols, exclude)
+            clearance_minus = _min_distance_to_heavy_backbone(cand_minus, coords, symbols, exclude)
+            new_h_pos = cand_plus if clearance_plus >= clearance_minus else cand_minus
 
             for k_idx, sym_k in enumerate(symbols):
                 if k_idx in (h_atom, donor_idx, acceptor_atom) or sym_k == 'H':

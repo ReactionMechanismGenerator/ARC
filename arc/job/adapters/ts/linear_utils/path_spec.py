@@ -237,6 +237,65 @@ def _xyz_distance(xyz: dict, i: int, j: int) -> Optional[float]:
     return float(np.linalg.norm(a - b))
 
 
+def _coords_distance(coords: np.ndarray, i: int, j: int) -> Optional[float]:
+    """
+    Return the Euclidean distance between two atoms from a coordinates array.
+
+    Args:
+        coords (np.ndarray): An ``(N, 3)`` array of atomic coordinates.
+        i (int): First atom index.
+        j (int): Second atom index.
+
+    Returns:
+        Optional[float]: The distance in Å, or ``None`` if either index is
+            out of range.
+    """
+    if i >= len(coords) or j >= len(coords):
+        return None
+    return float(np.linalg.norm(coords[i] - coords[j]))
+
+
+def _is_changed_bond_frontier_exempt(bi: int,
+                                     bj: int,
+                                     bo_r_local: Optional[float],
+                                     bo_p_local: Optional[float],
+                                     frontier_atoms: Set[int],
+                                     ) -> bool:
+    """
+    Decide whether a changed bond is exempt from the strict-distance check.
+
+    A changed bond is "frontier-exempt" when both of the following hold:
+
+    1. Its bond-order delta is large (``|bo_r - bo_p| >= 0.5``).
+    2. It shares an atom with a breaking or forming bond.
+
+    Bonds satisfying both criteria sit on the frontier of the reactive core,
+    where the order shift legitimately stretches the bond beyond the strict
+    distance tolerance. Isolated large-shift bonds stay checked because they
+    are the impostor channels we want to catch.
+
+    Args:
+        bi (int): First endpoint atom index of the changed bond.
+        bj (int): Second endpoint atom index of the changed bond.
+        bo_r_local (Optional[float]): Reactant-side bond order; ``None``
+            disables the exemption.
+        bo_p_local (Optional[float]): Product-side bond order; ``None``
+            disables the exemption.
+        frontier_atoms (Set[int]): Atom indices belonging to any
+            breaking or forming bond.
+
+    Returns:
+        bool: ``True`` if the bond is frontier-exempt, otherwise ``False``.
+    """
+    if bo_r_local is None or bo_p_local is None:
+        return False
+    if abs(float(bo_r_local) - float(bo_p_local)) < 0.5:
+        return False
+    if (bi not in frontier_atoms) and (bj not in frontier_atoms):
+        return False
+    return True
+
+
 def _safe_order(bond_orders: Dict[CanonicalBond, float], i: int, j: int) -> Optional[float]:
     return bond_orders.get(_canon(i, j))
 
@@ -678,17 +737,6 @@ def has_bad_changed_bond_length(path_spec: ReactionPathSpec,
     for a, b in list(path_spec.breaking_bonds) + list(path_spec.forming_bonds):
         frontier_atoms.update((int(a), int(b)))
 
-    def _is_frontier_exempt(bi: int, bj: int,
-                            bo_r_local: Optional[float],
-                            bo_p_local: Optional[float]) -> bool:
-        if bo_r_local is None or bo_p_local is None:
-            return False
-        if abs(float(bo_r_local) - float(bo_p_local)) < 0.5:
-            return False
-        if (bi not in frontier_atoms) and (bj not in frontier_atoms):
-            return False
-        return True
-
     for i, j in path_spec.changed_bonds:
         if i >= len(coords) or j >= len(coords):
             continue
@@ -696,7 +744,7 @@ def has_bad_changed_bond_length(path_spec: ReactionPathSpec,
         d_p = path_spec.ref_dist_p.get((i, j))
         bo_r = path_spec.bond_order_r.get((i, j))
         bo_p = path_spec.bond_order_p.get((i, j))
-        if _is_frontier_exempt(i, j, bo_r, bo_p):
+        if _is_changed_bond_frontier_exempt(i, j, bo_r, bo_p, frontier_atoms):
             continue
         try:
             target = get_ts_target_distance(bond=(i, j),
@@ -1160,14 +1208,9 @@ def score_guess_against_path_spec(path_spec: ReactionPathSpec,
 
     score = 0.0
 
-    def _bond_dist(i: int, j: int) -> Optional[float]:
-        if i >= len(coords) or j >= len(coords):
-            return None
-        return float(np.linalg.norm(coords[i] - coords[j]))
-
     # Breaking bonds
     for i, j in path_spec.breaking_bonds:
-        d = _bond_dist(i, j)
+        d = _coords_distance(coords, i, j)
         if d is None:
             continue
         try:
@@ -1181,7 +1224,7 @@ def score_guess_against_path_spec(path_spec: ReactionPathSpec,
 
     # Forming bonds
     for i, j in path_spec.forming_bonds:
-        d = _bond_dist(i, j)
+        d = _coords_distance(coords, i, j)
         if d is None:
             continue
         try:
@@ -1195,7 +1238,7 @@ def score_guess_against_path_spec(path_spec: ReactionPathSpec,
 
     # Changed bonds
     for i, j in path_spec.changed_bonds:
-        d = _bond_dist(i, j)
+        d = _coords_distance(coords, i, j)
         if d is None:
             continue
         try:
@@ -1213,7 +1256,7 @@ def score_guess_against_path_spec(path_spec: ReactionPathSpec,
 
     # Unchanged near-core bonds
     for i, j in path_spec.unchanged_near_core_bonds:
-        d = _bond_dist(i, j)
+        d = _coords_distance(coords, i, j)
         if d is None:
             continue
         target = path_spec.ref_dist_r.get((i, j))

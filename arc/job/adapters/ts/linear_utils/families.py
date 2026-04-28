@@ -24,7 +24,7 @@ unambiguously or the resulting geometry collides.
 
 import logging
 from collections import deque
-from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
+from typing import Dict, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING
 
 import numpy as np
 
@@ -92,6 +92,112 @@ def _set_bond_distance(coords: np.ndarray,
     for idx in mobile_frag:
         new_coords[idx] += displacement
     return new_coords
+
+
+def _two_sphere_intersection(center1: np.ndarray,
+                             r1: float,
+                             center2: np.ndarray,
+                             r2: float,
+                             ref_pos: np.ndarray,
+                             fallback_perp: np.ndarray,
+                             ) -> Optional[np.ndarray]:
+    """
+    Place a point at the intersection of two spheres around two centers.
+
+    Given two spheres of radii ``r1`` (around ``center1``) and ``r2``
+    (around ``center2``), this returns the intersection point that lies
+    on the same side of the inter-center axis as ``ref_pos``. When the
+    spheres do not overlap, the point is placed at distance ``r1`` from
+    ``center1`` along the inter-center axis and the perpendicular offset
+    is zero. The reference position is used solely to pick a side and
+    is not constrained otherwise.
+
+    Args:
+        center1 (np.ndarray): The first sphere center, shape ``(3,)``.
+        r1 (float): Radius of the first sphere (distance from ``center1``).
+        center2 (np.ndarray): The second sphere center, shape ``(3,)``.
+        r2 (float): Radius of the second sphere (distance from ``center2``).
+        ref_pos (np.ndarray): Reference point used to pick the side of the
+            inter-center axis. Typically the current position of the atom
+            that is being repositioned.
+        fallback_perp (np.ndarray): A perpendicular direction to fall back
+            on when ``ref_pos`` is collinear with the axis (e.g. a ring
+            normal). Need not be unit-length and need not be exactly
+            perpendicular to the axis — the function projects it onto the
+            plane perpendicular to the axis.
+
+    Returns:
+        Optional[np.ndarray]: The placed point in 3-space, or ``None`` if
+            the inter-center distance is degenerate (< 1e-6).
+    """
+    axis = center2 - center1
+    axis_d = float(np.linalg.norm(axis))
+    if axis_d < 1e-6:
+        return None
+    axis_h = axis / axis_d
+    if axis_d <= r1 + r2:
+        x = (axis_d ** 2 + r1 ** 2 - r2 ** 2) / (2.0 * axis_d)
+        h_sq = r1 ** 2 - x ** 2
+        h_p = float(np.sqrt(max(h_sq, 0.0)))
+    else:
+        x = r1
+        h_p = 0.0
+    proj = center1 + axis_h * np.dot(ref_pos - center1, axis_h)
+    ref_offset = ref_pos - proj
+    ref_norm = float(np.linalg.norm(ref_offset))
+    if ref_norm > 1e-8:
+        p_hat = ref_offset / ref_norm
+    else:
+        p_hat = fallback_perp.copy()
+        p_hat -= axis_h * np.dot(p_hat, axis_h)
+        pn = float(np.linalg.norm(p_hat))
+        if pn > 1e-8:
+            p_hat /= pn
+        else:
+            arb = np.array([1.0, 0.0, 0.0])
+            if abs(float(np.dot(axis_h, arb))) > 0.9:
+                arb = np.array([0.0, 1.0, 0.0])
+            p_hat = np.cross(axis_h, arb)
+            p_hat /= max(float(np.linalg.norm(p_hat)), 1e-10)
+    return center1 + axis_h * x + p_hat * h_p
+
+
+def _translate_atom_with_h_neighbors(coords: np.ndarray,
+                                     idx: int,
+                                     new_pos: np.ndarray,
+                                     mol: 'Molecule',
+                                     atom_to_idx: Dict,
+                                     symbols: Sequence[str],
+                                     ) -> None:
+    """
+    Move a heavy atom to a new position and translate its bonded H atoms rigidly.
+
+    The translation vector is ``new_pos - coords[idx]``. Every H atom
+    bonded to ``idx`` in the molecular graph is translated by the same
+    vector so the local C-H (or X-H) geometry is preserved. ``coords``
+    is mutated in place; heavy neighbors of ``idx`` are not moved.
+
+    Args:
+        coords (np.ndarray): Coordinate array, shape ``(N, 3)``. Mutated
+            in place.
+        idx (int): Atom index of the heavy atom being moved.
+        new_pos (np.ndarray): Target position for ``idx``, shape ``(3,)``.
+        mol (Molecule): RMG Molecule providing the bond graph.
+        atom_to_idx (Dict): Mapping from RMG ``Atom`` objects to atom
+            indices compatible with ``coords``.
+        symbols (Sequence[str]): Per-atom element symbols.
+
+    Returns:
+        None: ``coords`` is mutated in place.
+    """
+    disp = new_pos - coords[idx]
+    moving = {idx}
+    for nbr in mol.atoms[idx].bonds.keys():
+        ni = atom_to_idx[nbr]
+        if symbols[ni] == 'H':
+            moving.add(ni)
+    for k in moving:
+        coords[k] += disp
 
 
 # ---------------------------------------------------------------------------
@@ -395,60 +501,14 @@ def build_1_3_sigmatropic_rearrangement_ts(r_xyz: dict,
     else:
         ring_normal = np.array([0.0, 0.0, 1.0])
 
-    def _two_sphere_place(center1, r1, center2, r2, ref_pos):
-        """Place a point at the two-sphere intersection, on the same
-        side as ``ref_pos`` relative to the center1→center2 axis."""
-        axis = center2 - center1
-        axis_d = float(np.linalg.norm(axis))
-        if axis_d < 1e-6:
-            return None
-        axis_h = axis / axis_d
-        if axis_d <= r1 + r2:
-            x = (axis_d ** 2 + r1 ** 2 - r2 ** 2) / (2.0 * axis_d)
-            h_sq = r1 ** 2 - x ** 2
-            h_p = float(np.sqrt(max(h_sq, 0.0)))
-        else:
-            x = r1
-            h_p = 0.0
-        proj = center1 + axis_h * np.dot(ref_pos - center1, axis_h)
-        ref_offset = ref_pos - proj
-        ref_norm = float(np.linalg.norm(ref_offset))
-        if ref_norm > 1e-8:
-            p_hat = ref_offset / ref_norm
-        else:
-            p_hat = ring_normal.copy()
-            p_hat -= axis_h * np.dot(p_hat, axis_h)
-            pn = float(np.linalg.norm(p_hat))
-            if pn > 1e-8:
-                p_hat /= pn
-            else:
-                arb = np.array([1.0, 0.0, 0.0])
-                if abs(float(np.dot(axis_h, arb))) > 0.9:
-                    arb = np.array([0.0, 1.0, 0.0])
-                p_hat = np.cross(axis_h, arb)
-                p_hat /= max(float(np.linalg.norm(p_hat)), 1e-10)
-        return center1 + axis_h * x + p_hat * h_p
-
-    def _move_atom_with_h(idx, new_pos):
-        """Move atom ``idx`` to ``new_pos`` and translate its H-only
-        neighbors rigidly."""
-        disp = new_pos - coords[idx]
-        moving = {idx}
-        for nbr in r_mol.atoms[idx].bonds.keys():
-            ni = atom_to_idx[nbr]
-            if symbols[ni] == 'H':
-                moving.add(ni)
-        for k in moving:
-            coords[k] += disp
-
     # Step 1: Place migrating atom at calibrated breaking/forming distances.
-    new_mig = _two_sphere_place(
+    new_mig = _two_sphere_intersection(
         coords[origin], d_break_target,
         coords[target], d_form_target,
-        coords[migrating])
+        coords[migrating], ring_normal)
     if new_mig is None:
         return None
-    _move_atom_with_h(migrating, new_mig)
+    _translate_atom_with_h_neighbors(coords, migrating, new_mig, r_mol, atom_to_idx, symbols)
 
     # Step 2: Place bridge at calibrated distance from migrating, reactant distance from target.
     if bridge is not None:
@@ -457,12 +517,12 @@ def build_1_3_sigmatropic_rearrangement_ts(r_xyz: dict,
         d_bridge_target = sbl_bridge + 0.12  # ~1.66 Å for C-C
         d_bridge_target_side = float(np.linalg.norm(
             np.array(r_xyz['coords'][bridge]) - np.array(r_xyz['coords'][target])))
-        new_bridge = _two_sphere_place(
+        new_bridge = _two_sphere_intersection(
             coords[migrating], d_bridge_target,
             coords[target], d_bridge_target_side,
-            coords[bridge])
+            coords[bridge], ring_normal)
         if new_bridge is not None:
-            _move_atom_with_h(bridge, new_bridge)
+            _translate_atom_with_h_neighbors(coords, bridge, new_bridge, r_mol, atom_to_idx, symbols)
 
     # Step 3: Place remaining ring atoms at reactant distances from their two ring neighbors.
     remaining = ring_atoms - {migrating, origin, target}
@@ -480,10 +540,10 @@ def build_1_3_sigmatropic_rearrangement_ts(r_xyz: dict,
                 np.array(r_xyz['coords'][rem_idx]) - np.array(r_xyz['coords'][n1])))
             d2 = float(np.linalg.norm(
                 np.array(r_xyz['coords'][rem_idx]) - np.array(r_xyz['coords'][n2])))
-            new_rem = _two_sphere_place(
-                coords[n1], d1, coords[n2], d2, coords[rem_idx])
+            new_rem = _two_sphere_intersection(
+                coords[n1], d1, coords[n2], d2, coords[rem_idx], ring_normal)
             if new_rem is not None:
-                _move_atom_with_h(rem_idx, new_rem)
+                _translate_atom_with_h_neighbors(coords, rem_idx, new_rem, r_mol, atom_to_idx, symbols)
 
     # Step 4: Light planarity enforcement using the ORIGINAL ring-plane normal
     # (computed before any atoms moved).

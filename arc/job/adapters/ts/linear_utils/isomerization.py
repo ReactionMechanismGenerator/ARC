@@ -268,6 +268,173 @@ def path_has_cumulated_bonds(mol: 'Molecule',
 
 
 # ---------------------------------------------------------------------------
+# Ring-closure geometry helpers
+# ---------------------------------------------------------------------------
+
+def _flatten_path_dihedrals(coords: np.ndarray,
+                            path: List[int],
+                            adj: Dict[int, Set[int]],
+                            fraction: float = 1.0,
+                            ) -> None:
+    """
+    Rotate every consecutive 4-atom dihedral along ``path`` toward 0°.
+
+    For each tuple ``(p1, p2, p3, p4)`` of consecutive atoms in ``path``,
+    compute the current dihedral and rotate the downstream subgraph
+    around the ``p2-p3`` axis by ``-current * fraction`` degrees, where
+    "downstream" is the connected component reachable from ``p3`` once
+    the ``p2-p3`` edge is removed. With ``fraction = 1.0`` the path is
+    fully flattened; smaller fractions partially flatten and are used
+    by the bisection in :func:`ring_closure_xyz` to dial in the
+    forming-bond distance.
+
+    Args:
+        coords (np.ndarray): Coordinate array, shape ``(N, 3)``. Mutated
+            in place.
+        path (List[int]): Ordered list of atom indices defining the
+            backbone path that closes into the forming ring.
+        adj (Dict[int, Set[int]]): Molecular adjacency map (atom index →
+            set of bonded atom indices), used to determine the
+            downstream subgraph for each rotation.
+        fraction (float): Fraction of each current dihedral to remove.
+            Defaults to ``1.0`` (full flattening).
+
+    Returns:
+        None: ``coords`` is mutated in place.
+    """
+    for k in range(len(path) - 3):
+        p1, p2, p3, p4 = path[k], path[k + 1], path[k + 2], path[k + 3]
+        current_dih = dihedral_deg(coords[p1], coords[p2], coords[p3], coords[p4])
+        if abs(current_dih) < 0.1:
+            continue
+        origin = coords[p2].copy()
+        axis_raw = coords[p3] - origin
+        axis_norm = np.linalg.norm(axis_raw)
+        if axis_norm < 1e-8:
+            continue
+        axis = axis_raw / axis_norm
+        down = downstream(adj, p2, p3)
+        if not down:
+            continue
+        rotate_atoms(coords, origin, axis, down, np.radians(-current_dih * fraction))
+
+
+def _compress_path_angles(coords: np.ndarray,
+                          path: List[int],
+                          adj: Dict[int, Set[int]],
+                          target_ang: float,
+                          angle_flex: Optional[List[float]] = None,
+                          ) -> None:
+    """
+    Compress each interior bond angle along ``path`` toward ``target_ang``.
+
+    For every interior atom ``b`` along ``path`` (with ring neighbors
+    ``a`` and ``c``), this rotates the downstream subgraph anchored at
+    ``c`` so the ``a–b–c`` angle moves toward ``target_ang``. When
+    ``a`` and ``c`` are collinear with ``b`` (degenerate cross
+    product), an arbitrary perpendicular axis is constructed.
+
+    The optional ``angle_flex`` per-position weights scale how much each
+    angle is allowed to bend. Positions corresponding to cumulated
+    double bonds (e.g. allene sp centers) are typically given low flex
+    (≈0.1) so the linear geometry is preserved while remaining angles
+    absorb the bending; non-cumulated positions absorb the leftover
+    bend in proportion to ``1 / mean_bond_order``.
+
+    Args:
+        coords (np.ndarray): Coordinate array, shape ``(N, 3)``. Mutated
+            in place.
+        path (List[int]): Ordered list of atom indices defining the
+            backbone path.
+        adj (Dict[int, Set[int]]): Molecular adjacency map used for the
+            downstream rotation.
+        target_ang (float): Target interior bond angle in degrees.
+        angle_flex (Optional[List[float]]): Per-position flex weights of
+            length ``len(path) - 2`` (one per interior atom). When
+            ``None`` (default), all positions get a uniform weight of
+            ``1.0``.
+
+    Returns:
+        None: ``coords`` is mutated in place.
+    """
+    for k in range(1, len(path) - 1):
+        a = path[k - 1]
+        b = path[k]
+        cc = path[k + 1]
+
+        v_ba = coords[a] - coords[b]
+        v_bc = coords[cc] - coords[b]
+        norm_ba = np.linalg.norm(v_ba)
+        norm_bc = np.linalg.norm(v_bc)
+        if norm_ba < 1e-8 or norm_bc < 1e-8:
+            continue
+
+        cos_cur = np.clip(np.dot(v_ba, v_bc) / (norm_ba * norm_bc), -1.0, 1.0)
+        cur_ang = np.degrees(np.arccos(cos_cur))
+        delta = target_ang - cur_ang
+        if angle_flex is not None:
+            delta *= angle_flex[k - 1]
+        if abs(delta) < 0.01:
+            continue
+
+        rot_axis = np.cross(v_ba, v_bc)
+        rot_norm = np.linalg.norm(rot_axis)
+        if rot_norm < 1e-8:
+            arb = np.array([1.0, 0.0, 0.0])
+            if abs(np.dot(v_ba / norm_ba, arb)) > 0.9:
+                arb = np.array([0.0, 1.0, 0.0])
+            rot_axis = np.cross(v_ba, arb)
+            rot_norm = np.linalg.norm(rot_axis)
+            if rot_norm < 1e-8:
+                continue
+        rot_axis = rot_axis / rot_norm
+
+        down = downstream(adj, b, cc)
+        if not down:
+            continue
+        rotate_atoms(coords, coords[b].copy(), rot_axis, down, np.radians(delta))
+
+
+def _build_ring_geometry(coords: np.ndarray,
+                         path: List[int],
+                         adj: Dict[int, Set[int]],
+                         target_ang: float,
+                         angle_flex: Optional[List[float]] = None,
+                         dih_fraction: float = 1.0,
+                         ) -> float:
+    """
+    Apply the two ring-closure passes and return the new endpoint distance.
+
+    The function first flattens path dihedrals (by ``dih_fraction``) and
+    then compresses interior angles toward ``target_ang``, both in place
+    on ``coords``. The returned value is the distance between the first
+    and last atom of ``path`` after both passes — used by the bisection
+    in :func:`ring_closure_xyz` to home in on the requested forming-bond
+    distance.
+
+    Args:
+        coords (np.ndarray): Coordinate array, shape ``(N, 3)``. Mutated
+            in place by both passes.
+        path (List[int]): Ordered list of atom indices defining the ring
+            path.
+        adj (Dict[int, Set[int]]): Molecular adjacency map shared by
+            both passes.
+        target_ang (float): Target interior bond angle in degrees.
+        angle_flex (Optional[List[float]]): Per-position flex weights
+            forwarded to the angle-compression pass.
+        dih_fraction (float): Fraction of each dihedral to remove in the
+            flattening pass; ``1.0`` flattens fully.
+
+    Returns:
+        float: Euclidean distance between ``coords[path[-1]]`` and
+            ``coords[path[0]]`` after the two passes.
+    """
+    _flatten_path_dihedrals(coords, path, adj, fraction=dih_fraction)
+    _compress_path_angles(coords, path, adj, target_ang, angle_flex=angle_flex)
+    return float(np.linalg.norm(coords[path[-1]] - coords[path[0]]))
+
+
+# ---------------------------------------------------------------------------
 # 3D builders
 # ---------------------------------------------------------------------------
 
@@ -487,62 +654,6 @@ def ring_closure_xyz(xyz: dict,
     ring_size = len(path)
     ideal_angle = (ring_size - 2) * 180.0 / ring_size
 
-    def _flatten_dihedrals(c: np.ndarray, fraction: float = 1.0) -> None:
-        for k in range(len(path) - 3):
-            p1, p2, p3, p4 = path[k], path[k + 1], path[k + 2], path[k + 3]
-            current_dih = dihedral_deg(c[p1], c[p2], c[p3], c[p4])
-            if abs(current_dih) < 0.1:
-                continue
-            origin = c[p2].copy()
-            axis_raw = c[p3] - origin
-            axis_norm = np.linalg.norm(axis_raw)
-            if axis_norm < 1e-8:
-                continue
-            axis = axis_raw / axis_norm
-            down = downstream(adj, p2, p3)
-            if not down:
-                continue
-            rotate_atoms(c, origin, axis, down, np.radians(-current_dih * fraction))
-
-    def _compress_to_angle(c: np.ndarray, target_ang: float,
-                           angle_flex: Optional[List[float]] = None) -> None:
-        for k in range(1, len(path) - 1):
-            a = path[k - 1]
-            b = path[k]
-            cc = path[k + 1]
-
-            v_ba = c[a] - c[b]
-            v_bc = c[cc] - c[b]
-            norm_ba = np.linalg.norm(v_ba)
-            norm_bc = np.linalg.norm(v_bc)
-            if norm_ba < 1e-8 or norm_bc < 1e-8:
-                continue
-
-            cos_cur = np.clip(np.dot(v_ba, v_bc) / (norm_ba * norm_bc), -1.0, 1.0)
-            cur_ang = np.degrees(np.arccos(cos_cur))
-            delta = target_ang - cur_ang
-            if angle_flex is not None:
-                delta *= angle_flex[k - 1]
-            if abs(delta) < 0.01:
-                continue
-
-            rot_axis = np.cross(v_ba, v_bc)
-            rot_norm = np.linalg.norm(rot_axis)
-            if rot_norm < 1e-8:
-                arb = np.array([1.0, 0.0, 0.0])
-                if abs(np.dot(v_ba / norm_ba, arb)) > 0.9:
-                    arb = np.array([0.0, 1.0, 0.0])
-                rot_axis = np.cross(v_ba, arb)
-                rot_norm = np.linalg.norm(rot_axis)
-                if rot_norm < 1e-8:
-                    continue
-            rot_axis = rot_axis / rot_norm
-
-            down = downstream(adj, b, cc)
-            if not down:
-                continue
-            rotate_atoms(c, c[b].copy(), rot_axis, down, np.radians(delta))
-
     # Cumulated double bonds (e.g. C=C=C) are geometrically linear (sp center) and
     # must stay nearly linear during ring closure; remaining angles absorb the
     # bending. Cumulated angles get 0.1 flex; others get 1/mean_bo. Paths without
@@ -576,12 +687,6 @@ def ring_closure_xyz(xyz: dict,
             if total_flex > 1e-8:
                 n_flex = len(raw_flex)
                 _angle_flex = [f * n_flex / total_flex for f in raw_flex]
-
-    def _build_ring(c: np.ndarray, target_ang: float,
-                    dih_fraction: float = 1.0) -> float:
-        _flatten_dihedrals(c, fraction=dih_fraction)
-        _compress_to_angle(c, target_ang, angle_flex=_angle_flex)
-        return float(np.linalg.norm(c[j_atom] - c[i_atom]))
 
     # --- Step 0: scale path bond lengths for small rings ---
     if ring_size == 3:
@@ -675,7 +780,7 @@ def ring_closure_xyz(xyz: dict,
     for _ in range(30):
         mid = (lo + hi) / 2.0
         trial = original_coords.copy()
-        dist = _build_ring(trial, mid)
+        dist = _build_ring_geometry(trial, path, adj, mid, angle_flex=_angle_flex)
         if abs(dist - target_distance) < 0.005:
             best_coords = trial
             found = True
@@ -688,13 +793,14 @@ def ring_closure_xyz(xyz: dict,
 
     if not found:
         trial_full = original_coords.copy()
-        dist_full = _build_ring(trial_full, avg_start)
+        dist_full = _build_ring_geometry(trial_full, path, adj, avg_start, angle_flex=_angle_flex)
         if dist_full < target_distance:
             dih_lo, dih_hi = 0.0, 1.0
             for _ in range(30):
                 dih_mid = (dih_lo + dih_hi) / 2.0
                 trial = original_coords.copy()
-                dist = _build_ring(trial, avg_start, dih_fraction=dih_mid)
+                dist = _build_ring_geometry(trial, path, adj, avg_start,
+                                            angle_flex=_angle_flex, dih_fraction=dih_mid)
                 if abs(dist - target_distance) < 0.005:
                     best_coords = trial
                     found = True

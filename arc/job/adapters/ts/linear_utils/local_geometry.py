@@ -105,6 +105,37 @@ def _h_neighbors(mol: 'Molecule', atom_idx: int, symbols: Tuple[str, ...]) -> Li
     return h_idxs
 
 
+def _sticky_pairing_arc_cost(src_dirs: Sequence[np.ndarray],
+                             target_dirs: Sequence[np.ndarray],
+                             pairing: Sequence[int],
+                             ) -> float:
+    """
+    Compute the angular displacement cost for a source-to-target pairing.
+
+    Each source unit vector is mapped to a target unit vector by
+    ``pairing[src_k] = tgt_k``. The total cost is the sum of
+    ``1 - cos(θ)`` over all pairs, with ``θ`` the angle between the
+    source and target direction. Equivalent to the squared chord length
+    on the unit sphere (up to a factor of two), so minimizing this cost
+    yields the assignment that moves each H by the smallest arc.
+
+    Args:
+        src_dirs (Sequence[np.ndarray]): Source unit vectors.
+        target_dirs (Sequence[np.ndarray]): Target unit vectors.
+        pairing (Sequence[int]): For each source index ``src_k``, the index
+            ``tgt_k = pairing[src_k]`` of the target it is mapped to.
+
+    Returns:
+        float: Total angular displacement cost (non-negative).
+    """
+    total = 0.0
+    for src_k, tgt_k in enumerate(pairing):
+        cos_t = float(np.dot(src_dirs[src_k], target_dirs[tgt_k]))
+        cos_t = max(-1.0, min(1.0, cos_t))
+        total += 1.0 - cos_t
+    return total
+
+
 # ---------------------------------------------------------------------------
 # Helper 1 — terminal CH2/CH3 H bond-length regularization
 # ---------------------------------------------------------------------------
@@ -962,18 +993,11 @@ def repair_internal_reactive_ch2(xyz: dict,
         h_data.append((h, r_i, rel / r_i))
 
     # Sticky pairing: minimize sum of (1 - cos θ) on the unit sphere.
-    def _arc_cost(pairing: Sequence[int]) -> float:
-        total = 0.0
-        for src_k, tgt_k in enumerate(pairing):
-            cos_t = float(np.dot(h_data[src_k][2], target_dirs[tgt_k]))
-            cos_t = max(-1.0, min(1.0, cos_t))
-            total += 1.0 - cos_t
-        return total
-
+    src_dirs = [hd[2] for hd in h_data]
     pairing_a = (0, 1)
     pairing_b = (1, 0)
-    cost_a = _arc_cost(pairing_a)
-    cost_b = _arc_cost(pairing_b)
+    cost_a = _sticky_pairing_arc_cost(src_dirs, target_dirs, pairing_a)
+    cost_b = _sticky_pairing_arc_cost(src_dirs, target_dirs, pairing_b)
     chosen = pairing_a if cost_a <= cost_b else pairing_b
 
     new_positions: List[Tuple[int, np.ndarray]] = []

@@ -3,8 +3,9 @@ Fragment-based addition / dissociation TS geometry builders
 """
 
 from collections import deque
+from functools import partial
 from itertools import permutations, product
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 
@@ -20,6 +21,364 @@ if TYPE_CHECKING:
 
 
 logger = get_logger()
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers shared by fragmentation builders
+# ---------------------------------------------------------------------------
+
+def _connected_components(adj: Dict[int, Set[int]],
+                          n_atoms: int,
+                          removed_bonds: List[Tuple[int, int]],
+                          ) -> List[Set[int]]:
+    """
+    Return the connected components after removing a set of bonds.
+
+    Builds a copy of ``adj`` with each bond in ``removed_bonds`` deleted
+    in both directions, then BFS-walks every atom index in
+    ``[0, n_atoms)`` to find the connected components. Atoms missing
+    from ``adj`` are treated as isolated.
+
+    Args:
+        adj (Dict[int, Set[int]]): Original adjacency map (atom index →
+            set of bonded atom indices). Not modified.
+        n_atoms (int): Total number of atoms; the BFS sweep covers
+            ``range(n_atoms)``.
+        removed_bonds (List[Tuple[int, int]]): Bonds to delete from the
+            adjacency map before computing components.
+
+    Returns:
+        List[Set[int]]: One ``Set[int]`` per component, partitioning
+            ``range(n_atoms)``.
+    """
+    local_adj = {k: set(v) for k, v in adj.items()}
+    for a, b in removed_bonds:
+        local_adj.setdefault(a, set()).discard(b)
+        local_adj.setdefault(b, set()).discard(a)
+    visited: Set[int] = set()
+    components: List[Set[int]] = []
+    for start in range(n_atoms):
+        if start in visited:
+            continue
+        component: Set[int] = set()
+        queue: deque = deque([start])
+        while queue:
+            node = queue.popleft()
+            if node in visited:
+                continue
+            visited.add(node)
+            component.add(node)
+            queue.extend(local_adj.get(node, set()) - visited)
+        components.append(component)
+    return components
+
+
+def _fragment_element_formulas(fragments: List[Set[int]],
+                               symbols: Sequence[str],
+                               ) -> List[Dict[str, int]]:
+    """
+    Build per-fragment element-count formulas from atom indices.
+
+    Walks each fragment and counts element occurrences in ``symbols``.
+    The result list has the same length and order as ``fragments``.
+
+    Args:
+        fragments (List[Set[int]]): Fragment partition; each set is a
+            collection of atom indices into ``symbols``.
+        symbols (Sequence[str]): Per-atom element symbols.
+
+    Returns:
+        List[Dict[str, int]]: One ``{element: count}`` dict per fragment,
+            preserving fragment order.
+    """
+    frag_formulas: List[Dict[str, int]] = []
+    for frag in fragments:
+        formula: Dict[str, int] = {}
+        for idx in frag:
+            sym = symbols[idx]
+            formula[sym] = formula.get(sym, 0) + 1
+        frag_formulas.append(formula)
+    return frag_formulas
+
+
+def _fragments_match_target_formulas(fragments: List[Set[int]],
+                                     symbols: Sequence[str],
+                                     target_sorted: List[Dict[str, int]],
+                                     target_heavy: List[Dict[str, int]],
+                                     target_total_h: int,
+                                     n_products: int,
+                                     strict: bool,
+                                     ) -> bool:
+    """
+    Check whether a fragment partition matches the target product formulas.
+
+    When ``strict`` is ``True``, the per-fragment element counts must
+    exactly equal the target product formulas (including hydrogen).
+    When ``strict`` is ``False``, the heavy-atom-only formulas must
+    match and the total hydrogen count across all fragments must equal
+    the total target hydrogen count, but hydrogens may redistribute
+    between fragments. Both checks are order-independent because the
+    per-fragment formulas are sorted before comparison.
+
+    Args:
+        fragments (List[Set[int]]): Fragment partition produced by
+            :func:`_connected_components`.
+        symbols (Sequence[str]): Per-atom element symbols.
+        target_sorted (List[Dict[str, int]]): Target product formulas
+            (with H counts), sorted by element-count items, used in the
+            strict comparison.
+        target_heavy (List[Dict[str, int]]): Target heavy-only formulas,
+            sorted, used in the relaxed comparison.
+        target_total_h (int): Total hydrogen count across all target
+            products, used in the relaxed comparison.
+        n_products (int): Expected number of fragments.
+        strict (bool): ``True`` for exact element match, ``False`` for
+            heavy-only + total-H match.
+
+    Returns:
+        bool: ``True`` when the fragment partition matches the target
+            formulas under the chosen comparison mode.
+    """
+    if len(fragments) != n_products:
+        return False
+    frag_formulas = _fragment_element_formulas(fragments, symbols)
+    if strict:
+        frag_sorted = sorted(frag_formulas, key=lambda d: sorted(d.items()))
+        return frag_sorted == target_sorted
+    frag_heavy = _heavy_only_formulas(frag_formulas)
+    frag_total_h = sum(f.get('H', 0) for f in frag_formulas)
+    return frag_heavy == target_heavy and frag_total_h == target_total_h
+
+
+def _min_distance_to_heavy_atoms_in_set(pos: np.ndarray,
+                                        atom_indices: Set[int],
+                                        ts_coords: np.ndarray,
+                                        symbols: Sequence[str],
+                                        exclude_indices: Set[int],
+                                        ) -> float:
+    """
+    Minimum distance from a point to the heavy atoms in a fragment.
+
+    Iterates over ``atom_indices`` and returns the smallest distance
+    from ``pos`` to any non-hydrogen atom whose index is not in
+    ``exclude_indices``. Hydrogens are always skipped — only heavy
+    fragment atoms count toward the clearance.
+
+    Args:
+        pos (np.ndarray): The candidate point, shape ``(3,)``.
+        atom_indices (Set[int]): Atom indices belonging to the fragment
+            of interest (typically a source fragment whose heavies the
+            placement should clear).
+        ts_coords (np.ndarray): The full TS coordinate array, shape
+            ``(N, 3)``.
+        symbols (Sequence[str]): Per-atom element symbols.
+        exclude_indices (Set[int]): Atom indices to skip in addition to
+            all hydrogens (typically the donor and the migrating H).
+
+    Returns:
+        float: The smallest clearance, or ``float('inf')`` when no
+            eligible heavy atom remains.
+    """
+    md = float('inf')
+    for idx in atom_indices:
+        if idx in exclude_indices or symbols[idx] == 'H':
+            continue
+        md = min(md, float(np.linalg.norm(pos - ts_coords[idx])))
+    return md
+
+
+def _negative_bond_distance(coords: np.ndarray,
+                            item: Tuple[Tuple[int, int], int],
+                            ) -> float:
+    """
+    Negative current distance of a candidate bond, for descending sort.
+
+    The sort-key is the *negative* bond distance so that
+    ``sorted(..., key=partial(_negative_bond_distance, coords))`` yields
+    candidates ordered from the longest current bond distance down to
+    the shortest. ``item`` is shaped as the candidate tuples produced
+    by :func:`detect_intra_frag_ring_bonds`: ``((a, b), path_length)``;
+    only the bond endpoints ``(a, b)`` participate in the score.
+
+    Args:
+        coords (np.ndarray): Atomic coordinate array, shape ``(N, 3)``.
+        item (Tuple[Tuple[int, int], int]): Candidate of the form
+            ``((a, b), path_length)``.
+
+    Returns:
+        float: ``-||coords[a] - coords[b]||`` (negative for descending sort).
+    """
+    a, b = item[0]
+    return -float(np.linalg.norm(coords[a] - coords[b]))
+
+
+def _heavy_only_formula(formula: Dict[str, int]) -> Dict[str, int]:
+    """
+    Strip the hydrogen count from a single element-count formula.
+
+    Args:
+        formula (Dict[str, int]): A formula mapping element symbol to
+            count (e.g. ``{'C': 2, 'H': 4, 'O': 1}``).
+
+    Returns:
+        Dict[str, int]: A new dict with the ``'H'`` key removed; all
+            other entries are passed through unchanged.
+    """
+    return {k: v for k, v in formula.items() if k != 'H'}
+
+
+def _heavy_only_formulas(formulas: List[Dict[str, int]]) -> List[Dict[str, int]]:
+    """
+    Strip hydrogen counts from a list of element-count formulas.
+
+    Returns a deterministic, sorted copy in which each formula keeps
+    only non-hydrogen elements. Used to compare fragmentations modulo
+    H redistribution: two fragment sets agree on heavy composition when
+    their heavy-only formulas are equal as sorted lists.
+
+    Args:
+        formulas (List[Dict[str, int]]): One formula per fragment, each
+            mapping element symbol to count (e.g. ``{'C': 2, 'H': 4}``).
+
+    Returns:
+        List[Dict[str, int]]: A list of heavy-only formulas, sorted by
+            element-count items so the result is order-independent.
+    """
+    return sorted(
+        ({k: v for k, v in f.items() if k != 'H'} for f in formulas),
+        key=lambda d: sorted(d.items()),
+    )
+
+
+def _strip_to_connectivity(mol: 'Molecule') -> 'Molecule':
+    """
+    Return a deep copy of ``mol`` with bond orders, radicals, and charges flattened.
+
+    Sets every bond order to ``1.0``, every atom's radical electrons,
+    formal charge, and lone pairs to ``0``, and the molecule's
+    multiplicity to ``1``. The atom and bond identities (graph
+    structure) are preserved. The intent is to compare two molecules
+    purely by connectivity — RMG's ``find_isomorphism(strict=False)``
+    still rejects normalized graphs when the input retains stale bond
+    orders or charges, so callers normalize both sides before comparing.
+
+    Args:
+        mol (Molecule): RMG molecule to normalize. Not mutated; the
+            input is deep-copied first.
+
+    Returns:
+        Molecule: The deep-copied, connectivity-only normalized molecule.
+    """
+    m = mol.copy(deep=True)
+    for bond in m.get_all_edges():
+        bond.order = 1.0
+    for atom in m.atoms:
+        atom.radical_electrons = 0
+        atom.charge = 0
+        atom.lone_pairs = 0
+    m.multiplicity = 1
+    return m
+
+
+def _multi_atom_idx_to_species(m_idx: int,
+                               cum_sizes: List[int],
+                               ) -> Optional[int]:
+    """
+    Map a flat multi-species atom index to its species index.
+
+    The multi-species side is laid out as a concatenation of per-species
+    atom blocks. ``cum_sizes`` is the prefix-sum of per-species atom
+    counts, so for ``k`` species ``cum_sizes`` has length ``k + 1`` and
+    ``cum_sizes[0] == 0``. An atom index ``m_idx`` belongs to species
+    ``k`` when ``cum_sizes[k] <= m_idx < cum_sizes[k + 1]``.
+
+    Args:
+        m_idx (int): The flat atom index in the concatenated multi-species
+            atom layout.
+        cum_sizes (List[int]): Prefix-sum array of per-species atom
+            counts; length is ``num_species + 1``.
+
+    Returns:
+        Optional[int]: The species index ``k`` containing ``m_idx``, or
+            ``None`` when ``m_idx`` falls outside the layout.
+    """
+    for k in range(len(cum_sizes) - 1):
+        if cum_sizes[k] <= m_idx < cum_sizes[k + 1]:
+            return k
+    return None
+
+
+def _labels_map_to_consistent_species(candidate: Dict[int, Tuple[int, int]],
+                                      product_dict: Optional[dict],
+                                      uni_is_reactant: bool,
+                                      multi_species: List[ARCSpecies],
+                                      ) -> bool:
+    """
+    Verify that RMG label groups all map to a single multi-species side.
+
+    A reaction family supplies labelled atoms (``r_label_map`` and
+    ``p_label_map``). Atoms sharing a label across the unimolecular and
+    multi-species sides must belong to the same product species in the
+    candidate fragment-to-species mapping. This rules out fragmentations
+    that would split a labelled group across two products.
+
+    The check is a no-op (returns ``True``) when ``product_dict`` is
+    ``None`` or when either label map is missing.
+
+    Args:
+        candidate (Dict[int, Tuple[int, int]]): Candidate map from each
+            unimolecular atom index to ``(species_idx, atom_idx_in_species)``.
+        product_dict (Optional[dict]): The reaction-family product dict
+            with ``r_label_map``, ``p_label_map``, and (when
+            ``uni_is_reactant`` is ``False``) ``products`` keys.
+        uni_is_reactant (bool): ``True`` when the unimolecular side is
+            the reactant.
+        multi_species (List[ARCSpecies]): The multi-species side
+            (products when ``uni_is_reactant`` is ``True``).
+
+    Returns:
+        bool: ``True`` when the candidate is consistent (or when no
+            label data is available); ``False`` when a labelled group
+            spans more than one species.
+    """
+    if product_dict is None:
+        return True
+    if uni_is_reactant:
+        uni_lmap = product_dict.get('r_label_map')
+        multi_lmap = product_dict.get('p_label_map')
+    else:
+        uni_lmap = product_dict.get('p_label_map')
+        multi_lmap = product_dict.get('r_label_map')
+    if not uni_lmap or not multi_lmap:
+        return True
+
+    if uni_is_reactant:
+        multi_mols = product_dict.get('products', [])
+    else:
+        multi_mols = [sp.mol for sp in multi_species]
+    cum_sizes = [0]
+    for m in multi_mols:
+        cum_sizes.append(cum_sizes[-1] + len(m.atoms))
+
+    label_groups: Dict[int, Set[int]] = {}
+    for label, uni_idx in uni_lmap.items():
+        m_idx = multi_lmap.get(label)
+        if m_idx is None:
+            continue
+        sp_id = _multi_atom_idx_to_species(m_idx, cum_sizes)
+        if sp_id is None:
+            continue
+        label_groups.setdefault(sp_id, set()).add(uni_idx)
+
+    for group_indices in label_groups.values():
+        species_set: Set[int] = set()
+        for uni_idx in group_indices:
+            mapping = candidate.get(uni_idx)
+            if mapping is not None:
+                species_set.add(mapping[0])
+        if len(species_set) > 1:
+            return False
+    return True
 
 
 # ---- Fragment helpers ----
@@ -62,73 +421,25 @@ def find_split_bonds_by_fragmentation(uni_mol: 'Molecule',
 
     symbols = tuple(atom.element.symbol for atom in uni_mol.atoms)
 
-    def _get_fragments(removed: List[Tuple[int, int]]) -> List[Set[int]]:
-        """BFS to find connected components after removing bonds."""
-        local_adj = {k: set(v) for k, v in adj.items()}
-        for a, b in removed:
-            local_adj[a].discard(b)
-            local_adj[b].discard(a)
-        visited: Set[int] = set()
-        frags: List[Set[int]] = []
-        for start in range(n_atoms):
-            if start in visited:
-                continue
-            component: Set[int] = set()
-            queue: deque = deque([start])
-            while queue:
-                node = queue.popleft()
-                if node in visited:
-                    continue
-                visited.add(node)
-                component.add(node)
-                queue.extend(local_adj[node] - visited)
-            frags.append(component)
-        return frags
-
-    def _heavy_formulas(formulas: List[Dict[str, int]]) -> List[Dict[str, int]]:
-        """Strip H counts from element-count dicts."""
-        return sorted(({k: v for k, v in f.items() if k != 'H'} for f in formulas), key=lambda d: sorted(d.items()))
-
-    target_heavy = _heavy_formulas(target_formulas)
+    target_heavy = _heavy_only_formulas(target_formulas)
     target_total_h = sum(f.get('H', 0) for f in target_formulas)
-
-    def _formulas_match(frags: List[Set[int]], strict: bool = True) -> bool:
-        """Check if fragment element compositions match targets.
-
-        When *strict* is True, exact match (including H counts).
-        When False, heavy-atom formulas must match and total H count
-        must be equal, but H can redistribute between fragments.
-        """
-        if len(frags) != n_products:
-            return False
-        frag_formulas: List[Dict[str, int]] = []
-        for frag in frags:
-            formula: Dict[str, int] = {}
-            for idx in frag:
-                sym = symbols[idx]
-                formula[sym] = formula.get(sym, 0) + 1
-            frag_formulas.append(formula)
-        if strict:
-            frag_sorted = sorted(frag_formulas, key=lambda d: sorted(d.items()))
-            return frag_sorted == target_sorted
-        frag_heavy = _heavy_formulas(frag_formulas)
-        frag_total_h = sum(f.get('H', 0) for f in frag_formulas)
-        return frag_heavy == target_heavy and frag_total_h == target_total_h
 
     results: List[List[Tuple[int, int]]] = []
 
     # ---- Single-bond cuts, exact match ----
     for bond in bonds:
-        frags = _get_fragments([bond])
-        if _formulas_match(frags, strict=True):
+        frags = _connected_components(adj, n_atoms, [bond])
+        if _fragments_match_target_formulas(frags, symbols, target_sorted, target_heavy,
+                                            target_total_h, n_products, strict=True):
             results.append([bond])
     if results:
         return results
 
     # ---- Single-bond cuts, relaxed H match ----
     for bond in bonds:
-        frags = _get_fragments([bond])
-        if _formulas_match(frags, strict=False):
+        frags = _connected_components(adj, n_atoms, [bond])
+        if _fragments_match_target_formulas(frags, symbols, target_sorted, target_heavy,
+                                            target_total_h, n_products, strict=False):
             results.append([bond])
     if results:
         return results
@@ -138,8 +449,9 @@ def find_split_bonds_by_fragmentation(uni_mol: 'Molecule',
         for strict in (True, False):
             for i in range(len(bonds)):
                 for j in range(i + 1, len(bonds)):
-                    frags = _get_fragments([bonds[i], bonds[j]])
-                    if _formulas_match(frags, strict=strict):
+                    frags = _connected_components(adj, n_atoms, [bonds[i], bonds[j]])
+                    if _fragments_match_target_formulas(frags, symbols, target_sorted, target_heavy,
+                                                        target_total_h, n_products, strict=strict):
                         results.append([bonds[i], bonds[j]])
                 if len(results) >= 10:
                     break
@@ -253,72 +565,12 @@ def map_and_verify_fragments(uni_mol: 'Molecule',
         frag_data.append((frag, orig_indices))
 
     # ---- 5. Connectivity-normalized isomorphism ----
-    def _normalize(mol: 'Molecule') -> 'Molecule':
-        """Strip bond orders, radicals, charges and lone pairs."""
-        m = mol.copy(deep=True)
-        for bond in m.get_all_edges():
-            bond.order = 1.0
-        for atom in m.atoms:
-            atom.radical_electrons = 0
-            atom.charge = 0
-            atom.lone_pairs = 0
-        m.multiplicity = 1
-        return m
-
     n_species = len(multi_species)
 
-    norm_prods = [_normalize(sp.mol) for sp in multi_species]
+    norm_prods = [_strip_to_connectivity(sp.mol) for sp in multi_species]
     norm_prod_atoms = [list(np_mol.atoms) for np_mol in norm_prods]
 
-    # ---- 6. Label-group check helper ----
-    def _labels_consistent(candidate: Dict[int, Tuple[int, int]]) -> bool:
-        if product_dict is None:
-            return True
-        if uni_is_reactant:
-            uni_lmap = product_dict.get('r_label_map')
-            multi_lmap = product_dict.get('p_label_map')
-        else:
-            uni_lmap = product_dict.get('p_label_map')
-            multi_lmap = product_dict.get('r_label_map')
-        if not uni_lmap or not multi_lmap:
-            return True
-
-        if uni_is_reactant:
-            multi_mols = product_dict.get('products', [])
-        else:
-            multi_mols = [sp.mol for sp in multi_species]
-        cum_sizes = [0]
-        for m in multi_mols:
-            cum_sizes.append(cum_sizes[-1] + len(m.atoms))
-
-        def multi_idx_to_species(m_idx: int) -> Optional[int]:
-            for k in range(len(multi_mols)):
-                if cum_sizes[k] <= m_idx < cum_sizes[k + 1]:
-                    return k
-            return None
-
-        label_groups: Dict[int, Set[int]] = {}
-        for label, uni_idx in uni_lmap.items():
-            m_idx = multi_lmap.get(label)
-            if m_idx is None:
-                continue
-            sp_id = multi_idx_to_species(m_idx)
-            if sp_id is None:
-                continue
-            label_groups.setdefault(sp_id, set()).add(uni_idx)
-
-        # All uni_mol indices in the same group must map to the same species_idx.
-        for group_indices in label_groups.values():
-            species_set: Set[int] = set()
-            for uni_idx in group_indices:
-                mapping = candidate.get(uni_idx)
-                if mapping is not None:
-                    species_set.add(mapping[0])
-            if len(species_set) > 1:
-                return False
-        return True
-
-    # ---- 7. Try all fragment ↔ product permutations ----
+    # ---- 6. Try all fragment ↔ product permutations ----
     for perm in permutations(range(n_species)):
         all_ok = True
         iso_per_frag: List[Tuple] = []
@@ -331,7 +583,7 @@ def map_and_verify_fragments(uni_mol: 'Molecule',
                 all_ok = False
                 break
 
-            n_frag = _normalize(frag)
+            n_frag = _strip_to_connectivity(frag)
             n_prod = norm_prods[species_idx]
 
             iso_maps = n_frag.find_isomorphism(n_prod, strict=False)
@@ -354,7 +606,8 @@ def map_and_verify_fragments(uni_mol: 'Molecule',
                     fi = nf_atoms.index(nf_atom)
                     pi = np_atoms_i.index(np_atom)
                     candidate_map[orig_idx[fi]] = (sp_idx, pi)
-            if len(candidate_map) == n_atoms and _labels_consistent(candidate_map):
+            if len(candidate_map) == n_atoms and _labels_map_to_consistent_species(
+                    candidate_map, product_dict, uni_is_reactant, multi_species):
                 return candidate_map
 
     return None
@@ -1066,15 +1319,12 @@ def migrate_h_between_fragments(ts_xyz: dict,
         target_formulas.append(formula)
 
     # ---- 3. Match fragments to targets by heavy-atom composition ----
-    def heavy_formula(f: Dict[str, int]) -> Dict[str, int]:
-        return {k: v for k, v in f.items() if k != 'H'}
-
     frag_to_target: Dict[int, int] = {}
     used_targets: Set[int] = set()
     for fi, ff in enumerate(frag_formulas):
-        hf = heavy_formula(ff)
+        hf = _heavy_only_formula(ff)
         for ti, tf in enumerate(target_formulas):
-            if ti not in used_targets and heavy_formula(tf) == hf:
+            if ti not in used_targets and _heavy_only_formula(tf) == hf:
                 frag_to_target[fi] = ti
                 used_targets.add(ti)
                 break
@@ -1182,16 +1432,12 @@ def migrate_h_between_fragments(ts_xyz: dict,
                 cand_minus = d_pos + x * da_hat - h_perp * n_perp
 
                 # Pick candidate with greater clearance from source-fragment heavies.
-                def _min_frag_dist(pos):
-                    md = float('inf')
-                    for idx in fragments[s_fi]:
-                        if idx == h_idx or idx == donor_heavy or symbols[idx] == 'H':
-                            continue
-                        md = min(md, float(np.linalg.norm(pos - ts_coords[idx])))
-                    return md
-
-                new_h = cand_plus if _min_frag_dist(cand_plus) >= _min_frag_dist(cand_minus) \
-                    else cand_minus
+                exclude_indices = {h_idx, donor_heavy}
+                clearance_plus = _min_distance_to_heavy_atoms_in_set(
+                    cand_plus, fragments[s_fi], ts_coords, symbols, exclude_indices)
+                clearance_minus = _min_distance_to_heavy_atoms_in_set(
+                    cand_minus, fragments[s_fi], ts_coords, symbols, exclude_indices)
+                new_h = cand_plus if clearance_plus >= clearance_minus else cand_minus
             else:
                 # Spheres don't overlap → collinear placement at d_DH from donor.
                 new_h = d_pos + d_DH * da_hat
@@ -1503,11 +1749,7 @@ def detect_intra_frag_ring_bonds(mol: 'Molecule',
                 pass
 
     coords = np.array(xyz['coords'], dtype=float)
-
-    def _sort_key(item: Tuple[Tuple[int, int], int]) -> float:
-        """Sort by descending current distance (longest first)."""
-        a, b = item[0]
-        return -float(np.linalg.norm(coords[a] - coords[b]))
+    sort_key = partial(_negative_bond_distance, coords)
 
     if product_ring_elements:
         filtered = []
@@ -1516,9 +1758,9 @@ def detect_intra_frag_ring_bonds(mol: 'Molecule',
             if path_elems in product_ring_elements:
                 filtered.append((bond, len(path)))
         if filtered:
-            filtered.sort(key=_sort_key)
+            filtered.sort(key=sort_key)
             return filtered
 
     result = [(bond, len(path)) for bond, path in candidates]
-    result.sort(key=_sort_key)
+    result.sort(key=sort_key)
     return result
