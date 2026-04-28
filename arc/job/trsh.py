@@ -1135,10 +1135,22 @@ def trsh_ess_job(label: str,
         couldnt_trsh = True
 
     if couldnt_trsh:
-        logger.error(f'Could not troubleshoot geometry optimization for {label}! '
-                     f'Tried troubleshooting with the following methods: {ess_trsh_methods}')
+        # Count and remove 'trsh_attempt' entries for cleaner reporting
+        trsh_attempt_count = ess_trsh_methods.count('trsh_attempt')
+        filtered_methods = [method for method in ess_trsh_methods if method != 'trsh_attempt']
+        
+        # Build the message with the count and filtered methods
+        if trsh_attempt_count > 0 and filtered_methods:
+            message = f'Tried troubleshooting {trsh_attempt_count} times, with the following methods: {filtered_methods}'
+        elif trsh_attempt_count > 0:
+            message = f'Tried troubleshooting {trsh_attempt_count} times'
+        else:
+            message = f'Tried troubleshooting with the following methods: {filtered_methods}'
+        
+        logger.error(f'Could not troubleshoot {job_type} for {label}! '
+                     f'{message}')
         output_errors.append(f'Error: Could not troubleshoot {job_type} for {label}! '
-                             f'Tried troubleshooting with the following methods: {ess_trsh_methods}; ')
+                             f'{message}; ')
     return (output_errors,
             ess_trsh_methods,
             remove_checkfile,
