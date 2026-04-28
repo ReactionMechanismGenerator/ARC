@@ -274,7 +274,9 @@ scalar-relativistic terms, closes the gap without any empirical fitting.
       - label: H2O
         smiles: O
 
-ARC ships a few presets in ``arc/level/presets.yml``:
+ARC ships the following presets in ``arc/level/presets.yml``:
+
+*HEAT family (Tajti / Bomble / Stanton lineage):*
 
 * ``HEAT-345`` — HEAT-style recipe inspired by Tajti et al. (see references).
   Includes δ[CCSDT], δ_CV (core-valence, all-electron CCSD(T)/cc-pCVTZ vs
@@ -287,7 +289,45 @@ ARC ships a few presets in ``arc/level/presets.yml``:
   Use these when targeting an ESS without a clean Molpro-style
   ``core,...`` directive (or when the core-valence contribution is known to
   be negligible — typically < 0.5 kJ/mol for first-row systems).
-* ``FPA-min`` — minimal focal-point recipe with a CBS extrapolation term.
+* ``HEAT-345QP`` — HEAT-345Q extended with full quadruples (δ[CCSDTQ]) and
+  perturbative pentuples (δ[CCSDTQ(P)]). The δ_QQ and δ_P legs route
+  through the MRCC interface — modern Molpro builds with MRCC linked in
+  accept ``ccsdtq`` and ``ccsdtq(p)`` via the same path used for
+  ``ccsdt`` / ``ccsdt(q)`` in HEAT-345Q. CFOUR-NCC is an alternative back
+  end. A plain Molpro install without MRCC cannot run these sub-jobs.
+* ``HEAT-456Q`` — same correction stack as ``HEAT-345Q`` but with a tighter
+  base. The published HEAT-456 series uses cardinals {Q,5,6} for the HF /
+  CCSD(T) CBS reference; the ARC adaptation pins the anchor to
+  ``CCSD(T)-F12/cc-pVQZ-F12`` (single-anchor approximation of that CBS limit).
+
+*W\ :sub:`n` family (Karton/Martin / Boese):*
+
+* ``W2`` / ``W2-F12`` — high-quality CCSD(T) anchor + δ_CV + δ_rel. The
+  ``-F12`` variant uses ``CCSD(T)-F12/cc-pVQZ-F12`` for near-CBS quality
+  from a single SP. The non-F12 variant uses ``CCSD(T)/aug-cc-pVQZ``.
+* ``W3`` / ``W3-F12`` — W2 + δ[CCSDT]. *Note:* there is no canonical
+  primary publication titled "W3-F12"; ARC's preset is an extension by
+  analogy to the published W2-F12 (see references below). Cite as
+  "W3-F12 (ARC adaptation)".
+* ``W4`` / ``W4-F12`` — W3 + δ[CCSDT(Q)] + δ[CCSDTQ]. The δ_QQ leg goes
+  through the MRCC interface (Molpro-with-MRCC or CFOUR-NCC) — see the
+  note under HEAT-345QP above; the same back-end requirement applies.
+
+*Focal-point analysis:*
+
+* ``FPA-min`` — minimal focal-point recipe with a two-point Helgaker CBS
+  extrapolation term and a δ[CCSDT] correction.
+
+.. note::
+
+   The W\ :sub:`n` family in ARC is a **single-anchor adaptation** of the
+   canonical Karton/Martin protocols: the W\ :sub:`n` HF/CCSD/(T) basis-cardinal
+   CBS extrapolations are absorbed into the anchor SP rather than being
+   evaluated as separate stacked terms. This is faithful to the W\ :sub:`n`
+   spirit (high-quality CCSD(T) anchor + post-(T) / CV / rel corrections)
+   but not byte-identical to the published prescription. When citing, use
+   "W2 (ARC adaptation)" / "W4-F12 (ARC adaptation)" rather than the
+   bare protocol name to avoid implying a strict reproduction.
 
 **ESS syntax for δ_CV and δ_rel.** The HEAT presets shipped here target the
 **Molpro** adapter:
@@ -373,6 +413,73 @@ Internally each species is in one of three states: ``"inherit"`` (key absent),
 ``"opt_out"`` (explicit ``null``), ``"explicit"`` (preset name or recipe).
 These three survive ``as_dict`` / ``from_dict`` and restart-dict round-trip.
 
+**Form 5 — W\ :sub:`n` family for high-accuracy anchor energies.** When
+δ-corrections beyond CCSD(T) are *not* the bottleneck and you mainly want a
+near-CBS CCSD(T) reference with the canonical core-valence and scalar-
+relativistic corrections, the W2/W3 family is a good fit::
+
+    project: barriers_w3f12
+    sp_composite: W3-F12
+    species:
+      - label: TS1
+        xyz: ...
+
+This is cheaper than a HEAT-345Q and converges quickly because the F12 anchor
+already absorbs most of the CBS basis-set limit. ``W3-F12`` adds δ[CCSDT] on
+top, which is typically the largest post-(T) effect for small organic TSs.
+
+**Form 6 — HEAT-456Q for tighter CBS reference on small molecules.** For
+small molecules where HF and CCSD(T) basis incompleteness matters, swap the
+``cc-pVTZ-F12`` anchor for the ``cc-pVQZ-F12`` anchor::
+
+    sp_composite: HEAT-456Q
+
+This preset has the same correction stack as ``HEAT-345Q`` (δ[CCSDT],
+δ[CCSDT(Q)], δ_CV, δ_rel) but a more accurate base, mirroring the published
+HEAT-456 series whose HF/CCSD(T) CBS uses cardinals {Q,5,6}.
+
+**Form 7 — preset + per-term basis upgrade.** Combine a published preset
+with a partial override to refine just the term you care about::
+
+    sp_composite:
+      preset: HEAT-345Q
+      overrides:
+        delta_T:
+          high: {method: ccsdt,   basis: cc-pVTZ}
+          low:  {method: ccsd(t), basis: cc-pVTZ}
+
+This keeps the inexpensive δ[CCSDT(Q)]/cc-pVDZ leg, the cheap δ_CV/cc-pCVTZ
+core-valence pair, and the standard δ_rel — but moves only the δ[CCSDT]
+correction to a tighter basis. Useful when one term is responsible for most
+of the residual basis-set error in a barrier.
+
+**Form 8 — explicit recipe with W\ :sub:`n`-style stacked deltas.** For
+direct control of the entire ladder, write the recipe out::
+
+    sp_composite:
+      reference: "W3-style stack with custom anchor; DOI: 10.1063/1.1638736"
+      base:
+        method: ccsd(t)-f12
+        basis: cc-pVQZ-f12
+      corrections:
+        - label: delta_T
+          type: delta
+          high: {method: ccsdt,    basis: cc-pVDZ}
+          low:  {method: ccsd(t),  basis: cc-pVDZ}
+        - label: delta_CV
+          type: delta
+          high: {method: ccsd(t),  basis: cc-pCVTZ,
+                 args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+          low:  {method: ccsd(t),  basis: cc-pCVTZ}
+        - label: delta_rel
+          type: delta
+          high: {method: ccsd(t),  basis: cc-pVTZ-DK,
+                 args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+          low:  {method: ccsd(t),  basis: cc-pVTZ}
+
+This is essentially what ``W3-F12`` expands to internally — useful as a
+template when you want to deviate from a shipped preset.
+
 **Interactions with other parameters.**
 
 * **``sp_level``** — coexists. If you omit ``sp_level`` while setting
@@ -430,9 +537,10 @@ Arkane species-file renderer, which converts once when writing the numeric
 
 **Known limitations.**
 
-* **MRCC adapter**: the composite framework is ESS-agnostic, but ARC does not
-  yet ship a dedicated MRCC adapter. For ``CCSDT(Q)``, route through CFOUR
-  (NCC module) or Molpro.
+* **MRCC adapter**: ARC does not ship a dedicated standalone MRCC adapter.
+  Methods that route through MRCC (``CCSDT``, ``CCSDT(Q)``, ``CCSDTQ``,
+  ``CCSDTQ(P)``) work today through the Molpro adapter when Molpro is built
+  with the MRCC interface, or through CFOUR-NCC.
 * **Per-species AEC/BAC**: see the AEC/BAC section above.
 * **``adaptive_levels`` interaction**: currently rejected; may relax later.
 
@@ -440,12 +548,33 @@ Arkane species-file renderer, which converts once when writing the numeric
 
 * Allen, East, Császár — focal-point analysis review (general FPA methodology).
 * Tajti, Szalay, Császár, Kállay, Gauss, Valeev, Flowers, Vázquez, Stanton,
-  *J. Chem. Phys.* **121**, 11599 (2004). DOI: 10.1063/1.1804498 — HEAT protocol.
+  *J. Chem. Phys.* **121**, 11599 (2004). DOI: 10.1063/1.1811608 — HEAT-345 protocol.
+* Bomble, Vázquez, Kállay, Michauk, Szalay, Császár, Gauss, Stanton,
+  *J. Chem. Phys.* **125**, 064108 (2006). DOI: 10.1063/1.2206789 — HEAT-345(Q)
+  and HEAT-456 series.
+* Martin, de Oliveira, *J. Chem. Phys.* **111**, 1843 (1999).
+  DOI: 10.1063/1.479454 — W1 / W2 protocols.
+* Boese, Oren, Atasoylu, Martin, Kállay, Gauss, *J. Chem. Phys.* **120**, 4129
+  (2004). DOI: 10.1063/1.1638736 — W3 protocol.
+* Karton, Rabinovich, Martin, Ruscic, *J. Chem. Phys.* **125**, 144108 (2006).
+  DOI: 10.1063/1.2348881 — W4 protocol.
+* Karton, Martin, *J. Chem. Phys.* **136**, 124114 (2012).
+  DOI: 10.1063/1.3697678 — W1-F12 and W2-F12 protocols. ARC's ``W3-F12``
+  preset is an adaptation by analogy (no canonical primary publication
+  titled "W3-F12"): it stacks δ[CCSDT] on top of the W2-F12 anchor in the
+  spirit of how W3 (Boese et al. 2004) extended W2.
+* Sylvetsky, Peterson, Karton, Martin, *J. Chem. Phys.* **144**, 214101
+  (2016). DOI: 10.1063/1.4952410 — W4-F12 protocol.
 * Helgaker, Klopper, Koch, Noga, *J. Chem. Phys.* **106**, 9639 (1997).
   DOI: 10.1063/1.473863 — two-point correlation CBS extrapolation.
 * Halkier, Helgaker, Jørgensen, Klopper, Koch, Olsen, Wilson,
   *Chem. Phys. Lett.* **286**, 243-252 (1998). DOI: 10.1016/S0009-2614(98)00111-0
-  — two-point HF CBS extrapolation; fitted ``α = 1.63``.
+  — extends the two-point correlation-energy CBS extrapolation to Ne, N\ :sub:`2`,
+  and H\ :sub:`2`\ O.
+* Halkier, Helgaker, Jørgensen, Klopper, Olsen, *Chem. Phys. Lett.* **302**,
+  437-446 (1999). DOI: 10.1016/S0009-2614(99)00179-7 — two-point HF-energy CBS
+  extrapolation; source of the fitted ``α = 1.63`` exponential decay parameter
+  used by ``helgaker_hf_2pt``.
 * Martin, *Chem. Phys. Lett.* **259**, 669-678 (1996). DOI: 10.1016/0009-2614(96)00898-6
   — three-point Schwartz-style extrapolation.
 * Dunning, *J. Chem. Phys.* **90**, 1007 (1989). DOI: 10.1063/1.456153 —

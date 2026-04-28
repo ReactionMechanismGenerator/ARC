@@ -4319,10 +4319,7 @@ class Scheduler(object):
                     for key in path_keys:
                         if key not in self.output[species.label]['paths']:
                             self.output[species.label]['paths'][key] = ''
-                    # Phase 3: sp_composite tracks sub_label → output-file path.
-                    # Dict-valued rather than string — each composite has many sub-jobs.
-                    if 'sp_composite' not in self.output[species.label]['paths']:
-                        self.output[species.label]['paths']['sp_composite'] = dict()
+                    self._ensure_sp_composite_paths_invariant(species.label)
                     if species.is_ts:
                         if 'irc' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['irc'] = list()
@@ -4344,6 +4341,42 @@ class Scheduler(object):
                                 self.output[species.label][key] = None
                             else:
                                 self.output[species.label][key] = ''
+        # Always-on invariant — runs even when the gated init above was
+        # skipped because output[] was rehydrated from a stale restart.yml.
+        # Older ARC versions could persist paths['sp_composite'] as a scalar
+        # string (the same shape as paths['sp']); the composite code mutates
+        # this in place as a dict[sub_label → path] and would otherwise crash
+        # with ``TypeError: 'str' object does not support item assignment``.
+        for species in self.species_list:
+            if label is None or species.label == label:
+                if species.label in self.output:
+                    self._ensure_sp_composite_paths_invariant(species.label)
+
+    def _ensure_sp_composite_paths_invariant(self, label: str) -> None:
+        """Coerce ``output[label]['paths']['sp_composite']`` to a dict.
+
+        Phase 3 stores sub-job results as ``{sub_label: path}`` here. A non-
+        dict value (typically a leftover scalar string from an older ARC
+        version's restart.yml) is reset to ``{}`` and a single-line warning
+        is logged so the user can audit. Empty/absent values are reset
+        silently because they are not evidence of corruption — just absence.
+        """
+        species_output = self.output.get(label)
+        if not isinstance(species_output, dict):
+            return
+        paths = species_output.setdefault('paths', {})
+        existing = paths.get('sp_composite')
+        if isinstance(existing, dict):
+            return
+        if existing not in (None, ''):
+            logger.warning(
+                f"output['{label}']['paths']['sp_composite'] was a "
+                f"{type(existing).__name__} ({existing!r}); coercing to "
+                f"dict() — likely a stale restart.yml from an older ARC "
+                f"version. The composite will re-run any sub-jobs that "
+                f"were previously recorded against this scalar."
+            )
+        paths['sp_composite'] = dict()
 
     def _does_output_dict_contain_info(self):
         """

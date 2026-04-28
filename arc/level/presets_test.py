@@ -25,7 +25,11 @@ class TestPresetRegistry(unittest.TestCase):
         self.assertGreaterEqual(len(REGISTERED_PRESET_NAMES), 3)
 
     def test_known_presets_present(self):
-        for name in ("HEAT-345", "HEAT-345Q", "HEAT-345_noC", "HEAT-345Q_noC", "FPA-min"):
+        for name in (
+            "HEAT-345", "HEAT-345Q", "HEAT-345_noC", "HEAT-345Q_noC",
+            "HEAT-345QP", "HEAT-456Q", "FPA-min",
+            "W2", "W2-F12", "W3", "W3-F12", "W4", "W4-F12",
+        ):
             self.assertIn(name, REGISTERED_PRESET_NAMES)
 
     def test_noC_variants_omit_delta_CV_term(self):
@@ -53,11 +57,23 @@ class TestPresetRegistry(unittest.TestCase):
     def test_HEAT_protocols_delta_CV_legs_compare_unequal(self):
         """Regression for sp_composite Bug B: HEAT-345Q's δ_CV high (all-electron
         ``core,...``) and low (default frozen-core) Levels must not collapse to
-        a single sub-job at composite-spawn time."""
-        for name in ("HEAT-345", "HEAT-345Q"):
+        a single sub-job at composite-spawn time. Extended in Phase 5+ to cover
+        every shipped preset that carries a δ_CV term — the Molpro-keyword
+        round-trip is the load-bearing piece, and silent dedup would defeat the
+        whole correction regardless of which protocol introduces it."""
+        for name in (
+            "HEAT-345", "HEAT-345Q", "HEAT-345QP", "HEAT-456Q",
+            "W2", "W2-F12", "W3", "W3-F12", "W4", "W4-F12",
+        ):
             with self.subTest(name=name):
                 recipe = expand_preset(name)
-                cv = next(c for c in recipe["corrections"] if c["label"] == "delta_CV")
+                cv = next(
+                    (c for c in recipe["corrections"] if c["label"] == "delta_CV"),
+                    None,
+                )
+                self.assertIsNotNone(
+                    cv, f"{name} expected to ship a delta_CV term; check preset."
+                )
                 high = Level(repr=cv["high"])
                 low = Level(repr=cv["low"])
                 self.assertNotEqual(high, low,

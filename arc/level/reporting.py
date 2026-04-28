@@ -32,7 +32,7 @@ References
 * Allen, East, Császár — focal-point analysis review (cited in per-preset
   markdown content produced by this module when a preset supplies it).
 * Tajti, Szalay, Császár, Kállay, Gauss, Valeev, Flowers, Vázquez, Stanton,
-  *J. Chem. Phys.* **121**, 11599 (2004). DOI: 10.1063/1.1804498 — HEAT.
+  *J. Chem. Phys.* **121**, 11599 (2004). DOI: 10.1063/1.1811608 — HEAT.
 """
 
 import hashlib

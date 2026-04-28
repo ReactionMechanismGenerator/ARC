@@ -1589,6 +1589,75 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
         self.assertIn("sub_label=base", joined)
         self.assertIn("/tmp/does/not/exist.out", joined)
 
+    def test_corrupt_paths_sp_composite_scalar_auto_heals(self):
+        """Regression: a project carried over from an older ARC version may
+        persist ``output[label]['paths']['sp_composite']`` as a scalar string
+        rather than the expected ``dict[sub_label → path]``. The first
+        post_sp_actions call would crash with
+        ``TypeError: 'str' object does not support item assignment``.
+
+        The scheduler must auto-heal that state on init (or on first composite
+        write), log a warning, and proceed without error."""
+        tmp = os.path.join(self.project_directory, "fx_str_corrupt")
+        os.makedirs(tmp, exist_ok=True)
+        recipe = {
+            "base": {"method": "hf", "basis": "cc-pVTZ"},
+            "corrections": [
+                {"label": "delta_T", "type": "delta",
+                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
+                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+            ],
+        }
+        protocol = CompositeProtocol.from_user_input(recipe)
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'),
+                         'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        # Build a stale output snapshot with the bad scalar value, then build
+        # a fresh scheduler from it — exactly the restart-corruption shape.
+        stale_output = {
+            'H2': {
+                'paths': {
+                    'geo': '', 'geo_coarse': '', 'freq': '',
+                    'sp': '', 'composite': '',
+                    'sp_composite': '/tmp/some/old/sp.out',  # ← scalar, not a dict
+                },
+                'job_types': {'sp_composite': False},
+                'convergence': None,
+                'restart': '', 'errors': '', 'warnings': '', 'info': '',
+                'isomorphism': '', 'conformers': '',
+            }
+        }
+        with patch.object(Scheduler, "run_job", lambda self, *a, **kw: None):
+            sched = Scheduler(
+                project='sp_composite_orch',
+                ess_settings=self.ess_settings,
+                species_list=[spc],
+                project_directory=self.project_directory,
+                opt_level=Level(repr=default_levels_of_theory['opt']),
+                freq_level=Level(repr=default_levels_of_theory['freq']),
+                sp_level=Level(repr=default_levels_of_theory['sp']),
+                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                scan_level=Level(repr=default_levels_of_theory['scan']),
+                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                orbitals_level=default_levels_of_theory['orbitals'],
+                sp_composite=protocol,
+                output=stale_output,
+                testing=True,
+            )
+        sched.run_job = lambda *a, **kw: None
+        # The bad scalar must be coerced to a dict by init — that's how the
+        # next post_sp_actions call avoids the TypeError.
+        self.assertIsInstance(sched.output['H2']['paths']['sp_composite'], dict)
+        # Now exercise the actual code path that would have crashed.
+        base_path = os.path.join(tmp, "base.out")
+        self._write_gaussian_fixture(base_path, -1.10)
+        sched.post_sp_actions('H2', base_path, protocol.base.level)
+        self.assertEqual(
+            sched.output['H2']['paths']['sp_composite'].get('base'),
+            base_path,
+        )
+
     # --- Phase 3.5: preset name + reference preservation ------------------- #
 
     def test_preset_name_and_reference_survive_to_notebook_section(self):

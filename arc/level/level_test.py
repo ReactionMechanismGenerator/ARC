@@ -270,9 +270,15 @@ class TestLevel(unittest.TestCase):
 
     def test_level_is_unhashable(self):
         """Custom __eq__ without a matching __hash__ ⇒ unhashable.
-        Locks the contract; nothing in the codebase puts Level into a set/dict-key."""
-        with self.assertRaises(TypeError):
-            hash(Level(method='hf', basis='cc-pVTZ'))
+        Locks the contract; nothing in the codebase puts Level into a set/dict-key.
+
+        We assert this via the ``__hash__`` class marker (Python's documented
+        mechanism for making instances unhashable) rather than by calling
+        ``hash()`` on an instance and expecting ``TypeError``. The behavioural
+        form trips CodeQL's ``py/hash-of-unhashable-value`` query — and that
+        query's pattern is *exactly* the contract under test, so suppressing
+        it via the dunder check is more direct than annotating around it."""
+        self.assertIsNone(Level.__hash__)
 
 
 if __name__ == '__main__':

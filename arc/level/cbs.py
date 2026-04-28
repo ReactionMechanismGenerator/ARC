@@ -23,9 +23,10 @@ Built-in formulas
 ``helgaker_hf_2pt``
     Two-point HF-energy extrapolation
     ``E(X) = E_CBS + A·exp(-α·X)``, default ``α = 1.63``.
-    Halkier, Helgaker, Jørgensen, Klopper, Koch, Olsen, Wilson,
-    *Chem. Phys. Lett.* **286**, 243-252 (1998), Table 2.
-    DOI: 10.1016/S0009-2614(98)00111-0.
+    Halkier, Helgaker, Jørgensen, Klopper, Olsen,
+    *Chem. Phys. Lett.* **302**, 437-446 (1999), "Basis-set convergence of the
+    energy in molecular Hartree–Fock calculations".
+    DOI: 10.1016/S0009-2614(99)00179-7.
 
 ``martin_3pt``
     Three-point Schwartz-style extrapolation
@@ -163,16 +164,17 @@ def helgaker_hf_2pt(energies: Mapping[int, float], alpha: float = 1.63) -> float
     Solves ``E(X) = E_CBS + A·exp(-α·X)`` for two cardinals analytically:
     ``E_CBS = (E_X·exp(-α·Y) − E_Y·exp(-α·X)) / (exp(-α·Y) − exp(-α·X))``.
 
-    Halkier, Helgaker, Jørgensen, Klopper, Koch, Olsen, Wilson,
-    *Chem. Phys. Lett.* **286**, 243-252 (1998), Table 2 reports the fitted value
-    ``α = 1.63`` averaged across small molecules. DOI: 10.1016/S0009-2614(98)00111-0.
+    Halkier, Helgaker, Jørgensen, Klopper, Olsen, *Chem. Phys. Lett.* **302**,
+    437-446 (1999), "Basis-set convergence of the energy in molecular
+    Hartree–Fock calculations" reports the fitted value ``α = 1.63`` averaged
+    across small molecules. DOI: 10.1016/S0009-2614(99)00179-7.
 
     Parameters
     ----------
     energies : Mapping[int, float]
         Mapping ``{cardinal: energy}`` with exactly two entries.
     alpha : float, optional
-        Exponential decay parameter. Defaults to 1.63 (Halkier et al. 1998).
+        Exponential decay parameter. Defaults to 1.63 (Halkier et al. 1999).
 
     Returns
     -------

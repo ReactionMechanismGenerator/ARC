@@ -5,7 +5,7 @@ A ``CompositeProtocol`` describes how to compute the final electronic energy of 
 stationary point as a sum of contributions, each evaluated at a different level of
 theory. The motivation is HEAT-style focal-point analysis (Tajti, Szalay, Császár,
 Kállay, Gauss, Valeev, Flowers, Vázquez, Stanton, *J. Chem. Phys.* **121**, 11599
-(2004); DOI: 10.1063/1.1804498) and CBS extrapolation (Helgaker et al. 1997, Halkier
+(2004); DOI: 10.1063/1.1811608) and CBS extrapolation (Helgaker et al. 1997, Halkier
 et al. 1998, Martin 1996), where small post-CCSD(T) corrections accumulate to
 several kJ/mol — exactly the range that affects TS barriers in kinetics.
 

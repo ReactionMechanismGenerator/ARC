@@ -9,9 +9,9 @@ References whose values are checked here:
 
 * Helgaker, Klopper, Koch, Noga, *J. Chem. Phys.* **106**, 9639 (1997).
   DOI: 10.1063/1.473863 — two-point correlation extrapolation.
-* Halkier, Helgaker, Jørgensen, Klopper, Koch, Olsen, Wilson,
-  *Chem. Phys. Lett.* **286**, 243-252 (1998). DOI: 10.1016/S0009-2614(98)00111-0
-  — two-point HF extrapolation, Table 2 reports α = 1.63.
+* Halkier, Helgaker, Jørgensen, Klopper, Olsen, *Chem. Phys. Lett.* **302**,
+  437-446 (1999). DOI: 10.1016/S0009-2614(99)00179-7 — two-point HF
+  extrapolation; source of the fitted α = 1.63.
 * Martin, *Chem. Phys. Lett.* **259**, 669-678 (1996).
   DOI: 10.1016/0009-2614(96)00898-6 — three-point Schwartz expansion.
 """
@@ -124,7 +124,7 @@ class TestHelgakerHF2Pt(unittest.TestCase):
     """``helgaker_hf_2pt`` extrapolates HF energies via E(X) = E_CBS + A·exp(-α·X)."""
 
     def test_default_alpha_is_halkier_value(self):
-        # Halkier et al. 1998 fitted α = 1.63 (Table 2).
+        # Halkier et al. 1999 fitted α = 1.63.
         # Pick numbers and verify the formula uses α=1.63 by default.
         e_t, e_q = -76.0500, -76.0510
         from_default = helgaker_hf_2pt({3: e_t, 4: e_q})

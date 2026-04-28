@@ -1,8 +1,8 @@
 # `sp_composite` examples
 
-These inputs demonstrate the four YAML forms accepted by ARC's `sp_composite`
+These inputs demonstrate the YAML forms accepted by ARC's `sp_composite`
 feature — composite single-point protocols for refined electronic energies
-(HEAT-style focal-point analysis and CBS extrapolation).
+(HEAT-style focal-point analysis, W\ :sub:`n` family, and CBS extrapolation).
 
 | File | Demonstrates |
 |---|---|
@@ -10,6 +10,9 @@ feature — composite single-point protocols for refined electronic energies
 | `heat345q_partial_override/input.yml` | **Form 2** — preset with partial override: swap one basis set on a single term. |
 | `explicit_fpa/input.yml` | **Form 3** — fully explicit recipe, including a `cbs_extrapolation` term (Helgaker 2-pt correlation). |
 | `per_species_override/input.yml` | **Form 4** — per-species override: one species keeps the project default, one opts out via `null`, one uses a species-specific protocol. |
+| `w3f12_preset/input.yml` | **W\ :sub:`n` family** — `W3-F12` preset (CCSD(T)-F12/QZ anchor + δ[CCSDT] + δ_CV + δ_rel). Cheaper than HEAT-345Q when post-(T) effects beyond CCSDT are not the bottleneck. |
+| `heat456q_preset/input.yml` | **Tighter base** — `HEAT-456Q` preset: same correction stack as `HEAT-345Q` but with a `cc-pVQZ-F12` anchor for systems where CCSD(T) basis incompleteness drives residual barrier error. |
+| `w2f12_partial_override/input.yml` | **F12 + override** — `W2-F12` with the δ_CV core-valence basis upgraded from `cc-pCVTZ` to `cc-pCVQZ`. Demonstrates that overrides on a δ leg must carry the Molpro `core,...;` directive through to the *high* leg. |
 
 ## Running
 

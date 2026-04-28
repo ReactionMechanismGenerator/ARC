@@ -15,7 +15,7 @@ References
 ----------
 
 * Tajti, Szalay, Császár, Kállay, Gauss, Valeev, Flowers, Vázquez, Stanton,
-  *J. Chem. Phys.* **121**, 11599 (2004). DOI: 10.1063/1.1804498 — HEAT.
+  *J. Chem. Phys.* **121**, 11599 (2004). DOI: 10.1063/1.1811608 — HEAT.
 * East, Allen, *J. Chem. Phys.* **99**, 4638 (1993). DOI: 10.1063/1.466062 — focal-
   point analysis methodology.
 """
