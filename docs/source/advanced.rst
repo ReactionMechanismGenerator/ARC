@@ -486,13 +486,17 @@ __ Truhlar1_
 
 Isomorphism checks
 ^^^^^^^^^^^^^^^^^^
-When a species is defined using a 2D graph (i.e., SMILES, AdjList, or InChI), an isomorphism check
+For non-TS species defined using a 2D graph (i.e., SMILES, AdjList, or InChI), an isomorphism check
 is performed on the optimized geometry (all conformers and final optimization).
-If the molecule perceived from the 3D coordinate is not isomorphic
+If the molecule perceived from the 3D coordinates is not isomorphic
 with the input 2D graph, ARC will not spawn any additional jobs for the species, and will not use it further
-(for thermo and/or rates calculations). However, sometimes the perception algorithm doesn't work as expected (e.g.,
-issues with charged species and triplets are known). To continue spawning jobs for all species in an ARC
+(for thermo and/or rates calculations). However, sometimes the perception algorithm does not work as expected (e.g.,
+issues with charged species and triplets are known). To continue spawning jobs for all non-TS species in an ARC
 project, pass ``True`` to the ``allow_nonisomorphic_2d`` argument (it is ``False`` by default).
+
+Transition states are handled differently. ARC does not enforce 2D-graph isomorphism for TS species, since TS
+connectivity and bond orders are not uniquely defined. TS validation is instead based on TS-specific criteria such as
+the imaginary frequency, normal mode displacement checks, IRC calculations, and energetic consistency.
 
 
 .. _directory:
