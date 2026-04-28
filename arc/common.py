@@ -31,7 +31,7 @@ from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
 
 if TYPE_CHECKING:
-    from arc.molecule.molecule import Molecule
+    from arc.molecule.molecule import Atom, Molecule
 
 logger = logging.getLogger('arc')
 logging.getLogger('matplotlib.font_manager').disabled = True
