@@ -37,7 +37,7 @@ jobs:
         with:
           environment-name: arc_env
           environment-file: ARC/environment.yml
-          cache-environment: false
+          cache-environment: ${{ github.event_name != 'schedule' }}
           cache-downloads: true
           generate-run-shell: true
 
