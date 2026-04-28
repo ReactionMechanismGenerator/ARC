@@ -779,8 +779,7 @@ class JobAdapter(ABC):
                     content += '\n'
         else:
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
-        if content:
-            self.additional_job_info = content.lower()
+        self.additional_job_info = content.lower() if content else None
 
     def _check_job_server_status(self) -> str:
         """
@@ -800,6 +799,10 @@ class JobAdapter(ABC):
         Raises:
             IOError: If the output file and any additional server information cannot be found.
         """
+        existing_keywords = list(self.job_status[1].get('keywords', list()))
+        # Refresh scheduler-side logs before ESS parsing so server-reported OOMs
+        # can be detected even when the output file is absent or incomplete.
+        self._get_additional_job_info()
         if self.server != 'local' and self.execution_type != 'incore':
             if os.path.exists(self.local_path_to_output_file):
                 os.remove(self.local_path_to_output_file)
@@ -838,7 +841,22 @@ class JobAdapter(ABC):
                                                                      )
         else:
             status, keywords, error, line = '', '', '', ''
+            if self.additional_job_info:
+                try:
+                    status, keywords, error, line = determine_ess_status(
+                        output_path=self.local_path_to_output_file,
+                        species_label=self.species_label,
+                        job_type=self.job_type,
+                        job_log=self.additional_job_info,
+                        software=self.job_adapter,
+                    )
+                except FileNotFoundError:
+                    status, keywords, error, line = '', '', '', ''
         self.job_status[1]['status'] = status
+        if 'max_total_job_memory' in existing_keywords and status == 'errored' \
+                and isinstance(keywords, list) and 'Memory' in keywords \
+                and 'max_total_job_memory' not in keywords:
+            keywords.append('max_total_job_memory')
         self.job_status[1]['keywords'] = keywords
         self.job_status[1]['error'] = error
         self.job_status[1]['line'] = line.rstrip()
