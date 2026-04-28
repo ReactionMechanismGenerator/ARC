@@ -198,6 +198,39 @@ class PipeRun:
         array_size = min(self.max_workers, len(self.tasks)) if self.tasks else self.max_workers
         return cpus, memory_mb, array_size
 
+    def _build_env_preamble(self) -> str:
+        """
+        Build the shell preamble injected into ``{env_setup}`` in submit templates.
+
+        Combines (in order):
+          1. Auto-detected ``CONDA_PREFIX`` and ``LD_LIBRARY_PATH`` exports
+             (needed because pipe workers invoke Python directly, bypassing
+             conda activation hooks that normally set these).
+          2. User-configured ``pre_cmd`` from ``pipe_settings``.
+          3. Engine-specific ``env_setup`` from ``pipe_settings``.
+          4. Scratch directory setup from ``pipe_settings``.
+        """
+        lines = []
+        prefix_lib = os.path.join(sys.prefix, 'lib')
+        if os.path.isdir(prefix_lib):
+            lines.append(f'export CONDA_PREFIX="{sys.prefix}"')
+            lines.append(
+                f'export LD_LIBRARY_PATH="{prefix_lib}${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}"'
+            )
+        pre_cmd = pipe_settings.get('pre_cmd', '')
+        if pre_cmd:
+            lines.append(pre_cmd)
+        engine = self.tasks[0].engine if self.tasks else ''
+        engine_setup = pipe_settings.get('env_setup', {}).get(engine, '')
+        if engine_setup:
+            lines.append(engine_setup)
+        scratch_base = pipe_settings.get('scratch_base', '')
+        if scratch_base:
+            lines.append(
+                f'export TMPDIR="{scratch_base}/${{PBS_JOBID%%[*}}/$PBS_ARRAY_INDEX"\nmkdir -p "$TMPDIR"'
+            )
+        return '\n'.join(lines)
+
     def write_submit_script(self) -> str:
         """
         Generate an array submission script for the configured cluster scheduler.
@@ -217,12 +250,7 @@ class PipeRun:
         cpus, memory_mb, array_size = self._submission_resources()
         server = servers_dict.get('local', {})
         queue, _ = next(iter(server.get('queues', {}).items()), ('', None))
-        engine = self.tasks[0].engine if self.tasks else ''
-        env_setup = pipe_settings.get('env_setup', {}).get(engine, '')
-        scratch_base = pipe_settings.get('scratch_base', '')
-        if scratch_base:
-            scratch_export = f'export TMPDIR="{scratch_base}/${{PBS_JOBID%%[*}}/$PBS_ARRAY_INDEX"\nmkdir -p "$TMPDIR"'
-            env_setup = f'{env_setup}\n{scratch_export}' if env_setup else scratch_export
+        env_setup = self._build_env_preamble()
         content = pipe_submit[template_key].format(
             name=f'pipe_{self.run_id}',
             max_task_num=array_size,
