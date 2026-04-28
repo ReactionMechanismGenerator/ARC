@@ -1099,8 +1099,8 @@ class TestCommon(unittest.TestCase):
         """Test the getting a corresponding angle in the -180 to +180 range"""
         self.assertEqual(common.get_angle_in_180_range(0), 0)
         self.assertEqual(common.get_angle_in_180_range(10), 10)
-        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589), -5.364589)
-        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589), -5.364589)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589, round_to=None), -5.364589)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589, round_to=None), -5.364589)
         self.assertEqual(common.get_angle_in_180_range(-120), -120)
         self.assertAlmostEqual(common.get_angle_in_180_range(179.999), 180, 2)
         self.assertEqual(common.get_angle_in_180_range(180), -180)
