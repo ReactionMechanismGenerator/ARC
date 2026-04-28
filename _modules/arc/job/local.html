@@ -94,7 +94,6 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_logger</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">SettingsError</span>
@@ -111,11 +110,11 @@
 
 <div class="viewcode-block" id="execute_command">
 <a class="viewcode-back" href="../../../api/local.html#arc.job.local.execute_command">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">execute_command</span><span class="p">(</span><span class="n">command</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">execute_command</span><span class="p">(</span><span class="n">command</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
                     <span class="n">shell</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                     <span class="n">no_fail</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                    <span class="n">executable</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]]:</span>
+                    <span class="n">executable</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Execute a command.</span>
 
@@ -124,13 +123,13 @@
 <span class="sd">        so that the calling function can debug the situation.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        command (Union[str, List[str]]): An array of string commands to send.</span>
+<span class="sd">        command (str | list[str]): An array of string commands to send.</span>
 <span class="sd">        shell (bool, optional): Specifies whether the command should be executed using bash instead of Python.</span>
 <span class="sd">        no_fail (bool, optional): If ``True`` then ARC will not crash if an error is encountered.</span>
 <span class="sd">        executable (str, optional): Select a specific shell to run with, e.g., &#39;/bin/bash&#39;.</span>
 <span class="sd">                                    Default shell of the subprocess command is &#39;/bin/sh&#39;.</span>
 
-<span class="sd">    Returns: Tuple[list, list]:</span>
+<span class="sd">    Returns: tuple[list, list]:</span>
 <span class="sd">        - A list of lines of standard output stream.</span>
 <span class="sd">        - A list of lines of the standard error stream.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -170,15 +169,15 @@
 
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_output_command_error_message</span><span class="p">(</span><span class="n">command</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_output_command_error_message</span><span class="p">(</span><span class="n">command</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
                                   <span class="n">error</span><span class="p">:</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span><span class="p">,</span>
-                                  <span class="n">logging_func</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">,</span> <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">],</span>
+                                  <span class="n">logging_func</span><span class="p">,</span>
                                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Formats and logs the error message returned from a command at the desired logging level</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        command (List[str]): The command that threw the error.</span>
+<span class="sd">        command (list[str]): The command that threw the error.</span>
 <span class="sd">        error (subprocess.CalledProcessError): The exception caught by python from subprocess.</span>
 <span class="sd">        logging_func: ``logging.warning`` or ``logging.error`` as a function object.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -194,7 +193,7 @@
     <span class="n">logging_func</span><span class="p">(</span><span class="n">error</span><span class="o">.</span><span class="n">returncode</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_format_stdout</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_format_stdout</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Format the stdout as a list of unicode strings</span>
 
@@ -249,7 +248,7 @@
 
 <div class="viewcode-block" id="delete_job">
 <a class="viewcode-back" href="../../../api/local.html#arc.job.local.delete_job">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">delete_job</span><span class="p">(</span><span class="n">job_id</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">delete_job</span><span class="p">(</span><span class="n">job_id</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Deletes a running job.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -270,12 +269,12 @@
 
 <div class="viewcode-block" id="check_running_jobs_ids">
 <a class="viewcode-back" href="../../../api/local.html#arc.job.local.check_running_jobs_ids">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">check_running_jobs_ids</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_running_jobs_ids</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check which jobs are still running on the server for this user.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        List[str]: List of job IDs.</span>
+<span class="sd">        list[str]: List of job IDs.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
     <span class="k">if</span> <span class="n">cluster_soft</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;slurm&#39;</span><span class="p">,</span> <span class="s1">&#39;oge&#39;</span><span class="p">,</span> <span class="s1">&#39;sge&#39;</span><span class="p">,</span> <span class="s1">&#39;pbs&#39;</span><span class="p">,</span> <span class="s1">&#39;htcondor&#39;</span><span class="p">]:</span>
@@ -289,15 +288,15 @@
 
 <div class="viewcode-block" id="parse_running_jobs_ids">
 <a class="viewcode-back" href="../../../api/local.html#arc.job.local.parse_running_jobs_ids">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">parse_running_jobs_ids</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
-                           <span class="n">cluster_soft</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">parse_running_jobs_ids</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+                           <span class="n">cluster_soft</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A helper function for parsing job IDs from the stdout of a job status command.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        stdout (List[str]): The stdout of a job status command.</span>
-<span class="sd">        cluster_soft (Optional[str]): The cluster software.</span>
+<span class="sd">        stdout (list[str]): The stdout of a job status command.</span>
+<span class="sd">        cluster_soft (str | None): The cluster software.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        List(str): List of job IDs.</span>
@@ -320,11 +319,11 @@
 <div class="viewcode-block" id="submit_job">
 <a class="viewcode-back" href="../../../api/local.html#arc.job.local.submit_job">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">submit_job</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-               <span class="n">cluster_soft</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-               <span class="n">submit_cmd</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-               <span class="n">submit_filename</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+               <span class="n">cluster_soft</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+               <span class="n">submit_cmd</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+               <span class="n">submit_filename</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                <span class="n">recursion</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-               <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Submit a job.</span>
 
@@ -336,7 +335,7 @@
 <span class="sd">        recursion (bool, optional): Whether this call is within a recursion.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[Optional[str], Optional[str]]: job_status, job_id</span>
+<span class="sd">        tuple[str | None, str | None]: job_status, job_id</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">cluster_soft</span> <span class="ow">or</span> <span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]</span>
     <span class="n">job_status</span><span class="p">,</span> <span class="n">job_id</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span>
@@ -385,14 +384,14 @@
 
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_determine_job_id</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
-                      <span class="n">cluster_soft</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_determine_job_id</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+                      <span class="n">cluster_soft</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the job ID right after it was submitted from the stdout.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        stdout (List[str]): The stdout got from submitting a job.</span>
+<span class="sd">        stdout (list[str]): The stdout got from submitting a job.</span>
 <span class="sd">        cluster_soft (str, optional): The server cluster software.</span>
 
 <span class="sd">    Returns:</span>
@@ -418,8 +417,8 @@
 <div class="viewcode-block" id="get_last_modified_time">
 <a class="viewcode-back" href="../../../api/local.html#arc.job.local.get_last_modified_time">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_last_modified_time</span><span class="p">(</span><span class="n">file_path_1</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                           <span class="n">file_path_2</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">]:</span>
+                           <span class="n">file_path_2</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Returns the last modified time of ``file_path_1`` if the file exists,</span>
 <span class="sd">    else returns the last modified time of ``file_path_2`` if the file exists.</span>
@@ -516,14 +515,14 @@
 
 <div class="viewcode-block" id="delete_all_local_arc_jobs">
 <a class="viewcode-back" href="../../../api/local.html#arc.job.local.delete_all_local_arc_jobs">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">delete_all_local_arc_jobs</span><span class="p">(</span><span class="n">jobs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">delete_all_local_arc_jobs</span><span class="p">(</span><span class="n">jobs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from the local server.</span>
 <span class="sd">    Make sure you know what you&#39;re doing, so unrelated jobs won&#39;t be deleted...</span>
 <span class="sd">    Useful when terminating ARC while some (ghost) jobs are still running.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        jobs (List[Union[str, int]], optional): Specific ARC job IDs to delete.</span>
+<span class="sd">        jobs (list[str | int], optional): Specific ARC job IDs to delete.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">server</span> <span class="o">=</span> <span class="s1">&#39;local&#39;</span>
     <span class="k">if</span> <span class="n">server</span> <span class="ow">in</span> <span class="n">servers</span><span class="p">:</span>

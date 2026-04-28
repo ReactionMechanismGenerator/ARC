@@ -106,7 +106,6 @@
 <span class="sd">                           &lt;torsion tuple 1&gt;: angle 1,</span>
 <span class="sd">     }</span>
 
-
 <span class="sd">Module workflow::</span>
 
 <span class="sd">    generate_conformers</span>
@@ -125,7 +124,6 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">product</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">openbabel</span><span class="w"> </span><span class="kn">import</span> <span class="n">openbabel</span> <span class="k">as</span> <span class="n">ob</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openbabel</span><span class="w"> </span><span class="kn">import</span> <span class="n">pybel</span> <span class="k">as</span> <span class="n">pyb</span>
@@ -215,14 +213,14 @@
 
 <div class="viewcode-block" id="cheat_sheet">
 <a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.cheat_sheet">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">cheat_sheet</span><span class="p">(</span><span class="n">mol_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="n">Molecule</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">]]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">cheat_sheet</span><span class="p">(</span><span class="n">mol_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">|</span> <span class="n">Molecule</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the species is in the cheat sheet, and return its correct xyz if it is.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        mol_list (Union[List[Molecule], Molecule]): Molecule objects to consider (or Molecule, resonance structures will be generated).</span>
+<span class="sd">        mol_list (list[Molecule] | Molecule): Molecule objects to consider (or Molecule, resonance structures will be generated).</span>
 <span class="sd">    </span>
-<span class="sd">    Returns: Optional[lis[Dict]]</span>
+<span class="sd">    Returns: lis[Dict] | None</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">mol_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">mol_list</span><span class="p">]</span> <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mol_list</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="k">else</span> <span class="n">mol_list</span>
     <span class="k">for</span> <span class="n">smiles</span> <span class="ow">in</span> <span class="n">CHEAT_SHEET</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
@@ -236,7 +234,7 @@
 
 <div class="viewcode-block" id="generate_conformers">
 <a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_conformers">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">generate_conformers</span><span class="p">(</span><span class="n">mol_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="n">Molecule</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_conformers</span><span class="p">(</span><span class="n">mol_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">|</span> <span class="n">Molecule</span><span class="p">,</span>
                         <span class="n">label</span><span class="p">,</span>
                         <span class="n">xyzs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                         <span class="n">torsions</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
@@ -255,13 +253,13 @@
                         <span class="n">return_all_conformers</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
                         <span class="n">plot_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                         <span class="n">print_logs</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-                        <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">]]]:</span>
+                        <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate conformers for (non-TS) species starting from a list of RMG Molecules.</span>
 <span class="sd">    (resonance structures are assumed to have already been generated and included in the molecule list)</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        mol_list (Union[List[Molecule], Molecule]): Molecule objects to consider (or Molecule, resonance structures will be generated).</span>
+<span class="sd">        mol_list (list[Molecule] | Molecule): Molecule objects to consider (or Molecule, resonance structures will be generated).</span>
 <span class="sd">        label (str): The species&#39; label.</span>
 <span class="sd">        xyzs (list), optional: A list of user guess xyzs that will also be taken into account, each in a dict format.</span>
 <span class="sd">        torsions (list, optional): A list of all possible torsions in the molecule. Will be determined if not given.</span>
@@ -291,7 +289,7 @@
 <span class="sd">        ConformerError: If something goes wrong.</span>
 <span class="sd">        TypeError: If xyzs has entries of a wrong type.</span>
 
-<span class="sd">    Returns: Optional[Union[list, Tuple[list, list]]]</span>
+<span class="sd">    Returns: list | tuple[list, list] | None</span>
 <span class="sd">        - Lowest conformers</span>
 <span class="sd">        - Lowest conformers and all new conformers.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -422,7 +420,7 @@
 <span class="sd">                                        will not be considered.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[list, dict]:</span>
+<span class="sd">        tuple[list, dict]:</span>
 <span class="sd">            - The deduced conformers.</span>
 <span class="sd">            - Keys are torsion tuples.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -746,7 +744,7 @@
                                     <span class="n">xyzs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                                     <span class="n">num_confs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                                     <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;MMFF94s&#39;</span><span class="p">,</span>
-                                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+                                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate conformers using RDKit and OpenBabel and optimize them using a force field</span>
 <span class="sd">    Also consider user guesses in `xyzs`.</span>
@@ -837,7 +835,7 @@
 <span class="sd">        force_field (str, optional): The type of force field to use.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[list, list]:</span>
+<span class="sd">        tuple[list, list]:</span>
 <span class="sd">            - The conformer FF energies corresponding to the list of dihedrals.</span>
 <span class="sd">            - The conformer xyz geometries corresponding to the list of dihedrals.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -888,7 +886,7 @@
 <span class="sd">        mol_list (list): Localized structures (Molecule objects) by which all rotors will be determined.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[list, list]:</span>
+<span class="sd">        tuple[list, list]:</span>
 <span class="sd">            - A list of indices of scan pivots.</span>
 <span class="sd">            - A list of indices of top atoms (including one of the pivotal atoms) corresponding to the torsions.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -911,10 +909,10 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">determine_number_of_conformers_to_generate</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                                <span class="n">heavy_atoms</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                                                <span class="n">torsion_num</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                                               <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                                               <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                               <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                               <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                                                <span class="n">minimalist</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                                               <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+                                               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the number of conformers to generate using molecular mechanics.</span>
 
@@ -931,7 +929,7 @@
 <span class="sd">        ConformerError: If the number of conformers to generate cannot be determined.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[int, int]:</span>
+<span class="sd">        tuple[int, int]:</span>
 <span class="sd">            - The number of conformers to generate.</span>
 <span class="sd">            - The number of chiral centers.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1023,7 +1021,7 @@
 <span class="sd">        symmetry (int, optional): The torsion symmetry number.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[list, list]:</span>
+<span class="sd">        tuple[list, list]:</span>
 <span class="sd">            - Sampling points for the torsion.</span>
 <span class="sd">            - Each entry is a well dictionary with the keys</span>
 <span class="sd">              ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``, ``angles``.</span>
@@ -1205,9 +1203,9 @@
 <div class="viewcode-block" id="get_lowest_confs">
 <a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_lowest_confs">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_lowest_confs</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                     <span class="n">confs</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">list</span><span class="p">],</span>
-                     <span class="n">n</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
-                     <span class="n">e</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mf">5.0</span><span class="p">,</span>
+                     <span class="n">confs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">list</span><span class="p">,</span>
+                     <span class="n">n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+                     <span class="n">e</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="mf">5.0</span><span class="p">,</span>
                      <span class="n">energy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;FF energy&#39;</span><span class="p">,</span>
                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -1315,7 +1313,7 @@
                              <span class="n">optimize</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                              <span class="n">try_ob</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                              <span class="n">suppress_warning</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">]:</span>
+                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine force field energies using RDKit.</span>
 <span class="sd">    If ``num_confs`` is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.</span>
@@ -1336,7 +1334,7 @@
 <span class="sd">        ConformerError: If conformers could not be generated.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[list, list]:</span>
+<span class="sd">        tuple[list, list]:</span>
 <span class="sd">            - Entries are xyz coordinates, each in a dict format.</span>
 <span class="sd">            - Entries are the FF energies (in kJ/mol).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1383,7 +1381,7 @@
 <span class="sd">        optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[list, list]:</span>
+<span class="sd">        tuple[list, list]:</span>
 <span class="sd">            - Entries are optimized xyz&#39;s in a dictionary format.</span>
 <span class="sd">            - Entries are float numbers representing the energies (in kJ/mol).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1444,7 +1442,7 @@
 <span class="sd">        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[list, list]:</span>
+<span class="sd">        tuple[list, list]:</span>
 <span class="sd">            - Entries are optimized xyz&#39;s in a list format.</span>
 <span class="sd">            - Entries are float numbers representing the energies in kJ/mol.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1493,7 +1491,7 @@
 <span class="sd">                                For method description, see https://openbabel.org/dev-api/group__conformer.shtml</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[list, list]:</span>
+<span class="sd">        tuple[list, list]:</span>
 <span class="sd">            - Entries are optimized xyz&#39;s in a list format.</span>
 <span class="sd">            - Entries are float numbers representing the energies in kJ/mol.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1590,7 +1588,7 @@
 <span class="sd">        xyz (dict, optional): The 3D coordinates.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Optional[RDMol]: An RDKIt molecule with embedded conformers.</span>
+<span class="sd">        RDMol | None: An RDKIt molecule with embedded conformers.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">num_confs</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="n">ConformerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Either num_confs or xyz must be set when calling embed_rdkit() for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
@@ -1679,14 +1677,14 @@
 <div class="viewcode-block" id="rdkit_force_field">
 <a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.rdkit_force_field">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">rdkit_force_field</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                      <span class="n">rd_mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">RDMol</span><span class="p">],</span>
-                      <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="n">num_confs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">rd_mol</span><span class="p">:</span> <span class="n">RDMol</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">num_confs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                       <span class="n">force_field</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;MMFF94s&#39;</span><span class="p">,</span>
                       <span class="n">try_uff</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                       <span class="n">optimize</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                       <span class="n">try_ob</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">]:</span>
+                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).</span>
 <span class="sd">    For UFF see: https://www.rdkit.org/docs/source/rdkit.Chem.rdForceFieldHelpers.html#rdkit.Chem.rdForceFieldHelpers.UFFOptimizeMoleculeConfs</span>
@@ -1702,7 +1700,7 @@
 <span class="sd">        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[list, list]:</span>
+<span class="sd">        tuple[list, list]:</span>
 <span class="sd">            - Entries are optimized xyz&#39;s in a dictionary format.</span>
 <span class="sd">            - Entries are float numbers representing the energies.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -2015,7 +2013,7 @@
 <a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_diatomic_conformer">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">generate_diatomic_conformer</span><span class="p">(</span><span class="n">symbol_1</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                 <span class="n">symbol_2</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                                <span class="n">multiplicity</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                <span class="n">multiplicity</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                                 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate a conformer for a diatomic species.</span>
@@ -2202,7 +2200,7 @@
 <span class="sd">        InputError: If neither ``conformer`` nor ``xyz`` were given.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Optional[dict, int]:</span>
+<span class="sd">        dict, int | None:</span>
 <span class="sd">            Keys are types of chiral sites (&#39;C&#39; for carbon, &#39;N&#39; for nitrogen, &#39;D&#39; for double bond),</span>
 <span class="sd">            values are the number of chiral centers of each type. If ``just_get_the_number`` is ``True``,</span>
 <span class="sd">            just returns the number of chiral centers (integer).</span>
@@ -2514,7 +2512,7 @@
 <span class="sd">        ConformerError: If any of the atoms indicated by ``chiral_nitrogen_centers`` could not be a chiral nitrogen atom.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[Molecule, list]:</span>
+<span class="sd">        tuple[Molecule, list]:</span>
 <span class="sd">            - A copy of the molecule with replaced N atoms.</span>
 <span class="sd">            - Elements inserted in addition to the C atom, ordered as in ``chiral_nitrogen_centers``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>

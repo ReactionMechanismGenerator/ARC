@@ -278,18 +278,18 @@ under a directory.``True`` for recursively change.</p></li>
 <dd><p>Deletes a running job.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>job_id</strong> (<em>Union</em><em>[</em><em>int</em><em>, </em><em>str</em><em>]</em>) – The job’s ID.</p>
+<dd class="field-odd"><p><strong>job_id</strong> (<em>int</em><em> | </em><em>str</em>) – The job’s ID.</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.delete_jobs">
-<span class="sig-name descname"><span class="pre">delete_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">jobs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.delete_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.delete_jobs" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">delete_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">jobs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.delete_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.delete_jobs" title="Link to this definition"></a></dt>
 <dd><p>Delete all of the jobs on a specific server.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>jobs</strong> (<em>List</em><em>[</em><em>Union</em><em>[</em><em>str</em><em>, </em><em>int</em><em>]</em><em>]</em><em>, </em><em>optional</em>) – Specific ARC job IDs to delete.</p>
+<dd class="field-odd"><p><strong>jobs</strong> (<em>list</em><em>[</em><em>str</em><em> | </em><em>int</em><em>]</em><em>, </em><em>optional</em>) – Specific ARC job IDs to delete.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -349,7 +349,7 @@ under a directory.``True`` for recursively change.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.submit_job">
-<span class="sig-name descname"><span class="pre">submit_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recursion</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.submit_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.submit_job" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">submit_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recursion</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.submit_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.submit_job" title="Link to this definition"></a></dt>
 <dd><p>Submit a job to the server.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -360,7 +360,7 @@ under a directory.``True`` for recursively change.</p></li>
 </dd>
 </dl>
 <dl class="simple">
-<dt>Returns: Tuple[str, int]</dt><dd><ul class="simple">
+<dt>Returns: tuple[str, int]</dt><dd><ul class="simple">
 <li><p>A string indicate the status of job submission.
 Either <cite>errored</cite> or <cite>submitted</cite>.</p></li>
 <li><p>The job ID of the submitted job.</p></li>
@@ -377,8 +377,8 @@ Either <cite>errored</cite> or <cite>submitted</cite>.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>remote_file_path</strong> (<em>str</em>) – The path to write into on the remote server.</p></li>
-<li><p><strong>local_file_path</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em>) – The local file path to be copied to the remote location.</p></li>
-<li><p><strong>file_string</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em>) – The file content to be copied and saved as the remote file.</p></li>
+<li><p><strong>local_file_path</strong> (<em>str</em><em> | </em><em>None</em>) – The local file path to be copied to the remote location.</p></li>
+<li><p><strong>file_string</strong> (<em>str</em><em> | </em><em>None</em>) – The file content to be copied and saved as the remote file.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
@@ -412,7 +412,7 @@ error when executing the method.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>job_id</strong> (<em>int</em>) – the job ID recognized by the server.</p></li>
-<li><p><strong>stdout</strong> (<em>Union</em><em>[</em><em>list</em><em>, </em><em>str</em><em>]</em>) – The output of a queue status check.</p></li>
+<li><p><strong>stdout</strong> (<em>list</em><em> | </em><em>str</em>) – The output of a queue status check.</p></li>
 <li><p><strong>server</strong> (<em>str</em>) – The server name.</p></li>
 </ul>
 </dd>
@@ -427,7 +427,7 @@ error when executing the method.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.job.ssh.delete_all_arc_jobs">
-<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">delete_all_arc_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">jobs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#delete_all_arc_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.delete_all_arc_jobs" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">delete_all_arc_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">jobs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#delete_all_arc_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.delete_all_arc_jobs" title="Link to this definition"></a></dt>
 <dd><p>Delete all ARC-spawned jobs (with job name starting with <cite>a</cite> and a digit) from :list:servers
 (<cite>servers</cite> could also be a string of one server name)
 Make sure you know what you’re doing, so unrelated jobs won’t be deleted…
@@ -436,7 +436,7 @@ Useful when terminating ARC while some (ghost) jobs are still running.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>server_list</strong> (<em>list</em>) – List of servers to delete ARC jobs from.</p></li>
-<li><p><strong>jobs</strong> (<em>Optional</em><em>[</em><em>List</em><em>[</em><em>str</em><em>]</em><em>]</em>) – Specific ARC job IDs to delete.</p></li>
+<li><p><strong>jobs</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – Specific ARC job IDs to delete.</p></li>
 </ul>
 </dd>
 </dl>

@@ -88,7 +88,6 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">VectorsError</span>
@@ -97,9 +96,9 @@
 
 <div class="viewcode-block" id="get_normal">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.get_normal">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_normal</span><span class="p">(</span><span class="n">v1</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
-               <span class="n">v2</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
-               <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_normal</span><span class="p">(</span><span class="n">v1</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+               <span class="n">v2</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate a normal vector using cross multiplication.</span>
 
@@ -117,8 +116,8 @@
 
 <div class="viewcode-block" id="get_angle">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.get_angle">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_angle</span><span class="p">(</span><span class="n">v1</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
-              <span class="n">v2</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_angle</span><span class="p">(</span><span class="n">v1</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+              <span class="n">v2</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
               <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;rads&#39;</span><span class="p">,</span>
               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -145,9 +144,9 @@
 
 <div class="viewcode-block" id="get_dihedral">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.get_dihedral">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_dihedral</span><span class="p">(</span><span class="n">v1</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
-                 <span class="n">v2</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
-                 <span class="n">v3</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_dihedral</span><span class="p">(</span><span class="n">v1</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+                 <span class="n">v2</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+                 <span class="n">v3</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
                  <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;degs&#39;</span><span class="p">,</span>
                  <span class="n">tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-8</span><span class="p">,</span>
                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
@@ -210,7 +209,7 @@
 
 <div class="viewcode-block" id="calculate_distance">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.calculate_distance">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">calculate_distance</span><span class="p">(</span><span class="n">coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="nb">dict</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">calculate_distance</span><span class="p">(</span><span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">,</span>
                        <span class="n">atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                        <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
                        <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
@@ -256,7 +255,7 @@
 
 <div class="viewcode-block" id="calculate_angle">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.calculate_angle">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">calculate_angle</span><span class="p">(</span><span class="n">coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="nb">dict</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">calculate_angle</span><span class="p">(</span><span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">,</span>
                     <span class="n">atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                     <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
                     <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;degs&#39;</span><span class="p">,</span>
@@ -305,7 +304,7 @@
 
 <div class="viewcode-block" id="calculate_dihedral_angle">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.calculate_dihedral_angle">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">calculate_dihedral_angle</span><span class="p">(</span><span class="n">coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="nb">dict</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">calculate_dihedral_angle</span><span class="p">(</span><span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">,</span>
                              <span class="n">torsion</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                              <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
                              <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;degs&#39;</span><span class="p">,</span>
@@ -358,7 +357,7 @@
 
 <div class="viewcode-block" id="calculate_param">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.calculate_param">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">calculate_param</span><span class="p">(</span><span class="n">coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="nb">dict</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">calculate_param</span><span class="p">(</span><span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">,</span>
                     <span class="n">atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                     <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
@@ -387,7 +386,7 @@
 
 <div class="viewcode-block" id="unit_vector">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.unit_vector">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">unit_vector</span><span class="p">(</span><span class="n">vector</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">unit_vector</span><span class="p">(</span><span class="n">vector</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate a unit vector in the same direction as the input vector.</span>
 
@@ -404,9 +403,9 @@
 
 <div class="viewcode-block" id="set_vector_length">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.set_vector_length">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">set_vector_length</span><span class="p">(</span><span class="n">vector</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">set_vector_length</span><span class="p">(</span><span class="n">vector</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
                       <span class="n">length</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
-                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Set the length of a 3D vector.</span>
 
@@ -424,11 +423,11 @@
 
 <div class="viewcode-block" id="rotate_vector">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.rotate_vector">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">rotate_vector</span><span class="p">(</span><span class="n">point_a</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
-                  <span class="n">point_b</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
-                  <span class="n">normal</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">rotate_vector</span><span class="p">(</span><span class="n">point_a</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+                  <span class="n">point_b</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+                  <span class="n">normal</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
                   <span class="n">theta</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
-                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Rotate a vector in 3D space around a given axis by a certain angle.</span>
 
@@ -527,7 +526,7 @@
 
 <div class="viewcode-block" id="get_vector_length">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.get_vector_length">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_vector_length</span><span class="p">(</span><span class="n">v</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_vector_length</span><span class="p">(</span><span class="n">v</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the length of an ND vector</span>
 

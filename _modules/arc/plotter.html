@@ -98,7 +98,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.backends.backend_pdf</span><span class="w"> </span><span class="kn">import</span> <span class="n">PdfPages</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">mpl_toolkits.mplot3d</span><span class="w"> </span><span class="kn">import</span> <span class="n">Axes3D</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">py3Dmol</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">p3D</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">rdkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chem</span>
@@ -129,6 +129,9 @@
                                    <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.perceive</span><span class="w"> </span><span class="kn">import</span> <span class="n">perceive_molecule_from_xyz</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span><span class="p">,</span> <span class="n">rmg_mol_to_dict_repr</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">arc.reaction</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCReaction</span>
 
 
 <span class="n">PRETTY_UNITS</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;(s^-1)&#39;</span><span class="p">:</span> <span class="sa">r</span><span class="s1">&#39; (s$^-1$)&#39;</span><span class="p">,</span>
@@ -535,7 +538,7 @@
 <div class="viewcode-block" id="draw_thermo_parity_plots">
 <a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_thermo_parity_plots">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">draw_thermo_parity_plots</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
-                             <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+                             <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Draws parity plots of calculated thermo and RMG&#39;s estimates.</span>
 <span class="sd">    Saves a thermo.info file if a ``path`` is specified.</span>
@@ -619,10 +622,10 @@
 <div class="viewcode-block" id="draw_kinetics_plots">
 <a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_kinetics_plots">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">draw_kinetics_plots</span><span class="p">(</span><span class="n">rxn_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
-                        <span class="n">T_min</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                        <span class="n">T_max</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="n">T_min</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="n">T_max</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                         <span class="n">T_count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
-                        <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                         <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Draws plots of calculated rate coefficients and RMG&#39;s estimates.</span>
@@ -783,13 +786,13 @@
 
 <div class="viewcode-block" id="save_geo">
 <a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_geo">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">save_geo</span><span class="p">(</span><span class="n">species</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ARCSpecies</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-             <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-             <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-             <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-             <span class="n">filename</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_geo</span><span class="p">(</span><span class="n">species</span><span class="p">:</span> <span class="n">ARCSpecies</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+             <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+             <span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+             <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+             <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
              <span class="n">format_</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;all&#39;</span><span class="p">,</span>
-             <span class="n">comment</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+             <span class="n">comment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
              <span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Save a geometry file.</span>
@@ -1059,14 +1062,14 @@
 <a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_conformers_file">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">save_conformers_file</span><span class="p">(</span><span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                          <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                         <span class="n">xyzs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
-                         <span class="n">level_of_theory</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Level</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
-                         <span class="n">multiplicity</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                         <span class="n">charge</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                         <span class="n">xyzs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
+                         <span class="n">level_of_theory</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
+                         <span class="n">multiplicity</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                         <span class="n">charge</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                          <span class="n">is_ts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                         <span class="n">energies</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                         <span class="n">ts_methods</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                         <span class="n">im_freqs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                         <span class="n">energies</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                         <span class="n">ts_methods</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                         <span class="n">im_freqs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                          <span class="n">log_content</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                          <span class="n">before_optimization</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                          <span class="n">sp_flag</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
@@ -1079,7 +1082,7 @@
 <span class="sd">        project_directory (str): The path to the project&#39;s directory.</span>
 <span class="sd">        label (str): The species label.</span>
 <span class="sd">        xyzs (list): Entries are dict-format xyz coordinates of conformers.</span>
-<span class="sd">        level_of_theory (Union[Level, str]): The level of theory used for the conformers&#39; optimization.</span>
+<span class="sd">        level_of_theory (Level | str): The level of theory used for the conformers&#39; optimization.</span>
 <span class="sd">        multiplicity (int, optional): The species multiplicity, used for perceiving the molecule.</span>
 <span class="sd">        charge (int, optional): The species charge, used for perceiving the molecule.</span>
 <span class="sd">        is_ts (bool, optional): Whether the species represents a TS. True if it does.</span>
@@ -1295,25 +1298,25 @@
 
 <div class="viewcode-block" id="plot_1d_rotor_scan">
 <a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_1d_rotor_scan">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">plot_1d_rotor_scan</span><span class="p">(</span><span class="n">angles</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                       <span class="n">energies</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                       <span class="n">results</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                       <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                       <span class="n">scan</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_1d_rotor_scan</span><span class="p">(</span><span class="n">angles</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">energies</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">results</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">scan</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                        <span class="n">comment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                        <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;degrees&#39;</span><span class="p">,</span>
-                       <span class="n">original_dihedral</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">original_dihedral</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                        <span class="n">label</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                        <span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Plots a 1D rotor PES for energy vs. angles. Either ``angles`` and ``energies`` or ``results`` must be given.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        angles (Union[list, tuple, np.array], optional): Dihedral angles.</span>
-<span class="sd">        energies (Union[list, tuple, np.array], optional): The energies in kJ/mol.</span>
+<span class="sd">        angles (list | tuple | np.ndarray, optional): Dihedral angles.</span>
+<span class="sd">        energies (list | tuple | np.ndarray, optional): The energies in kJ/mol.</span>
 <span class="sd">        results (dict, optional): The results dictionary, dihedrals are assumed to be in degrees (not radians).</span>
 <span class="sd">        path (str, optional): The folder path for saving the rotor scan image and comments.</span>
-<span class="sd">        scan (Union[list, tuple], optional): The pivotal atoms of the scan.</span>
+<span class="sd">        scan (list | tuple, optional): The pivotal atoms of the scan.</span>
 <span class="sd">        comment (str, optional): Reason for invalidating this rotor.</span>
 <span class="sd">        units (str, optional): The ``angle`` units, either &#39;degrees&#39; or &#39;radians&#39;.</span>
 <span class="sd">        original_dihedral (float, optional): The actual dihedral angle of this torsion before the scan.</span>
@@ -1392,12 +1395,12 @@
 <div class="viewcode-block" id="plot_2d_rotor_scan">
 <a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_2d_rotor_scan">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">plot_2d_rotor_scan</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                       <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                        <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                        <span class="n">cmap</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Blues&#39;</span><span class="p">,</span>
                        <span class="n">resolution</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">90</span><span class="p">,</span>
                        <span class="n">mark_lowest_conformations</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                       <span class="n">original_dihedrals</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">original_dihedrals</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                        <span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Plot a 2D rotor scan.</span>
@@ -1541,13 +1544,13 @@
 <div class="viewcode-block" id="plot_2d_scan_bond_dihedral">
 <a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_2d_scan_bond_dihedral">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">plot_2d_scan_bond_dihedral</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                               <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                               <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                                <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                                <span class="n">cmap</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Blues&#39;</span><span class="p">,</span>
                                <span class="n">resolution</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">90</span><span class="p">,</span>
                                <span class="n">font_size</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">15</span><span class="p">,</span>
-                               <span class="n">figsize</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span>
-                               <span class="n">original_dihedrals</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                               <span class="n">figsize</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span>
+                               <span class="n">original_dihedrals</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                                <span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Plot a 2D scan where one coordinate is bond length and another is a dihedral angle.</span>
@@ -1748,10 +1751,10 @@
 
 <div class="viewcode-block" id="make_multi_species_output_file">
 <a class="viewcode-back" href="../../api/plotter.html#arc.plotter.make_multi_species_output_file">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">make_multi_species_output_file</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s1">&#39;ARCSpecies&#39;</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">make_multi_species_output_file</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">ARCSpecies</span><span class="p">],</span>
                                    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                    <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                                   <span class="n">software</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;gaussian&#39;</span>
+                                   <span class="n">software</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s1">&#39;gaussian&#39;</span>
                                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Slice the big cluster output file down to individual multi species output file.</span>
@@ -1805,7 +1808,7 @@
 
 <div class="viewcode-block" id="delete_multi_species_output_file">
 <a class="viewcode-back" href="../../api/plotter.html#arc.plotter.delete_multi_species_output_file">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">delete_multi_species_output_file</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s1">&#39;ARCSpecies&#39;</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">delete_multi_species_output_file</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">ARCSpecies</span><span class="p">],</span>
                                      <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                      <span class="n">multi_species_path_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                                      <span class="p">):</span>
@@ -1823,9 +1826,7 @@
 
 
 
-<div class="viewcode-block" id="get_rxn_units_and_conversion_factor">
-<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.get_rxn_units_and_conversion_factor">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_rxn_units_and_conversion_factor</span><span class="p">(</span><span class="n">rxn</span><span class="p">:</span> <span class="s1">&#39;ARCReaction&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>  <span class="c1"># todo: add tests</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_rxn_units_and_conversion_factor</span><span class="p">(</span><span class="n">rxn</span><span class="p">:</span> <span class="n">ARCReaction</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>  <span class="c1"># todo: add tests</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the units and conversion factor for the reaction rate coefficient.</span>
 
@@ -1833,7 +1834,7 @@
 <span class="sd">        rxn (ARCReaction): The reaction object.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[str, float]: The units and conversion factor from m^3 units to cm^3 units.</span>
+<span class="sd">        tuple[str, float]: The units and conversion factor from m^3 units to cm^3 units.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">reaction_order</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">rxn</span><span class="o">.</span><span class="n">get_reactants_and_products</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span>
     <span class="n">units</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
@@ -1844,8 +1845,7 @@
         <span class="n">units</span> <span class="o">=</span> <span class="s1">&#39;(cm^3/(mol*s))&#39;</span>
     <span class="k">elif</span> <span class="n">reaction_order</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
         <span class="n">units</span> <span class="o">=</span> <span class="s1">&#39;(cm^6/(mol^2*s))&#39;</span>
-    <span class="k">return</span> <span class="n">units</span><span class="p">,</span> <span class="n">conversion_factors</span><span class="p">[</span><span class="n">reaction_order</span><span class="p">]</span></div>
-
+    <span class="k">return</span> <span class="n">units</span><span class="p">,</span> <span class="n">conversion_factors</span><span class="p">[</span><span class="n">reaction_order</span><span class="p">]</span>
 </pre></div>
 
            </div>

@@ -95,7 +95,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">arc.parser.parser</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">parser</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc</span><span class="w"> </span><span class="kn">import</span> <span class="n">plotter</span>
@@ -200,7 +200,7 @@
 <span class="sd">                                     },</span>
 <span class="sd">                            &#39;conformers&#39;: &lt;comments&gt;,</span>
 <span class="sd">                            &#39;isomorphism&#39;: &lt;comments&gt;,</span>
-<span class="sd">                            &#39;convergence&#39;: &lt;status&gt;,  # Optional[bool]</span>
+<span class="sd">                            &#39;convergence&#39;: &lt;status&gt;,  # bool | None</span>
 <span class="sd">                            &#39;restart&#39;: &lt;comments&gt;,</span>
 <span class="sd">                            &#39;info&#39;: &lt;comments&gt;,</span>
 <span class="sd">                            &#39;warnings&#39;: &lt;comments&gt;,</span>
@@ -219,15 +219,15 @@
 <span class="sd">        rxn_list (list): Contains input :ref:`ARCReaction &lt;reaction&gt;` objects.</span>
 <span class="sd">        project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.</span>
 <span class="sd">        composite_method (str, optional): A composite method to use.</span>
-<span class="sd">        conformer_opt_level (Union[str, dict], optional): The level of theory to use for conformer comparisons.</span>
-<span class="sd">        conformer_sp_level (Union[str, dict], optional): The level of theory to use for conformer sp jobs.</span>
-<span class="sd">        opt_level (Union[str, dict], optional): The level of theory to use for geometry optimizations.</span>
-<span class="sd">        freq_level (Union[str, dict], optional): The level of theory to use for frequency calculations.</span>
-<span class="sd">        sp_level (Union[str, dict], optional): The level of theory to use for single point energy calculations.</span>
-<span class="sd">        scan_level (Union[str, dict], optional): The level of theory to use for torsion scans.</span>
-<span class="sd">        ts_guess_level (Union[str, dict], optional): The level of theory to use for TS guess comparisons.</span>
-<span class="sd">        irc_level (Union[str, dict], optional): The level of theory to use for IRC calculations.</span>
-<span class="sd">        orbitals_level (Union[str, dict], optional): The level of theory to use for calculating MOs (for plotting).</span>
+<span class="sd">        conformer_opt_level (str | dict, optional): The level of theory to use for conformer comparisons.</span>
+<span class="sd">        conformer_sp_level (str | dict, optional): The level of theory to use for conformer sp jobs.</span>
+<span class="sd">        opt_level (str | dict, optional): The level of theory to use for geometry optimizations.</span>
+<span class="sd">        freq_level (str | dict, optional): The level of theory to use for frequency calculations.</span>
+<span class="sd">        sp_level (str | dict, optional): The level of theory to use for single point energy calculations.</span>
+<span class="sd">        scan_level (str | dict, optional): The level of theory to use for torsion scans.</span>
+<span class="sd">        ts_guess_level (str | dict, optional): The level of theory to use for TS guess comparisons.</span>
+<span class="sd">        irc_level (str | dict, optional): The level of theory to use for IRC calculations.</span>
+<span class="sd">        orbitals_level (str | dict, optional): The level of theory to use for calculating MOs (for plotting).</span>
 <span class="sd">        adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms</span>
 <span class="sd">                                          in the species. Keys are tuples of (min_num_atoms, max_num_atoms),</span>
 <span class="sd">                                          values are dictionaries with job type tuples as keys and levels of theory</span>
@@ -319,37 +319,37 @@
                  <span class="n">ess_settings</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                  <span class="n">species_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                  <span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                 <span class="n">composite_method</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">conformer_opt_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">conformer_sp_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">opt_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">freq_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">sp_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">scan_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">ts_guess_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">irc_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">orbitals_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">adaptive_levels</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">job_types</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">rxn_list</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">bath_gas</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">restart_dict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">max_job_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">allow_nonisomorphic_2d</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                 <span class="n">memory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">testing</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                 <span class="n">dont_gen_confs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">n_confs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
-                 <span class="n">e_confs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
-                 <span class="n">fine_only</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                 <span class="n">trsh_ess_jobs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-                 <span class="n">trsh_rotors</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                 <span class="n">composite_method</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">conformer_opt_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">conformer_sp_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">opt_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">freq_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">sp_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">scan_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">ts_guess_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">irc_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">orbitals_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">adaptive_levels</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">job_types</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">rxn_list</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">bath_gas</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">restart_dict</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">max_job_time</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">allow_nonisomorphic_2d</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">memory</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">testing</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">dont_gen_confs</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">n_confs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+                 <span class="n">e_confs</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+                 <span class="n">fine_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">trsh_ess_jobs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                 <span class="n">trsh_rotors</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                  <span class="n">kinetics_adapter</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;arkane&#39;</span><span class="p">,</span>
                  <span class="n">freq_scale_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
-                 <span class="n">ts_adapters</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">report_e_elect</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                 <span class="n">skip_nmd</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                 <span class="n">output</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">ts_adapters</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">report_e_elect</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">skip_nmd</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">output</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">project</span> <span class="o">=</span> <span class="n">project</span>
@@ -940,34 +940,32 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">generate_final_ts_guess_report</span><span class="p">()</span></div>
 
 
-<div class="viewcode-block" id="Scheduler.run_job">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.run_job">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">run_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                 <span class="n">job_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                <span class="n">conformer</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">cpu_cores</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">dihedral_increment</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">dihedrals</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">directed_scan_type</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">ess_trsh_methods</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">fine</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                <span class="n">irc_direction</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">job_adapter</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">label</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">level_of_theory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Level</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">memory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">max_job_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">rotor_index</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">reactions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="s1">&#39;ARCReaction&#39;</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">queue</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">attempted_queues</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">scan_trsh</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-                <span class="n">shift</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-                <span class="n">trsh</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">list</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">torsions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">conformer</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">cpu_cores</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">dihedral_increment</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">dihedrals</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">directed_scan_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">ess_trsh_methods</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">fine</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="n">irc_direction</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">job_adapter</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">level_of_theory</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">memory</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">max_job_time</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">rotor_index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">reactions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">ARCReaction</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">queue</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">attempted_queues</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">scan_trsh</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
+                <span class="n">shift</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
+                <span class="n">trsh</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">torsions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                 <span class="n">times_rerun</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
-                <span class="n">tsg</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]]]</span><span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">tsg</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                 <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A helper function for running (all) jobs.</span>
@@ -983,19 +981,19 @@
 <span class="sd">            fine (bool, optional): Whether to run an optimization job with a fine grid. `True` to use fine.</span>
 <span class="sd">            irc_direction (str, optional): The direction to run the IRC computation.</span>
 <span class="sd">            job_adapter (str, optional): An ESS software to use.</span>
-<span class="sd">            label (Union[str, List[str]], optional): The species label, or a list of labels in case of multispecies.</span>
+<span class="sd">            label (str | list[str], optional): The species label, or a list of labels in case of multispecies.</span>
 <span class="sd">            level_of_theory (Level, optional): The level of theory to use.</span>
 <span class="sd">            memory (int, optional): The total job allocated memory in GB.</span>
 <span class="sd">            max_job_time (int, optional): The maximal allowed job time on the server in hours.</span>
 <span class="sd">            rotor_index (int, optional): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.</span>
-<span class="sd">            reactions (List[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.</span>
+<span class="sd">            reactions (list[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.</span>
 <span class="sd">            scan_trsh (str, optional): A troubleshooting method for rotor scans.</span>
 <span class="sd">            shift (str, optional): A string representation alpha- and beta-spin orbitals shifts (molpro only).</span>
 <span class="sd">            times_rerun (int, optional): Number of times this job was re-run with the same arguments (no trsh methods).</span>
-<span class="sd">            torsions (List[List[int]], optional): The 0-indexed atom indices of the torsion(s).</span>
+<span class="sd">            torsions (list[list[int]], optional): The 0-indexed atom indices of the torsion(s).</span>
 <span class="sd">            trsh (str, optional): A troubleshooting keyword to be used in input files.</span>
 <span class="sd">            tsg (int, optional): TSGuess number if optimizing TS guesses.</span>
-<span class="sd">            xyz (Union[dict, List[dict]], optional): The 3D coordinates for the species.</span>
+<span class="sd">            xyz (dict | list[dict], optional): The 3D coordinates for the species.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">max_job_time</span> <span class="o">=</span> <span class="n">max_job_time</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_job_time</span>  <span class="c1"># if it&#39;s None, set to default</span>
         <span class="n">ess_trsh_methods</span> <span class="o">=</span> <span class="n">ess_trsh_methods</span> <span class="k">if</span> <span class="n">ess_trsh_methods</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">list</span><span class="p">()</span>
@@ -1099,8 +1097,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">server</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">check_max_simultaneous_jobs_limit</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">server</span><span class="p">)</span>
         <span class="n">job</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span></div>
-
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span>
 
 <div class="viewcode-block" id="Scheduler.deduce_job_adapter">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.deduce_job_adapter">[docs]</a>
@@ -1141,9 +1138,7 @@
         <span class="k">return</span> <span class="n">job_adapter</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span></div>
 
 
-<div class="viewcode-block" id="Scheduler.end_job">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.end_job">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">end_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">end_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
                 <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                 <span class="n">job_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
@@ -1244,11 +1239,10 @@
                     <span class="k">if</span> <span class="n">rotors_dict</span><span class="p">[</span><span class="s1">&#39;pivots&#39;</span><span class="p">]</span> <span class="ow">in</span> <span class="p">[</span><span class="n">job</span><span class="o">.</span><span class="n">pivots</span><span class="p">,</span> <span class="n">job</span><span class="o">.</span><span class="n">pivots</span><span class="p">[</span><span class="mi">0</span><span class="p">]]:</span>
                         <span class="n">rotors_dict</span><span class="p">[</span><span class="s1">&#39;scan_path&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">local_path_to_output_file</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span>
-            <span class="k">return</span> <span class="kc">True</span></div>
-
+            <span class="k">return</span> <span class="kc">True</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_run_a_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
-                   <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
+                   <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
                    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                    <span class="n">rerun</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                    <span class="p">):</span>
@@ -1286,7 +1280,7 @@
 
 <div class="viewcode-block" id="Scheduler.run_conformer_jobs">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.run_conformer_jobs">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">run_conformer_jobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run_conformer_jobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Select the most stable conformer for each species using molecular dynamics (force fields) and subsequently</span>
 <span class="sd">        spawning opt jobs at the conformer level of theory, usually a reasonable yet cheap DFT, e.g., b97d3/6-31+g(d,p).</span>
@@ -1498,8 +1492,8 @@
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.run_sp_job">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">run_sp_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                   <span class="n">level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                   <span class="n">conformer</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">conformer</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                    <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Spawn a single point job using &#39;final_xyz&#39; for species or a TS represented by &#39;label&#39;.</span>
@@ -1871,7 +1865,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">spawn_directed_scan_jobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                                  <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                  <span class="n">rotor_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                                 <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                 <span class="n">xyz</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                                  <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Spawn directed scan jobs.</span>
@@ -2052,13 +2046,13 @@
 
 <div class="viewcode-block" id="Scheduler.process_directed_scans">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.process_directed_scans">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">process_directed_scans</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">pivots</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_directed_scans</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">pivots</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Process all directed rotors for a species and check the quality of the scan.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            label (str): The species label.</span>
-<span class="sd">            pivots (Union[List[int], List[List[int]]]): The rotor pivots.</span>
+<span class="sd">            pivots (list[int] | list[list[int]]): The rotor pivots.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">for</span> <span class="n">rotor_dict_index</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">rotors_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
             <span class="n">rotor_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">rotors_dict</span><span class="p">[</span><span class="n">rotor_dict_index</span><span class="p">]</span>  <span class="c1"># avoid modifying the iterator</span>
@@ -2212,10 +2206,8 @@
                             <span class="bp">self</span><span class="o">.</span><span class="n">run_composite_job</span><span class="p">(</span><span class="n">label</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="Scheduler.parse_conformer">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.parse_conformer">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">parse_conformer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
-                        <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
+                        <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
                         <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                         <span class="n">i</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                         <span class="p">):</span>
@@ -2259,8 +2251,7 @@
             <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">times_rerun</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">trsh_ess_jobs</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_run_a_job</span><span class="p">(</span><span class="n">job</span><span class="o">=</span><span class="n">job</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">rerun</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
                 <span class="k">return</span> <span class="kc">True</span>
-        <span class="k">return</span> <span class="kc">False</span></div>
-
+        <span class="k">return</span> <span class="kc">False</span>
 
 <div class="viewcode-block" id="Scheduler.determine_most_stable_conformer">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.determine_most_stable_conformer">[docs]</a>
@@ -2535,11 +2526,9 @@
                 <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">ts_guesses_exhausted</span> <span class="o">=</span> <span class="kc">True</span></div>
 
 
-<div class="viewcode-block" id="Scheduler.parse_composite_geo">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.parse_composite_geo">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">parse_composite_geo</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                             <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                            <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
+                            <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check that a &#39;composite&#39; job converged successfully, and parse the geometry into `final_xyz`.</span>
@@ -2600,14 +2589,11 @@
                 <span class="bp">self</span><span class="o">.</span><span class="n">troubleshoot_negative_freq</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">job</span><span class="o">=</span><span class="n">job</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">job_status</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;status&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;done&#39;</span> <span class="ow">or</span> <span class="p">(</span><span class="ow">not</span> <span class="n">freq_ok</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">is_ts</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">troubleshoot_ess</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">job</span><span class="o">=</span><span class="n">job</span><span class="p">,</span> <span class="n">level_of_theory</span><span class="o">=</span><span class="n">job</span><span class="o">.</span><span class="n">level</span><span class="p">)</span>
-        <span class="k">return</span> <span class="kc">False</span>  <span class="c1"># return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry</span></div>
+        <span class="k">return</span> <span class="kc">False</span>  <span class="c1"># return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry</span>
 
-
-<div class="viewcode-block" id="Scheduler.parse_opt_e_elect">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.parse_opt_e_elect">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">parse_opt_e_elect</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                           <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                          <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
+                          <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Parse electronic energy for &#39;opt&#39; or &#39;optfreq&#39; job if it converged successfully.</span>
@@ -2627,14 +2613,11 @@
             <span class="n">e_elect_value</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_e_elect</span><span class="p">(</span><span class="n">log_file_path</span><span class="o">=</span><span class="n">job</span><span class="o">.</span><span class="n">local_path_to_xyz</span> <span class="ow">or</span> <span class="n">job</span><span class="o">.</span><span class="n">local_path_to_output_file</span><span class="p">)</span> \
                 <span class="k">if</span> <span class="n">label</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">else</span> <span class="nb">dict</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">e_elect</span> <span class="o">=</span> <span class="n">e_elect_value</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">save_e_elect</span><span class="p">(</span><span class="n">label</span><span class="p">)</span></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">save_e_elect</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
 
-
-<div class="viewcode-block" id="Scheduler.parse_opt_geo">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.parse_opt_geo">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">parse_opt_geo</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                       <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                      <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
+                      <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check that an &#39;opt&#39; or &#39;optfreq&#39; job converged successfully, and parse the geometry into `final_xyz`.</span>
@@ -2716,14 +2699,11 @@
                                                <span class="n">method</span><span class="o">=</span><span class="s1">&#39;draw_3d&#39;</span><span class="p">)</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">trsh_ess_jobs</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">troubleshoot_opt_jobs</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">success</span></div>
+        <span class="k">return</span> <span class="n">success</span>
 
-
-<div class="viewcode-block" id="Scheduler.post_opt_geo_work">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.post_opt_geo_work">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">post_opt_geo_work</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> 
                           <span class="n">spc_label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
-                          <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">):</span>
+                          <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Few steps to finish after running the opt job.</span>
 
@@ -2743,14 +2723,11 @@
             <span class="n">rxn_str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Optimized geometry for </span><span class="si">{</span><span class="n">spc_label</span><span class="si">}{</span><span class="n">rxn_str</span><span class="si">}</span><span class="s1"> at </span><span class="si">{</span><span class="n">job</span><span class="o">.</span><span class="n">level</span><span class="o">.</span><span class="n">simple</span><span class="p">()</span><span class="si">}</span><span class="s1">:</span><span class="se">\n</span><span class="s1">&#39;</span>
                     <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">xyz_to_str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">spc_label</span><span class="p">]</span><span class="o">.</span><span class="n">final_xyz</span><span class="p">)</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">spc_label</span><span class="p">][</span><span class="s1">&#39;paths&#39;</span><span class="p">][</span><span class="s1">&#39;geo&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">local_path_to_output_file</span>  <span class="c1"># will be overwritten with freq</span></div>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">spc_label</span><span class="p">][</span><span class="s1">&#39;paths&#39;</span><span class="p">][</span><span class="s1">&#39;geo&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">local_path_to_output_file</span>  <span class="c1"># will be overwritten with freq</span>
 
-
-<div class="viewcode-block" id="Scheduler.check_freq_job">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.check_freq_job">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">check_freq_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                        <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                       <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
+                       <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
                        <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check that a freq job converged successfully. Also checks (QA) that no imaginary frequencies were assigned for</span>
@@ -2808,15 +2785,12 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">troubleshoot_ess</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">job</span><span class="o">=</span><span class="n">job</span><span class="p">,</span> <span class="n">level_of_theory</span><span class="o">=</span><span class="n">job</span><span class="o">.</span><span class="n">level</span><span class="p">)</span>
         <span class="k">if</span> <span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">job_status</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;status&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;done&#39;</span> <span class="ow">and</span> <span class="n">freq_ok</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">switch_ts</span>
                 <span class="ow">and</span> <span class="n">species_has_sp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">label</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">yml_path</span><span class="p">)):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">check_rxn_e0_by_spc</span><span class="p">(</span><span class="n">label</span><span class="p">)</span></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">check_rxn_e0_by_spc</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
 
-
-<div class="viewcode-block" id="Scheduler.check_negative_freq">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.check_negative_freq">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">check_negative_freq</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                             <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                            <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
-                            <span class="n">vibfreqs</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+                            <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
+                            <span class="n">vibfreqs</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
                             <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A helper function for determining the number of negative frequencies. Also logs appropriate errors.</span>
@@ -2892,8 +2866,7 @@
                 <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">testing</span><span class="p">:</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">ts_checks</span><span class="p">[</span><span class="s1">&#39;freq&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-                <span class="k">return</span> <span class="kc">True</span></div>
-
+                <span class="k">return</span> <span class="kc">True</span>
 
 <div class="viewcode-block" id="Scheduler.check_rxn_e0_by_spc">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.check_rxn_e0_by_spc">[docs]</a>
@@ -2964,11 +2937,9 @@
                 <span class="bp">self</span><span class="o">.</span><span class="n">run_composite_job</span><span class="p">(</span><span class="n">label</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="Scheduler.check_sp_job">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.check_sp_job">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">check_sp_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                      <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                     <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
+                     <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
                      <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check that a single point job converged successfully.</span>
@@ -2995,15 +2966,14 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">troubleshoot_ess</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span>
                                   <span class="n">job</span><span class="o">=</span><span class="n">job</span><span class="p">,</span>
                                   <span class="n">level_of_theory</span><span class="o">=</span><span class="n">job</span><span class="o">.</span><span class="n">level</span><span class="p">,</span>
-                                  <span class="p">)</span></div>
-
+                                  <span class="p">)</span>
 
 <div class="viewcode-block" id="Scheduler.post_sp_actions">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.post_sp_actions">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">post_sp_actions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                         <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                         <span class="n">sp_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                        <span class="n">level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="n">level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                         <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Perform post-sp actions.</span>
@@ -3057,11 +3027,9 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="s1">&#39;job_types&#39;</span><span class="p">][</span><span class="s1">&#39;sp&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span></div>
 
 
-<div class="viewcode-block" id="Scheduler.spawn_post_irc_jobs">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.spawn_post_irc_jobs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">spawn_post_irc_jobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                             <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                            <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
+                            <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
                             <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Spawn additional jobs after IRC has converged.</span>
@@ -3099,8 +3067,7 @@
                      <span class="n">level_of_theory</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">opt_level</span> <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">freq_level</span><span class="p">,</span>
                      <span class="n">job_type</span><span class="o">=</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span>
                      <span class="n">fine</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-                     <span class="p">)</span></div>
-
+                     <span class="p">)</span>
 
 <div class="viewcode-block" id="Scheduler.add_label_to_unique_species_labels">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.add_label_to_unique_species_labels">[docs]</a>
@@ -3142,11 +3109,9 @@
                                           <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="Scheduler.check_scan_job">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.check_scan_job">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">check_scan_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                        <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                       <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">):</span>
+                       <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check that a rotor scan job converged successfully. Also checks (QA) whether the scan is relatively &quot;smooth&quot;,</span>
 <span class="sd">        and whether the optimized geometry indeed represents the minimum energy conformer.</span>
@@ -3266,8 +3231,7 @@
                                            <span class="s1">&#39;original_dihedrals&#39;</span><span class="p">],</span>
                                        <span class="p">)</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span></div>
-
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span>
 
 <div class="viewcode-block" id="Scheduler.check_directed_scan">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.check_directed_scan">[docs]</a>
@@ -3280,9 +3244,9 @@
 
 <span class="sd">        Args:</span>
 <span class="sd">            label (str): The species label.</span>
-<span class="sd">            pivots (List[List[int]]): The rotor pivots.</span>
-<span class="sd">            scan (List[int]): The four atoms defining the dihedral.</span>
-<span class="sd">            energies (List[float]): The rotor scan energies in kJ/mol.</span>
+<span class="sd">            pivots (list[list[int]]): The rotor pivots.</span>
+<span class="sd">            scan (list[int]): The four atoms defining the dihedral.</span>
+<span class="sd">            energies (list[float]): The rotor scan energies in kJ/mol.</span>
 
 <span class="sd">        Todo:</span>
 <span class="sd">            - Not used!!</span>
@@ -3351,9 +3315,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span></div>
 
 
-<div class="viewcode-block" id="Scheduler.check_directed_scan_job">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.check_directed_scan_job">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">check_directed_scan_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_directed_scan_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check that a directed scan job for a specific dihedral angle converged successfully, otherwise troubleshoot.</span>
 
@@ -3376,8 +3338,7 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">troubleshoot_ess</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span>
                                   <span class="n">job</span><span class="o">=</span><span class="n">job</span><span class="p">,</span>
-                                  <span class="n">level_of_theory</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scan_level</span><span class="p">)</span></div>
-
+                                  <span class="n">level_of_theory</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scan_level</span><span class="p">)</span>
 
 <div class="viewcode-block" id="Scheduler.check_all_done">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.check_all_done">[docs]</a>
@@ -3452,7 +3413,7 @@
 
 <div class="viewcode-block" id="Scheduler.get_server_job_ids">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.get_server_job_ids">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">get_server_job_ids</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">specific_server</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_server_job_ids</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">specific_server</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check job status on a specific server or on all active servers, get a list of relevant running job IDs.</span>
 
@@ -3496,11 +3457,9 @@
                     <span class="bp">self</span><span class="o">.</span><span class="n">completed_incore_jobs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">job_id</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="Scheduler.troubleshoot_negative_freq">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.troubleshoot_negative_freq">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">troubleshoot_negative_freq</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                                    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                                   <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
+                                   <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
                                    <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Troubleshooting cases where non-TS species have negative frequencies.</span>
@@ -3541,15 +3500,12 @@
                              <span class="n">level_of_theory</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">conformer_opt_level</span><span class="p">,</span>
                              <span class="n">job_type</span><span class="o">=</span><span class="s1">&#39;conf_opt&#39;</span><span class="p">,</span>
                              <span class="n">conformer</span><span class="o">=</span><span class="n">i</span><span class="p">,</span>
-                             <span class="p">)</span></div>
+                             <span class="p">)</span>
 
-
-<div class="viewcode-block" id="Scheduler.troubleshoot_scan_job">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.troubleshoot_scan_job">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">troubleshoot_scan_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
-                              <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
-                              <span class="n">methods</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                              <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
+                              <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
+                              <span class="n">methods</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                              <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Troubleshooting rotor scans</span>
 <span class="sd">        Using the following methods:</span>
@@ -3565,7 +3521,7 @@
 <span class="sd">                 &#39;inc_res&#39;: ``None``,</span>
 <span class="sd">                 &#39;change conformer&#39;: &lt;a xyz dict&gt;}</span>
 
-<span class="sd">        Returns: Tuple[bool, dict]:</span>
+<span class="sd">        Returns: tuple[bool, dict]:</span>
 <span class="sd">            - ``True`` if the troubleshooting is valid.</span>
 <span class="sd">            - The actions are applied in the troubleshooting.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -3684,8 +3640,7 @@
                                      <span class="n">trsh</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;scan_res&#39;</span><span class="p">:</span> <span class="n">scan_res</span><span class="p">}</span> <span class="k">if</span> <span class="n">scan_res</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
                                      <span class="n">rotor_index</span><span class="o">=</span><span class="n">job</span><span class="o">.</span><span class="n">rotor_index</span><span class="p">,</span>
                                      <span class="p">)</span>
-        <span class="k">return</span> <span class="n">trsh_success</span><span class="p">,</span> <span class="n">actual_actions</span></div>
-
+        <span class="k">return</span> <span class="n">trsh_success</span><span class="p">,</span> <span class="n">actual_actions</span>
 
 <div class="viewcode-block" id="Scheduler.troubleshoot_opt_jobs">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.troubleshoot_opt_jobs">[docs]</a>
@@ -3752,13 +3707,11 @@
             <span class="n">job</span><span class="o">.</span><span class="n">troubleshoot_server</span><span class="p">()</span></div>
 
 
-<div class="viewcode-block" id="Scheduler.troubleshoot_ess">
-<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.troubleshoot_ess">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">troubleshoot_ess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                          <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                         <span class="n">job</span><span class="p">:</span> <span class="s1">&#39;JobAdapter&#39;</span><span class="p">,</span>
-                         <span class="n">level_of_theory</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Level</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
-                         <span class="n">conformer</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                         <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
+                         <span class="n">level_of_theory</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
+                         <span class="n">conformer</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                          <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Troubleshoot issues related to the electronic structure software, such as conversion.</span>
@@ -3875,8 +3828,7 @@
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not troubleshoot conformer </span><span class="si">{</span><span class="n">conformer</span><span class="si">}</span><span class="s1"> for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">. &#39;</span>
                            <span class="sa">f</span><span class="s1">&#39;Abandoning this conformer; waiting for others to finish.&#39;</span><span class="p">)</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span></div>
-
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span>
 
 <div class="viewcode-block" id="Scheduler.troubleshoot_conformer_isomorphism">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.troubleshoot_conformer_isomorphism">[docs]</a>
@@ -4156,7 +4108,7 @@
 
 <div class="viewcode-block" id="Scheduler.initialize_output_dict">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.initialize_output_dict">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">initialize_output_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initialize_output_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Initialize self.output.</span>
 <span class="sd">        Do not initialize keys that will contain paths (&#39;geo&#39;, &#39;freq&#39;, &#39;sp&#39;, &#39;composite&#39;),</span>
@@ -4278,7 +4230,7 @@
 
 <div class="viewcode-block" id="Scheduler.check_max_simultaneous_jobs_limit">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.check_max_simultaneous_jobs_limit">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">check_max_simultaneous_jobs_limit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">server</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_max_simultaneous_jobs_limit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">server</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check if the number of running jobs on the server is not above the set server limit.</span>
 
@@ -4301,7 +4253,7 @@
 <div class="viewcode-block" id="species_has_freq">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.species_has_freq">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">species_has_freq</span><span class="p">(</span><span class="n">species_output_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                     <span class="n">yml_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="n">yml_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Checks whether a species has valid converged frequencies using it&#39;s output dict.</span>
@@ -4324,7 +4276,7 @@
 <div class="viewcode-block" id="species_has_geo">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.species_has_geo">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">species_has_geo</span><span class="p">(</span><span class="n">species_output_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                    <span class="n">yml_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="n">yml_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Checks whether a species has a valid converged geometry using it&#39;s output dict.</span>
@@ -4347,7 +4299,7 @@
 <div class="viewcode-block" id="species_has_sp">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.species_has_sp">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">species_has_sp</span><span class="p">(</span><span class="n">species_output_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                   <span class="n">yml_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">yml_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Checks whether a species has a valid converged single-point energy using it&#39;s output dict.</span>
@@ -4370,7 +4322,7 @@
 <div class="viewcode-block" id="species_has_sp_and_freq">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.species_has_sp_and_freq">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">species_has_sp_and_freq</span><span class="p">(</span><span class="n">species_output_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                            <span class="n">yml_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                            <span class="n">yml_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Checks whether a species has a valid converged single-point energy and valid converged frequencies.</span>

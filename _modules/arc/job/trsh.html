@@ -88,7 +88,6 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
@@ -124,7 +123,6 @@
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
-
 <span class="n">delete_command</span><span class="p">,</span> <span class="n">inconsistency_ab</span><span class="p">,</span> <span class="n">inconsistency_az</span><span class="p">,</span> <span class="n">maximum_barrier</span><span class="p">,</span> <span class="n">preserve_params_in_scan</span><span class="p">,</span> <span class="n">rotor_scan_resolution</span><span class="p">,</span> \
     <span class="n">servers</span><span class="p">,</span> <span class="n">submit_filenames</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;delete_command&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;inconsistency_ab&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;inconsistency_az&#39;</span><span class="p">],</span> \
                                 <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;maximum_barrier&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;preserve_params_in_scan&#39;</span><span class="p">],</span> \
@@ -136,9 +134,9 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">determine_ess_status</span><span class="p">(</span><span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                          <span class="n">species_label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                          <span class="n">job_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                         <span class="n">job_log</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                         <span class="n">software</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                         <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+                         <span class="n">job_log</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                         <span class="n">software</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                         <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the reason that caused an ESS job to crash, assign error keywords for troubleshooting.</span>
 
@@ -149,7 +147,7 @@
 <span class="sd">        job_log (str, optional): The path to the server job log file (not the ESS output file) or its content.</span>
 <span class="sd">        software (str, optional): The ESS software.</span>
 
-<span class="sd">    Returns: Tuple[str, List[str], str, str]</span>
+<span class="sd">    Returns: tuple[str, list[str], str, str]</span>
 <span class="sd">        - The status. Either &#39;done&#39; or &#39;errored&#39;.</span>
 <span class="sd">        - The standardized error keywords.</span>
 <span class="sd">        - A description of the error.</span>
@@ -573,14 +571,14 @@
 
 <div class="viewcode-block" id="determine_job_log_memory_issues">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.determine_job_log_memory_issues">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">determine_job_log_memory_issues</span><span class="p">(</span><span class="n">job_log</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_job_log_memory_issues</span><span class="p">(</span><span class="n">job_log</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the reason that caused an ESS job to crash, assign error keywords for troubleshooting.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        job_log (str, optional): The path to the server job log file (not the ESS output file) or its content.</span>
 
-<span class="sd">    Returns: Tuple[List[str], str, str]</span>
+<span class="sd">    Returns: tuple[list[str], str, str]</span>
 <span class="sd">        - The standardized error keywords.</span>
 <span class="sd">        - A description of the error.</span>
 <span class="sd">        - The parsed line from the ESS output file indicating the error.</span>
@@ -634,7 +632,7 @@
 <span class="sd">          generate a 360 scan using 30 deg increments and append all 12 results as conformers</span>
 <span class="sd">          (consider rotor symmetry to append less conformers?)</span>
 
-<span class="sd">    Returns: Tuple[list, list, list, list]</span>
+<span class="sd">    Returns: tuple[list, list, list, list]</span>
 <span class="sd">        - The current troubleshooted negative frequencies.</span>
 <span class="sd">        - The new conformers to try optimizing.</span>
 <span class="sd">        - Errors to report.</span>
@@ -718,12 +716,12 @@
 <div class="viewcode-block" id="trsh_scan_job">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_scan_job">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">trsh_scan_job</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                  <span class="n">scan_res</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span>
+                  <span class="n">scan_res</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span><span class="p">,</span>
                   <span class="n">scan</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                   <span class="n">scan_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                   <span class="n">methods</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                  <span class="n">log_file</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+                  <span class="n">log_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Troubleshooting rotor scans.</span>
 <span class="sd">    Using the following methods:</span>
@@ -754,7 +752,7 @@
 
 <span class="sd">        InputError: Invalid `methods` input.</span>
 
-<span class="sd">    Returns: Tuple[str, int]</span>
+<span class="sd">    Returns: tuple[str, int]</span>
 <span class="sd">        - The scan troubleshooting keywords to be appended to the Gaussian input file.</span>
 <span class="sd">        - The new scan resolution in degrees.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -928,7 +926,7 @@
 <div class="viewcode-block" id="trsh_ess_job">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_ess_job">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">trsh_ess_job</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                 <span class="n">level_of_theory</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Level</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+                 <span class="n">level_of_theory</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
                  <span class="n">server</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                  <span class="n">job_status</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                  <span class="n">job_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
@@ -946,7 +944,7 @@
 
 <span class="sd">    Args:</span>
 <span class="sd">        label (str): The species label.</span>
-<span class="sd">        level_of_theory (Union[Level, dict, str]): The original level of theory dictionary of the problematic job.</span>
+<span class="sd">        level_of_theory (Level | dict | str): The original level of theory dictionary of the problematic job.</span>
 <span class="sd">        server (str): The server used for this job.</span>
 <span class="sd">        job_status (dict): The ESS job status dictionary with standardized error keywords</span>
 <span class="sd">                           as generated using the `determine_ess_status` function.</span>
@@ -1262,7 +1260,7 @@
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_conformer_isomorphism">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">trsh_conformer_isomorphism</span><span class="p">(</span><span class="n">software</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                <span class="n">ess_trsh_methods</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                               <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+                               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Troubleshoot conformer optimization for a species that failed isomorphic test in</span>
 <span class="sd">    `determine_most_stable_conformer` by specifying a &quot;good&quot; level of theory.</span>
@@ -1274,7 +1272,7 @@
 <span class="sd">    Raises:</span>
 <span class="sd">        TrshError: If the requested ``ess_trsh_methods`` is not supported.</span>
 
-<span class="sd">    Returns: Optional[str]</span>
+<span class="sd">    Returns: str | None</span>
 <span class="sd">        The level of theory to troubleshoot at.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">ess_trsh_methods</span> <span class="o">=</span> <span class="n">ess_trsh_methods</span> <span class="k">if</span> <span class="n">ess_trsh_methods</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">list</span><span class="p">()</span>
@@ -1300,13 +1298,14 @@
     <span class="k">return</span> <span class="n">level_of_theory</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_job_queue">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_job_queue">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">trsh_job_queue</span><span class="p">(</span><span class="n">server</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="n">job_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="n">max_time</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">24</span><span class="p">,</span>
                     <span class="n">attempted_queues</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot; A function to troubleshoot job queue issues. This function will attempt to determine if the user has provided a queue that provides more time than the walltime failed queue.</span>
 <span class="sd">        If not, it will attempt to determine if there are any other queues available on the server that provide more time than the walltime failed queue.</span>
 
@@ -1317,7 +1316,7 @@
 <span class="sd">        attempted_queues (list, optional): Any queues that have already been attempted to run the job on. Defaults to None.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[dict, bool]: A dictionary of the available queues and a boolean indicating if the function was successful.</span>
+<span class="sd">        tuple[dict, bool]: A dictionary of the available queues and a boolean indicating if the function was successful.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">server_queues</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;queues&#39;</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())</span>
@@ -1454,11 +1453,12 @@
         <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_job_on_server">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_job_on_server">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">trsh_job_on_server</span><span class="p">(</span><span class="n">server</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                        <span class="n">job_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                       <span class="n">job_id</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+                       <span class="n">job_id</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
                        <span class="n">job_server_status</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                        <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                        <span class="n">server_nodes</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
@@ -1473,7 +1473,7 @@
 <span class="sd">        remote_path (str): The remote path to the job folder.</span>
 <span class="sd">        server_nodes (list, optional): The nodes already tried on this server for this job.</span>
 
-<span class="sd">    Returns: Tuple[str, bool]</span>
+<span class="sd">    Returns: tuple[str, bool]</span>
 <span class="sd">        - The new node on the server (or None).</span>
 <span class="sd">        - Whether to re-run the job, `True` to rerun.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1542,13 +1542,13 @@
                        <span class="n">pivots</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                        <span class="n">energies</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                        <span class="n">scan_res</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">rotor_scan_resolution</span><span class="p">,</span>
-                       <span class="n">used_methods</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                       <span class="n">log_file</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                       <span class="n">species</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ARCSpecies</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                       <span class="n">preserve_params</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                       <span class="n">trajectory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                       <span class="n">original_xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
+                       <span class="n">used_methods</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">log_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">species</span><span class="p">:</span> <span class="n">ARCSpecies</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">preserve_params</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">trajectory</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">original_xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Checks the scan&#39;s quality:</span>
 
@@ -1585,7 +1585,7 @@
 <span class="sd">        trajectory (list, optional): Entries are Cartesian coordinates along the scan trajectory.</span>
 <span class="sd">        original_xyz (dict, optional): The optimized coordinated for the species.</span>
 
-<span class="sd">    Returns: Tuple[bool, str, str, dict]</span>
+<span class="sd">    Returns: tuple[bool, str, str, dict]</span>
 <span class="sd">        - Whether to invalidate this rotor, ``True`` to invalidate.</span>
 <span class="sd">        - Reason for invalidating this rotor.</span>
 <span class="sd">        - Error or warning message.</span>
@@ -1865,9 +1865,10 @@
     <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_keyword_checkfile">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_checkfile">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_checkfile</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_checkfile</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires removal of checkfile</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1882,9 +1883,10 @@
     <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_keyword_intaccuracy">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_intaccuracy">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_intaccuracy</span><span class="p">(</span><span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_intaccuracy</span><span class="p">(</span><span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of 2 electron integral accuracy</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1899,9 +1901,10 @@
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_keyword_cartesian">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_cartesian">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_cartesian</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">job_type</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_cartesian</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">job_type</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of cartesian coordinate</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1918,9 +1921,10 @@
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_keyword_scf">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_scf">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_scf</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_scf</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of scf</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1961,9 +1965,10 @@
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_keyword_unconverged">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_unconverged">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_unconverged</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">,</span> <span class="n">fine</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_unconverged</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">,</span> <span class="n">fine</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of scf</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1976,9 +1981,10 @@
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">fine</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_keyword_nosymm">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_nosymm">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_nosymm</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_nosymm</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of nosymm</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1993,9 +1999,10 @@
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_keyword_opt_maxcycles">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_opt_maxcycles">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_opt_maxcycles</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_opt_maxcycles</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of opt(maxcycle=200)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -2031,9 +2038,10 @@
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_keyword_inaccurate_quadrature">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_inaccurate_quadrature">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_inaccurate_quadrature</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_inaccurate_quadrature</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of inaccurate quadrature</span>
 <span class="sd">    </span>
@@ -2078,9 +2086,10 @@
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_keyword_l123">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_l123">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_l123</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_l123</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    When a job fails with l123.exe error, there are two possible solutions based upon the error message:</span>
 <span class="sd">    1. If Delta-X issue, will need to adjust the maxcycle of IRC job. If fails, then change algorithm to LQA.</span>
@@ -2107,9 +2116,10 @@
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
 
+
 <div class="viewcode-block" id="trsh_keyword_neg_eigen">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_neg_eigen">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_neg_eigen</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_neg_eigen</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Gaussian will check the number of negative frequency after finishing the TS optimization. </span>
 <span class="sd">    If there is more than one negative frequency, Gaussian will stop the calculation.</span>
@@ -2120,6 +2130,7 @@
         <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
     
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
+
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">prioritize_opt_methods</span><span class="p">(</span><span class="n">opt_methods</span><span class="p">):</span>
@@ -2136,9 +2147,10 @@
 
     <span class="k">return</span> <span class="n">filtered_methods</span>
 
+
 <div class="viewcode-block" id="trsh_keyword_no_qc">
 <a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_no_qc">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_no_qc</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_no_qc</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    When a job fails with no qc, there are two possible solutions based upon the error message:</span>
 <span class="sd">    1. If SCF fails, then try to change the algorithm to LQA.</span>
@@ -2148,7 +2160,6 @@
         <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s1">&#39;scf=(qc)&#39;</span><span class="p">)</span>
         <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;no_xqc&#39;</span><span class="p">)</span>
         <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
-
 
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 

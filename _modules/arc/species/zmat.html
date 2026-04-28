@@ -115,7 +115,8 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">copy</span><span class="w"> </span><span class="kn">import</span> <span class="n">deepcopy</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_logger</span><span class="p">,</span> <span class="n">is_angle_linear</span><span class="p">,</span> <span class="n">key_by_val</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ZMatError</span><span class="p">,</span> <span class="n">VectorsError</span>
@@ -124,7 +125,6 @@
 
 <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">arc.molecule.molecule</span><span class="w"> </span><span class="kn">import</span> <span class="n">Atom</span>
-
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
@@ -140,13 +140,13 @@
 
 <div class="viewcode-block" id="xyz_to_zmat">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.xyz_to_zmat">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">xyz_to_zmat</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
-                <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">constraints</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">xyz_to_zmat</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
+                <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">constraints</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                 <span class="n">consolidate</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-                <span class="n">consolidation_tols</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="n">fragments</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]:</span>
+                <span class="n">consolidation_tols</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate a z-matrix from cartesian coordinates.</span>
 <span class="sd">    The zmat is a dictionary with the following keys:</span>
@@ -178,7 +178,7 @@
 <span class="sd">        consolidate (bool, optional): Whether to consolidate the zmat after generation, ``True`` to consolidate.</span>
 <span class="sd">        consolidation_tols (dict, optional): Keys are &#39;R&#39;, &#39;A&#39;, &#39;D&#39;, values are floats representing absolute tolerance</span>
 <span class="sd">                                             for consolidating almost equal internal coordinates.</span>
-<span class="sd">        fragments (List[List[int]], optional):</span>
+<span class="sd">        fragments (list[list[int]], optional):</span>
 <span class="sd">            Fragments represented by the species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 <span class="sd">            indices are 0-indexed.</span>
@@ -186,7 +186,7 @@
 <span class="sd">    Raises:</span>
 <span class="sd">        ZMatError: If the zmat could not be generated.</span>
 
-<span class="sd">    Returns: Dict[str, tuple]</span>
+<span class="sd">    Returns: dict[str, tuple]</span>
 <span class="sd">        The z-matrix.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">fragments</span> <span class="o">=</span> <span class="n">fragments</span> <span class="ow">or</span> <span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;symbols&#39;</span><span class="p">])))]</span>
@@ -255,17 +255,17 @@
 
 <div class="viewcode-block" id="determine_r_atoms">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.determine_r_atoms">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">determine_r_atoms</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]],</span>
-                      <span class="n">xyz</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
-                      <span class="n">connectivity</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_r_atoms</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">],</span>
+                      <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
+                      <span class="n">connectivity</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
                       <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                       <span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                      <span class="n">r_constraint</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="n">a_constraint</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="n">d_constraint</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">r_constraint</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">a_constraint</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">d_constraint</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                       <span class="n">trivial_assignment</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                      <span class="n">fragments</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+                      <span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the atoms for defining the distance R.</span>
 <span class="sd">    This should be in the form: [n, &lt;some other atom already in the zmat&gt;]</span>
@@ -286,7 +286,7 @@
 <span class="sd">                                        constrained. ``None`` if it is not constrained.</span>
 <span class="sd">        trivial_assignment (bool, optional): Whether to attempt assigning atoms without considering connectivity</span>
 <span class="sd">                                             if the connectivity assignment fails.</span>
-<span class="sd">        fragments (List[List[int]], optional):</span>
+<span class="sd">        fragments (list[list[int]], optional):</span>
 <span class="sd">            Fragments represented by the species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 <span class="sd">            indices are 0-indexed.</span>
@@ -294,7 +294,7 @@
 <span class="sd">    Raises:</span>
 <span class="sd">        ZMatError: If the R atoms could not be determined.</span>
 
-<span class="sd">    Returns: Optional[List[int]]</span>
+<span class="sd">    Returns: list[int] | None</span>
 <span class="sd">        The 0-indexed z-mat R atoms.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">is_atom_in_new_fragment</span><span class="p">(</span><span class="n">atom_index</span><span class="o">=</span><span class="n">atom_index</span><span class="p">,</span> <span class="n">zmat</span><span class="o">=</span><span class="n">zmat</span><span class="p">,</span> <span class="n">fragments</span><span class="o">=</span><span class="n">fragments</span><span class="p">):</span>
@@ -393,18 +393,18 @@
 
 <div class="viewcode-block" id="determine_a_atoms">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.determine_a_atoms">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">determine_a_atoms</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]],</span>
-                      <span class="n">coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
-                      <span class="n">connectivity</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
-                      <span class="n">r_atoms</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_a_atoms</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">],</span>
+                      <span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">,</span>
+                      <span class="n">connectivity</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+                      <span class="n">r_atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
                       <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                       <span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                      <span class="n">a_constraint</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="n">d_constraint</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="n">a_constraint_type</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">a_constraint</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">d_constraint</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">a_constraint_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                       <span class="n">trivial_assignment</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                      <span class="n">fragments</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+                      <span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the atoms for defining the angle A.</span>
 <span class="sd">    This should be in the form: [n, r_atoms[1], &lt;some other atom already in the zmat&gt;]</span>
@@ -425,7 +425,7 @@
 <span class="sd">        a_constraint_type (str, optional): The A constraint type (&#39;A_atom&#39;, or &#39;A_group&#39;).</span>
 <span class="sd">        trivial_assignment (bool, optional): Whether to attempt assigning atoms without considering connectivity</span>
 <span class="sd">                                             if the connectivity assignment fails.</span>
-<span class="sd">        fragments (List[List[int]], optional):</span>
+<span class="sd">        fragments (list[list[int]], optional):</span>
 <span class="sd">            Fragments represented by the species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 
@@ -433,7 +433,7 @@
 <span class="sd">        ZMatError: If the A atoms could not be determined.</span>
 <span class="sd">            indices are 0-indexed.</span>
 
-<span class="sd">    Returns: Optional[List[int]]</span>
+<span class="sd">    Returns: list[int] | None</span>
 <span class="sd">        The 0-indexed z-mat A atoms.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">r_atoms</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">is_atom_in_new_fragment</span><span class="p">(</span><span class="n">atom_index</span><span class="o">=</span><span class="n">atom_index</span><span class="p">,</span> <span class="n">zmat</span><span class="o">=</span><span class="n">zmat</span><span class="p">,</span>
@@ -540,19 +540,19 @@
 
 <div class="viewcode-block" id="determine_d_atoms">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.determine_d_atoms">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">determine_d_atoms</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]],</span>
-                      <span class="n">xyz</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
-                      <span class="n">coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
-                      <span class="n">connectivity</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
-                      <span class="n">a_atoms</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_d_atoms</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">],</span>
+                      <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
+                      <span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">,</span>
+                      <span class="n">connectivity</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+                      <span class="n">a_atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
                       <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                       <span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                      <span class="n">d_constraint</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="n">d_constraint_type</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="n">specific_atom</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">d_constraint</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">d_constraint_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">specific_atom</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                       <span class="n">dummy</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                      <span class="n">fragments</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+                      <span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the atoms for defining the dihedral angle D.</span>
 <span class="sd">    This should be in the form: [n, a_atoms[1], a_atoms[2], &lt;some other atom already in the zmat&gt;]</span>
@@ -572,7 +572,7 @@
 <span class="sd">        d_constraint_type (str, optional): The D constraint type (&#39;D_atom&#39;, or &#39;D_group&#39;).</span>
 <span class="sd">        specific_atom (int, optional): A 0-index of the zmat atom to be added to a_atoms to create d_atoms.</span>
 <span class="sd">        dummy (bool, optional): Whether the atom being added (n) represents a dummy atom. ``True`` if it does.</span>
-<span class="sd">        fragments (List[List[int]], optional):</span>
+<span class="sd">        fragments (list[list[int]], optional):</span>
 <span class="sd">            Fragments represented by the species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 
@@ -581,7 +581,7 @@
 <span class="sd">            indices are 0-indexed.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Optional[List[int]]: The 0-indexed z-mat D atoms.</span>
+<span class="sd">        list[int] | None: The 0-indexed z-mat D atoms.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">a_atoms</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">is_atom_in_new_fragment</span><span class="p">(</span><span class="n">atom_index</span><span class="o">=</span><span class="n">atom_index</span><span class="p">,</span> <span class="n">zmat</span><span class="o">=</span><span class="n">zmat</span><span class="p">,</span>
                                                        <span class="n">fragments</span><span class="o">=</span><span class="n">fragments</span><span class="p">,</span> <span class="n">skip_atoms</span><span class="o">=</span><span class="n">a_atoms</span><span class="p">):</span>
@@ -633,7 +633,7 @@
 <div class="viewcode-block" id="determine_d_atoms_without_connectivity">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.determine_d_atoms_without_connectivity">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">determine_d_atoms_without_connectivity</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                                           <span class="n">coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
+                                           <span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">,</span>
                                            <span class="n">a_atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                                            <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
@@ -642,7 +642,7 @@
 
 <span class="sd">    Args:</span>
 <span class="sd">        zmat (dict): The zmat.</span>
-<span class="sd">        coords (Union[list, tuple]): Just the &#39;coords&#39; part of the xyz dict.</span>
+<span class="sd">        coords (list | tuple): Just the &#39;coords&#39; part of the xyz dict.</span>
 <span class="sd">        a_atoms (list): The determined a_atoms.</span>
 <span class="sd">        n (int): The 0-index of the atom in the zmat to be added.</span>
 
@@ -678,7 +678,7 @@
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.determine_d_atoms_from_connectivity">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">determine_d_atoms_from_connectivity</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                                         <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                                        <span class="n">coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
+                                        <span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">,</span>
                                         <span class="n">connectivity</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                                         <span class="n">a_atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                                         <span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
@@ -691,7 +691,7 @@
 <span class="sd">    Args:</span>
 <span class="sd">        zmat (dict): The zmat.</span>
 <span class="sd">        xyz (dict): The xyz dict.</span>
-<span class="sd">        coords (Union[list, tuple]): Just the &#39;coords&#39; part of the xyz dict.</span>
+<span class="sd">        coords (list | tuple): Just the &#39;coords&#39; part of the xyz dict.</span>
 <span class="sd">        connectivity (dict): The atoms connectivity (keys are indices in the mol/xyz).</span>
 <span class="sd">        a_atoms (list): The determined a_atoms.</span>
 <span class="sd">        atom_index (int): The 0-index of the atom in the molecule or cartesian coordinates to be added.</span>
@@ -794,14 +794,14 @@
 
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_add_nth_atom_to_zmat</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]],</span>
-                          <span class="n">xyz</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
-                          <span class="n">connectivity</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_add_nth_atom_to_zmat</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">],</span>
+                          <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
+                          <span class="n">connectivity</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
                           <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                           <span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                          <span class="n">constraints</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">]]],</span>
-                          <span class="n">fragments</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
-                          <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+                          <span class="n">constraints</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">]]],</span>
+                          <span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+                          <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Add the n-th atom to the zmat (n &gt;= 0).</span>
 <span class="sd">    Also considers the special cases where ``n`` is the first, second, or third atom to be added to the zmat.</span>
@@ -820,7 +820,7 @@
 <span class="sd">                           &#39;R_atom&#39;, &#39;R_group&#39;,</span>
 <span class="sd">                           &#39;A_atom&#39;, &#39;A_group&#39;,</span>
 <span class="sd">                           &#39;D_atom&#39;, &#39;D_group&#39;.</span>
-<span class="sd">        fragments (List[List[int]]):</span>
+<span class="sd">        fragments (list[list[int]]):</span>
 <span class="sd">            Fragments represented by the species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 <span class="sd">            indices are 0-indexed.</span>
@@ -829,7 +829,7 @@
 <span class="sd">        ZMatError: If the zmat could not be generated.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[Dict[str, tuple], Dict[str, tuple], List[int]]:</span>
+<span class="sd">        tuple[dict[str, tuple], dict[str, tuple], list[int]]:</span>
 <span class="sd">          - The updated zmat.</span>
 <span class="sd">          - The xyz coordinates updated with dummy atoms.</span>
 <span class="sd">          - A 0- or 1-length list with the skipped atom index.</span>
@@ -933,7 +933,7 @@
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.update_zmat_with_new_atom">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">update_zmat_with_new_atom</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                               <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                              <span class="n">coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
+                              <span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">,</span>
                               <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                               <span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                               <span class="n">r_atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
@@ -947,7 +947,7 @@
 <span class="sd">    Args:</span>
 <span class="sd">        zmat (dict): The zmat.</span>
 <span class="sd">        xyz (dict): The xyz dict.</span>
-<span class="sd">        coords (Union[list, tuple]): Just the &#39;coords&#39; part of the xyz dict.</span>
+<span class="sd">        coords (list | tuple): Just the &#39;coords&#39; part of the xyz dict.</span>
 <span class="sd">        n (int): The 0-index of the atom in the zmat to be added.</span>
 <span class="sd">        atom_index (int): The 0-index of the atom in the molecule or cartesian coordinates to be added.</span>
 <span class="sd">                          (``n`` and ``atom_index`` refer to the same atom, but it might have different indices</span>
@@ -1017,13 +1017,13 @@
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.add_dummy_atom">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">add_dummy_atom</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                    <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                   <span class="n">coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
+                   <span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">,</span>
                    <span class="n">connectivity</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                    <span class="n">r_atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                    <span class="n">a_atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                    <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                    <span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Add a dummy atom &#39;X&#39; to the zmat.</span>
 <span class="sd">    Also updates the r_atoms and a_atoms lists for the original (non-dummy) atom.</span>
@@ -1031,7 +1031,7 @@
 <span class="sd">    Args:</span>
 <span class="sd">        zmat (dict): The zmat.</span>
 <span class="sd">        xyz (dict): The xyz dict.</span>
-<span class="sd">        coords (Union[list, tuple]): Just the &#39;coords&#39; part of the xyz dict.</span>
+<span class="sd">        coords (list | tuple): Just the &#39;coords&#39; part of the xyz dict.</span>
 <span class="sd">        connectivity (dict): The atoms connectivity (keys are indices in the mol/xyz).</span>
 <span class="sd">        r_atoms (list): The determined r_atoms.</span>
 <span class="sd">        a_atoms (list): The determined a_atoms.</span>
@@ -1041,7 +1041,7 @@
 <span class="sd">                          in the zmat and the molecule/xyz)</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[dict, list, int, list, list, int]:</span>
+<span class="sd">        tuple[dict, list, int, list, list, int]:</span>
 <span class="sd">            - The zmat.</span>
 <span class="sd">            - The coordinates (list of tuples).</span>
 <span class="sd">            - The updated atom index in the zmat.</span>
@@ -1093,7 +1093,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">zmat_to_coords</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                    <span class="n">keep_dummy</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                    <span class="n">skip_undefined</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate the cartesian coordinates from a zmat dict.</span>
 <span class="sd">    Considers the zmat atomic map so the returned coordinates is ordered correctly.</span>
@@ -1116,7 +1116,7 @@
 <span class="sd">    Raises:</span>
 <span class="sd">        ZMatError: If zmat is of wrong type or does not contain all keys.</span>
 
-<span class="sd">    Returns: Tuple[List[dict], List[str]]</span>
+<span class="sd">    Returns: tuple[list[dict], list[str]]</span>
 <span class="sd">        - The cartesian coordinates.</span>
 <span class="sd">        - The atomic symbols corresponding to the coordinates.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1160,7 +1160,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">_add_nth_atom_to_coords</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                             <span class="n">coords</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                             <span class="n">i</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                            <span class="n">coords_to_skip</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                            <span class="n">coords_to_skip</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Add the n-th atom to the coords (n &gt;= 0).</span>
@@ -1249,7 +1249,7 @@
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.check_atom_r_constraints">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">check_atom_r_constraints</span><span class="p">(</span><span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                              <span class="n">constraints</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">tuple</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check distance constraints for an atom.</span>
 <span class="sd">    &#39;R&#39; constraints are a list of tuples with length 2.</span>
@@ -1264,7 +1264,7 @@
 <span class="sd">        ZMatError: If the R constraint lengths do not equal two, or if the atom is constrained more than once.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[Optional[tuple], Optional[str]]:</span>
+<span class="sd">        tuple[tuple | None, str | None]:</span>
 <span class="sd">            - The atom index to which the atom being checked is constrained. ``None`` if it is not constrained.</span>
 <span class="sd">            - The constraint type (&#39;R_atom&#39;, or &#39;R_group&#39;).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1296,7 +1296,7 @@
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.check_atom_a_constraints">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">check_atom_a_constraints</span><span class="p">(</span><span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                              <span class="n">constraints</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">tuple</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check angle constraints for an atom.</span>
 <span class="sd">    &#39;A&#39; constraints are a list of tuples with length 3.</span>
@@ -1311,7 +1311,7 @@
 <span class="sd">        ZMatError: If the A constraint lengths do not equal three, or if the atom is constrained more than once.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[Optional[tuple], Optional[str]]:</span>
+<span class="sd">        tuple[tuple | None, str | None]:</span>
 <span class="sd">            - The atom indices to which the atom being checked is constrained. ``None`` if it is not constrained.</span>
 <span class="sd">            - The constraint type (&#39;A_atom&#39;, or &#39;A_group&#39;). ``None`` if it is not constrained.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1343,7 +1343,7 @@
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.check_atom_d_constraints">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">check_atom_d_constraints</span><span class="p">(</span><span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                              <span class="n">constraints</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">tuple</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check dihedral angle constraints for an atom.</span>
 <span class="sd">    &#39;D&#39; constraints are a list of tuples with length 4.</span>
@@ -1358,7 +1358,7 @@
 <span class="sd">        ZMatError: If the A constraint lengths do not equal three, or if the atom is constrained more than once.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[Optional[tuple], Optional[str]]:</span>
+<span class="sd">        tuple[tuple | None, str | None]:</span>
 <span class="sd">            - The atom indices to which the atom being checked is constrained. ``None`` if it is not constrained.</span>
 <span class="sd">            - The constraint type (&#39;D_atom&#39;, &#39;D_group&#39;).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1414,7 +1414,7 @@
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.get_atom_connectivity_from_mol">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_atom_connectivity_from_mol</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">,</span>
                                    <span class="n">atom1</span><span class="p">:</span> <span class="s1">&#39;Atom&#39;</span><span class="p">,</span>
-                                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+                                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the connectivity of ``atom`` in ``mol``.</span>
 <span class="sd">    Returns heavy (non-H) atoms first.</span>
@@ -1424,7 +1424,7 @@
 <span class="sd">        atom1 (Atom): The atom to check connectivity for.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        List[int]: 0-indices of atoms in ``mol`` connected to ``atom``.</span>
+<span class="sd">        list[int]: 0-indices of atoms in ``mol`` connected to ``atom``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="p">[</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atom2</span><span class="p">)</span> <span class="k">for</span> <span class="n">atom2</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">atom1</span><span class="o">.</span><span class="n">edges</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">atom2</span><span class="o">.</span><span class="n">is_non_hydrogen</span><span class="p">()]</span> \
         <span class="o">+</span> <span class="p">[</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atom2</span><span class="p">)</span> <span class="k">for</span> <span class="n">atom2</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">atom1</span><span class="o">.</span><span class="n">edges</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">atom2</span><span class="o">.</span><span class="n">is_hydrogen</span><span class="p">()]</span></div>
@@ -1433,7 +1433,7 @@
 
 <div class="viewcode-block" id="get_connectivity">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.get_connectivity">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_connectivity</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_connectivity</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the connectivity information from the molecule object.</span>
 
@@ -1441,7 +1441,7 @@
 <span class="sd">        mol (Molecule): The Molecule object.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Dict[int, List[int]]: The connectivity information.</span>
+<span class="sd">        dict[int, list[int]]: The connectivity information.</span>
 <span class="sd">              Keys are atom indices, values are tuples of respective edges, ordered with heavy atoms first.</span>
 <span class="sd">              All indices are 0-indexed, corresponding to atom indices in ``mol`` (not in the zmat).</span>
 <span class="sd">              ``None`` if ``xyz`` is given.</span>
@@ -1455,14 +1455,14 @@
 
 <div class="viewcode-block" id="order_fragments_by_constraints">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.order_fragments_by_constraints">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">order_fragments_by_constraints</span><span class="p">(</span><span class="n">fragments</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
-                                   <span class="n">constraints_dict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">order_fragments_by_constraints</span><span class="p">(</span><span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+                                   <span class="n">constraints_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the order in which atoms should be added to the zmat from a 2D or a 3D representation.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        fragments (List[List[int]]):</span>
+<span class="sd">        fragments (list[list[int]]):</span>
 <span class="sd">            Fragments represented by the species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 <span class="sd">        constraints_dict (dict, optional):</span>
@@ -1470,7 +1470,7 @@
 <span class="sd">            are after the atoms they are constraint to.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        List[List[int]]: The ordered fragments list.</span>
+<span class="sd">        list[list[int]]: The ordered fragments list.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">constraints_dict</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="n">fragments</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">fragments</span>
@@ -1494,18 +1494,18 @@
 
 <div class="viewcode-block" id="get_atom_order">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.get_atom_order">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_atom_order</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                   <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                   <span class="n">fragments</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                   <span class="n">constraints_dict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_atom_order</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">constraints_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the order in which atoms should be added to the zmat from a 2D or a 3D representation.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        xyz (dict, optional): The 3D coordinates.</span>
 <span class="sd">        mol (Molecule, optional): The Molecule object.</span>
-<span class="sd">        fragments (List[List[int]], optional):</span>
+<span class="sd">        fragments (list[list[int]], optional):</span>
 <span class="sd">            Fragments represented by the species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 <span class="sd">        constraints_dict (dict, optional):</span>
@@ -1513,7 +1513,7 @@
 <span class="sd">            are after the atoms they are constraint to.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        List[int]: The atom order, 0-indexed.</span>
+<span class="sd">        list[int]: The atom order, 0-indexed.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">mol</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Either mol or xyz must be given.&#39;</span><span class="p">)</span>
@@ -1542,16 +1542,16 @@
 
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_accumulated_atom_order</span><span class="p">(</span><span class="n">fragments</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
-                            <span class="n">order_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span>
-                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_accumulated_atom_order</span><span class="p">(</span><span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+                            <span class="n">order_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span>
+                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Apply a cumulative offset to each fragment’s local atom‐order.</span>
 
 <span class="sd">    fragments: list of fragments (each is a list of atom‐indices)</span>
 <span class="sd">    order_fn:  callable that takes one fragment and returns its local ordering</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">atom_order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+    <span class="n">atom_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
     <span class="n">offset</span> <span class="o">=</span> <span class="mi">0</span>
     <span class="k">for</span> <span class="n">frag</span> <span class="ow">in</span> <span class="n">fragments</span><span class="p">:</span>
         <span class="n">local</span> <span class="o">=</span> <span class="n">order_fn</span><span class="p">(</span><span class="n">frag</span><span class="p">)</span>
@@ -1563,10 +1563,10 @@
 <div class="viewcode-block" id="get_atom_order_from_mol">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.get_atom_order_from_mol">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_atom_order_from_mol</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">,</span>
-                            <span class="n">fragment</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                            <span class="n">constraints_dict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                            <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+                            <span class="n">fragment</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                            <span class="n">constraints_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                            <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine Z-matrix atom order based on molecular connectivity and an optional single constraint.</span>
 
@@ -1577,7 +1577,7 @@
 
 <span class="sd">    Args:</span>
 <span class="sd">        mol (Molecule): The Molecule object containing ``atoms`` and ``edges``.</span>
-<span class="sd">        fragment (List[int], optional): Optional list of 0-based atom indices to include; defaults to all atoms.</span>
+<span class="sd">        fragment (list[int], optional): Optional list of 0-based atom indices to include; defaults to all atoms.</span>
 <span class="sd">        constraints_dict: Optional dict with a single constraint type:</span>
 <span class="sd">            &#39;R_atom&#39;: [(move_idx, anchor_idx)]</span>
 <span class="sd">            &#39;R_group&#39;: [(move_idx, anchor_idx)]</span>
@@ -1643,7 +1643,7 @@
     <span class="c1"># find start: a heavy with &lt;=1 heavy neighbor not in constrained_set if possible</span>
     <span class="c1"># Avoid atoms that are A in a linear A–B–C motif</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">find_start</span><span class="p">(</span><span class="n">avoid_linear</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find_start</span><span class="p">(</span><span class="n">avoid_linear</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Find a suitable start atom in the fragment.&quot;&quot;&quot;</span>
         <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">:</span>
             <span class="n">i</span> <span class="o">=</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atom</span><span class="p">)</span>
@@ -1774,7 +1774,7 @@
 
 <div class="viewcode-block" id="is_atom_in_linear_angle">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.is_atom_in_linear_angle">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">is_atom_in_linear_angle</span><span class="p">(</span><span class="n">i</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">,</span> <span class="n">tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.9</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_atom_in_linear_angle</span><span class="p">(</span><span class="n">i</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">,</span> <span class="n">tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.9</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if atom i is involved in a linear A–B–C motif (i.e., angle ~180),</span>
 <span class="sd">    whether as A, B, or C.</span>
@@ -1798,19 +1798,19 @@
 
 <div class="viewcode-block" id="get_atom_order_from_xyz">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.get_atom_order_from_xyz">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_atom_order_from_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
-                            <span class="n">fragment</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_atom_order_from_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
+                            <span class="n">fragment</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the order in which atoms should be added to the zmat from the 3D geometry.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        xyz (dict): The 3D coordinates.</span>
-<span class="sd">        fragment (List[int], optional): Entries are 0-indexed atom indices to consider in the molecule.</span>
+<span class="sd">        fragment (list[int], optional): Entries are 0-indexed atom indices to consider in the molecule.</span>
 <span class="sd">                              Only atoms within the fragment are considered.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        List[int]: The atom order, 0-indexed.</span>
+<span class="sd">        list[int]: The atom order, 0-indexed.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">fragment</span> <span class="o">=</span> <span class="n">fragment</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;symbols&#39;</span><span class="p">])))</span>
     <span class="n">atom_order</span><span class="p">,</span> <span class="n">hydrogens</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(),</span> <span class="nb">list</span><span class="p">()</span>
@@ -1828,8 +1828,8 @@
 <div class="viewcode-block" id="consolidate_zmat">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.consolidate_zmat">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">consolidate_zmat</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                     <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                     <span class="n">consolidation_tols</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="n">consolidation_tols</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Consolidate (almost) identical vars in the zmat.</span>
@@ -2014,9 +2014,9 @@
 <div class="viewcode-block" id="get_parameter_from_atom_indices">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.get_parameter_from_atom_indices">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_parameter_from_atom_indices</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                                    <span class="n">indices</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
+                                    <span class="n">indices</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">,</span>
                                     <span class="n">xyz_indexed</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-                                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">]:</span>
+                                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the zmat parameter from the atom indices.</span>
 <span class="sd">    If indices are of length two, three, or four, an R, A, or D parameter is returned, respectively.</span>
@@ -2032,7 +2032,7 @@
 
 <span class="sd">    Args:</span>
 <span class="sd">        zmat (dict): The zmat.</span>
-<span class="sd">        indices (Union[list, tuple]): Entries are 0-indices of atoms, list is of length 2, 3, or 4.</span>
+<span class="sd">        indices (list | tuple): Entries are 0-indices of atoms, list is of length 2, 3, or 4.</span>
 <span class="sd">        xyz_indexed (bool, optional): Whether the atom indices relate to the xyz (and the zmat map will be used)</span>
 <span class="sd">                                      or they already relate to the zmat. Default is ``True`` (relate to xyz).</span>
 
@@ -2040,7 +2040,7 @@
 <span class="sd">        TypeError: If ``indices`` are of wrong type.</span>
 <span class="sd">        ZMatError: If ``indices`` has a wrong length, or not all indices are in the zmat map.</span>
 
-<span class="sd">    Returns: Union[str, tuple, list]</span>
+<span class="sd">    Returns: str | tuple | list</span>
 <span class="sd">        The corresponding zmat parameter.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">indices</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
@@ -2091,10 +2091,10 @@
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_compare_zmats</span><span class="p">(</span><span class="n">zmat1</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                    <span class="n">zmat2</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                   <span class="n">r_tol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                   <span class="n">a_tol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                   <span class="n">d_tol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                   <span class="n">symmetric_torsions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">r_tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">a_tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">d_tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">symmetric_torsions</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -2181,7 +2181,7 @@
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.get_all_neighbors">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_all_neighbors</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">,</span>
                       <span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get atom indices of all neighbors of an atom in a molecule.</span>
 
@@ -2190,7 +2190,7 @@
 <span class="sd">        atom_index (int): The index of the atom whose neighbors are requested.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        List[int]: Atom indices of all neighbors of the requested atom.</span>
+<span class="sd">        list[int]: Atom indices of all neighbors of the requested atom.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">neighbors</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
     <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">atom_index</span><span class="p">]</span><span class="o">.</span><span class="n">edges</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
@@ -2202,9 +2202,9 @@
 <div class="viewcode-block" id="is_atom_in_new_fragment">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.is_atom_in_new_fragment">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">is_atom_in_new_fragment</span><span class="p">(</span><span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                            <span class="n">zmat</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]],</span>
-                            <span class="n">fragments</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                            <span class="n">skip_atoms</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                            <span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">],</span>
+                            <span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                            <span class="n">skip_atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Whether an atom is present in a new fragment that hasn&#39;t been added to the zmat yet,</span>
@@ -2216,7 +2216,7 @@
 <span class="sd">                          in the zmat/molecule/xyz/fragments)</span>
 <span class="sd">        zmat (dict): The zmat.</span>
 <span class="sd">        skip_atoms (list): Atoms in the zmat map to ignore when checking fragments.</span>
-<span class="sd">        fragments (List[List[int]], optional):</span>
+<span class="sd">        fragments (list[list[int]], optional):</span>
 <span class="sd">            Fragments represented by the species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 <span class="sd">            indices are 0-indexed.</span>
@@ -2240,8 +2240,8 @@
 <div class="viewcode-block" id="up_param">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.up_param">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">up_param</span><span class="p">(</span><span class="n">param</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-             <span class="n">increment</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-             <span class="n">increment_list</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+             <span class="n">increment</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+             <span class="n">increment_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
              <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Increase the indices represented by a zmat parameter.</span>
@@ -2466,7 +2466,7 @@
 
 <div class="viewcode-block" id="rebuild_map">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.rebuild_map">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">rebuild_map</span><span class="p">(</span><span class="n">old_map</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]],</span> <span class="n">dropped_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">rebuild_map</span><span class="p">(</span><span class="n">old_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">],</span> <span class="n">dropped_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Rebuild the Z-matrix to XYZ index map after removing atom 0.</span>
 
@@ -2503,12 +2503,12 @@
 
 <div class="viewcode-block" id="map_index_to_int">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.map_index_to_int">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">map_index_to_int</span><span class="p">(</span><span class="n">index</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">map_index_to_int</span><span class="p">(</span><span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Convert a zmat map value, e.g., 1 or &#39;X15&#39;, into an int, e.g., 1 or 15.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        index (Union[int, str]): The map index.</span>
+<span class="sd">        index (int | str): The map index.</span>
 
 <span class="sd">    Returns: int</span>
 <span class="sd">    &quot;&quot;&quot;</span>

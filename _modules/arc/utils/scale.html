@@ -91,7 +91,7 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
+
 <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">ARC_PATH</span><span class="p">,</span>
@@ -114,7 +114,6 @@
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
-
 <span class="n">HEADER</span> <span class="o">=</span> <span class="s1">&#39;FREQ: A PROGRAM FOR OPTIMIZING SCALE FACTORS (Version 1)</span><span class="se">\n</span><span class="s1">&#39;</span>\
          <span class="s1">&#39;                 written by                 </span><span class="se">\n</span><span class="s1">&#39;</span>\
          <span class="s1">&#39;Haoyu S. Yu, Lucas J. Fiedler, I.M. Alecu, and Donald G. Truhlar</span><span class="se">\n</span><span class="s1">&#39;</span>\
@@ -129,9 +128,9 @@
 
 <div class="viewcode-block" id="determine_scaling_factors">
 <a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.determine_scaling_factors">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">determine_scaling_factors</span><span class="p">(</span><span class="n">levels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Level</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]],</span>
-                              <span class="n">ess_settings</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                              <span class="n">init_log</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_scaling_factors</span><span class="p">(</span><span class="n">levels</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Level</span> <span class="o">|</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span><span class="p">],</span>
+                              <span class="n">ess_settings</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                              <span class="n">init_log</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the zero-point energy, harmonic frequencies, and fundamental frequencies scaling factors</span>
@@ -283,11 +282,11 @@
 <div class="viewcode-block" id="summarize_results">
 <a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.summarize_results">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">summarize_results</span><span class="p">(</span><span class="n">lambda_zpes</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
-                      <span class="n">levels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Level</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]],</span>
+                      <span class="n">levels</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Level</span> <span class="o">|</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span><span class="p">],</span>
                       <span class="n">zpe_dicts</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                       <span class="n">times</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                       <span class="n">overall_time</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                      <span class="n">base_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">base_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Print and save the results to file.</span>

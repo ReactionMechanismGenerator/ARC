@@ -104,7 +104,8 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">deque</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
@@ -113,10 +114,8 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SettingsError</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.imports</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
 
-
 <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">arc.molecule.molecule</span><span class="w"> </span><span class="kn">import</span> <span class="n">Molecule</span>
-
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;arc&#39;</span><span class="p">)</span>
 <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;matplotlib.font_manager&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">disabled</span> <span class="o">=</span> <span class="kc">True</span>
@@ -135,7 +134,7 @@
 
 <div class="viewcode-block" id="initialize_job_types">
 <a class="viewcode-back" href="../../api/common.html#arc.common.initialize_job_types">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">initialize_job_types</span><span class="p">(</span><span class="n">job_types</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">initialize_job_types</span><span class="p">(</span><span class="n">job_types</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                          <span class="n">specific_job_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                          <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -202,7 +201,7 @@
 
 <div class="viewcode-block" id="check_ess_settings">
 <a class="viewcode-back" href="../../api/common.html#arc.common.check_ess_settings">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">check_ess_settings</span><span class="p">(</span><span class="n">ess_settings</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_ess_settings</span><span class="p">(</span><span class="n">ess_settings</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A helper function to convert servers in the ess_settings dict to lists</span>
 <span class="sd">    Assists in troubleshooting job and trying a different server</span>
@@ -245,7 +244,7 @@
 <a class="viewcode-back" href="../../api/common.html#arc.common.initialize_log">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">initialize_log</span><span class="p">(</span><span class="n">log_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                    <span class="n">project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                   <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                    <span class="n">verbose</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">,</span>
                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -376,7 +375,7 @@
 
 <div class="viewcode-block" id="get_git_commit">
 <a class="viewcode-back" href="../../api/common.html#arc.common.get_git_commit">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_git_commit</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_git_commit</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the recent git commit to be logged.</span>
 
@@ -403,7 +402,7 @@
 
 <div class="viewcode-block" id="get_git_branch">
 <a class="viewcode-back" href="../../api/common.html#arc.common.get_git_branch">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_git_branch</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_git_branch</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the git branch to be logged.</span>
 
@@ -422,6 +421,7 @@
         <span class="k">for</span> <span class="n">branch_name</span> <span class="ow">in</span> <span class="n">branch_list</span><span class="p">:</span>
             <span class="k">if</span> <span class="s1">&#39;*&#39;</span> <span class="ow">in</span> <span class="n">branch_name</span><span class="o">.</span><span class="n">decode</span><span class="p">():</span>
                 <span class="k">return</span> <span class="n">branch_name</span><span class="o">.</span><span class="n">decode</span><span class="p">()[</span><span class="mi">2</span><span class="p">:]</span>
+        <span class="k">return</span> <span class="s1">&#39;&#39;</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="k">return</span> <span class="s1">&#39;&#39;</span></div>
 
@@ -430,8 +430,8 @@
 <div class="viewcode-block" id="read_yaml_file">
 <a class="viewcode-back" href="../../api/common.html#arc.common.read_yaml_file">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">read_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                   <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">list</span><span class="p">]:</span>
+                   <span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Read a YAML file (usually an input / restart file, but also conformers file)</span>
 <span class="sd">    and return the parameters as python variables.</span>
@@ -440,7 +440,7 @@
 <span class="sd">        path (str): The YAML file path to read.</span>
 <span class="sd">        project_directory (str, optional): The current project directory to rebase upon.</span>
 
-<span class="sd">    Returns: Union[dict, list]</span>
+<span class="sd">    Returns: dict | list</span>
 <span class="sd">        The content read from the file.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">project_directory</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -458,7 +458,7 @@
 <div class="viewcode-block" id="save_yaml_file">
 <a class="viewcode-back" href="../../api/common.html#arc.common.save_yaml_file">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                   <span class="n">content</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">dict</span><span class="p">],</span>
+                   <span class="n">content</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">,</span>
                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Save a YAML file (usually an input / restart file, but also conformers file).</span>
@@ -479,12 +479,12 @@
 
 <div class="viewcode-block" id="from_yaml">
 <a class="viewcode-back" href="../../api/common.html#arc.common.from_yaml">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">from_yaml</span><span class="p">(</span><span class="n">yaml_str</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">list</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">from_yaml</span><span class="p">(</span><span class="n">yaml_str</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Read a YAML string and decode to the respective Python object.</span>
 <span class="sd">    Args:</span>
 <span class="sd">        yaml_str (str): The YAML string content.</span>
-<span class="sd">    Returns: Union[dict, list]</span>
+<span class="sd">    Returns: dict | list</span>
 <span class="sd">        The respective Python object.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">stream</span><span class="o">=</span><span class="n">yaml_str</span><span class="p">,</span> <span class="n">Loader</span><span class="o">=</span><span class="n">yaml</span><span class="o">.</span><span class="n">FullLoader</span><span class="p">)</span></div>
@@ -493,7 +493,7 @@
 
 <div class="viewcode-block" id="to_yaml">
 <a class="viewcode-back" href="../../api/common.html#arc.common.to_yaml">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">to_yaml</span><span class="p">(</span><span class="n">py_content</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">to_yaml</span><span class="p">(</span><span class="n">py_content</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Convert a Python list or dictionary to a YAML string format.</span>
 
@@ -650,13 +650,14 @@
     <span class="k">return</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">number</span><span class="si">}{</span><span class="n">get_ordinal_indicator</span><span class="p">(</span><span class="n">number</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span></div>
 
 
+
 <div class="viewcode-block" id="read_element_dicts">
 <a class="viewcode-back" href="../../api/common.html#arc.common.read_element_dicts">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">read_element_dicts</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">read_element_dicts</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Read the element dictionaries from the elements.yml data file.</span>
 
-<span class="sd">    Returns: Tuple[dict, dict, dict]</span>
+<span class="sd">    Returns: tuple[dict, dict, dict]</span>
 <span class="sd">        - A dictionary of element symbol by name.</span>
 <span class="sd">        - A dictionary of element number by symbol.</span>
 <span class="sd">        - A dictionary of element mass by symbol, including isotope and occurrence frequency.</span>
@@ -672,13 +673,12 @@
     <span class="k">return</span> <span class="n">symbol_by_number</span><span class="p">,</span> <span class="n">number_by_symbol</span><span class="p">,</span> <span class="n">mass_by_symbol</span><span class="p">,</span> <span class="n">covalent_radii</span></div>
 
 
-
 <span class="n">SYMBOL_BY_NUMBER</span><span class="p">,</span> <span class="n">NUMBER_BY_SYMBOL</span><span class="p">,</span> <span class="n">MASS_BY_SYMBOL</span><span class="p">,</span> <span class="n">COVALENT_RADII</span> <span class="o">=</span> <span class="n">read_element_dicts</span><span class="p">()</span>
 
 
 <div class="viewcode-block" id="get_atom_radius">
 <a class="viewcode-back" href="../../api/common.html#arc.common.get_atom_radius">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_atom_radius</span><span class="p">(</span><span class="n">symbol</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_atom_radius</span><span class="p">(</span><span class="n">symbol</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the atom covalent radius of an atom in Angstroms.</span>
 
@@ -699,9 +699,9 @@
 
 <div class="viewcode-block" id="get_element_mass">
 <a class="viewcode-back" href="../../api/common.html#arc.common.get_element_mass">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_element_mass</span><span class="p">(</span><span class="n">input_element</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
-                     <span class="n">isotope</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_element_mass</span><span class="p">(</span><span class="n">input_element</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
+                     <span class="n">isotope</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Returns the mass and z number of the requested isotope for a given element.</span>
 <span class="sd">    Data taken from NIST, https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl (accessed October 2018)</span>
@@ -710,7 +710,7 @@
 <span class="sd">        input_element (int, str): The atomic number or symbol of the element.</span>
 <span class="sd">        isotope (int, optional): The isotope number.</span>
 
-<span class="sd">    Returns: Tuple[float, int]</span>
+<span class="sd">    Returns: tuple[float, int]</span>
 <span class="sd">        - The mass of the element in amu.</span>
 <span class="sd">        - The atomic number of the element.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -756,7 +756,6 @@
                     <span class="n">max_weight</span> <span class="o">=</span> <span class="n">iso_mass</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
                     <span class="n">mass</span> <span class="o">=</span> <span class="n">iso_mass</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
     <span class="k">return</span> <span class="n">mass</span><span class="p">,</span> <span class="n">number</span></div>
-
 
 
 <span class="c1"># A bond length dictionary of single bonds in Angstrom.</span>
@@ -816,25 +815,25 @@
 <a class="viewcode-back" href="../../api/common.html#arc.common.get_bonds_from_dmat">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_bonds_from_dmat</span><span class="p">(</span>
     <span class="n">dmat</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
-    <span class="n">elements</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
-    <span class="n">charges</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">elements</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">charges</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">tolerance</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.2</span><span class="p">,</span>
     <span class="n">bond_lone_hydrogens</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="n">n_fragments</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Guess the connectivity of a molecule from its distance matrix.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        dmat (np.ndarray): An NxN matrix of atom distances in Angstrom.</span>
-<span class="sd">        elements (List[str]): The corresponding element list in the same atomic order.</span>
-<span class="sd">        charges (List[int], optional): A corresponding list of formal atomic charges.</span>
+<span class="sd">        elements (list[str]): The corresponding element list in the same atomic order.</span>
+<span class="sd">        charges (list[int], optional): A corresponding list of formal atomic charges.</span>
 <span class="sd">        tolerance (float, optional): Factor by which the single‐bond length threshold is multiplied.</span>
 <span class="sd">        bond_lone_hydrogens (bool, optional): Whether to bond unassigned H atoms.</span>
 <span class="sd">        n_fragments (int, optional): Desired number of disconnected fragments. Defaults to 1.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        List[Tuple[int, int]]: Sorted list of bonded atom index pairs.</span>
+<span class="sd">        list[tuple[int, int]]: Sorted list of bonded atom index pairs.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">n</span> <span class="o">=</span> <span class="n">dmat</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">elements</span><span class="p">)</span> <span class="o">!=</span> <span class="n">n</span> <span class="ow">or</span> <span class="n">dmat</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
@@ -981,7 +980,7 @@
 
 <div class="viewcode-block" id="determine_top_group_indices">
 <a class="viewcode-back" href="../../api/common.html#arc.common.determine_top_group_indices">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">determine_top_group_indices</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="s1">&#39;Molecule&#39;</span><span class="p">,</span> <span class="n">atom1</span><span class="p">:</span> <span class="s1">&#39;Atom&#39;</span><span class="p">,</span> <span class="n">atom2</span><span class="p">:</span> <span class="s1">&#39;Atom&#39;</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_top_group_indices</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="s1">&#39;Molecule&#39;</span><span class="p">,</span> <span class="n">atom1</span><span class="p">:</span> <span class="s1">&#39;Atom&#39;</span><span class="p">,</span> <span class="n">atom2</span><span class="p">:</span> <span class="s1">&#39;Atom&#39;</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the indices of a &quot;top group&quot; in a molecule.</span>
 <span class="sd">    The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.</span>
@@ -993,7 +992,7 @@
 <span class="sd">        atom2 (Atom): The beginning of the top relative to atom1 in mol.</span>
 <span class="sd">        index (int, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.</span>
 
-<span class="sd">    Returns: Tuple[list, bool]</span>
+<span class="sd">    Returns: tuple[list, bool]</span>
 <span class="sd">        - The indices of the atoms in the top (either 0-index or 1-index, as requested).</span>
 <span class="sd">        - Whether the top has heavy atoms (is not just a hydrogen atom). ``True`` if it has heavy atoms.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1019,7 +1018,7 @@
 <a class="viewcode-back" href="../../api/common.html#arc.common.extremum_list">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">extremum_list</span><span class="p">(</span><span class="n">lst</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                   <span class="n">return_min</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="kc">None</span><span class="p">]]:</span>
+                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A helper function for finding the extremum (either minimum or maximum) of a list of numbers (int/float)</span>
 <span class="sd">    where some entries could be ``None``.</span>
@@ -1029,7 +1028,7 @@
 <span class="sd">        return_min (bool, optional): Whether to return the minimum or the maximum.</span>
 <span class="sd">                                    ``True`` for minimum, ``False`` for maximum, ``True`` by default.</span>
 
-<span class="sd">    Returns: Optional[Union[int, None]]</span>
+<span class="sd">    Returns: int | None</span>
 <span class="sd">        The entry with the minimal/maximal value.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">lst</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="nb">all</span><span class="p">([</span><span class="n">entry</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">lst</span><span class="p">]):</span>
@@ -1047,8 +1046,8 @@
 <a class="viewcode-back" href="../../api/common.html#arc.common.get_extremum_index">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_extremum_index</span><span class="p">(</span><span class="n">lst</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                        <span class="n">return_min</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-                       <span class="n">skip_values</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="kc">None</span><span class="p">]]:</span>
+                       <span class="n">skip_values</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A helper function for finding the extremum (either minimum or maximum) of a list of numbers (int/float)</span>
 <span class="sd">    where some entries could be ``None``.</span>
@@ -1059,7 +1058,7 @@
 <span class="sd">                                    ``True`` for minimum, ``False`` for maximum, ``True`` by default.</span>
 <span class="sd">        skip_values (list, optional): Values to skip when checking for extermum, e.g., 0.</span>
 
-<span class="sd">    Returns: Optional[Union[int, None]]</span>
+<span class="sd">    Returns: int | None</span>
 <span class="sd">        The index of an entry with the minimal/maximal value.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
@@ -1085,9 +1084,9 @@
 
 <div class="viewcode-block" id="sum_list_entries">
 <a class="viewcode-back" href="../../api/common.html#arc.common.sum_list_entries">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">sum_list_entries</span><span class="p">(</span><span class="n">lst</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]],</span>
-                     <span class="n">multipliers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">sum_list_entries</span><span class="p">(</span><span class="n">lst</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span><span class="p">],</span>
+                     <span class="n">multipliers</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Sum all entries in a list. If any entry is ``None``, return ``None``.</span>
 <span class="sd">    If ``multipliers`` is given, multiply each entry in ``lst`` by the respective multiplier entry.</span>
@@ -1097,7 +1096,7 @@
 <span class="sd">        multipliers (list, optional): A list of multipliers.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Optional[float]: The result.</span>
+<span class="sd">        float | None: The result.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">entry</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">))</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">lst</span><span class="p">):</span>
         <span class="k">return</span> <span class="kc">None</span>
@@ -1109,9 +1108,9 @@
 
 <div class="viewcode-block" id="sort_two_lists_by_the_first">
 <a class="viewcode-back" href="../../api/common.html#arc.common.sort_two_lists_by_the_first">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">sort_two_lists_by_the_first</span><span class="p">(</span><span class="n">list1</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="kc">None</span><span class="p">]],</span>
-                                <span class="n">list2</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="kc">None</span><span class="p">]],</span>
-                                <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">]],</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">sort_two_lists_by_the_first</span><span class="p">(</span><span class="n">list1</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">],</span>
+                                <span class="n">list2</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">],</span>
+                                <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span><span class="p">],</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Sort two lists in increasing order by the values of the first list.</span>
 <span class="sd">    Ignoring None entries from list1 and their respective entries in list2.</span>
@@ -1126,7 +1125,7 @@
 <span class="sd">    Raises:</span>
 <span class="sd">        InputError: If types are wrong, or lists are not the same length.</span>
 
-<span class="sd">    Returns: Tuple[list, list]</span>
+<span class="sd">    Returns: tuple[list, list]</span>
 <span class="sd">        - Sorted values from list1, ignoring None entries.</span>
 <span class="sd">        - Respective entries from list2.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1159,7 +1158,7 @@
 
 <div class="viewcode-block" id="check_that_all_entries_are_in_list">
 <a class="viewcode-back" href="../../api/common.html#arc.common.check_that_all_entries_are_in_list">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">check_that_all_entries_are_in_list</span><span class="p">(</span><span class="n">list_1</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span> <span class="n">list_2</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_that_all_entries_are_in_list</span><span class="p">(</span><span class="n">list_1</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">list_2</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check that all entries from ``list_2`` are in ``list_1``, and that the lists are the same length.</span>
 <span class="sd">    Useful for testing that two lists are equal regardless of entry order.</span>
@@ -1208,8 +1207,8 @@
 
 <div class="viewcode-block" id="almost_equal_lists">
 <a class="viewcode-back" href="../../api/common.html#arc.common.almost_equal_lists">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">almost_equal_lists</span><span class="p">(</span><span class="n">iter1</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
-                       <span class="n">iter2</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">almost_equal_lists</span><span class="p">(</span><span class="n">iter1</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+                       <span class="n">iter2</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
                        <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-05</span><span class="p">,</span>
                        <span class="n">atol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-08</span><span class="p">,</span>
                        <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
@@ -1217,8 +1216,8 @@
 <span class="sd">    A helper function for checking whether two iterables are almost equal.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        iter1 (list, tuple, np.array): An iterable.</span>
-<span class="sd">        iter2 (list, tuple, np.array): An iterable.</span>
+<span class="sd">        iter1 (list, tuple, np.ndarray): An iterable.</span>
+<span class="sd">        iter2 (list, tuple, np.ndarray): An iterable.</span>
 <span class="sd">        rtol (float, optional): The relative tolerance parameter.</span>
 <span class="sd">        atol (float, optional): The absolute tolerance parameter.</span>
 
@@ -1278,8 +1277,8 @@
 
 <div class="viewcode-block" id="almost_equal_coords_lists">
 <a class="viewcode-back" href="../../api/common.html#arc.common.almost_equal_coords_lists">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">almost_equal_coords_lists</span><span class="p">(</span><span class="n">xyz1</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="nb">dict</span><span class="p">],</span>
-                              <span class="n">xyz2</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="nb">dict</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">almost_equal_coords_lists</span><span class="p">(</span><span class="n">xyz1</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">,</span>
+                              <span class="n">xyz2</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">,</span>
                               <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-03</span><span class="p">,</span>
                               <span class="n">atol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-04</span><span class="p">,</span>
                               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
@@ -1288,8 +1287,8 @@
 <span class="sd">    Useful for comparing xyzs in unit tests.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        xyz1 (Union[List[dict], dict]): Either a dict-format xyz, or a list of them.</span>
-<span class="sd">        xyz2 (Union[List[dict], dict]): Either a dict-format xyz, or a list of them.</span>
+<span class="sd">        xyz1 (list[dict] | dict): Either a dict-format xyz, or a list of them.</span>
+<span class="sd">        xyz2 (list[dict] | dict): Either a dict-format xyz, or a list of them.</span>
 <span class="sd">        rtol (float, optional): The relative tolerance parameter.</span>
 <span class="sd">        atol (float, optional): The absolute tolerance parameter.</span>
 
@@ -1312,8 +1311,8 @@
 
 <div class="viewcode-block" id="is_equal_family_product_dicts">
 <a class="viewcode-back" href="../../api/common.html#arc.common.is_equal_family_product_dicts">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">is_equal_family_product_dicts</span><span class="p">(</span><span class="n">dicts1</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
-                                  <span class="n">dicts2</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_equal_family_product_dicts</span><span class="p">(</span><span class="n">dicts1</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
+                                  <span class="n">dicts2</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
                                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Compare two lists of family‐product dictionaries for equality.</span>
@@ -1385,7 +1384,7 @@
 
 <div class="viewcode-block" id="is_str_float">
 <a class="viewcode-back" href="../../api/common.html#arc.common.is_str_float">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">is_str_float</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_str_float</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check whether a string can be converted to a floating number.</span>
 
@@ -1405,7 +1404,7 @@
 
 <div class="viewcode-block" id="is_str_int">
 <a class="viewcode-back" href="../../api/common.html#arc.common.is_str_int">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">is_str_int</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_str_int</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check whether a string can be converted to an integer.</span>
 
@@ -1473,7 +1472,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">estimate_orca_mem_cpu_requirement</span><span class="p">(</span><span class="n">num_heavy_atoms</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                                       <span class="n">server</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                                       <span class="n">consider_server_limits</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+                                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Estimates memory and cpu requirements for an Orca job.</span>
 
@@ -1482,7 +1481,7 @@
 <span class="sd">        server (str): The name of the server where Orca runs.</span>
 <span class="sd">        consider_server_limits (bool):  Try to give realistic estimations.</span>
 
-<span class="sd">    Returns: Tuple[int, float]:</span>
+<span class="sd">    Returns: tuple[int, float]:</span>
 <span class="sd">        - The amount of total memory (MB)</span>
 <span class="sd">        - The number of cpu cores required for the Orca job for a given species.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1515,10 +1514,10 @@
 <div class="viewcode-block" id="check_torsion_change">
 <a class="viewcode-back" href="../../api/common.html#arc.common.check_torsion_change">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">check_torsion_change</span><span class="p">(</span><span class="n">torsions</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
-                         <span class="n">index_1</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
-                         <span class="n">index_2</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
-                         <span class="n">threshold</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mf">20.0</span><span class="p">,</span>
-                         <span class="n">delta</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+                         <span class="n">index_1</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
+                         <span class="n">index_2</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
+                         <span class="n">threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">=</span> <span class="mf">20.0</span><span class="p">,</span>
+                         <span class="n">delta</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
                          <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Compare two sets of torsions (in DataFrame) and check if any entry has a</span>
@@ -1527,10 +1526,10 @@
 
 <span class="sd">    Args:</span>
 <span class="sd">        torsions (pd.DataFrame): A DataFrame consisting of multiple sets of torsions.</span>
-<span class="sd">        index_1 (Union[int, str]): The index of the first conformer.</span>
-<span class="sd">        index_2 (Union[int, str]): The index of the second conformer.</span>
-<span class="sd">        threshold (Union[float, int]): The threshold used to determine the difference significance.</span>
-<span class="sd">        delta (Union[float, int]): A known difference between torsion pairs,</span>
+<span class="sd">        index_1 (int | str): The index of the first conformer.</span>
+<span class="sd">        index_2 (int | str): The index of the second conformer.</span>
+<span class="sd">        threshold (float | int): The threshold used to determine the difference significance.</span>
+<span class="sd">        delta (float | int): A known difference between torsion pairs,</span>
 <span class="sd">                                   delta = tor[index_1] - tor[index_2].</span>
 <span class="sd">                                   E.g.,for the torsions to be scanned, the</span>
 <span class="sd">                                   differences are equal to the scan resolution.</span>
@@ -1557,17 +1556,17 @@
 
 <div class="viewcode-block" id="is_same_pivot">
 <a class="viewcode-back" href="../../api/common.html#arc.common.is_same_pivot">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">is_same_pivot</span><span class="p">(</span><span class="n">torsion1</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
-                  <span class="n">torsion2</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
-                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_same_pivot</span><span class="p">(</span><span class="n">torsion1</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
+                  <span class="n">torsion2</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
+                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if two torsions have the same pivots.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        torsion1 (Union[list, str]): The four atom indices representing the first torsion.</span>
+<span class="sd">        torsion1 (list | str): The four atom indices representing the first torsion.</span>
 <span class="sd">        torsion2 (Union: [list, str]): The four atom indices representing the second torsion.</span>
 
-<span class="sd">    Returns: Optional[bool]</span>
+<span class="sd">    Returns: bool | None</span>
 <span class="sd">        ``True`` if two torsions share the same pivots.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">torsion1</span> <span class="o">=</span> <span class="n">ast</span><span class="o">.</span><span class="n">literal_eval</span><span class="p">(</span><span class="n">torsion1</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">torsion1</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">torsion1</span>
@@ -1575,7 +1574,8 @@
     <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">torsion1</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">torsion2</span><span class="p">)</span> <span class="o">==</span> <span class="mi">4</span><span class="p">):</span>
         <span class="k">return</span> <span class="kc">False</span>
     <span class="k">if</span> <span class="n">torsion1</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="n">torsion2</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span> <span class="ow">or</span> <span class="n">torsion1</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="n">torsion2</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">3</span><span class="p">][::</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
-        <span class="k">return</span> <span class="kc">True</span></div>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="kc">False</span></div>
 
 
 
@@ -1635,8 +1635,8 @@
 <a class="viewcode-back" href="../../api/common.html#arc.common.get_ordered_intersection_of_two_lists">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_ordered_intersection_of_two_lists</span><span class="p">(</span><span class="n">l1</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                                           <span class="n">l2</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
-                                          <span class="n">order_by_first_list</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-                                          <span class="n">return_unique</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                                          <span class="n">order_by_first_list</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                                          <span class="n">return_unique</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Find the intersection of two lists by order.</span>
@@ -1697,7 +1697,7 @@
 
 <div class="viewcode-block" id="is_xyz_linear">
 <a class="viewcode-back" href="../../api/common.html#arc.common.is_xyz_linear">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">is_xyz_linear</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_xyz_linear</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine whether the xyz coords represents a linear molecule.</span>
 
@@ -1738,7 +1738,7 @@
 <div class="viewcode-block" id="get_angle_in_180_range">
 <a class="viewcode-back" href="../../api/common.html#arc.common.get_angle_in_180_range">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_angle_in_180_range</span><span class="p">(</span><span class="n">angle</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
-                           <span class="n">round_to</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+                           <span class="n">round_to</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the corresponding angle in the -180 to +180 degree range.</span>
@@ -1793,18 +1793,18 @@
 
 <div class="viewcode-block" id="get_close_tuple">
 <a class="viewcode-back" href="../../api/common.html#arc.common.get_close_tuple">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_close_tuple</span><span class="p">(</span><span class="n">key_1</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="o">...</span><span class="p">],</span>
-                    <span class="n">keys</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="o">...</span><span class="p">]],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_close_tuple</span><span class="p">(</span><span class="n">key_1</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+                    <span class="n">keys</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]],</span>
                     <span class="n">tolerance</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
                     <span class="n">raise_error</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="o">...</span><span class="p">]]:</span>
+                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get a key from a list of keys close in value to the given key.</span>
 <span class="sd">    Even if just one of the items in the key has a close match, use the close value.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        key_1 (Tuple[Union[float, str], Union[float, str]]): The key used for the search.</span>
-<span class="sd">        keys (List[Tuple[Union[float, str], Union[float, str]]]): The list of keys to search within.</span>
+<span class="sd">        key_1 (tuple[float | str, float | str]): The key used for the search.</span>
+<span class="sd">        keys (list[tuple[float | str, float | str]]): The list of keys to search within.</span>
 <span class="sd">        tolerance (float, optional): The tolerance within which keys are determined to be close.</span>
 <span class="sd">        raise_error (bool, optional): Whether to raise a ValueError if a close key wasn&#39;t found.</span>
 
@@ -1813,7 +1813,7 @@
 <span class="sd">        ValueError: If a close key was not found and ``raise_error`` is ``True``.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Optional[Tuple[Union[float, str], ...]]: A key from the keys list close in value to the given key.</span>
+<span class="sd">        tuple[float | str, ...] | None: A key from the keys list close in value to the given key.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">key_1_floats</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">key_1</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">key_2</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
@@ -1868,9 +1868,9 @@
 
 <div class="viewcode-block" id="torsions_to_scans">
 <a class="viewcode-back" href="../../api/common.html#arc.common.torsions_to_scans">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">torsions_to_scans</span><span class="p">(</span><span class="n">descriptor</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">torsions_to_scans</span><span class="p">(</span><span class="n">descriptor</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
                       <span class="n">direction</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
-                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]:</span>
+                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Convert torsions to scans or vice versa.</span>
 <span class="sd">    In ARC we define a torsion as a list of four atoms with 0-indices.</span>
@@ -1882,7 +1882,7 @@
 <span class="sd">        direction (int, optional): 1: Convert torsions to scans; -1: Convert scans to torsions.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Optional[List[List[int]]]: The converted indices.</span>
+<span class="sd">        list[list[int]] | None: The converted indices.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">descriptor</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
@@ -1900,7 +1900,7 @@
 
 <div class="viewcode-block" id="convert_list_index_0_to_1">
 <a class="viewcode-back" href="../../api/common.html#arc.common.convert_list_index_0_to_1">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">convert_list_index_0_to_1</span><span class="p">(</span><span class="n">_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span> <span class="n">direction</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">convert_list_index_0_to_1</span><span class="p">(</span><span class="n">_list</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">direction</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Convert a list from 0-indexed to 1-indexed, or vice versa.</span>
 <span class="sd">    Ensures positive values in the resulting list.</span>
@@ -1913,7 +1913,7 @@
 <span class="sd">        ValueError: If the new list contains negative values.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Union[list, tuple]: The converted indices.</span>
+<span class="sd">        list | tuple: The converted indices.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">new_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">item</span> <span class="o">+</span> <span class="n">direction</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">_list</span><span class="p">]</span>
     <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">val</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">new_list</span><span class="p">):</span>
@@ -1926,15 +1926,15 @@
 
 <div class="viewcode-block" id="calc_rmsd">
 <a class="viewcode-back" href="../../api/common.html#arc.common.calc_rmsd">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">calc_rmsd</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">],</span>
-              <span class="n">y</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">calc_rmsd</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+              <span class="n">y</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Compute the root-mean-square deviation between two matrices.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        x (np.array): Matrix 1.</span>
-<span class="sd">        y (np.array): Matrix 2.</span>
+<span class="sd">        x (np.ndarray): Matrix 1.</span>
+<span class="sd">        y (np.ndarray): Matrix 2.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        float: The RMSD score of two matrices.</span>
@@ -1990,7 +1990,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">dfs</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="s1">&#39;Molecule&#39;</span><span class="p">,</span>
         <span class="n">start</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
         <span class="n">sort_result</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+        <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A depth-first search algorithm for graph traversal of a Molecule object instance.</span>
 
@@ -2000,7 +2000,7 @@
 <span class="sd">        sort_result (bool, optional): Whether to sort the returned visited indices.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        List[int]: Indices of all atoms connected to the starting atom.</span>
+<span class="sd">        list[int]: Indices of all atoms connected to the starting atom.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">start</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Got a wrong start number </span><span class="si">{</span><span class="n">start</span><span class="si">}</span><span class="s1"> for a molecule with only </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span><span class="si">}</span><span class="s1"> atoms.&#39;</span><span class="p">)</span>
@@ -2091,10 +2091,10 @@
 
 <div class="viewcode-block" id="calculate_arrhenius_rate_coefficient">
 <a class="viewcode-back" href="../../api/common.html#arc.common.calculate_arrhenius_rate_coefficient">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">calculate_arrhenius_rate_coefficient</span><span class="p">(</span><span class="n">A</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
-                                         <span class="n">n</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
-                                         <span class="n">Ea</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
-                                         <span class="n">T</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">calculate_arrhenius_rate_coefficient</span><span class="p">(</span><span class="n">A</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+                                         <span class="n">n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+                                         <span class="n">Ea</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+                                         <span class="n">T</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
                                          <span class="n">Ea_units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;kJ/mol&#39;</span><span class="p">,</span>
                                          <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>

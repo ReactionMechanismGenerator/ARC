@@ -91,7 +91,6 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">math</span><span class="w"> </span><span class="kn">import</span> <span class="n">isclose</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">arc.molecule.element</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">elements</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">SYMBOL_BY_NUMBER</span><span class="p">,</span>
@@ -153,18 +152,18 @@
 
 <span class="sd">    Structures (rotors_dict is initialized in conformers.find_internal_rotors; pivots/scan/top values are 1-indexed)::</span>
 
-<span class="sd">            rotors_dict: {0: {&#39;pivots&#39;: ``List[int]``,  # 1-indexed</span>
-<span class="sd">                              &#39;top&#39;: ``List[int]``,  # 1-indexed</span>
-<span class="sd">                              &#39;scan&#39;: ``List[int]``,  # 1-indexed</span>
-<span class="sd">                              &#39;torsion&#39;: ``List[int]``,  # 0-indexed</span>
+<span class="sd">            rotors_dict: {0: {&#39;pivots&#39;: ``list[int]``,  # 1-indexed</span>
+<span class="sd">                              &#39;top&#39;: ``list[int]``,  # 1-indexed</span>
+<span class="sd">                              &#39;scan&#39;: ``list[int]``,  # 1-indexed</span>
+<span class="sd">                              &#39;torsion&#39;: ``list[int]``,  # 0-indexed</span>
 <span class="sd">                              &#39;number_of_running_jobs&#39;: ``int``,</span>
-<span class="sd">                              &#39;success&#39;: Optional[``bool``],  # ``None`` by default</span>
+<span class="sd">                              &#39;success&#39;: ``bool`` | None,  # ``None`` by default</span>
 <span class="sd">                              &#39;invalidation_reason&#39;: ``str``,</span>
 <span class="sd">                              &#39;times_dihedral_set&#39;: ``int``,</span>
 <span class="sd">                              &#39;scan_path&#39;: &lt;path to scan output file&gt;,</span>
 <span class="sd">                              &#39;max_e&#39;: ``float``,  # relative to the minimum energy, in kJ/mol,</span>
 <span class="sd">                              &#39;trsh_counter&#39;: ``int``,</span>
-<span class="sd">                              &#39;trsh_methods&#39;: ``List[str]``,</span>
+<span class="sd">                              &#39;trsh_methods&#39;: ``list[str]``,</span>
 <span class="sd">                              &#39;symmetry&#39;: ``int``,</span>
 <span class="sd">                              &#39;dimensions&#39;: ``int``,</span>
 <span class="sd">                              &#39;original_dihedrals&#39;: ``list``,</span>
@@ -213,7 +212,7 @@
 <span class="sd">                                            in which case the job should be unrestricted, but the multiplicity does not</span>
 <span class="sd">                                            have the required information to make that decision (r vs. u).</span>
 <span class="sd">        force_field (str, optional): The force field to be used for conformer screening. The default is MMFF94s.</span>
-<span class="sd">                                     Other optional force fields are MMFF94, UFF, or GAFF (not recommended, slow).</span>
+<span class="sd">                                     Other optional force fields are MMFF94, UFF, or GAFF (the latter is slow).</span>
 <span class="sd">                                     If &#39;fit&#39; is specified for this parameter, some initial MMFF94s conformers will be</span>
 <span class="sd">                                     generated, then force field parameters will be fitted for this molecule and</span>
 <span class="sd">                                     conformers will be re-run with the fitted force field (recommended for drug-like</span>
@@ -261,15 +260,15 @@
 <span class="sd">        preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)</span>
 <span class="sd">                                                 between which distances and dihedrals of these pivots must be</span>
 <span class="sd">                                                 preserved. Used for identification of rotors which break a TS.</span>
-<span class="sd">        fragments (Optional[List[List[int]]]):</span>
+<span class="sd">        fragments (list[list[int]] | None):</span>
 <span class="sd">            Fragments represented by this species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 <span class="sd">        active (dict, optional): The active orbitals. Possible keys are:</span>
-<span class="sd">                                 &#39;occ&#39; (List[int]): The occupied orbitals.</span>
-<span class="sd">                                 &#39;closed&#39; (List[int]): The closed-shell orbitals.</span>
-<span class="sd">                                 &#39;frozen&#39; (List[int]): The frozen orbitals.</span>
-<span class="sd">                                 &#39;core&#39; (List[int]): The core orbitals.</span>
-<span class="sd">                                 &#39;e_o&#39; (Tuple[int, int]): The number of active electrons, determined by the total number</span>
+<span class="sd">                                 &#39;occ&#39; (list[int]): The occupied orbitals.</span>
+<span class="sd">                                 &#39;closed&#39; (list[int]): The closed-shell orbitals.</span>
+<span class="sd">                                 &#39;frozen&#39; (list[int]): The frozen orbitals.</span>
+<span class="sd">                                 &#39;core&#39; (list[int]): The core orbitals.</span>
+<span class="sd">                                 &#39;e_o&#39; (tuple[int, int]): The number of active electrons, determined by the total number</span>
 <span class="sd">                                 of electrons minus the core electrons (2 e&#39;s per heavy atom), and the number of active</span>
 <span class="sd">                                 orbitals, determined by the number of closed-shell orbitals and active orbitals</span>
 <span class="sd">                                 (w/o core orbitals).</span>
@@ -327,10 +326,10 @@
 <span class="sd">        successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.</span>
 <span class="sd">        unsuccessful_methods (list): Methods used to generate a TS guess that were unsuccessfully.</span>
 <span class="sd">        chosen_ts (int): The TSGuess index corresponding to the chosen TS conformer used for optimization.</span>
-<span class="sd">        chosen_ts_list (List[int]): The TSGuess index corresponding to the TS guesses that were tried out.</span>
+<span class="sd">        chosen_ts_list (list[int]): The TSGuess index corresponding to the TS guesses that were tried out.</span>
 <span class="sd">        chosen_ts_method (str): The TS method that was actually used for optimization.</span>
-<span class="sd">        ts_checks (Dict[str, bool]): Checks that a TS species went through.</span>
-<span class="sd">        rxn_zone_atom_indices (List[int]): 0-indexed atom indices of the active reaction zone.</span>
+<span class="sd">        ts_checks (dict[str, bool]): Checks that a TS species went through.</span>
+<span class="sd">        rxn_zone_atom_indices (list[int]): 0-indexed atom indices of the active reaction zone.</span>
 <span class="sd">        ts_conf_spawned (bool): Whether conformers were already spawned for the Species (representing a TS) based on its</span>
 <span class="sd">                                TSGuess objects.</span>
 <span class="sd">        tsg_spawned (bool): If this species is a TS, this attribute describes whether TS guess jobs were already spawned.</span>
@@ -350,7 +349,7 @@
 <span class="sd">        transport_data (TransportData): A placeholder for updating transport properties after Lennard-Jones</span>
 <span class="sd">                                        calculation (using OneDMin).</span>
 <span class="sd">        force_field (str): The force field to be used for conformer screening. The default is MMFF94s.</span>
-<span class="sd">                           Other optional force fields are MMFF94, UFF, or GAFF (not recommended, slow).</span>
+<span class="sd">                           Other optional force fields are MMFF94 and UFF.</span>
 <span class="sd">                           If &#39;fit&#39; is specified for this parameter, some initial MMFF94s conformers will be generated,</span>
 <span class="sd">                           then force field parameters will be fitted for this molecule and conformers will be re-run</span>
 <span class="sd">                           with the fitted force field (recommended for drug-like species and species with many</span>
@@ -371,7 +370,7 @@
 <span class="sd">        zmat (dict): The species internal coordinates (Z Matrix).</span>
 <span class="sd">        preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which</span>
 <span class="sd">                                       distances and dihedrals of these pivots must be preserved.</span>
-<span class="sd">        fragments (Optional[List[List[int]]]):</span>
+<span class="sd">        fragments (list[list[int]] | None):</span>
 <span class="sd">            Fragments represented by this species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 <span class="sd">        active (dict): The active orbitals. See description in Args.</span>
@@ -387,40 +386,40 @@
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
-                 <span class="n">active</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">active</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">adjlist</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-                 <span class="n">bdes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">bond_corrections</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">charge</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">checkfile</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">compute_thermo</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">include_in_thermo_lib</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                 <span class="n">bdes</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">bond_corrections</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">charge</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">checkfile</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">compute_thermo</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">include_in_thermo_lib</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                  <span class="n">consider_all_diastereomers</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-                 <span class="n">directed_rotors</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">directed_rotors</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">e0_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                 <span class="n">external_symmetry</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">fragments</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">external_symmetry</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">force_field</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;MMFF94s&#39;</span><span class="p">,</span>
                  <span class="n">inchi</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                  <span class="n">is_ts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                 <span class="n">irc_label</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">label</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">multiplicity</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">multi_species</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">number_of_radicals</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">optical_isomers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">preserve_param_in_scan</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">run_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">rxn_label</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">rxn_index</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">irc_label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">multiplicity</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">multi_species</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">number_of_radicals</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">optical_isomers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">preserve_param_in_scan</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">run_time</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">rxn_label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">rxn_index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">smiles</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-                 <span class="n">species_dict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">ts_number</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">yml_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">species_dict</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">ts_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">xyz</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">yml_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">keep_mol</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                 <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">t1</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_number</span> <span class="o">=</span> <span class="n">ts_number</span>
@@ -1167,12 +1166,12 @@
 
 <div class="viewcode-block" id="ARCSpecies.is_monoatomic">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.is_monoatomic">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">is_monoatomic</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_monoatomic</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine whether the species is monoatomic.</span>
 
 <span class="sd">        Returns:</span>
-<span class="sd">            Optional[bool]: Whether the species is monoatomic.</span>
+<span class="sd">            bool | None: Whether the species is monoatomic.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">):</span>
             <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
@@ -1186,12 +1185,12 @@
 
 <div class="viewcode-block" id="ARCSpecies.is_diatomic">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.is_diatomic">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">is_diatomic</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_diatomic</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine whether the species is diatomic.</span>
 
 <span class="sd">        Returns:</span>
-<span class="sd">            Optional[bool]: Whether the species is diatomic.</span>
+<span class="sd">            bool | None: Whether the species is diatomic.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">):</span>
             <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
@@ -1203,15 +1202,15 @@
 
 <div class="viewcode-block" id="ARCSpecies.is_isomorphic">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.is_isomorphic">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">is_isomorphic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="s1">&#39;ARCSpecies&#39;</span><span class="p">,</span> <span class="n">Molecule</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_isomorphic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">ARCSpecies</span> <span class="o">|</span> <span class="n">Molecule</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine whether the species is isomorphic with ``other``.</span>
 
 <span class="sd">        Args:</span>
-<span class="sd">            other (Union[ARCSpecies, Molecule]): An ARCSpecies, or Molecule object instance to compare isomorphism with.</span>
+<span class="sd">            other (ARCSpecies | Molecule): An ARCSpecies, or Molecule object instance to compare isomorphism with.</span>
 
 <span class="sd">        Returns:</span>
-<span class="sd">            Optional[bool]: Whether the species is isomorphic with ``other``.</span>
+<span class="sd">            bool | None: Whether the species is isomorphic with ``other``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
@@ -1324,7 +1323,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">get_xyz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                 <span class="n">generate</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                 <span class="n">return_format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;dict&#39;</span><span class="p">,</span>
-                <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+                <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Get the highest quality xyz the species has.</span>
 <span class="sd">        If it doesn&#39;t have any 3D information, and if ``generate`` is ``True``, cheaply generate it.</span>
@@ -1337,7 +1336,7 @@
 <span class="sd">            return_format (str, optional): Whether to output a &#39;dict&#39; or a &#39;str&#39; representation of the respective xyz.</span>
 
 <span class="sd">        Return:</span>
-<span class="sd">             Optional[Union[dict, str]]: The xyz coordinates in the requested representation.</span>
+<span class="sd">             dict | str | None: The xyz coordinates in the requested representation.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">conf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">conformers</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">conformers</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="n">xyz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">final_xyz</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">most_stable_conformer</span> <span class="ow">or</span> <span class="n">conf</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">cheap_conformer</span>
@@ -1513,10 +1512,10 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">set_dihedral</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                      <span class="n">scan</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                      <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
-                     <span class="n">deg_increment</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                     <span class="n">deg_abs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="n">deg_increment</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="n">deg_abs</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                      <span class="n">count</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-                     <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                      <span class="n">chk_rotor_list</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Set the dihedral angle value of the torsion ``scan``.</span>
@@ -1596,7 +1595,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">determine_multiplicity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                                <span class="n">smiles</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                <span class="n">adjlist</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                               <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span>
+                               <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
                                <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine the spin multiplicity of the species.</span>
@@ -1619,7 +1618,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">determine_multiplicity_from_descriptors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                                                 <span class="n">smiles</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                                 <span class="n">adjlist</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                                                <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]):</span>
+                                                <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine the spin multiplicity of the species from the chemical descriptors.</span>
 
@@ -1760,7 +1759,7 @@
 <div class="viewcode-block" id="ARCSpecies.mol_from_xyz">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.mol_from_xyz">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">mol_from_xyz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
-                     <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                      <span class="n">get_cheap</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
@@ -1834,7 +1833,7 @@
 
 <div class="viewcode-block" id="ARCSpecies.process_xyz">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.process_xyz">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">process_xyz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xyz_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_xyz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xyz_list</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Process the user&#39;s input and add either to the .conformers attribute or to .ts_guesses.</span>
 
@@ -1914,8 +1913,8 @@
                            <span class="n">opt_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                            <span class="n">bath_gas</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                            <span class="n">opt_level</span><span class="p">:</span> <span class="n">Level</span><span class="p">,</span>
-                           <span class="n">freq_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-                           <span class="n">freq_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+                           <span class="n">freq_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
+                           <span class="n">freq_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Set the species.transport_data attribute after a Lennard-Jones calculation (via OneDMin).</span>
 
@@ -1976,10 +1975,10 @@
 <div class="viewcode-block" id="ARCSpecies.check_xyz_isomorphism">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.check_xyz_isomorphism">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">check_xyz_isomorphism</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
-                              <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                              <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                              <span class="n">allow_nonisomorphic_2d</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                              <span class="n">verbose</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                              <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                              <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                              <span class="n">allow_nonisomorphic_2d</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                              <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check whether the perception of self.final_xyz or ``xyz`` is isomorphic with self.mol.</span>
@@ -2336,7 +2335,7 @@
 
 <div class="viewcode-block" id="ARCSpecies.get_bonds">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.get_bonds">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">get_bonds</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_bonds</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Generate a list of length-2 tuples indicating the bonding atoms in the molecule.</span>
 <span class="sd">        Returns:</span>
@@ -2351,7 +2350,7 @@
     
 <div class="viewcode-block" id="ARCSpecies.kabsch">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.kabsch">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">kabsch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="s1">&#39;ARCSpecies&#39;</span><span class="p">,</span> <span class="n">map_</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">kabsch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">ARCSpecies</span><span class="p">,</span> <span class="n">map_</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Calculate the Kabsch RMSD between this species and another species.</span>
 
@@ -2375,8 +2374,6 @@
 
 
 
-<div class="viewcode-block" id="TSGuess">
-<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">TSGuess</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A class for representing TS a guess.</span>
@@ -2404,7 +2401,7 @@
 <span class="sd">        initial_xyz (dict): The 3D coordinates guess.</span>
 <span class="sd">        opt_xyz (dict): The 3D coordinates after optimization at the ts_guesses level.</span>
 <span class="sd">        method (str): The method/source used for the xyz guess.</span>
-<span class="sd">        method_sources (List[str]): All methods/sources that produced an equivalent xyz guess.</span>
+<span class="sd">        method_sources (list[str]): All methods/sources that produced an equivalent xyz guess.</span>
 <span class="sd">        method_index (int): A subindex, used for cases where a single method generates several guesses.</span>
 <span class="sd">                            Counts separately for each direction, &#39;F&#39; and &#39;R&#39;.</span>
 <span class="sd">        method_direction (str): The reaction direction used for generating the guess (&#39;F&#39; or &#39;R&#39;).</span>
@@ -2415,33 +2412,33 @@
 <span class="sd">        success (bool): Whether the TS guess method succeeded in generating an XYZ guess or not.</span>
 <span class="sd">        energy (float): Relative energy of all TS conformers in kJ/mol.</span>
 <span class="sd">        index (int): A running index of all TSGuess objects belonging to an ARCSpecies object.</span>
-<span class="sd">        imaginary_freqs (List[float]): The imaginary frequencies of the TS guess after optimization.</span>
+<span class="sd">        imaginary_freqs (list[float]): The imaginary frequencies of the TS guess after optimization.</span>
 <span class="sd">        conformer_index (int): An index corresponding to the conformer jobs spawned for each TSGuess object.</span>
 <span class="sd">                               Assigned only if self.success is ``True``.</span>
 <span class="sd">        successful_irc (bool): Whether the IRS run(s) identified this to be the correct TS by isomorphism of the wells.</span>
 <span class="sd">        successful_normal_mode (bool): Whether a normal mode check was successful.</span>
 <span class="sd">        errors (str): Problems experienced with this TSGuess. Used for logging.</span>
-<span class="sd">        cluster (List[int]): Indices of TSGuess object instances clustered together.</span>
+<span class="sd">        cluster (list[int]): Indices of TSGuess object instances clustered together.</span>
 <span class="sd">        log_path (str): The path to the ESS log file produced by the TS guess method (e.g., NEB output).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
-                 <span class="n">index</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">method</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">method_index</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">method_direction</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">constraints</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">t0</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">execution_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">success</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">family</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">method_index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">method_direction</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">constraints</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">t0</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">execution_time</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">success</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">family</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">arc_reaction</span><span class="p">:</span> <span class="n">Optional</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">ts_dict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">energy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">cluster</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">log_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">ts_dict</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">energy</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">cluster</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">log_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="p">):</span>
 
         <span class="k">if</span> <span class="n">ts_dict</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -2510,7 +2507,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_opt_xyz</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
 
     <span class="nd">@staticmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_normalize_method_sources</span><span class="p">(</span><span class="n">method_sources</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_normalize_method_sources</span><span class="p">(</span><span class="n">method_sources</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Normalize method_sources to a unique, ordered, lowercase list.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -2525,8 +2522,6 @@
                 <span class="n">normalized</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">normalized</span>
 
-<div class="viewcode-block" id="TSGuess.as_dict">
-<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.as_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">for_report</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A helper function for dumping this object as a dictionary.</span>
@@ -2573,11 +2568,8 @@
                 <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;errors&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">errors</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;log_path&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span>
-        <span class="k">return</span> <span class="n">ts_dict</span></div>
+        <span class="k">return</span> <span class="n">ts_dict</span>
 
-
-<div class="viewcode-block" id="TSGuess.from_dict">
-<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.from_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A helper function for loading this object from a dictionary in a YAML file for restarting ARC</span>
@@ -2612,14 +2604,11 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">execution_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">seconds</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">family</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;family&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;family&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;log_path&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;log_path&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="kc">None</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">errors</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;errors&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;errors&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span></div>
+        <span class="bp">self</span><span class="o">.</span><span class="n">errors</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;errors&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;errors&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span>
 
-
-<div class="viewcode-block" id="TSGuess.process_xyz">
-<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.process_xyz">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">process_xyz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
-                    <span class="n">xyz</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
-                    <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
+                    <span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                     <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Process the user&#39;s input. If ``xyz`` represents a file path, parse it.</span>
@@ -2634,14 +2623,11 @@
         <span class="k">if</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="p">(</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">)):</span>
                 <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;xyz must be either a dictionary or string, got:</span><span class="se">\n</span><span class="si">{</span><span class="n">xyz</span><span class="si">}</span><span class="se">\n</span><span class="s1">which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="n">project_directory</span><span class="p">)</span></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="n">project_directory</span><span class="p">)</span>
 
-
-<div class="viewcode-block" id="TSGuess.get_xyz">
-<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.get_xyz">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_xyz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                 <span class="n">return_format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;dict&#39;</span><span class="p">,</span>
-                <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+                <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Get the highest quality xyz the TSGuess has.</span>
 <span class="sd">        Returns ``None`` if no xyz can be retrieved.</span>
@@ -2650,16 +2636,13 @@
 <span class="sd">            return_format (str, optional): Whether to output a &#39;dict&#39; or a &#39;str&#39; representation of the respective xyz.</span>
 
 <span class="sd">        Return:</span>
-<span class="sd">             Optional[Union[dict, str]]: The xyz coordinates in the requested representation.</span>
+<span class="sd">             dict | str | None: The xyz coordinates in the requested representation.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">xyz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">opt_xyz</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span>
         <span class="k">if</span> <span class="n">return_format</span> <span class="o">==</span> <span class="s1">&#39;str&#39;</span><span class="p">:</span>
             <span class="n">xyz</span> <span class="o">=</span> <span class="n">xyz_to_str</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">xyz</span></div>
+        <span class="k">return</span> <span class="n">xyz</span>
 
-
-<div class="viewcode-block" id="TSGuess.almost_equal_tsgs">
-<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.almost_equal_tsgs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">almost_equal_tsgs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="s1">&#39;TSGuess&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine whether two TSGuess object instances represent the same geometry.</span>
@@ -2682,28 +2665,20 @@
         <span class="k">if</span> <span class="n">almost_equal_coords</span><span class="p">(</span><span class="n">xyz1</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get_xyz</span><span class="p">(),</span> <span class="n">xyz2</span><span class="o">=</span><span class="n">other</span><span class="o">.</span><span class="n">get_xyz</span><span class="p">())</span> \
                 <span class="ow">or</span> <span class="n">compare_confs</span><span class="p">(</span><span class="n">xyz1</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get_xyz</span><span class="p">(),</span> <span class="n">xyz2</span><span class="o">=</span><span class="n">other</span><span class="o">.</span><span class="n">get_xyz</span><span class="p">(),</span> <span class="n">rmsd_score</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
             <span class="k">return</span> <span class="kc">True</span>
-        <span class="k">return</span> <span class="kc">False</span></div>
+        <span class="k">return</span> <span class="kc">False</span>
 
-
-<div class="viewcode-block" id="TSGuess.tic">
-<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.tic">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">tic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Initialize self.t0.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">t0</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span></div>
+        <span class="bp">self</span><span class="o">.</span><span class="n">t0</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
 
-
-<div class="viewcode-block" id="TSGuess.tok">
-<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.tok">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">tok</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Assign the time difference between now and self.t0 into self.execution_time.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">t0</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">execution_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">t0</span></div>
-</div>
-
+            <span class="bp">self</span><span class="o">.</span><span class="n">execution_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">t0</span>
 
 
 <div class="viewcode-block" id="ThermoData">
@@ -2901,12 +2876,12 @@
 <div class="viewcode-block" id="determine_rotor_symmetry">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.determine_rotor_symmetry">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">determine_rotor_symmetry</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                             <span class="n">pivots</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="nb">str</span><span class="p">],</span>
+                             <span class="n">pivots</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
                              <span class="n">rotor_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-                             <span class="n">energies</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                             <span class="n">energies</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                              <span class="n">return_num_wells</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                              <span class="n">log</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the rotor symmetry number from a potential energy scan.</span>
 <span class="sd">    The *worst* resolution for each peak and valley is determined.</span>
@@ -2929,7 +2904,7 @@
 <span class="sd">        or if rotor_path does not point to an existing file.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[int, float, int]:</span>
+<span class="sd">        tuple[int, float, int]:</span>
 <span class="sd">            int: The symmetry number</span>
 <span class="sd">            float: The highest torsional energy barrier in kJ/mol.</span>
 <span class="sd">            int (optional): The number of peaks, only returned if ``return_len_peaks`` is ``True``.</span>
@@ -3143,7 +3118,7 @@
 <div class="viewcode-block" id="colliding_atoms">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.colliding_atoms">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">colliding_atoms</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                    <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                     <span class="n">threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.60</span><span class="p">,</span>
                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -3184,7 +3159,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">check_label</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                 <span class="n">is_ts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                 <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+                <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check whether a species (or reaction) label is legal, modify it if needed.</span>
 
@@ -3197,7 +3172,7 @@
 <span class="sd">        TypeError: If the label is not a string type.</span>
 <span class="sd">        SpeciesError: If the label is illegal and cannot be automatically fixed.</span>
 
-<span class="sd">    Returns: Tuple[str, Optional[str]]</span>
+<span class="sd">    Returns: tuple[str, str | None]</span>
 <span class="sd">        - A legal label.</span>
 <span class="sd">        - The original label if the label was modified, else ``None``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -3241,17 +3216,17 @@
 
 <div class="viewcode-block" id="check_atom_balance">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.check_atom_balance">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">check_atom_balance</span><span class="p">(</span><span class="n">entry_1</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="n">Molecule</span><span class="p">],</span>
-                       <span class="n">entry_2</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="n">Molecule</span><span class="p">],</span>
-                       <span class="n">verbose</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_atom_balance</span><span class="p">(</span><span class="n">entry_1</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Molecule</span><span class="p">,</span>
+                       <span class="n">entry_2</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Molecule</span><span class="p">,</span>
+                       <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                        <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check whether the two entries are in atom balance.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        entry_1 (Union[dict, str, Molecule]): Either an xyz (dict or str) or an RMG Molecule object.</span>
-<span class="sd">        entry_2 (Union[dict, str, Molecule]): Either an xyz (dict or str) or an RMG Molecule object.</span>
-<span class="sd">        verbose (Optional[bool]): Whether to log the differences if found.</span>
+<span class="sd">        entry_1 (dict | str | Molecule): Either an xyz (dict or str) or an RMG Molecule object.</span>
+<span class="sd">        entry_2 (dict | str | Molecule): Either an xyz (dict or str) or an RMG Molecule object.</span>
+<span class="sd">        verbose (bool | None): Whether to log the differences if found.</span>
 
 <span class="sd">    Raises:</span>
 <span class="sd">        SpeciesError: If both entries are empty.</span>
@@ -3300,7 +3275,7 @@
 
 <div class="viewcode-block" id="split_mol">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.split_mol">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">split_mol</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">split_mol</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Split an RMG Molecule object by connectivity gaps while retaining the relative atom order.</span>
 
@@ -3308,7 +3283,7 @@
 <span class="sd">        mol (Molecule): The Molecule to split.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        Tuple[List[Molecule], List[List[int]]]:</span>
+<span class="sd">        tuple[list[Molecule], list[list[int]]]:</span>
 <span class="sd">            - Entries are molecular fragments resulting from the split.</span>
 <span class="sd">            - Entries are lists with indices that correspond to the original atoms that were assigned to each fragment.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -3328,7 +3303,7 @@
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.rmg_mol_from_dict_repr">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">rmg_mol_from_dict_repr</span><span class="p">(</span><span class="n">representation</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                            <span class="n">is_ts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]:</span>
+                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate a dict representation of an RMG ``Molecule`` object instance.</span>
 

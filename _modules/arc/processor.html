@@ -88,7 +88,6 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">arc.plotter</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plotter</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARC_PATH</span><span class="p">,</span> <span class="n">get_logger</span><span class="p">,</span> <span class="n">read_yaml_file</span><span class="p">,</span> <span class="n">save_yaml_file</span>
@@ -107,7 +106,7 @@
 
 <div class="viewcode-block" id="resolve_neb_level">
 <a class="viewcode-back" href="../../api/processor.html#arc.processor.resolve_neb_level">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">resolve_neb_level</span><span class="p">(</span><span class="n">ts_adapters</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_neb_level</span><span class="p">(</span><span class="n">ts_adapters</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Determine the NEB level of theory if NEB was a configured TS adapter.&quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">ts_adapters</span> <span class="ow">and</span> <span class="s1">&#39;orca_neb&#39;</span> <span class="ow">in</span> <span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">ts_adapters</span><span class="p">):</span>
         <span class="n">orca_neb_settings</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;orca_neb_settings&#39;</span><span class="p">,</span> <span class="p">{})</span>
@@ -127,9 +126,9 @@
                         <span class="n">species_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                         <span class="n">reactions</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                         <span class="n">output_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
-                        <span class="n">bac_type</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                        <span class="n">sp_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                        <span class="n">freq_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="n">bac_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="n">sp_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="n">freq_level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                         <span class="n">freq_scale_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
                         <span class="n">compute_thermo</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                         <span class="n">compute_rates</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
