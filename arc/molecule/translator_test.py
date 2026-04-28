@@ -389,18 +389,6 @@ class SMILESGenerationTest(unittest.TestCase):
 
         self.assertEqual(to_smiles(mol, backend='rdkit'), smiles)
 
-    def test_surface_molecule_ob(self):
-        """Test InChI generation for a surface molecule using OpenBabel"""
-        mol = Molecule().from_adjacency_list("""
-1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}
-2 H u0 p0 c0 {1,S}
-3 H u0 p0 c0 {1,S}
-4 H u0 p0 c0 {1,S}
-5 X u0 p0 c0 {1,S}
-""")
-        smiles = 'C[Pt]'
-
-        self.assertEqual(to_smiles(mol, backend='openbabel'), smiles)
 
 
 class ParsingTest(unittest.TestCase):

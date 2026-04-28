@@ -71,12 +71,7 @@ pushd . >/dev/null
 echo "=== Installing RMG ==="
 run_devtool install_rmg.sh "${RMG_ARGS[@]}"
 
-
- # 2) PyRDL
- echo "=== Installing PyRDL ==="
- bash devtools/install_pyrdl.sh
-
-# 3) ARC itself (skip env creation in CI or if user requests it)
+# 2) ARC itself (skip env creation in CI or if user requests it)
 if [[ "${CI:-false}" != "true" && "${SKIP_ARC:-false}" != "true" ]]; then
     if [[ $SKIP_CLEAN == false ]]; then
         echo "=== Cleaning up old ARC build artifacts ==="

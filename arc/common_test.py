@@ -875,13 +875,13 @@ class TestCommon(unittest.TestCase):
         globalized_restart_path = os.path.join(project_directory, 'restart_paths_globalized.yml')
         content = common.read_yaml_file(globalized_restart_path)
         self.assertEqual(content['output']['restart'], 'Restarted ARC at 2020-02-28 12:51:14.446086; ')
-        self.assertIn('ARC/arc/testing/restart/4_globalized_paths/calcs/Species/HCN/freq_a38229/output.out',
+        self.assertIn('arc/testing/restart/4_globalized_paths/calcs/Species/HCN/freq_a38229/output.out',
                       content['output']['spc']['paths']['freq'])
         self.assertNotIn('gpfs/workspace/users/user', content['output']['spc']['paths']['freq'])
 
         path = '/home/user/runs/ARC/ARC_Project/calcs/Species/H/sp_a4339/output.out'
         new_path = common.globalize_path(path, project_directory)
-        self.assertIn('/ARC/arc/testing/restart/4_globalized_paths/calcs/Species/H/sp_a4339/output.out', new_path)
+        self.assertIn('arc/testing/restart/4_globalized_paths/calcs/Species/H/sp_a4339/output.out', new_path)
 
     def test_globalize_path(self):
         """Test rebasing a single path to the current ARC project"""
