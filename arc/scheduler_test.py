@@ -1658,6 +1658,51 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             base_path,
         )
 
+    def test_delete_all_species_jobs_preserves_sp_composite_dict(self):
+        """Regression: ``delete_all_species_jobs`` rebuilds ``paths`` via a
+        dict-comprehension that maps every key to ``''`` (with one carve-out
+        for ``'irc'`` → list). That clobbers ``paths['sp_composite']`` from
+        ``dict[sub_label → path]`` to an empty string, and the next composite
+        sub-job completion crashes with
+        ``TypeError: 'str' object does not support item assignment``.
+
+        ``sp_composite`` must be preserved as ``dict()`` (parallel to ``irc``
+        being preserved as ``list()``)."""
+        tmp = os.path.join(self.project_directory, "fx_delete_all")
+        os.makedirs(tmp, exist_ok=True)
+        recipe = {
+            "base": {"method": "hf", "basis": "cc-pVTZ"},
+            "corrections": [
+                {"label": "delta_T", "type": "delta",
+                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
+                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+            ],
+        }
+        protocol = CompositeProtocol.from_user_input(recipe)
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'),
+                         'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+        # Drive a base completion through the real path so paths['sp_composite']
+        # is a populated dict, not the freshly-init'd empty one.
+        base_path = os.path.join(tmp, "base.out")
+        self._write_gaussian_fixture(base_path, -1.10)
+        sched.post_sp_actions('H2', base_path, protocol.base.level)
+        self.assertIsInstance(sched.output['H2']['paths']['sp_composite'], dict)
+        self.assertEqual(sched.output['H2']['paths']['sp_composite']['base'], base_path)
+        # Now exercise the path that clobbers it. delete_all_species_jobs
+        # iterates self.job_dict[label] which the no-op test scheduler may
+        # leave empty — that's fine, the dict-comprehension at the end of
+        # the method runs unconditionally and is what corrupts paths.
+        sched.delete_all_species_jobs('H2')
+        # Contract: sp_composite stays a dict (parallel to irc staying a list).
+        self.assertIsInstance(sched.output['H2']['paths']['sp_composite'], dict)
+        # Next sub-job completion must not crash.
+        delta_T_high_path = os.path.join(tmp, "delta_T_high.out")
+        self._write_gaussian_fixture(delta_T_high_path, -1.15)
+        sched.post_sp_actions('H2', delta_T_high_path, protocol.corrections[0].high)
+
     # --- Phase 3.5: preset name + reference preservation ------------------- #
 
     def test_preset_name_and_reference_survive_to_notebook_section(self):

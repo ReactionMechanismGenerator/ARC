@@ -4114,7 +4114,17 @@ class Scheduler(object):
                     logger.info(f'Deleted job {job_name}')
                     job.delete()
         self.running_jobs[label] = list()
-        self.output[label]['paths'] = {key: '' if key != 'irc' else list() for key in self.output[label]['paths'].keys()}
+        # Reset paths for this species. Most keys reset to ''; container-valued
+        # keys keep their type so the rest of the pipeline (composite tracking,
+        # IRC trajectory list) doesn't crash on a string where it expects a
+        # dict / list. Phase 3 added 'sp_composite' as a dict[sub_label → path];
+        # without the carve-out below it would collapse to '' here and the next
+        # composite sub-job completion would TypeError on item assignment.
+        _path_empty = {'irc': list, 'sp_composite': dict}
+        self.output[label]['paths'] = {
+            key: _path_empty.get(key, str)()
+            for key in self.output[label]['paths'].keys()
+        }
         for job_type in self.output[label]['job_types']:
             # rotors and bde are initialised to True (see initialize_output_dict) because
             # species with no torsional modes / no BDE targets should not be blocked from
