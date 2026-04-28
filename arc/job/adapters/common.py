@@ -889,12 +889,13 @@ def set_job_args(args: dict | None,
     carry, i.e., only the options which are actually being dropped.
 
     Args:
-        args (dict): The job specific arguments.
+        args (dict): The job-specific arguments.
         level (Level): The level of theory.
         job_name (str): The job name.
 
     Returns:
-        dict: The initialized job specific arguments.
+        dict: The initialized job-specific arguments, guaranteed to carry the
+        ``'keyword'``, ``'block'``, and ``'trsh'`` buckets (each a dict).
     """
     args_carry_options = args is not None and any(val for val in args.values())
     if args_carry_options and level is not None and level.args and any(val for val in level.args.values()):
