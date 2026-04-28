@@ -214,6 +214,66 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level.args['keyword']['general'],
                          'empiricaldispersion=gd3 int=ultrafine')
 
+    # --- structural __eq__ + as_dict args fix (sp_composite Bug B) -------- #
+
+    def test_eq_distinguishes_args_keyword_differences(self):
+        """Two Levels identical in method+basis but differing only in
+        ``args.keyword`` must NOT compare equal.
+
+        Pre-fix: ``__eq__`` delegated to ``str(self)`` which dropped ``args``
+        whenever any sibling bucket was empty (``block: {}``). That let HEAT
+        protocol's δ_CV high (all-electron ``core,...``) and low (default
+        frozen-core) Levels collapse into one job at composite-spawn time —
+        silently producing δ_CV = 0.
+        """
+        ae_level = Level(
+            method='ccsd(t)', basis='cc-pCVTZ',
+            args={'keyword': {'core': 'core,0,0,0,0,0,0,0,0;'}, 'block': {}},
+        )
+        fc_level = Level(method='ccsd(t)', basis='cc-pCVTZ')
+        self.assertNotEqual(ae_level, fc_level)
+
+    def test_eq_identical_levels_remain_equal(self):
+        """Sanity: the strict __eq__ doesn't make every Level construction unique."""
+        a = Level(method='wb97xd', basis='def2-TZVP')
+        b = Level(method='wb97xd', basis='def2-TZVP')
+        self.assertEqual(a, b)
+
+    def test_as_dict_includes_args_when_keyword_set_and_block_empty(self):
+        """as_dict() must serialise ``args`` whenever any bucket has content.
+
+        Pre-fix the ``all(values)`` guard skipped ``args`` when ``block`` was
+        empty, dropping the keyword half on round-trip.
+        """
+        level = Level(
+            method='ccsd(t)', basis='cc-pCVTZ',
+            args={'keyword': {'core': 'core,0,0,0,0,0,0,0,0;'}, 'block': {}},
+        )
+        d = level.as_dict()
+        self.assertIn('args', d)
+        self.assertIn('keyword', d['args'])
+        self.assertEqual(d['args']['keyword']['core'], 'core,0,0,0,0,0,0,0,0;')
+
+    def test_as_dict_omits_args_when_all_buckets_empty(self):
+        """No content anywhere ⇒ args is omitted from the serialised form."""
+        level = Level(method='hf', basis='cc-pVTZ')
+        self.assertNotIn('args', level.as_dict())
+
+    def test_str_includes_keyword_when_block_empty(self):
+        """str(Level) used to drop ``keyword`` info when ``block`` was empty."""
+        level = Level(
+            method='ccsd(t)', basis='cc-pCVTZ',
+            args={'keyword': {'core': 'core,0,0,0,0,0,0,0,0;'}, 'block': {}},
+        )
+        self.assertIn('keyword args:', str(level))
+        self.assertIn('core,0,0,0,0,0,0,0,0', str(level))
+
+    def test_level_is_unhashable(self):
+        """Custom __eq__ without a matching __hash__ ⇒ unhashable.
+        Locks the contract; nothing in the codebase puts Level into a set/dict-key."""
+        with self.assertRaises(TypeError):
+            hash(Level(method='hf', basis='cc-pVTZ'))
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

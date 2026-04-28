@@ -276,9 +276,37 @@ scalar-relativistic terms, closes the gap without any empirical fitting.
 
 ARC ships a few presets in ``arc/level/presets.yml``:
 
-* ``HEAT-345`` — HEAT-style recipe inspired by Tajti et al. (see references)
-* ``HEAT-345Q`` — HEAT-345 plus a ``δ[CCSDT(Q)]`` correction
-* ``FPA-min`` — minimal focal-point recipe with a CBS extrapolation term
+* ``HEAT-345`` — HEAT-style recipe inspired by Tajti et al. (see references).
+  Includes δ[CCSDT], δ_CV (core-valence, all-electron CCSD(T)/cc-pCVTZ vs
+  frozen-core), and δ_rel (DKH2 scalar-relativistic CCSD(T)/cc-pVTZ-DK).
+* ``HEAT-345Q`` — HEAT-345 plus a δ[CCSDT(Q)] correction.
+* ``HEAT-345_noC`` / ``HEAT-345Q_noC`` — same as the corresponding HEAT
+  variant but with the **δ_CV** (core-valence) correction omitted. The omission
+  is part of the preset name and reference string so users can cite the
+  protocol honestly when the all-electron leg is unavailable on their ESS.
+  Use these when targeting an ESS without a clean Molpro-style
+  ``core,...`` directive (or when the core-valence contribution is known to
+  be negligible — typically < 0.5 kJ/mol for first-row systems).
+* ``FPA-min`` — minimal focal-point recipe with a CBS extrapolation term.
+
+**ESS syntax for δ_CV and δ_rel.** The HEAT presets shipped here target the
+**Molpro** adapter:
+
+* δ_CV — all-electron CCSD(T)/cc-pCVTZ via Molpro's ``core,0,...`` directive
+  (``args.keyword.core: 'core,0,0,0,0,0,0,0,0;'``). Trailing zeros are
+  harmless for lower-symmetry point groups.
+* δ_rel — DKH2 scalar-relativistic CCSD(T)/cc-pVTZ-DK via the canonical
+  Molpro directive ``SET,DKHO=2`` (passed as
+  ``args.keyword.dkho: 'SET,DKHO=2;'``). The Molpro manual
+  (https://www.molpro.net/manual/doku.php?id=relativistic_corrections)
+  explicitly recommends ``DKHO`` over the legacy ``DKROLL``. The directive
+  must appear *before* ``int;`` so the integrals are evaluated with the
+  DK-transformed Hamiltonian.
+
+Other ESSes need different keywords; pointing a HEAT-345 / HEAT-345Q preset
+at, say, the CFOUR or Orca adapter for those SPs will write the wrong
+directive. Until per-ESS preset families ship, either supply an explicit
+recipe or use a ``_noC`` variant.
 
 **Form 2 — preset with partial override.** Replace specific fields of named
 terms in the preset::

@@ -13,6 +13,7 @@ introduce new term labels or unknown fields.
 import unittest
 
 from arc.exceptions import InputError
+from arc.level import Level
 from arc.level.presets import PRESETS, REGISTERED_PRESET_NAMES, expand_preset
 from arc.level.protocol import CompositeProtocol
 
@@ -24,8 +25,44 @@ class TestPresetRegistry(unittest.TestCase):
         self.assertGreaterEqual(len(REGISTERED_PRESET_NAMES), 3)
 
     def test_known_presets_present(self):
-        for name in ("HEAT-345", "HEAT-345Q", "FPA-min"):
+        for name in ("HEAT-345", "HEAT-345Q", "HEAT-345_noC", "HEAT-345Q_noC", "FPA-min"):
             self.assertIn(name, REGISTERED_PRESET_NAMES)
+
+    def test_noC_variants_omit_delta_CV_term(self):
+        """``_noC`` variants must NOT carry a delta_CV correction; the
+        omission is part of the contract their name advertises."""
+        for name in ("HEAT-345_noC", "HEAT-345Q_noC"):
+            with self.subTest(name=name):
+                recipe = expand_preset(name)
+                labels = [c["label"] for c in recipe["corrections"]]
+                self.assertNotIn("delta_CV", labels,
+                                 f"{name} must not include delta_CV "
+                                 f"(found: {labels})")
+                self.assertIn("delta_T", labels)
+                self.assertIn("delta_rel", labels)
+
+    def test_noC_reference_calls_out_omission(self):
+        """The reference string of every ``_noC`` variant must explicitly say
+        the core-valence correction was omitted, so users cite honestly."""
+        for name in ("HEAT-345_noC", "HEAT-345Q_noC"):
+            with self.subTest(name=name):
+                ref = PRESETS[name]["reference"]
+                self.assertIn("OMITTED", ref.upper())
+                self.assertIn("CORE-VALENCE", ref.upper())
+
+    def test_HEAT_protocols_delta_CV_legs_compare_unequal(self):
+        """Regression for sp_composite Bug B: HEAT-345Q's δ_CV high (all-electron
+        ``core,...``) and low (default frozen-core) Levels must not collapse to
+        a single sub-job at composite-spawn time."""
+        for name in ("HEAT-345", "HEAT-345Q"):
+            with self.subTest(name=name):
+                recipe = expand_preset(name)
+                cv = next(c for c in recipe["corrections"] if c["label"] == "delta_CV")
+                high = Level(repr=cv["high"])
+                low = Level(repr=cv["low"])
+                self.assertNotEqual(high, low,
+                                    f"{name} δ_CV legs collapsed to equal Levels — "
+                                    f"composite-spawn would silently dedupe to one job.")
 
     def test_each_preset_carries_a_reference_field(self):
         """Every preset entry must include a `reference:` string with citation + DOI."""

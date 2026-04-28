@@ -112,13 +112,43 @@ class Level(object):
             # it wasn't set by the user, try determining it
             self.deduce_software()
 
+    # Attributes that participate in structural equality. These are the user-
+    # provided / round-trippable fields; derived attributes (``method_type``,
+    # ``compatible_ess``) are intentionally excluded because they are computed
+    # from the others and would create false-negative equalities when only
+    # one of the operands has been resolved.
+    _EQ_ATTRS = (
+        'method', 'basis', 'auxiliary_basis', 'dispersion', 'cabs',
+        'software', 'software_version',
+        'solvation_method', 'solvent', 'solvation_scheme_level',
+        'args', 'year',
+    )
+
     def __eq__(self, other: Level) -> bool:
         """
-        Determine equality between Level object instances.
+        Determine structural equality between Level instances.
+
+        Compares every user-relevant attribute (method/basis/dispersion/cabs/
+        solvation/software/version/year/args) one-by-one rather than relying on
+        :meth:`__str__`, because ``__str__`` historically dropped ``args`` when
+        any ``args`` bucket (e.g. an empty ``block``) was falsy — which let two
+        protocols whose ``args.keyword`` differed (e.g. an all-electron
+        ``core,...`` directive vs the molpro frozen-core default) compare equal
+        and silently collapse into one sub-job at composite-spawn time.
         """
-        if isinstance(other, Level):
-            return str(self) == str(other)
-        return False
+        if not isinstance(other, Level):
+            return False
+        for attr in self._EQ_ATTRS:
+            if getattr(self, attr, None) != getattr(other, attr, None):
+                return False
+        return True
+
+    # ``__eq__`` without ``__hash__`` makes the class unhashable in Python.
+    # Level was already unhashable (no ``__hash__`` was previously defined),
+    # and nothing in the codebase uses Level as a dict key or set element, so
+    # we keep that contract — explicitly setting ``__hash__ = None`` documents
+    # the intent.
+    __hash__ = None
 
     def __str__(self) -> str:
         """
@@ -148,12 +178,13 @@ class Level(object):
             str_ += f', software: {self.software}'
             if self.software_version is not None:
                 str_ += f', software_version: {self.software_version}'
-        if self.args is not None and self.args and all([val for val in self.args.values()]):
-            if any([key == 'keyword' for key in self.args.keys()]):
-                str_ += ', keyword args:'
-                for key, arg in self.args.items():
-                    if key == 'keyword':
-                        str_ += f' {arg}'
+        # Emit ``args.keyword`` whenever it carries content, regardless of
+        # whether sibling buckets (e.g. ``args.block``) are empty. The previous
+        # ``all(values)`` guard hid keyword content (such as a frozen-core
+        # ``core,...`` directive) when ``block`` was an empty dict, which made
+        # two protocols comparing only on str() look identical.
+        if self.args and self.args.get('keyword'):
+            str_ += f", keyword args: {self.args['keyword']}"
         return str_
 
     def copy(self):
@@ -183,11 +214,20 @@ class Level(object):
         """
         Returns a minimal dictionary representation from which the object can be reconstructed.
         Useful for ARC restart files.
+
+        ``args`` is included whenever any of its buckets carries content.
+        Previously a falsy sibling bucket (e.g. an empty ``block``) caused the
+        whole ``args`` dict to be dropped from the serialised form — which lost
+        meaningful settings such as ``args.keyword.core,...`` and made
+        round-tripped Levels compare equal to ones that never had those args.
         """
         original_dict = self.__dict__
         clean_dict = {}
         for key, val in original_dict.items():
-            if val is not None and key != 'args' or key == 'args' and all([v for v in self.args.values()]):
+            if key == 'args':
+                if val and any(val.values()):
+                    clean_dict[key] = val
+            elif val is not None:
                 clean_dict[key] = val
         return clean_dict
 

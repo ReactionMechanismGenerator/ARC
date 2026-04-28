@@ -18,9 +18,46 @@
 # the cc-pVTZ-F12 basis) and apply the post-(T) and other corrections on top.
 # This matches the typical focal-point workflow when refining TS barriers
 # (see e.g. Nguyen, Stanton, Barker for CHO2 PES).
+#
+# ESS-specific syntax used below
+# ------------------------------
+# The δ_CV (core-valence) and δ_rel (scalar-relativistic, DKH2) corrections
+# require ESS-specific keywords to be injected into the SP input. Native ARC
+# presets target Molpro syntax via ``args.keyword``:
+#
+#   * δ_CV "high" leg = all-electron correlation:
+#       ``args.keyword.core: 'core,0,0,0,0,0,0,0,0;'``
+#     places ``core,0,0,0,0,0,0,0,0;`` between the basis declaration and the
+#     ``int;`` directive in the Molpro template, setting the global frozen-core
+#     specification to zero in every irreducible representation. Trailing zeros
+#     are harmless for lower-symmetry point groups (Molpro reads only the
+#     irreps that exist).
+#
+#   * δ_CV "low" leg = Molpro's default frozen-core (no extra args). For
+#     first-row elements this freezes 1s; for second-row 1s2s2p.
+#
+#   * δ_rel "high" leg = DKH2 scalar-relativistic on the cc-pVTZ-DK
+#     recontracted basis:
+#       ``args.keyword.dkho: 'SET,DKHO=2;'``
+#     The Molpro manual (https://www.molpro.net/manual/doku.php?id=relativistic_corrections)
+#     explicitly recommends ``SET,DKHO=n`` over the legacy ``DKROLL`` form
+#     ("In order to avoid confusion, it is recommended only to use DKHO and
+#     never set DKROLL"). The directive is placed before ``int;`` so the
+#     integrals are evaluated with the DK-transformed Hamiltonian. The
+#     ``cc-pVTZ-DK`` recontracted basis is required — without ``SET,DKHO=2``
+#     Molpro uses the standard non-relativistic Hamiltonian on it.
+#
+#   * δ_rel "low" leg = vanilla CCSD(T)/cc-pVTZ.
+#
+# Other ESSes (CFOUR/Orca) have different syntax for these corrections; the
+# presets below will write the wrong directives if pointed at a non-Molpro
+# adapter for the δ_CV/δ_rel SPs. Until a per-ESS preset family lands, users
+# running through CFOUR/Orca should either supply an explicit recipe or use
+# the ``HEAT-345_noC`` / ``HEAT-345Q_noC`` variants below, which omit the
+# δ_CV term (the most ESS-syntax-sensitive one).
 
 HEAT-345:
-  reference: "Inspired by Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1804498. Adapted for use as a TS barrier refinement protocol within ARC."
+  reference: "Inspired by Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1804498. Adapted for use as a TS barrier refinement protocol within ARC. The δ_CV and δ_rel terms below assume a Molpro adapter (see preset comment header for ESS-specific syntax)."
   base:
     method: ccsd(t)-f12
     basis: cc-pVTZ-f12
@@ -31,15 +68,19 @@ HEAT-345:
       low:  {method: ccsd(t),  basis: cc-pVDZ}
     - label: delta_CV
       type: delta
-      high: {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {fc: '0'}, block: {}}}
-      low:  {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {fc: '1'}, block: {}}}
+      # All-electron CCSD(T)/cc-pCVTZ via Molpro's ``core,0,...`` directive.
+      high: {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      # Frozen-core CCSD(T)/cc-pCVTZ — Molpro's default, no extra args.
+      low:  {method: ccsd(t),  basis: cc-pCVTZ}
     - label: delta_rel
       type: delta
-      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {rel: dkh2}, block: {}}}
+      # DKH2 scalar-relativistic CCSD(T)/cc-pVTZ-DK via Molpro's ``dkroll=2`` directive.
+      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      # Non-relativistic CCSD(T)/cc-pVTZ.
       low:  {method: ccsd(t),  basis: cc-pVTZ}
 
 HEAT-345Q:
-  reference: "Inspired by the HEAT-345(Q) protocol used by Nguyen, Stanton, Barker for the CHO2 PES (citing Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1804498). Adds a perturbative δ[CCSDT(Q)] term on top of HEAT-345."
+  reference: "Inspired by the HEAT-345(Q) protocol used by Nguyen, Stanton, Barker for the CHO2 PES (citing Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1804498). Adds a perturbative δ[CCSDT(Q)] term on top of HEAT-345. The δ_CV and δ_rel terms below assume a Molpro adapter."
   base:
     method: ccsd(t)-f12
     basis: cc-pVTZ-f12
@@ -54,11 +95,52 @@ HEAT-345Q:
       low:  {method: ccsdt,    basis: cc-pVDZ}
     - label: delta_CV
       type: delta
-      high: {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {fc: '0'}, block: {}}}
-      low:  {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {fc: '1'}, block: {}}}
+      high: {method: ccsd(t),  basis: cc-pCVTZ, args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pCVTZ}
     - label: delta_rel
       type: delta
-      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {rel: dkh2}, block: {}}}
+      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pVTZ}
+
+# "_noC" variants drop the core-valence (δ_CV) correction but keep everything
+# else. Use these when you cannot run an all-electron CCSD(T)/cc-pCVTZ pair
+# (e.g. when targeting an ESS other than Molpro and you don't have CFOUR/Orca
+# core-valence syntax wired up). These variants are NOT silently equivalent
+# to HEAT-345 / HEAT-345Q — the missing δ_CV is acknowledged in the name and
+# in the reference string so users can cite the protocol honestly.
+
+HEAT-345_noC:
+  reference: "Inspired by Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1804498. Adapted for ARC, with the δ_CV (core-valence) correction OMITTED — see preset name. Suitable when the ESS lacks a clean all-electron syntax or when the core-valence contribution is known to be negligible (e.g. first-row systems where δ_CV is typically < 0.5 kJ/mol)."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+      low:  {method: ccsd(t),  basis: cc-pVTZ}
+
+HEAT-345Q_noC:
+  reference: "Inspired by HEAT-345(Q) (Nguyen/Stanton/Barker for CHO2; Tajti et al., J. Chem. Phys. 121, 11599 (2004); DOI: 10.1063/1.1804498) with the δ_CV (core-valence) correction OMITTED — see preset name. Use when ESS-specific all-electron syntax is unavailable; cite as 'HEAT-345Q_noC' to make the omission explicit rather than as 'HEAT-345Q'."
+  base:
+    method: ccsd(t)-f12
+    basis: cc-pVTZ-f12
+  corrections:
+    - label: delta_T
+      type: delta
+      high: {method: ccsdt,    basis: cc-pVDZ}
+      low:  {method: ccsd(t),  basis: cc-pVDZ}
+    - label: delta_Q
+      type: delta
+      high: {method: ccsdt(q), basis: cc-pVDZ}
+      low:  {method: ccsdt,    basis: cc-pVDZ}
+    - label: delta_rel
+      type: delta
+      high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
       low:  {method: ccsd(t),  basis: cc-pVTZ}
 
 FPA-min:
