@@ -37,6 +37,12 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
     settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
     settings['output_filenames'], settings['servers'], settings['submit_filenames']
 
+# Gaussian should not consume the entire scheduler allocation. ARC reserves a
+# fixed fraction of the submit-script memory for non-Gaussian overhead such as
+# the scheduler, runtime, scratch bookkeeping, and Gaussian allocations outside
+# the explicit %mem budget.
+GAUSSIAN_MEMORY_HEADROOM_FRACTION = 0.90
+
 
 # job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',
 # job_type_2: '' or 'freq iop(7/33=1)' (cannot be combined with CBS-QB3)
@@ -494,8 +500,14 @@ class GaussianAdapter(JobAdapter):
         """
         Set the input_file_memory attribute.
         """
-        # Gaussian's memory is in MB, total for all cpu cores
-        self.input_file_memory = math.ceil(self.job_memory_gb * 1024)
+        # Gaussian's %mem is the total memory budget for the process. ARC keeps
+        # scheduler memory in MiB and intentionally gives Gaussian only part of
+        # that total so the queue allocation retains headroom. This matters most
+        # on capped nodes: e.g., a human "10 GB" node is only ~9.31 GiB, and if
+        # ARC already requests ~95% of a node, passing the entire allocation to
+        # %mem leaves too little room for runtime overhead and can trigger galloc.
+        submit_script_memory_mib = self.submit_script_memory_mib or math.ceil(self.job_memory_gb * 1024)
+        self.input_file_memory = max(1, math.floor(submit_script_memory_mib * GAUSSIAN_MEMORY_HEADROOM_FRACTION))
 
     def execute_incore(self):
         """

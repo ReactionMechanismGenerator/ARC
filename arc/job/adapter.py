@@ -48,6 +48,18 @@ default_job_settings, servers, submit_filenames, t_max_format, input_filenames, 
 
 constraint_type_dict = {2: 'B', 3: 'A', 4: 'D'}
 
+# ARC keeps job-memory math in base-2 units internally. In other words, ARC's
+# "GB" behaves as GiB and is converted using 1 GiB = 1024 MiB. This is
+# deliberate: many chemistry codes and cluster templates ultimately consume an
+# integer "MB"-style value, and using a consistent binary convention avoids
+# mixing 1000- and 1024-based conversions in different parts of the pipeline.
+# Human-facing decimal capacities are smaller when expressed in base-2, e.g.
+# 10 GB (decimal) ~= 9.31 GiB. ARC therefore interprets job_memory_gb=10 as
+# 10 GiB, not 10 decimal GB.
+MEMORY_GB_TO_MIB = 1024
+DEFAULT_JOB_MEMORY_OVERHEAD = 1.10
+CAPPED_JOB_MEMORY_OVERHEAD = 1.05
+
 
 class JobEnum(str, Enum):
     """
@@ -580,21 +592,25 @@ class JobAdapter(ABC):
                            f'exceeds {100 * job_max_server_node_memory_allocation}% of the the maximum node memory on '
                            f'{self.server}. Setting it to {job_max_server_node_memory_allocation * max_mem:.2f} GB.')
             self.job_memory_gb = job_max_server_node_memory_allocation * max_mem
-            total_submit_script_memory = self.job_memory_gb * 1024 * 1.05  # MB
+            total_submit_script_memory_mib = math.ceil(self.job_memory_gb * MEMORY_GB_TO_MIB * CAPPED_JOB_MEMORY_OVERHEAD)
             self.job_status[1]['keywords'].append('max_total_job_memory')  # Useful info when troubleshooting.
         else:
-            total_submit_script_memory = self.job_memory_gb * 1024 * 1.1  # MB
+            total_submit_script_memory_mib = math.ceil(self.job_memory_gb * MEMORY_GB_TO_MIB * DEFAULT_JOB_MEMORY_OVERHEAD)
+        self.submit_script_memory_mib = total_submit_script_memory_mib
         # Determine amount of memory in submit script based on cluster job scheduling system.
         cluster_software = servers[self.server].get('cluster_soft').lower() if self.server is not None else None
         if cluster_software in ['oge', 'sge', 'htcondor']:
-            # In SGE, "-l h_vmem=5000M" specifies the memory for all cores to be 5000 MB.
-            self.submit_script_memory = math.ceil(total_submit_script_memory)  # in MB
+            # ARC uses MiB internally and passes that integer consistently to scheduler templates.
+            self.submit_script_memory = total_submit_script_memory_mib
         if cluster_software in ['pbs']:
-            # In PBS, "#PBS -l select=1:ncpus=8:mem=12000000" specifies the memory for all cores to be 12 MB.
-            self.submit_script_memory = math.ceil(total_submit_script_memory) * 1E6  # in Bytes
+            # ARC keeps the PBS request in MiB as well. The template still uses
+            # an "mb" suffix, but the integer is derived from the same base-2
+            # MiB count used everywhere else in ARC.
+            self.submit_script_memory = total_submit_script_memory_mib
         elif cluster_software in ['slurm']:
-            # In Slurm, "#SBATCH --mem-per-cpu=2000" specifies the memory **per cpu/thread** to be 2000 MB.
-            self.submit_script_memory = math.ceil(total_submit_script_memory / self.cpu_cores)  # in MB
+            # In Slurm, "#SBATCH --mem-per-cpu=2000" is a per-core request, so
+            # we divide ARC's total MiB budget across the requested cores.
+            self.submit_script_memory = math.ceil(total_submit_script_memory_mib / self.cpu_cores)
         self.set_input_file_memory()
 
     def as_dict(self) -> dict:
