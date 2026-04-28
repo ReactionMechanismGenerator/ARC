@@ -506,7 +506,7 @@ def xyz_to_ase(xyz_dict: dict) -> Atoms:
         xyz_dict (dict): The ARC xyz format.
 
     Returns:
-        Type[Atoms]: The corresponding ASE Atom object.
+        type[Atoms]: The corresponding ASE Atom object.
     """
     return Atoms(xyz_dict['symbols'], xyz_dict['coords'])
 
@@ -1726,8 +1726,8 @@ def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None)
     return new_xyz
 
 
-def check_isomorphism(mol1: 'Molecule',
-                      mol2: 'Molecule',
+def check_isomorphism(mol1: Molecule,
+                      mol2: Molecule,
                       filter_structures: bool = True,
                       convert_to_single_bonds: bool = False) -> bool:
     """
