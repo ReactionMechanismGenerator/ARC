@@ -119,6 +119,26 @@ class TestLevel(unittest.TestCase):
                          "dlpno-ccsd(t)/def2-tzvp, auxiliary_basis: def2-tzvp/c, solvation_method: smd, "
                          "solvent: water, solvation_scheme_level: 'apfd/def2-tzvp, software: gaussian', software: orca")
 
+    def test_as_dict_preserves_args_when_one_slot_empty(self):
+        """args must round-trip through as_dict() even when only 'keyword' (or only 'block') is populated.
+
+        Regression: as_dict() previously used ``all(self.args.values())`` which dropped args
+        whenever either slot was empty (the common case). Trsh re-runs lost user-supplied
+        keyword args because the scheduler reconstructs the level via ``Level(repr=level)``.
+        """
+        keyword_only = Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp',
+                                   'args': {'keyword': {'opt': 'opt=(verytight)'}}})
+        self.assertIn('args', keyword_only.as_dict())
+        self.assertEqual(Level(repr=keyword_only).args, keyword_only.args)
+
+        block_only = Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp',
+                                 'args': {'block': {'1': 'extra block'}}})
+        self.assertIn('args', block_only.as_dict())
+        self.assertEqual(Level(repr=block_only).args, block_only.args)
+
+        empty_args = Level(method='wb97xd', basis='def2tzvp')
+        self.assertNotIn('args', empty_args.as_dict())
+
     def test_year_validation(self):
         """Test year validation for Level"""
         with self.assertRaises(ValueError):
