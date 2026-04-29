@@ -6,13 +6,13 @@ https://github.com/ReactionMechanismGenerator/AutoTST
 
 import datetime
 import os
-import subprocess
 from typing import TYPE_CHECKING
 
 from arc.common import almost_equal_coords, ARC_PATH, get_logger, read_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
+from arc.job.env_run import run_in_conda_env
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.reaction import ARCReaction
@@ -237,14 +237,15 @@ class AutoTSTAdapter(JobAdapter):
 
                 i = 0
                 for reaction_label, direction in zip([reaction_label_fwd, reaction_label_rev], ['F', 'R']):
-                    # run AutoTST as a subprocess in the desired direction
+                    # Run AutoTST as a subprocess in the desired direction.
+                    # `run_in_conda_env` routes through `conda run -n tst_env` so
+                    # arc_env's activation vars (BABEL_LIBDIR, LD_LIBRARY_PATH, ...)
+                    # don't leak into the child and corrupt openbabel plugin loading.
                     script_path = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'autotst_script.py')
-                    commands = ['source ~/.bashrc', f'"{AUTOTST_PYTHON}" "{script_path}" "{reaction_label}" "{self.output_path}"']
-                    command = '; '.join(commands)
 
                     tic = datetime.datetime.now()
 
-                    output = subprocess.run(command, shell=True, executable='/bin/bash')
+                    output = run_in_conda_env(AUTOTST_PYTHON, script_path, reaction_label, self.output_path)
 
                     tok = datetime.datetime.now() - tic
 

@@ -9,7 +9,6 @@ https://chemrxiv.org/articles/Genereting_Transition_States_of_Isomerization_Reac
 
 import datetime
 import os
-import subprocess
 from typing import TYPE_CHECKING
 
 from rdkit import Chem
@@ -18,6 +17,7 @@ from arc.common import ARC_PATH, almost_equal_coords, get_logger, save_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
+from arc.job.env_run import run_in_conda_env
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import rdkit_conf_from_mol, str_to_xyz
@@ -366,13 +366,14 @@ def run_subprocess_locally(direction: str,
                   index=len(ts_species.ts_guesses),
                   )
     tsg.tic()
-    commands = ['source ~/.bashrc',
-                f'{TS_GCN_PYTHON} {GCN_SCRIPT_PATH} '
-                f'--r_sdf_path {product_path} '
-                f'--p_sdf_path {reactant_path} '
-                f'--ts_xyz_path {ts_path}']
-    command = '; '.join(commands)
-    output = subprocess.run(command, shell=True, executable='/bin/bash')
+    # Routed via `conda run -n ts_gcn_env` so arc_env's activation vars don't
+    # leak into the child (see arc/job/conda_run.py).
+    output = run_in_conda_env(
+        TS_GCN_PYTHON, GCN_SCRIPT_PATH,
+        '--r_sdf_path', product_path,
+        '--p_sdf_path', reactant_path,
+        '--ts_xyz_path', ts_path,
+    )
     if output.returncode:
         logger.warning(f'GCN subprocess ran in the reverse direction did not '
                        f'give a successful return code for {ts_species}.\n'

@@ -1,0 +1,12 @@
+%chk=check.chk
+%mem=14336mb
+%NProcShared=12
+
+#P opt=(calcfc)  cbs-qb3   IOp(2/9=2000)   
+
+spc1_and_2_others
+
+0 1
+O       0.00000000    0.00000000    1.00000000
+
+

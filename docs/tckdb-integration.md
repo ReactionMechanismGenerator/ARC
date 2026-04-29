@@ -44,6 +44,10 @@ tckdb:
   strict: false
   timeout_seconds: 30
   project_label: "my-project"   # optional; baked into idempotency key
+  artifacts:                    # optional sub-block; opt-in
+    upload: true
+    kinds: ["output_log", "input"]
+    max_size_mb: 50
 ```
 
 | Field             | Default              | Notes                                                     |
@@ -56,6 +60,75 @@ tckdb:
 | `strict`          | `false`              | If `true`, upload failure raises.                         |
 | `timeout_seconds` | `30`                 | Per-request timeout.                                      |
 | `project_label`   | `null`               | Optional run/project tag baked into the idempotency key.  |
+| `artifacts`       | _(see below)_        | Optional sub-block controlling per-file attachments.      |
+
+### Artifact sub-block
+
+Artifacts are files (ESS logs, input decks, …) attached to an existing
+TCKDB calculation row. The conformer payload is uploaded first; on
+success the adapter can then push artifacts against the returned
+`calculation_id`s.
+
+```yaml
+tckdb:
+  ...
+  artifacts:
+    upload: true
+    kinds: ["output_log", "input"]
+    max_size_mb: 50
+```
+
+| Field          | Default            | Notes                                                                             |
+| -------------- | ------------------ | --------------------------------------------------------------------------------- |
+| `upload`       | `false`            | Opt-in switch. When `false`, no artifact network calls.                           |
+| `kinds`        | `["output_log"]`   | Which `ArtifactKind`s to upload. Validated at config-parse time.                  |
+| `max_size_mb`  | `50`               | Per-file cap. Larger files are skipped (sidecar `skipped`, reason recorded).      |
+
+**Valid kinds** (mirror the server-side `ArtifactKind` enum):
+`input`, `output_log`, `checkpoint`, `formatted_checkpoint`, `ancillary`.
+
+**Currently implemented in ARC:**
+- `output_log` — ESS log from `record["opt_log"] / ["freq_log"] / ["sp_log"]`.
+- `input` — ESS input deck (`input.gjf` / `ZMAT` / `input.in`), sibling of `opt_log`.
+
+Listing a valid-but-not-implemented kind (e.g. `checkpoint`) is allowed
+so users can opt in early. Config-parse logs a warning, and the adapter
+skips cleanly at upload time rather than 422-ing.
+
+#### Artifact endpoint and idempotency
+
+- Endpoint: `POST /calculations/{calculation_id}/artifacts` with the
+  file bytes base64-encoded in the request body.
+- Idempotency key shape:
+  ```
+  arc:<project>:<species>:artifact:<calc_id>:<kind>:<sha256-prefix>
+  ```
+  Identical retry → server replays. Different bytes for the same
+  `(calc_id, kind)` → new key, new upload event.
+
+#### Artifact sidecar layout
+
+Artifact sidecars live alongside conformer payloads:
+
+```
+<project>/tckdb_payloads/
+  artifacts/
+    <species>.calc<calculation_id>.<kind>.meta.json
+```
+
+#### Artifact skip / failure semantics
+
+`status` ∈ `uploaded | failed | skipped`. Documented skip reasons:
+
+- `artifacts.upload is False`
+- `kind 'X' not in config.kinds`
+- `kind 'X' is server-accepted but ARC has no upload path yet`
+- `file missing: '...'`
+- `file <name> is <bytes> bytes (><N> MB cap)`
+
+Strict / non-strict failure behavior matches the conformer path:
+non-strict logs a warning and records the error in the sidecar; strict
+re-raises after updating the sidecar.
 
 ### API key
 

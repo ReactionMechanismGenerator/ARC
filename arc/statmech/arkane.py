@@ -215,7 +215,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                                            delete_existing_subdir=True)
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors, e0_only=e0_only)
         self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=not e0_only)
-        run_arkane(statmech_dir)
+        if not run_arkane(statmech_dir):
+            # No output.py was produced — parsing would either error or
+            # silently miss data. Skip cleanly; matches the kinetics
+            # caller's gate.
+            return
         self.parse_arkane_thermo_output(statmech_dir)
 
     def compute_high_p_rate_coefficient(self,
@@ -565,33 +569,77 @@ fi' '''
                                        shell=True,
                                        no_fail=True,
                                        executable='/bin/bash')
-    if std_err:
-        ignorable_phrases = [
-            "Open Babel Warning",
-            "Accepted unusual valence",
-            "==============================",
-            "pjrt_executable.cc",
-        ]
 
-        real_errors = []
-        for line in std_err:
-            line = line.strip()
-            if not line:
-                continue
-            if not any(phrase in line for phrase in ignorable_phrases):
-                real_errors.append(line)
-
-        if real_errors:
-            logger.info(f'Arkane run failed with errors:\n{std_err}')
-            return False
-
+    # The authoritative success signal is whether Arkane wrote
+    # ``output.py``. Stderr content alone is unreliable — upstream tools
+    # (OpenBabel, Arkane's ``git rev-parse`` provenance stamp, JAX/XLA's
+    # TPU probe) emit lines that look like errors but don't represent
+    # failure, and using stderr-non-empty as a gate caused us to discard
+    # complete Arkane runs (see the kinetics caller, which bails on a
+    # False return). The classification below is now advisory: if stderr
+    # has lines that don't match a known-cosmetic pattern, we log them
+    # at WARNING so they're visible without making them load-bearing.
+    real_errors = _classify_arkane_stderr(std_err)
     output_file = os.path.join(statmech_dir, 'output.py')
-    if not os.path.isfile(output_file):
-        logger.error(f'Arkane run finished but {output_file} was not created. Check stdout/stderr.')
+    output_present = os.path.isfile(output_file)
+
+    if real_errors and output_present:
+        logger.warning(
+            "Arkane stderr contained non-cosmetic lines but output.py "
+            "was produced; proceeding. Lines:\n%s",
+            "\n".join(real_errors),
+        )
+    elif real_errors and not output_present:
+        # Genuine failure: stderr has real errors AND no output. The
+        # combination is the most diagnostic signal we can give; log
+        # both so the user sees cause + effect.
+        logger.error("Arkane run failed; stderr:\n%s", "\n".join(real_errors))
+
+    if not output_present:
+        logger.error(
+            f'Arkane run finished but {output_file} was not created. '
+            'Check stdout/stderr.'
+        )
         return False
 
     logger.debug(f'Arkane run completed:\n{std_out}')
     return True
+
+
+# Cosmetic stderr lines from upstream tools that Arkane shells out to.
+# Tracking these explicitly (rather than accepting all stderr) keeps the
+# WARNING log signal-rich: if a NEW source of stderr noise appears, it
+# shows up loudly until we either fix it or add it here.
+_ARKANE_STDERR_IGNORABLE_PHRASES: tuple[str, ...] = (
+    "Open Babel Warning",
+    "Accepted unusual valence",
+    "==============================",
+    "pjrt_executable.cc",
+    # Arkane runs `git rev-parse` to stamp its output with the
+    # RMG-database commit; when run from a non-git CWD (the
+    # common case under conda-installed databases) git emits
+    # this and Arkane carries on regardless.
+    "fatal: not a git repository",
+)
+
+
+def _classify_arkane_stderr(std_err: list[str] | None) -> list[str]:
+    """Return the subset of ``std_err`` lines that aren't known cosmetic noise.
+
+    Used by :func:`run_arkane` for advisory logging only — the boolean
+    success signal is whether Arkane produced ``output.py``, not whether
+    this list is empty.
+    """
+    if not std_err:
+        return []
+    real: list[str] = []
+    for line in std_err:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not any(phrase in stripped for phrase in _ARKANE_STDERR_IGNORABLE_PHRASES):
+            real.append(stripped)
+    return real
 
 
 def clean_output_directory(species_path: str,  # todo

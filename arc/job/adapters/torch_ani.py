@@ -9,12 +9,12 @@ ASE: https://wiki.fysik.dtu.dk/ase/index.html, https://core.ac.uk/download/84004
 import datetime
 import os
 from typing import TYPE_CHECKING
-import subprocess
 
 from arc.common import ARC_PATH, get_logger, is_xyz_linear, save_yaml_file, read_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
+from arc.job.env_run import run_in_conda_env
 from arc.job.factory import register_job_adapter
 from arc.level import Level
 from arc.settings.settings import tani_default_options_dict
@@ -255,11 +255,12 @@ class TorchANIAdapter(JobAdapter):
             return
 
         self.write_input_file(tani_default_options_dict)
-        commands = ['source ~/.bashrc',
-                   f'{TANI_PYTHON} {TANI_SCRIPT_PATH} '
-                   f'--yml_path {self.local_path}']
-        command = '; '.join(commands)
-        output = subprocess.run(command, shell=True, executable='/bin/bash')
+        # Routed via `conda run -n tani_env` so arc_env's activation vars don't
+        # leak into the child (see arc/job/conda_run.py).
+        output = run_in_conda_env(
+            TANI_PYTHON, TANI_SCRIPT_PATH,
+            '--yml_path', self.local_path,
+        )
         if output.returncode:
             logger.warning(f'Torch ANI subprocess ran and did not '
                            f'give a successful return code for {self.job_name}.\n'

@@ -206,9 +206,82 @@ class JobAdapter(ABC):
         with an HDF5 file that contains specific directions.
         The output is returned within the HDF5 file.
         The new ARC instance, representing a single worker, will run all of its jobs incore.
+
+        Connection sharing: for remote-queue jobs we lease one
+        :class:`SSHClient` from the process-global pool
+        (:mod:`arc.job.ssh_pool`) and reuse it for both file upload and
+        qsub/sbatch submission within this call. Across an entire ARC
+        run, every remote job for a given server reuses the *same*
+        pooled client — 100 TS guess opts share one paramiko Transport
+        instead of opening 200. Pipe mode currently can't bundle these
+        (``should_use_pipe`` refuses non-``local`` servers, see
+        ``arc/job/pipe/pipe_coordinator.py:77``); the pool is the
+        leverage available short of full remote-pipe support.
         """
-        self.upload_files()
         execution_type = JobExecutionTypeEnum(self.execution_type)
+        use_shared_ssh = (
+            execution_type == JobExecutionTypeEnum.queue
+            and self.server is not None
+            and self.server != 'local'
+            and not self.testing
+        )
+        if use_shared_ssh:
+            from arc.job.ssh_pool import get_default_pool
+            with get_default_pool().borrow(self.server) as ssh:
+                self._shared_ssh = ssh
+                try:
+                    self._dispatch_execution(execution_type)
+                finally:
+                    # Pool retains the SSHClient; clearing the attr
+                    # just prevents a later code path on this adapter
+                    # from grabbing a stale reference if the pool
+                    # subsequently reaps and reopens the connection.
+                    self._shared_ssh = None
+        else:
+            self._dispatch_execution(execution_type)
+        if not self.restarted:
+            self._write_initiated_job_to_csv_file()
+
+    def _open_or_borrow_ssh(self):
+        """Yield an :class:`SSHClient` for ``self.server``, in priority order:
+
+        1. ``self._shared_ssh`` if set — the per-call client opened by
+           :meth:`execute`. Available within the upload+submit window.
+        2. The process-global pool (:mod:`arc.job.ssh_pool`) — keeps
+           one client alive across jobs for the run's lifetime, so the
+           hot status-poll loop reuses connections.
+        3. A fresh ``SSHClient`` opened just for this call — only hit
+           when the pool can't construct one (testing, exotic env).
+
+        Returns a context manager that does NOT close the underlying
+        client on exit; the pool retains ownership in case (2), and
+        case (3) opens-and-closes inline.
+        """
+        from contextlib import contextmanager
+        shared = getattr(self, '_shared_ssh', None)
+        if shared is not None:
+            @contextmanager
+            def _shared_cm():
+                yield shared
+            return _shared_cm()
+        try:
+            from arc.job.ssh_pool import get_default_pool
+            return get_default_pool().borrow(self.server)
+        except Exception:
+            # Pool refused (e.g., factory failed). Fall back to a
+            # one-shot client so we degrade gracefully — the caller
+            # gets correctness at the cost of one connection.
+            logger.debug("ssh pool unavailable; opening one-shot client", exc_info=True)
+            @contextmanager
+            def _fresh_cm():
+                with SSHClient(self.server) as fresh:
+                    yield fresh
+            return _fresh_cm()
+
+    def _dispatch_execution(self, execution_type: 'JobExecutionTypeEnum') -> None:
+        """Inner body of :meth:`execute`, factored out so the SSH-share
+        wrapper around it stays small and readable."""
+        self.upload_files()
         if execution_type == JobExecutionTypeEnum.incore:
             self.initial_time = datetime.datetime.now()
             self.job_status[0] = 'running'
@@ -223,19 +296,25 @@ class JobAdapter(ABC):
             raise ValueError('Pipe execution is handled at the Scheduler level. '
                              'JobAdapters inside a pipe must be executed by the worker '
                              "with execution_type='incore'.")
-        if not self.restarted:
-            self._write_initiated_job_to_csv_file()
 
-    def legacy_queue_execution(self):
+    def legacy_queue_execution(self, ssh: 'SSHClient | None' = None):
         """
         Execute a job to the server's queue.
         The server could be either "local" or remote.
+
+        ``ssh`` is an explicitly-passed shared connection. When ``None``
+        we route through :meth:`_open_or_borrow_ssh` which prefers
+        ``self._shared_ssh`` (set by :meth:`execute`), then the
+        process-global pool, then opens fresh.
         """
         self._log_job_execution()
         # Submit to queue, differentiate between local (same machine using its queue) and remote servers.
         if self.server != 'local':
-            with SSHClient(self.server) as ssh:
+            if ssh is not None:
                 self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
+            else:
+                with self._open_or_borrow_ssh() as borrowed:
+                    self.job_status[0], self.job_id = borrowed.submit_job(remote_path=self.remote_path)
         else:
             # submit to the local queue
             self.job_status[0], self.job_id = submit_job(path=self.local_path)
@@ -351,26 +430,24 @@ class JobAdapter(ABC):
 
         self.set_additional_file_paths()
 
-    def upload_files(self):
+    def upload_files(self, ssh: 'SSHClient | None' = None):
         """
         Upload the relevant files for the job.
+
+        ``ssh`` is an explicitly-passed shared connection. When ``None``
+        we route through :meth:`_open_or_borrow_ssh` which prefers
+        ``self._shared_ssh`` (set by :meth:`execute`), then the
+        process-global pool, then opens fresh.
         """
         if not self.testing:
             if self.execution_type != 'incore' and self.server != 'local':
                 # If the job execution type is incore, then no need to upload any files.
                 # Also, even if the job is submitted to the que, no need to upload files if the server is local.
-                with SSHClient(self.server) as ssh:
-                    for up_file in self.files_to_upload:
-                        logger.debug(f"Uploading {up_file['file_name']} source {up_file['source']} to {self.server}")
-                        if up_file['source'] == 'path':
-                            ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=up_file['local'])
-                        elif up_file['source'] == 'input_files':
-                            ssh.upload_file(remote_file_path=up_file['remote'], file_string=up_file['local'])
-                        else:
-                            raise ValueError(f"Unclear file source for {up_file['file_name']}. Should either be 'path' or "
-                                             f"'input_files', got: {up_file['source']}")
-                        if up_file['make_x']:
-                            ssh.change_mode(mode='+x', file_name=up_file['file_name'], remote_path=self.remote_path)
+                if ssh is not None:
+                    self._upload_with_ssh(ssh)
+                else:
+                    with self._open_or_borrow_ssh() as borrowed:
+                        self._upload_with_ssh(borrowed)
             else:
                 # running locally, just copy the check file, if exists, to the job folder
                 for up_file in self.files_to_upload:
@@ -381,6 +458,25 @@ class JobAdapter(ABC):
                             pass
             self.initial_time = datetime.datetime.now()
 
+    def _upload_with_ssh(self, ssh) -> None:
+        """SFTP-put every entry in ``self.files_to_upload`` over an open client.
+
+        Factored out of :meth:`upload_files` so the with-shared vs.
+        with-new code paths share one body — adding a future per-file
+        knob (compression, retry, throttle) lands in one place.
+        """
+        for up_file in self.files_to_upload:
+            logger.debug(f"Uploading {up_file['file_name']} source {up_file['source']} to {self.server}")
+            if up_file['source'] == 'path':
+                ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=up_file['local'])
+            elif up_file['source'] == 'input_files':
+                ssh.upload_file(remote_file_path=up_file['remote'], file_string=up_file['local'])
+            else:
+                raise ValueError(f"Unclear file source for {up_file['file_name']}. Should either be 'path' or "
+                                 f"'input_files', got: {up_file['source']}")
+            if up_file['make_x']:
+                ssh.change_mode(mode='+x', file_name=up_file['file_name'], remote_path=self.remote_path)
+
     def download_files(self):
         """
         Download the relevant files.
@@ -389,7 +485,7 @@ class JobAdapter(ABC):
             if self.execution_type != 'incore' and self.server != 'local':
                 # If the job execution type is incore, then no need to download any files.
                 # Also, even if the job is submitted to the que, no need to download files if the server is local.
-                with SSHClient(self.server) as ssh:
+                with self._open_or_borrow_ssh() as ssh:
                     for dl_file in self.files_to_download:
                         ssh.download_file(remote_file_path=dl_file['remote'], local_file_path=dl_file['local'])
                     self.set_initial_and_final_times(ssh=ssh)
@@ -404,7 +500,7 @@ class JobAdapter(ABC):
         """
         if self.server is None or self.server == 'local' or not self.remote_path:
             return
-        with SSHClient(self.server) as ssh:
+        with self._open_or_borrow_ssh() as ssh:
             ssh.remove_dir(remote_path=self.remote_path)
 
     def set_initial_and_final_times(self, ssh: SSHClient | None = None):
@@ -695,7 +791,7 @@ class JobAdapter(ABC):
         logger.debug(f'Deleting job {self.job_name} for {self.species_label}')
         if self.server != 'local':
             logger.debug(f'deleting job on {self.server}...')
-            with SSHClient(self.server) as ssh:
+            with self._open_or_borrow_ssh() as ssh:
                 ssh.delete_job(self.job_id)
         else:
             logger.debug('deleting job locally...')
@@ -770,7 +866,7 @@ class JobAdapter(ABC):
                 if include_job_log:
                     remote_paths.append(os.path.join(self.remote_path, 'job.log'))
                     local_paths.append(local_file_path_3)
-                with SSHClient(self.server) as ssh:
+                with self._open_or_borrow_ssh() as ssh:
                     for local_file_path, remote_file_path in zip(local_paths, remote_paths):
                         try:
                             ssh.download_file(remote_file_path=remote_file_path,
@@ -797,7 +893,7 @@ class JobAdapter(ABC):
         Possible statuses: ``initializing``, ``running``, ``errored on node xx``, ``done``.
         """
         if self.server != 'local' and not self.testing:
-            with SSHClient(self.server) as ssh:
+            with self._open_or_borrow_ssh() as ssh:
                 return ssh.check_job_status(self.job_id)
         else:
             return check_job_status(self.job_id)

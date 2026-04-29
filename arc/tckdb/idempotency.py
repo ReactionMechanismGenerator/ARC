@@ -6,12 +6,12 @@ ARC, because they decide what "the same logical upload" means. Stable
 across retries, distinct across logically-different inputs.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 from dataclasses import dataclass
 from typing import Any
+
+from tckdb_client import make_idempotency_key
 
 
 @dataclass(frozen=True)
@@ -72,10 +72,6 @@ def build_idempotency_key(inputs: IdempotencyInputs) -> str:
     the result against the server constraint
     ``^[A-Za-z0-9._:-]{16,200}$``; callers don't need to pre-clean parts.
     """
-    # Lazy import so arc.tckdb is importable when the adapter is unused
-    # and tckdb-client is not installed.
-    from tckdb_client import make_idempotency_key
-
     parts: list[str] = ["arc"]
     if inputs.project_label:
         parts.append(inputs.project_label)
@@ -90,4 +86,57 @@ def build_idempotency_key(inputs: IdempotencyInputs) -> str:
     return make_idempotency_key(*parts)
 
 
-__all__ = ["IdempotencyInputs", "build_idempotency_key"]
+@dataclass(frozen=True)
+class ArtifactIdempotencyInputs:
+    """Stable inputs that identify one logical artifact upload event.
+
+    Distinct from :class:`IdempotencyInputs`: the chemistry-upload key
+    is scoped to a (species, conformer) — but artifact uploads target a
+    concrete TCKDB calculation row, and the same calculation can carry
+    multiple artifacts of different kinds. So the artifact key tail is
+    ``(calculation_id, artifact_kind, artifact_sha256)``.
+
+    The artifact's bytes-hash is part of the key so that re-uploading
+    different content for the same kind under the same calculation
+    produces a different key (i.e. a new upload event), while a literal
+    retry of the same bytes replays.
+    """
+
+    project_label: str | None
+    species_label: str
+    calculation_id: int
+    artifact_kind: str
+    artifact_sha256: str
+
+
+def build_artifact_idempotency_key(inputs: ArtifactIdempotencyInputs) -> str:
+    """Compose a stable per-artifact idempotency key.
+
+    Shape:
+        ``arc:<project>:<species>:artifact:<calc_id>:<kind>:<sha-prefix>``
+
+    The artifact sha256 is truncated to 16 hex chars to keep the key
+    well under the 200-char server cap while preserving collision
+    resistance for any plausible run.
+    """
+    parts: list[str] = ["arc"]
+    if inputs.project_label:
+        parts.append(inputs.project_label)
+    parts.extend(
+        [
+            inputs.species_label,
+            "artifact",
+            str(inputs.calculation_id),
+            inputs.artifact_kind,
+            inputs.artifact_sha256[:16],
+        ]
+    )
+    return make_idempotency_key(*parts)
+
+
+__all__ = [
+    "ArtifactIdempotencyInputs",
+    "IdempotencyInputs",
+    "build_artifact_idempotency_key",
+    "build_idempotency_key",
+]

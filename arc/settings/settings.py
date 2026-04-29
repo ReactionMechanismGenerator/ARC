@@ -453,10 +453,12 @@ if os.getenv('CONDA_ENVS_PATH'):
 
 rmg_candidates.extend([
     os.path.join(home, 'Code', 'RMG-Py'),
+    os.path.join(home, 'code', 'RMG-Py'),
     os.path.join(home, 'runner', 'work', 'ARC', 'ARC', 'RMG-Py')
 ])
 rmg_db_candidates.extend([
     os.path.join(home, 'Code', 'RMG-database'),
+    os.path.join(home, 'code', 'RMG-database'),
     os.path.join(home, 'runner', 'work', 'ARC', 'ARC', 'RMG-database')
 ])
 

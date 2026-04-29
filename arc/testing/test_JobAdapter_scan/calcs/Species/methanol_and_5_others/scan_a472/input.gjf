@@ -1,0 +1,20 @@
+%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(calcfc,maxStep=5,modredundant,noeigentest) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2-tzvp   IOp(2/9=2000)    scf=(direct,tight)
+
+methanol_and_5_others
+
+0 1
+C      -0.36848162   -0.03889184   -0.02265038
+O       0.98355090   -0.39758578   -0.24093779
+H      -0.56493882    0.00874072    1.05124761
+H      -1.01426265   -0.79474153   -0.47572777
+H      -0.56797130    0.93149369   -0.48381953
+H       1.53210349    0.29098475    0.17188786
+
+D 2 3 4 5 S 45 8.0
+
+
+

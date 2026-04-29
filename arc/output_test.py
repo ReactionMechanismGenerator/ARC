@@ -873,6 +873,135 @@ class TestSpcToDict(unittest.TestCase):
         result = _spc_to_dict(spc, output_dict, '/abs')
         self.assertIsNone(result['statmech']['point_group'])
 
+    # ------------------------------------------------------------------
+    # Input-deck path emission (`<job>_input` keys).
+    # ------------------------------------------------------------------
+
+    def test_input_paths_default_none_when_no_software_info(self):
+        """Back-compat: callers that don't pass ``software_by_job`` get None."""
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {
+            'convergence': True,
+            'paths': {'geo': '/abs/opt.log', 'freq': '/abs/freq.log', 'sp': '/abs/sp.log'},
+            'job_types': {'opt': True},
+        }}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertIsNone(result['opt_input'])
+        self.assertIsNone(result['freq_input'])
+        self.assertIsNone(result['sp_input'])
+
+    def test_input_path_emitted_when_file_exists(self):
+        """Gaussian's input.gjf next to opt.log → opt_input populated, project-relative."""
+        proj = tempfile.mkdtemp(prefix='arc-output-test-')
+        self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
+        opt_dir = os.path.join(proj, 'calcs', 'CH4', 'opt')
+        os.makedirs(opt_dir, exist_ok=True)
+        opt_log = os.path.join(opt_dir, 'input.log')
+        opt_inp = os.path.join(opt_dir, 'input.gjf')
+        for p in (opt_log, opt_inp):
+            with open(p, 'w') as f:
+                f.write('x')
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {
+            'convergence': True,
+            'paths': {'geo': opt_log},
+            'job_types': {'opt': True},
+        }}
+        result = _spc_to_dict(
+            spc, output_dict, proj,
+            software_by_job={'opt': 'gaussian', 'freq': None, 'sp': None},
+        )
+        self.assertEqual(result['opt_input'], 'calcs/CH4/opt/input.gjf')
+
+    def test_input_path_none_when_input_file_missing(self):
+        """Software is known, log is on disk, but input deck isn't → None (no ghost path)."""
+        proj = tempfile.mkdtemp(prefix='arc-output-test-')
+        self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
+        opt_dir = os.path.join(proj, 'calcs', 'CH4', 'opt')
+        os.makedirs(opt_dir, exist_ok=True)
+        opt_log = os.path.join(opt_dir, 'input.log')
+        with open(opt_log, 'w') as f:
+            f.write('x')
+        # no input.gjf written
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {
+            'convergence': True,
+            'paths': {'geo': opt_log},
+            'job_types': {'opt': True},
+        }}
+        result = _spc_to_dict(
+            spc, output_dict, proj,
+            software_by_job={'opt': 'gaussian'},
+        )
+        self.assertIsNone(result['opt_input'])
+
+    def test_input_path_uses_software_specific_filename(self):
+        """orca → input.in, cfour → ZMAT — driven by settings['input_filenames']."""
+        proj = tempfile.mkdtemp(prefix='arc-output-test-')
+        self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
+        # opt: orca run, deck is input.in
+        opt_dir = os.path.join(proj, 'calcs', 'CH4', 'opt')
+        os.makedirs(opt_dir, exist_ok=True)
+        opt_log = os.path.join(opt_dir, 'input.log')
+        opt_inp = os.path.join(opt_dir, 'input.in')
+        for p in (opt_log, opt_inp):
+            open(p, 'w').close()
+        # sp: cfour run, deck is ZMAT
+        sp_dir = os.path.join(proj, 'calcs', 'CH4', 'sp')
+        os.makedirs(sp_dir, exist_ok=True)
+        sp_log = os.path.join(sp_dir, 'output.out')
+        sp_inp = os.path.join(sp_dir, 'ZMAT')
+        for p in (sp_log, sp_inp):
+            open(p, 'w').close()
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {
+            'convergence': True,
+            'paths': {'geo': opt_log, 'sp': sp_log},
+            'job_types': {'opt': True},
+        }}
+        result = _spc_to_dict(
+            spc, output_dict, proj,
+            software_by_job={'opt': 'orca', 'sp': 'cfour'},
+        )
+        self.assertEqual(result['opt_input'], 'calcs/CH4/opt/input.in')
+        self.assertEqual(result['sp_input'], 'calcs/CH4/sp/ZMAT')
+
+    def test_input_path_none_when_log_missing(self):
+        """No log path → no input path, regardless of software."""
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {
+            'convergence': True,
+            'paths': {},  # no geo/freq/sp
+            'job_types': {'opt': True},
+        }}
+        result = _spc_to_dict(
+            spc, output_dict, '/abs',
+            software_by_job={'opt': 'gaussian', 'freq': 'gaussian', 'sp': 'gaussian'},
+        )
+        self.assertIsNone(result['opt_input'])
+        self.assertIsNone(result['freq_input'])
+        self.assertIsNone(result['sp_input'])
+
+    def test_input_path_none_when_software_unknown(self):
+        """Software not in settings['input_filenames'] (e.g., gcn) → None."""
+        proj = tempfile.mkdtemp(prefix='arc-output-test-')
+        self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
+        opt_dir = os.path.join(proj, 'calcs', 'CH4', 'opt')
+        os.makedirs(opt_dir, exist_ok=True)
+        opt_log = os.path.join(opt_dir, 'output.yml')
+        open(opt_log, 'w').close()
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {
+            'convergence': True,
+            'paths': {'geo': opt_log},
+            'job_types': {'opt': True},
+        }}
+        result = _spc_to_dict(
+            spc, output_dict, proj,
+            software_by_job={'opt': 'gcn'},  # gcn has no entry in input_filenames
+        )
+        self.assertIsNone(result['opt_input'])
+
 
 class TestComputePointGroups(unittest.TestCase):
     """Tests for _compute_point_groups."""

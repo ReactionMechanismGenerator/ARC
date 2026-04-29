@@ -106,12 +106,24 @@ def write_output_yml(
     doc['atom_energy_corrections'] = aec
     doc['bond_additivity_corrections'] = bac
 
+    # ---- per-job software (used for input-deck filename lookup) ----------------
+    # freq/sp fall back to opt's software because the runtime falls back
+    # to opt_level when freq_level/sp_level aren't explicitly set, and
+    # the same level → same software → same deck filename.
+    opt_software = getattr(opt_level, 'software', None)
+    software_by_job = {
+        'opt': opt_software,
+        'freq': getattr(freq_level, 'software', None) or opt_software,
+        'sp': getattr(sp_level, 'software', None) or opt_software,
+    }
+
     # ---- species and TSs --------------------------------------------------------
     point_groups = _compute_point_groups(species_dict, project_directory)
     doc['species'] = []
     doc['transition_states'] = []
     for spc in species_dict.values():
-        d = _spc_to_dict(spc, output_dict, project_directory, point_groups, irc_requested=irc_requested)
+        d = _spc_to_dict(spc, output_dict, project_directory, point_groups,
+                         irc_requested=irc_requested, software_by_job=software_by_job)
         if spc.is_ts:
             doc['transition_states'].append(d)
         else:
@@ -248,6 +260,44 @@ def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
         return n_steps, e_elect_hartree
     except Exception:
         return None, None
+
+
+def _input_filename_for(software: str | None) -> str | None:
+    """Return the ESS-specific input deck filename, or None.
+
+    Pulls from ``settings['input_filenames']`` so the mapping stays
+    in one place. Software not in the map (e.g., ``gcn``, ``torchani``,
+    ``mockter`` — generally not "real" ESS jobs) returns None and the
+    caller emits no input-deck path for that job.
+    """
+    if not software:
+        return None
+    name = str(software).lower()
+    return (settings.get('input_filenames') or {}).get(name)
+
+
+def _derive_input_path(
+    log_path: str | None,
+    software: str | None,
+    project_directory: str,
+) -> str | None:
+    """Return the input deck path (project-relative) for a given job log.
+
+    The input deck is a sibling of the log file, named per
+    ``input_filenames[software]``. Existence is checked on disk: if the
+    file isn't there (e.g., archived runs that kept the log but discarded
+    the deck), this returns None rather than emitting a ghost path.
+    """
+    if not log_path:
+        return None
+    fname = _input_filename_for(software)
+    if not fname:
+        return None
+    abs_log = log_path if os.path.isabs(log_path) else os.path.join(project_directory, log_path)
+    candidate = os.path.join(os.path.dirname(abs_log), fname)
+    if not os.path.isfile(candidate):
+        return None
+    return _make_rel_path(candidate, project_directory)
 
 
 def _get_ess_versions(paths: dict, project_directory: str) -> dict[str, str] | None:
@@ -429,8 +479,17 @@ def _compute_point_groups(species_dict: dict, project_directory: str) -> dict[st
 
 
 def _spc_to_dict(spc, output_dict: dict, project_directory: str,
-                  point_groups: dict | None = None, irc_requested: bool = True) -> dict:
-    """Build the per-species/TS section for output.yml."""
+                  point_groups: dict | None = None, irc_requested: bool = True,
+                  software_by_job: dict[str, str | None] | None = None) -> dict:
+    """Build the per-species/TS section for output.yml.
+
+    ``software_by_job`` is an optional ``{'opt': name, 'freq': name,
+    'sp': name}`` map that lets this function emit per-job input-deck
+    paths (``opt_input``, ``freq_input``, ``sp_input``) alongside the
+    log paths. When omitted (the back-compat path), the input fields
+    come out as ``None`` and downstream consumers proceed with logs only.
+    """
+    software_by_job = software_by_job or {}
     label = spc.label
     entry = output_dict.get(label, {})
     converged = entry.get('convergence') is True
@@ -514,6 +573,20 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     d['opt_log'] = _make_rel_path(paths.get('geo') or None, project_directory)
     d['freq_log'] = _make_rel_path(paths.get('freq') or None, project_directory)
     d['sp_log'] = _make_rel_path(paths.get('sp') or None, project_directory)
+
+    # ── ESS input deck paths ────────────────────────────────────────────────
+    # Same directory as the corresponding log, with the per-software
+    # filename from settings['input_filenames']. None when the file isn't
+    # on disk (the consumer treats that as "no deck available").
+    d['opt_input'] = _derive_input_path(
+        paths.get('geo') or None, software_by_job.get('opt'), project_directory,
+    )
+    d['freq_input'] = _derive_input_path(
+        paths.get('freq') or None, software_by_job.get('freq'), project_directory,
+    )
+    d['sp_input'] = _derive_input_path(
+        paths.get('sp') or None, software_by_job.get('sp'), project_directory,
+    )
 
     # ── ESS software version (from SP log, or fall back to geo/freq log) ──
     d['ess_versions'] = _get_ess_versions(paths, project_directory) if converged else None
