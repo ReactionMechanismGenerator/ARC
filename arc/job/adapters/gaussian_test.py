@@ -1194,6 +1194,27 @@ H       0.04768200    1.19305700   -0.88359100
         finally:
             self.job_3.args = original_args
 
+    def test_user_keyword_args_survive_a_level_round_trip(self):
+        """Test that user-specified keyword args reach the route section after a Level round-trip.
+
+        The scheduler rebuilds the level via ``Level(repr=level)`` when re-running a job during
+        troubleshooting, so a level which lost its args would drop the user's keywords.
+        """
+        level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
+        rebuilt_level = Level(repr=level)
+        self.assertEqual(rebuilt_level.args['keyword']['opt'], 'opt=(verytight)')
+        job = GaussianAdapter(execution_type='queue',
+                              job_type='opt',
+                              level=rebuilt_level,
+                              project='test',
+                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                              species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
+                              testing=True,
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('verytight', content.splitlines()[4])
 
     @classmethod
     def tearDownClass(cls):

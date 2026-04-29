@@ -3,6 +3,7 @@ A module for scheduling ARC jobs
 Includes spawning, terminating, checking, and troubleshooting various jobs
 """
 
+import copy
 import datetime
 import itertools
 import os
@@ -1119,7 +1120,7 @@ class Scheduler(object):
         if scan_trsh:
             args['keyword']['scan_trsh'] = scan_trsh
         if isinstance(level_of_theory, Level) and level_of_theory.args is not None:
-            args.update(level_of_theory.args)
+            args.update(copy.deepcopy(level_of_theory.args))
 
         job = job_factory(job_adapter=job_adapter,
                           project=self.project,

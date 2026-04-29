@@ -127,11 +127,10 @@ class TestLevel(unittest.TestCase):
                          "solvent: water, solvation_scheme_level: 'apfd/def2-tzvp, software: gaussian', software: orca")
 
     def test_as_dict_preserves_args_when_one_slot_empty(self):
-        """args must round-trip through as_dict() even when only 'keyword' (or only 'block') is populated.
+        """Test that args round-trip through as_dict() when only one of 'keyword'/'block' is populated.
 
-        Regression: as_dict() previously used ``all(self.args.values())`` which dropped args
-        whenever either slot was empty (the common case). Trsh re-runs lost user-supplied
-        keyword args because the scheduler reconstructs the level via ``Level(repr=level)``.
+        as_dict() retains the args entry when at least one slot holds content, so that
+        ``Level(repr=level)`` reconstructs the same args. It omits args when both slots are empty.
         """
         keyword_only = Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp',
                                    'args': {'keyword': {'opt': 'opt=(verytight)'}}})
@@ -145,6 +144,14 @@ class TestLevel(unittest.TestCase):
 
         empty_args = Level(method='wb97xd', basis='def2tzvp')
         self.assertNotIn('args', empty_args.as_dict())
+
+    def test_copy_preserves_args(self):
+        """Test that copy() preserves args populated in only one of the 'keyword'/'block' slots."""
+        level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
+        copied = level.copy()
+        self.assertEqual(copied.args, level.args)
+        self.assertEqual(copied.args['keyword']['opt'], 'opt=(verytight)')
+        self.assertIsNot(copied.args['keyword'], level.args['keyword'])
 
     def test_year_validation(self):
         """Test year validation for Level"""

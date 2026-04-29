@@ -3,6 +3,7 @@ This module contains functions which are shared across multiple Job modules.
 As such, it should not import any other ARC modules to avoid circular imports.
 """
 
+import copy
 import datetime
 import os
 import shutil
@@ -493,6 +494,9 @@ def set_job_args(args: dict | None,
     """
     Set the job args considering args from ``level`` and from ``trsh``.
 
+    The args taken from ``level`` are deep-copied, so that keywords which the adapters later
+    inject into the returned dictionary do not reach the ``Level`` object itself.
+
     Args:
         args (dict): The job specific arguments.
         level (Level): The level of theory.
@@ -502,7 +506,7 @@ def set_job_args(args: dict | None,
         dict: The initialized job specific arguments.
     """
     if not args and level is not None:
-        args = level.args
+        args = copy.deepcopy(level.args)
     for key in ['keyword', 'block', 'trsh']:
         if key not in args.keys():
             args[key] = dict()

@@ -173,6 +173,28 @@ class TestJobCommon(unittest.TestCase):
         args = common.set_job_args(args={'keyword': 'k1'}, level=Level(repr='CBS-QB3'), job_name='j1')
         self.assertEqual(args, {'keyword':'k1', 'block': dict(), 'trsh': dict()})
 
+    def test_set_job_args_does_not_warn_about_applied_options(self):
+        """Test that set_job_args() keeps the job args it is given and logs no warning about them."""
+        level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
+
+        applied_args = {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()}
+        with self.assertNoLogs(logger='arc', level='WARNING'):
+            args = common.set_job_args(args=applied_args, level=level, job_name='j1')
+        self.assertEqual(args['keyword']['opt'], 'opt=(verytight)')
+
+        trsh_args = {'keyword': dict(), 'block': dict(), 'trsh': {'trsh': 'scf=(qc)'}}
+        with self.assertNoLogs(logger='arc', level='WARNING'):
+            args = common.set_job_args(args=trsh_args, level=level, job_name='j1')
+        self.assertEqual(args['trsh'], {'trsh': 'scf=(qc)'})
+
+    def test_set_job_args_does_not_alias_level_args(self):
+        """Test that the returned job args do not alias the level's args dictionaries."""
+        level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
+        args = common.set_job_args(args=None, level=level, job_name='j1')
+        args['keyword']['dft_grid'] = 'defgrid2'
+        self.assertNotIn('dft_grid', level.args['keyword'])
+        self.assertEqual(level.args['keyword'], {'opt': 'opt=(verytight)'})
+
     def test_which(self):
         """Test the which() function"""
         ans = common.which(command='python', return_bool=True, raise_error=False)
