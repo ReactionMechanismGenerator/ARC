@@ -1161,6 +1161,28 @@ H       0.04768200    1.19305700   -0.88359100
 
         self.assertEqual(content_24, job_24_expected_input_file)
 
+    def test_user_requested_verytight(self):
+        """Detection only fires for word-bounded ``verytight`` in the keyword channel."""
+        cases = [
+            ({'keyword': {'opt': 'opt=(verytight)'}, 'block': {}, 'trsh': {}}, True),
+            ({'keyword': {'opt': 'opt=(VeryTight)'}, 'block': {}, 'trsh': {}}, True),
+            ({'keyword': {'general': 'opt=(calcfc)'}, 'block': {}, 'trsh': {}}, False),
+            ({'keyword': {'opt': 'opt=(tight)'}, 'block': {}, 'trsh': {}}, False),
+            ({'keyword': {'general': 'verytightscf'}, 'block': {}, 'trsh': {}}, False),
+            ({'keyword': {}, 'block': {}, 'trsh': {}}, False),
+            # verytight smuggled in via block/trsh must not count
+            ({'keyword': {}, 'block': {'1': 'opt=(verytight)'}, 'trsh': {}}, False),
+            ({'keyword': {}, 'block': {}, 'trsh': {'opt': 'opt=(verytight)'}}, False),
+        ]
+        original_args = self.job_3.args
+        try:
+            for args, expected in cases:
+                with self.subTest(args=args):
+                    self.job_3.args = args
+                    self.assertEqual(self.job_3._user_requested_verytight(), expected)
+        finally:
+            self.job_3.args = original_args
+
 
     @classmethod
     def tearDownClass(cls):

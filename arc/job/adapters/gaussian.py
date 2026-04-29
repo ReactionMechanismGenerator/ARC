@@ -211,6 +211,32 @@ class GaussianAdapter(JobAdapter):
             elif self.species[0].checkfile is not None and os.path.isfile(self.species[0].checkfile):
                 self.checkfile = self.species[0].checkfile
 
+    def _user_requested_verytight(self) -> bool:
+        """
+        Return True if the user passed ``verytight`` through ``self.args``.
+
+        When True, the fine-mode opt-keyword builder will skip auto-adding
+        ``tight`` so the user's ``verytight`` wins unambiguously in the final
+        ``opt=(...)`` clause assembled by ``combine_parameters``.
+
+        Scope: only the ``keyword`` channel is meaningful here — ``block`` is for
+        Gaussian input blocks and ``trsh`` is for ARC's troubleshooting layer,
+        neither of which is the right place for a user opt-cutoff override.
+
+        Notes for the implementer:
+            - ``self.args['keyword']`` is a ``dict[str, str]`` (see
+              ``Level._check_args`` at arc/level.py:281). Values may be in any
+              case and may contain other keywords too (e.g. ``"opt=(verytight)
+              freq=hpmodes"``).
+            - Match must be word-bounded: a stray ``verytightscf`` should not
+              count, and ``tight`` alone must NOT match.
+            - Be defensive: ``self.args`` or ``self.args['keyword']`` may be
+              missing or empty depending on how the Level was constructed.
+        """
+        keyword_args = (self.args or {}).get('keyword') or {}
+        joined = ' '.join(str(v) for v in keyword_args.values())
+        return re.search(r'\bverytight\b', joined, re.IGNORECASE) is not None
+
     def write_input_file(self) -> None:
         """
         Write the input file to execute the job on the server.
@@ -299,10 +325,11 @@ class GaussianAdapter(JobAdapter):
                         if input_dict['trsh']:
                             input_dict['trsh'] += ' '
                         input_dict['trsh'] += 'scf=(tight,direct)'
+                tight_kw = [] if self._user_requested_verytight() else ['tight']
                 if self.is_ts:
-                    keywords.extend(['tight', 'maxstep=5'])
+                    keywords.extend([*tight_kw, 'maxstep=5'])
                 else:
-                    keywords.extend(['tight', 'maxstep=5', f'maxcycle={max_c}'])
+                    keywords.extend([*tight_kw, 'maxstep=5', f'maxcycle={max_c}'])
             input_dict['job_type_1'] = "opt" if self.level.method_type not in ['dft', 'composite', 'wavefunction']\
                 else f"opt=({', '.join(key for key in keywords)})"
 
