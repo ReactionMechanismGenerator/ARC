@@ -9,7 +9,6 @@ import shutil
 import sys
 import re
 
-from pprint import pformat
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from arc.common import get_logger
@@ -478,12 +477,7 @@ def set_job_args(args: Optional[dict],
     Returns:
         dict: The initialized job specific arguments.
     """
-    # Ignore user-specified additional job arguments when troubleshooting.
-    if args is not None and args and any(val for val in args.values()) \
-            and level is not None and level.args and any(val for val in level.args.values()):
-        logger.warning(f'When troubleshooting {job_name}, ARC ignores the following user-specified options:\n'
-                       f'{pformat(level.args)}')
-    elif not args and level is not None:
+    if not args and level is not None:
         args = level.args
     for key in ['keyword', 'block', 'trsh']:
         if key not in args.keys():
