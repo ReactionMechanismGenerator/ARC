@@ -2,6 +2,7 @@
 A module for working with levels of theory.
 """
 
+import copy
 import os
 from collections.abc import Iterable
 
@@ -165,6 +166,15 @@ class Level(object):
         """
         return Level(repr=self.as_dict())
 
+    def get_args(self) -> dict:
+        """
+        A method to get the args of the object, detached from it.
+
+        Returns:
+            dict: A deep copy of the args, which can be mutated without affecting this object.
+        """
+        return copy.deepcopy(self.args)
+
     def simple(self) -> str:
         """
         Return a simple humane-readable string representation of the object.
@@ -187,7 +197,7 @@ class Level(object):
         original_dict = self.__dict__
         clean_dict = {}
         for key, val in original_dict.items():
-            if val is not None and key != 'args' or key == 'args' and all([v for v in self.args.values()]):
+            if (val is not None and key != 'args') or (key == 'args' and any(v for v in self.args.values())):
                 clean_dict[key] = val
         return clean_dict
 

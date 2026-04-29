@@ -487,12 +487,43 @@ def input_dict_strip(input_dict: dict) -> dict:
     return stripped_dict
 
 
+def get_dropped_level_args(args: dict,
+                           level_args: dict,
+                           ) -> dict:
+    """
+    Get the options of a level of theory which the job args do not carry.
+
+    An option of ``level_args`` is dropped if ``args`` holds no entry under the same two keys or
+    holds a different value for it. An entry of ``args`` which is not a dictionary is treated as
+    carrying no options at all.
+
+    Args:
+        args (dict): The job specific arguments.
+        level_args (dict): The args of the level of theory, a dictionary of dictionaries.
+
+    Returns:
+        dict: The dropped options, keyed as ``level_args`` is, without the empty entries.
+    """
+    dropped_args = dict()
+    for key, val in level_args.items():
+        job_val = args.get(key, None)
+        job_val = job_val if isinstance(job_val, dict) else dict()
+        dropped = {key_2: val_2 for key_2, val_2 in val.items() if job_val.get(key_2, None) != val_2}
+        if dropped:
+            dropped_args[key] = dropped
+    return dropped_args
+
+
 def set_job_args(args: dict | None,
                  level: Level | None,
                  job_name: str,
                  ) -> dict:
     """
     Set the job args considering args from ``level`` and from ``trsh``.
+
+    The args of ``level`` are adopted when ``args`` carries no options. When ``args`` does carry
+    options it is used as given, and a warning reports the options of ``level`` which it does not
+    carry, i.e., only the options which are actually being dropped.
 
     Args:
         args (dict): The job specific arguments.
@@ -502,13 +533,14 @@ def set_job_args(args: dict | None,
     Returns:
         dict: The initialized job specific arguments.
     """
-    # Ignore user-specified additional job arguments when troubleshooting.
-    if args is not None and args and any(val for val in args.values()) \
-            and level is not None and level.args and any(val for val in level.args.values()):
-        logger.warning(f'When troubleshooting {job_name}, ARC ignores the following user-specified options:\n'
-                       f'{pformat(level.args)}')
-    elif not args and level is not None:
-        args = level.args
+    args_carry_options = args is not None and any(val for val in args.values())
+    if args_carry_options and level is not None and level.args and any(val for val in level.args.values()):
+        dropped_args = get_dropped_level_args(args=args, level_args=level.args)
+        if dropped_args:
+            logger.warning(f'ARC ignores the following user-specified level of theory options '
+                           f'in job {job_name}:\n{pformat(dropped_args)}')
+    elif not args_carry_options and level is not None:
+        args = {**(args or dict()), **level.get_args()}
     for key in ['keyword', 'block', 'trsh']:
         if key not in args.keys():
             args[key] = dict()
