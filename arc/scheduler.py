@@ -4101,18 +4101,35 @@ class Scheduler(object):
             label (str): The species label.
         """
         logger.debug(f'Deleting all jobs for species {label}')
+
+        def _safe_delete(job, display_name):
+            """Best-effort job delete: log failure (e.g. queue rejected qdel)
+            and continue. This loop is cleanup before troubleshooting / restart;
+            an orphan remote job will exit on its own and must not abort the
+            whole scheduler. Without this guard, a single failed delete
+            propagates a RuntimeError up through delete_all_species_jobs →
+            troubleshoot_negative_freq → schedule_jobs → __init__ and the
+            entire project dies."""
+            logger.info(f'Deleted job {display_name}')
+            try:
+                job.delete()
+            except Exception as exc:
+                logger.warning(
+                    f'Failed to delete job {display_name} for species '
+                    f'{label}: {type(exc).__name__}: {exc}. Continuing — '
+                    f'the orphan job (if any) will exit on its own.'
+                )
+
         for value in self.job_dict[label].values():
             if value in ['conf_opt', 'tsg']:
                 for job_name, job in self.job_dict[label][value].items():
                     if label in self.running_jobs.keys() and job_name in self.running_jobs[label] \
                             and job.execution_type != 'incore':
-                        logger.info(f'Deleted job {value}{job_name}')
-                        job.delete()
+                        _safe_delete(job, f'{value}{job_name}')
             for job_name, job in value.items():
                 if label in self.running_jobs.keys() and job_name in self.running_jobs[label] \
                         and job.execution_type != 'incore':
-                    logger.info(f'Deleted job {job_name}')
-                    job.delete()
+                    _safe_delete(job, job_name)
         self.running_jobs[label] = list()
         # Reset paths for this species. Most keys reset to ''; container-valued
         # keys keep their type so the rest of the pipeline (composite tracking,

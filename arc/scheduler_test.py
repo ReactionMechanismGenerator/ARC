@@ -1703,6 +1703,56 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
         self._write_gaussian_fixture(delta_T_high_path, -1.15)
         sched.post_sp_actions('H2', delta_T_high_path, protocol.corrections[0].high)
 
+    def test_delete_all_species_jobs_tolerates_one_failed_delete(self):
+        """Regression: a single failed ``job.delete()`` (e.g. ``qdel`` couldn't
+        kill the job because the queue is unresponsive) must NOT abort the
+        whole scheduler. ``delete_all_species_jobs`` is best-effort cleanup —
+        an orphaned remote job will exit on its own. The other jobs still
+        need to be deleted, the species's state still needs to be reset, and
+        the scheduler must keep running."""
+        tmp = os.path.join(self.project_directory, "fx_delete_failure")
+        os.makedirs(tmp, exist_ok=True)
+        recipe = {"base": {"method": "hf", "basis": "cc-pVTZ"}, "corrections": []}
+        protocol = CompositeProtocol.from_user_input(recipe)
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'),
+                         'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+
+        class _StubJob:
+            def __init__(self, name, raise_on_delete=False):
+                self.name = name
+                self.execution_type = 'queue'
+                self.deleted = False
+                self.raise_on_delete = raise_on_delete
+
+            def delete(self):
+                if self.raise_on_delete:
+                    raise RuntimeError(f'Could not delete job {self.name}')
+                self.deleted = True
+
+        bad = _StubJob('a4035060', raise_on_delete=True)
+        good_a = _StubJob('a4035061')
+        good_b = _StubJob('a4035062')
+        # job_dict is keyed [label][job_type][job_name → JobAdapter].
+        # The ordering puts the failing job in the middle so we verify both
+        # the deletes before AND after it still run.
+        sched.job_dict['H2'] = {'sp': {
+            'a4035061': good_a,
+            'a4035060': bad,
+            'a4035062': good_b,
+        }}
+        sched.running_jobs['H2'] = ['a4035061', 'a4035060', 'a4035062']
+        # Should not raise.
+        sched.delete_all_species_jobs('H2')
+        self.assertTrue(good_a.deleted, "Pre-failure delete must still run.")
+        self.assertTrue(good_b.deleted, "Post-failure delete must still run.")
+        # And the species's state still got reset (running_jobs cleared, paths
+        # rebuilt with sp_composite as a dict, etc.).
+        self.assertEqual(sched.running_jobs['H2'], [])
+        self.assertIsInstance(sched.output['H2']['paths']['sp_composite'], dict)
+
     # --- Phase 3.5: preset name + reference preservation ------------------- #
 
     def test_preset_name_and_reference_survive_to_notebook_section(self):
