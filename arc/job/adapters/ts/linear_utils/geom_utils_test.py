@@ -12,12 +12,18 @@ import unittest
 import numpy as np
 
 from arc.job.adapters.ts.linear_utils.geom_utils import (
+    atom_index_map,
     bfs_path,
+    canonical_bond,
     dihedral_deg,
     downstream,
+    h_neighbors_of,
+    heavy_neighbors_of,
     mol_to_adjacency,
     rotate_atoms,
     split_mol_at_bonds,
+    two_sphere_intersection,
+    xyz_with_coords,
 )
 from arc.molecule.molecule import Molecule
 
@@ -376,6 +382,184 @@ class TestSplitMolAtBonds(unittest.TestCase):
         # C0 and C2 are not directly bonded in propane.
         fragments = split_mol_at_bonds(mol, [(c_indices[0], c_indices[2])])
         self.assertEqual(len(fragments), 1)
+
+
+class TestCanonicalBond(unittest.TestCase):
+    """Tests for the (min, max) canonical bond key helper."""
+
+    def test_already_sorted(self):
+        self.assertEqual(canonical_bond(2, 5), (2, 5))
+
+    def test_reversed(self):
+        self.assertEqual(canonical_bond(5, 2), (2, 5))
+
+    def test_equal(self):
+        self.assertEqual(canonical_bond(7, 7), (7, 7))
+
+    def test_zero_and_negative(self):
+        self.assertEqual(canonical_bond(0, 3), (0, 3))
+        self.assertEqual(canonical_bond(-1, 4), (-1, 4))
+
+
+class TestAtomIndexMap(unittest.TestCase):
+    """Tests for the {atom -> index} mapping."""
+
+    def test_size_matches_atoms(self):
+        mol = Molecule().from_smiles('CCO')
+        a2i = atom_index_map(mol)
+        self.assertEqual(len(a2i), len(mol.atoms))
+
+    def test_indices_unique_and_sequential(self):
+        mol = Molecule().from_smiles('CCO')
+        a2i = atom_index_map(mol)
+        self.assertEqual(sorted(a2i.values()), list(range(len(mol.atoms))))
+
+    def test_each_atom_maps_to_its_position(self):
+        mol = Molecule().from_smiles('CCO')
+        a2i = atom_index_map(mol)
+        for i, atom in enumerate(mol.atoms):
+            self.assertEqual(a2i[atom], i)
+
+
+class TestHeavyAndHNeighbors(unittest.TestCase):
+    """Tests for heavy_neighbors_of and h_neighbors_of."""
+
+    def setUp(self):
+        # Methanol (CH3OH): atom 0 = C, atom 1 = O, atoms 2-4 = H on C, atom 5 = H on O.
+        self.mol = Molecule().from_smiles('CO')
+        self.symbols = tuple(a.symbol for a in self.mol.atoms)
+
+    def test_heavy_neighbors_of_carbon_is_oxygen(self):
+        c_idx = self.symbols.index('C')
+        o_idx = self.symbols.index('O')
+        self.assertEqual(heavy_neighbors_of(self.mol, c_idx, self.symbols), [o_idx])
+
+    def test_h_neighbors_of_carbon_count_is_3(self):
+        c_idx = self.symbols.index('C')
+        self.assertEqual(len(h_neighbors_of(self.mol, c_idx, self.symbols)), 3)
+
+    def test_h_neighbors_of_oxygen_count_is_1(self):
+        o_idx = self.symbols.index('O')
+        self.assertEqual(len(h_neighbors_of(self.mol, o_idx, self.symbols)), 1)
+
+    def test_disjoint_partitions(self):
+        c_idx = self.symbols.index('C')
+        heavy = set(heavy_neighbors_of(self.mol, c_idx, self.symbols))
+        hs = set(h_neighbors_of(self.mol, c_idx, self.symbols))
+        self.assertEqual(heavy & hs, set())
+
+
+class TestXyzWithCoords(unittest.TestCase):
+    """Tests for the XYZ-dict-with-replaced-coords helper."""
+
+    def test_serializes_coords_as_tuple_of_tuples(self):
+        xyz = {'symbols': ('C', 'H'),
+               'isotopes': (12, 1),
+               'coords': ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0))}
+        new_coords = np.array([[0.5, 0.5, 0.5], [1.5, 0.5, 0.5]])
+        out = xyz_with_coords(xyz, new_coords)
+        self.assertEqual(out['coords'], ((0.5, 0.5, 0.5), (1.5, 0.5, 0.5)))
+        self.assertIsInstance(out['coords'], tuple)
+        self.assertIsInstance(out['coords'][0], tuple)
+        self.assertIsInstance(out['coords'][0][0], float)
+
+    def test_preserves_existing_isotopes(self):
+        xyz = {'symbols': ('C', 'H'), 'isotopes': (13, 2),
+               'coords': ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0))}
+        out = xyz_with_coords(xyz, np.zeros((2, 3)))
+        self.assertEqual(out['isotopes'], (13, 2))
+
+    def test_supplies_default_isotopes_when_missing(self):
+        xyz = {'symbols': ('C', 'H', 'O'),
+               'coords': ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0))}
+        out = xyz_with_coords(xyz, np.zeros((3, 3)))
+        self.assertEqual(out['isotopes'], (0, 0, 0))
+
+    def test_preserves_extra_keys(self):
+        xyz = {'symbols': ('C',), 'coords': ((0.0, 0.0, 0.0),), 'comment': 'hello'}
+        out = xyz_with_coords(xyz, np.zeros((1, 3)))
+        self.assertEqual(out.get('comment'), 'hello')
+
+    def test_does_not_mutate_input(self):
+        xyz = {'symbols': ('C',), 'isotopes': (12,),
+               'coords': ((0.0, 0.0, 0.0),)}
+        before = dict(xyz)
+        _ = xyz_with_coords(xyz, np.array([[1.0, 2.0, 3.0]]))
+        self.assertEqual(xyz, before)
+
+
+class TestTwoSphereIntersection(unittest.TestCase):
+    """Tests for the two-sphere geometric placement helper."""
+
+    def test_overlapping_spheres_returns_point_at_correct_distances(self):
+        # Two spheres of radius 1 around (-1, 0, 0) and (1, 0, 0): inter-center
+        # distance = 2 = r1 + r2, surfaces touch at the origin (only one point).
+        c1 = np.array([-1.0, 0.0, 0.0])
+        c2 = np.array([1.0, 0.0, 0.0])
+        ref = np.array([0.0, 1.0, 0.0])
+        out = two_sphere_intersection(c1, 1.0, c2, 1.0, ref)
+        self.assertIsNotNone(out)
+        self.assertAlmostEqual(float(np.linalg.norm(out - c1)), 1.0, places=6)
+        self.assertAlmostEqual(float(np.linalg.norm(out - c2)), 1.0, places=6)
+
+    def test_proper_intersection_lies_on_correct_circle(self):
+        # 3-4-5 triangle: r1=3, r2=4, d=5 → x = (25+9-16)/10 = 1.8, h = sqrt(9 - 1.8²) = 2.4
+        c1 = np.array([0.0, 0.0, 0.0])
+        c2 = np.array([5.0, 0.0, 0.0])
+        ref = np.array([0.0, 1.0, 0.0])
+        out = two_sphere_intersection(c1, 3.0, c2, 4.0, ref)
+        self.assertAlmostEqual(float(np.linalg.norm(out - c1)), 3.0, places=6)
+        self.assertAlmostEqual(float(np.linalg.norm(out - c2)), 4.0, places=6)
+        self.assertGreater(out[1], 0.0)  # ref selected the +y side
+
+    def test_ref_position_picks_side(self):
+        c1 = np.array([0.0, 0.0, 0.0])
+        c2 = np.array([5.0, 0.0, 0.0])
+        ref_plus = np.array([0.0, 1.0, 0.0])
+        ref_minus = np.array([0.0, -1.0, 0.0])
+        out_plus = two_sphere_intersection(c1, 3.0, c2, 4.0, ref_plus)
+        out_minus = two_sphere_intersection(c1, 3.0, c2, 4.0, ref_minus)
+        self.assertAlmostEqual(out_plus[1], -out_minus[1], places=6)
+        self.assertGreater(out_plus[1], 0.0)
+        self.assertLess(out_minus[1], 0.0)
+
+    def test_disjoint_spheres_fallback_to_collinear_at_r1(self):
+        # d > r1 + r2: no intersection. Place at r1 from c1 along the axis.
+        c1 = np.array([0.0, 0.0, 0.0])
+        c2 = np.array([10.0, 0.0, 0.0])
+        ref = np.array([0.0, 1.0, 0.0])
+        out = two_sphere_intersection(c1, 1.0, c2, 1.0, ref)
+        self.assertAlmostEqual(float(np.linalg.norm(out - c1)), 1.0, places=6)
+        # On the axis (perpendicular components zero):
+        self.assertAlmostEqual(out[1], 0.0, places=6)
+        self.assertAlmostEqual(out[2], 0.0, places=6)
+
+    def test_one_sphere_inside_the_other_fallback(self):
+        # d < |r1 - r2|: small sphere inside the big one. Should fall back to
+        # the collinear placement at r1 from c1 instead of producing nonsense.
+        c1 = np.array([0.0, 0.0, 0.0])
+        c2 = np.array([1.0, 0.0, 0.0])
+        ref = np.array([0.0, 1.0, 0.0])
+        out = two_sphere_intersection(c1, 5.0, c2, 2.0, ref)
+        self.assertAlmostEqual(float(np.linalg.norm(out - c1)), 5.0, places=6)
+        self.assertAlmostEqual(out[1], 0.0, places=6)
+        self.assertAlmostEqual(out[2], 0.0, places=6)
+
+    def test_degenerate_zero_distance_returns_none(self):
+        c = np.array([1.0, 2.0, 3.0])
+        ref = np.array([0.0, 1.0, 0.0])
+        self.assertIsNone(two_sphere_intersection(c, 1.0, c, 1.0, ref))
+
+    def test_collinear_ref_falls_back_to_arbitrary_perpendicular(self):
+        # ref_pos exactly on the inter-center axis (no perpendicular component).
+        # The function must still return a point on the correct circle.
+        c1 = np.array([0.0, 0.0, 0.0])
+        c2 = np.array([5.0, 0.0, 0.0])
+        ref_on_axis = np.array([2.5, 0.0, 0.0])
+        out = two_sphere_intersection(c1, 3.0, c2, 4.0, ref_on_axis)
+        self.assertIsNotNone(out)
+        self.assertAlmostEqual(float(np.linalg.norm(out - c1)), 3.0, places=6)
+        self.assertAlmostEqual(float(np.linalg.norm(out - c2)), 4.0, places=6)
 
 
 if __name__ == '__main__':

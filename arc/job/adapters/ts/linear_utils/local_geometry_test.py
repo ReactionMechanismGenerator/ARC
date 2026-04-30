@@ -10,10 +10,12 @@ import numpy as np
 
 from arc.common import get_single_bond_length
 from arc.species import ARCSpecies
+from arc.job.adapters.ts.linear_utils.geom_utils import (
+    h_neighbors_of as _h_neighbors,
+    heavy_neighbors_of as _heavy_neighbors,
+    xyz_with_coords as _xyz_with_coords,
+)
 from arc.job.adapters.ts.linear_utils.local_geometry import (
-    _h_neighbors,
-    _heavy_neighbors,
-    _xyz_with_coords,
     apply_reactive_center_cleanup,
     clean_migrating_h,
     is_internal_reactive_ch2_misoriented,

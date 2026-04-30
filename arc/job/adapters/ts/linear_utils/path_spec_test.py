@@ -15,13 +15,13 @@ from arc.job.adapters.ts import linear
 from arc.job.adapters.ts.linear import GuessRecord, _PathContext, _build_addition_path_spec, _enrich_post_migration_path_spec, _finalize_ts_guesses
 from arc.job.adapters.ts.linear_utils import addition, path_spec
 from arc.job.adapters.ts.linear_utils.migration_inference import infer_frag_fallback_h_migration
+from arc.job.adapters.ts.linear_utils.geom_utils import canonical_bond as _canon
 from arc.job.adapters.ts.linear_utils.path_spec import (
     PAULING_DELTA,
     PathChemistry,
     ReactionPathSpec,
     _all_bonds,
     _bond_order_map,
-    _canon,
     _canon_list,
     _compute_changed_bonds,
     _compute_unchanged_near_core,
