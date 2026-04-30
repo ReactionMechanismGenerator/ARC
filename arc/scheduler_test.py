@@ -1877,6 +1877,82 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
         self.assertNotIn('delta_T__low',
                          sched.output['H2']['paths']['sp_composite'])
 
+    def test_species_report_yaml_written_on_finalize(self):
+        """Per-species sp_composite YAML report lands at
+        ``<project>/output/Species/<label>/sp_composite_report.yml`` when the
+        composite finalizes, and the file parses to a dict whose ``final``
+        block matches what ARC recorded on the species."""
+        import yaml
+        tmp = os.path.join(self.project_directory, "fx_species_report")
+        os.makedirs(tmp, exist_ok=True)
+        recipe = {
+            "base": {"method": "hf", "basis": "cc-pVTZ"},
+            "corrections": [
+                {"label": "delta_T", "type": "delta",
+                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
+                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+            ],
+        }
+        protocol = CompositeProtocol.from_user_input(recipe)
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'),
+                         'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+        # Drive a 3-sub-job composite to completion.
+        paths = self._seed_protocol_fixtures(tmp, protocol,
+            {"base": -1.10, "delta_T__high": -1.15, "delta_T__low": -1.12})
+        sched.post_sp_actions('H2', paths["base"], protocol.base.level)
+        sched.post_sp_actions('H2', paths["delta_T__high"], protocol.corrections[0].high)
+        sched.post_sp_actions('H2', paths["delta_T__low"], protocol.corrections[0].low)
+        report_path = os.path.join(
+            self.project_directory, "output", "Species", "H2",
+            "sp_composite_report.yml",
+        )
+        self.assertTrue(os.path.exists(report_path),
+                        f"Per-species report not written at {report_path}")
+        with open(report_path) as fh:
+            report = yaml.safe_load(fh)
+        # Identity + protocol shape.
+        self.assertEqual(report["species"], "H2")
+        self.assertEqual(report["kind"], "species")
+        self.assertEqual(len(report["terms"]), 1)
+        self.assertEqual(report["terms"][0]["label"], "delta_T")
+        self.assertEqual(len(report["terms"][0]["sub_jobs"]), 2)
+        # Final block matches what the scheduler set on the species.
+        self.assertAlmostEqual(report["final"]["e_elect_kj_per_mol"],
+                               spc.e_elect, places=6)
+        self.assertEqual(report["final"]["e_elect_source"], "sp_composite")
+
+    def test_species_report_uses_TSs_subdir_for_transition_states(self):
+        """Transition states land under ``output/TSs/<label>/...``, not
+        ``output/Species/...``."""
+        import yaml
+        tmp = os.path.join(self.project_directory, "fx_ts_report")
+        os.makedirs(tmp, exist_ok=True)
+        recipe = {"base": {"method": "hf", "basis": "cc-pVTZ"}, "corrections": []}
+        protocol = CompositeProtocol.from_user_input(recipe)
+        ts = ARCSpecies(label='TS_x', smiles='[H][H]', is_ts=True)
+        ts.final_xyz = {'symbols': ('H', 'H'),
+                        'coords': ((0, 0, 0), (0, 0, 0.74)),
+                        'isotopes': (1, 1)}
+        sched = self._make_scheduler([ts], sp_composite=protocol)
+        base_path = os.path.join(tmp, "base.out")
+        self._write_gaussian_fixture(base_path, -1.10)
+        sched.post_sp_actions('TS_x', base_path, protocol.base.level)
+        ts_report = os.path.join(
+            self.project_directory, "output", "TSs", "TS_x",
+            "sp_composite_report.yml",
+        )
+        species_report = os.path.join(
+            self.project_directory, "output", "Species", "TS_x",
+            "sp_composite_report.yml",
+        )
+        self.assertTrue(os.path.exists(ts_report))
+        self.assertFalse(os.path.exists(species_report))
+        with open(ts_report) as fh:
+            self.assertEqual(yaml.safe_load(fh)["kind"], "ts")
+
     # --- Phase 3.5: preset name + reference preservation ------------------- #
 
     def test_preset_name_and_reference_survive_to_notebook_section(self):

@@ -49,7 +49,12 @@ from arc.job.trsh import (scan_quality_check,
 from arc.constants import E_h_kJmol
 from arc.level import Level, active_composite_for
 from arc.level.protocol import CompositeProtocol
-from arc.level.reporting import SpeciesSection, format_log_event, write_composite_notebook
+from arc.level.reporting import (
+    SpeciesSection,
+    format_log_event,
+    write_composite_notebook,
+    write_species_report_yaml,
+)
 from arc.species.species import (ARCSpecies,
                                  are_coords_compliant_with_graph,
                                  determine_rotor_symmetry,
@@ -1621,6 +1626,7 @@ class Scheduler(object):
         if self.report_e_elect:
             self.save_e_elect(label)
         self._regenerate_composite_notebook()
+        self._write_species_report(label)
         if species_has_freq(self.output[label], self.species_dict[label].yml_path):
             self.check_rxn_e0_by_spc(label)
         self.save_restart_dict()
@@ -1677,6 +1683,41 @@ class Scheduler(object):
         )
         logger.info(format_log_event("project", "provenance notebook regenerated",
                                      {"path": nb_path, "sections": len(self._sp_composite_sections)}))
+
+    def _write_species_report(self, label: str) -> None:
+        """
+        Write the per-species sp_composite YAML summary.
+
+        One file per stationary point at
+        ``<project>/output/Species/<label>/sp_composite_report.yml``
+        (or ``output/TSs/<label>/...`` for transition states). Companion to
+        the project-level provenance notebook: notebook is for *Run-All
+        verification*, this YAML is for *cat / parse consumption*.
+        """
+        section = self._sp_composite_sections.get(label)
+        if section is None:
+            return
+        species = self.species_dict[label]
+        e_elect = species.e_elect
+        if e_elect is None:
+            logger.debug(format_log_event(
+                label, "skipping species report — e_elect not set", None,
+            ))
+            return
+        subdir = "TSs" if section.kind == "ts" else "Species"
+        report_path = os.path.join(
+            self.project_directory, "output", subdir, label,
+            "sp_composite_report.yml",
+        )
+        write_species_report_yaml(
+            path=report_path,
+            section=section,
+            e_elect_kj_per_mol=e_elect,
+            timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+            arc_version="",  # surfaced via Phase 4 if needed
+            arc_commit="",   # surfaced via Phase 4 if needed
+        )
+        logger.info(format_log_event(label, "species report written", {"path": report_path}))
 
     def _post_sp_actions_composite(self,
                                    label: str,
@@ -1787,6 +1828,11 @@ class Scheduler(object):
             self._seed_composite_pending(label)
             if self.output.get(label, {}).get('job_types', {}).get('sp_composite'):
                 self._sp_composite_sections[label] = self._build_species_section(label, protocol)
+                # Re-emit the per-species report so a restart fills in reports
+                # missing on disk (and refreshes any whose protocol metadata
+                # changed across versions). Cheap; one yaml.safe_dump per
+                # finalized species.
+                self._write_species_report(label)
         # Kick-start after every species has been seeded — ``_spawn_composite_pending``
         # will dedupe against sp jobs restored by ``restore_running_jobs``, and will
         # only touch species whose pending dict is non-empty AND that have already

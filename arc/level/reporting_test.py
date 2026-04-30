@@ -31,8 +31,10 @@ from arc.exceptions import InputError
 from arc.level.protocol import CompositeProtocol
 from arc.level.reporting import (
     SpeciesSection,
+    build_species_report_dict,
     format_log_event,
     write_composite_notebook,
+    write_species_report_yaml,
 )
 
 
@@ -401,6 +403,199 @@ class TestWriteCompositeNotebook(unittest.TestCase):
         self.assertIn("FINAL", all_text)
         # Compare to 2 decimal places (the print format is :,.3f kJ/mol).
         self.assertIn(f"{expected_kjmol:,.3f}", all_text)
+
+
+# --------------------------------------------------------------------------- #
+#  build_species_report_dict + write_species_report_yaml                      #
+# --------------------------------------------------------------------------- #
+
+
+import yaml  # noqa: E402  (import after the other module-level imports for grouping)
+
+
+class TestSpeciesReportDict(unittest.TestCase):
+    """``build_species_report_dict`` produces the consumable per-species summary.
+
+    The notebook (``sp_composite.ipynb``) is for *independent verification* via
+    Run-All; this YAML report is for *consumption* — readable in plain text,
+    parseable by tooling, one file per species with every term's contribution
+    spelled out next to the QM-output paths backing it.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.base_path = os.path.join(self.tmp, "base.out")
+        self.hi_path = os.path.join(self.tmp, "delta_T__high.out")
+        self.lo_path = os.path.join(self.tmp, "delta_T__low.out")
+        _write_gaussian_fixture(self.base_path, -76.345678)
+        _write_gaussian_fixture(self.hi_path, -76.346500)   # lower (more negative) → contribution = high - low < 0
+        _write_gaussian_fixture(self.lo_path, -76.345600)
+        self.section = _make_two_term_section(
+            paths={"base": self.base_path,
+                   "delta_T__high": self.hi_path,
+                   "delta_T__low": self.lo_path},
+        )
+
+    def tearDown(self):
+        # Tests create nested directories (e.g. Species/H2O/...) — use rmtree
+        # to clean them up wholesale rather than enumerating fixture files.
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_top_level_fields(self):
+        d = build_species_report_dict(
+            section=self.section,
+            e_elect_kj_per_mol=-200000.0,
+            timestamp="2026-04-30T13:10:32Z",
+            arc_version="1.1.0",
+            arc_commit="74fc4fa5",
+        )
+        self.assertEqual(d["species"], "H2O")
+        self.assertEqual(d["kind"], "species")
+        self.assertEqual(d["generated_at"], "2026-04-30T13:10:32Z")
+        self.assertEqual(d["arc_version"], "1.1.0")
+        self.assertEqual(d["arc_commit"], "74fc4fa5")
+
+    def test_protocol_block(self):
+        d = build_species_report_dict(
+            section=self.section,
+            e_elect_kj_per_mol=-200000.0,
+            timestamp="2026-04-30T13:10:32Z",
+            arc_version="1.1.0",
+            arc_commit="abc",
+        )
+        self.assertIsNone(d["protocol"]["preset"])  # explicit recipe in fixture
+        self.assertIn("DOI", d["protocol"]["reference"])
+        # Formula spells out the sum the protocol evaluates.
+        self.assertIn("E_base", d["protocol"]["formula"])
+        self.assertIn("delta_T", d["protocol"]["formula"])
+
+    def test_units_block(self):
+        d = build_species_report_dict(
+            section=self.section,
+            e_elect_kj_per_mol=-200000.0,
+            timestamp="t",
+            arc_version="v",
+            arc_commit="c",
+        )
+        self.assertEqual(d["units"]["energy"], "kJ/mol")
+        self.assertEqual(d["units"]["energy_alt"], "Hartree")
+
+    def test_base_block(self):
+        d = build_species_report_dict(
+            section=self.section,
+            e_elect_kj_per_mol=-200000.0,
+            timestamp="t",
+            arc_version="v",
+            arc_commit="c",
+        )
+        base = d["base"]
+        self.assertEqual(base["sub_label"], "base")
+        self.assertEqual(base["path"], self.base_path)
+        # Energy parsed via arc.parser; cross-check Hartree↔kJ/mol consistency.
+        self.assertAlmostEqual(
+            base["energy_kj_per_mol"] / E_h_kJmol,
+            base["energy_hartree"],
+            places=6,
+        )
+
+    def test_terms_block_has_one_entry_per_correction(self):
+        d = build_species_report_dict(
+            section=self.section,
+            e_elect_kj_per_mol=-200000.0,
+            timestamp="t",
+            arc_version="v",
+            arc_commit="c",
+        )
+        self.assertEqual(len(d["terms"]), 1)  # fixture has exactly one correction
+        term = d["terms"][0]
+        self.assertEqual(term["label"], "delta_T")
+        self.assertEqual(term["type"], "DeltaTerm")
+        self.assertEqual(len(term["sub_jobs"]), 2)
+        self.assertEqual({sj["sub_label"] for sj in term["sub_jobs"]},
+                         {"delta_T__high", "delta_T__low"})
+        # Contribution = E[high] - E[low] = -76.346500 - (-76.345600) = -0.000900 Ha
+        # = -0.000900 × E_h_kJmol ≈ -2.363 kJ/mol
+        self.assertAlmostEqual(term["contribution_hartree"], -0.000900, places=6)
+        self.assertAlmostEqual(term["contribution_kj_per_mol"],
+                               -0.000900 * E_h_kJmol, places=3)
+
+    def test_final_block_uses_caller_supplied_e_elect(self):
+        d = build_species_report_dict(
+            section=self.section,
+            e_elect_kj_per_mol=-200000.123,
+            timestamp="t",
+            arc_version="v",
+            arc_commit="c",
+        )
+        self.assertEqual(d["final"]["e_elect_kj_per_mol"], -200000.123)
+        self.assertAlmostEqual(d["final"]["e_elect_hartree"],
+                               -200000.123 / E_h_kJmol, places=6)
+        self.assertEqual(d["final"]["e_elect_source"], "sp_composite")
+
+    def test_flags_propagated(self):
+        section = _make_two_term_section(
+            paths={"base": self.base_path,
+                   "delta_T__high": self.hi_path,
+                   "delta_T__low": self.lo_path},
+            flags=["MRCC degenerate-system fallback for delta_Q__high"],
+        )
+        d = build_species_report_dict(
+            section=section,
+            e_elect_kj_per_mol=-200000.0,
+            timestamp="t",
+            arc_version="v",
+            arc_commit="c",
+        )
+        self.assertEqual(len(d["flags"]), 1)
+        self.assertIn("MRCC", d["flags"][0])
+
+    def test_yaml_round_trips(self):
+        out = os.path.join(self.tmp, "sp_composite_report.yml")
+        write_species_report_yaml(
+            path=out,
+            section=self.section,
+            e_elect_kj_per_mol=-200000.0,
+            timestamp="2026-04-30T13:10:32Z",
+            arc_version="1.1.0",
+            arc_commit="74fc4fa5",
+        )
+        self.assertTrue(os.path.exists(out))
+        with open(out) as fh:
+            loaded = yaml.safe_load(fh)
+        self.assertEqual(loaded["species"], "H2O")
+        self.assertEqual(loaded["kind"], "species")
+        self.assertIn("base", loaded)
+        self.assertEqual(len(loaded["terms"]), 1)
+        self.assertEqual(loaded["terms"][0]["label"], "delta_T")
+
+    def test_yaml_writer_creates_parent_directory(self):
+        nested = os.path.join(self.tmp, "Species", "H2O", "sp_composite_report.yml")
+        write_species_report_yaml(
+            path=nested,
+            section=self.section,
+            e_elect_kj_per_mol=-200000.0,
+            timestamp="t",
+            arc_version="v",
+            arc_commit="c",
+        )
+        self.assertTrue(os.path.exists(nested))
+
+    def test_writer_is_deterministic(self):
+        """Two writes with the same inputs produce byte-identical files."""
+        out_a = os.path.join(self.tmp, "a.yml")
+        out_b = os.path.join(self.tmp, "b.yml")
+        for out in (out_a, out_b):
+            write_species_report_yaml(
+                path=out,
+                section=self.section,
+                e_elect_kj_per_mol=-200000.0,
+                timestamp="2026-04-30T13:10:32Z",
+                arc_version="1.1.0",
+                arc_commit="74fc4fa5",
+            )
+        with open(out_a, "rb") as fa, open(out_b, "rb") as fb:
+            self.assertEqual(fa.read(), fb.read())
 
 
 # --------------------------------------------------------------------------- #

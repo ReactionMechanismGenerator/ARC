@@ -42,10 +42,13 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import nbformat
+import yaml
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
+from arc.constants import E_h_kJmol
 from arc.exceptions import InputError
 from arc.level.protocol import CompositeProtocol
+from arc.parser.parser import parse_e_elect
 
 
 # =========================================================================== #
@@ -533,3 +536,151 @@ def _references_cell(sections: List[SpeciesSection]):
         for ref in ordered_refs:
             lines.append(f"- {ref}")
     return _md("\n".join(lines) + "\n", _cell_id("shared", "references"))
+
+
+# =========================================================================== #
+#  build_species_report_dict + write_species_report_yaml                      #
+# =========================================================================== #
+#
+# Per-species YAML report. Companion to the project-level provenance notebook
+# (which serves *independent verification* via Run-All); this writer produces
+# a consumable per-species summary that's readable in plain text and easy to
+# parse from downstream tooling. One file per stationary point, written by
+# the scheduler at composite finalization.
+
+
+def _composite_formula_text(protocol: CompositeProtocol) -> str:
+    """Plain-text version of the composite formula (no LaTeX).
+
+    The notebook uses LaTeX rendering; the YAML report is plain text — readers
+    of ``cat sp_composite_report.yml`` shouldn't see ``\\delta`` macros.
+    """
+    parts = [f"E_{protocol.base.label}"]
+    for term in protocol.corrections:
+        parts.append(term.label)
+    return "E_final = " + " + ".join(parts)
+
+
+def build_species_report_dict(
+    section: SpeciesSection,
+    e_elect_kj_per_mol: float,
+    timestamp: str,
+    arc_version: str,
+    arc_commit: str,
+) -> Dict[str, Any]:
+    """Assemble the per-species sp_composite report as a plain dict.
+
+    All energy values are computed by re-parsing the QM output files referenced
+    in ``section.sub_job_paths`` via :func:`arc.parser.parser.parse_e_elect`
+    (returns kJ/mol), then handed to each :class:`Term` to compute its
+    contribution. The same evaluation path the notebook's "Run All" follows —
+    the values land identically because the protocol is deterministic.
+
+    The caller-supplied ``e_elect_kj_per_mol`` is the value the scheduler
+    recorded on the ``ARCSpecies`` (set during ``_finalize_composite``). We
+    don't recompute the total here; we surface what ARC actually used so any
+    downstream tooling reading this report is consistent with the run's
+    output.yml / restart.yml.
+
+    Parameters
+    ----------
+    section : SpeciesSection
+        The reporting handoff struct populated by the scheduler at
+        finalization. Carries protocol, recipe, sub-job paths, flags.
+    e_elect_kj_per_mol : float
+        The final electronic energy ARC recorded for this species (kJ/mol).
+    timestamp : str
+        ISO-8601 string. Caller supplies for determinism (tests pin it).
+    arc_version, arc_commit : str
+        Provenance identifiers.
+
+    Returns
+    -------
+    dict
+        A plain dict ready for ``yaml.safe_dump`` or
+        :func:`write_species_report_yaml`.
+    """
+    energies_kj = {sl: parse_e_elect(p) for sl, p in section.sub_job_paths.items()}
+
+    base_term = section.protocol.base
+    base_sub_label, base_level = base_term.required_levels()[0]
+    base_block = {
+        "sub_label": base_sub_label,
+        "level": base_level.simple(),
+        "energy_kj_per_mol": energies_kj[base_sub_label],
+        "energy_hartree": energies_kj[base_sub_label] / E_h_kJmol,
+        "path": section.sub_job_paths[base_sub_label],
+    }
+
+    terms_block: List[Dict[str, Any]] = []
+    for term in section.protocol.corrections:
+        contribution_kj = term.evaluate(energies_kj)
+        sub_jobs: List[Dict[str, Any]] = []
+        for sub_label, level in term.required_levels():
+            sub_jobs.append({
+                "sub_label": sub_label,
+                "level": level.simple(),
+                "energy_kj_per_mol": energies_kj[sub_label],
+                "energy_hartree": energies_kj[sub_label] / E_h_kJmol,
+                "path": section.sub_job_paths[sub_label],
+            })
+        terms_block.append({
+            "label": term.label,
+            "type": type(term).__name__,
+            "contribution_kj_per_mol": contribution_kj,
+            "contribution_hartree": contribution_kj / E_h_kJmol,
+            "sub_jobs": sub_jobs,
+        })
+
+    return {
+        "species": section.label,
+        "kind": section.kind,
+        "generated_at": timestamp,
+        "arc_version": arc_version,
+        "arc_commit": arc_commit,
+        "protocol": {
+            "preset": section.preset_name,
+            "reference": section.reference,
+            "formula": _composite_formula_text(section.protocol),
+        },
+        "units": {
+            "energy": "kJ/mol",
+            "energy_alt": "Hartree",
+        },
+        "base": base_block,
+        "terms": terms_block,
+        "final": {
+            "e_elect_kj_per_mol": e_elect_kj_per_mol,
+            "e_elect_hartree": e_elect_kj_per_mol / E_h_kJmol,
+            "e_elect_source": "sp_composite",
+        },
+        "flags": list(section.flags),
+    }
+
+
+def write_species_report_yaml(
+    path: str,
+    section: SpeciesSection,
+    e_elect_kj_per_mol: float,
+    timestamp: str,
+    arc_version: str,
+    arc_commit: str,
+) -> None:
+    """Build and write the per-species sp_composite YAML report.
+
+    Creates the parent directory if missing. Output is deterministic: keys are
+    written in insertion order (Python 3.7+ dicts), flow style is block (the
+    YAML default), and ``sort_keys=False`` preserves the schema's natural
+    reading order (species → protocol → units → base → terms → final → flags).
+    Two writes with the same inputs produce byte-identical files.
+    """
+    report = build_species_report_dict(
+        section=section,
+        e_elect_kj_per_mol=e_elect_kj_per_mol,
+        timestamp=timestamp,
+        arc_version=arc_version,
+        arc_commit=arc_commit,
+    )
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        yaml.safe_dump(report, fh, sort_keys=False, default_flow_style=False)
