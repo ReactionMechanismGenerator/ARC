@@ -36,10 +36,13 @@ import numpy as np
 import pytest
 
 from arc.common import ARC_PATH, almost_equal_coords, get_single_bond_length
-from arc.job.adapters.ts.linear import (LinearAdapter,
+from arc.job.adapters.ts.linear import (GuessRecord,
+                                        LinearAdapter,
+                                        build_ring_scission_ts,
                                         interpolate,
                                         interpolate_addition,
                                         interpolate_isomerization,
+                                        postprocess_isomerization_records,
                                         trivial_fallback_scaffold_sound,
                                         )
 from arc.job.adapters.ts.linear_utils import local_geometry as lg
@@ -5753,6 +5756,146 @@ H       0.97222065   -1.40727159   -1.00427440"""
         Delete all project directories created during these unit tests.
         """
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_linear'), ignore_errors=True)
+
+
+class TestBuildRingScissionTs(unittest.TestCase):
+    """Tests for build_ring_scission_ts (product-side TS for ring-formation/scission)."""
+
+    @classmethod
+    def setUpClass(cls):
+        # Cyclopropane (C3H6): 3 carbons in a ring, 6 H atoms.
+        cls.mol = Molecule().from_smiles('C1CC1')
+        # Approx equilateral C3 with C-C ≈ 1.51 Å (we only need the heavy atoms set up sanely).
+        c_indices = [i for i, a in enumerate(cls.mol.atoms) if a.symbol == 'C']
+        h_indices = [i for i, a in enumerate(cls.mol.atoms) if a.symbol == 'H']
+        cls.c_indices = c_indices
+        cls.h_indices = h_indices
+        # Place carbons in a triangle in xy-plane; H's far away to keep things simple.
+        coords = [None] * len(cls.mol.atoms)
+        coords[c_indices[0]] = (0.0, 0.0, 0.0)
+        coords[c_indices[1]] = (1.51, 0.0, 0.0)
+        coords[c_indices[2]] = (0.755, 1.308, 0.0)
+        # Park H's well outside the ring; geometry doesn't matter for the breaking-bond check.
+        for k, h in enumerate(h_indices):
+            coords[h] = (3.0 + k * 0.5, 0.0, 0.0)
+        cls.product_xyz = {
+            'symbols': tuple(a.symbol for a in cls.mol.atoms),
+            'isotopes': tuple(0 for _ in cls.mol.atoms),
+            'coords': tuple(coords),
+        }
+
+    def test_returns_none_when_no_breaking_bonds(self):
+        self.assertIsNone(build_ring_scission_ts(self.product_xyz, [], mol=self.mol))
+
+    def test_preserves_atom_count(self):
+        ts = build_ring_scission_ts(
+            self.product_xyz,
+            [(self.c_indices[0], self.c_indices[1])],
+            mol=self.mol)
+        self.assertEqual(len(ts['symbols']), len(self.product_xyz['symbols']))
+        self.assertEqual(len(ts['coords']), len(self.product_xyz['coords']))
+
+    def test_breaking_bond_is_stretched(self):
+        i, j = self.c_indices[0], self.c_indices[1]
+        d_p = float(np.linalg.norm(
+            np.array(self.product_xyz['coords'][i]) - np.array(self.product_xyz['coords'][j])))
+        ts = build_ring_scission_ts(self.product_xyz, [(i, j)], weight=0.5,
+                                    stretch_factor=1.8, mol=self.mol)
+        d_ts = float(np.linalg.norm(
+            np.array(ts['coords'][i]) - np.array(ts['coords'][j])))
+        self.assertGreater(d_ts, d_p)
+        # weight=0.5, factor=1.8: target = d_p * (1 + 0.4) = 1.4 * d_p
+        self.assertAlmostEqual(d_ts, d_p * 1.4, places=4)
+
+    def test_weight_zero_gives_product_geometry(self):
+        i, j = self.c_indices[0], self.c_indices[1]
+        ts = build_ring_scission_ts(self.product_xyz, [(i, j)], weight=0.0, mol=self.mol)
+        d_p = float(np.linalg.norm(
+            np.array(self.product_xyz['coords'][i]) - np.array(self.product_xyz['coords'][j])))
+        d_ts = float(np.linalg.norm(
+            np.array(ts['coords'][i]) - np.array(ts['coords'][j])))
+        self.assertAlmostEqual(d_ts, d_p, places=4)
+
+    def test_stretch_factor_scales_with_weight(self):
+        i, j = self.c_indices[0], self.c_indices[1]
+        d_p = float(np.linalg.norm(
+            np.array(self.product_xyz['coords'][i]) - np.array(self.product_xyz['coords'][j])))
+        ts_25 = build_ring_scission_ts(self.product_xyz, [(i, j)],
+                                       weight=0.25, stretch_factor=2.0, mol=self.mol)
+        ts_75 = build_ring_scission_ts(self.product_xyz, [(i, j)],
+                                       weight=0.75, stretch_factor=2.0, mol=self.mol)
+        d_25 = float(np.linalg.norm(
+            np.array(ts_25['coords'][i]) - np.array(ts_25['coords'][j])))
+        d_75 = float(np.linalg.norm(
+            np.array(ts_75['coords'][i]) - np.array(ts_75['coords'][j])))
+        self.assertGreater(d_75, d_25)
+
+
+class TestPostprocessIsomerizationRecords(unittest.TestCase):
+    """Tests for postprocess_isomerization_records (the late-stage filter pipeline)."""
+
+    @classmethod
+    def setUpClass(cls):
+        # Use the simple H + CH4 -> CH3 + H2 reaction; r_mol is methane.
+        cls.r_mol = Molecule().from_smiles('C')
+        cls.r = ARCSpecies(label='R', smiles='C')
+        cls.p = ARCSpecies(label='P', smiles='C')
+        cls.rxn = ARCReaction(r_species=[cls.r], p_species=[cls.p])
+        cls.r.generate_conformers(n_confs=1)
+        cls.r.final_xyz = cls.r.get_xyz()
+
+    def test_empty_input_returns_empty(self):
+        out = postprocess_isomerization_records(
+            unique=[],
+            rxn=self.rxn,
+            r_mol=self.r_mol,
+            ring_sets=[],
+            reactive_all=set(),
+            changing_all=set(),
+            fallback_fb=None,
+            fallback_bb=None,
+            fallback_changed=None,
+        )
+        self.assertEqual(out, [])
+
+    def test_drops_record_with_collision(self):
+        # Two atoms placed on top of each other → colliding_atoms returns True.
+        n = len(self.r_mol.atoms)
+        bad_xyz = {
+            'symbols': tuple(a.symbol for a in self.r_mol.atoms),
+            'isotopes': tuple(0 for _ in range(n)),
+            'coords': tuple((0.0, 0.0, 0.0) for _ in range(n)),
+        }
+        rec = GuessRecord(xyz=bad_xyz, strategy='unit-test-collision')
+        out = postprocess_isomerization_records(
+            unique=[rec],
+            rxn=self.rxn,
+            r_mol=self.r_mol,
+            ring_sets=[],
+            reactive_all=set(),
+            changing_all=set(),
+            fallback_fb=None,
+            fallback_bb=None,
+            fallback_changed=None,
+        )
+        self.assertEqual(out, [])
+
+    def test_clean_record_passes_through(self):
+        # The reactant's own equilibrium geometry should pass every filter.
+        rec = GuessRecord(xyz=self.r.final_xyz, strategy='unit-test-clean')
+        out = postprocess_isomerization_records(
+            unique=[rec],
+            rxn=self.rxn,
+            r_mol=self.r_mol,
+            ring_sets=[],
+            reactive_all=set(),
+            changing_all=set(),
+            fallback_fb=None,
+            fallback_bb=None,
+            fallback_changed=None,
+        )
+        self.assertEqual(len(out), 1)
+        self.assertIs(out[0], rec)
 
 
 if __name__ == '__main__':
