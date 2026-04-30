@@ -31,7 +31,8 @@ from arc.family.family import (ReactionFamily,
                                get_rmg_recommended_family_sets,
                                is_own_reverse,
                                is_reversible,
-                               check_family_name
+                               check_family_name,
+                               read_groups_file_lines,
                                )
 from arc.molecule import Group, Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
@@ -716,6 +717,11 @@ H      -0.83821148   -0.26602407    0.00000000"""
         families = get_all_families(rmg_family_set=['H_Abstraction'])
         self.assertEqual(families, ['H_Abstraction'])
 
+    def test_get_all_families_rejects_unknown_set_name(self):
+        """An unknown family-set string should raise ValueError, not fall through to KeyError."""
+        with self.assertRaises(ValueError):
+            get_all_families(rmg_family_set='not_a_real_family_set', consider_arc_families=False)
+
     def test_get_rmg_recommended_family_sets(self):
         """Test getting RMG recommended family sets"""
         recommended_families = get_rmg_recommended_family_sets()
@@ -1010,7 +1016,7 @@ H       1.24252625    0.91583948   -0.84155142"""
     def test_get_entries(self):
         """Test getting entries from a family"""
         fam_1 = ReactionFamily('1,3_Insertion_ROR')
-        groups_as_lines = fam_1.get_groups_file_as_lines()
+        groups_as_lines = read_groups_file_lines(fam_1.label)
         entries = get_entries(groups_as_lines=groups_as_lines, entry_labels=['doublebond', 'cco_2H'])
         self.assertEqual(entries, {'doublebond': 'OR{Cd_Cdd, Cdd_Cd, Cd_Cd, Sd_Cd, N1dc_N5ddc, N3d_Cd}',
                                    'cco_2H': """1 *1 Cd        u0 {2,D} {3,S} {4,S}
@@ -1031,7 +1037,7 @@ H       1.24252625    0.91583948   -0.84155142"""
         """
         # Korcek_step1: single entry, label contains '(' and ')' and "'"
         fam_step1 = ReactionFamily('Korcek_step1')
-        step1_lines = fam_step1.get_groups_file_as_lines()
+        step1_lines = read_groups_file_lines(fam_step1.label)
         step1_entries = get_entries(groups_as_lines=step1_lines, entry_labels=["RCH(OOH)CH2C(O)R'"])
         self.assertIn("RCH(OOH)CH2C(O)R'", step1_entries)
         adjlist = step1_entries["RCH(OOH)CH2C(O)R'"]
@@ -1042,7 +1048,7 @@ H       1.24252625    0.91583948   -0.84155142"""
 
         # Korcek_step2: single entry with deeply nested parens
         fam_step2 = ReactionFamily('Korcek_step2')
-        step2_lines = fam_step2.get_groups_file_as_lines()
+        step2_lines = read_groups_file_lines(fam_step2.label)
         step2_entries = get_entries(groups_as_lines=step2_lines, entry_labels=["C1(R)(H)(O(OC3(OH)(R'))C2)"])
         self.assertIn("C1(R)(H)(O(OC3(OH)(R'))C2)", step2_entries)
         adjlist2 = step2_entries["C1(R)(H)(O(OC3(OH)(R'))C2)"]
