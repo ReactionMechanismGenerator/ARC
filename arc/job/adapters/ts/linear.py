@@ -157,7 +157,9 @@ if TYPE_CHECKING:
     from arc.reaction import ARCReaction
 
 from arc.job.adapters.ts.linear_utils.geom_utils import (
+    atom_index_map,
     bfs_fragment,
+    canonical_bond,
     mol_to_adjacency,
     split_mol_at_bonds,
 )
@@ -221,6 +223,9 @@ from arc.job.adapters.ts.linear_utils.families import (
 
 
 logger = get_logger()
+
+_ATOM_MAP_NOT_COMPUTED = object()
+_RING_CLOSURE_BESPOKE_FAMILIES = {'Intra_R_Add_Endocyclic', 'Intra_Diels_alder_monocyclic'}
 
 
 @dataclass
@@ -302,7 +307,7 @@ def _has_bivalent_h(xyz_dict: dict) -> bool:
     distance of two or more heavy atoms.
 
     Used as the final post-processing filter in
-    :func:`_postprocess_isomerization_records` to drop guesses where an
+    :func:`postprocess_isomerization_records` to drop guesses where an
     H atom collapsed onto two heavy atoms simultaneously (a bivalent-H
     pathology).
     """
@@ -321,7 +326,7 @@ def _has_bivalent_h(xyz_dict: dict) -> bool:
 def _apply_internal_ch2_cleanup_to_isomerization_record(
         rec: GuessRecord,
         r_mol: Molecule,
-        atom_to_idx_iso: Dict,
+        atom_to_idx_iso: dict,
         ) -> dict:
     """
     Apply the internal-CH₂ local reactive-center cleanup pathway to a
@@ -436,7 +441,7 @@ def _apply_internal_ch2_cleanup_to_isomerization_record(
     return rec.xyz
 
 
-def _postprocess_isomerization_records(unique: list[GuessRecord],
+def postprocess_isomerization_records(unique: list[GuessRecord],
                                        rxn: ARCReaction,
                                        r_mol: Molecule,
                                        ring_sets: list[set[int]],
@@ -547,7 +552,7 @@ def _postprocess_isomerization_records(unique: list[GuessRecord],
     return validated_unique
 
 
-def _finalize_ts_guesses(ts_xyzs: List,
+def _finalize_ts_guesses(ts_xyzs: list,
                           path_spec: ReactionPathSpec | None,
                           rxn: ARCReaction,
                           r_mol: Molecule,
@@ -928,7 +933,7 @@ def _frag_composition_key(uni_mol: Molecule,
     return tuple(sorted(frag_formulas))
 
 
-def _build_ring_scission_ts(product_xyz: dict,
+def build_ring_scission_ts(product_xyz: dict,
                             breaking_bonds: list[tuple[int, int]],
                             weight: float = 0.5,
                             stretch_factor: float = 1.8,
@@ -1081,7 +1086,7 @@ def _get_ring_preservation_bonds(mol: Molecule,
         for bonded_atom in atom.edges:
             bonded_idx = mol.atoms.index(bonded_atom)
             if bonded_idx in ring_set and bonded_idx not in reactive_core:
-                bond_pair = (min(reactive_idx, bonded_idx), max(reactive_idx, bonded_idx))
+                bond_pair = canonical_bond(reactive_idx, bonded_idx)
                 if bond_pair in changing_bonds:
                     continue
                 ring_bond_pairs.append((bonded_idx, reactive_idx))
@@ -1123,7 +1128,7 @@ def _fix_broken_ring_bonds(xyz: dict,
         for ai in ring_set:
             for ba in r_mol.atoms[ai].edges:
                 bi = r_mol.atoms.index(ba)
-                if bi in ring_set and (min(ai, bi), max(ai, bi)) in changing_bonds:
+                if bi in ring_set and canonical_bond(ai, bi) in changing_bonds:
                     ring_has_changing_bond = True
                     break
             if ring_has_changing_bond:
@@ -1135,7 +1140,7 @@ def _fix_broken_ring_bonds(xyz: dict,
             for bonded_atom in atom.edges:
                 bonded_idx = r_mol.atoms.index(bonded_atom)
                 if bonded_idx > atom_idx and bonded_idx in ring_set:
-                    pair = (min(atom_idx, bonded_idx), max(atom_idx, bonded_idx))
+                    pair = canonical_bond(atom_idx, bonded_idx)
                     if pair in changing_bonds:
                         continue
                     dist = float(np.linalg.norm(coords[atom_idx] - coords[bonded_idx]))
@@ -1227,8 +1232,8 @@ def _fix_rh_add_motif(xyz: dict,
         if z_idx is None:
             continue
         # Verify X-Z is a forming bond (ring closure).
-        xz = (min(x_idx, z_idx), max(x_idx, z_idx))
-        if not any((min(a, b), max(a, b)) == xz for a, b in forming_bonds):
+        xz = canonical_bond(x_idx, z_idx)
+        if not any(canonical_bond(a, b) == xz for a, b in forming_bonds):
             continue
 
         # Skip if X-Z is too far apart to be closing.
@@ -1558,13 +1563,13 @@ def interpolate_addition(rxn: ARCReaction,
 
     # Bonds present in the unimolecular species' graph (used by both
     # template-guided and fragmentation paths).
-    atom_to_idx = {atom: idx for idx, atom in enumerate(uni_mol.atoms)}
+    atom_to_idx = atom_index_map(uni_mol)
     uni_bond_set: set[tuple[int, int]] = set()
     for atom in uni_mol.atoms:
         idx_a = atom_to_idx[atom]
         for neighbor in atom.edges:
             idx_b = atom_to_idx[neighbor]
-            uni_bond_set.add((min(idx_a, idx_b), max(idx_a, idx_b)))
+            uni_bond_set.add(canonical_bond(idx_a, idx_b))
 
     # ----- Strategy 1: template-guided (product_dicts) -----
     for i, product_dict in enumerate(rxn.product_dicts):
@@ -1588,7 +1593,7 @@ def interpolate_addition(rxn: ARCReaction,
             all_reactive_uni = [(min(atom_map[a], atom_map[b]),
                                  max(atom_map[a], atom_map[b])) for a, b in all_reactive_r]
         else:
-            all_reactive_uni = [(min(a, b), max(a, b)) for a, b in all_reactive_r]
+            all_reactive_uni = [canonical_bond(a, b) for a, b in all_reactive_r]
 
         # Direction-agnostic classification.
         split_bonds = [b for b in all_reactive_uni if b in uni_bond_set]
@@ -1869,8 +1874,8 @@ def interpolate_addition(rxn: ARCReaction,
                 sb_conc = [(min(am[a], am[b]), max(am[a], am[b])) for a, b in bb_conc]
                 cb_conc = [(min(am[a], am[b]), max(am[a], am[b])) for a, b in fb_conc]
             else:
-                sb_conc = [(min(a, b), max(a, b)) for a, b in bb_conc]
-                cb_conc = [(min(a, b), max(a, b)) for a, b in fb_conc]
+                sb_conc = [canonical_bond(a, b) for a, b in bb_conc]
+                cb_conc = [canonical_bond(a, b) for a, b in fb_conc]
             split_in_uni = [b for b in sb_conc if b in uni_bond_set]
             cross_in_uni = [b for b in cb_conc if b not in uni_bond_set]
             if len(split_in_uni) >= 2 and cross_in_uni:
@@ -2155,7 +2160,7 @@ def interpolate_addition(rxn: ARCReaction,
                         ai = next(iter(h_singletons[si]))
                         aj = next(iter(h_singletons[sj]))
                         if _h_parent.get(ai) != _h_parent.get(aj):
-                            cross_bonds_frag.append((min(ai, aj), max(ai, aj)))
+                            cross_bonds_frag.append(canonical_bond(ai, aj))
                             break  # one cross bond per cut is enough
                     if cross_bonds_frag:
                         break
@@ -2227,7 +2232,7 @@ def interpolate_addition(rxn: ARCReaction,
                 multi_species=multi_species,
                 label=f'rxn={rxn.label}, frag-fallback-post-migrate',
             )
-            frag_migrations: list[Dict] = [inferred] if inferred else []
+            frag_migrations: list[dict] = [inferred] if inferred else []
 
             # As in the template-guided branch: migrate_h_between_fragments
             # already triangulated the migrating H, so pass migrations=None
@@ -2357,7 +2362,7 @@ def _reactive_heavy_atoms_share_ring(bonds_to_check: list,
                                      ring_sets: list[set[int]],
                                      ) -> bool:
     """Check whether the reactive heavy atoms in any bond share a ring."""
-    atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+    atom_to_idx = atom_index_map(mol)
     for a, b in bonds_to_check:
         ha, hb = a, b
         if symbols[ha] == 'H':
@@ -2496,7 +2501,7 @@ def _enrich_post_migration_path_spec(uni_mol: Molecule,
                                      ts_xyz: dict,
                                      base_breaking: list[tuple[int, int]],
                                      base_forming: list[tuple[int, int]],
-                                     migrations: list[Dict],
+                                     migrations: list[dict],
                                      weight: float,
                                      family: str | None,
                                      label: str,
@@ -2584,7 +2589,7 @@ def _enrich_post_migration_path_spec(uni_mol: Molecule,
         return None
 
     # G2 — donor uniquely identified as a heavy neighbor in the reactant graph.
-    atom_to_idx = {atom: i for i, atom in enumerate(uni_mol.atoms)}
+    atom_to_idx = atom_index_map(uni_mol)
     heavy_nbrs_of_h: set[int] = set()
     for nbr in uni_mol.atoms[h_idx].bonds.keys():
         ni = atom_to_idx[nbr]
@@ -2718,7 +2723,7 @@ def _build_path_context(r_xyz: dict, r_mol: Molecule, op_xyz: dict,
         logger.debug(f'Linear ({label}): dropped ring heavy atoms {drop} '
                      f'from reactive set (large R→P displacement).')
 
-    changing_bonds = {(min(a, b), max(a, b)) for a, b in bb + fb}
+    changing_bonds = {canonical_bond(a, b) for a, b in bb + fb}
     ring_bonds, reactive_xyz_indices = _get_ring_preservation_bonds(
         r_mol, reactive_xyz_indices, changing_bonds, ring_sets)
 
@@ -2838,7 +2843,7 @@ def _strategy_ring_scission(ctx: _PathContext) -> _StrategyResult:
     rc = ring_closure_xyz(ctx.r_xyz, ctx.r_mol, forming_bond=ctx.bb[0])
     if rc is None:
         return _StrategyResult()
-    ts = _build_ring_scission_ts(rc, ctx.bb, ctx.weight, mol=ctx.r_mol)
+    ts = build_ring_scission_ts(rc, ctx.bb, ctx.weight, mol=ctx.r_mol)
     if ts is not None and not colliding_atoms(ts):
         logger.debug(f'Linear ({ctx.label}): used ring-scission builder.')
         return _StrategyResult(guesses=[GuessRecord(xyz=ts, bb=list(ctx.bb), fb=list(ctx.fb),
@@ -3082,7 +3087,7 @@ def _strategy_3center_shift(ctx: _PathContext) -> _StrategyResult:
     if n_heavy_pivot >= 3:
         # Ring/junction pivot — keep it fixed.
         # Step 1: stretch bb_other-pivot (move bb_other away from pivot).
-        ts_3c = _build_ring_scission_ts(
+        ts_3c = build_ring_scission_ts(
             ctx.r_xyz, breaking_bonds=[(bb_other, pivot)],
             weight=ctx.weight, stretch_factor=1.6, mol=ctx.r_mol)
         # Step 2: contract fb_other-pivot; without this the forming bond
@@ -3169,10 +3174,10 @@ def trivial_fallback_scaffold_sound(ts_xyz: dict,
     """
     reactive_pairs: set[tuple[int, int]] = set()
     for a, b in list(breaking_bonds) + list(forming_bonds):
-        reactive_pairs.add((min(a, b), max(a, b)))
+        reactive_pairs.add(canonical_bond(a, b))
     syms = ts_xyz['symbols']
     coords = np.array(ts_xyz['coords'], dtype=float)
-    atom_to_idx = {atom: idx for idx, atom in enumerate(r_mol.atoms)}
+    atom_to_idx = atom_index_map(r_mol)
     for atom in r_mol.atoms:
         i = atom_to_idx[atom]
         for nbr in atom.bonds:
@@ -3308,14 +3313,13 @@ def interpolate_isomerization(rxn: ARCReaction,
     r_mol = rxn.r_species[0].mol
     # Defer the global atom map: only compute on per-path fallback or
     # for the trivial-map path. Sentinel distinguishes "not computed" from None.
-    _SENTINEL = object()
-    initial_atom_map = _SENTINEL
+    initial_atom_map = _ATOM_MAP_NOT_COMPUTED
     op_xyz_fallback: dict | None = None
 
     def _ensure_global_atom_map():
         """Lazily compute the global atom map and ordered-product fallback XYZ."""
         nonlocal initial_atom_map, op_xyz_fallback
-        if initial_atom_map is not _SENTINEL:
+        if initial_atom_map is not _ATOM_MAP_NOT_COMPUTED:
             return
         initial_atom_map = rxn.atom_map
         try:
@@ -3372,7 +3376,6 @@ def interpolate_isomerization(rxn: ARCReaction,
         # Ring-closure bespoke route for families where map_rxn commonly
         # fails but the forming-bond topology is known from product_dicts.
         # Bypasses the atom map via ring_closure_xyz + postprocess_ts_guess.
-        _RING_CLOSURE_BESPOKE_FAMILIES = {'Intra_R_Add_Endocyclic', 'Intra_Diels_alder_monocyclic'}
         if path_family in _RING_CLOSURE_BESPOKE_FAMILIES and fb and not bb:
             for forming_bond in fb:
                 rc_xyz = ring_closure_xyz(r_xyz, r_mol, forming_bond=forming_bond)
@@ -3396,7 +3399,7 @@ def interpolate_isomerization(rxn: ARCReaction,
         # monocycle). Bypass the atom map and stretch both breaking
         # bonds directly.
         if path_family == 'Intra_Retro_Diels_alder_bicyclic' and bb and not fb:
-            ts_da = _build_ring_scission_ts(
+            ts_da = build_ring_scission_ts(
                 r_xyz, breaking_bonds=list(bb),
                 weight=weight, stretch_factor=1.8, mol=r_mol)
             if ts_da is not None and not colliding_atoms(ts_da):
@@ -3416,7 +3419,7 @@ def interpolate_isomerization(rxn: ARCReaction,
             logger.debug(f'Linear (rxn={rxn.label}, path={i}): map_rxn raised {type(e).__name__}: {e}; skipping path.')
             continue
         if atom_map is not None:
-            if initial_atom_map is _SENTINEL:
+            if initial_atom_map is _ATOM_MAP_NOT_COMPUTED:
                 initial_atom_map = atom_map
             op_xyz = order_xyz_by_atom_map(xyz=rxn.p_species[0].get_xyz(), atom_map=atom_map)
             # Reorder p_mol to reactant indexing so the Type-P Z-matrix
@@ -3630,17 +3633,17 @@ def interpolate_isomerization(rxn: ARCReaction,
                     ia = r_mol.atoms.index(atom)
                     for nbr in atom.bonds:
                         ib = r_mol.atoms.index(nbr)
-                        r_bond_set.add((min(ia, ib), max(ia, ib)))
+                        r_bond_set.add(canonical_bond(ia, ib))
                 p_bond_set: set[tuple[int, int]] = set()
                 for atom in p_mol.atoms:
                     ia = p_mol.atoms.index(atom)
                     for nbr in atom.bonds:
                         ib = p_mol.atoms.index(nbr)
-                        p_bond_set.add((min(ia, ib), max(ia, ib)))
+                        p_bond_set.add(canonical_bond(ia, ib))
                 fb = [(i, j) for i, j in fb
-                      if (min(i, j), max(i, j)) not in r_bond_set]
+                      if canonical_bond(i, j) not in r_bond_set]
                 bb = [(i, j) for i, j in bb
-                      if (min(i, j), max(i, j)) not in p_bond_set]
+                      if canonical_bond(i, j) not in p_bond_set]
             else:
                 # The identity atom map can misassign H atoms; spurious
                 # H-bond changes inflate the reactive set. Filter to
@@ -3667,7 +3670,7 @@ def interpolate_isomerization(rxn: ARCReaction,
                 for idx in list(reactive_xyz_indices):
                     for nbr in r_mol.atoms[idx].bonds:
                         reactive_xyz_indices.add(atom_to_idx_fb[nbr])
-                changing_bonds_fb = {(min(a, b), max(a, b)) for a, b in bb + fb}
+                changing_bonds_fb = {canonical_bond(a, b) for a, b in bb + fb}
                 ring_bonds_fb, reactive_xyz_indices = _get_ring_preservation_bonds(
                     r_mol, reactive_xyz_indices, changing_bonds_fb, _ring_sets)
 
@@ -3993,7 +3996,7 @@ def interpolate_isomerization(rxn: ARCReaction,
         else:
             unique.append(GuessRecord(xyz=xyz, strategy='unknown'))
 
-    unique = _postprocess_isomerization_records(unique=unique,
+    unique = postprocess_isomerization_records(unique=unique,
                                                 rxn=rxn,
                                                 r_mol=r_mol,
                                                 ring_sets=_ring_sets,
@@ -4010,7 +4013,7 @@ def interpolate_isomerization(rxn: ARCReaction,
     if not unique:
         bespoke = _try_bespoke_family_fallbacks(r_xyz, r_mol, rxn)
         if bespoke:
-            unique = _postprocess_isomerization_records(unique=bespoke,
+            unique = postprocess_isomerization_records(unique=bespoke,
                                                         rxn=rxn,
                                                         r_mol=r_mol,
                                                         ring_sets=_ring_sets,
