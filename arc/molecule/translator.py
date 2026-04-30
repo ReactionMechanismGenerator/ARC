@@ -553,7 +553,11 @@ def _write(mol, identifier_type, backend):
             logger.warning(f"Unexpected error from backend '{option}': {e}")
             continue
 
-    logger.error(f"Unable to generate identifier '{identifier_type}' for this molecule:\n{mol.to_adjacency_list()}")
+    logger.warning(
+        f"Unable to generate identifier '{identifier_type}' for this molecule "
+        f"(structure may be fragmented or carry anomalous formal charges):\n"
+        f"{mol.to_adjacency_list()}"
+    )
     raise ValueError(f"Unable to generate identifier type '{identifier_type}' with backend(s): {backend}")
 
 

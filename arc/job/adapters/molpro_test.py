@@ -462,18 +462,19 @@ int;
     def test_write_input_file_mrcc_routing(self):
         """Methods unsupported by native Molpro but supported by MRCC are routed through the MRCC plugin.
 
-        For an open-shell wavefunction, an additional ``{uccsd}`` step is
-        emitted between the HF block and the MRCC plugin call. Molpro defaults
-        to ROHF for open-shell HF, but MRCC's approximate-CC family
-        (``CCSDT``, ``CCSDT(Q)``, ``CCSDTQ``, ``CCSDTQ(P)``) refuses standard
-        ROHF orbitals with the error::
+        For an open-shell wavefunction, the SCF reference is switched from
+        ``{hf;...}`` (which gives Molpro's ROHF for open-shell) to
+        ``{uhf;...}``. MRCC's approximate-CC family (``CCSDT(Q)``,
+        ``CCSDTQ(P)``, and the perturbative-``(T)`` variants) refuses
+        standard ROHF orbitals with the error::
 
             Approximate CC methods are not implemented for standard ROHF orbitals!
             Use semicanonical orbitals!
 
-        Running ``{uccsd}`` on the ROHF reference produces the semicanonical
-        orbitals MRCC needs as a side effect — they're left on disk and the
-        subsequent ``{mrcc,method=...}`` call picks them up automatically.
+        UHF orbitals are semicanonical by construction (alpha and beta Fock
+        matrices are separately diagonal), saved to the default record 2100.2
+        which MRCC reads — MRCC then reports ``Type=UHF/CANONICAL`` and runs
+        the requested approximate-CC method.
         """
         self.job_mrcc_ccsdt.cpu_cores = 48
         self.job_mrcc_ccsdt.set_input_file_memory()
@@ -481,7 +482,7 @@ int;
         with open(os.path.join(self.job_mrcc_ccsdt.local_path,
                                input_filenames[self.job_mrcc_ccsdt.job_adapter]), 'r') as f:
             content_ccsdt = f.read()
-        # spc1 has multiplicity=3 (open-shell triplet) — uccsd prefix expected.
+        # spc1 has multiplicity=3 (open-shell triplet) — UHF reference expected.
         expected_ccsdt = """***,spc1
 memory,Total=438,m;
 
@@ -496,12 +497,11 @@ basis=cc-pvdz
 
 int;
 
-{hf;
+{uhf;
  maxit,999;
  wf,spin=2,charge=0;
 }
 
-{uccsd}
 {mrcc,method=CCSDT}
 
 
@@ -513,13 +513,12 @@ int;
         # Sanity: the bare directive Molpro rejects must NOT appear on its own line.
         self.assertNotIn('\nccsdt;\n', content_ccsdt)
         self.assertNotIn('\nuccsdt;\n', content_ccsdt)
-        # The uccsd step must come between the HF block and the mrcc plugin call —
-        # not after, not before HF.
-        uccsd_idx = content_ccsdt.index('{uccsd}')
-        hf_close_idx = content_ccsdt.index('}\n\n{uccsd}')
-        mrcc_idx = content_ccsdt.index('{mrcc,method=CCSDT}')
-        self.assertLess(hf_close_idx, uccsd_idx)
-        self.assertLess(uccsd_idx, mrcc_idx)
+        # An earlier (insufficient) fix used `{uccsd}` between HF and MRCC —
+        # this contract has been replaced with UHF, so {uccsd} must NOT appear.
+        self.assertNotIn('{uccsd}', content_ccsdt)
+        # UHF must replace HF as the only SCF reference (no {hf;...} block).
+        self.assertNotIn('{hf;', content_ccsdt)
+        self.assertIn('{uhf;', content_ccsdt)
 
         self.job_mrcc_ccsdtq.cpu_cores = 48
         self.job_mrcc_ccsdtq.set_input_file_memory()
@@ -555,9 +554,11 @@ int;
 """
         self.assertEqual(content_ccsdtq, expected_ccsdtq)
         self.assertNotIn('\nccsdt(q);\n', content_ccsdtq)
-        # spc1 here has multiplicity=1 (closed-shell) — no semicanonical-orbital
-        # prep step is needed and none should be emitted.
+        # spc1 here has multiplicity=1 (closed-shell) — RHF gives canonical
+        # orbitals MRCC accepts directly. No UHF/UCCSD pre-step needed.
         self.assertNotIn('{uccsd}', content_ccsdtq)
+        self.assertNotIn('{uhf;', content_ccsdtq)
+        self.assertIn('{hf;', content_ccsdtq)
 
     def test_set_files(self):
         """Test setting files"""

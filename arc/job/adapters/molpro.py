@@ -61,7 +61,7 @@ ${auxiliary_basis}
 ${cabs}
 int;
 
-{hf;${shift}
+{${hf_method};${shift}
  maxit,999;
  wf,spin=${spin},charge=${charge};
 }
@@ -243,6 +243,7 @@ class MolproAdapter(JobAdapter):
         input_dict['spin'] = self.multiplicity - 1
         input_dict['xyz'] = xyz_to_str(self.xyz)
         input_dict['orbitals'] = '\ngprint,orbitals;\n'
+        input_dict['hf_method'] = 'hf'  # default; overridden below for open-shell MRCC
 
         if not is_restricted(self):
             input_dict['restricted'] = 'u'
@@ -250,22 +251,28 @@ class MolproAdapter(JobAdapter):
         if self.level.method in MRCC_ROUTED_METHODS:
             # Restriction is implicit from the preceding {hf;...} block; the
             # MRCC plugin call does not accept a 'u'/'r' prefix.
-            mrcc_call = '{mrcc,method=' + self.level.method.upper() + '}'
-            if not is_restricted(self):
-                # Open-shell wavefunction: Molpro emits ROHF for the {hf;...}
-                # block above. MRCC's approximate-CC family (CCSDT, CCSDT(Q),
-                # CCSDTQ, CCSDTQ(P)) refuses standard ROHF orbitals with the
-                # error "Approximate CC methods are not implemented for
-                # standard ROHF orbitals! Use semicanonical orbitals!".
-                # Running {uccsd} on the ROHF reference produces semicanonical
-                # orbitals as a side effect; MRCC then picks them up
-                # automatically. This costs one extra UCCSD pass per sub-job
-                # but is the only way the post-(T) MRCC methods will run for
-                # radicals. {ccsd} on its own would be cheaper but does not
-                # consistently produce SC orbitals across Molpro versions.
-                mrcc_call = '{uccsd}\n' + mrcc_call
-            input_dict['method'] = mrcc_call
+            input_dict['method'] = '{mrcc,method=' + self.level.method.upper() + '}'
             input_dict['restricted'] = ''
+            if not is_restricted(self):
+                # Open-shell wavefunction + MRCC's approximate-CC family
+                # (CCSDT(Q), CCSDTQ(P), and the perturbative-(T) variants)
+                # refuses standard ROHF orbitals:
+                #   "Approximate CC methods are not implemented for standard
+                #    ROHF orbitals! Use semicanonical orbitals!"
+                # Solution: use UHF instead of (RO)HF as the SCF reference.
+                # UHF orbitals are semicanonical by construction (alpha and
+                # beta Fock matrices are separately diagonal) and live at the
+                # default record 2100.2, which MRCC reads. MRCC then reports
+                # ``Type=UHF/CANONICAL`` and accepts.
+                #
+                # An earlier attempt at this fix prepended ``{uccsd}`` to the
+                # MRCC call. {uccsd} does run UCCSD on top of ROHF, but the
+                # post-UCCSD canonical orbitals go to a separate record while
+                # the default 2100.2 still holds the original ROHF orbitals —
+                # MRCC reads 2100.2 by default and complained. Switching the
+                # SCF reference to UHF avoids this orbital-record bookkeeping
+                # entirely.
+                input_dict['hf_method'] = 'uhf'
 
         # Job type specific options
         if self.job_type in ['opt', 'optfreq', 'conf_opt']:
