@@ -38,7 +38,7 @@ from collections.abc import Sequence
 import numpy as np
 
 from arc.common import get_logger, get_single_bond_length
-from arc.job.adapters.ts.linear_utils.geom_utils import split_mol_at_bonds
+from arc.job.adapters.ts.linear_utils.geom_utils import atom_index_map, split_mol_at_bonds
 
 if TYPE_CHECKING:
     from arc.molecule import Molecule
@@ -58,7 +58,7 @@ def identify_h_migration_pairs(xyz: dict,
                                core: set[int],
                                large_prod_atoms: set[int],
                                cross_bonds: list[tuple[int, int]] | None = None,
-                               ) -> list[Dict]:
+                               ) -> list[dict]:
     """
     Determine the (donor, acceptor) heavy atoms for each migrating H.
 
@@ -93,7 +93,7 @@ def identify_h_migration_pairs(xyz: dict,
         return []
     coords = np.asarray(xyz['coords'], dtype=float)
     symbols = xyz['symbols']
-    atom_to_idx = {atom: i for i, atom in enumerate(mol.atoms)}
+    atom_to_idx = atom_index_map(mol)
 
     cross_acceptor: dict[int, int] = {}
     for a, b in (cross_bonds or []):
@@ -104,7 +104,7 @@ def identify_h_migration_pairs(xyz: dict,
 
     core_heavy = sorted(idx for idx in core if symbols[idx] != 'H')
 
-    out: list[Dict] = []
+    out: list[dict] = []
     for h_idx in sorted(migrating_atoms):
         if h_idx >= len(coords):
             continue
@@ -154,7 +154,7 @@ def infer_frag_fallback_h_migration(pre_xyz: dict,
                                     multi_species: Sequence[ARCSpecies] | None,
                                     label: str = '',
                                     displacement_threshold: float = 0.05,
-                                    ) -> Dict | None:
+                                    ) -> dict | None:
     """
     Deterministically infer the single-H migration triple for a
     fragmentation-fallback addition guess.
@@ -231,7 +231,7 @@ def infer_frag_fallback_h_migration(pre_xyz: dict,
     h_idx = moved_h[0]
 
     # ---- S2: exactly one heavy neighbor of the migrated H ----
-    atom_to_idx = {atom: i for i, atom in enumerate(uni_mol.atoms)}
+    atom_to_idx = atom_index_map(uni_mol)
     heavy_nbrs: list[int] = []
     for nbr in uni_mol.atoms[h_idx].bonds.keys():
         ni = atom_to_idx[nbr]

@@ -11,7 +11,14 @@ from collections.abc import Sequence
 import numpy as np
 
 from arc.common import get_logger, get_single_bond_length
-from arc.job.adapters.ts.linear_utils.geom_utils import bfs_path, mol_to_adjacency
+from arc.job.adapters.ts.linear_utils.geom_utils import (
+    atom_index_map,
+    bfs_path,
+    canonical_bond,
+    mol_to_adjacency,
+    two_sphere_intersection,
+    xyz_with_coords,
+)
 from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
 from arc.job.adapters.ts.linear_utils.path_spec import ReactionPathSpec, insertion_ring_extra_stretch, validate_addition_guess
 from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA, has_detached_hydrogen, has_too_many_fragments
@@ -22,6 +29,8 @@ if TYPE_CHECKING:
 
 
 logger = get_logger()
+
+_MAX_LEAVING_GROUP_HEAVY_ATOMS: int = 1
 
 
 # ---------------------------------------------------------------------------
@@ -418,7 +427,7 @@ def find_split_bonds_by_fragmentation(uni_mol: Molecule,
 
     n_atoms = len(uni_mol.atoms)
     adj = mol_to_adjacency(uni_mol)
-    bonds: list[tuple[int, int]] = sorted({(min(a, b), max(a, b)) for a, nbrs in adj.items() for b in nbrs})
+    bonds: list[tuple[int, int]] = sorted({canonical_bond(a, b) for a, nbrs in adj.items() for b in nbrs})
 
     symbols = tuple(atom.element.symbol for atom in uni_mol.atoms)
 
@@ -574,7 +583,7 @@ def map_and_verify_fragments(uni_mol: Molecule,
     # ---- 6. Try all fragment ↔ product permutations ----
     for perm in permutations(range(n_species)):
         all_ok = True
-        iso_per_frag: list[Tuple] = []
+        iso_per_frag: list[tuple] = []
 
         for frag_idx, species_idx in enumerate(perm):
             frag, orig_indices = frag_data[frag_idx]
@@ -670,7 +679,7 @@ def build_concerted_ts(uni_xyz: dict,
     for a, b in split_bonds + cross_bonds:
         ring_atoms.update((a, b))
     strengthen_targets: dict[tuple[int, int], float] = {}
-    atom_to_idx_conc = {atom: idx for idx, atom in enumerate(uni_mol.atoms)}
+    atom_to_idx_conc = atom_index_map(uni_mol)
     for atom in uni_mol.atoms:
         ia = atom_to_idx_conc[atom]
         if ia not in ring_atoms:
@@ -739,9 +748,7 @@ def build_concerted_ts(uni_xyz: dict,
         if not any_collision:
             break
 
-    ts_xyz = {'symbols': symbols,
-              'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
-              'coords': tuple(tuple(float(x) for x in row) for row in coords)}
+    ts_xyz = xyz_with_coords(uni_xyz, coords)
     if colliding_atoms(ts_xyz):
         return None
     return ts_xyz
@@ -875,9 +882,7 @@ def stretch_bond(uni_xyz: dict,
     for idx in small_frag:
         ts_coords[idx] += displacement
 
-    ts_xyz: dict = {'symbols': uni_xyz['symbols'],
-                    'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
-                    'coords': tuple(tuple(float(x) for x in row) for row in ts_coords)}
+    ts_xyz: dict = xyz_with_coords(uni_xyz, ts_coords)
 
     # split_bonds are the forming bonds from the TS perspective (addition direction).
     is_valid, reason = validate_addition_guess(
@@ -1028,9 +1033,7 @@ def try_insertion_ring(uni_xyz: dict,
     for idx in mig_frag:
         ts_coords[idx] += mig_disp
 
-    ts_xyz: dict = {'symbols': uni_xyz['symbols'],
-                    'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
-                    'coords': tuple(tuple(float(c) for c in row) for row in ts_coords)}
+    ts_xyz: dict = xyz_with_coords(uni_xyz, ts_coords)
     is_valid, reason = validate_addition_guess(xyz=ts_xyz, uni_mol=uni_mol, forming_bonds=split_bonds,
                                                label='insertion-ring', path_spec=path_spec)
     if not is_valid:
@@ -1118,9 +1121,7 @@ def stretch_core_from_large(ts_xyz: dict,
     for idx in core:
         coords[idx] += direction * delta
 
-    return {'symbols': ts_xyz['symbols'],
-            'isotopes': ts_xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
-            'coords': tuple(tuple(float(x) for x in row) for row in coords)}
+    return xyz_with_coords(ts_xyz, coords)
 
 
 def migrate_verified_atoms(ts_xyz: dict,
@@ -1158,7 +1159,7 @@ def migrate_verified_atoms(ts_xyz: dict,
     symbols = ts_xyz['symbols']
     coords = np.array(ts_xyz['coords'], dtype=float)
     ts_coords = coords.copy()
-    atom_to_idx = {atom: idx for idx, atom in enumerate(uni_mol.atoms)}
+    atom_to_idx = atom_index_map(uni_mol)
     core_heavy = [idx for idx in core if symbols[idx] != 'H']
 
     # Acceptor may live in any product fragment, not only ``core`` (e.g.
@@ -1197,46 +1198,18 @@ def migrate_verified_atoms(ts_xyz: dict,
             dists = np.linalg.norm(core_coords - ts_coords[h_idx], axis=1)
             acceptor = core_heavy[int(dists.argmin())]
 
-        d_pos = ts_coords[donor]
-        a_pos = ts_coords[acceptor]
-        h_pos = ts_coords[h_idx]
-        da_vec = a_pos - d_pos
-        da_dist = float(np.linalg.norm(da_vec))
-        if da_dist < 1e-6:
-            continue
-        da_hat = da_vec / da_dist
-
         d_DH = get_single_bond_length(symbols[donor], symbols[h_idx]) + PAULING_DELTA
         d_AH = get_single_bond_length(symbols[acceptor], symbols[h_idx]) + PAULING_DELTA
 
-        if da_dist <= d_DH + d_AH:
-            # Spheres overlap — triangulate.
-            x = (da_dist ** 2 + d_DH ** 2 - d_AH ** 2) / (2.0 * da_dist)
-            h_sq = d_DH ** 2 - x ** 2
-            h_perp = np.sqrt(max(h_sq, 0.0))
-            proj = d_pos + np.dot(h_pos - d_pos, da_hat) * da_hat
-            perp = h_pos - proj
-            perp_norm = float(np.linalg.norm(perp))
-            if perp_norm > 1e-8:
-                n_perp = perp / perp_norm
-            else:
-                arb = np.array([1.0, 0.0, 0.0])
-                if abs(np.dot(da_hat, arb)) > 0.9:
-                    arb = np.array([0.0, 1.0, 0.0])
-                n_perp = np.cross(da_hat, arb)
-                n_perp /= np.linalg.norm(n_perp)
-            ideal = d_pos + da_hat * x + n_perp * h_perp
-        else:
-            # Spheres don't overlap — place on the D-A axis at d_DH from donor.
-            ideal = d_pos + da_hat * d_DH
-
+        ideal = two_sphere_intersection(
+            ts_coords[donor], d_DH, ts_coords[acceptor], d_AH, ts_coords[h_idx])
+        if ideal is None:
+            continue
         # Direct placement: Cartesian interpolation from the reactant would pass
         # through the donor when the H swings around (e.g. face-to-face on O).
         ts_coords[h_idx] = ideal
 
-    return {'symbols': ts_xyz['symbols'],
-            'isotopes': ts_xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
-            'coords': tuple(tuple(float(x) for x in row) for row in ts_coords)}
+    return xyz_with_coords(ts_xyz, ts_coords)
 
 
 def migrate_h_between_fragments(ts_xyz: dict,
@@ -1277,7 +1250,7 @@ def migrate_h_between_fragments(ts_xyz: dict,
     n_products = len(product_species)
 
     # ---- 1. Build adjacency and fragment ----
-    atom_to_idx = {atom: idx for idx, atom in enumerate(uni_mol.atoms)}
+    atom_to_idx = atom_index_map(uni_mol)
     adj = mol_to_adjacency(uni_mol)
     for a, b in split_bonds:
         adj[a].discard(b)
@@ -1399,55 +1372,28 @@ def migrate_h_between_fragments(ts_xyz: dict,
                 continue
 
             # Triangulate a non-collinear D-H-A to avoid passing through atoms
-            # between donor and acceptor (e.g. the C in a CO₂ group).
+            # between donor and acceptor (e.g. the C in a CO₂ group). Try both
+            # intersection points and pick the one with greater fragment-heavy
+            # clearance; when the spheres don't overlap they collapse to the
+            # same axis point.
             d_pos = ts_coords[donor_heavy]
-            a_pos = ts_coords[nearest_heavy]
             h_pos = ts_coords[h_idx]
-            da_vec = a_pos - d_pos
-            da_dist = float(np.linalg.norm(da_vec))
-            if da_dist < 1e-6:
-                continue
-            da_hat = da_vec / da_dist
-
             d_DH = get_single_bond_length(symbols[donor_heavy], 'H') + PAULING_DELTA
             d_AH = get_single_bond_length(symbols[nearest_heavy], 'H') + PAULING_DELTA
+            cand_plus = two_sphere_intersection(
+                d_pos, d_DH, ts_coords[nearest_heavy], d_AH, h_pos)
+            cand_minus = two_sphere_intersection(
+                d_pos, d_DH, ts_coords[nearest_heavy], d_AH, 2.0 * d_pos - h_pos)
+            if cand_plus is None or cand_minus is None:
+                continue
+            exclude_indices = {h_idx, donor_heavy}
+            clearance_plus = _min_distance_to_heavy_atoms_in_set(
+                cand_plus, fragments[s_fi], ts_coords, symbols, exclude_indices)
+            clearance_minus = _min_distance_to_heavy_atoms_in_set(
+                cand_minus, fragments[s_fi], ts_coords, symbols, exclude_indices)
+            ts_coords[h_idx] = cand_plus if clearance_plus >= clearance_minus else cand_minus
 
-            if da_dist <= d_DH + d_AH:
-                # Spheres overlap → triangulate.
-                x = (da_dist ** 2 + d_DH ** 2 - d_AH ** 2) / (2.0 * da_dist)
-                h_sq = d_DH ** 2 - x ** 2
-                h_perp = np.sqrt(max(h_sq, 0.0))
-
-                proj = d_pos + np.dot(h_pos - d_pos, da_hat) * da_hat
-                perp = h_pos - proj
-                perp_norm = float(np.linalg.norm(perp))
-                if perp_norm > 1e-8:
-                    n_perp = perp / perp_norm
-                else:
-                    ref = np.array([1.0, 0.0, 0.0]) if abs(da_hat[0]) < 0.9 \
-                        else np.array([0.0, 1.0, 0.0])
-                    n_perp = np.cross(da_hat, ref)
-                    n_perp /= np.linalg.norm(n_perp)
-
-                cand_plus = d_pos + x * da_hat + h_perp * n_perp
-                cand_minus = d_pos + x * da_hat - h_perp * n_perp
-
-                # Pick candidate with greater clearance from source-fragment heavies.
-                exclude_indices = {h_idx, donor_heavy}
-                clearance_plus = _min_distance_to_heavy_atoms_in_set(
-                    cand_plus, fragments[s_fi], ts_coords, symbols, exclude_indices)
-                clearance_minus = _min_distance_to_heavy_atoms_in_set(
-                    cand_minus, fragments[s_fi], ts_coords, symbols, exclude_indices)
-                new_h = cand_plus if clearance_plus >= clearance_minus else cand_minus
-            else:
-                # Spheres don't overlap → collinear placement at d_DH from donor.
-                new_h = d_pos + d_DH * da_hat
-
-            ts_coords[h_idx] = new_h
-
-    result = {'symbols': ts_xyz['symbols'],
-              'isotopes': ts_xyz['isotopes'],
-              'coords': tuple(tuple(float(x) for x in row) for row in ts_coords)}
+    result = xyz_with_coords(ts_xyz, ts_coords)
 
     if colliding_atoms(result):
         return ts_xyz
@@ -1525,9 +1471,7 @@ def _reposition_leaving_groups(xyz: dict,
         for idx in leaving_frag:
             coords[idx] += shift
 
-    return {'symbols': xyz['symbols'],
-            'isotopes': xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
-            'coords': tuple(tuple(float(x) for x in row) for row in coords)}
+    return xyz_with_coords(xyz, coords)
 
 
 def apply_intra_frag_contraction(xyz: dict,
@@ -1597,9 +1541,6 @@ def apply_intra_frag_contraction(xyz: dict,
     for sb in split_bonds:
         split_endpoints.update(sb)
 
-    # A fragment with ≤ _MAX_LG_HEAVY heavies across a split bond is a leaving
-    # group (e.g. CH3 in ExoTetCyclic).
-    _MAX_LG_HEAVY = 1
     has_small_leaving_frag = False
     for sb_a, sb_b in split_bonds:
         if frag_id[sb_a] == frag_id[sb_b]:
@@ -1608,7 +1549,7 @@ def apply_intra_frag_contraction(xyz: dict,
                       if frag_id[i] == frag_id[sb_a] and mol.atoms[i].symbol != 'H')
         heavy_b = sum(1 for i in range(n_atoms)
                       if frag_id[i] == frag_id[sb_b] and mol.atoms[i].symbol != 'H')
-        if min(heavy_a, heavy_b) <= _MAX_LG_HEAVY:
+        if min(heavy_a, heavy_b) <= _MAX_LEAVING_GROUP_HEAVY_ATOMS:
             has_small_leaving_frag = True
             break
 
@@ -1732,7 +1673,7 @@ def detect_intra_frag_ring_bonds(mol: Molecule,
                     continue
                 path = bfs_path(adj, a, b)
                 if path is not None and len(path) in product_ring_sizes:
-                    candidates.append(((min(a, b), max(a, b)), path))
+                    candidates.append((canonical_bond(a, b), path))
 
     if not candidates:
         return []

@@ -16,11 +16,13 @@ from arc.species.converter import zmat_to_xyz
 from arc.species.zmat import update_zmat_by_xyz
 
 from arc.job.adapters.ts.linear_utils.geom_utils import (
+    atom_index_map,
     bfs_path,
     downstream,
     rotate_atoms,
     dihedral_deg,
     mol_to_adjacency,
+    xyz_with_coords,
 )
 from arc.job.adapters.ts.linear_utils.math_zmat import average_zmat_params
 from arc.job.adapters.ts.linear_utils.postprocess import (
@@ -57,7 +59,7 @@ def get_path_length(mol: Molecule, src: int, dst: int) -> int | None:
     """Return the shortest-path length (number of bonds) between *src* and *dst*, or None if disconnected."""
     if src == dst:
         return 0
-    atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+    atom_to_idx = atom_index_map(mol)
     queue = deque([(src, 0)])
     visited = {src}
     while queue:
@@ -586,9 +588,7 @@ def get_near_attack_xyz(xyz: dict,
             if abs(delta) > 1e-6:
                 rotate_atoms(coords, s_origin, s_axis, {other_h}, delta)
 
-    new_xyz = copy.deepcopy(xyz)
-    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
-    return new_xyz
+    return xyz_with_coords(xyz, coords)
 
 
 def ring_closure_xyz(xyz: dict,
@@ -1036,9 +1036,7 @@ def ring_closure_xyz(xyz: dict,
             target_len = get_single_bond_length(sym_heavy, 'H')
             coords[h_idx] = coords[idx] + vec * (target_len / cur_len)
 
-    new_xyz = copy.deepcopy(xyz)
-    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
-    return new_xyz
+    return xyz_with_coords(xyz, coords)
 
 
 def build_4center_interchange_ts(r_xyz: dict,
@@ -1102,7 +1100,7 @@ def build_4center_interchange_ts(r_xyz: dict,
     m1, m2 = migrants
     symbols = r_xyz['symbols']
     coords = np.array(r_xyz['coords'], dtype=float)
-    atom_to_idx = {atom: idx for idx, atom in enumerate(r_mol.atoms)}
+    atom_to_idx = atom_index_map(r_mol)
 
     scale = 2.0 * (1.0 - weight)
 

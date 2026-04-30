@@ -68,7 +68,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from arc.common import get_single_bond_length
-from arc.job.adapters.ts.linear_utils.geom_utils import mol_to_adjacency
+from arc.job.adapters.ts.linear_utils.geom_utils import atom_index_map, canonical_bond, mol_to_adjacency
 from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA, validate_ts_guess
 
 if TYPE_CHECKING:
@@ -77,6 +77,7 @@ if TYPE_CHECKING:
 
 HETERO_HEAVY_ATOMS: set[str] = {'N', 'O', 'S', 'P'}
 VALID_ROLES = ('breaking', 'forming', 'changed', 'unchanged_near_core')
+_BFS_DISTANCE_INFINITY: int = 10 ** 9
 
 
 # ---------------------------------------------------------------------------
@@ -85,14 +86,9 @@ VALID_ROLES = ('breaking', 'forming', 'changed', 'unchanged_near_core')
 
 CanonicalBond = tuple[int, int]
 
-def _canon(i: int, j: int) -> CanonicalBond:
-    """Return a canonical (min, max) bond key."""
-    return (i, j) if i <= j else (j, i)
-
-
 def _canon_list(bonds) -> list[CanonicalBond]:
     """Canonicalize and deterministically sort a list of bonds."""
-    return sorted({_canon(int(a), int(b)) for a, b in bonds or []})
+    return sorted({canonical_bond(int(a), int(b)) for a, b in bonds or []})
 
 
 # ---------------------------------------------------------------------------
@@ -101,13 +97,13 @@ def _canon_list(bonds) -> list[CanonicalBond]:
 
 def _bond_order_map(mol: Molecule) -> dict[CanonicalBond, float]:
     """Return a {(min,max) -> bond_order} dict for every bond in *mol*."""
-    atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+    atom_to_idx = atom_index_map(mol)
     out: dict[CanonicalBond, float] = {}
     for atom in mol.atoms:
         ia = atom_to_idx[atom]
         for nbr, bond in atom.bonds.items():
             ib = atom_to_idx[nbr]
-            key = _canon(ia, ib)
+            key = canonical_bond(ia, ib)
             if key not in out:
                 out[key] = float(bond.order)
     return out
@@ -153,7 +149,7 @@ def _compute_changed_bonds(r_mol: Molecule,
     p_orders = _bond_order_map(p_mol)
     out: list[CanonicalBond] = []
     for (i, j), r_order in r_orders.items():
-        key = _canon(i, j)
+        key = canonical_bond(i, j)
         if key in p_orders and abs(r_order - p_orders[key]) > 1e-6:
             out.append(key)
     return sorted(out)
@@ -202,20 +198,19 @@ def _compute_unchanged_near_core(r_mol: Molecule,
 
     reactive_bond_set: set[CanonicalBond] = set()
     for a, b in breaking_bonds:
-        reactive_bond_set.add(_canon(a, b))
+        reactive_bond_set.add(canonical_bond(a, b))
     for a, b in forming_bonds:
-        reactive_bond_set.add(_canon(a, b))
+        reactive_bond_set.add(canonical_bond(a, b))
     for a, b in changed_bonds:
-        reactive_bond_set.add(_canon(a, b))
+        reactive_bond_set.add(canonical_bond(a, b))
 
-    INF = 10 ** 9
     out: list[CanonicalBond] = []
     for u, v in _all_bonds(r_mol):
-        key = _canon(u, v)
+        key = canonical_bond(u, v)
         if key in reactive_bond_set:
             continue
-        du = dist.get(u, INF)
-        dv = dist.get(v, INF)
+        du = dist.get(u, _BFS_DISTANCE_INFINITY)
+        dv = dist.get(v, _BFS_DISTANCE_INFINITY)
         if min(du, dv) <= 1 and max(du, dv) <= 2:
             out.append(key)
     return sorted(out)
@@ -297,7 +292,7 @@ def _is_changed_bond_frontier_exempt(bi: int,
 
 
 def _safe_order(bond_orders: dict[CanonicalBond, float], i: int, j: int) -> float | None:
-    return bond_orders.get(_canon(i, j))
+    return bond_orders.get(canonical_bond(i, j))
 
 
 # ---------------------------------------------------------------------------

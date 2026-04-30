@@ -64,6 +64,12 @@ from collections.abc import Sequence
 import numpy as np
 
 from arc.common import get_logger, get_single_bond_length
+from arc.job.adapters.ts.linear_utils.geom_utils import (
+    h_neighbors_of,
+    heavy_neighbors_of,
+    two_sphere_intersection,
+    xyz_with_coords,
+)
 from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA
 
 if TYPE_CHECKING:
@@ -76,35 +82,6 @@ logger = get_logger()
 # ---------------------------------------------------------------------------
 # Small XYZ helpers
 # ---------------------------------------------------------------------------
-
-def _xyz_with_coords(xyz: dict, coords: np.ndarray) -> dict:
-    """Return a new XYZ dict that copies *xyz* but replaces ``coords``."""
-    return {'symbols': xyz['symbols'],
-            'isotopes': xyz.get('isotopes', tuple(0 for _ in range(len(xyz['symbols'])))),
-            'coords': tuple(tuple(float(x) for x in row) for row in coords)}
-
-
-def _heavy_neighbors(mol: Molecule, atom_idx: int, symbols: tuple[str, ...]) -> list[int]:
-    """Return graph-bonded non-H neighbor indices of ``atom_idx``."""
-    atom_to_idx = {atom: i for i, atom in enumerate(mol.atoms)}
-    neighbors: list[int] = []
-    for nbr in mol.atoms[atom_idx].bonds.keys():
-        ni = atom_to_idx[nbr]
-        if symbols[ni] != 'H':
-            neighbors.append(ni)
-    return neighbors
-
-
-def _h_neighbors(mol: Molecule, atom_idx: int, symbols: tuple[str, ...]) -> list[int]:
-    """Return graph-bonded H neighbor indices of ``atom_idx``."""
-    atom_to_idx = {atom: i for i, atom in enumerate(mol.atoms)}
-    h_idxs: list[int] = []
-    for nbr in mol.atoms[atom_idx].bonds.keys():
-        ni = atom_to_idx[nbr]
-        if symbols[ni] == 'H':
-            h_idxs.append(ni)
-    return h_idxs
-
 
 def _sticky_pairing_arc_cost(src_dirs: Sequence[np.ndarray],
                              target_dirs: Sequence[np.ndarray],
@@ -177,7 +154,7 @@ def regularize_terminal_h_geometry(xyz: dict,
     if center >= len(coords) or symbols[center] == 'H':
         return xyz
     exclude = exclude_atoms or set()
-    h_idxs = [h for h in _h_neighbors(mol, center, symbols) if h not in exclude]
+    h_idxs = [h for h in h_neighbors_of(mol, center, symbols) if h not in exclude]
     if not h_idxs:
         return xyz
 
@@ -200,7 +177,7 @@ def regularize_terminal_h_geometry(xyz: dict,
         changed = True
     if not changed:
         return xyz
-    return _xyz_with_coords(xyz, coords)
+    return xyz_with_coords(xyz, coords)
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +231,7 @@ def orient_h_away_from_axis(xyz: dict,
         if axis_norm < 1e-6:
             continue
         axis_hat = axis / axis_norm
-        for h in _h_neighbors(mol, parent, symbols):
+        for h in h_neighbors_of(mol, parent, symbols):
             if h in exclude:
                 continue
             h_vec = coords[h] - parent_pos
@@ -272,7 +249,7 @@ def orient_h_away_from_axis(xyz: dict,
                 changed = True
     if not changed:
         return xyz
-    return _xyz_with_coords(xyz, coords)
+    return xyz_with_coords(xyz, coords)
 
 
 # ---------------------------------------------------------------------------
@@ -315,14 +292,6 @@ def clean_migrating_h(xyz: dict,
     if donor >= len(coords) or acceptor >= len(coords):
         return xyz
 
-    d_pos = coords[donor]
-    a_pos = coords[acceptor]
-    da_vec = a_pos - d_pos
-    da_dist = float(np.linalg.norm(da_vec))
-    if da_dist < 1e-6:
-        return xyz
-    da_hat = da_vec / da_dist
-
     sbl_dh = get_single_bond_length(symbols[donor], 'H')
     sbl_ah = get_single_bond_length(symbols[acceptor], 'H')
     if sbl_dh is None or sbl_ah is None:
@@ -330,32 +299,12 @@ def clean_migrating_h(xyz: dict,
     d_DH = float(sbl_dh) + PAULING_DELTA
     d_AH = float(sbl_ah) + PAULING_DELTA
 
-    h_pos = coords[h_idx]
-    if da_dist <= d_DH + d_AH:
-        x = (da_dist ** 2 + d_DH ** 2 - d_AH ** 2) / (2.0 * da_dist)
-        h_sq = d_DH ** 2 - x ** 2
-        h_perp = float(np.sqrt(max(h_sq, 0.0)))
-        proj = d_pos + np.dot(h_pos - d_pos, da_hat) * da_hat
-        perp = h_pos - proj
-        perp_norm = float(np.linalg.norm(perp))
-        if perp_norm > 1e-8:
-            n_perp = perp / perp_norm
-        else:
-            arb = np.array([1.0, 0.0, 0.0])
-            if abs(float(np.dot(da_hat, arb))) > 0.9:
-                arb = np.array([0.0, 1.0, 0.0])
-            n_perp = np.cross(da_hat, arb)
-            nrm = float(np.linalg.norm(n_perp))
-            if nrm < 1e-8:
-                return xyz
-            n_perp = n_perp / nrm
-        ideal = d_pos + da_hat * x + n_perp * h_perp
-    else:
-        # Spheres do not overlap: place H on the D–A axis at d_DH from donor.
-        ideal = d_pos + da_hat * d_DH
-
+    ideal = two_sphere_intersection(
+        coords[donor], d_DH, coords[acceptor], d_AH, coords[h_idx])
+    if ideal is None:
+        return xyz
     coords[h_idx] = ideal
-    return _xyz_with_coords(xyz, coords)
+    return xyz_with_coords(xyz, coords)
 
 
 # ---------------------------------------------------------------------------
@@ -607,8 +556,8 @@ def restore_terminal_h_symmetry(xyz: dict,
     if center >= len(coords) or symbols[center] == 'H':
         return xyz
     exclude = exclude_atoms or set()
-    heavy_nbrs = _heavy_neighbors(mol, center, symbols)
-    h_nbrs = [h for h in _h_neighbors(mol, center, symbols) if h not in exclude]
+    heavy_nbrs = heavy_neighbors_of(mol, center, symbols)
+    h_nbrs = [h for h in h_neighbors_of(mol, center, symbols) if h not in exclude]
     if len(heavy_nbrs) != 1:
         return xyz
     if len(h_nbrs) not in (2, 3):
@@ -679,7 +628,7 @@ def restore_terminal_h_symmetry(xyz: dict,
     for h_idx, new_pos in new_positions:
         coords[h_idx] = new_pos
 
-    return _xyz_with_coords(xyz, coords)
+    return xyz_with_coords(xyz, coords)
 
 
 # ---------------------------------------------------------------------------
@@ -1010,7 +959,7 @@ def repair_internal_reactive_ch2(xyz: dict,
     for h_idx, new_pos in new_positions:
         coords[h_idx] = new_pos
 
-    return _xyz_with_coords(xyz, coords)
+    return xyz_with_coords(xyz, coords)
 
 
 # ---------------------------------------------------------------------------
@@ -1019,7 +968,7 @@ def repair_internal_reactive_ch2(xyz: dict,
 
 def apply_reactive_center_cleanup(xyz: dict,
                                   mol: Molecule,
-                                  migrations: list[Dict] | None = None,
+                                  migrations: list[dict] | None = None,
                                   reactive_centers: set[int] | None = None,
                                   exempt_h_indices: set[int] | None = None,
                                   weight: float = 0.5,
@@ -1099,7 +1048,7 @@ def apply_reactive_center_cleanup(xyz: dict,
     """
     if xyz is None:
         return xyz
-    migration_list: list[Dict] = list(migrations or [])
+    migration_list: list[dict] = list(migrations or [])
     centers_set: set[int] = set(reactive_centers or set())
     if not migration_list and not centers_set:
         return xyz
@@ -1144,10 +1093,10 @@ def apply_reactive_center_cleanup(xyz: dict,
                 continue
             if symbols[center] == 'H':
                 continue
-            heavy_nbrs = _heavy_neighbors(mol, center, symbols)
+            heavy_nbrs = heavy_neighbors_of(mol, center, symbols)
             if len(heavy_nbrs) != 1:
                 continue
-            h_nbrs = [h for h in _h_neighbors(mol, center, symbols)
+            h_nbrs = [h for h in h_neighbors_of(mol, center, symbols)
                       if h not in migrating_h_indices]
             if len(h_nbrs) not in (2, 3):
                 continue
@@ -1185,10 +1134,10 @@ def apply_reactive_center_cleanup(xyz: dict,
                 continue
             if symbols[center] == 'H':
                 continue
-            heavy_nbrs = _heavy_neighbors(mol, center, symbols)
+            heavy_nbrs = heavy_neighbors_of(mol, center, symbols)
             if len(heavy_nbrs) != 2:
                 continue  # not internal — terminal centers handled above
-            h_nbrs = [h for h in _h_neighbors(mol, center, symbols)
+            h_nbrs = [h for h in h_neighbors_of(mol, center, symbols)
                       if h not in migrating_h_indices]
             if len(h_nbrs) != 2:
                 continue  # not a CH₂ shell

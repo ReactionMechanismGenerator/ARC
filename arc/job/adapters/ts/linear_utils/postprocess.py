@@ -31,7 +31,12 @@ from collections.abc import Callable, Sequence
 import numpy as np
 
 from arc.common import get_logger, get_single_bond_length
-from arc.job.adapters.ts.linear_utils.geom_utils import dihedral_deg, rotate_atoms
+from arc.job.adapters.ts.linear_utils.geom_utils import (
+    dihedral_deg,
+    rotate_atoms,
+    two_sphere_intersection,
+    xyz_with_coords,
+)
 from arc.species.species import colliding_atoms
 from arc.species.zmat import xyz_to_zmat
 
@@ -168,9 +173,7 @@ def adjust_reactive_bond_distances(xyz: dict,
             coords[a] -= direction * half_push
             coords[b] += direction * half_push
 
-    new_xyz = dict(xyz)
-    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
-    return new_xyz
+    return xyz_with_coords(xyz, coords)
 
 
 def orient_h_on_reactive_centers(xyz: dict,
@@ -278,9 +281,7 @@ def orient_h_on_reactive_centers(xyz: dict,
                 proj = np.dot(v, reactive_dir) * reactive_dir
                 coords[hi] = coords[heavy_idx] + (v - 2.0 * proj)
 
-    new_xyz = dict(xyz)
-    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
-    return new_xyz
+    return xyz_with_coords(xyz, coords)
 
 
 def has_broken_nonreactive_bond(xyz: dict,
@@ -828,47 +829,30 @@ def fix_forming_bond_distances(xyz: dict,
         d_pos = np.array(coords[donor_idx], dtype=float)
         a_pos = np.array(coords[acceptor_atom], dtype=float)
         h_pos = np.array(coords[h_atom], dtype=float)
-        da_vec = a_pos - d_pos
-        da_dist = float(np.linalg.norm(da_vec))
-        if da_dist < 1e-8:
+
+        # Try both intersection points (h_pos picks one side; mirroring h_pos
+        # through the donor picks the opposite side); keep the one with greater
+        # backbone clearance. When the spheres don't overlap the two candidates
+        # collapse to the same axis point so the choice is moot.
+        cand_plus = two_sphere_intersection(d_pos, d_DH, a_pos, d_AH, h_pos)
+        cand_minus = two_sphere_intersection(d_pos, d_DH, a_pos, d_AH, 2.0 * d_pos - h_pos)
+        if cand_plus is None or cand_minus is None:
             continue
-        da_unit = da_vec / da_dist
+        exclude = {h_atom, donor_idx, acceptor_atom}
+        clearance_plus = _min_distance_to_heavy_backbone(cand_plus, coords, symbols, exclude)
+        clearance_minus = _min_distance_to_heavy_backbone(cand_minus, coords, symbols, exclude)
+        new_h_pos = cand_plus if clearance_plus >= clearance_minus else cand_minus
 
-        if da_dist <= d_DH + d_AH:
-            x = (da_dist ** 2 + d_DH ** 2 - d_AH ** 2) / (2.0 * da_dist)
-            h_sq = d_DH ** 2 - x ** 2
-            h_perp = np.sqrt(max(h_sq, 0.0))
-
-            proj = d_pos + np.dot(h_pos - d_pos, da_unit) * da_unit
-            perp = h_pos - proj
-            perp_norm = float(np.linalg.norm(perp))
-            if perp_norm > 1e-8:
-                n_perp = perp / perp_norm
-            else:
-                ref = np.array([1.0, 0.0, 0.0]) if abs(da_unit[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
-                n_perp = np.cross(da_unit, ref)
-                n_perp /= np.linalg.norm(n_perp)
-
-            cand_plus = d_pos + x * da_unit + h_perp * n_perp
-            cand_minus = d_pos + x * da_unit - h_perp * n_perp
-
-            exclude = {h_atom, donor_idx, acceptor_atom}
-            clearance_plus = _min_distance_to_heavy_backbone(cand_plus, coords, symbols, exclude)
-            clearance_minus = _min_distance_to_heavy_backbone(cand_minus, coords, symbols, exclude)
-            new_h_pos = cand_plus if clearance_plus >= clearance_minus else cand_minus
-
-            for k_idx, sym_k in enumerate(symbols):
-                if k_idx in (h_atom, donor_idx, acceptor_atom) or sym_k == 'H':
-                    continue
-                b_pos = np.array(coords[k_idx], dtype=float)
-                bh_vec = new_h_pos - b_pos
-                bh_dist = float(np.linalg.norm(bh_vec))
-                sbl_bh = get_single_bond_length('H', sym_k)
-                min_dist = max(sbl_bh * 1.5, d_AH + 0.3)
-                if bh_dist < min_dist and bh_dist > 1e-8:
-                    new_h_pos = b_pos + min_dist * (bh_vec / bh_dist)
-        else:
-            new_h_pos = d_pos + d_DH * da_unit
+        for k_idx, sym_k in enumerate(symbols):
+            if k_idx in (h_atom, donor_idx, acceptor_atom) or sym_k == 'H':
+                continue
+            b_pos = np.array(coords[k_idx], dtype=float)
+            bh_vec = new_h_pos - b_pos
+            bh_dist = float(np.linalg.norm(bh_vec))
+            sbl_bh = get_single_bond_length('H', sym_k)
+            min_dist = max(sbl_bh * 1.5, d_AH + 0.3)
+            if bh_dist < min_dist and bh_dist > 1e-8:
+                new_h_pos = b_pos + min_dist * (bh_vec / bh_dist)
 
         clash = False
         for k, sym_k in enumerate(symbols):
@@ -880,9 +864,7 @@ def fix_forming_bond_distances(xyz: dict,
         if not clash:
             coords[h_atom] = tuple(float(v) for v in new_h_pos)
 
-    new_xyz = dict(xyz)
-    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
-    return new_xyz
+    return xyz_with_coords(xyz, coords)
 
 
 def fix_nonreactive_h_distances(xyz: dict,
@@ -936,9 +918,7 @@ def fix_nonreactive_h_distances(xyz: dict,
             new_h_pos = heavy_pos + sbl * (vec / dist)
             coords[i] = tuple(float(v) for v in new_h_pos)
 
-    new_xyz = dict(xyz)
-    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
-    return new_xyz
+    return xyz_with_coords(xyz, coords)
 
 
 def fix_crowded_h_atoms(xyz: dict,
@@ -1089,9 +1069,7 @@ def fix_crowded_h_atoms(xyz: dict,
                                                 + np.sin(dih) * perp2))
                 coords[h_idx] = heavy_pos + sbl * h_dir
 
-    new_xyz = dict(xyz)
-    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
-    return new_xyz
+    return xyz_with_coords(xyz, coords)
 
 
 def fix_h_nonbonded_clashes(xyz: dict,
@@ -1212,9 +1190,7 @@ def fix_h_nonbonded_clashes(xyz: dict,
             if best_pos is not None:
                 coords[i] = best_pos
 
-    new_xyz = dict(xyz)
-    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
-    return new_xyz
+    return xyz_with_coords(xyz, coords)
 
 
 def _get_migrating_group_info(xyz: dict,
@@ -1385,9 +1361,7 @@ def fix_migrating_group_umbrella(xyz: dict,
             if proj < 0:
                 coords[h_idx] = mig_pos + (v_h - 2.0 * proj * n)
 
-    new_xyz = dict(xyz)
-    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
-    return new_xyz
+    return xyz_with_coords(xyz, coords)
 
 
 def stagger_donor_terminal_h(xyz: dict,
@@ -1475,9 +1449,7 @@ def stagger_donor_terminal_h(xyz: dict,
             if abs(delta) > 1e-6:
                 rotate_atoms(coords, origin, axis, {other_idx}, delta)
 
-    new_xyz = dict(xyz)
-    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
-    return new_xyz
+    return xyz_with_coords(xyz, coords)
 
 
 def build_zmat_with_retry(xyz: dict,
@@ -1641,9 +1613,7 @@ def _repair_crowded_ch2(xyz: dict,
         changed = True
 
     if changed:
-        xyz = {'symbols': symbols,
-               'isotopes': xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
-               'coords': tuple(tuple(float(c) for c in row) for row in coords)}
+        xyz = xyz_with_coords(xyz, coords)
     return xyz
 
 
@@ -1788,9 +1758,7 @@ def _orient_donor_h_away_from_acceptor(xyz: dict,
         changed = True
 
     if changed:
-        xyz = {'symbols': symbols,
-               'isotopes': xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
-               'coords': tuple(tuple(float(c) for c in row) for row in coords)}
+        xyz = xyz_with_coords(xyz, coords)
     return xyz
 
 

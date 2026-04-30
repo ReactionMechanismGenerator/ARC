@@ -32,6 +32,52 @@ logger = get_logger()
 # Graph / fragment utilities
 # ---------------------------------------------------------------------------
 
+def canonical_bond(a: int, b: int) -> tuple[int, int]:
+    """Return ``(min(a, b), max(a, b))`` — the canonical key for an undirected bond."""
+    return (a, b) if a <= b else (b, a)
+
+
+def atom_index_map(mol: Molecule) -> dict:
+    """Return a mapping from each ``mol.atoms`` element to its integer index."""
+    return {atom: idx for idx, atom in enumerate(mol.atoms)}
+
+
+def heavy_neighbors_of(mol: Molecule,
+                       atom_idx: int,
+                       symbols: Sequence[str],
+                       ) -> list[int]:
+    """Return graph-bonded non-H neighbor indices of ``atom_idx``."""
+    a2i = atom_index_map(mol)
+    return [a2i[nbr] for nbr in mol.atoms[atom_idx].bonds
+            if symbols[a2i[nbr]] != 'H']
+
+
+def h_neighbors_of(mol: Molecule,
+                   atom_idx: int,
+                   symbols: Sequence[str],
+                   ) -> list[int]:
+    """Return graph-bonded H neighbor indices of ``atom_idx``."""
+    a2i = atom_index_map(mol)
+    return [a2i[nbr] for nbr in mol.atoms[atom_idx].bonds
+            if symbols[a2i[nbr]] == 'H']
+
+
+def xyz_with_coords(xyz: dict, coords: np.ndarray) -> dict:
+    """
+    Return a new XYZ dict copying ``xyz`` with ``coords`` replaced.
+
+    All keys of ``xyz`` are preserved (e.g. ``symbols``, ``isotopes``,
+    plus any extra keys). The ``coords`` entry is replaced with a
+    tuple-of-tuples of floats. If ``isotopes`` is absent it is filled in
+    with all-zeros of length ``len(symbols)``.
+    """
+    out = dict(xyz)
+    if 'isotopes' not in out:
+        out['isotopes'] = tuple(0 for _ in range(len(xyz['symbols'])))
+    out['coords'] = tuple(tuple(float(x) for x in row) for row in coords)
+    return out
+
+
 def mol_to_adjacency(mol: Molecule) -> dict[int, set[int]]:
     """
     Build an ``{atom_index: {neighbor_indices}}`` adjacency dict from the molecular graph.
@@ -45,13 +91,12 @@ def mol_to_adjacency(mol: Molecule) -> dict[int, set[int]]:
     Returns:
         Adjacency dict keyed by atom index.
     """
-    atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+    a2i = atom_index_map(mol)
     adj: dict[int, set[int]] = {i: set() for i in range(len(mol.atoms))}
     for atom in mol.atoms:
-        ia = atom_to_idx[atom]
+        ia = a2i[atom]
         for nbr in atom.bonds:
-            ib = atom_to_idx[nbr]
-            adj[ia].add(ib)
+            adj[ia].add(a2i[nbr])
     return adj
 
 
@@ -225,3 +270,78 @@ def dihedral_deg(p1: np.ndarray, p2: np.ndarray,
     if np.dot(np.cross(n1, n2), b2) < 0:
         angle = -angle
     return angle
+
+
+def two_sphere_intersection(center1: np.ndarray,
+                            r1: float,
+                            center2: np.ndarray,
+                            r2: float,
+                            ref_pos: np.ndarray,
+                            fallback_perp: np.ndarray | None = None,
+                            ) -> np.ndarray | None:
+    """
+    Place a point at the intersection of two spheres around two centers.
+
+    The two spheres' surfaces intersect iff
+    ``|r1 - r2| <= d <= r1 + r2`` where ``d`` is the inter-center distance.
+    The returned point lies on the same side of the inter-center axis as
+    ``ref_pos``.
+
+    When the surfaces do not intersect — either because the spheres are
+    disjoint (``d > r1 + r2``) or because one sphere is fully inside the
+    other (``d < |r1 - r2|``) — the function falls back to a collinear
+    placement at distance ``r1`` from ``center1`` along the inter-center
+    axis. The ``r2`` constraint is then not satisfied; this is the best
+    approximation when no exact solution exists.
+
+    Args:
+        center1 (np.ndarray): The first sphere center, shape ``(3,)``.
+        r1 (float): Radius of the first sphere.
+        center2 (np.ndarray): The second sphere center, shape ``(3,)``.
+        r2 (float): Radius of the second sphere.
+        ref_pos (np.ndarray): Reference point used to pick the side of the
+            inter-center axis.
+        fallback_perp (np.ndarray, optional): Perpendicular direction to
+            fall back on when ``ref_pos`` is collinear with the axis.
+            Need not be unit-length or exactly perpendicular — the
+            function projects it onto the plane perpendicular to the
+            axis. When ``None`` (default) or also collinear with the axis,
+            an arbitrary perpendicular is constructed.
+
+    Returns:
+        np.ndarray | None: The placed point in 3-space, or ``None`` if
+            the inter-center distance is degenerate (< 1e-6).
+    """
+    axis = center2 - center1
+    axis_d = float(np.linalg.norm(axis))
+    if axis_d < 1e-6:
+        return None
+    axis_h = axis / axis_d
+    if abs(r1 - r2) <= axis_d <= r1 + r2:
+        x = (axis_d ** 2 + r1 ** 2 - r2 ** 2) / (2.0 * axis_d)
+        h_sq = r1 ** 2 - x ** 2
+        h_p = float(np.sqrt(max(h_sq, 0.0)))
+    else:
+        x = r1
+        h_p = 0.0
+    proj = center1 + axis_h * np.dot(ref_pos - center1, axis_h)
+    ref_offset = ref_pos - proj
+    ref_norm = float(np.linalg.norm(ref_offset))
+    if ref_norm > 1e-8:
+        p_hat = ref_offset / ref_norm
+    else:
+        if fallback_perp is None:
+            p_hat = np.zeros(3)
+        else:
+            p_hat = fallback_perp.copy()
+            p_hat -= axis_h * np.dot(p_hat, axis_h)
+        pn = float(np.linalg.norm(p_hat))
+        if pn > 1e-8:
+            p_hat /= pn
+        else:
+            arb = np.array([1.0, 0.0, 0.0])
+            if abs(float(np.dot(axis_h, arb))) > 0.9:
+                arb = np.array([0.0, 1.0, 0.0])
+            p_hat = np.cross(axis_h, arb)
+            p_hat /= max(float(np.linalg.norm(p_hat)), 1e-10)
+    return center1 + axis_h * x + p_hat * h_p
