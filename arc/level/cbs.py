@@ -41,7 +41,7 @@ Dunning, *J. Chem. Phys.* **90**, 1007 (1989). DOI: 10.1063/1.456153.
 import ast
 import math
 import re
-from typing import Callable, Dict, Mapping
+from collections.abc import Callable, Mapping
 
 import numpy as np
 
@@ -221,7 +221,7 @@ def martin_3pt(energies: Mapping[int, float]) -> float:
 
 # String → callable registry advertised to user input. New built-in formulas are
 # added by inserting an entry here (and a corresponding test).
-BUILTIN_FORMULAS: Dict[str, Callable[..., float]] = {
+BUILTIN_FORMULAS: dict[str, Callable[..., float]] = {
     "helgaker_corr_2pt": helgaker_corr_2pt,
     "helgaker_hf_2pt": helgaker_hf_2pt,
     "martin_3pt": martin_3pt,

@@ -999,6 +999,20 @@ class Scheduler(object):
                           )
         label = label or reactions[0].ts_species.label
         label = species[0].multi_species if run_multi_species else label
+        # Narrow ``label`` from ``str | list[str]`` to ``str`` for the rest of
+        # this method. The two preceding lines already enforce the invariant —
+        # a list-valued ``label`` arg only reaches this point when
+        # ``run_multi_species`` was True (set iff every species in the list has
+        # ``multi_species`` populated), in which case we just reassigned
+        # ``label`` to the (single) ``species[0].multi_species`` string. Stating
+        # the invariant explicitly satisfies static analyzers (``self.job_dict[label]``
+        # downstream would TypeError on an unhashable list) and catches a real
+        # bug if the multi-species dispatch ever leaks a list through.
+        assert isinstance(label, str), (
+            f"run_job: expected ``label`` to be str by this point, got "
+            f"{type(label).__name__} ({label!r}). This indicates the "
+            f"multi-species dispatch above didn't collapse a list label."
+        )
         if label not in self.job_dict.keys():
             self.job_dict[label] = dict()
         if conformer is None and tsg is None:

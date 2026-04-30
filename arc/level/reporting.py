@@ -39,7 +39,7 @@ import hashlib
 import os
 import pprint
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import nbformat
 import yaml
@@ -111,11 +111,11 @@ class SpeciesSection:
         enumerate sub-job sub-labels and term types at write time; the
         notebook reconstructs its own protocol from ``recipe`` via
         :meth:`CompositeProtocol.from_user_input` when executed.
-    sub_job_paths : Dict[str, str]
+    sub_job_paths : dict[str, str]
         Mapping ``sub_label`` → absolute path to the QM output file. Rendered
         into the notebook as paths relative to the notebook directory when
         possible, absolute when the path escapes the notebook's tree.
-    flags : List[str]
+    flags : list[str]
         Human-readable warnings surfaced by the scheduler (e.g. "δT exceeds
         10 kJ/mol, potential single-reference breakdown"). Rendered verbatim
         in the section's interpretation markdown cell.
@@ -123,12 +123,12 @@ class SpeciesSection:
 
     label: str
     kind: str
-    preset_name: Optional[str]
+    preset_name: str | None
     reference: str
-    recipe: Dict[str, Any]
+    recipe: dict[str, Any]
     protocol: CompositeProtocol
-    sub_job_paths: Dict[str, str]
-    flags: List[str] = field(default_factory=list)
+    sub_job_paths: dict[str, str]
+    flags: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.kind not in _VALID_KINDS:
@@ -169,7 +169,7 @@ def write_composite_notebook(
     project_name: str,
     arc_version: str,
     timestamp: str,
-    sections: List[SpeciesSection],
+    sections: list[SpeciesSection],
     notebook_dir: str,
 ) -> None:
     """Write (or overwrite) the project-level composite-provenance notebook.
@@ -187,7 +187,7 @@ def write_composite_notebook(
         ISO-8601 generation timestamp. Accepted as a parameter (rather than
         read from the clock) so reruns produce byte-identical output — useful
         for snapshot testing and for idempotent regeneration across a run.
-    sections : List[SpeciesSection]
+    sections : list[SpeciesSection]
         One section per species/TS that has finalized its composite. The
         writer sorts species-first / TS-second with alphabetical ordering
         within each group, independent of caller order.
@@ -211,7 +211,7 @@ def write_composite_notebook(
 
     ordered = _sort_sections(sections)
 
-    cells: List[Any] = []
+    cells: list[Any] = []
 
     # --- Top-level shared cells ------------------------------------------- #
     cells.append(_title_banner_cell(
@@ -248,7 +248,7 @@ def write_composite_notebook(
 # --------------------------------------------------------------------------- #
 
 
-def _sort_sections(sections: List[SpeciesSection]) -> List[SpeciesSection]:
+def _sort_sections(sections: list[SpeciesSection]) -> list[SpeciesSection]:
     """Species first (alphabetical), then TS (alphabetical)."""
     species = sorted((s for s in sections if s.kind == "species"), key=lambda s: s.label)
     ts = sorted((s for s in sections if s.kind == "ts"), key=lambda s: s.label)
@@ -288,7 +288,7 @@ def _code(source: str, cell_id: str):
 
 
 def _title_banner_cell(project_name: str, arc_version: str, timestamp: str,
-                       sections: List[SpeciesSection]):
+                       sections: list[SpeciesSection]):
     n_species = sum(1 for s in sections if s.kind == "species")
     n_ts = sum(1 for s in sections if s.kind == "ts")
     source = (
@@ -310,7 +310,7 @@ def _title_banner_cell(project_name: str, arc_version: str, timestamp: str,
     return _md(source, _cell_id("shared", "title"))
 
 
-def _toc_cell(sections: List[SpeciesSection]):
+def _toc_cell(sections: list[SpeciesSection]):
     lines = ["### Table of contents\n"]
     for s in sections:
         kind_label = "Species" if s.kind == "species" else "TS"
@@ -354,7 +354,7 @@ def _setup_cell():
 # --------------------------------------------------------------------------- #
 
 
-def _section_cells(section: SpeciesSection, notebook_dir: str) -> List[Any]:
+def _section_cells(section: SpeciesSection, notebook_dir: str) -> list[Any]:
     key = f"{section.kind}:{section.label}"
     kind_label = "Species" if section.kind == "species" else "TS"
     return [
@@ -517,14 +517,14 @@ else:
 '''
 
 
-def _project_summary_code_cell(sections: List[SpeciesSection]):
+def _project_summary_code_cell(sections: list[SpeciesSection]):
     return _code(_SUMMARY_CODE, _cell_id("shared", "summary_code"))
 
 
-def _references_cell(sections: List[SpeciesSection]):
+def _references_cell(sections: list[SpeciesSection]):
     # Deduplicate references while preserving order of first appearance.
     seen = set()
-    ordered_refs: List[str] = []
+    ordered_refs: list[str] = []
     for s in sections:
         if s.reference and s.reference not in seen:
             seen.add(s.reference)
@@ -567,7 +567,7 @@ def build_species_report_dict(
     timestamp: str,
     arc_version: str,
     arc_commit: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Assemble the per-species sp_composite report as a plain dict.
 
     All energy values are computed by re-parsing the QM output files referenced
@@ -612,10 +612,10 @@ def build_species_report_dict(
         "path": section.sub_job_paths[base_sub_label],
     }
 
-    terms_block: List[Dict[str, Any]] = []
+    terms_block: list[dict[str, Any]] = []
     for term in section.protocol.corrections:
         contribution_kj = term.evaluate(energies_kj)
-        sub_jobs: List[Dict[str, Any]] = []
+        sub_jobs: list[dict[str, Any]] = []
         for sub_label, level in term.required_levels():
             sub_jobs.append({
                 "sub_label": sub_label,

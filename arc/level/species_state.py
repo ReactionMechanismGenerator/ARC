@@ -22,7 +22,7 @@ explicit string state in ``sp_composite_state`` and either ``None`` (for
 (for ``"explicit"``) in ``sp_composite``.
 """
 
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING
 
 from arc.exceptions import InputError
 
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from arc.level.protocol import CompositeProtocol
 
 
-SP_COMPOSITE_STATES: Tuple[str, ...] = ("inherit", "opt_out", "explicit")
+SP_COMPOSITE_STATES: tuple[str, ...] = ("inherit", "opt_out", "explicit")
 
 
 class _InheritSentinel:
@@ -68,9 +68,9 @@ INHERIT = _InheritSentinel()
 
 def active_composite_for(
     species_state: str,
-    species_protocol: Optional["CompositeProtocol"],
-    global_protocol: Optional["CompositeProtocol"],
-) -> Optional["CompositeProtocol"]:
+    species_protocol: "CompositeProtocol | None",
+    global_protocol: "CompositeProtocol | None",
+) -> "CompositeProtocol | None":
     """Return the composite protocol to apply to a single species, or ``None``.
 
     Parameters

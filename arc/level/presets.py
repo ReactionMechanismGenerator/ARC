@@ -22,7 +22,8 @@ References
 
 import copy
 import os
-from typing import Any, Dict, List, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any
 
 import yaml
 
@@ -33,7 +34,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _PRESETS_PATH = os.path.join(_HERE, "presets.yml")
 
 
-def _load_presets(path: str) -> Dict[str, Dict[str, Any]]:
+def _load_presets(path: str) -> dict[str, dict[str, Any]]:
     """Load ``presets.yml`` once; return the parsed mapping."""
     with open(path, "r") as fh:
         data = yaml.safe_load(fh) or {}
@@ -43,15 +44,15 @@ def _load_presets(path: str) -> Dict[str, Dict[str, Any]]:
 
 
 # Module-level cache. Loaded once at import time; a single source of truth.
-PRESETS: Dict[str, Dict[str, Any]] = _load_presets(_PRESETS_PATH)
-REGISTERED_PRESET_NAMES: List[str] = sorted(PRESETS.keys())
+PRESETS: dict[str, dict[str, Any]] = _load_presets(_PRESETS_PATH)
+REGISTERED_PRESET_NAMES: list[str] = sorted(PRESETS.keys())
 
 
 # Fields that may appear on a preset term by its ``type`` discriminator.
 # Used to reject typos in preset overrides (e.g. ``delta_T.hihg``). The key
 # ``"base"`` is not a term type — it's the protocol's base level dict, for
 # which we accept any Level-level keyword plus ``label``.
-_ALLOWED_OVERRIDE_FIELDS_BY_TYPE: Dict[str, set] = {
+_ALLOWED_OVERRIDE_FIELDS_BY_TYPE: dict[str, set] = {
     "single_point": {"label", "type", "level"},
     "delta": {"label", "type", "high", "low"},
     "cbs_extrapolation": {"label", "type", "formula", "components", "levels"},
@@ -69,7 +70,7 @@ _ALLOWED_LEVEL_FIELDS = {
 }
 
 
-def _deep_merge_level_dict(target: Dict[str, Any], patch: Dict[str, Any]) -> None:
+def _deep_merge_level_dict(target: dict[str, Any], patch: dict[str, Any]) -> None:
     """Shallow-merge ``patch`` into ``target`` with one level of nesting for
     ``high``/``low``/``level`` — replacing fields of the inner dict rather than
     the whole dict. Mutates ``target`` in place.
@@ -94,8 +95,8 @@ def _deep_merge_level_dict(target: Dict[str, Any], patch: Dict[str, Any]) -> Non
             target[key] = new_val
 
 
-def _validate_override_fields(term_or_base: Dict[str, Any],
-                              patch: Dict[str, Any],
+def _validate_override_fields(term_or_base: dict[str, Any],
+                              patch: dict[str, Any],
                               target_name: str) -> None:
     """Reject typos in override patch keys.
 
@@ -123,9 +124,9 @@ def _validate_override_fields(term_or_base: Dict[str, Any],
 
 
 def _apply_overrides(
-    recipe: Dict[str, Any],
+    recipe: dict[str, Any],
     overrides: Mapping[str, Any],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Merge per-term ``overrides`` into a recipe and return the result.
 
     ``overrides`` is a mapping ``{term_label: {field_name: new_value}}``. The
@@ -173,8 +174,8 @@ def _apply_overrides(
 
 def expand_preset(
     name: str,
-    overrides: Optional[Mapping[str, Any]] = None,
-) -> Dict[str, Any]:
+    overrides: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """Resolve a preset name (with optional overrides) to an independent recipe dict.
 
     Parameters

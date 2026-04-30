@@ -41,7 +41,8 @@ across restarts.
 
 import copy
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from collections.abc import Iterable
+from typing import Any
 
 from arc.exceptions import InputError
 from arc.level.cbs import (
@@ -74,11 +75,11 @@ class Term(ABC):
     label: str
 
     @abstractmethod
-    def required_levels(self) -> List[Tuple[str, Level]]:
+    def required_levels(self) -> list[tuple[str, Level]]:
         """Return ``[(sub_label, Level), ...]`` pairs for every SP this term needs."""
 
     @abstractmethod
-    def evaluate(self, energies: Dict[str, float]) -> float:
+    def evaluate(self, energies: dict[str, float]) -> float:
         """Combine sub-job energies into this term's contribution.
 
         The keys of ``energies`` are the ``sub_label`` strings yielded by
@@ -87,11 +88,11 @@ class Term(ABC):
         """
 
     @abstractmethod
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         """Serialise to a JSON/YAML-friendly dict including a discriminator ``type``."""
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Term":
+    def from_dict(cls, data: dict[str, Any]) -> "Term":
         """Reconstruct a ``Term`` subclass from its serialised dict.
 
         Dispatches on the ``type`` discriminator written by :meth:`as_dict`.
@@ -114,7 +115,7 @@ class Term(ABC):
         )
 
 
-def _coerce_level(value: Union[str, Dict[str, Any], Level]) -> Level:
+def _coerce_level(value: str | dict[str, Any] | Level) -> Level:
     """Accept either a string, dict, or Level; return a Level instance."""
     if isinstance(value, Level):
         return value
@@ -128,19 +129,19 @@ def _coerce_level(value: Union[str, Dict[str, Any], Level]) -> Level:
 class SinglePointTerm(Term):
     """One absolute single-point energy at one level of theory."""
 
-    def __init__(self, label: str, level: Union[str, Dict[str, Any], Level]):
+    def __init__(self, label: str, level: str | dict[str, Any] | Level):
         if not label:
             raise InputError("SinglePointTerm requires a non-empty label.")
         self.label = label
         self.level = _coerce_level(level)
 
-    def required_levels(self) -> List[Tuple[str, Level]]:
+    def required_levels(self) -> list[tuple[str, Level]]:
         return [(self.label, self.level)]
 
-    def evaluate(self, energies: Dict[str, float]) -> float:
+    def evaluate(self, energies: dict[str, float]) -> float:
         return energies[self.label]
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "type": "single_point",
             "label": self.label,
@@ -148,7 +149,7 @@ class SinglePointTerm(Term):
         }
 
     @classmethod
-    def _from_dict(cls, data: Dict[str, Any]) -> "SinglePointTerm":
+    def _from_dict(cls, data: dict[str, Any]) -> "SinglePointTerm":
         return cls(label=data["label"], level=data["level"])
 
 
@@ -162,8 +163,8 @@ class DeltaTerm(Term):
     def __init__(
         self,
         label: str,
-        high: Optional[Union[str, Dict[str, Any], Level]],
-        low: Optional[Union[str, Dict[str, Any], Level]],
+        high: str | dict[str, Any] | Level | None,
+        low: str | dict[str, Any] | Level | None,
     ):
         if not label:
             raise InputError("DeltaTerm requires a non-empty label.")
@@ -179,13 +180,13 @@ class DeltaTerm(Term):
     def _sub(self, suffix: str) -> str:
         return f"{self.label}__{suffix}"
 
-    def required_levels(self) -> List[Tuple[str, Level]]:
+    def required_levels(self) -> list[tuple[str, Level]]:
         return [(self._sub("high"), self.high), (self._sub("low"), self.low)]
 
-    def evaluate(self, energies: Dict[str, float]) -> float:
+    def evaluate(self, energies: dict[str, float]) -> float:
         return energies[self._sub("high")] - energies[self._sub("low")]
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "type": "delta",
             "label": self.label,
@@ -194,7 +195,7 @@ class DeltaTerm(Term):
         }
 
     @classmethod
-    def _from_dict(cls, data: Dict[str, Any]) -> "DeltaTerm":
+    def _from_dict(cls, data: dict[str, Any]) -> "DeltaTerm":
         return cls(label=data["label"], high=data["high"], low=data["low"])
 
 
@@ -241,7 +242,7 @@ class CBSExtrapolationTerm(Term):
         self,
         label: str,
         formula: str,
-        levels: List[Union[str, Dict[str, Any], Level]],
+        levels: list[str | dict[str, Any] | Level],
         components: str = "total",
     ):
         if not label:
@@ -282,7 +283,7 @@ class CBSExtrapolationTerm(Term):
     # construction time catches "martin_3pt with 2 levels" before a sub-job
     # ever runs. When new built-ins are added, update this table alongside
     # the entry in arc.level.cbs.BUILTIN_FORMULAS.
-    _BUILTIN_FORMULA_ARITY: Dict[str, int] = {
+    _BUILTIN_FORMULA_ARITY: dict[str, int] = {
         "helgaker_corr_2pt": 2,
         "helgaker_hf_2pt": 2,
         "martin_3pt": 3,
@@ -336,14 +337,14 @@ class CBSExtrapolationTerm(Term):
     def _sub(self, cardinal: int) -> str:
         return f"{self.label}__card_{cardinal}"
 
-    def required_levels(self) -> List[Tuple[str, Level]]:
+    def required_levels(self) -> list[tuple[str, Level]]:
         return [(self._sub(c), lvl) for c, lvl in zip(self._cardinals, self.levels)]
 
-    def evaluate(self, energies: Dict[str, float]) -> float:
+    def evaluate(self, energies: dict[str, float]) -> float:
         cardinal_to_energy = {c: energies[self._sub(c)] for c in self._cardinals}
         return self._formula_callable(cardinal_to_energy)
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "type": "cbs_extrapolation",
             "label": self.label,
@@ -353,7 +354,7 @@ class CBSExtrapolationTerm(Term):
         }
 
     @classmethod
-    def _from_dict(cls, data: Dict[str, Any]) -> "CBSExtrapolationTerm":
+    def _from_dict(cls, data: dict[str, Any]) -> "CBSExtrapolationTerm":
         return cls(
             label=data["label"],
             formula=data["formula"],
@@ -388,9 +389,9 @@ class CompositeProtocol:
     def __init__(
         self,
         base: SinglePointTerm,
-        corrections: Optional[List[Term]] = None,
-        preset_name: Optional[str] = None,
-        reference: Optional[str] = None,
+        corrections: list[Term] | None = None,
+        preset_name: str | None = None,
+        reference: str | None = None,
     ):
         if not isinstance(base, SinglePointTerm):
             raise InputError(
@@ -409,7 +410,7 @@ class CompositeProtocol:
         # A collision (e.g. SinglePointTerm(label='delta_T__high') plus a
         # DeltaTerm(label='delta_T', ...) whose 'high' sub-leg also ends up as
         # 'delta_T__high') would overwrite state silently. Reject at construction.
-        sub_labels: List[str] = []
+        sub_labels: list[str] = []
         for term in [base, *corrections]:
             for sub_label, _level in term.required_levels():
                 sub_labels.append(sub_label)
@@ -427,22 +428,22 @@ class CompositeProtocol:
         self.reference = reference
 
     @property
-    def terms(self) -> List[Term]:
+    def terms(self) -> list[Term]:
         """Convenience: ``[base, *corrections]`` in protocol order."""
         return [self.base, *self.corrections]
 
-    def evaluate(self, energies: Dict[str, float]) -> float:
+    def evaluate(self, energies: dict[str, float]) -> float:
         """Combine all sub-job energies into the protocol's electronic energy."""
         return sum(term.evaluate(energies) for term in self.terms)
 
-    def iter_required_jobs(self) -> Iterable[Tuple[str, str, Level]]:
+    def iter_required_jobs(self) -> Iterable[tuple[str, str, Level]]:
         """Yield ``(term_label, sub_label, Level)`` triples for every required SP."""
         for term in self.terms:
             for sub_label, level in term.required_levels():
                 yield (term.label, sub_label, level)
 
-    def as_dict(self) -> Dict[str, Any]:
-        out: Dict[str, Any] = {
+    def as_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
             "base": self.base.as_dict(),
             "corrections": [t.as_dict() for t in self.corrections],
         }
@@ -453,7 +454,7 @@ class CompositeProtocol:
         return out
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CompositeProtocol":
+    def from_dict(cls, data: dict[str, Any]) -> "CompositeProtocol":
         """Inverse of :meth:`as_dict`. Each entry must already include its discriminator."""
         if not isinstance(data, dict) or "base" not in data:
             raise InputError(
@@ -479,7 +480,7 @@ class CompositeProtocol:
         )
 
     @classmethod
-    def from_user_input(cls, raw: Union[str, Dict[str, Any]]) -> "CompositeProtocol":
+    def from_user_input(cls, raw: str | dict[str, Any]) -> "CompositeProtocol":
         """Accept the YAML-shaped user input and produce a validated protocol.
 
         Three forms are accepted:
@@ -498,7 +499,7 @@ class CompositeProtocol:
         arc.exceptions.InputError
             On any malformed input.
         """
-        preset_name: Optional[str] = None
+        preset_name: str | None = None
         if isinstance(raw, str):
             preset_name = raw
             raw = expand_preset(raw)
@@ -549,7 +550,7 @@ class CompositeProtocol:
                 f"SinglePointTerm dict; got {type(base_raw).__name__}."
             )
 
-        corrections: List[Term] = []
+        corrections: list[Term] = []
         for entry in raw.get("corrections", []):
             if not isinstance(entry, dict):
                 raise InputError(
