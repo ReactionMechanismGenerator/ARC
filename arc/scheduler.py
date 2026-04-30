@@ -1706,6 +1706,75 @@ class Scheduler(object):
         else:
             self._finalize_composite(label)
 
+    def _mrcc_degenerate_short_circuit(self, label: str, job) -> bool:
+        """If a composite δ-term high-leg sub-job errored with the
+        ``MRCCDegenerateSystem`` keyword, substitute the sister low-leg's
+        recorded path and advance the composite. Returns ``True`` when the
+        short-circuit was applied so the caller can skip ``troubleshoot_ess``.
+
+        Why this exists: for systems too small to accommodate the requested
+        CC excitation rank (atomic H, H2 at CCSDT(Q), etc.) MRCC's xmrcc
+        bails — there's no determinant space to iterate. The two legs of
+        the δ term are mathematically degenerate (all CC ranks reduce to
+        HF), so δ = 0 is the correct physical answer. The trsh ladder
+        cannot fix this; it must be handled at the protocol level.
+
+        Conservative on safety:
+        * Only fires when keywords contain ``'MRCCDegenerateSystem'``.
+        * Only fires when the species has an active composite.
+        * Only fires for ``__high`` sub-labels with a recorded ``__low``
+          sister in ``output[label]['paths']['sp_composite']``. Low-leg
+          failures and high-leg failures without a completed sister fall
+          through so the caller's normal trsh path runs.
+        """
+        keywords = (job.job_status[1] or {}).get('keywords') or []
+        if 'MRCCDegenerateSystem' not in keywords:
+            return False
+        protocol = self._composite_for(label)
+        if protocol is None:
+            return False
+        # Identify which pending sub_label this errored job corresponds to.
+        pending = self._sp_composite_pending.get(label, {})
+        failed_sub_label = next(
+            (sl for sl, lvl in pending.items() if lvl == job.level),
+            None,
+        )
+        if failed_sub_label is None or not failed_sub_label.endswith('__high'):
+            logger.warning(format_log_event(
+                label,
+                "MRCCDegenerateSystem on a non-high sub-job — falling through to trsh",
+                {"sub_label": failed_sub_label, "level": str(job.level)},
+            ))
+            return False
+        sister_low = failed_sub_label[: -len('__high')] + '__low'
+        completed = self.output.get(label, {}).get('paths', {}).get('sp_composite', {}) or {}
+        sister_path = completed.get(sister_low)
+        if not sister_path:
+            logger.warning(format_log_event(
+                label,
+                "MRCCDegenerateSystem high-leg failed but low-leg not yet recorded — deferring",
+                {"failed": failed_sub_label, "sister": sister_low},
+            ))
+            return False
+        logger.warning(format_log_event(
+            label,
+            "MRCC degenerate-system fallback: substituting low-leg energy for high-leg",
+            {"failed": failed_sub_label, "sister": sister_low,
+             "reason": "Method exceeds determinant space; δ = 0 by symmetry."},
+        ))
+        # Substitute by re-using the low-leg's path. _record_composite_completion
+        # writes the path into output and clears the pending entry — same as a
+        # normal completion, but pointing both legs at the same file so they
+        # parse to the same energy and the δ evaluates to zero.
+        completed_paths = self.output[label]['paths']['sp_composite']
+        completed_paths[failed_sub_label] = sister_path
+        del pending[failed_sub_label]
+        if pending:
+            self._spawn_composite_pending(label)
+        else:
+            self._finalize_composite(label)
+        return True
+
     def _rehydrate_composite_state(self) -> None:
         """On scheduler init/restart, seed pending for every species with an active
         composite, rebuild the SpeciesSection for species that already finalized,
@@ -3187,6 +3256,13 @@ class Scheduler(object):
             if self.species_dict[label].number_of_atoms == 1:
                 # save the geometry from the sp job for monoatomic species for which no opt/freq jobs will be spawned
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file
+        elif self._mrcc_degenerate_short_circuit(label=label, job=job):
+            # MRCC bailed for a degenerate small-system δ-term high leg
+            # (atomic H, H2, etc., where the requested CC excitation rank
+            # exceeds the determinant space). The trsh ladder cannot help —
+            # cause is intrinsic. Helper substituted the low-leg energy and
+            # advanced the composite; nothing further to do here.
+            self.save_restart_dict()
         else:
             self.troubleshoot_ess(label=label,
                                   job=job,

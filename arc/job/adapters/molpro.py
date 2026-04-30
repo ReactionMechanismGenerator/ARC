@@ -250,7 +250,21 @@ class MolproAdapter(JobAdapter):
         if self.level.method in MRCC_ROUTED_METHODS:
             # Restriction is implicit from the preceding {hf;...} block; the
             # MRCC plugin call does not accept a 'u'/'r' prefix.
-            input_dict['method'] = '{mrcc,method=' + self.level.method.upper() + '}'
+            mrcc_call = '{mrcc,method=' + self.level.method.upper() + '}'
+            if not is_restricted(self):
+                # Open-shell wavefunction: Molpro emits ROHF for the {hf;...}
+                # block above. MRCC's approximate-CC family (CCSDT, CCSDT(Q),
+                # CCSDTQ, CCSDTQ(P)) refuses standard ROHF orbitals with the
+                # error "Approximate CC methods are not implemented for
+                # standard ROHF orbitals! Use semicanonical orbitals!".
+                # Running {uccsd} on the ROHF reference produces semicanonical
+                # orbitals as a side effect; MRCC then picks them up
+                # automatically. This costs one extra UCCSD pass per sub-job
+                # but is the only way the post-(T) MRCC methods will run for
+                # radicals. {ccsd} on its own would be cheaper but does not
+                # consistently produce SC orbitals across Molpro versions.
+                mrcc_call = '{uccsd}\n' + mrcc_call
+            input_dict['method'] = mrcc_call
             input_dict['restricted'] = ''
 
         # Job type specific options

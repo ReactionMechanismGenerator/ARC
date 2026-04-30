@@ -460,13 +460,28 @@ int;
         self.assertEqual(content_7, job_7_expected_input_file)
 
     def test_write_input_file_mrcc_routing(self):
-        """Methods unsupported by native Molpro but supported by MRCC are routed through the MRCC plugin."""
+        """Methods unsupported by native Molpro but supported by MRCC are routed through the MRCC plugin.
+
+        For an open-shell wavefunction, an additional ``{uccsd}`` step is
+        emitted between the HF block and the MRCC plugin call. Molpro defaults
+        to ROHF for open-shell HF, but MRCC's approximate-CC family
+        (``CCSDT``, ``CCSDT(Q)``, ``CCSDTQ``, ``CCSDTQ(P)``) refuses standard
+        ROHF orbitals with the error::
+
+            Approximate CC methods are not implemented for standard ROHF orbitals!
+            Use semicanonical orbitals!
+
+        Running ``{uccsd}`` on the ROHF reference produces the semicanonical
+        orbitals MRCC needs as a side effect — they're left on disk and the
+        subsequent ``{mrcc,method=...}`` call picks them up automatically.
+        """
         self.job_mrcc_ccsdt.cpu_cores = 48
         self.job_mrcc_ccsdt.set_input_file_memory()
         self.job_mrcc_ccsdt.write_input_file()
         with open(os.path.join(self.job_mrcc_ccsdt.local_path,
                                input_filenames[self.job_mrcc_ccsdt.job_adapter]), 'r') as f:
             content_ccsdt = f.read()
+        # spc1 has multiplicity=3 (open-shell triplet) — uccsd prefix expected.
         expected_ccsdt = """***,spc1
 memory,Total=438,m;
 
@@ -486,6 +501,7 @@ int;
  wf,spin=2,charge=0;
 }
 
+{uccsd}
 {mrcc,method=CCSDT}
 
 
@@ -497,6 +513,13 @@ int;
         # Sanity: the bare directive Molpro rejects must NOT appear on its own line.
         self.assertNotIn('\nccsdt;\n', content_ccsdt)
         self.assertNotIn('\nuccsdt;\n', content_ccsdt)
+        # The uccsd step must come between the HF block and the mrcc plugin call —
+        # not after, not before HF.
+        uccsd_idx = content_ccsdt.index('{uccsd}')
+        hf_close_idx = content_ccsdt.index('}\n\n{uccsd}')
+        mrcc_idx = content_ccsdt.index('{mrcc,method=CCSDT}')
+        self.assertLess(hf_close_idx, uccsd_idx)
+        self.assertLess(uccsd_idx, mrcc_idx)
 
         self.job_mrcc_ccsdtq.cpu_cores = 48
         self.job_mrcc_ccsdtq.set_input_file_memory()
@@ -532,6 +555,9 @@ int;
 """
         self.assertEqual(content_ccsdtq, expected_ccsdtq)
         self.assertNotIn('\nccsdt(q);\n', content_ccsdtq)
+        # spc1 here has multiplicity=1 (closed-shell) — no semicanonical-orbital
+        # prep step is needed and none should be emitted.
+        self.assertNotIn('{uccsd}', content_ccsdtq)
 
     def test_set_files(self):
         """Test setting files"""

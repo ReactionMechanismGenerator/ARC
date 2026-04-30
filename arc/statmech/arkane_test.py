@@ -33,6 +33,7 @@ from arc.statmech.arkane import (
     _warn_no_match,
     check_arkane_aec,
     check_arkane_bacs,
+    filter_real_stderr_lines,
     get_arkane_model_chemistry,
 )
 from unittest.mock import patch
@@ -832,6 +833,82 @@ class TestReactionDhRxnConsumesKJmol(unittest.TestCase):
         self.assertAlmostEqual(rxn.dh_rxn298, expected_J, places=6)
         # Sanity: the raw kJ/mol difference is -100; dh_rxn298 should be -1e5 J/mol.
         self.assertAlmostEqual(rxn.dh_rxn298, -1e5, places=6)
+
+
+class TestFilterRealStderrLines(unittest.TestCase):
+    """``filter_real_stderr_lines`` strips harmless shell-init / library noise
+    from a subprocess's stderr so ARC doesn't classify a successful Arkane run
+    as a failure."""
+
+    def test_open_babel_unusual_valence_warning_is_noise(self):
+        """Existing carve-out: Open Babel's InChI-code warnings are harmless."""
+        lines = [
+            "==============================",
+            "*** Open Babel Warning  in InChI code",
+            "  #1 :Accepted unusual valence(s): C(2)",
+            "==============================",
+        ]
+        self.assertEqual(filter_real_stderr_lines(lines), [])
+
+    def test_lmod_unknown_module_warning_is_noise(self):
+        """Regression: a stale ``module load openmpi`` in shell init prints a
+        Lmod block to stderr. ARC was treating it as a fatal Arkane failure
+        even though Arkane completed successfully."""
+        lines = [
+            'Lmod has detected the following error: The following module(s) are unknown:',
+            '"openmpi"',
+            '',
+            'Please check the spelling or version number. Also try "module spider ..."',
+            'It is also possible your cache file is out-of-date; it may help to try:',
+            '  $ module --ignore_cache load "openmpi"',
+            '',
+            'Also make sure that all modulefiles written in TCL start with the string',
+            '#%Module',
+        ]
+        self.assertEqual(filter_real_stderr_lines(lines), [])
+
+    def test_real_error_is_preserved(self):
+        """A genuine traceback line passes through."""
+        lines = [
+            "==============================",
+            "*** Open Babel Warning",
+            "Traceback (most recent call last):",
+            '  File "arkane/main.py", line 123, in run',
+            "RuntimeError: Could not parse output",
+        ]
+        result = filter_real_stderr_lines(lines)
+        self.assertIn("Traceback (most recent call last):", result)
+        self.assertIn("RuntimeError: Could not parse output", result)
+        self.assertNotIn("==============================", result)
+
+    def test_mixed_lmod_and_real_error_keeps_only_real(self):
+        """When Lmod noise and a real error coexist, only the real error
+        survives. (The user's H/H2/OH composite SP failures should still
+        surface even if the shell init is noisy.)"""
+        lines = [
+            'Lmod has detected the following error: ...',
+            '"openmpi"',
+            '#%Module',
+            "AttributeError: 'NoneType' object has no attribute 'thermo'",
+        ]
+        result = filter_real_stderr_lines(lines)
+        self.assertEqual(
+            result,
+            ["AttributeError: 'NoneType' object has no attribute 'thermo'"],
+        )
+
+    def test_empty_and_whitespace_only_lines_dropped(self):
+        self.assertEqual(filter_real_stderr_lines(["", "   ", "\t"]), [])
+
+    def test_accepts_string_as_well_as_list(self):
+        """Some call sites pass a multiline string; the helper splits it."""
+        s = (
+            'Lmod has detected the following error: blah\n'
+            '"openmpi"\n'
+            '\n'
+            'Genuine error: foo\n'
+        )
+        self.assertEqual(filter_real_stderr_lines(s), ["Genuine error: foo"])
 
 
 if __name__ == '__main__':

@@ -1753,6 +1753,130 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
         self.assertEqual(sched.running_jobs['H2'], [])
         self.assertIsInstance(sched.output['H2']['paths']['sp_composite'], dict)
 
+    def test_mrcc_degenerate_high_leg_falls_back_to_low_leg_path(self):
+        """When a δ-term high-leg sub-job errors with ``MRCCDegenerateSystem``
+        (atomic H / H2 at CCSDT(Q): MRCC's xmrcc bails because the requested
+        excitation rank exceeds the determinant space), the trsh ladder
+        cannot help — the cause is intrinsic to the physics, not the
+        numerics. The composite framework must short-circuit by reusing the
+        sister low-leg's output path. The two energies are degenerate by
+        symmetry (all CC ranks reduce to HF for ≤2-electron systems), so
+        δ = 0, which is the correct physical answer."""
+        tmp = os.path.join(self.project_directory, "fx_mrcc_degenerate")
+        os.makedirs(tmp, exist_ok=True)
+        recipe = {
+            "base": {"method": "hf", "basis": "cc-pVTZ"},
+            "corrections": [
+                {"label": "delta_T", "type": "delta",
+                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
+                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+            ],
+        }
+        protocol = CompositeProtocol.from_user_input(recipe)
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'),
+                         'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+        # Base + low-leg complete normally.
+        base_path = os.path.join(tmp, "base.out")
+        self._write_gaussian_fixture(base_path, -0.5)
+        sched.post_sp_actions('H2', base_path, protocol.base.level)
+        low_path = os.path.join(tmp, "delta_T__low.out")
+        self._write_gaussian_fixture(low_path, -0.5)  # HF for atomic H
+        sched.post_sp_actions('H2', low_path, protocol.corrections[0].low)
+        # High leg (CCSDT/cc-pVDZ) "fails" with the MRCC degenerate-system
+        # keyword. Build a JobAdapter stub that mimics what check_sp_job sees.
+
+        class _ErroredJobStub:
+            def __init__(self, level, output_path):
+                self.level = level
+                self.local_path_to_output_file = output_path
+                self.job_status = ['done', {
+                    'status': 'errored',
+                    'keywords': ['MRCCDegenerateSystem'],
+                    'error': 'MRCC xmrcc fatal',
+                    'line': 'Fatal error in xmrcc.',
+                }]
+                self.conformer = None
+                self.job_name = 'sp_a999'
+                self.execution_type = 'queue'
+                self.job_id = 'a999'
+
+        # Provide a placeholder output file (it would normally be the
+        # truncated MRCC log; the framework should not parse it).
+        high_failed_path = os.path.join(tmp, "delta_T__high_FAILED.out")
+        with open(high_failed_path, 'w') as fh:
+            fh.write("Fatal error in xmrcc.\n")
+        bad_job = _ErroredJobStub(
+            level=protocol.corrections[0].high,
+            output_path=high_failed_path,
+        )
+        sched.check_sp_job(label='H2', job=bad_job)
+        # The framework must have substituted the low-leg path for the high
+        # leg and finalized the composite (δ_T = 0, e_elect = base energy).
+        self.assertEqual(
+            sched.output['H2']['paths']['sp_composite']['delta_T__high'],
+            low_path,
+            'High-leg path must be substituted with low-leg path on '
+            'MRCCDegenerateSystem fallback.',
+        )
+        self.assertTrue(sched.output['H2']['job_types']['sp_composite'])
+        self.assertEqual(spc.e_elect_source, 'sp_composite')
+        # Energy contributions: base = parsed from base.out, δ_T = 0 by
+        # construction. Final = base.
+        parsed_base = parser.parse_e_elect(base_path)
+        self.assertAlmostEqual(spc.e_elect, parsed_base, places=6)
+
+    def test_mrcc_degenerate_low_leg_failure_does_not_short_circuit(self):
+        """If the LOW leg fails with MRCCDegenerateSystem (no sister to fall
+        back on), the framework must NOT silently substitute. The species
+        should not finalize from this path; troubleshoot_ess gets called on
+        the assumption a higher level can sort it out."""
+        tmp = os.path.join(self.project_directory, "fx_mrcc_low_fail")
+        os.makedirs(tmp, exist_ok=True)
+        recipe = {
+            "base": {"method": "hf", "basis": "cc-pVTZ"},
+            "corrections": [
+                {"label": "delta_T", "type": "delta",
+                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
+                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+            ],
+        }
+        protocol = CompositeProtocol.from_user_input(recipe)
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'),
+                         'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+        # Patch troubleshoot_ess to a recording stub so we can verify it
+        # gets called for low-leg failures.
+        called = []
+        sched.troubleshoot_ess = lambda *args, **kwargs: called.append(
+            kwargs.get('job').job_name if kwargs.get('job') else 'unknown')
+
+        class _ErroredJobStub:
+            def __init__(self, level):
+                self.level = level
+                self.local_path_to_output_file = '/tmp/fake.out'
+                self.job_status = ['done', {
+                    'status': 'errored',
+                    'keywords': ['MRCCDegenerateSystem'],
+                    'error': 'MRCC xmrcc fatal',
+                    'line': 'Fatal error in xmrcc.',
+                }]
+                self.conformer = None
+                self.job_name = 'sp_a999'
+                self.execution_type = 'queue'
+                self.job_id = 'a999'
+
+        bad_job = _ErroredJobStub(level=protocol.corrections[0].low)
+        sched.check_sp_job(label='H2', job=bad_job)
+        self.assertEqual(called, ['sp_a999'],
+                         'Low-leg MRCC failure must not be short-circuited.')
+        self.assertNotIn('delta_T__low',
+                         sched.output['H2']['paths']['sp_composite'])
+
     # --- Phase 3.5: preset name + reference preservation ------------------- #
 
     def test_preset_name_and_reference_survive_to_notebook_section(self):

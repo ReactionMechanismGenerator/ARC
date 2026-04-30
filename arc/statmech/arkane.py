@@ -29,6 +29,59 @@ RMG_DB_PATH = settings['RMG_DB_PATH']
 RMG_ENV_NAME = settings.get('RMG_ENV_NAME', 'rmg_env')
 logger = get_logger()
 
+# Substrings that indicate a stderr line is harmless shell-init / library
+# noise rather than a real subprocess failure. Any line containing one of
+# these substrings is dropped by ``filter_real_stderr_lines``. Add new
+# patterns here when a benign emitter trips us up.
+_STDERR_NOISE_SUBSTRINGS = (
+    # Open Babel valence warnings around InChI generation.
+    "Open Babel Warning",
+    "Accepted unusual valence",
+    "==============================",
+    # JAX / TF startup chatter on some clusters.
+    "pjrt_executable.cc",
+    # Lmod (module system) "module load X" failures from the user's shell
+    # init when the named module was renamed/removed on the cluster. These
+    # don't break the spawned subprocess — Lmod just complains and moves on.
+    "Lmod has detected",
+    "module spider",
+    "module --ignore_cache",
+    "modulefiles written in TCL",
+    "#%Module",
+    "Please check the spelling or version number",
+    "It is also possible your cache file is out-of-date",
+)
+
+
+def filter_real_stderr_lines(stderr):
+    """Drop harmless shell-init / library noise from a subprocess's stderr.
+
+    Accepts either a list of lines or a single multi-line string. Empty /
+    whitespace-only lines and bare quoted module names (e.g. ``"openmpi"``
+    on a Lmod-error line) are also dropped.
+
+    Returns a list of stripped lines that survived the filter — what's left
+    is genuine error output the caller should surface.
+    """
+    if isinstance(stderr, str):
+        lines = stderr.splitlines()
+    else:
+        lines = list(stderr)
+    real = []
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        if any(s in line for s in _STDERR_NOISE_SUBSTRINGS):
+            continue
+        # Lmod prints the offending module name on its own line as a bare
+        # quoted token (e.g. `"openmpi"`). Drop those too.
+        if (line.startswith('"') and line.endswith('"') and len(line) <= 64
+                and ' ' not in line[1:-1]):
+            continue
+        real.append(line)
+    return real
+
 # Section boundary markers in the RMG quantum_corrections/data.py file.
 AEC_SECTION_START = "atom_energies = {"
 AEC_SECTION_END = "pbac = {"
@@ -503,8 +556,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     'fi"',
                     ]
         stdout, stderr = execute_command(command=commands, executable='/bin/bash')
-        if len(stderr):
-            logger.error(f'Error while running Arkane thermo script:\n{stderr}')
+        real_stderr = filter_real_stderr_lines(stderr) if stderr else []
+        if real_stderr:
+            logger.error(f'Error while running Arkane thermo script:\n{real_stderr}')
         thermo_yaml_path = os.path.join(statmech_dir, 'thermo.yaml')
         if os.path.isfile(thermo_yaml_path):
             content = read_yaml_file(thermo_yaml_path) or {}
@@ -594,21 +648,7 @@ fi' '''
                                        no_fail=True,
                                        executable='/bin/bash')
     if std_err:
-        ignorable_phrases = [
-            "Open Babel Warning",
-            "Accepted unusual valence",
-            "==============================",
-            "pjrt_executable.cc",
-        ]
-
-        real_errors = []
-        for line in std_err:
-            line = line.strip()
-            if not line:
-                continue
-            if not any(phrase in line for phrase in ignorable_phrases):
-                real_errors.append(line)
-
+        real_errors = filter_real_stderr_lines(std_err)
         if real_errors:
             logger.info(f'Arkane run failed with errors:\n{std_err}')
             return False
