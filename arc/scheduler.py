@@ -34,7 +34,10 @@ from arc.exceptions import (InputError,
                             TrshError,
                             )
 from arc.imports import settings
-from arc.job.adapters.common import all_families_ts_adapters, default_incore_adapters, ts_adapters_by_rmg_family
+from arc.job.adapters.common import (all_families_ts_adapters,
+                                      default_incore_adapters,
+                                      ts_adapters_by_rmg_family,
+                                      ts_adapters_for_unknown_unimolecular)
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
@@ -1714,11 +1717,19 @@ class Scheduler(object):
                     rxn.ts_species.tsg_spawned = True
                     tsg_index = 0
                     for method in self.ts_adapters:
-                        if method in all_families_ts_adapters or \
-                                (rxn.family is not None
-                                 and rxn.family in list(ts_adapters_by_rmg_family.keys())
-                                 and method in ts_adapters_by_rmg_family[rxn.family]) \
+                        family_known = (rxn.family is not None
+                                        and rxn.family in ts_adapters_by_rmg_family)
+                        admit_unknown_family = (not family_known
+                                                and method in ts_adapters_for_unknown_unimolecular
+                                                and rxn.is_unimolecular())
+                        if method in all_families_ts_adapters \
+                                or (family_known and method in ts_adapters_by_rmg_family[rxn.family]) \
+                                or admit_unknown_family \
                                 or 'mock' in method:
+                            if admit_unknown_family:
+                                logger.info(f'Admitting TS adapter {method!r} for reaction {rxn.label} '
+                                            f'via ts_adapters_for_unknown_unimolecular '
+                                            f'(RMG family is {rxn.family!r}).')
                             self.run_job(job_type='tsg',
                                          job_adapter=method,
                                          reactions=[rxn],

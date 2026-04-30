@@ -11,3 +11,7 @@ build-backend = "setuptools.build_meta"
 name = "ARC"
 dynamic = ["version"]
 requires-python = ">=3.14"
+
+[tool.pytest.ini_options]
+addopts = "-n auto --dist=worksteal -ra"
+testpaths = ["arc", "functional"]

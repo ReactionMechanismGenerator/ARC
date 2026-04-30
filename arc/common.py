@@ -31,7 +31,7 @@ from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
 
 if TYPE_CHECKING:
-    from arc.molecule.molecule import Molecule
+    from arc.molecule.molecule import Atom, Molecule
 
 logger = logging.getLogger('arc')
 logging.getLogger('matplotlib.font_manager').disabled = True
@@ -44,6 +44,8 @@ VERSION = '1.1.0'
 
 R = 8.31446261815324  # J/(mol*K)
 EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 4.184e+3}
+FULL_CIRCLE = 360.0
+HALF_CIRCLE = 180.0
 
 default_job_types, servers, supported_ess = settings['default_job_types'], settings['servers'], settings['supported_ess']
 
@@ -825,7 +827,7 @@ def get_bonds_from_dmat(
     return sorted(bonds)
 
 
-def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', index: int = 1) -> tuple[list, bool]:
+def determine_top_group_indices(mol: Molecule, atom1: Atom, atom2: Atom, index: int = 1) -> tuple[list, bool]:
     """
     Determine the indices of a "top group" in a molecule.
     The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
@@ -1507,14 +1509,11 @@ def is_xyz_linear(xyz: dict | None) -> bool | None:
     return True
 
 
-FULL_CIRCLE = 360.0
-HALF_CIRCLE = 180.0
-
 def get_angle_in_180_range(angle: float,
                            round_to: int | None = 2,
                            ) -> float:
     """
-    Get the corresponding angle in the -180 to +180 degree range.
+    Get the corresponding angle in the -180 to +180 degree range, (-180,180]
 
     Args:
         angle (float): An angle in degrees.
@@ -1524,7 +1523,8 @@ def get_angle_in_180_range(angle: float,
     Returns:
         float: The corresponding angle in the -180 to +180 degree range.
     """
-    return (angle + HALF_CIRCLE) % FULL_CIRCLE - HALF_CIRCLE
+    wrapped = (angle + HALF_CIRCLE) % FULL_CIRCLE - HALF_CIRCLE
+    return round(wrapped, round_to) if round_to is not None else wrapped
 
 
 def signed_angular_diff(phi_1: float, phi_2: float) -> float:
@@ -1736,7 +1736,7 @@ def safe_copy_file(source: str,
             break
 
 
-def dfs(mol: 'Molecule',
+def dfs(mol: Molecule,
         start: int,
         sort_result: bool = True,
         ) -> list[int]:
@@ -1767,7 +1767,7 @@ def dfs(mol: 'Molecule',
     return visited
 
 
-def sort_atoms_in_descending_label_order(mol: 'Molecule') -> None:
+def sort_atoms_in_descending_label_order(mol: Molecule) -> None:
     """
     If all atoms in the molecule object have a label, this function reassign the
     .atoms in Molecule with a list of atoms with the orders based on the labels of the atoms.
@@ -1786,7 +1786,7 @@ def sort_atoms_in_descending_label_order(mol: 'Molecule') -> None:
         return None
 
 
-def is_xyz_mol_match(mol: 'Molecule',
+def is_xyz_mol_match(mol: Molecule,
                      xyz: dict) -> bool:
     """
     A helper function that matches RMG's Molecule object to an xyz,

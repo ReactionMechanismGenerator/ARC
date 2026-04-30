@@ -21,6 +21,7 @@ from arc.family.family import (ReactionFamily,
                                get_reaction_family_products,
                                get_all_families,
                                get_entries,
+                               split_entries,
                                get_group_adjlist,
                                get_initial_reactant_labels_from_template,
                                get_isomorphic_subgraph,
@@ -30,7 +31,8 @@ from arc.family.family import (ReactionFamily,
                                get_rmg_recommended_family_sets,
                                is_own_reverse,
                                is_reversible,
-                               check_family_name
+                               check_family_name,
+                               read_groups_file_lines,
                                )
 from arc.molecule import Group, Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
@@ -715,6 +717,11 @@ H      -0.83821148   -0.26602407    0.00000000"""
         families = get_all_families(rmg_family_set=['H_Abstraction'])
         self.assertEqual(families, ['H_Abstraction'])
 
+    def test_get_all_families_rejects_unknown_set_name(self):
+        """An unknown family-set string should raise ValueError, not fall through to KeyError."""
+        with self.assertRaises(ValueError):
+            get_all_families(rmg_family_set='not_a_real_family_set', consider_arc_families=False)
+
     def test_get_rmg_recommended_family_sets(self):
         """Test getting RMG recommended family sets"""
         recommended_families = get_rmg_recommended_family_sets()
@@ -1009,7 +1016,7 @@ H       1.24252625    0.91583948   -0.84155142"""
     def test_get_entries(self):
         """Test getting entries from a family"""
         fam_1 = ReactionFamily('1,3_Insertion_ROR')
-        groups_as_lines = fam_1.get_groups_file_as_lines()
+        groups_as_lines = read_groups_file_lines(fam_1.label)
         entries = get_entries(groups_as_lines=groups_as_lines, entry_labels=['doublebond', 'cco_2H'])
         self.assertEqual(entries, {'doublebond': 'OR{Cd_Cdd, Cdd_Cd, Cd_Cd, Sd_Cd, N1dc_N5ddc, N3d_Cd}',
                                    'cco_2H': """1 *1 Cd        u0 {2,D} {3,S} {4,S}
@@ -1017,6 +1024,71 @@ H       1.24252625    0.91583948   -0.84155142"""
 3    H         u0 {1,S}
 4    H         u0 {1,S}
 5    [O2d,S2d] u0 {2,D}"""})
+
+    def test_get_entries_label_with_parentheses(self):
+        """
+        Korcek_step1 / Korcek_step2 declare top-level entries whose
+        ``label = "..."`` strings contain ``)`` characters (e.g.
+        ``"RCH(OOH)CH2C(O)R'"`` and ``"C1(R)(H)(O(OC3(OH)(R'))C2)"``).
+        Before the parser was hardened the entry-splitting regex stopped
+        at the first ``)`` it saw, which landed inside the label and
+        truncated every entry, so the entry could never be looked up by
+        name.  This regression-tests both families.
+        """
+        # Korcek_step1: single entry, label contains '(' and ')' and "'"
+        fam_step1 = ReactionFamily('Korcek_step1')
+        step1_lines = read_groups_file_lines(fam_step1.label)
+        step1_entries = get_entries(groups_as_lines=step1_lines, entry_labels=["RCH(OOH)CH2C(O)R'"])
+        self.assertIn("RCH(OOH)CH2C(O)R'", step1_entries)
+        adjlist = step1_entries["RCH(OOH)CH2C(O)R'"]
+        self.assertIn('*1', adjlist)
+        self.assertIn('*2', adjlist)
+        self.assertIn('*3', adjlist)
+        self.assertIn('*4', adjlist)
+
+        # Korcek_step2: single entry with deeply nested parens
+        fam_step2 = ReactionFamily('Korcek_step2')
+        step2_lines = read_groups_file_lines(fam_step2.label)
+        step2_entries = get_entries(groups_as_lines=step2_lines, entry_labels=["C1(R)(H)(O(OC3(OH)(R'))C2)"])
+        self.assertIn("C1(R)(H)(O(OC3(OH)(R'))C2)", step2_entries)
+        adjlist2 = step2_entries["C1(R)(H)(O(OC3(OH)(R'))C2)"]
+        for label in ('*1', '*2', '*3', '*4', '*5', '*6'):
+            self.assertIn(label, adjlist2, f'Korcek_step2 group adjlist is missing {label!r}')
+
+    def test_korcek_step2_recipe_includes_h_migration(self):
+        """
+        The Korcek_step2 recipe must round-trip through ARC's family
+        loader with all six recipe actions, including the C-to-C
+        hydrogen migration (``BREAK_BOND *1-*6`` followed by
+        ``FORM_BOND *2-*6``).  Without this, ARC can never see the H
+        migration that the family explicitly prescribes for trioxolane
+        decomposition.
+        """
+        fam = ReactionFamily('Korcek_step2')
+        # The reactant adjlist should be parseable (was previously a
+        # KeyError because the entry was truncated by the splitter).
+        self.assertEqual(fam.reactants, [["C1(R)(H)(O(OC3(OH)(R'))C2)"]])
+        # The recipe must contain all six actions in order.
+        expected = [
+            ['BREAK_BOND',  '*1', 1, '*6'],
+            ['BREAK_BOND',  '*4', 1, '*5'],
+            ['BREAK_BOND',  '*2', 1, '*3'],
+            ['CHANGE_BOND', '*3', 1, '*4'],
+            ['CHANGE_BOND', '*1', 1, '*5'],
+            ['FORM_BOND',   '*2', 1, '*6'],
+        ]
+        self.assertEqual(fam.actions, expected)
+        # Sanity: the C-to-C H migration is the BREAK_BOND/FORM_BOND
+        # pair sharing the *6 (H) label.
+        h_breaks = [a for a in fam.actions if a[0] == 'BREAK_BOND' and '*6' in (a[1], a[3])]
+        h_forms  = [a for a in fam.actions if a[0] == 'FORM_BOND'  and '*6' in (a[1], a[3])]
+        self.assertEqual(len(h_breaks), 1)
+        self.assertEqual(len(h_forms), 1)
+        # Donor (the C losing H) is *1; acceptor (the C gaining it) is *2.
+        self.assertEqual(h_breaks[0][1], '*1')
+        self.assertEqual(h_breaks[0][3], '*6')
+        self.assertEqual(h_forms[0][1], '*2')
+        self.assertEqual(h_forms[0][3], '*6')
 
     def test_get_isomorphic_subgraph(self):
         """Test getting the isomorphic subgraph"""
@@ -1368,6 +1440,20 @@ H       1.24252625    0.91583948   -0.84155142"""
         self.assertFalse(check_product_isomorphism([mol, mol], [spc]))
         self.assertFalse(check_product_isomorphism([], [spc]))
 
+    def test_check_product_isomorphism_singlet_biradical_augmentation_negative(self):
+        """The singlet-biradical augmentation in check_product_isomorphism adds a
+        high-spin copy of each singlet biradical species so RMG's high-spin
+        template products can match.  Verify the augmentation does NOT cause a
+        spurious match when the candidate product is a different biradical.
+        """
+        singlet_birad = ARCSpecies(label='1CH2CH2', smiles='[CH2][CH2]', multiplicity=1)
+        self.assertEqual(singlet_birad.multiplicity, 1)
+        self.assertEqual(singlet_birad.mol.get_radical_count(), 2)
+        wrong_birad = Molecule(smiles='[CH][CH3]')
+        self.assertFalse(check_product_isomorphism([wrong_birad], [singlet_birad]))
+        correct_birad = Molecule(smiles='[CH2][CH2]')
+        self.assertTrue(check_product_isomorphism([correct_birad], [singlet_birad]))
+
     def test_disproportionation_not_matched_for_triplet_products(self):
         """Test that Disproportionation is NOT matched when the template generates
         a singlet product but the actual species is triplet.
@@ -1490,6 +1576,57 @@ H       1.24252625    0.91583948   -0.84155142"""
         self.assertTrue(check_family_name(None))
         with self.assertRaises(TypeError):
             check_family_name(123)
+
+
+class TestSplitEntries(unittest.TestCase):
+    """Unit tests for :func:`arc.family.family.split_entries` parser."""
+
+    def test_empty_input(self):
+        """Empty string yields no entries."""
+        self.assertEqual(split_entries(''), [])
+
+    def test_no_entry_markers(self):
+        """Input without any ``entry(`` marker yields no entries."""
+        self.assertEqual(split_entries('some text\nwithout markers\n'), [])
+
+    def test_empty_body(self):
+        """An ``entry()`` with no content yields one empty body."""
+        self.assertEqual(split_entries('entry()'), [''])
+
+    def test_multiple_sequential_entries(self):
+        """Two entries in sequence are both returned."""
+        text = 'entry(label="a") entry(label="b")'
+        self.assertEqual(split_entries(text), ['label="a"', 'label="b"'])
+
+    def test_paren_in_single_quoted_string(self):
+        """A ``)`` inside a single-quoted literal does not terminate the entry."""
+        text = "entry(label='foo)bar', group='adj')"
+        self.assertEqual(split_entries(text), ["label='foo)bar', group='adj'"])
+
+    def test_paren_in_triple_quoted_string(self):
+        """A ``)`` inside a triple-quoted string does not terminate the entry."""
+        text = 'entry(label="a", group="""1 C u0 {2,S})not-end""")'
+        self.assertEqual(split_entries(text),
+                         ['label="a", group="""1 C u0 {2,S})not-end"""'])
+
+    def test_backslash_escaped_quote_in_string(self):
+        """A backslash-escaped closing quote does not prematurely end the string,
+        so a ``)`` following the escaped quote stays inside the literal."""
+        text = r'entry(label="a\")b", group="x")'
+        self.assertEqual(split_entries(text),
+                         [r'label="a\")b", group="x"'])
+
+    def test_unmatched_entry_open(self):
+        """``entry(`` with no closing ``)`` is dropped rather than mis-parsed."""
+        text = 'entry(label="a", group="x"'
+        self.assertEqual(split_entries(text), [])
+
+    def test_mixed_quote_types(self):
+        """A single-quoted literal inside a double-quoted string is not
+        tracked as its own string, and vice versa."""
+        text = """entry(label="he said 'hi)' today")"""
+        self.assertEqual(split_entries(text),
+                         ["""label="he said 'hi)' today\""""])
 
 
 if __name__ == '__main__':
