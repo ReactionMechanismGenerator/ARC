@@ -4,7 +4,6 @@ ring-closure algorithm, 4-center interchange, and Z-matrix branch generation,
 extracted from ``arc.job.adapters.ts.linear``.
 """
 
-import copy
 from collections import defaultdict, deque
 from typing import TYPE_CHECKING
 

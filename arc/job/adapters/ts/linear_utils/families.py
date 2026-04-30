@@ -200,7 +200,6 @@ def build_xy_elimination_ts(uni_xyz: dict,
         TS guess XYZ dictionary, or ``None`` if the pattern is not detected.
     """
     symbols = uni_xyz['symbols']
-    n_atoms = len(symbols)
 
     adj = mol_to_adjacency(uni_mol)
     atom_to_idx = atom_index_map(uni_mol)
@@ -580,7 +579,6 @@ def build_baeyer_villiger_step2_ts(uni_xyz: dict,
         TS XYZ dict, or ``None`` if the BV motif cannot be identified.
     """
     symbols = uni_xyz['symbols']
-    n_atoms = len(symbols)
 
     adj = mol_to_adjacency(uni_mol)
     atom_to_idx = atom_index_map(uni_mol)
@@ -785,7 +783,6 @@ def build_singlet_carbene_intra_disproportionation_ts(r_xyz: dict,
     Returns ``None`` if the motif cannot be identified.
     """
     symbols = r_xyz['symbols']
-    n_atoms = len(symbols)
     atom_to_idx = atom_index_map(r_mol)
 
     # Carbene C: 2 heavy neighbours, 0 H neighbours.
@@ -882,7 +879,6 @@ def build_korcek_step1_ts(r_xyz: dict,
     Returns ``None`` if the motif cannot be identified.
     """
     symbols = r_xyz['symbols']
-    n_atoms = len(symbols)
     atom_to_idx = atom_index_map(r_mol)
 
     adj = mol_to_adjacency(r_mol)
@@ -1049,7 +1045,6 @@ def build_intra_oh_migration_ts(r_xyz: dict,
         return None
 
     symbols = r_xyz['symbols']
-    n_atoms = len(symbols)
     atom_to_idx = atom_index_map(r_mol)
 
     forming_co = None
@@ -1200,7 +1195,6 @@ def build_intra_substitution_s_isomerization_ts(r_xyz: dict,
     forming_partner = (fb_set - {migrating}).pop()
 
     symbols = r_xyz['symbols']
-    n_atoms = len(symbols)
     coords = np.array(r_xyz['coords'], dtype=float).copy()
     atom_to_idx = atom_index_map(r_mol)
 
@@ -1284,7 +1278,6 @@ def build_retroene_ts(r_xyz: dict,
         return None
 
     symbols = r_xyz['symbols']
-    n_atoms = len(symbols)
     coords = np.array(r_xyz['coords'], dtype=float).copy()
     atom_to_idx = atom_index_map(r_mol)
 
