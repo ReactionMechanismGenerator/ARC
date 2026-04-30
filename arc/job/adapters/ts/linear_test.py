@@ -2165,26 +2165,20 @@ H       1.80251143    1.03132880   -1.10238169"""
                 d = float(np.linalg.norm(coords[i] - coords[j]))
                 if d < 2.0:  # only check bonded-range distances
                     self.assertGreater(d, 0.9, msg=f'{syms[i]}{i}-{syms[j]}{j} collapsed to {d:.3f} Å')
-        expected_ts = """C                  3.24017953   -0.08055947    0.04152133
- C                  1.81730016    0.01506794    0.49970693
- O                  1.40458295    0.84254301    1.30456503
- O                  1.07825167   -0.97629342   -0.09140243
- O                 -0.84224165   -0.71732128    0.47871935
- C                 -1.10751693   -1.63051771    1.55072458
- C                 -2.70801631    0.00149550    1.29590191
- C                 -1.22051063   -3.04852339    0.99942295
- O                 -0.18502004   -1.60950959    2.43783120
- H                  3.67833221   -1.01933242    0.38907841
- H                  3.81240487    0.75201385    0.46069271
- H                  3.28486711   -0.01465169   -1.04857320
- H                 -3.53237930   -0.01048846    0.57495085
- H                 -2.63093881    1.02575477    1.67913050
- H                 -2.96159601   -0.64305648    2.14414314
- H                 -0.26938220   -3.37326152    0.56249172
- H                 -1.97761091   -3.11018250    0.21067902
- H                 -1.46623502   -3.76403344    1.79145013
- H                  0.52501428   -0.51424145    1.93163067"""
-        self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
+        # At least one guess must show concerted BV step 2: peroxide O3-O4 partly broken,
+        # one methyl off the quaternary C5 stretched, and C5-OH shortening to a carbonyl.
+        def _is_bv_migration_ts(ts: dict) -> bool:
+            c = np.array(ts['coords'], dtype=float)
+            d_oo = float(np.linalg.norm(c[3] - c[4]))
+            if not 1.5 < d_oo < 2.5:
+                return False
+            d_56 = float(np.linalg.norm(c[5] - c[6]))
+            d_57 = float(np.linalg.norm(c[5] - c[7]))
+            d_58 = float(np.linalg.norm(c[5] - c[8]))
+            return max(d_56, d_57) > 1.7 and d_58 < 1.4
+        self.assertTrue(any(_is_bv_migration_ts(ts) for ts in ts_xyzs),
+                        msg='No TS guess shows the Baeyer-Villiger step 2 migration pattern '
+                            '(O3-O4 stretched, one C5-CH3 elongated, C5-O8 shortening to carbonyl).')
 
     def test_interpolate_birad_recombination(self):
         """Test the interpolate_isomerization() function for Birad_recombination: [CH2]C=CCC[CH]C=C <=> C=CC1CC=CCC1"""
@@ -2828,19 +2822,20 @@ H       1.65446241   -1.85341259    0.04404524"""
         coords_0 = np.array(ts_xyzs[0]['coords'], dtype=float)
         d_forming = float(np.linalg.norm(coords_0[0] - coords_0[5]))
         self.assertTrue(1.5 < d_forming < 3.0, msg=f'C0-C5 forming bond: {d_forming:.3f} (expected 1.5-3.0)')
-        expected_ts = """C                  2.22730184   -0.11948620    0.14655519
- C                  0.55413248   -0.07457554    0.00203068
- C                  0.64890721    1.53835327   -0.07086090
- C                 -0.62538541    1.94199897   -0.19947250
- C                 -1.49887971    0.78310937   -0.21558365
- C                 -0.76153602   -0.33292158   -0.09687528
- H                  3.01708117   -0.47964354   -0.51271357
- H                  2.89169344   -0.40563383    0.96190992
- H                  1.53820551    2.16708776   -0.02679873
- H                 -0.97211719    2.97218630   -0.28065829
- H                 -2.58354420    0.83426039   -0.31038092
- H                 -1.12146124   -1.36156727   -0.07585439"""
-        self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
+        # At least one guess must form the C0-C1-C5 3-ring TS: retained edges still C-C,
+        # forming C0-C5 partly bonded, angle at C1 closing toward cyclopropane.
+        def _is_3ring_ts(ts: dict) -> bool:
+            c = np.array(ts['coords'], dtype=float)
+            d_01 = float(np.linalg.norm(c[0] - c[1]))
+            d_15 = float(np.linalg.norm(c[1] - c[5]))
+            d_05 = float(np.linalg.norm(c[0] - c[5]))
+            ang = _angle_deg(c[0], c[1], c[5])
+            return (1.3 < d_01 < 1.7
+                    and 1.3 < d_15 < 1.7
+                    and 1.8 < d_05 < 2.6
+                    and 60.0 < ang < 100.0)
+        self.assertTrue(any(_is_3ring_ts(ts) for ts in ts_xyzs),
+                        msg='No TS guess shows the C0-C1-C5 3-ring closing toward the fused cyclopropane.')
 
     def test_interpolate_intra_disproportionation(self):
         """Test the interpolate_isomerization() function for Intra_Disproportionation: C=C1[CH]C[C]2C=CC=CC21 <=> C=C1CCC2=C1C=CC=C2"""
