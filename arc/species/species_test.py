@@ -2188,6 +2188,17 @@ H       1.11582953    0.94384729   -0.10134685"""
         ch_ts = ARCSpecies(label='C--H-TS', xyz='C 0 0 0\nH 1 2 5', is_ts=True)
         self.assertEqual(ch_ts.multiplicity, 2)
 
+        ts_1_xyz = """H -2.99394700  1.00970200  0.09451400
+                      O -4.10192200  0.13578500 -0.05953100
+                      H -4.43761000 -0.35213100  0.70859500
+                      C -2.22272000  0.16048700 -0.01004900
+                      O -1.59892700 -0.79618100  0.08758500"""
+        ts_1_spc = ARCSpecies(label='TS1', is_ts=True, xyz=ts_1_xyz)
+        self.assertEqual(ts_1_spc.multiplicity, 1)
+
+        ts_1_spc_from_dict = ARCSpecies(species_dict={'label': 'TS1', 'is_ts': True, 'xyz': ts_1_xyz})
+        self.assertEqual(ts_1_spc_from_dict.multiplicity, 1)
+
     def test_cluster_tsgs(self):
         """Test the cluster_tsgs() method."""
         xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
