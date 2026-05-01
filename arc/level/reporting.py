@@ -322,12 +322,35 @@ def _toc_cell(sections: list[SpeciesSection]):
 
 _SETUP_SOURCE = '''\
 # Shared setup — imports + helpers used by every species/TS section below.
+import os as _os
+
+import arc.common as arc_common
 import arc.parser.parser as arc_parser
 from arc.constants import E_h_kJmol
 from arc.level.protocol import CompositeProtocol
 
 # Accumulates per-section results so the Project summary can aggregate them.
 _RESULTS = {}
+
+# Determine the project directory from this notebook's location at runtime.
+# Notebook lives at ``<project>/output/sp_composite.ipynb``, so the project
+# directory is the parent of the notebook's directory. Jupyter / VS Code run
+# kernels with the notebook file's directory as cwd, so ``os.getcwd()``
+# resolves to ``<project>/output/`` and its parent is what we need.
+_NB_PROJECT_DIRECTORY = _os.path.dirname(_os.path.abspath(_os.curdir))
+
+
+def _resolve_path(p):
+    """Rebase a stored absolute path on the current project directory.
+
+    When the project folder is moved (or this notebook is opened on a different
+    machine), the originally-stored absolute paths under
+    ``<project>/calcs/Species/...`` and ``<project>/calcs/TSs/...`` no longer
+    point anywhere. ``arc.common.globalize_path`` recognises those prefixes and
+    rewrites the leading project-directory portion to match the current
+    notebook location. No-op when the project hasn't moved.
+    """
+    return arc_common.globalize_path(p, _NB_PROJECT_DIRECTORY)
 
 
 def _format_breakdown(protocol, energies_kJmol):
@@ -405,24 +428,26 @@ def _recipe_code(section: SpeciesSection) -> str:
 
 
 def _paths_code(section: SpeciesSection, notebook_dir: str) -> str:
+    """Render the per-section ``paths`` dict as a code-cell source.
+
+    Each value is wrapped in ``_resolve_path(...)`` (defined in the shared
+    setup cell, which calls ``arc.common.globalize_path``) so absolute paths
+    pointing under ``<project>/calcs/Species|TSs/`` get auto-rebased when the
+    project directory is moved or the notebook is opened on a different
+    machine. Paths that don't match those prefixes flow through unchanged.
+
+    The ``notebook_dir`` parameter is kept on the signature for API stability
+    (callers in the writer pass it positionally) but is no longer used to
+    pre-render relative paths — runtime rebase via ``_resolve_path`` is more
+    robust because it handles moves the relative-path approach can't (e.g.,
+    paths outside the project tree, paths whose relative offset to the
+    notebook changes when the project tree is restructured).
+    """
+    del notebook_dir  # no longer used; kept on the signature for API stability
     entries = []
     for sub_label, abs_path in sorted(section.sub_job_paths.items()):
-        rendered = _render_path(abs_path, notebook_dir)
-        entries.append(f"    {sub_label!r}: {rendered!r},")
+        entries.append(f"    {sub_label!r}: _resolve_path({abs_path!r}),")
     return "paths = {\n" + "\n".join(entries) + "\n}"
-
-
-def _render_path(abs_path: str, notebook_dir: str) -> str:
-    """Render ``abs_path`` relative to ``notebook_dir`` if under it, else absolute."""
-    try:
-        common = os.path.commonpath([os.path.abspath(abs_path),
-                                     os.path.abspath(notebook_dir)])
-    except ValueError:
-        return abs_path
-    if common == os.path.abspath(notebook_dir):
-        rel = os.path.relpath(abs_path, notebook_dir)
-        return rel if rel.startswith((".", os.sep)) else f"./{rel}"
-    return abs_path
 
 
 def _parse_code(section: SpeciesSection) -> str:

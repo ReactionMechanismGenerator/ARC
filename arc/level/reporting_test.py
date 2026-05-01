@@ -299,17 +299,32 @@ class TestWriteCompositeNotebook(unittest.TestCase):
 
     # --- path rendering ----------------------------------------------------- #
 
-    def test_paths_rendered_relative_when_under_notebook_dir(self):
+    def test_paths_kept_absolute_and_wrapped_in_resolve_path(self):
+        """Absolute paths survive into the paths-dict cell and each is wrapped
+        in ``_resolve_path(...)`` so they're rebased through
+        ``arc.common.globalize_path`` at notebook execution time. This makes
+        the notebook robust to the user moving the project directory or
+        running on a different machine — paths under ``<project>/calcs/Species/``
+        or ``<project>/calcs/TSs/`` get auto-rebased to the new project root."""
         write_composite_notebook(**self.kwargs)
         paths_cell = next(c for c in self._cells()
                           if c.cell_type == "code" and "paths = " in c.source
                           and "parse_e_elect" not in c.source)
-        # Relative paths should start with './' and not have the tmp absolute prefix.
-        self.assertNotIn(self.tmp, paths_cell.source)
-        self.assertIn("./base.out", paths_cell.source)
+        # Each path value must be wrapped in _resolve_path(...).
+        self.assertIn("_resolve_path(", paths_cell.source)
+        # Paths are stored as absolute strings so globalize_path can recognise
+        # the project-directory prefix and rewrite it. The rewrite is a no-op
+        # if the project hasn't moved.
+        self.assertIn(self.base_path, paths_cell.source)
+        self.assertIn(self.hi_path, paths_cell.source)
+        self.assertIn(self.lo_path, paths_cell.source)
 
-    def test_paths_rendered_absolute_when_outside(self):
-        # A path outside the notebook dir must appear as absolute.
+    def test_paths_outside_project_survive_resolve_unchanged(self):
+        """Paths that don't match the ``/calcs/Species|TSs/`` pattern flow
+        through ``globalize_path`` unchanged (it only rebases project-tree
+        QM-output paths). They must still appear as absolutes wrapped in
+        ``_resolve_path(...)`` — the notebook can't pre-judge what's
+        inside vs outside the project."""
         outside_dir = tempfile.mkdtemp()
         outside_path = os.path.join(outside_dir, "far.out")
         _write_gaussian_fixture(outside_path, -1.0)
@@ -325,9 +340,25 @@ class TestWriteCompositeNotebook(unittest.TestCase):
                               if c.cell_type == "code" and "paths = " in c.source
                               and "parse_e_elect" not in c.source)
             self.assertIn(outside_path, paths_cell.source)
+            self.assertIn("_resolve_path(", paths_cell.source)
         finally:
             os.unlink(outside_path)
             os.rmdir(outside_dir)
+
+    def test_setup_cell_defines_resolve_path_and_imports_arc_common(self):
+        """The setup cell must define ``_resolve_path`` and import
+        ``arc.common`` so the per-section paths-dict cells can call
+        ``_resolve_path(...)`` on each absolute path."""
+        write_composite_notebook(**self.kwargs)
+        # Setup cell is the first code cell after the title/banner markdown.
+        setup_cells = [c for c in self._cells()
+                       if c.cell_type == "code" and "_resolve_path" in c.source]
+        self.assertGreaterEqual(len(setup_cells), 1,
+                                "Expected at least one code cell defining _resolve_path.")
+        setup_src = setup_cells[0].source
+        self.assertIn("arc.common", setup_src)
+        self.assertIn("globalize_path", setup_src)
+        self.assertIn("def _resolve_path", setup_src)
 
     # --- determinism -------------------------------------------------------- #
 
