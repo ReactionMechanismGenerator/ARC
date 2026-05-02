@@ -12,6 +12,7 @@ from mako.template import Template
 
 import arc.plotter as plotter
 from arc.common import ARC_PATH, get_logger, read_yaml_file
+from arc.constants import E_h_kJmol
 from arc.exceptions import InputError
 from arc.imports import incore_commands, settings
 from arc.job.local import execute_command
@@ -27,6 +28,59 @@ if TYPE_CHECKING:
 RMG_DB_PATH = settings['RMG_DB_PATH']
 RMG_ENV_NAME = settings.get('RMG_ENV_NAME', 'rmg_env')
 logger = get_logger()
+
+# Substrings that indicate a stderr line is harmless shell-init / library
+# noise rather than a real subprocess failure. Any line containing one of
+# these substrings is dropped by ``filter_real_stderr_lines``. Add new
+# patterns here when a benign emitter trips us up.
+_STDERR_NOISE_SUBSTRINGS = (
+    # Open Babel valence warnings around InChI generation.
+    "Open Babel Warning",
+    "Accepted unusual valence",
+    "==============================",
+    # JAX / TF startup chatter on some clusters.
+    "pjrt_executable.cc",
+    # Lmod (module system) "module load X" failures from the user's shell
+    # init when the named module was renamed/removed on the cluster. These
+    # don't break the spawned subprocess — Lmod just complains and moves on.
+    "Lmod has detected",
+    "module spider",
+    "module --ignore_cache",
+    "modulefiles written in TCL",
+    "#%Module",
+    "Please check the spelling or version number",
+    "It is also possible your cache file is out-of-date",
+)
+
+
+def filter_real_stderr_lines(stderr):
+    """Drop harmless shell-init / library noise from a subprocess's stderr.
+
+    Accepts either a list of lines or a single multi-line string. Empty /
+    whitespace-only lines and bare quoted module names (e.g. ``"openmpi"``
+    on a Lmod-error line) are also dropped.
+
+    Returns a list of stripped lines that survived the filter — what's left
+    is genuine error output the caller should surface.
+    """
+    if isinstance(stderr, str):
+        lines = stderr.splitlines()
+    else:
+        lines = list(stderr)
+    real = []
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        if any(s in line for s in _STDERR_NOISE_SUBSTRINGS):
+            continue
+        # Lmod prints the offending module name on its own line as a bare
+        # quoted token (e.g. `"openmpi"`). Drop those too.
+        if (line.startswith('"') and line.endswith('"') and len(line) <= 64
+                and ' ' not in line[1:-1]):
+            continue
+        real.append(line)
+    return real
 
 # Section boundary markers in the RMG quantum_corrections/data.py file.
 AEC_SECTION_START = "atom_energies = {"
@@ -100,7 +154,14 @@ species_input_template = """#!/usr/bin/env python
 linear = ${linear}
 spinMultiplicity = ${spin_multiplicity}
 
+%if e_elect_hartree is not None:
+# Electronic energy supplied explicitly (Hartree) from ${e_elect_source or 'explicit numeric value'}.
+# Arkane reads a bare ``energy = <float>`` as Hartree. The original ARC value was
+# ${e_elect_kJmol_display} kJ/mol (converted via E_h_kJmol).
+energy = ${e_elect_hartree}
+%else:
 energy = Log('${sp_path}')
+%endif
 geometry = Log('${freq_path}')
 frequencies = Log('${freq_path}')
 
@@ -437,6 +498,23 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             os.remove(file_path)
         rotors = [rotor for rotor in species.rotors_dict.values() if rotor['success']] if species.rotors_dict else list()
         use_rotors = not skip_rotors and bool(rotors)
+        # Composite protocols (sp_composite) bypass Arkane's file-based energy
+        # parser and inject the numeric total directly. species.e_elect is in
+        # kJ/mol per ARC convention; Arkane expects Hartree for a bare `energy`
+        # value, so convert at this boundary via E_h_kJmol.
+        e_elect_source = getattr(species, "e_elect_source", None)
+        e_elect_hartree = None
+        e_elect_kJmol_display = None
+        if e_elect_source == 'sp_composite':
+            if species.e_elect is None:
+                raise ValueError(
+                    f"Species {species.label} has e_elect_source='sp_composite' but "
+                    f"species.e_elect is None. Cannot render Arkane species file: the "
+                    f"composite protocol must complete and set e_elect before statmech "
+                    f"runs."
+                )
+            e_elect_hartree = species.e_elect / E_h_kJmol
+            e_elect_kJmol_display = f"{species.e_elect:.6f}"
         content = Template(species_input_template).render(
             linear=species.is_linear,
             spin_multiplicity=species.multiplicity,
@@ -444,6 +522,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             freq_path=self.output_dict[species.label]['paths']['freq'] or self.output_dict[species.label]['paths']['sp'],
             use_hindered_rotors=use_rotors,
             rotors=rotors,
+            e_elect_hartree=e_elect_hartree,
+            e_elect_source=e_elect_source,
+            e_elect_kJmol_display=e_elect_kJmol_display,
         )
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -475,8 +556,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     'fi"',
                     ]
         stdout, stderr = execute_command(command=commands, executable='/bin/bash')
-        if len(stderr):
-            logger.error(f'Error while running Arkane thermo script:\n{stderr}')
+        real_stderr = filter_real_stderr_lines(stderr) if stderr else []
+        if real_stderr:
+            logger.error(f'Error while running Arkane thermo script:\n{real_stderr}')
         thermo_yaml_path = os.path.join(statmech_dir, 'thermo.yaml')
         if os.path.isfile(thermo_yaml_path):
             content = read_yaml_file(thermo_yaml_path) or {}
@@ -566,21 +648,7 @@ fi' '''
                                        no_fail=True,
                                        executable='/bin/bash')
     if std_err:
-        ignorable_phrases = [
-            "Open Babel Warning",
-            "Accepted unusual valence",
-            "==============================",
-            "pjrt_executable.cc",
-        ]
-
-        real_errors = []
-        for line in std_err:
-            line = line.strip()
-            if not line:
-                continue
-            if not any(phrase in line for phrase in ignorable_phrases):
-                real_errors.append(line)
-
+        real_errors = filter_real_stderr_lines(std_err)
         if real_errors:
             logger.info(f'Arkane run failed with errors:\n{std_err}')
             return False

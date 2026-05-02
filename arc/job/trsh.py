@@ -393,10 +393,41 @@ def determine_ess_status(output_path: str,
             return 'errored', keywords, error, line
 
         elif software == 'molpro':
+            # MRCC ROHF-incompatibility check BEFORE the generic reverse scan
+            # because the underlying cause ("Use semicanonical orbitals!")
+            # appears earlier in the file than the downstream "Fatal error in
+            # mrcc." line — reverse iteration would otherwise classify the
+            # latter (generic) before the former (specific). Fix in the
+            # adapter prepends ``{uccsd}`` to generate semicanonical orbitals;
+            # this keyword surfaces the diagnostic for any legacy run that
+            # hits it.
+            joined = '\n'.join(lines) if isinstance(lines, list) else str(lines)
+            if 'standard ROHF orbitals' in joined or 'Use semicanonical orbitals' in joined:
+                rohf_line = next(
+                    (ln for ln in lines if 'standard ROHF orbitals' in ln
+                     or 'Use semicanonical orbitals' in ln),
+                    '',
+                )
+                return ('errored', ['MRCCRequiresSemicanonical'],
+                        'MRCC requires semicanonical orbitals; ROHF orbitals '
+                        'are not supported for approximate CC.',
+                        rohf_line)
             for line in reverse_lines:
                 if 'molpro calculation terminated' in line.lower() \
                         or 'variable memory released' in line.lower():
                     return 'done', list(), '', ''
+                elif 'Fatal error in xmrcc' in line or 'Fatal error in mrcc' in line:
+                    # MRCC bailed for a tiny system where the requested CC
+                    # excitation rank exceeds the determinant space (e.g.
+                    # atomic H or H2 at CCSDT(Q)). The composite framework
+                    # should short-circuit a δ-term high leg with this
+                    # keyword to the corresponding low-leg energy (δ = 0,
+                    # which is correct for a degenerate-method case).
+                    keywords = ['MRCCDegenerateSystem']
+                    error = ('MRCC xmrcc fatal — the requested CC excitation '
+                             'rank exceeds the determinant space for this '
+                             'system (degenerate / too few electrons).')
+                    break
                 elif 'No convergence' in line and '?No convergence in rhfpr' not in line:
                     keywords = ['Unconverged']
                     error = 'Unconverged'

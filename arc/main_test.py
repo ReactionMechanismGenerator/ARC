@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.main module
 """
 
+import logging
 import os
 import shutil
 import unittest
@@ -13,6 +14,7 @@ from arc.common import ARC_PATH
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.level import Level
+from arc.level.protocol import CompositeProtocol
 from arc.main import ARC, process_adaptive_levels
 from arc.species.species import ARCSpecies
 
@@ -92,7 +94,9 @@ class TestARC(unittest.TestCase):
                                           'xtb': ['local'],
                                           'xtb_gsm': ['local'],
                                           },
-                         'freq_level': {'basis': '6-311+g(3df,2p)',
+                         'freq_level': {'args': {'block': {},
+                                                 'keyword': {'general': 'scf=(NDamp=30)'}},
+                                        'basis': '6-311+g(3df,2p)',
                                         'method': 'b3lyp',
                                         'method_type': 'dft',
                                         'software': 'gaussian'},
@@ -485,11 +489,145 @@ class TestARC(unittest.TestCase):
         Delete all project directories created during these unit tests
         """
         projects = ['arc_project_for_testing_delete_after_usage_test_from_dict',
-                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
+                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong',
+                    'test_sp_composite']
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestARCSpComposite(unittest.TestCase):
+    """
+    Phase 2 tests for project-level ``sp_composite`` YAML plumbing.
+    """
+
+    @classmethod
+    def tearDownClass(cls):
+        for project in ['test_sp_composite_preset',
+                        'test_sp_composite_explicit',
+                        'test_sp_composite_preset_override',
+                        'test_sp_composite_mutex_composite',
+                        'test_sp_composite_mutex_adaptive',
+                        'test_sp_composite_fallback',
+                        'test_sp_composite_preserves_sp_level',
+                        'test_sp_composite_aec_bac']:
+            project_directory = os.path.join(ARC_PATH, 'Projects', project)
+            if os.path.isdir(project_directory):
+                shutil.rmtree(project_directory, ignore_errors=True)
+
+    def test_preset_string_parsed(self):
+        arc = ARC(project='test_sp_composite_preset', sp_composite='HEAT-345Q',
+                  freq_scale_factor=1)
+        arc.process_level_of_theory()
+        self.assertIsInstance(arc.sp_composite, CompositeProtocol)
+
+    def test_explicit_dict_parsed(self):
+        # compute_thermo=False avoids the Arkane AEC lookup that would otherwise
+        # reject hf/cc-pVTZ for lacking a database entry — we're testing parsing.
+        recipe = {
+            'base': {'method': 'hf', 'basis': 'cc-pVTZ'},
+            'corrections': [],
+        }
+        arc = ARC(project='test_sp_composite_explicit', sp_composite=recipe,
+                  compute_thermo=False, freq_scale_factor=1)
+        arc.process_level_of_theory()
+        self.assertIsInstance(arc.sp_composite, CompositeProtocol)
+        self.assertEqual(arc.sp_composite.base.level.method, 'hf')
+
+    def test_preset_with_overrides_parsed(self):
+        arc = ARC(project='test_sp_composite_preset_override',
+                  sp_composite={'preset': 'HEAT-345Q',
+                                'overrides': {'delta_T': {'high': {'method': 'ccsdt',
+                                                                   'basis': 'cc-pVTZ'}}}},
+                  freq_scale_factor=1)
+        arc.process_level_of_theory()
+        delta_t = next(t for t in arc.sp_composite.corrections if t.label == 'delta_T')
+        self.assertEqual(delta_t.high.basis, 'cc-pvtz')
+
+    def test_mutex_with_composite_method(self):
+        # Mutual-exclusion check fires during ARC.__init__ → process_level_of_theory.
+        with self.assertRaises(InputError):
+            ARC(project='test_sp_composite_mutex_composite',
+                sp_composite='HEAT-345Q', composite_method='CBS-QB3',
+                freq_scale_factor=1)
+
+    def test_mutex_with_adaptive_levels(self):
+        adaptive = {(1, 5): {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
+                             'sp': 'ccsd(t)-f12/cc-pvdz-f12'}}
+        with self.assertRaises(InputError):
+            ARC(project='test_sp_composite_mutex_adaptive',
+                sp_composite='HEAT-345Q', adaptive_levels=adaptive,
+                freq_scale_factor=1)
+
+    def test_fallback_sp_level_from_base(self):
+        """When sp_composite is set and sp_level is omitted, sp_level is derived from base.level."""
+        arc = ARC(project='test_sp_composite_fallback', sp_composite='HEAT-345Q',
+                  freq_scale_factor=1)
+        arc.process_level_of_theory()
+        self.assertIsInstance(arc.sp_level, Level)
+        self.assertEqual(arc.sp_level.method, arc.sp_composite.base.level.method)
+        self.assertEqual(arc.sp_level.basis, arc.sp_composite.base.level.basis)
+
+    def test_user_supplied_sp_level_preserved(self):
+        """An explicit sp_level coexists with sp_composite and is not overridden."""
+        arc = ARC(project='test_sp_composite_preserves_sp_level',
+                  sp_composite='HEAT-345Q',
+                  sp_level='wb97xd/def2-tzvp',
+                  freq_scale_factor=1)
+        arc.process_level_of_theory()
+        self.assertEqual(arc.sp_level.method, 'wb97xd')
+        self.assertEqual(arc.sp_level.basis, 'def2-tzvp')
+
+    def test_per_species_aec_limitation_documented(self):
+        """
+        Known limitation: when species carry their own sp_composite overrides,
+        the project-level AEC lookup still uses the *global* ``sp_composite.base.level``
+        (not per-species base levels). The user should set ``arkane_level_of_theory``
+        explicitly if they need a different AEC target. This test locks that
+        behavior so it's an intentional contract, not accidental.
+        """
+        global_recipe = 'HEAT-345Q'
+        local_recipe = {
+            'base': {'method': 'mp2', 'basis': 'cc-pVTZ'},
+            'corrections': [],
+        }
+        spc = ARCSpecies(label='H2', smiles='[H][H]', sp_composite=local_recipe)
+        arc = ARC(project='test_sp_composite_per_species_aec_limit',
+                  sp_composite=global_recipe,
+                  species=[spc],
+                  freq_scale_factor=1)
+        arc.arkane_level_of_theory = None
+        arc.check_arkane_level_of_theory()
+        # arkane_level_of_theory resolved to the GLOBAL protocol's base level
+        # (ccsd(t)-f12 from HEAT-345Q), not the species-level mp2.
+        self.assertEqual(arc.arkane_level_of_theory.method,
+                         arc.sp_composite.base.level.method)
+        self.assertEqual(arc.arkane_level_of_theory.method, 'ccsd(t)-f12')
+        # Clean up the project directory created by ARC init.
+        project_dir = os.path.join(ARC_PATH, 'Projects',
+                                   'test_sp_composite_per_species_aec_limit')
+        if os.path.isdir(project_dir):
+            shutil.rmtree(project_dir, ignore_errors=True)
+
+    def test_aec_defaults_to_base_and_bac_skipped_with_warning(self):
+        """
+        When sp_composite is active: AEC lookup uses base.level; BAC is skipped with
+        a logger warning. ARC logs to the ``'arc'`` named logger.
+        """
+        arc = ARC(project='test_sp_composite_aec_bac',
+                  sp_composite='HEAT-345Q',
+                  freq_scale_factor=1)
+        # ARC.__init__ already ran check_arkane_level_of_theory once; clear the
+        # resolved value so the second call exercises the full branching.
+        arc.arkane_level_of_theory = None
+        with self.assertLogs(logger='arc', level=logging.WARNING) as cm:
+            arc.check_arkane_level_of_theory()
+        joined = '\n'.join(cm.output)
+        self.assertIn('sp_composite', joined)
+        self.assertIn('BAC', joined)
+        self.assertEqual(arc.arkane_level_of_theory.method,
+                         arc.sp_composite.base.level.method)
 
 
 if __name__ == '__main__':

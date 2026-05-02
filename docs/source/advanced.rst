@@ -248,6 +248,340 @@ ARC extracts active space parameters from Molpro CCSD output files to guide subs
 The method returns a dictionary containing the ``'e_o'`` tuple (electrons, orbitals) alongside lists of occupied (``'occ'``) and closed-shell (``'closed'``) orbitals per irreducible representation.
 
 
+Composite single-point protocols (``sp_composite``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``sp_composite`` expresses the final electronic energy of each stationary point
+as a sum of contributions computed at *different* levels of theory — a
+HEAT-style focal-point analysis. This is distinct from the legacy
+``composite_method`` (which means a Gaussian-style single-job composite like
+``CBS-QB3``); the two are mutually exclusive at the project level.
+
+**When is it for you?**
+When a single level of theory is insufficient for the accuracy you need on a
+transition state. A typical motivation: ``CCSD(T)-F12/cc-pVTZ-F12`` wells agree
+with ATcT, but TS barriers miss experiment by several kJ/mol. Adding small
+post-(T) corrections (``δ[CCSDT]``, ``δ[CCSDT(Q)]``), plus core-valence and
+scalar-relativistic terms, closes the gap without any empirical fitting.
+
+**Four YAML forms.**
+
+**Form 1 — preset by name.** The quickest path::
+
+    project: h2o_heat345q
+    sp_composite: HEAT-345Q
+    species:
+      - label: H2O
+        smiles: O
+
+ARC ships the following presets in ``arc/level/presets.yml``:
+
+*HEAT family (Tajti / Bomble / Stanton lineage):*
+
+* ``HEAT-345`` — HEAT-style recipe inspired by Tajti et al. (see references).
+  Includes δ[CCSDT], δ_CV (core-valence, all-electron CCSD(T)/cc-pCVTZ vs
+  frozen-core), and δ_rel (DKH2 scalar-relativistic CCSD(T)/cc-pVTZ-DK).
+* ``HEAT-345Q`` — HEAT-345 plus a δ[CCSDT(Q)] correction.
+* ``HEAT-345_noC`` / ``HEAT-345Q_noC`` — same as the corresponding HEAT
+  variant but with the **δ_CV** (core-valence) correction omitted. The omission
+  is part of the preset name and reference string so users can cite the
+  protocol honestly when the all-electron leg is unavailable on their ESS.
+  Use these when targeting an ESS without a clean Molpro-style
+  ``core,...`` directive (or when the core-valence contribution is known to
+  be negligible — typically < 0.5 kJ/mol for first-row systems).
+* ``HEAT-345QP`` — HEAT-345Q extended with full quadruples (δ[CCSDTQ]) and
+  perturbative pentuples (δ[CCSDTQ(P)]). The δ_QQ and δ_P legs route
+  through the MRCC interface — modern Molpro builds with MRCC linked in
+  accept ``ccsdtq`` and ``ccsdtq(p)`` via the same path used for
+  ``ccsdt`` / ``ccsdt(q)`` in HEAT-345Q. CFOUR-NCC is an alternative back
+  end. A plain Molpro install without MRCC cannot run these sub-jobs.
+* ``HEAT-456Q`` — same correction stack as ``HEAT-345Q`` but with a tighter
+  base. The published HEAT-456 series uses cardinals {Q,5,6} for the HF /
+  CCSD(T) CBS reference; the ARC adaptation pins the anchor to
+  ``CCSD(T)-F12/cc-pVQZ-F12`` (single-anchor approximation of that CBS limit).
+
+*W\ :sub:`n` family (Karton/Martin / Boese):*
+
+* ``W2`` / ``W2-F12`` — high-quality CCSD(T) anchor + δ_CV + δ_rel. The
+  ``-F12`` variant uses ``CCSD(T)-F12/cc-pVQZ-F12`` for near-CBS quality
+  from a single SP. The non-F12 variant uses ``CCSD(T)/aug-cc-pVQZ``.
+* ``W3`` / ``W3-F12`` — W2 + δ[CCSDT]. *Note:* there is no canonical
+  primary publication titled "W3-F12"; ARC's preset is an extension by
+  analogy to the published W2-F12 (see references below). Cite as
+  "W3-F12 (ARC adaptation)".
+* ``W4`` / ``W4-F12`` — W3 + δ[CCSDT(Q)] + δ[CCSDTQ]. The δ_QQ leg goes
+  through the MRCC interface (Molpro-with-MRCC or CFOUR-NCC) — see the
+  note under HEAT-345QP above; the same back-end requirement applies.
+
+*Focal-point analysis:*
+
+* ``FPA-min`` — minimal focal-point recipe with a two-point Helgaker CBS
+  extrapolation term and a δ[CCSDT] correction.
+
+.. note::
+
+   The W\ :sub:`n` family in ARC is a **single-anchor adaptation** of the
+   canonical Karton/Martin protocols: the W\ :sub:`n` HF/CCSD/(T) basis-cardinal
+   CBS extrapolations are absorbed into the anchor SP rather than being
+   evaluated as separate stacked terms. This is faithful to the W\ :sub:`n`
+   spirit (high-quality CCSD(T) anchor + post-(T) / CV / rel corrections)
+   but not byte-identical to the published prescription. When citing, use
+   "W2 (ARC adaptation)" / "W4-F12 (ARC adaptation)" rather than the
+   bare protocol name to avoid implying a strict reproduction.
+
+**ESS syntax for δ_CV and δ_rel.** The HEAT presets shipped here target the
+**Molpro** adapter:
+
+* δ_CV — all-electron CCSD(T)/cc-pCVTZ via Molpro's ``core,0,...`` directive
+  (``args.keyword.core: 'core,0,0,0,0,0,0,0,0;'``). Trailing zeros are
+  harmless for lower-symmetry point groups.
+* δ_rel — DKH2 scalar-relativistic CCSD(T)/cc-pVTZ-DK via the canonical
+  Molpro directive ``SET,DKHO=2`` (passed as
+  ``args.keyword.dkho: 'SET,DKHO=2;'``). The Molpro manual
+  (https://www.molpro.net/manual/doku.php?id=relativistic_corrections)
+  explicitly recommends ``DKHO`` over the legacy ``DKROLL``. The directive
+  must appear *before* ``int;`` so the integrals are evaluated with the
+  DK-transformed Hamiltonian.
+
+Other ESSes need different keywords; pointing a HEAT-345 / HEAT-345Q preset
+at, say, the CFOUR or Orca adapter for those SPs will write the wrong
+directive. Until per-ESS preset families ship, either supply an explicit
+recipe or use a ``_noC`` variant.
+
+**Form 2 — preset with partial override.** Replace specific fields of named
+terms in the preset::
+
+    sp_composite:
+      preset: HEAT-345Q
+      overrides:
+        delta_T:
+          high: {method: ccsdt, basis: cc-pVTZ}
+
+The override dict keys are term labels (``base``, ``delta_T``, ``delta_Q``,
+``delta_CV``, ``delta_rel``, ...). Unknown target labels raise ``InputError``.
+
+**Form 3 — fully explicit recipe, including a CBS extrapolation term.** No
+preset, complete control::
+
+    sp_composite:
+      reference: "My recipe; DOI: 10.1234/example"
+      base:
+        method: ccsd(t)-f12
+        basis: cc-pVTZ-f12
+      corrections:
+        - label: delta_T
+          type: delta
+          high: {method: ccsdt,   basis: cc-pVDZ}
+          low:  {method: ccsd(t), basis: cc-pVDZ}
+        - label: cbs_corr
+          type: cbs_extrapolation
+          formula: helgaker_corr_2pt
+          components: total      # only "total" is currently supported
+          levels:
+            - {method: ccsd(t), basis: cc-pVTZ}
+            - {method: ccsd(t), basis: cc-pVQZ}
+
+Term types:
+
+* ``single_point`` — one absolute SP (only the ``base`` is usually one).
+* ``delta`` — ``E[high] − E[low]`` between two levels (same basis typically).
+* ``cbs_extrapolation`` — CBS extrapolation from ≥2 levels with the same
+  method but different basis cardinalities. Built-in formulas:
+  ``helgaker_hf_2pt`` (Halkier et al. 1998), ``helgaker_corr_2pt``
+  (Helgaker et al. 1997), ``martin_3pt`` (Martin 1996). Alternatively,
+  supply a user formula string referencing ``X``, ``Y``, ``Z`` (cardinals)
+  and ``E_X``, ``E_Y``, ``E_Z`` (energies); it is parsed through a
+  whitelisted AST evaluator — no ``eval()``.
+
+**Form 4 — per-species override.** Three states are distinguishable::
+
+    project: mixed
+    sp_composite: HEAT-345Q          # applies by default to every species
+    species:
+      - label: H2O                   # inherits the project-wide protocol
+        smiles: O
+      - label: H2O_uncorrected
+        smiles: O
+        sp_composite: null           # opt out — use plain sp_level
+      - label: TS1
+        xyz: ...
+        sp_composite:                # species-specific override
+          base: {method: mp2, basis: cc-pVTZ}
+          corrections: []
+
+Internally each species is in one of three states: ``"inherit"`` (key absent),
+``"opt_out"`` (explicit ``null``), ``"explicit"`` (preset name or recipe).
+These three survive ``as_dict`` / ``from_dict`` and restart-dict round-trip.
+
+**Form 5 — W\ :sub:`n` family for high-accuracy anchor energies.** When
+δ-corrections beyond CCSD(T) are *not* the bottleneck and you mainly want a
+near-CBS CCSD(T) reference with the canonical core-valence and scalar-
+relativistic corrections, the W2/W3 family is a good fit::
+
+    project: barriers_w3f12
+    sp_composite: W3-F12
+    species:
+      - label: TS1
+        xyz: ...
+
+This is cheaper than a HEAT-345Q and converges quickly because the F12 anchor
+already absorbs most of the CBS basis-set limit. ``W3-F12`` adds δ[CCSDT] on
+top, which is typically the largest post-(T) effect for small organic TSs.
+
+**Form 6 — HEAT-456Q for tighter CBS reference on small molecules.** For
+small molecules where HF and CCSD(T) basis incompleteness matters, swap the
+``cc-pVTZ-F12`` anchor for the ``cc-pVQZ-F12`` anchor::
+
+    sp_composite: HEAT-456Q
+
+This preset has the same correction stack as ``HEAT-345Q`` (δ[CCSDT],
+δ[CCSDT(Q)], δ_CV, δ_rel) but a more accurate base, mirroring the published
+HEAT-456 series whose HF/CCSD(T) CBS uses cardinals {Q,5,6}.
+
+**Form 7 — preset + per-term basis upgrade.** Combine a published preset
+with a partial override to refine just the term you care about::
+
+    sp_composite:
+      preset: HEAT-345Q
+      overrides:
+        delta_T:
+          high: {method: ccsdt,   basis: cc-pVTZ}
+          low:  {method: ccsd(t), basis: cc-pVTZ}
+
+This keeps the inexpensive δ[CCSDT(Q)]/cc-pVDZ leg, the cheap δ_CV/cc-pCVTZ
+core-valence pair, and the standard δ_rel — but moves only the δ[CCSDT]
+correction to a tighter basis. Useful when one term is responsible for most
+of the residual basis-set error in a barrier.
+
+**Form 8 — explicit recipe with W\ :sub:`n`-style stacked deltas.** For
+direct control of the entire ladder, write the recipe out::
+
+    sp_composite:
+      reference: "W3-style stack with custom anchor; DOI: 10.1063/1.1638736"
+      base:
+        method: ccsd(t)-f12
+        basis: cc-pVQZ-f12
+      corrections:
+        - label: delta_T
+          type: delta
+          high: {method: ccsdt,    basis: cc-pVDZ}
+          low:  {method: ccsd(t),  basis: cc-pVDZ}
+        - label: delta_CV
+          type: delta
+          high: {method: ccsd(t),  basis: cc-pCVTZ,
+                 args: {keyword: {core: 'core,0,0,0,0,0,0,0,0;'}, block: {}}}
+          low:  {method: ccsd(t),  basis: cc-pCVTZ}
+        - label: delta_rel
+          type: delta
+          high: {method: ccsd(t),  basis: cc-pVTZ-DK,
+                 args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
+          low:  {method: ccsd(t),  basis: cc-pVTZ}
+
+This is essentially what ``W3-F12`` expands to internally — useful as a
+template when you want to deviate from a shipped preset.
+
+**Interactions with other parameters.**
+
+* **``sp_level``** — coexists. If you omit ``sp_level`` while setting
+  ``sp_composite``, ARC derives ``sp_level`` from ``sp_composite.base.level``
+  so downstream code that reads ``sp_level`` (opt-out species, legacy paths)
+  keeps working. If you supply ``sp_level`` explicitly, it is preserved.
+* **``composite_method`` (legacy)** — mutually exclusive with ``sp_composite``.
+  Project fails to start with ``InputError`` if both are set.
+* **``adaptive_levels``** — mutually exclusive in the current release. Raises
+  ``InputError``. A future release may allow compatible combinations.
+* **``conformer_sp_level``** — unaffected. Conformer ranking stays at its own
+  level; ``sp_composite`` kicks in only at the final SP stage on the
+  optimized geometry.
+
+**AEC / BAC behavior.**
+When ``sp_composite`` is active, ARC automatically routes Arkane's AEC lookup
+through ``sp_composite.base.level``. The BAC lookup is **skipped entirely**
+with a single warning — BAC was derived for a single LoT and is not meaningful
+on top of a δ-corrected composite. If you need BAC, compute it externally
+against the base level and add it as a literal term in the recipe.
+
+Known limitation: per-species AEC is *not* implemented. When species carry
+mixed per-species protocols, the global AEC lookup uses the *project-level*
+``sp_composite.base.level``. Users who need per-species AEC should set
+``arkane_level_of_theory`` explicitly per project.
+
+**Restart behavior.**
+Composite sub-jobs are tracked in the persistent output dict
+(``output[label]['paths']['sp_composite']: {sub_label → path}``). Restart
+re-runs only the sub-jobs missing from that dict. On init the scheduler
+*validates* every recorded path (file exists, ``parse_e_elect`` returns a
+number); invalidated entries are pushed back to pending with a warning. After
+seeding, the scheduler kick-starts any pending sub-jobs for species with prior
+composite progress, so a restart with no other events still makes forward
+progress.
+
+**Provenance notebook.**
+Every time a composite finalizes, ARC regenerates a single project-level
+Jupyter notebook at ``<project>/output/sp_composite.ipynb``. It is
+**unexecuted on write**: it contains cell sources but no outputs. The user
+opens the notebook and runs "Run All" to independently verify the result —
+each section reconstructs its ``CompositeProtocol`` from a literal recipe
+dict, re-parses every sub-job QM output via ``arc.parser.parse_e_elect``, and
+re-evaluates the total. Citations (with DOI when supplied) carry through
+from ``presets.yml`` (or from the user's explicit ``reference:`` key) into the
+notebook's markdown.
+
+**Units.**
+``arc.parser.parse_e_elect`` returns kJ/mol. ``CompositeProtocol.evaluate``
+is a pass-through sum and preserves whatever units its inputs use. ARC always
+stores ``species.e_elect`` in kJ/mol. Hartree is used only at display /
+logging boundaries (division by ``arc.constants.E_h_kJmol``) and in the
+Arkane species-file renderer, which converts once when writing the numeric
+``energy = <Hartree>`` assignment.
+
+**Known limitations.**
+
+* **MRCC adapter**: ARC does not ship a dedicated standalone MRCC adapter.
+  Methods that route through MRCC (``CCSDT``, ``CCSDT(Q)``, ``CCSDTQ``,
+  ``CCSDTQ(P)``) work today through the Molpro adapter when Molpro is built
+  with the MRCC interface, or through CFOUR-NCC.
+* **Per-species AEC/BAC**: see the AEC/BAC section above.
+* **``adaptive_levels`` interaction**: currently rejected; may relax later.
+
+**References.**
+
+* Allen, East, Császár — focal-point analysis review (general FPA methodology).
+* Tajti, Szalay, Császár, Kállay, Gauss, Valeev, Flowers, Vázquez, Stanton,
+  *J. Chem. Phys.* **121**, 11599 (2004). DOI: 10.1063/1.1811608 — HEAT-345 protocol.
+* Bomble, Vázquez, Kállay, Michauk, Szalay, Császár, Gauss, Stanton,
+  *J. Chem. Phys.* **125**, 064108 (2006). DOI: 10.1063/1.2206789 — HEAT-345(Q)
+  and HEAT-456 series.
+* Martin, de Oliveira, *J. Chem. Phys.* **111**, 1843 (1999).
+  DOI: 10.1063/1.479454 — W1 / W2 protocols.
+* Boese, Oren, Atasoylu, Martin, Kállay, Gauss, *J. Chem. Phys.* **120**, 4129
+  (2004). DOI: 10.1063/1.1638736 — W3 protocol.
+* Karton, Rabinovich, Martin, Ruscic, *J. Chem. Phys.* **125**, 144108 (2006).
+  DOI: 10.1063/1.2348881 — W4 protocol.
+* Karton, Martin, *J. Chem. Phys.* **136**, 124114 (2012).
+  DOI: 10.1063/1.3697678 — W1-F12 and W2-F12 protocols. ARC's ``W3-F12``
+  preset is an adaptation by analogy (no canonical primary publication
+  titled "W3-F12"): it stacks δ[CCSDT] on top of the W2-F12 anchor in the
+  spirit of how W3 (Boese et al. 2004) extended W2.
+* Sylvetsky, Peterson, Karton, Martin, *J. Chem. Phys.* **144**, 214101
+  (2016). DOI: 10.1063/1.4952410 — W4-F12 protocol.
+* Helgaker, Klopper, Koch, Noga, *J. Chem. Phys.* **106**, 9639 (1997).
+  DOI: 10.1063/1.473863 — two-point correlation CBS extrapolation.
+* Halkier, Helgaker, Jørgensen, Klopper, Koch, Olsen, Wilson,
+  *Chem. Phys. Lett.* **286**, 243-252 (1998). DOI: 10.1016/S0009-2614(98)00111-0
+  — extends the two-point correlation-energy CBS extrapolation to Ne, N\ :sub:`2`,
+  and H\ :sub:`2`\ O.
+* Halkier, Helgaker, Jørgensen, Klopper, Olsen, *Chem. Phys. Lett.* **302**,
+  437-446 (1999). DOI: 10.1016/S0009-2614(99)00179-7 — two-point HF-energy CBS
+  extrapolation; source of the fitted ``α = 1.63`` exponential decay parameter
+  used by ``helgaker_hf_2pt``.
+* Martin, *Chem. Phys. Lett.* **259**, 669-678 (1996). DOI: 10.1016/0009-2614(96)00898-6
+  — three-point Schwartz-style extrapolation.
+* Dunning, *J. Chem. Phys.* **90**, 1007 (1989). DOI: 10.1063/1.456153 —
+  correlation-consistent basis-set families; cardinal-number convention used
+  by ``cardinal_from_basis``.
+
+
 Adaptive levels of theory
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 ARC allows users to adapt the level of theory to the size of the molecule.

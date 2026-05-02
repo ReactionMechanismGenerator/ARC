@@ -7,6 +7,7 @@ import datetime
 import numpy as np
 import os
 from math import isclose
+from typing import TYPE_CHECKING
 
 import arc.molecule.element as elements
 from arc.common import (SYMBOL_BY_NUMBER,
@@ -24,7 +25,8 @@ from arc.common import (SYMBOL_BY_NUMBER,
 from arc.exceptions import AtomTypeError, InputError, InvalidAdjacencyListError, RotorError, SpeciesError, TSError, \
     SanitizationError
 from arc.imports import settings
-from arc.level import Level
+from arc.level import INHERIT, Level
+from arc.level.protocol import CompositeProtocol
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.resonance import generate_aromatic_resonance_structure, generate_kekule_structure, generate_resonance_structures_safely
@@ -55,9 +57,33 @@ from arc.species.converter import (check_isomorphism,
 from arc.species.perceive import perceive_molecule_from_xyz, is_mol_valid
 from arc.species.vectors import calculate_angle, calculate_distance, calculate_dihedral_angle
 
+if TYPE_CHECKING:
+    from arc.reaction import ARCReaction
+
 logger = get_logger()
 
 valid_chars, minimum_barrier = settings['valid_chars'], settings['minimum_barrier']
+
+
+def _resolve_sp_composite_input(value):
+    """
+    Convert a user-supplied ``sp_composite`` value into ``(state, protocol)``.
+
+    Phase 2 three-state model:
+
+    * ``INHERIT`` sentinel → ``("inherit", None)`` — user didn't set this field.
+    * ``None``             → ``("opt_out", None)`` — user wrote ``null``.
+    * str / dict / CompositeProtocol → ``("explicit", CompositeProtocol)``.
+
+    Raised exceptions propagate from :meth:`CompositeProtocol.from_user_input`.
+    """
+    if value is INHERIT:
+        return "inherit", None
+    if value is None:
+        return "opt_out", None
+    if isinstance(value, CompositeProtocol):
+        return "explicit", value
+    return "explicit", CompositeProtocol.from_user_input(value)
 
 
 class ARCSpecies(object):
@@ -334,6 +360,7 @@ class ARCSpecies(object):
                  yml_path: str | None = None,
                  keep_mol: bool = False,
                  project_directory: str | None = None,
+                 sp_composite=INHERIT,
                  ):
         self.t1 = None
         self.ts_number = ts_number
@@ -377,6 +404,7 @@ class ARCSpecies(object):
         self.label = label
         self.symmetry_number = None
         self.index = None
+        self.sp_composite_state, self.sp_composite = _resolve_sp_composite_input(sp_composite)
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
@@ -394,6 +422,10 @@ class ARCSpecies(object):
             self.ts_conf_spawned = False
             self.ts_guesses_exhausted = False
             self.e_elect = None
+            # Provenance of e_elect. None for legacy SP; 'sp_composite' when the
+            # Scheduler's composite finalize sets the value. Read by Phase 4
+            # Arkane plumbing to decide whether to render the explicit-energy template.
+            self.e_elect_source = None
             self.e0 = None
             self.arkane_file = None
             self.conf_is_isomorphic = None
@@ -820,6 +852,13 @@ class ARCSpecies(object):
             # this marks the species to skip rotor scans (it is not an empty dict)
             # this is valuable information, store it in the restart file
             species_dict['rotors_dict'] = self.rotors_dict
+        if self.sp_composite_state == "opt_out":
+            species_dict['sp_composite'] = None
+        elif self.sp_composite_state == "explicit":
+            species_dict['sp_composite'] = self.sp_composite.as_dict()
+        # Provenance flag (Phase 3). Only emit when set; legacy output stays clean.
+        if getattr(self, "e_elect_source", None) is not None:
+            species_dict['e_elect_source'] = self.e_elect_source
         return species_dict
 
     def from_dict(self, species_dict):
@@ -834,6 +873,7 @@ class ARCSpecies(object):
         self.original_label = species_dict['original_label'] if 'original_label' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
         self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
+        self.e_elect_source = species_dict['e_elect_source'] if 'e_elect_source' in species_dict else None
         self.freqs = species_dict.get('freqs')
         self.e0 = species_dict['e0'] if 'e0' in species_dict else None
         self.tsg_spawned = species_dict['tsg_spawned'] if 'tsg_spawned' in species_dict else False
@@ -894,6 +934,13 @@ class ARCSpecies(object):
         self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else None
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
+        if 'sp_composite' not in species_dict:
+            self.sp_composite_state, self.sp_composite = "inherit", None
+        elif species_dict['sp_composite'] is None:
+            self.sp_composite_state, self.sp_composite = "opt_out", None
+        else:
+            self.sp_composite_state = "explicit"
+            self.sp_composite = CompositeProtocol.from_user_input(species_dict['sp_composite'])
         if 'mol' in species_dict:
             if isinstance(species_dict['mol'], str):
                 try:
@@ -2247,7 +2294,7 @@ class TSGuess(object):
                  success: bool | None = None,
                  family: str | None = None,
                  xyz: dict | str | None = None,
-                 arc_reaction: Optional = None,
+                 arc_reaction: ARCReaction | None = None,
                  ts_dict: dict | None = None,
                  energy: float | None = None,
                  cluster: list[int] | None = None,

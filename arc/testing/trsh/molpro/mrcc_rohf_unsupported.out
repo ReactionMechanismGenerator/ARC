@@ -1,0 +1,14 @@
+
+ Primary working directories    : /scratch/user/12345
+ Secondary working directories  : /scratch/user/12345
+
+ PROGRAM SYSTEM MOLPRO
+
+ Variables initialized (889), CPU time= 0.01 sec
+ Commands  initialized (702), CPU time= 0.01 sec
+
+ Executing external program mrcc ...
+
+ Use semicanonical orbitals! standard ROHF orbitals are not supported for approximate CC methods.
+
+ Fatal error in mrcc.

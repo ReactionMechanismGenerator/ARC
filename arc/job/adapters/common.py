@@ -9,7 +9,6 @@ import shutil
 import sys
 import re
 
-from pprint import pformat
 from typing import TYPE_CHECKING
 
 from arc.common import get_logger
@@ -470,21 +469,26 @@ def set_job_args(args: dict | None,
     """
     Set the job args considering args from ``level`` and from ``trsh``.
 
+    The caller (e.g. :meth:`arc.scheduler.Scheduler.run_job`) is expected to
+    have already merged any ``level.args`` content into ``args`` before calling
+    this function — ``run_job`` does so via ``args.update(level.args)``. When
+    the caller passes empty ``args`` and the level supplies ``args``, we fall
+    back to ``level.args`` for convenience.
+
     Args:
-        args (dict): The job specific arguments.
+        args (dict): The job-specific arguments.
         level (Level): The level of theory.
         job_name (str): The job name.
 
     Returns:
-        dict: The initialized job specific arguments.
+        dict: The initialized job-specific arguments, guaranteed to carry the
+        ``'keyword'``, ``'block'``, and ``'trsh'`` buckets (each a dict).
     """
-    # Ignore user-specified additional job arguments when troubleshooting.
-    if args is not None and args and any(val for val in args.values()) \
-            and level is not None and level.args and any(val for val in level.args.values()):
-        logger.warning(f'When troubleshooting {job_name}, ARC ignores the following user-specified options:\n'
-                       f'{pformat(level.args)}')
-    elif not args and level is not None:
+    # Convenience fallback: empty (or None) caller-args inherits level.args.
+    if not args and level is not None and level.args is not None:
         args = level.args
+    if args is None:
+        args = dict()
     for key in ['keyword', 'block', 'trsh']:
         if key not in args.keys():
             args[key] = dict()
