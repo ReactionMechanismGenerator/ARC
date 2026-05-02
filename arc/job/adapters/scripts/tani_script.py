@@ -6,6 +6,11 @@ A standalone script to run TorhANI,
 should be run under the tani environment.
 """
 
+# tani_env's Python may predate PEP 604 (``X | Y`` unions); this
+# future-import defers annotation evaluation so the script imports on
+# any Python ≥3.7 regardless of the env's interpreter version.
+from __future__ import annotations
+
 import argparse
 import os
 import yaml
