@@ -7,6 +7,7 @@ import datetime
 import numpy as np
 import os
 from math import isclose
+from typing import TYPE_CHECKING
 
 import arc.molecule.element as elements
 from arc.common import (SYMBOL_BY_NUMBER,
@@ -35,7 +36,6 @@ from arc.parser.parser import (parse_1d_scan_energies,
                                parse_polarizability,
                                process_conformers_file,
                                )
-from arc.reaction import ARCReaction
 from arc.species import conformers
 from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
@@ -56,6 +56,9 @@ from arc.species.converter import (check_isomorphism,
                                    )
 from arc.species.perceive import perceive_molecule_from_xyz, is_mol_valid
 from arc.species.vectors import calculate_angle, calculate_distance, calculate_dihedral_angle
+
+if TYPE_CHECKING:
+    from arc.reaction import ARCReaction
 
 logger = get_logger()
 
