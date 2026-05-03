@@ -3387,56 +3387,70 @@ class Scheduler(object):
 
         # A lower conformation was found.
         if 'change conformer' in methods:
-            # We will delete all of the jobs no matter we can successfully change to the conformer.
-            # If success, we have to cancel jobs to avoid conflicts
-            # If not succeed, we are in a situation that we find a lower conformer, but either
-            # this is an incorrect conformer or we have applied this troubleshooting before, but it
-            # didn't yield a good result.
+            new_xyz = methods['change conformer']
+            duplicate = any(
+                'change conformer' in used_trsh_method
+                and compare_confs(new_xyz, used_trsh_method['change conformer'])
+                for used_trsh_method in used_trsh_methods
+            )
+
+            if duplicate:
+                # The "lower" frame from the scan re-opts back to the source geometry,
+                # so the scan reported a sub-kcal numerical artifact rather than a real
+                # lower minimum. Preserve the species' existing converged opt/freq/sp
+                # results — fail only this rotor.
+                rotor = self.species_dict[label].rotors_dict[job.rotor_index]
+                pivots = rotor['pivots']
+                rotor['success'] = False
+                rotor['invalidation_reason'] += (
+                    'change conformer trsh proposed an already-tried conformer '
+                    '(re-opt of the rotor-scan minimum returns the source geometry); '
+                    'rotor disabled, species jobs preserved. '
+                )
+                logger.warning(
+                    f'Rotor {pivots} of {label}: change-conformer troubleshoot proposed '
+                    f'a conformer already tried (lowest scan frame opts back to source). '
+                    f'Disabling this rotor and keeping the existing opt/freq/sp results.'
+                )
+                return trsh_success, actual_actions
+
+            # Otherwise we may switch conformers — wipe in-flight jobs/paths so the new
+            # initial xyz starts cleanly.
             self.delete_all_species_jobs(label)
 
-            new_xyz = methods['change conformer']
-            # Check if the same conformer is used in previous troubleshooting
-            for used_trsh_method in used_trsh_methods:
-                if 'change conformer' in used_trsh_method \
-                        and compare_confs(new_xyz, used_trsh_method['change conformer']):
-                    # Find we have used this conformer for troubleshooting. Invalid the troubleshooting.
-                    logger.error(f'The change conformer method for {label} is invalid. '
-                                 f'ARC will not change to the same conformer twice.')
-                    break
+            if self.species_dict[label].is_ts:
+                is_isomorphic = True
             else:
-                # If 'change conformer' is not used, check for isomorphism.
-                if self.species_dict[label].is_ts:
-                    is_isomorphic = True
-                else:
-                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
-                        allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                        xyz=new_xyz)
-                if is_isomorphic:
-                    self.species_dict[label].final_xyz = new_xyz
-                    # Remove all completed rotor calculation information.
-                    for rotor in self.species_dict[label].rotors_dict.values():
-                        # Don't initialize all parameters, e.g., `times_dihedral_set` needs to remain as is.
-                        rotor['scan_path'] = ''
-                        rotor['invalidation_reason'] = ''
-                        rotor['success'] = None
-                        rotor['symmetry'] = None
-                        if rotor['scan'] == torsions_to_scans(job.torsions)[0]:
-                            rotor['times_dihedral_set'] += 1
-                        # We can save the change conformer trsh info, but other trsh methods like
-                        # freezing or increasing scan resolution can be cleaned, otherwise, they may
-                        # not be troubleshot.
-                        rotor['trsh_methods'] = [trsh_method for trsh_method in rotor['trsh_methods']
-                                                 if 'change conformer' in trsh_method]
-                    # Re-run opt (or composite) on the new initial_xyz with the desired dihedral.
-                    if not self.composite_method:
-                        self.run_opt_job(label)
-                    else:
-                        self.run_composite_job(label)
-                    trsh_success = True
-                    actual_actions = methods
-                    return trsh_success, actual_actions
+                is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
+                    allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                    xyz=new_xyz)
 
-            # The conformer is wrong, or we are in a loop changing to the same conformers again.
+            if is_isomorphic:
+                self.species_dict[label].final_xyz = new_xyz
+                # Remove all completed rotor calculation information.
+                for rotor in self.species_dict[label].rotors_dict.values():
+                    # Don't initialize all parameters, e.g., `times_dihedral_set` needs to remain as is.
+                    rotor['scan_path'] = ''
+                    rotor['invalidation_reason'] = ''
+                    rotor['success'] = None
+                    rotor['symmetry'] = None
+                    if rotor['scan'] == torsions_to_scans(job.torsions)[0]:
+                        rotor['times_dihedral_set'] += 1
+                    # We can save the change conformer trsh info, but other trsh methods like
+                    # freezing or increasing scan resolution can be cleaned, otherwise, they may
+                    # not be troubleshot.
+                    rotor['trsh_methods'] = [trsh_method for trsh_method in rotor['trsh_methods']
+                                             if 'change conformer' in trsh_method]
+                # Re-run opt (or composite) on the new initial_xyz with the desired dihedral.
+                if not self.composite_method:
+                    self.run_opt_job(label)
+                else:
+                    self.run_composite_job(label)
+                trsh_success = True
+                actual_actions = methods
+                return trsh_success, actual_actions
+
+            # The proposed lower conformer is non-isomorphic — real chemistry mismatch.
             self.output[label]['errors'] += \
                 f'A lower conformer was found for {label} via a torsion mode, ' \
                 f'but it is not isomorphic with the 2D graph representation ' \
