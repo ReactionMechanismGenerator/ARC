@@ -6,6 +6,11 @@ A standalone script to retrieve xyz data from AutoTST,
 should be run under the tst_env.
 """
 
+# tst_env is Python 3.9; this script uses PEP 604 union syntax
+# (``str | None``) for parity with the rest of ARC. The future-import
+# defers annotation evaluation so 3.9 doesn't choke at def-time.
+from __future__ import annotations
+
 import argparse
 import numpy as np
 import os
