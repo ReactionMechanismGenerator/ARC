@@ -431,6 +431,10 @@ class Scheduler(object):
                 if self.output[species.label]['convergence']:
                     continue
                 if species.is_monoatomic():
+                    if species.final_xyz is None:
+                        # Monoatomic species skip opt, so promote the best available xyz to final_xyz
+                        # now — otherwise reaction.done_opt_r_n_p stays False and TS spawning never fires.
+                        species.final_xyz = species.get_xyz(generate=True)
                     if not self.output[species.label]['job_types']['sp'] \
                             and not self.output[species.label]['job_types']['composite'] \
                             and 'sp' not in list(self.job_dict[species.label].keys()) \
