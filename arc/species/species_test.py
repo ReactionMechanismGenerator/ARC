@@ -2188,6 +2188,29 @@ H       1.11582953    0.94384729   -0.10134685"""
         ch_ts = ARCSpecies(label='C--H-TS', xyz='C 0 0 0\nH 1 2 5', is_ts=True)
         self.assertEqual(ch_ts.multiplicity, 2)
 
+        ts_1_xyz = """H -2.99394700  1.00970200  0.09451400
+                      O -4.10192200  0.13578500 -0.05953100
+                      H -4.43761000 -0.35213100  0.70859500
+                      C -2.22272000  0.16048700 -0.01004900
+                      O -1.59892700 -0.79618100  0.08758500"""
+        ts_1_spc = ARCSpecies(label='TS1', is_ts=True, xyz=ts_1_xyz)
+        self.assertEqual(ts_1_spc.multiplicity, 1)
+
+        ts_1_spc_from_dict = ARCSpecies(species_dict={'label': 'TS1', 'is_ts': True, 'xyz': ts_1_xyz})
+        self.assertEqual(ts_1_spc_from_dict.multiplicity, 1)
+
+        # Test a known doublet TS from a Gaussian output file (NH3 + H = NH2 + H2).
+        # Verify that xyz-based electron counting (11 electrons → mult 2) wins over mol.multiplicity.
+        ts_doublet_path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_NH3+H=NH2+H2.out')
+        ts_doublet = ARCSpecies(label='TS_NH3+H', is_ts=True, xyz=ts_doublet_path)
+        self.assertIsNotNone(ts_doublet.mol)
+        self.assertEqual(ts_doublet.multiplicity, 2)
+        # Simulate a mol that incorrectly perceives multiplicity as 1, and verify xyz detection still gives 2.
+        ts_doublet.multiplicity = None
+        ts_doublet.mol.multiplicity = 1
+        ts_doublet.determine_multiplicity_from_xyz()
+        self.assertEqual(ts_doublet.multiplicity, 2)
+
     def test_cluster_tsgs(self):
         """Test the cluster_tsgs() method."""
         xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
