@@ -466,7 +466,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             linear=species.is_linear,
             spin_multiplicity=species.multiplicity,
             sp_path=self.output_dict[species.label]['paths']['composite'] or self.output_dict[species.label]['paths']['sp'],
-            freq_path=self.output_dict[species.label]['paths']['freq'] or self.output_dict[species.label]['paths']['sp'],
+            freq_path=(self.output_dict[species.label]['paths']['freq']
+                       or self.output_dict[species.label]['paths']['composite']
+                       or self.output_dict[species.label]['paths']['sp']),
             use_hindered_rotors=use_rotors,
             rotors=rotors,
             e_elect_hartree=e_elect_hartree,

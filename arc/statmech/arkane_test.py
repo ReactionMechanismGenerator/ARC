@@ -775,6 +775,41 @@ class TestArkaneSpCompositeRendering(unittest.TestCase):
         self.assertIn("sp_composite", str(ctx.exception))
         self.assertIn("e_elect is None", str(ctx.exception))
 
+    def test_composite_atom_geometry_falls_back_to_composite_path(self):
+        """Atoms under sp_composite have no freq job; geometry/frequencies Log() must
+        fall back to paths['composite'], not render Log('')."""
+        composite_path = os.path.join(self.tmpdir, "H_base_sp.out")
+        # The file does not need to be parseable here; the test checks rendering only.
+        with open(composite_path, 'w') as f:
+            f.write("placeholder")
+        species = ARCSpecies(label='Hatom', smiles='[H]')
+        species.e_elect = -1312.753
+        species.e_elect_source = 'sp_composite'
+        output_dir = os.path.join(self.tmpdir, "output", species.label)
+        calcs_dir = os.path.join(self.tmpdir, "calcs", species.label)
+        for d in (output_dir, calcs_dir):
+            os.makedirs(d, exist_ok=True)
+        adapter = ArkaneAdapter(
+            output_directory=output_dir,
+            calcs_directory=calcs_dir,
+            output_dict={species.label: {'paths': {
+                'freq': '', 'sp': '', 'opt': '', 'composite': composite_path,
+            }}},
+            bac_type=None,
+            species=[species],
+            sp_level=Level('gfn2'),
+            freq_level=Level('gfn2'),
+            freq_scale_factor=1.0,
+        )
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        self.assertIn(f"geometry = Log('{composite_path}')", content)
+        self.assertIn(f"frequencies = Log('{composite_path}')", content)
+        self.assertNotIn("Log('')", content)
+
     def test_composite_rendered_energy_equals_kJmol_over_E_h_kJmol(self):
         """Round-trip: hartree written = (kJ/mol stored) / E_h_kJmol, to within fp precision."""
         species = ARCSpecies(label='H2precise', smiles='[H][H]')
