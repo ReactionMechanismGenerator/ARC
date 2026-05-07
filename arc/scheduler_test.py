@@ -7,10 +7,12 @@ This module contains unit tests for the arc.scheduler module
 
 import unittest
 from unittest.mock import MagicMock, patch
+import datetime
 import logging
 import os
 import shutil
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import nbformat
@@ -20,6 +22,7 @@ from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
 from arc.job.adapters.common import default_incore_adapters, ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular
 from arc.job.factory import job_factory
+from arc.job.zombie import ZOMBIE_GRACE_SECONDS
 from arc.level import Level
 from arc.level.protocol import CompositeProtocol
 from arc.plotter import save_conformers_file
@@ -2513,6 +2516,195 @@ class TestSchedulerSpCompositePassthrough(unittest.TestCase):
         protocol = CompositeProtocol.from_user_input('HEAT-345Q')
         sched = self._make_scheduler(protocol)
         self.assertEqual(sched.running_jobs, {'H2': []})
+
+
+class TestSchedulerZombieJobDetection(unittest.TestCase):
+    """A queue-running job that has produced no output traffic by the grace
+    period is treated as a zombie: killed, then resubmitted once. The cap of
+    one resubmit per (species, job_type) prevents loops on bad inputs."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1']}
+        cls.project_directory = os.path.join(
+            ARC_PATH, 'Projects', 'arc_project_for_testing_zombie'
+        )
+        if os.path.isdir(cls.project_directory):
+            shutil.rmtree(cls.project_directory, ignore_errors=True)
+        os.makedirs(cls.project_directory, exist_ok=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir(cls.project_directory):
+            shutil.rmtree(cls.project_directory, ignore_errors=True)
+
+    def _make_sched(self):
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'), 'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        with patch.object(Scheduler, "run_job", lambda self, *a, **kw: None):
+            sched = Scheduler(
+                project='zombie',
+                ess_settings=self.ess_settings,
+                species_list=[spc],
+                project_directory=self.project_directory,
+                opt_level=Level(repr=default_levels_of_theory['opt']),
+                freq_level=Level(repr=default_levels_of_theory['freq']),
+                sp_level=Level(repr=default_levels_of_theory['sp']),
+                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                scan_level=Level(repr=default_levels_of_theory['scan']),
+                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                orbitals_level=default_levels_of_theory['orbitals'],
+                testing=True,
+            )
+        sched.run_job = lambda *a, **kw: None
+        return sched
+
+    def _stub_job(self, job_adapter='molpro', job_type='sp', execution_type='queue',
+                  initial_offset_seconds=ZOMBIE_GRACE_SECONDS + 3600, job_name='sp_a3177', job_id=12345):
+        job = SimpleNamespace(
+            job_name=job_name, job_type=job_type, job_id=job_id,
+            job_adapter=job_adapter, execution_type=execution_type,
+            initial_time=datetime.datetime.now() - datetime.timedelta(seconds=initial_offset_seconds),
+            server='server1',
+            local_path='/tmp/no/such/path', local_path_to_output_file='/tmp/no/such/output.out',
+            remote_path='/remote/no/such/path',
+            deleted=False,
+        )
+        def _delete():
+            job.deleted = True
+        job.delete = _delete
+        return job
+
+    def _install(self, sched, job, label='H2'):
+        sched.job_dict.setdefault(label, {}).setdefault(job.job_type, {})[job.job_name] = job
+        sched.running_jobs.setdefault(label, []).append(job.job_name)
+        sched.server_job_ids = [job.job_id]
+
+    def test_zombie_killed_and_resubmitted(self):
+        sched = self._make_sched()
+        job = self._stub_job()
+        self._install(sched, job)
+        run_calls = []
+        sched._run_a_job = lambda job, label: run_calls.append((job.job_name, label))
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+        self.assertTrue(job.deleted, "Zombie job should have been deleted.")
+        self.assertEqual(run_calls, [(job.job_name, 'H2')])
+        self.assertNotIn(job.job_name, sched.running_jobs['H2'])
+        self.assertIn('sp', sched._zombie_kills['H2'])
+
+    def test_healthy_job_not_killed(self):
+        sched = self._make_sched()
+        job = self._stub_job()
+        self._install(sched, job)
+        sched._run_a_job = lambda *a, **kw: self.fail("must not resubmit healthy job")
+        # Output mtime well after spawn → healthy.
+        fresh = job.initial_time + datetime.timedelta(seconds=3000)
+        with patch('arc.job.zombie.output_mtime', return_value=fresh):
+            sched.check_for_zombie_jobs('H2')
+        self.assertFalse(job.deleted)
+        self.assertIn(job.job_name, sched.running_jobs['H2'])
+        self.assertEqual(sched._zombie_kills, {})
+
+    def test_grace_period_blocks_zombie_check(self):
+        sched = self._make_sched()
+        # Spawned 30 minutes ago — within the grace period.
+        job = self._stub_job(initial_offset_seconds=1800)
+        self._install(sched, job)
+        sched._run_a_job = lambda *a, **kw: self.fail("must not act inside grace window")
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+        self.assertFalse(job.deleted)
+
+    def test_non_periodic_writer_ess_skipped(self):
+        sched = self._make_sched()
+        job = self._stub_job(job_adapter='xtb')  # not in _ESS_PERIODIC_WRITERS
+        self._install(sched, job)
+        sched._run_a_job = lambda *a, **kw: self.fail("must not act on non-periodic-writer ESS")
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+        self.assertFalse(job.deleted)
+
+    def test_incore_job_skipped(self):
+        sched = self._make_sched()
+        job = self._stub_job(execution_type='incore')
+        self._install(sched, job)
+        sched._run_a_job = lambda *a, **kw: self.fail("must not act on incore jobs")
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+        self.assertFalse(job.deleted)
+
+    def test_queue_status_done_skipped(self):
+        sched = self._make_sched()
+        job = self._stub_job()
+        self._install(sched, job)
+        # Queue says the job is no longer running (done / disappeared).
+        sched.server_job_ids = []
+        sched._run_a_job = lambda *a, **kw: self.fail("must not act when queue says not running")
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+        self.assertFalse(job.deleted)
+
+    def test_cap_prevents_double_resubmit(self):
+        sched = self._make_sched()
+        sched._zombie_kills['H2'] = {'sp'}  # Already used the one chance.
+        job = self._stub_job()
+        self._install(sched, job)
+        sched._run_a_job = lambda *a, **kw: self.fail("must not resubmit when cap is hit")
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+        self.assertFalse(job.deleted)
+        self.assertIn(job.job_name, sched.running_jobs['H2'])
+
+    def test_second_zombie_pass_is_noop_after_one_kill(self):
+        """A second zombie detection for the same (species, job_type) after one
+        real kill-and-resubmit cycle must be a no-op: no second delete, no second
+        resubmission, and the 'leaving for manual intervention' branch is taken."""
+        sched = self._make_sched()
+        job = self._stub_job()
+        self._install(sched, job)
+        run_calls = []
+        sched._run_a_job = lambda job, label: run_calls.append((job.job_name, label))
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+            self.assertTrue(job.deleted)
+            self.assertEqual(run_calls, [(job.job_name, 'H2')])
+            self.assertEqual(sched._zombie_kills['H2'], {'sp'})
+            # The resubmitted job wedges too: the queue reports it running again.
+            job.deleted = False
+            sched.running_jobs['H2'].append(job.job_name)
+            with self.assertLogs(logger='arc', level=logging.WARNING) as cm:
+                sched.check_for_zombie_jobs('H2')
+        self.assertEqual(run_calls, [(job.job_name, 'H2')])
+        self.assertFalse(job.deleted)
+        self.assertEqual(sched._zombie_kills['H2'], {'sp'})
+        self.assertIn(job.job_name, sched.running_jobs['H2'])
+        self.assertIn('manual intervention', '\n'.join(cm.output))
+
+    def test_cap_is_per_job_type(self):
+        sched = self._make_sched()
+        sched._zombie_kills['H2'] = {'sp'}  # sp already used.
+        job = self._stub_job(job_type='freq', job_name='freq_a8888')
+        self._install(sched, job)
+        run_calls = []
+        sched._run_a_job = lambda job, label: run_calls.append((job.job_name, label))
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+        self.assertTrue(job.deleted, "freq has its own cap budget independent of sp.")
+        self.assertEqual(run_calls, [(job.job_name, 'H2')])
+        self.assertEqual(sched._zombie_kills['H2'], {'sp', 'freq'})
+
+    def test_zombie_kills_serialized_in_restart(self):
+        sched = self._make_sched()
+        sched._zombie_kills = {'H2': {'sp', 'freq'}, 'OH': {'sp'}}
+        sched.save_restart = True
+        sched.restart_dict = {}
+        sched.save_restart_dict()
+        saved = sched.restart_dict['_zombie_kills']
+        self.assertEqual(set(saved.keys()), {'H2', 'OH'})
+        self.assertEqual(set(saved['H2']), {'sp', 'freq'})
+        self.assertEqual(set(saved['OH']), {'sp'})
 
 
 if __name__ == '__main__':

@@ -43,6 +43,7 @@ from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
 from arc.job.ssh import SSHClient
+from arc.job.zombie import is_zombie as _is_zombie_job
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
                           trsh_ess_job,
@@ -335,6 +336,13 @@ class Scheduler(object):
         # Per-species pending sub-jobs keyed by label → {sub_label: Level}. Transient;
         # rebuilt on restart from output[label]['paths']['sp_composite'].
         self._sp_composite_pending: dict[str, dict[str, Level]] = dict()
+        # Per-(species, job_type) cap on zombie-job kills (one resubmit per
+        # job_type per species). Persisted in the restart YAML.
+        self._zombie_kills: dict[str, set[str]] = dict()
+        if self.restart_dict is not None and '_zombie_kills' in self.restart_dict:
+            self._zombie_kills = {
+                label: set(types) for label, types in self.restart_dict['_zombie_kills'].items()
+            }
         # Cumulative finalized SpeciesSection objects (label → SpeciesSection). The
         # notebook writer consumes the full values list on every regeneration.
         self._sp_composite_sections: dict[str, SpeciesSection] = dict()
@@ -642,6 +650,7 @@ class Scheduler(object):
                 self.get_completed_incore_jobs()  # updates ``self.completed_incore_jobs``
                 if label not in self.running_jobs.keys():
                     continue
+                self.check_for_zombie_jobs(label)
                 job_list = self.running_jobs[label]
                 for job_name in job_list:
                     if 'conf' in job_name:
@@ -1083,6 +1092,80 @@ class Scheduler(object):
                 level.software = 'terachem'
             job_adapter = level.software
         return job_adapter.lower()
+
+    def resolve_job_by_name(self, label: str, job_name: str) -> JobAdapter | None:
+        """Find a ``JobAdapter`` in ``self.job_dict[label]`` by its ``job_name``.
+
+        ``job_dict`` is keyed ``[label][job_type][job_name → JobAdapter]`` for most
+        job_types, but ``conf_opt`` / ``conf_sp`` / ``tsg`` use integer keys whose
+        values carry the actual ``job_name`` on the ``JobAdapter`` object.
+
+        Args:
+            label (str): The species label.
+            job_name (str): The ``job_name`` to find.
+
+        Returns:
+            JobAdapter | None: The matching job, or ``None`` if no job with this
+            ``job_name`` exists for the species.
+        """
+        if label not in self.job_dict:
+            return None
+        for jobs in self.job_dict[label].values():
+            if not isinstance(jobs, dict):
+                continue
+            if job_name in jobs:
+                return jobs[job_name]
+            for j in jobs.values():
+                if getattr(j, 'job_name', None) == job_name:
+                    return j
+        return None
+
+    def check_for_zombie_jobs(self, label: str) -> None:
+        """Detect zombie jobs for a species (queue reports running but no
+        output traffic after the grace period), kill and resubmit them.
+
+        The cap of one resubmission per (species, job_type) prevents loops
+        when the underlying issue is in our submission, not the cluster.
+
+        Args:
+            label (str): The species label whose running jobs should be checked.
+
+        Returns:
+            None: Side-effects only. Mutates ``self.running_jobs[label]`` (drops
+            zombie ``job_name``\\ s) and ``self._zombie_kills[label]`` (records the
+            killed ``job_type``), and resubmits via ``self._run_a_job``.
+        """
+        if label not in self.running_jobs or label not in self.job_dict:
+            return
+        for job_name in list(self.running_jobs.get(label, [])):
+            job = self.resolve_job_by_name(label, job_name)
+            if job is None or not _is_zombie_job(job, self.server_job_ids):
+                continue
+            job_type = job.job_type
+            if job_type in self._zombie_kills.get(label, set()):
+                logger.warning(
+                    f'Job {job_name} for {label} ({job_type}) appears to be a '
+                    f'zombie a second time after one resubmission — leaving '
+                    f'for manual intervention.'
+                )
+                continue
+            elapsed_min = int((datetime.datetime.now() - job.initial_time).total_seconds() // 60)
+            logger.warning(
+                f'Job {job_name} for {label} ({job_type}) shows no output '
+                f'activity after {elapsed_min} min and the queue still reports '
+                f'it as running. Treating as a zombie: killing and resubmitting.'
+            )
+            try:
+                job.delete()
+            except Exception as exc:
+                logger.warning(
+                    f'Failed to delete zombie job {job_name} for {label}: '
+                    f'{type(exc).__name__}: {exc}. Continuing with resubmission.'
+                )
+            self._zombie_kills.setdefault(label, set()).add(job_type)
+            if job_name in self.running_jobs[label]:
+                self.running_jobs[label].remove(job_name)
+            self._run_a_job(job=job, label=label)
 
     def end_job(self, job: JobAdapter,
                 label: str,
@@ -4436,6 +4519,9 @@ class Scheduler(object):
             self.restart_dict['output'] = self.output
             self.restart_dict['output_multi_spc'] = self.output_multi_spc
             self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
+            self.restart_dict['_zombie_kills'] = {
+                label: sorted(types) for label, types in self._zombie_kills.items()
+            }
             self.restart_dict['running_jobs'] = dict()
             for spc in self.species_dict.values():
                 if spc.label in self.running_jobs:
