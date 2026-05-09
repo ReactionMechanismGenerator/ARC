@@ -33,6 +33,7 @@ from arc.exceptions import (InputError,
                             SpeciesError,
                             TrshError,
                             )
+from arc.restart_invariants import repair_running_jobs
 from arc.imports import settings
 from arc.job.adapters.common import all_families_ts_adapters, default_incore_adapters, ts_adapters_by_rmg_family
 from arc.job.factory import job_factory
@@ -1990,6 +1991,14 @@ class Scheduler(object):
                 piped_conformers = self.pipe_planner.try_pipe_conformers(label)
                 if not piped_conformers:
                     self.job_dict[label]['conf_opt'] = dict()
+                    # Wipe stale conf_opt names from running_jobs in lockstep with the
+                    # job_dict bucket they index into; otherwise the first
+                    # save_restart_dict during repopulation sees prior-session names
+                    # with no backing entries (#632 / #624).
+                    if label in self.running_jobs:
+                        self.running_jobs[label] = [
+                            n for n in self.running_jobs[label] if not n.startswith('conf_opt')
+                        ]
                 for i, xyz in enumerate(self.species_dict[label].conformers):
                     if i in piped_conformers:
                         continue
@@ -3846,9 +3855,23 @@ class Scheduler(object):
     def save_restart_dict(self):
         """
         Update the restart_dict and save the restart.yml file.
+
+        Calls the restart-state invariants checker first; entries in
+        ``self.running_jobs`` that don't resolve in ``self.job_dict`` are
+        repaired (dropped from the snapshot) so the YAML serializer can't
+        KeyError mid-write — see #632 / #624. The in-memory ``running_jobs``
+        is corrected in place so the next save sees a clean state.
         """
         if self.save_restart and self.restart_dict is not None:
             logger.debug('Creating a restart file...')
+            repaired, violations = repair_running_jobs(self.running_jobs, self.job_dict)
+            if violations:
+                for v in violations:
+                    logger.warning(
+                        f'restart_invariants: dropping stale running_jobs[{v.label!r}] entry '
+                        f'{v.job_name!r} ({v.reason})'
+                    )
+                self.running_jobs = repaired
             self.restart_dict['output'] = self.output
             self.restart_dict['output_multi_spc'] = self.output_multi_spc
             self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
@@ -3865,7 +3888,7 @@ class Scheduler(object):
                            for job_name in self.running_jobs[spc.label] if 'conf_sp' in job_name] \
                         + [self.job_dict[spc.label]['tsg'][get_i_from_job_name(job_name)].as_dict()
                            for job_name in self.running_jobs[spc.label] if 'tsg' in job_name]
-            save_yaml_file(path=self.restart_path, content=self.restart_dict)    
+            save_yaml_file(path=self.restart_path, content=self.restart_dict)
     
     def make_reaction_labels_info_file(self):
         """
