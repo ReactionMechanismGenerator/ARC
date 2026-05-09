@@ -461,21 +461,7 @@ class Scheduler(object):
                     # This section takes care of restarting a Species (including a TS), but does not
                     # deal with conformers nor with ts_guesses
                     if self.composite_method:
-                        # composite-related restart
-                        if not self.output[species.label]['job_types']['composite'] \
-                                and 'composite' not in list(self.job_dict[species.label].keys())\
-                                and not os.path.isfile(self.output[species.label]['paths']['geo']):
-                            # doing composite; composite hasn't finished and is not running; spawn composite
-                            self.run_composite_job(species.label)
-                        elif 'composite' not in list(self.job_dict[species.label].keys()) \
-                                and species.irc_label is None:
-                            # composite is done; do other jobs
-                            if not self.output[species.label]['job_types']['freq'] \
-                                    and 'freq' not in list(self.job_dict[species.label].keys()) \
-                                    and (species.is_ts or species.number_of_atoms > 1):
-                                self.run_freq_job(species.label)
-                            if self.job_types['rotors']:
-                                self.run_scan_jobs(species.label)
+                        self._restart_spawn_for_composite_species(species)
                     else:
                         # non-composite-related restart
                         if ('opt' not in self.job_dict[species.label].keys() and not self.job_types['fine']) or \
@@ -1334,6 +1320,45 @@ class Scheduler(object):
                      fine=fine)
         if label_single_spc is not None and key is not None:
             self.output_multi_spc[self.species_dict[label_single_spc].multi_species][key] = True
+
+    def _restart_spawn_for_composite_species(self, species):
+        """
+        Drive the restart-time job spawn logic for a species at a composite level.
+
+        Two phases:
+          1. composite hasn't run yet (and isn't running, and no geo on disk) →
+             spawn composite.
+          2. composite has actually completed (output marker set or composite log
+             on disk) → spawn freq (if needed) and any pending rotor scans.
+
+        The completion gate is required because ``'composite' not in
+        job_dict[label]`` only proves composite isn't *currently running*; it
+        does not prove composite ever ran. Without the gate, freq spawned
+        before composite even started — see #358.
+
+        Args:
+            species: The ARCSpecies (or TS) being restarted.
+        """
+        label = species.label
+        composite_running = 'composite' in self.job_dict[label].keys()
+        composite_done = (
+            self.output[label]['job_types']['composite']
+            or bool(self.output[label]['paths'].get('composite'))
+        )
+        if not self.output[label]['job_types']['composite'] \
+                and not composite_running \
+                and not os.path.isfile(self.output[label]['paths']['geo']):
+            # composite hasn't finished and isn't running; spawn it
+            self.run_composite_job(label)
+            return
+        if not composite_running and composite_done and species.irc_label is None:
+            # composite finished; spawn the post-composite jobs
+            if not self.output[label]['job_types']['freq'] \
+                    and 'freq' not in self.job_dict[label].keys() \
+                    and (species.is_ts or species.number_of_atoms > 1):
+                self.run_freq_job(label)
+            if self.job_types['rotors']:
+                self.run_scan_jobs(label)
 
     def run_composite_job(self, label: str):
         """
