@@ -7,10 +7,12 @@ This module contains unit tests of the arc.job.adapters.mockter module
 
 import os
 import shutil
+import tempfile
 import unittest
+from unittest import mock
 
-from arc.common import ARC_TESTING_PATH, read_yaml_file
-from arc.job.adapters.mockter import MockAdapter
+from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
+from arc.job.adapters.mockter import MockAdapter, MockterAbort, _parse_mockter_index
 from arc.level import Level
 from arc.reaction.reaction import ARCReaction
 from arc.settings.settings import input_filenames, output_filenames
@@ -146,18 +148,25 @@ class TestMockAdapter(unittest.TestCase):
         self.assertEqual(xyz, expected_xyz)
 
     def test_executing_mockter(self):
-        """Test executing mockter"""
+        """
+        Test executing mockter and reading back the debug ``output.yml`` mirror.
+
+        Canonical mockter output is now the forged ``output.log`` Gaussian
+        log (consumed by ARC's parser and Arkane); a ``output.yml`` mirror
+        is written alongside for human/test inspection of the structured
+        values.
+        """
         self.job_1.execute()
-        output = read_yaml_file(os.path.join(self.job_1.local_path, output_filenames[self.job_1.job_adapter]))
+        output = read_yaml_file(os.path.join(self.job_1.local_path, 'output.yml'))
         self.assertEqual(output['sp'], 0.0)
         self.assertEqual(output['T1'], 0.0002)
 
         self.job_2.execute()
-        output = read_yaml_file(os.path.join(self.job_2.local_path, output_filenames[self.job_2.job_adapter]))
+        output = read_yaml_file(os.path.join(self.job_2.local_path, 'output.yml'))
         self.assertEqual(output['xyz'], {'coords': ((0.0, 0.0, 1.0),), 'isotopes': (16,), 'symbols': ('O',)})
 
         self.job_3.execute()
-        output = read_yaml_file(os.path.join(self.job_3.local_path, output_filenames[self.job_3.job_adapter]))
+        output = read_yaml_file(os.path.join(self.job_3.local_path, 'output.yml'))
         self.assertEqual(output['freqs'], [-500, 520, 540])
         self.assertEqual(output['adapter'], 'mockter')
 
@@ -169,6 +178,173 @@ class TestMockAdapter(unittest.TestCase):
         """
         for folder in ['test_MockAdapter_1', 'test_MockAdapter_2', 'test_MockAdapter_3', 'test_MockAdapter_4']:
             shutil.rmtree(os.path.join(ARC_TESTING_PATH, folder), ignore_errors=True)
+
+
+class TestMockAdapterFixtureRouting(unittest.TestCase):
+    """Tests for the level.method → fixture-index parsing."""
+
+    def test_simple_mockter_method(self):
+        """``mockterN`` parses to N."""
+        self.assertEqual(_parse_mockter_index('mockter3'), 3)
+        self.assertEqual(_parse_mockter_index('Mockter12'), 12)
+
+    def test_composite_mockter_method(self):
+        """``mockter_<METHOD>_N`` parses to N (composite scenarios)."""
+        self.assertEqual(_parse_mockter_index('mockter_CBS-QB3_3'), 3)
+        self.assertEqual(_parse_mockter_index('mockter_G4_7'), 7)
+
+    def test_non_mockter_method_returns_none(self):
+        """Anything else returns None."""
+        self.assertIsNone(_parse_mockter_index('cbs-qb3'))
+        self.assertIsNone(_parse_mockter_index('wb97xd'))
+        self.assertIsNone(_parse_mockter_index(None))
+        self.assertIsNone(_parse_mockter_index(''))
+
+
+class TestMockAdapterFixtureExecution(unittest.TestCase):
+    """End-to-end execution against the committed mockter4 fixture."""
+
+    def setUp(self):
+        """Build a per-test project dir under ARC_TESTING_PATH."""
+        self.project_dir = tempfile.mkdtemp(
+            dir=ARC_TESTING_PATH, prefix='test_MockFixture_'
+        )
+
+    def tearDown(self):
+        """Clean up the per-test project dir."""
+        shutil.rmtree(self.project_dir, ignore_errors=True)
+
+    def test_sp_lookup_against_mockter4_emits_real_energy(self):
+        """``mockter4/...`` for H2O sp emits the real CCSD(T) energy from the fixture."""
+        h2o = ARCSpecies(label='H2O', smiles='O')
+        h2o.final_xyz = h2o.get_xyz()
+        job = MockAdapter(
+            execution_type='incore', job_type='sp',
+            level=Level(method='mockter4', basis='def2tzvp'),
+            project='test', project_directory=self.project_dir,
+            species=[h2o], testing=True,
+        )
+        job.execute()
+        log_path = os.path.join(job.local_path, 'output.log')
+        self.assertTrue(os.path.isfile(log_path), 'output.log not produced')
+        with open(log_path) as f:
+            content = f.read()
+        self.assertIn('CCSD(T)=', content)
+        # Real H2O sp at CCSD(T)/cc-pVTZ from mockter4 is ~-76.33 Hartree.
+        self.assertIn('-76.', content)
+        self.assertIn('Normal termination', content)
+        self.assertFalse(
+            os.path.isfile(os.path.join(job.local_path, 'mockter_fallback.flag')),
+            'fallback flag set despite a fixture hit'
+        )
+
+    def test_freq_lookup_against_mockter4_emits_freqs_and_hessian(self):
+        """``mockter4/...`` for H2O freq emits the fixture's freqs, ZPE, and Hessian."""
+        h2o = ARCSpecies(label='H2O', smiles='O')
+        h2o.final_xyz = h2o.get_xyz()
+        job = MockAdapter(
+            execution_type='incore', job_type='freq',
+            level=Level(method='mockter4', basis='def2tzvp'),
+            project='test', project_directory=self.project_dir,
+            species=[h2o], testing=True,
+        )
+        job.execute()
+        with open(os.path.join(job.local_path, 'output.log')) as f:
+            content = f.read()
+        self.assertIn('Frequencies --', content)
+        self.assertIn('Zero-point correction=', content)
+        self.assertIn('Force constants in Cartesian coordinates:', content)
+
+    def test_unknown_fixture_index_falls_back_with_flag(self):
+        """``mockter99`` (no fixture file) writes a flag and uses fallback values."""
+        spc = ARCSpecies(label='X', xyz=['O 0 0 1'])
+        job = MockAdapter(
+            execution_type='incore', job_type='sp',
+            level=Level(method='mockter99', basis='def2tzvp'),
+            project='test', project_directory=self.project_dir,
+            species=[spc], testing=True,
+        )
+        job.execute()
+        self.assertTrue(
+            os.path.isfile(os.path.join(job.local_path, 'mockter_fallback.flag')),
+            'fallback flag missing despite no fixture'
+        )
+
+    def test_non_mockter_level_uses_fallback(self):
+        """A level that doesn't parse as mockterN falls back without a flag."""
+        spc = ARCSpecies(label='X', xyz=['O 0 0 1'])
+        job = MockAdapter(
+            execution_type='incore', job_type='sp',
+            level=Level(method='wb97xd', basis='def2tzvp'),
+            project='test', project_directory=self.project_dir,
+            species=[spc], testing=True,
+        )
+        job.execute()
+        with open(os.path.join(job.local_path, 'output.log')) as f:
+            content = f.read()
+        self.assertIn('Normal termination', content)
+        self.assertFalse(
+            os.path.isfile(os.path.join(job.local_path, 'mockter_fallback.flag')),
+            'flag set for non-mockter level (we only flag fixture-misses)'
+        )
+
+
+class TestMockAdapterRaiseClause(unittest.TestCase):
+    """A fixture entry's ``raise:`` clause must abort mockter."""
+
+    def setUp(self):
+        """Build a tiny in-memory fixture with one raise entry per kind."""
+        self.project_dir = tempfile.mkdtemp(
+            dir=ARC_TESTING_PATH, prefix='test_MockRaise_'
+        )
+        # Write a temp fixture file at the path mockter expects.
+        from arc.job.adapters import mockter as mockter_module
+        self.fixture_path = os.path.join(mockter_module.MOCKTER_FIXTURES_DIR, 'mockter77.yml')
+        save_yaml_file(path=self.fixture_path, content={
+            'schema_version': 1,
+            'species': {
+                'X': {
+                    'sp': {'raise': {'type': 'crash', 'message': 'simulated SCF crash'}},
+                    'freq': {'raise': {'type': 'oom'}},
+                },
+            },
+        })
+        # Bust the cache so the fresh fixture is loaded.
+        mockter_module._FIXTURE_CACHE.pop(77, None)
+
+    def tearDown(self):
+        from arc.job.adapters import mockter as mockter_module
+        mockter_module._FIXTURE_CACHE.pop(77, None)
+        if os.path.isfile(self.fixture_path):
+            os.unlink(self.fixture_path)
+        shutil.rmtree(self.project_dir, ignore_errors=True)
+
+    def test_crash_kind_raises_mockter_abort(self):
+        """A ``crash`` raise entry → MockterAbort with kind='crash'."""
+        spc = ARCSpecies(label='X', xyz=['O 0 0 1'])
+        job = MockAdapter(
+            execution_type='incore', job_type='sp',
+            level=Level(method='mockter77', basis='def2tzvp'),
+            project='test', project_directory=self.project_dir,
+            species=[spc], testing=True,
+        )
+        with self.assertRaises(MockterAbort) as ctx:
+            job.execute_incore()
+        self.assertEqual(ctx.exception.kind, 'crash')
+        self.assertEqual(ctx.exception.message, 'simulated SCF crash')
+
+    def test_oom_kind_raises_mockter_abort(self):
+        """An ``oom`` raise entry → MockterAbort with kind='oom'."""
+        spc = ARCSpecies(label='X', xyz=['O 0 0 1'])
+        job = MockAdapter(
+            execution_type='incore', job_type='freq',
+            level=Level(method='mockter77', basis='def2tzvp'),
+            project='test', project_directory=self.project_dir,
+            species=[spc], testing=True,
+        )
+        with self.assertRaises(MockterAbort) as ctx:
+            job.execute_incore()
+        self.assertEqual(ctx.exception.kind, 'oom')
 
 
 if __name__ == '__main__':

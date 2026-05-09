@@ -3,6 +3,7 @@ A module for working with levels of theory.
 """
 
 import os
+import re
 from collections.abc import Iterable
 
 from arc.common import ARC_PATH, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
@@ -343,8 +344,12 @@ class Level(object):
         # all composite methods supported by Gaussian
         composite_methods = ['cbs-4m', 'cbs-qb3', 'cbs-qb3-paraskevas', 'rocbs-qb3', 'cbs-apno', 'w1u', 'w1ro', 'w1bd',
                              'g1', 'g2', 'g3', 'g4', 'g2mp2', 'g3mp2', 'g3b3', 'g3mp2b3', 'g4mp2']
+        # Mockter composite — method like 'mockter_CBS-QB3_3' encodes a composite scenario.
+        mockter_composite_match = re.match(r'^mockter_([A-Za-z0-9-]+)_\d{1,2}$', self.method, re.IGNORECASE)
+        if mockter_composite_match and mockter_composite_match.group(1).lower() in composite_methods:
+            self.method_type = 'composite'
         # Composite methods
-        if self.method in composite_methods:
+        elif self.method in composite_methods:
             self.method_type = 'composite'
         # Special cases
         elif self.method in ['m06hf', 'm06-hf']:
@@ -369,6 +374,17 @@ class Level(object):
         Args:
             job_type (str, optional): An ARC job type, assists in determining the software.
         """
+
+        # Mockter — recognized via either a plain ``mockterN`` method or a
+        # composite alias ``mockter_<METHOD>_N``. Routed to the mockter adapter
+        # before the generic composite path so composite mockter scenarios
+        # don't get hijacked into Gaussian.
+        if self.method and (
+            re.match(r'^mockter\d{1,2}$', self.method, re.IGNORECASE)
+            or re.match(r'^mockter_[A-Za-z0-9-]+_\d{1,2}$', self.method, re.IGNORECASE)
+        ):
+            self.software = 'mockter'
+            return
 
         # OneDMin
         if job_type == 'onedmin':
