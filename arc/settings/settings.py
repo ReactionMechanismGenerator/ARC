@@ -10,6 +10,14 @@ import os
 import string
 import sys
 
+from arc.settings.external_paths import (
+    find_goflow_ckpt,
+    find_goflow_feat_dict,
+    find_goflow_repo,
+    find_rits_ckpt,
+    find_rits_repo,
+)
+
 # Users should update the following server dictionary.
 # Instructions for RSA key generation can be found here:
 # https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2
@@ -77,6 +85,7 @@ global_ess_settings = {
     'onedmin': 'server1',
     'orca': 'local',
     'qchem': 'server1',
+    'rits': 'local',
     'terachem': 'server1',
     'xtb': 'local',
     'xtb_gsm': 'local',
@@ -90,6 +99,9 @@ global_ess_settings = {
 supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
+# Note: 'goflow' and 'rits' are intentionally NOT in the default — their envs
+# (goflow_env / rits_env + pretrained checkpoints) are heavyweight, so users
+# opt in explicitly via ``ts_adapters: ['goflow', ...]`` in their input.yml.
 ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
 
 # List here job types to execute by default
@@ -175,12 +187,14 @@ output_filenames = {'ase': 'output.yml',
                     'cfour': 'output.out',
                     'gaussian': 'input.log',
                     'gcn': 'output.yml',
+                    'goflow': 'output.yml',
                     'mockter': 'output.yml',
                     'molpro': 'input.out',
                     'onedmin': 'output.out',
                     'orca': 'input.log',
                     'orca_neb': 'input.log',
                     'qchem': 'output.out',
+                    'rits': 'output.yml',
                     'terachem': 'output.out',
                     'torchani': 'output.yml',
                     'xtb': 'output.out',
@@ -337,8 +351,10 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
 # Default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, XTB_PYTHON, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
-    None, None, None, None, None, None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, GOFLOW_PYTHON, GOFLOW_REPO_PATH, GOFLOW_CKPT_PATH, \
+    GOFLOW_FEAT_DICT_PATH, RITS_PYTHON, RITS_REPO_PATH, RITS_CKPT_PATH, \
+    ARC_PYTHON, XTB, XTB_PYTHON, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
+    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 home = os.getenv("HOME") or os.path.expanduser("~")
 
@@ -379,11 +395,25 @@ SELLA_PYTHON = find_executable('sella_env')
 OB_PYTHON = find_executable('ob_env')
 TS_GCN_PYTHON = find_executable('ts_gcn')
 AUTOTST_PYTHON = find_executable('tst_env')
+GOFLOW_PYTHON = find_executable('goflow_env')
+RITS_PYTHON = find_executable('rits_env')
 ARC_PYTHON = find_executable('arc_env')
 XTB_PYTHON = find_executable('xtb_env')
 RMG_ENV_NAME = 'rmg_env'
 RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')
+
+
+# Filesystem-discovery helpers for ML-based TS adapters (find_goflow_*,
+# find_rits_*) are defined in arc/settings/external_paths.py — kept out of
+# this module so settings.py stays a pure data/config layer.  We invoke
+# them here so the resulting paths sit alongside the other adapter paths
+# (RMG_PATH, etc.) for downstream ``settings.get(...)`` consumers.
+GOFLOW_REPO_PATH = find_goflow_repo()
+GOFLOW_CKPT_PATH = find_goflow_ckpt(GOFLOW_REPO_PATH)
+GOFLOW_FEAT_DICT_PATH = find_goflow_feat_dict(GOFLOW_REPO_PATH)
+RITS_REPO_PATH = find_rits_repo()
+RITS_CKPT_PATH = find_rits_ckpt(RITS_REPO_PATH)
 
 # Ensure BABEL_LIBDIR and BABEL_DATADIR are set before any openbabel import.
 # The danagroup conda build doesn't ship activate scripts that configure these.
