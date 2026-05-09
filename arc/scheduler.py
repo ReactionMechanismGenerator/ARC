@@ -3683,10 +3683,16 @@ class Scheduler(object):
         if not num_of_conformers:
             raise SchedulerError('The troubleshoot_conformer_isomorphism() method got zero conformers.')
 
-        # use the first conformer of a species to determine applicable troubleshooting method
-        job = self.job_dict[label]['conf_opt'][0]
+        # Derive software and prior trsh-method history without depending on a live
+        # Job object. After a restart where every conf_opt job already completed,
+        # job_dict[label]['conf_opt'] is empty (only running jobs are reloaded),
+        # so the previous job-keyed access KeyErrored — see #622.
+        conf_opt_jobs = self.job_dict.get(label, {}).get('conf_opt', {}) or {}
+        any_job = next(iter(conf_opt_jobs.values()), None)
+        software = any_job.job_adapter if any_job is not None else self.conformer_opt_level.software
+        ess_trsh_methods = list(any_job.ess_trsh_methods) if any_job is not None else []
 
-        level_of_theory = trsh_conformer_isomorphism(software=job.job_adapter, ess_trsh_methods=job.ess_trsh_methods)
+        level_of_theory = trsh_conformer_isomorphism(software=software, ess_trsh_methods=ess_trsh_methods)
 
         if level_of_theory is None:
             logger.error(f'ARC has attempted all built-in conformer isomorphism troubleshoot methods for species '
@@ -3696,7 +3702,7 @@ class Scheduler(object):
             self.output[label]['conformers'] += 'Error: No conformer was found to be isomorphic with the 2D ' \
                                                 'graph representation!; '
         else:
-            logger.info(f'Troubleshooting conformer job in {job.job_adapter} using {level_of_theory} for species {label}')
+            logger.info(f'Troubleshooting conformer job in {software} using {level_of_theory} for species {label}')
 
             # rerun conformer job at higher level for all conformers
             for conformer in range(0, num_of_conformers):
@@ -3705,16 +3711,19 @@ class Scheduler(object):
                 # initial xyz before troubleshooting
                 xyz = self.species_dict[label].conformers_before_opt[conformer]
 
-                job = self.job_dict[label]['conf_opt'][conformer]
-                if 'conf_opt: ' + level_of_theory not in job.ess_trsh_methods:
-                    job.ess_trsh_methods.append('conf_opt: ' + level_of_theory)
+                job = conf_opt_jobs.get(conformer)
+                trsh_methods = list(job.ess_trsh_methods) if job is not None else list(ess_trsh_methods)
+                if 'conf_opt: ' + level_of_theory not in trsh_methods:
+                    trsh_methods.append('conf_opt: ' + level_of_theory)
+                if job is not None:
+                    job.ess_trsh_methods = trsh_methods
 
                 self.run_job(label=label,
                              xyz=xyz,
                              level_of_theory=level_of_theory,
-                             job_adapter=job.job_adapter,
+                             job_adapter=software,
                              job_type='conf_opt',
-                             ess_trsh_methods=job.ess_trsh_methods,
+                             ess_trsh_methods=trsh_methods,
                              conformer=conformer,
                              )
 
