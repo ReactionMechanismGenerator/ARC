@@ -560,13 +560,16 @@ factor using the <code class="docutils literal notranslate"><span class="pre">fr
 </section>
 <section id="isomorphism-checks">
 <h2>Isomorphism checks<a class="headerlink" href="#isomorphism-checks" title="Link to this heading"></a></h2>
-<p>When a species is defined using a 2D graph (i.e., SMILES, AdjList, or InChI), an isomorphism check
+<p>For non-TS species defined using a 2D graph (i.e., SMILES, AdjList, or InChI), an isomorphism check
 is performed on the optimized geometry (all conformers and final optimization).
-If the molecule perceived from the 3D coordinate is not isomorphic
+If the molecule perceived from the 3D coordinates is not isomorphic
 with the input 2D graph, ARC will not spawn any additional jobs for the species, and will not use it further
-(for thermo and/or rates calculations). However, sometimes the perception algorithm doesn’t work as expected (e.g.,
-issues with charged species and triplets are known). To continue spawning jobs for all species in an ARC
+(for thermo and/or rates calculations). However, sometimes the perception algorithm does not work as expected (e.g.,
+issues with charged species and triplets are known). To continue spawning jobs for all non-TS species in an ARC
 project, pass <code class="docutils literal notranslate"><span class="pre">True</span></code> to the <code class="docutils literal notranslate"><span class="pre">allow_nonisomorphic_2d</span></code> argument (it is <code class="docutils literal notranslate"><span class="pre">False</span></code> by default).</p>
+<p>Transition states are handled differently. ARC does not enforce 2D-graph isomorphism for TS species, since TS
+connectivity and bond orders are not uniquely defined. TS validation is instead based on TS-specific criteria such as
+the imaginary frequency, normal mode displacement checks, IRC calculations, and energetic consistency.</p>
 </section>
 <section id="using-a-non-default-project-directory">
 <span id="directory"></span><h2>Using a non-default project directory<a class="headerlink" href="#using-a-non-default-project-directory" title="Link to this heading"></a></h2>

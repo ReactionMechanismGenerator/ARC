@@ -1520,6 +1520,8 @@ The label is stored in the atom.label property.</p>
 Important for TS searches and for identifying rotor indices.
 This works by generating a molecule from xyz and using the
 2D structure to confirm that the perceived molecule is correct.
+For TSs, the perceived molecule is accepted without enforcing
+2D-graph isomorphism, since TS connectivity is not strictly defined.
 If <code class="docutils literal notranslate"><span class="pre">xyz</span></code> is not given, the species xyz attribute will be used.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
