@@ -11,6 +11,7 @@ from arc.imports import settings
 from arc.level import Level
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
+from arc.statmech.arkane import filter_real_stderr_lines
 from arc.statmech.factory import statmech_factory
 
 
@@ -289,8 +290,9 @@ def compare_thermo(species_for_thermo_lib: list,
     command = rmg_env_command(py_args=[THERMO_SCRIPT_PATH, species_thermo_path],
                               env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path})
     stdout, stderr = execute_command(command=command, shell=True, no_fail=True, executable='/bin/bash')
-    if len(stderr):
-        logger.error(f'Error while running RMG thermo script: {stderr}')
+    real_stderr = filter_real_stderr_lines(stderr) if stderr else []
+    if real_stderr:
+        logger.error(f'Error while running RMG thermo script: {real_stderr}')
     species_list = read_yaml_file(path=species_thermo_path)
     for original_spc, rmg_spc in zip(species_for_thermo_lib, species_list):
         h298, s298, comment = rmg_spc.get('h298', None), rmg_spc.get('s298', None), rmg_spc.get('comment', None)
