@@ -171,6 +171,32 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(error, "Unrecognized basis set 6-311G**")
         self.assertIn(" ? Basis library exhausted", line)  # line includes '\n'
 
+        # Molpro + MRCC: degenerate small system (e.g. atomic H, H2 at CCSDT(Q)).
+        # MRCC's xmrcc bails because there's no determinant space at the
+        # requested excitation rank. Trsh must classify this so the framework
+        # knows to short-circuit the sub-job (delta = 0) instead of cycling
+        # the generic ladder (shift / vdz / memory).
+        path = os.path.join(self.base_path["molpro"], "mrcc_xmrcc_fatal.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="H", job_type="sp"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["MRCCDegenerateSystem"])
+        self.assertIn("xmrcc", error.lower())
+        self.assertIn("Fatal error in xmrcc", line)
+
+        # Molpro + MRCC: ROHF orbitals incompatible with approximate CC methods
+        # (open-shell radicals). Trsh classifies and the adapter's UCCSD
+        # prefix should prevent this from happening on new runs; the keyword
+        # is the diagnostic for any legacy runs that don't have the prefix.
+        path = os.path.join(self.base_path["molpro"], "mrcc_rohf_unsupported.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="OH", job_type="sp"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["MRCCRequiresSemicanonical"])
+        self.assertIn("semicanonical", error.lower())
+
         # Orca
 
         # test detection of a successful job

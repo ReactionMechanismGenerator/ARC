@@ -395,10 +395,41 @@ def determine_ess_status(output_path: str,
             return 'errored', keywords, error, line
 
         elif software == 'molpro':
+            # MRCC ROHF-incompatibility check BEFORE the generic reverse scan
+            # because the underlying cause ("Use semicanonical orbitals!")
+            # appears earlier in the file than the downstream "Fatal error in
+            # mrcc." line — reverse iteration would otherwise classify the
+            # latter (generic) before the former (specific). Fix in the
+            # adapter prepends ``{uccsd}`` to generate semicanonical orbitals;
+            # this keyword surfaces the diagnostic for any legacy run that
+            # hits it.
+            joined = '\n'.join(lines) if isinstance(lines, list) else str(lines)
+            if 'standard ROHF orbitals' in joined or 'Use semicanonical orbitals' in joined:
+                rohf_line = next(
+                    (ln for ln in lines if 'standard ROHF orbitals' in ln
+                     or 'Use semicanonical orbitals' in ln),
+                    '',
+                )
+                return ('errored', ['MRCCRequiresSemicanonical'],
+                        'MRCC requires semicanonical orbitals; ROHF orbitals '
+                        'are not supported for approximate CC.',
+                        rohf_line)
             for line in reverse_lines:
                 if 'molpro calculation terminated' in line.lower() \
                         or 'variable memory released' in line.lower():
                     return 'done', list(), '', ''
+                elif 'Fatal error in xmrcc' in line or 'Fatal error in mrcc' in line:
+                    # MRCC bailed for a tiny system where the requested CC
+                    # excitation rank exceeds the determinant space (e.g.
+                    # atomic H or H2 at CCSDT(Q)). The composite framework
+                    # should short-circuit a δ-term high leg with this
+                    # keyword to the corresponding low-leg energy (δ = 0,
+                    # which is correct for a degenerate-method case).
+                    keywords = ['MRCCDegenerateSystem']
+                    error = ('MRCC xmrcc fatal — the requested CC excitation '
+                             'rank exceeds the determinant space for this '
+                             'system (degenerate / too few electrons).')
+                    break
                 elif 'No convergence' in line and '?No convergence in rhfpr' not in line:
                     keywords = ['Unconverged']
                     error = 'Unconverged'
@@ -1719,13 +1750,12 @@ def scan_quality_check(label: str,
             logger.warning(message)
             return invalidate, invalidation_reason, message, actions
         else:
-            logger.warning(f'The maximal barrier for rotor {pivots} of {label} is '
-                           f'{(np.max(energies) - np.min(energies)):.2f} kJ/mol, which is higher than the set threshold '
-                           f'of {maximum_barrier} kJ/mol. Since this mode when treated as torsion has {num_wells}, '
-                           f'this mode is not invalidated: treating it as a vibrational mode will be less accurate than '
-                           f'the hindered rotor treatment, since the entropy contribution from the population of '
-                           f'this species at the higher wells will not be taken into account. NOT invalidating this '
-                           f'torsional mode.')
+            barrier_kJmol = np.max(energies) - np.min(energies)
+            logger.warning(f'Rotor {pivots} of {label}: barrier {barrier_kJmol:.2f} kJ/mol '
+                           f'exceeds the {maximum_barrier} kJ/mol threshold, but the mode has '
+                           f'{num_wells} wells. Keeping the hindered-rotor treatment — '
+                           f'demoting to a harmonic vibration would miss the entropic '
+                           f'contribution from the upper well(s).')
 
     if preserve_params is not None:
         success = True
