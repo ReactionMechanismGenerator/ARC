@@ -1,0 +1,39 @@
+# Scenario 1: Conformer save_restart_dict invariants (#632, #624)
+#
+# Single multi-conformer species. All conformers must be isomorphic (default
+# behavior — no injection needed). The fixture will replay these conformers
+# through mockter; the test exercises save_restart_dict during multi-conformer
+# spawning and asserts running_jobs <-> job_dict invariants hold at every save.
+#
+# Interrupt: NOT REQUIRED. Tier-1 single-run.
+#
+# Run as: python ARC.py input.yml
+
+project: mockter_fixture_scenario1
+
+n_confs: 6
+e_confs: 5.0
+
+conformer_level: wb97xd/def2tzvp
+opt_level: wb97xd/def2tzvp
+freq_level: wb97xd/def2tzvp
+scan_level: wb97xd/def2tzvp
+sp_level: CCSD(T)/cc-pVTZ
+
+arkane_level_of_theory: CCSD(T)-F12/cc-pVTZ-F12  # dummy model_chemistry recognized by Arkane
+
+job_types:
+  conf_opt: true
+  conf_sp: false
+  opt: true
+  fine: true
+  freq: true
+  sp: true
+  rotors: true
+  irc: false
+  bde: false
+  orbitals: false
+
+species:
+  - label: n_butane
+    smiles: 'CCCC'

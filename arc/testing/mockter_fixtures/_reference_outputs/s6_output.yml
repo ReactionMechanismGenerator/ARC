@@ -1,0 +1,149 @@
+arc_git_commit: 22fa392cdbaf8de00aa834c3f12eeab4aa64288f
+arc_version: 1.1.0
+arkane_git_commit: 19738501df4c2f32b5e9a0d3f38db0bdd42539b5
+arkane_level_of_theory:
+  basis: cc-pvtz-f12
+  method: ccsd(t)-f12
+  method_type: wavefunction
+  software: molpro
+atom_energy_corrections: null
+bac_type: p
+bond_additivity_corrections: null
+composite_method: null
+datetime_completed: 2026-05-09 05:02
+datetime_started: 2026-05-09 04:21
+freq_level:
+  basis: def2tzvp
+  method: wb97xd
+  method_type: dft
+  software: gaussian
+freq_scale_factor: 0.988
+freq_scale_factor_source: Calculated as described in 10.1021/ct100326h
+opt_level:
+  basis: def2tzvp
+  method: wb97xd
+  method_type: dft
+  software: gaussian
+project: mockter_fixture_scenario6
+reactions: []
+schema_version: '1.0'
+sp_level:
+  basis: cc-pvtz
+  method: ccsd(t)
+  method_type: wavefunction
+  software: molpro
+species:
+- charge: 0
+  coarse_opt_final_energy_hartree: -194.372119011
+  coarse_opt_log: calcs/Species/propanol/opt_a4027/input.log
+  coarse_opt_n_steps: 1
+  converged: true
+  ess_versions:
+    freq: Gaussian 16, Revision C.01
+    opt: Gaussian 16, Revision C.01
+  formula: C3H8O
+  freq_log: calcs/Species/propanol/freq_a4035/input.log
+  freq_n_imag: 0
+  imag_freq_cm1: null
+  inchi: InChI=1S/C3H8O/c1-2-3-4/h4H,2-3H2,1H3
+  inchi_key: BDERNNFJNOPAEC-UHFFFAOYSA-N
+  is_ts: false
+  label: propanol
+  multiplicity: 1
+  opt_converged: true
+  opt_final_energy_hartree: -194.372119011
+  opt_log: calcs/Species/propanol/opt_a4030/input.log
+  opt_n_steps: 2
+  original_label: null
+  smiles: CCCO
+  sp_energy_hartree: -194.034923199115
+  sp_log: calcs/Species/propanol/sp_a4034/input.out
+  statmech:
+    e0_kj_mol: null
+    external_symmetry: null
+    harmonic_frequencies_cm1:
+    - 133.6337
+    - 226.3398
+    - 263.2098
+    - 302.1515
+    - 468.4232
+    - 767.8515
+    - 900.7747
+    - 904.2468
+    - 1050.9253
+    - 1095.7217
+    - 1115.7733
+    - 1156.5944
+    - 1255.4731
+    - 1323.2434
+    - 1343.5988
+    - 1394.5552
+    - 1421.8441
+    - 1436.1094
+    - 1496.6632
+    - 1504.7135
+    - 1508.5754
+    - 1522.4326
+    - 2997.4711
+    - 3035.9509
+    - 3048.934
+    - 3081.9063
+    - 3099.7069
+    - 3120.4086
+    - 3131.5125
+    - 3887.668
+    is_linear: false
+    optical_isomers: null
+    point_group: null
+    rigid_rotor_kind: asymmetric_top
+    spin_multiplicity: 1
+    torsions:
+    - atom_indices:
+      - 5
+      - 1
+      - 2
+      - 3
+      barrier_kj_mol: 10.844608786445773
+      pivot_atoms:
+      - 1
+      - 2
+      symmetry_number: 3
+      treatment: hindered_rotor
+    - atom_indices:
+      - 1
+      - 2
+      - 3
+      - 4
+      barrier_kj_mol: 20.209955817242193
+      pivot_atoms:
+      - 2
+      - 3
+      symmetry_number: 1
+      treatment: hindered_rotor
+    - atom_indices:
+      - 2
+      - 3
+      - 4
+      - 12
+      barrier_kj_mol: 5.015831068890531
+      pivot_atoms:
+      - 3
+      - 4
+      symmetry_number: 1
+      treatment: hindered_rotor
+  thermo: null
+  xyz: |-
+    C      -1.88692100   -0.12758300    0.01732500
+    C      -0.51260000    0.52591900   -0.04454600
+    C       0.61353600   -0.49288300    0.02540400
+    O       1.89755800    0.08605900   -0.08493700
+    H      -2.01514700   -0.69289100    0.94330200
+    H      -2.68138700    0.61780900   -0.02974300
+    H      -2.02980300   -0.81919700   -0.81593700
+    H      -0.40444100    1.23506500    0.78375400
+    H      -0.40516600    1.10114100   -0.96739300
+    H       0.52674400   -1.07904400    0.95092500
+    H       0.53255900   -1.19403700   -0.80796400
+    H       2.01208800    0.70996600    0.63345600
+  zpe_hartree: 0.1093439
+transition_states: []

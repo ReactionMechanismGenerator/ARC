@@ -1,0 +1,47 @@
+# Scenario 3: Composite/freq phase ordering on restart (#358)
+#
+# CBS-QB3 is a Gaussian-native composite that runs opt + freq + a sequence of
+# sp's internally. ARC sees it as a single "composite" job_type. The bug:
+# after restart, ARC may launch freq before composite has completed.
+#
+# Real DFT outputs needed:
+#   - CBS-QB3 composite log (will be the source of truth for the fixture's
+#     composite entry: geometry, freqs, sp).
+#   - sp (CCSD(T)/cc-pVTZ) for the post-composite high-level sp the fixture
+#     also exercises (so we have both composite and a separate sp to validate
+#     phase-gating).
+#
+# Interrupt: NOT REQUIRED for real DFT. At test time, mockter's fixture has
+# `raise: oom` mid-composite to force the interrupt deterministically. If you
+# want a real interrupted restart.yml as reference, kill ARC after the
+# composite job has been spawned/queued but before its log shows
+# "Normal termination of Gaussian" - ARC writes restart.yml before the wait.
+#
+# Run as: python ARC.py input.yml
+
+project: mockter_fixture_scenario3
+
+n_confs: 3
+e_confs: 5.0
+
+conformer_level: wb97xd/def2tzvp
+level_of_theory: cbs-qb3       # composite — handles opt+freq+sp internally
+sp_level: CCSD(T)/cc-pVTZ      # extra high-level sp on top of composite
+
+arkane_level_of_theory: CCSD(T)-F12/cc-pVTZ-F12
+
+job_types:
+  conf_opt: true
+  conf_sp: false
+  opt: true
+  fine: false                  # composite handles fine internally
+  freq: true
+  sp: true
+  rotors: false
+  irc: false
+  bde: false
+  orbitals: false
+
+species:
+  - label: methanol
+    smiles: 'CO'

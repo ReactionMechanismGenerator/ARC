@@ -1,0 +1,212 @@
+arc_git_commit: 22fa392cdbaf8de00aa834c3f12eeab4aa64288f
+arc_version: 1.1.0
+arkane_git_commit: 19738501df4c2f32b5e9a0d3f38db0bdd42539b5
+arkane_level_of_theory:
+  basis: cc-pvtz-f12
+  method: ccsd(t)-f12
+  method_type: wavefunction
+  software: molpro
+atom_energy_corrections: null
+bac_type: p
+bond_additivity_corrections: null
+composite_method: null
+datetime_completed: 2026-05-09 05:41
+datetime_started: 2026-05-09 04:15
+freq_level:
+  basis: def2tzvp
+  method: wb97xd
+  method_type: dft
+  software: gaussian
+freq_scale_factor: 0.988
+freq_scale_factor_source: Calculated as described in 10.1021/ct100326h
+opt_level:
+  basis: def2tzvp
+  method: wb97xd
+  method_type: dft
+  software: gaussian
+project: mockter_fixture_scenario2
+reactions: []
+schema_version: '1.0'
+sp_level:
+  basis: cc-pvtz
+  method: ccsd(t)
+  method_type: wavefunction
+  software: molpro
+species:
+- charge: 0
+  coarse_opt_final_energy_hartree: -158.465330497
+  coarse_opt_log: calcs/Species/n_butane/opt_a3992/input.log
+  coarse_opt_n_steps: 1
+  converged: true
+  ess_versions:
+    freq: Gaussian 16, Revision C.01
+    opt: Gaussian 16, Revision C.01
+  formula: C4H10
+  freq_log: calcs/Species/n_butane/freq_a4029/input.log
+  freq_n_imag: 0
+  imag_freq_cm1: null
+  inchi: InChI=1S/C4H10/c1-3-4-2/h3-4H2,1-2H3
+  inchi_key: IJDNQMDRQITEOD-UHFFFAOYSA-N
+  is_ts: false
+  label: n_butane
+  multiplicity: 1
+  opt_converged: true
+  opt_final_energy_hartree: -158.465331057
+  opt_log: calcs/Species/n_butane/opt_a4015/input.log
+  opt_n_steps: 2
+  original_label: null
+  smiles: CCCC
+  sp_energy_hartree: -158.153730433746
+  sp_log: calcs/Species/n_butane/sp_a4028/input.out
+  statmech:
+    e0_kj_mol: null
+    external_symmetry: null
+    harmonic_frequencies_cm1:
+    - 120.2695
+    - 225.8541
+    - 261.672
+    - 264.7802
+    - 433.3683
+    - 743.6531
+    - 821.0471
+    - 855.0906
+    - 972.1092
+    - 990.5711
+    - 1036.9876
+    - 1085.6871
+    - 1180.5217
+    - 1215.9568
+    - 1297.4904
+    - 1330.316
+    - 1340.122
+    - 1408.0374
+    - 1419.6841
+    - 1420.7201
+    - 1494.881
+    - 1496.4834
+    - 1502.4266
+    - 1504.2396
+    - 1508.7497
+    - 1515.2142
+    - 3033.1658
+    - 3040.7334
+    - 3045.0119
+    - 3045.8834
+    - 3058.8596
+    - 3081.1619
+    - 3114.5976
+    - 3118.1136
+    - 3122.8348
+    - 3123.5685
+    is_linear: false
+    optical_isomers: null
+    point_group: null
+    rigid_rotor_kind: asymmetric_top
+    spin_multiplicity: 1
+    torsions: []
+  thermo: null
+  xyz: |-
+    C       0.70119000    1.82138100   -0.00000000
+    C       0.70119000    0.29868400    0.00000000
+    C      -0.70119000   -0.29868400    0.00000000
+    C      -0.70119000   -1.82138100   -0.00000000
+    H       0.18783500    2.21274900    0.88152300
+    H       1.71629400    2.22175100    0.00000000
+    H       0.18783500    2.21274900   -0.88152400
+    H       1.24707400   -0.06862900   -0.87503800
+    H       1.24707400   -0.06862900    0.87503800
+    H      -1.24707400    0.06862900   -0.87503800
+    H      -1.24707400    0.06862900    0.87503800
+    H      -0.18783500   -2.21274900    0.88152300
+    H      -0.18783500   -2.21274900   -0.88152400
+    H      -1.71629400   -2.22175100    0.00000000
+  zpe_hartree: 0.1326574
+- charge: 0
+  coarse_opt_final_energy_hartree: -158.466961347
+  coarse_opt_log: calcs/Species/iso_butane/opt_a3988/input.log
+  coarse_opt_n_steps: 3
+  converged: true
+  ess_versions:
+    freq: Gaussian 16, Revision C.01
+    opt: Gaussian 16, Revision C.01
+  formula: C4H10
+  freq_log: calcs/Species/iso_butane/freq_a4164/input.log
+  freq_n_imag: 0
+  imag_freq_cm1: null
+  inchi: InChI=1S/C4H10/c1-4(2)3/h4H,1-3H3
+  inchi_key: NNPPMTNAJDCUHE-UHFFFAOYSA-N
+  is_ts: false
+  label: iso_butane
+  multiplicity: 1
+  opt_converged: true
+  opt_final_energy_hartree: -158.466961454
+  opt_log: calcs/Species/iso_butane/opt_a4153/input.log
+  opt_n_steps: 34
+  original_label: null
+  smiles: CC(C)C
+  sp_energy_hartree: -158.156015651007
+  sp_log: calcs/Species/iso_butane/sp_a4163/input.out
+  statmech:
+    e0_kj_mol: null
+    external_symmetry: null
+    harmonic_frequencies_cm1:
+    - 213.626
+    - 265.6731
+    - 266.4527
+    - 373.6164
+    - 373.9656
+    - 440.5245
+    - 813.785
+    - 936.4898
+    - 936.6837
+    - 964.9607
+    - 987.9718
+    - 988.264
+    - 1205.567
+    - 1205.6094
+    - 1218.7848
+    - 1369.5117
+    - 1369.6349
+    - 1410.1169
+    - 1410.3834
+    - 1434.5943
+    - 1485.3381
+    - 1491.9969
+    - 1492.1382
+    - 1510.6524
+    - 1510.6984
+    - 1519.1927
+    - 3034.2823
+    - 3036.4248
+    - 3036.5137
+    - 3041.9413
+    - 3105.9131
+    - 3106.0192
+    - 3114.7653
+    - 3117.0893
+    - 3120.6776
+    - 3120.8995
+    is_linear: false
+    optical_isomers: null
+    point_group: null
+    rigid_rotor_kind: asymmetric_top
+    spin_multiplicity: 1
+    torsions: []
+  thermo: null
+  xyz: |-
+    C      -0.95587400    1.09250100    0.09564200
+    C       0.00002000    0.00002600   -0.37398700
+    C      -0.46822500   -1.37405500    0.09553500
+    C       1.42409300    0.28153500    0.09562900
+    H      -0.98879300    1.12991500    1.18846100
+    H      -0.64195200    2.07539500   -0.26194800
+    H      -1.97170300    0.91199300   -0.26218300
+    H       0.00003000    0.00007600   -1.46944000
+    H      -1.47633500   -1.59363400   -0.26227300
+    H      -0.48439300   -1.42124100    1.18834800
+    H       0.19609400   -2.16353700   -0.26211700
+    H       1.47303800    0.29107300    1.18844500
+    H       2.11830500   -0.48169600   -0.26222500
+    H       1.77562200    1.25161500   -0.26198100
+  zpe_hartree: 0.132204
+transition_states: []

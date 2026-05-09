@@ -1,0 +1,61 @@
+# Scenario 5: Kinetics equivalence (mockter validation, Tier-3)
+#
+# One H-abstraction reaction with a real TS. Full pipeline: conformers, opt,
+# freq, sp on reactants/products/TS + IRC on the TS + Arkane kinetics.
+# The Tier-3 test asserts bit-equal k(T) between real-log and mockter runs.
+#
+# Reactants and products reuse scenario 4 species so fixture data can be
+# shared if desired; the runs are still independent for isolation.
+#
+# Interrupt: NOT REQUIRED. Tier-3 equivalence has no interrupt semantics.
+#
+# Run as: python ARC.py input.yml
+
+project: mockter_fixture_scenario5
+
+n_confs: 5
+e_confs: 5.0
+
+conformer_level: wb97xd/def2tzvp
+opt_level: wb97xd/def2tzvp
+freq_level: wb97xd/def2tzvp
+scan_level: wb97xd/def2tzvp
+sp_level: CCSD(T)/cc-pVTZ
+irc_level: wb97xd/def2tzvp
+
+arkane_level_of_theory: CCSD(T)-F12/cc-pVTZ-F12
+
+compute_thermo: true
+compute_rates: true
+
+T_min: [300, 'K']
+T_max: [2000, 'K']
+T_count: 25
+
+job_types:
+  conf_opt: true
+  conf_sp: false
+  opt: true
+  fine: true
+  freq: true
+  sp: true
+  rotors: true
+  irc: true
+  bde: false
+  orbitals: false
+
+species:
+  - label: C2H6
+    smiles: 'CC'
+
+  - label: OH
+    smiles: '[OH]'
+
+  - label: C2H5
+    smiles: 'C[CH2]'
+
+  - label: H2O
+    smiles: 'O'
+
+reactions:
+  - label: 'C2H6 + OH <=> C2H5 + H2O'

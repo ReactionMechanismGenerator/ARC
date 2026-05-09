@@ -1,0 +1,52 @@
+# Scenario 2: Conformer isomorphism troubleshoot crash (#622)
+#
+# Two species are run independently:
+#   - n_butane: real conformer search at full level (this is the species the
+#     test will operate on at fixture-replay time).
+#   - iso_butane: a SINGLE conformer + opt at the same level. We harvest
+#     iso_butane's optimized geometry to inject into the n_butane fixture
+#     as a "wrong xyz" (deliberately non-isomorphic) conformer entry.
+#
+# At test time, mockter replays a mix of real n_butane conformer xyzs and the
+# injected iso_butane xyz, all marked under label "n_butane". ARC's isomorphism
+# check fails on the injected entry, triggering troubleshoot_conformer_isomorphism,
+# which is where #622 crashes.
+#
+# Interrupt: NOT REQUIRED for the real DFT run — mockter's fixture raise:
+# entry triggers the interrupt at test time. If you want a real restart.yml
+# captured for reference, kill ARC after isomorphism warning is printed but
+# before troubleshoot_conformer_isomorphism returns.
+#
+# Run as: python ARC.py input.yml
+
+project: mockter_fixture_scenario2
+
+n_confs: 6
+e_confs: 5.0
+
+conformer_level: wb97xd/def2tzvp
+opt_level: wb97xd/def2tzvp
+freq_level: wb97xd/def2tzvp
+scan_level: wb97xd/def2tzvp
+sp_level: CCSD(T)/cc-pVTZ
+
+arkane_level_of_theory: CCSD(T)-F12/cc-pVTZ-F12
+
+job_types:
+  conf_opt: true
+  conf_sp: false
+  opt: true
+  fine: true
+  freq: true
+  sp: true
+  rotors: false
+  irc: false
+  bde: false
+  orbitals: false
+
+species:
+  - label: n_butane
+    smiles: 'CCCC'
+
+  - label: iso_butane    # used only to harvest a wrong-isomer xyz for fixture injection
+    smiles: 'CC(C)C'

@@ -1,0 +1,47 @@
+# Scenario 6: Rotor scan restart (state-heavy rotor coverage)
+#
+# 1-propanol has three internal rotors (OH torsion, OCCH3 torsion, CCCH torsion),
+# making it a good stress test for ARC's rotor scan + restart machinery. No
+# specific GitHub issue in the current ticket list — by analogy to #358, rotor
+# state reconstruction on restart is a likely latent bug area.
+#
+# Real DFT outputs needed: full conformers + opt + freq + sp + scan logs for
+# all three rotors. The fixture will replay full scans; mockter's fixture has
+# a `raise: timeout` mid-scan to force the interrupt deterministically.
+#
+# Interrupt: NOT REQUIRED for real DFT. If you want a real interrupted
+# restart.yml, kill ARC after one rotor scan has completed but before the
+# second has started (so the saved state captures partial rotor progress).
+#
+# Run as: python ARC.py input.yml
+
+project: mockter_fixture_scenario6
+
+n_confs: 4
+e_confs: 5.0
+
+conformer_level: wb97xd/def2tzvp
+opt_level: wb97xd/def2tzvp
+freq_level: wb97xd/def2tzvp
+scan_level: wb97xd/def2tzvp
+sp_level: CCSD(T)/cc-pVTZ
+
+arkane_level_of_theory: CCSD(T)-F12/cc-pVTZ-F12
+
+compute_thermo: true
+
+job_types:
+  conf_opt: true
+  conf_sp: false
+  opt: true
+  fine: true
+  freq: true
+  sp: true
+  rotors: true
+  irc: false
+  bde: false
+  orbitals: false
+
+species:
+  - label: propanol
+    smiles: 'CCCO'

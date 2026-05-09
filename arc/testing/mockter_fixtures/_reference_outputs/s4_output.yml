@@ -1,0 +1,196 @@
+arc_git_commit: 22fa392cdbaf8de00aa834c3f12eeab4aa64288f
+arc_version: 1.1.0
+arkane_git_commit: 19738501df4c2f32b5e9a0d3f38db0bdd42539b5
+arkane_level_of_theory:
+  basis: cc-pvtz-f12
+  method: ccsd(t)-f12
+  method_type: wavefunction
+  software: molpro
+atom_energy_corrections: null
+bac_type: p
+bond_additivity_corrections: null
+composite_method: null
+datetime_completed: 2026-05-09 04:32
+datetime_started: 2026-05-09 04:19
+freq_level:
+  basis: def2tzvp
+  method: wb97xd
+  method_type: dft
+  software: gaussian
+freq_scale_factor: 0.988
+freq_scale_factor_source: Calculated as described in 10.1021/ct100326h
+opt_level:
+  basis: def2tzvp
+  method: wb97xd
+  method_type: dft
+  software: gaussian
+project: mockter_fixture_scenario4
+reactions: []
+schema_version: '1.0'
+sp_level:
+  basis: cc-pvtz
+  method: ccsd(t)
+  method_type: wavefunction
+  software: molpro
+species:
+- charge: 0
+  coarse_opt_final_energy_hartree: -79.8327685023
+  coarse_opt_log: calcs/Species/C2H6/opt_a3993/input.log
+  coarse_opt_n_steps: 2
+  converged: true
+  ess_versions:
+    freq: Gaussian 16, Revision C.01
+    opt: Gaussian 16, Revision C.01
+  formula: C2H6
+  freq_log: calcs/Species/C2H6/freq_a4008/input.log
+  freq_n_imag: 0
+  imag_freq_cm1: null
+  inchi: InChI=1S/C2H6/c1-2/h1-2H3
+  inchi_key: OTMSDBZUPAUEDD-UHFFFAOYSA-N
+  is_ts: false
+  label: C2H6
+  multiplicity: 1
+  opt_converged: true
+  opt_final_energy_hartree: -79.832768657
+  opt_log: calcs/Species/C2H6/opt_a3996/input.log
+  opt_n_steps: 2
+  original_label: null
+  smiles: CC
+  sp_energy_hartree: -79.674425458948
+  sp_log: calcs/Species/C2H6/sp_a4005/input.out
+  statmech:
+    e0_kj_mol: null
+    external_symmetry: null
+    harmonic_frequencies_cm1:
+    - 307.0073
+    - 832.3798
+    - 832.3979
+    - 1017.6271
+    - 1225.4845
+    - 1225.4889
+    - 1410.6431
+    - 1431.6511
+    - 1507.3539
+    - 1507.3572
+    - 1508.2353
+    - 1508.2357
+    - 3051.7904
+    - 3052.606
+    - 3110.1378
+    - 3110.1432
+    - 3134.0473
+    - 3134.0525
+    is_linear: false
+    optical_isomers: null
+    point_group: null
+    rigid_rotor_kind: asymmetric_top
+    spin_multiplicity: 1
+    torsions:
+    - atom_indices:
+      - 3
+      - 1
+      - 2
+      - 6
+      barrier_kj_mol: 11.201594326540004
+      pivot_atoms:
+      - 1
+      - 2
+      symmetry_number: 3
+      treatment: hindered_rotor
+  thermo: null
+  xyz: |-
+    C       0.00000000    0.00000000    0.76139500
+    C      -0.00000000   -0.00000000   -0.76139500
+    H       0.00000000    1.01711100    1.15724100
+    H       0.88084400   -0.50855600    1.15724100
+    H      -0.88084400   -0.50855600    1.15724100
+    H       0.88084400    0.50855600   -1.15724100
+    H      -0.88084400    0.50855600   -1.15724100
+    H      -0.00000000   -1.01711100   -1.15724100
+  zpe_hartree: 0.0749668
+- charge: 0
+  coarse_opt_final_energy_hartree: -75.7410338862
+  coarse_opt_log: calcs/Species/OH/opt_a3994/input.log
+  coarse_opt_n_steps: 4
+  converged: true
+  ess_versions:
+    freq: Gaussian 16, Revision C.01
+    opt: Gaussian 16, Revision C.01
+  formula: HO
+  freq_log: calcs/Species/OH/freq_a4010/input.log
+  freq_n_imag: 0
+  imag_freq_cm1: null
+  inchi: InChI=1S/HO/h1H
+  inchi_key: TUJKJAMUKRIRHC-UHFFFAOYSA-N
+  is_ts: false
+  label: OH
+  multiplicity: 2
+  opt_converged: true
+  opt_final_energy_hartree: -75.7410338907
+  opt_log: calcs/Species/OH/opt_a3997/input.log
+  opt_n_steps: 2
+  original_label: null
+  smiles: '[OH]'
+  sp_energy_hartree: -75.637676815814
+  sp_log: calcs/Species/OH/sp_a4007/input.out
+  statmech:
+    e0_kj_mol: null
+    external_symmetry: null
+    harmonic_frequencies_cm1:
+    - 3770.7632
+    is_linear: true
+    optical_isomers: null
+    point_group: null
+    rigid_rotor_kind: linear
+    spin_multiplicity: 2
+    torsions: []
+  thermo: null
+  xyz: |-
+    O       0.00000000    0.00000000    0.10788500
+    H       0.00000000    0.00000000   -0.86307700
+  zpe_hartree: 0.0085904
+- charge: 0
+  coarse_opt_final_energy_hartree: -76.4376926773
+  coarse_opt_log: calcs/Species/H2O/opt_a3995/input.log
+  coarse_opt_n_steps: 3
+  converged: true
+  ess_versions:
+    freq: Gaussian 16, Revision C.01
+    opt: Gaussian 16, Revision C.01
+  formula: H2O
+  freq_log: calcs/Species/H2O/freq_a4009/input.log
+  freq_n_imag: 0
+  imag_freq_cm1: null
+  inchi: InChI=1S/H2O/h1H2
+  inchi_key: XLYOFNOQVPJJNP-UHFFFAOYSA-N
+  is_ts: false
+  label: H2O
+  multiplicity: 1
+  opt_converged: true
+  opt_final_energy_hartree: -76.4376926773
+  opt_log: calcs/Species/H2O/opt_a3998/input.log
+  opt_n_steps: 1
+  original_label: null
+  smiles: O
+  sp_energy_hartree: -76.332131367221
+  sp_log: calcs/Species/H2O/sp_a4006/input.out
+  statmech:
+    e0_kj_mol: null
+    external_symmetry: null
+    harmonic_frequencies_cm1:
+    - 1624.5678
+    - 3876.1696
+    - 3986.0496
+    is_linear: false
+    optical_isomers: null
+    point_group: null
+    rigid_rotor_kind: asymmetric_top
+    spin_multiplicity: 1
+    torsions: []
+  thermo: null
+  xyz: |-
+    O       0.00000000    0.00000000    0.11601100
+    H       0.00000000    0.76190500   -0.46404600
+    H      -0.00000000   -0.76190500   -0.46404600
+  zpe_hartree: 0.0216125
+transition_states: []

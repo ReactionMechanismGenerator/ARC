@@ -1,0 +1,48 @@
+# Scenario 4: Thermo equivalence (mockter validation, Tier-3)
+#
+# Three small species, full thermo pipeline. The Tier-3 test runs ARC twice
+# on this chemistry: once parsing the real Gaussian logs from this run,
+# once via mockter rendering the same numbers from the extracted fixture.
+# The two runs must produce bit-equal output_dicts and bit-equal Arkane
+# thermo (NASA polynomials, S298, Cp).
+#
+# Interrupt: NOT REQUIRED. Tier-3 equivalence has no interrupt semantics.
+#
+# Run as: python ARC.py input.yml
+
+project: mockter_fixture_scenario4
+
+n_confs: 5
+e_confs: 5.0
+
+conformer_level: wb97xd/def2tzvp
+opt_level: wb97xd/def2tzvp
+freq_level: wb97xd/def2tzvp
+scan_level: wb97xd/def2tzvp
+sp_level: CCSD(T)/cc-pVTZ
+
+arkane_level_of_theory: CCSD(T)-F12/cc-pVTZ-F12
+
+compute_thermo: true
+
+job_types:
+  conf_opt: true
+  conf_sp: false
+  opt: true
+  fine: true
+  freq: true
+  sp: true
+  rotors: true
+  irc: false
+  bde: false
+  orbitals: false
+
+species:
+  - label: C2H6
+    smiles: 'CC'
+
+  - label: OH
+    smiles: '[OH]'
+
+  - label: H2O
+    smiles: 'O'

@@ -1,0 +1,87 @@
+arc_git_commit: 22fa392cdbaf8de00aa834c3f12eeab4aa64288f
+arc_version: 1.1.0
+arkane_git_commit: 19738501df4c2f32b5e9a0d3f38db0bdd42539b5
+arkane_level_of_theory:
+  basis: cc-pvtz-f12
+  method: ccsd(t)-f12
+  method_type: wavefunction
+  software: molpro
+atom_energy_corrections: null
+bac_type: p
+bond_additivity_corrections: null
+composite_method:
+  method: cbs-qb3
+  method_type: composite
+  software: gaussian
+datetime_completed: 2026-05-09 04:29
+datetime_started: 2026-05-09 04:28
+freq_level:
+  basis: 6-31g(2df,p)
+  method: b3lyp
+  method_type: dft
+  software: gaussian
+freq_scale_factor: 1.004
+freq_scale_factor_source: null
+opt_level: null
+project: mockter_fixture_scenario3
+reactions: []
+schema_version: '1.0'
+sp_level: null
+species:
+- charge: 0
+  coarse_opt_final_energy_hartree: null
+  coarse_opt_log: null
+  coarse_opt_n_steps: null
+  converged: true
+  ess_versions:
+    freq: Gaussian 16, Revision C.01
+    sp: Gaussian 16, Revision C.01
+  formula: CH4O
+  freq_log: calcs/Species/methanol/freq_a4037/input.log
+  freq_n_imag: 0
+  imag_freq_cm1: null
+  inchi: InChI=1S/CH4O/c1-2/h2H,1H3
+  inchi_key: OKKJLVBELUTLKV-UHFFFAOYSA-N
+  is_ts: false
+  label: methanol
+  multiplicity: 1
+  opt_converged: true
+  opt_final_energy_hartree: null
+  opt_log: null
+  opt_n_steps: null
+  original_label: null
+  smiles: CO
+  sp_energy_hartree: -115.59054
+  sp_log: calcs/Species/methanol/composite_a4036/input.log
+  statmech:
+    e0_kj_mol: null
+    external_symmetry: null
+    harmonic_frequencies_cm1:
+    - 313.723
+    - 1044.6394
+    - 1083.4179
+    - 1169.5784
+    - 1385.281
+    - 1480.8367
+    - 1493.2157
+    - 1509.8938
+    - 2994.7315
+    - 3041.96
+    - 3129.5124
+    - 3833.7779
+    is_linear: false
+    optical_isomers: null
+    point_group: null
+    rigid_rotor_kind: asymmetric_top
+    spin_multiplicity: 1
+    torsions: []
+  thermo: null
+  xyz: |-
+    C       0.66361800   -0.01954800    0.00001000
+    O      -0.75007500    0.12171000    0.00001000
+    H       1.03482100   -0.54410200   -0.89106700
+    H       1.03513000   -0.54035300    0.89316600
+    H       1.08280900    0.98757700   -0.00224300
+    H      -1.13387100   -0.75951600   -0.00000100
+  zpe_hartree: 0.05121450000000001
+transition_states: []
