@@ -363,10 +363,19 @@ def _render_thermochemistry_block(
 
     if vib_temps:
         formatted = [f'{t:>8.2f}' for t in vib_temps]
-        first = formatted[:3]
-        lines.append(' Vibrational temperatures: ' + ' '.join(first) + '\n')
-        for i in range(3, len(formatted), 5):
-            lines.append('          (Kelvin)        ' + ' '.join(formatted[i:i + 5]) + '\n')
+        # Match Gaussian's layout: up to 5 temps per row.
+        # Row 1 starts with "Vibrational temperatures:" — Arkane reads [2:].
+        # Row 2 starts with "(Kelvin)" — Arkane reads [1:]; emit it even when
+        # there are no continuation temps so Arkane's mandatory second readline
+        # consumes a parseable line, not the next block.
+        # Rows 3+ are unprefixed continuations until a blank line.
+        lines.append(' Vibrational temperatures:   ' + '  '.join(formatted[:5]) + '\n')
+        if len(formatted) > 5:
+            lines.append('          (Kelvin)           ' + '  '.join(formatted[5:10]) + '\n')
+        else:
+            lines.append('          (Kelvin)\n')
+        for i in range(10, len(formatted), 5):
+            lines.append('                             ' + '  '.join(formatted[i:i + 5]) + '\n')
         lines.append('\n')
 
     lines.append(f' Zero-point correction=                           {zpe_hartree:.6f} (Hartree/Particle)\n')

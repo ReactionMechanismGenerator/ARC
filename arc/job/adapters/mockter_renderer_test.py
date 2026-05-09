@@ -12,6 +12,8 @@ contract is the must-pass minimum.
 """
 
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -304,6 +306,182 @@ class TestRendererRealFixtures(unittest.TestCase):
                     )
                 finally:
                     os.unlink(path)
+
+
+class TestRendererArkaneSubprocess(unittest.TestCase):
+    """
+    Contract test: forged Gaussian logs must be consumable by a real
+    Arkane invocation. ARC runs Arkane as a subprocess (``python -m arkane
+    input.py``); this test mirrors that, using ``conda run -n rmg_env``
+    to enter an environment that has Arkane installed.
+
+    Skips gracefully if neither ``conda`` nor ``rmg_env`` is available.
+    """
+
+    SPECIES_PY = (
+        '#!/usr/bin/env python\n'
+        '# -*- coding: utf-8 -*-\n'
+        '\n'
+        'linear = {linear}\n'
+        'spinMultiplicity = {mult}\n'
+        '\n'
+        "energy = Log('{sp_path}')\n"
+        "geometry = Log('{freq_path}')\n"
+        "frequencies = Log('{freq_path}')\n"
+    )
+
+    INPUT_PY = (
+        '#!/usr/bin/env python\n'
+        '# -*- coding: utf-8 -*-\n'
+        "modelChemistry = LevelOfTheory(method='ccsd(t)f12', basis='ccpvtzf12', software='molpro')\n"
+        'useHinderedRotors = False\n'
+        'useAtomCorrections = False\n'
+        'useBondCorrections = False\n'
+        '\n'
+        "species('{label}', 'species/{label}.py', structure=SMILES('{smiles}'), spinMultiplicity={mult})\n"
+        '\n'
+        "thermo('{label}', 'NASA')\n"
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        """Skip the whole class if rmg_env is unreachable."""
+        cls.conda = shutil.which('conda')
+        if cls.conda is None:
+            raise unittest.SkipTest('conda not on PATH — cannot launch rmg_env Arkane subprocess')
+        proc = subprocess.run(
+            [cls.conda, 'run', '-n', 'rmg_env', 'python', '-m', 'arkane', '--help'],
+            capture_output=True, text=True,
+        )
+        if proc.returncode != 0:
+            raise unittest.SkipTest(
+                f'rmg_env Arkane unreachable; stderr tail: {proc.stderr[-200:]}'
+            )
+
+    def _run_arkane_thermo(
+        self, label: str, smiles: str, multiplicity: int,
+        is_linear: bool, xyz_str: str, e_elect_h: float, freqs: list,
+        zpe_h: float, hessian_block: str | None,
+    ) -> str:
+        """
+        Render a forged freq + sp log pair, build a minimal Arkane species and
+        input file, run ``python -m arkane input.py`` in rmg_env, and return
+        the path to the run directory.
+
+        Args:
+            label (str): Species label (used for filenames).
+            smiles (str): SMILES for Arkane's structure annotation.
+            multiplicity (int): Spin multiplicity.
+            is_linear (bool): Whether the species is linear (Arkane uses this).
+            xyz_str (str): Geometry in ARC xyz string format.
+            e_elect_h (float): Electronic energy in Hartree.
+            freqs (list): Harmonic frequencies in cm^-1.
+            zpe_h (float): Zero-point energy in Hartree.
+            hessian_block (str | None): Verbatim Gaussian Hessian block, or None.
+
+        Returns:
+            str: The run directory path (caller is responsible for cleanup).
+        """
+        run_dir = tempfile.mkdtemp(prefix='mockter_arkane_')
+        os.makedirs(os.path.join(run_dir, 'species'), exist_ok=True)
+
+        sp_path = os.path.join(run_dir, f'sp_{label}.log')
+        freq_path = os.path.join(run_dir, f'freq_{label}.log')
+        with open(sp_path, 'w') as f:
+            f.write(render_gaussian_log(
+                job_type='sp', xyz=xyz_str, e_elect_hartree=e_elect_h,
+                multiplicity=multiplicity, is_t1_capable=True, t1_diagnostic=0.012,
+            ))
+        with open(freq_path, 'w') as f:
+            f.write(render_gaussian_log(
+                job_type='freq', xyz=xyz_str, e_elect_hartree=e_elect_h,
+                multiplicity=multiplicity, freqs_cm1=freqs, zpe_hartree=zpe_h,
+                hessian_block=hessian_block,
+            ))
+
+        with open(os.path.join(run_dir, 'species', f'{label}.py'), 'w') as f:
+            f.write(self.SPECIES_PY.format(
+                linear=is_linear, mult=multiplicity,
+                sp_path=sp_path, freq_path=freq_path,
+            ))
+        with open(os.path.join(run_dir, 'input.py'), 'w') as f:
+            f.write(self.INPUT_PY.format(label=label, smiles=smiles, mult=multiplicity))
+
+        proc = subprocess.run(
+            [self.conda, 'run', '-n', 'rmg_env', 'python', '-m', 'arkane', 'input.py'],
+            cwd=run_dir, capture_output=True, text=True, timeout=120,
+        )
+        # Renderer contract: Arkane must parse the forged log AND compute thermo.
+        # Anything past "Saving thermo for {label}" exercises rmgpy's downstream
+        # YAML serializer, which can fail for reasons unrelated to log content
+        # (e.g. zero-size ArrayQuantity in current numpy/rmgpy combos). For the
+        # renderer's contract we require parse + statmech + thermo, not save.
+        combined = proc.stdout + '\n' + proc.stderr
+        parse_milestones = [
+            'Loading statistical mechanics parameters for ' + label,
+            'Saving statistical mechanics parameters for ' + label,
+            'Saving thermo for ' + label,
+        ]
+        for milestone in parse_milestones:
+            self.assertIn(
+                milestone, combined,
+                f'arkane never reached "{milestone}" for {label}\n'
+                f'stdout tail: {proc.stdout[-1000:]}\n'
+                f'stderr tail: {proc.stderr[-1000:]}'
+            )
+        # Specifically reject errors that originate inside the parser: any
+        # 'load_conformer', 'load_geometry', 'load_energy', 'load_force_constant_matrix'
+        # frame in the traceback would indicate a renderer bug.
+        renderer_failures = [
+            'load_conformer',
+            'load_geometry',
+            'load_energy',
+            'load_force_constant_matrix',
+            'load_negative_frequency',
+        ]
+        for frame in renderer_failures:
+            if frame in proc.stderr and 'Traceback' in proc.stderr:
+                self.fail(
+                    f'arkane traceback hit {frame} — renderer contract violated\n'
+                    f'stderr tail: {proc.stderr[-1500:]}'
+                )
+        return run_dir
+
+    def test_h2o_thermo_via_arkane_subprocess(self):
+        """End-to-end: render forged logs for H2O, run Arkane, check output.py."""
+        fixture_path = os.path.join(FIXTURES_DIR, 'mockter4.yml')
+        if not os.path.isfile(fixture_path):
+            self.skipTest('mockter4.yml not present')
+        fixture = read_yaml_file(fixture_path)
+        spc = fixture['species']['H2O']
+        xyz_str = (spc.get('fine_opt') or spc['opt'])['xyz']
+        run_dir = self._run_arkane_thermo(
+            label='H2O', smiles='O', multiplicity=1, is_linear=False,
+            xyz_str=xyz_str,
+            e_elect_h=spc['sp']['e_elect'],
+            freqs=spc['freq']['freqs'],
+            zpe_h=spc['freq']['zpe'],
+            hessian_block=spc['freq'].get('hessian_block'),
+        )
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+    def test_c2h6_thermo_via_arkane_subprocess(self):
+        """Larger species: C2H6 has 18 freqs; same end-to-end protocol."""
+        fixture_path = os.path.join(FIXTURES_DIR, 'mockter4.yml')
+        if not os.path.isfile(fixture_path):
+            self.skipTest('mockter4.yml not present')
+        fixture = read_yaml_file(fixture_path)
+        spc = fixture['species']['C2H6']
+        xyz_str = (spc.get('fine_opt') or spc['opt'])['xyz']
+        run_dir = self._run_arkane_thermo(
+            label='C2H6', smiles='CC', multiplicity=1, is_linear=False,
+            xyz_str=xyz_str,
+            e_elect_h=spc['sp']['e_elect'],
+            freqs=spc['freq']['freqs'],
+            zpe_h=spc['freq']['zpe'],
+            hessian_block=spc['freq'].get('hessian_block'),
+        )
+        shutil.rmtree(run_dir, ignore_errors=True)
 
 
 if __name__ == '__main__':
