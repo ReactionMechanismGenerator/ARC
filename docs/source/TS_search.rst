@@ -47,6 +47,9 @@ Outputs and validation
 """"""""""""""""""""""
 Validated TS results are reported in the project output (log files and generated artifacts),
 together with the supporting calculations (optimization, frequency, and IRC).
+ARC does not require TS geometries to be isomorphic with a stored 2D adjacency list, since a TS does not have a
+single strict graph representation. Instead, TS validation relies on TS-specific checks such as the imaginary
+frequency, normal mode displacement analysis, IRC results, and energetic consistency.
 
 Reference
 """""""""

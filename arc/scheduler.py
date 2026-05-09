@@ -3099,9 +3099,12 @@ class Scheduler(object):
                 # a lower conformation was found
                 deg_increment = actions[1]
                 self.species_dict[label].set_dihedral(scan=scan, index=1, deg_increment=deg_increment)
-                is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
-                    allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                    xyz=self.species_dict[label].initial_xyz)
+                if self.species_dict[label].is_ts:
+                    is_isomorphic = True
+                else:
+                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
+                        allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                        xyz=self.species_dict[label].initial_xyz)
                 if is_isomorphic:
                     self.delete_all_species_jobs(label)
                     # Remove all completed rotor calculation information
@@ -3161,7 +3164,10 @@ class Scheduler(object):
         """
         if job.job_status[1]['status'] == 'done':
             xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
-            is_isomorphic = self.species_dict[label].check_xyz_isomorphism(xyz=xyz, verbose=False)
+            if self.species_dict[label].is_ts:
+                is_isomorphic = True
+            else:
+                is_isomorphic = self.species_dict[label].check_xyz_isomorphism(xyz=xyz, verbose=False)
             for rotor_dict in self.species_dict[label].rotors_dict.values():
                 if rotor_dict['pivots'] == job.pivots:
                     key = tuple(f'{dihedral:.2f}' for dihedral in job.dihedrals)
@@ -3394,9 +3400,12 @@ class Scheduler(object):
                     break
             else:
                 # If 'change conformer' is not used, check for isomorphism.
-                is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
-                    allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                    xyz=new_xyz)
+                if self.species_dict[label].is_ts:
+                    is_isomorphic = True
+                else:
+                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
+                        allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                        xyz=new_xyz)
                 if is_isomorphic:
                     self.species_dict[label].final_xyz = new_xyz
                     # Remove all completed rotor calculation information.

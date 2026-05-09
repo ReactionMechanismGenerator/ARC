@@ -6,7 +6,7 @@ This module contains unit tests for the arc.scheduler module
 """
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import os
 import shutil
 
@@ -1032,6 +1032,156 @@ H      -1.82570782    0.42754384   -0.56130718"""
         o_level = mock_run_job.call_args.kwargs['level_of_theory']
         self.assertEqual(o_level.method, 'dlpno-ccsd(t)-f12')
         self.assertEqual(o_level.cabs, 'cc-pvtz-f12-cabs')
+
+    def test_check_directed_scan_job_skips_isomorphism_for_ts(self):
+        """check_directed_scan_job must not call check_xyz_isomorphism for a TS; is_isomorphic is recorded as True."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_spc = ARCSpecies(label='TS_dirscan', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'directed_scan': {}}}
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_ts_iso_dirscan')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_ts_iso_dirscan', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+
+        job_mock = MagicMock()
+        job_mock.job_status = [None, {'status': 'done'}]
+        job_mock.local_path_to_output_file = '/fake/path.log'
+        job_mock.pivots = [1, 2]
+        job_mock.dihedrals = [45.0]
+        job_mock.ess_trsh_methods = []
+
+        with patch('arc.species.species.ARCSpecies.check_xyz_isomorphism') as mock_iso, \
+                patch('arc.scheduler.parser.parse_geometry', return_value=ts_xyz), \
+                patch('arc.scheduler.parser.parse_e_elect', return_value=-123.45):
+            sched.check_directed_scan_job(label='TS_dirscan', job=job_mock)
+
+        mock_iso.assert_not_called()
+        recorded = sched.species_dict['TS_dirscan'].rotors_dict[0]['directed_scan'][('45.00',)]
+        self.assertTrue(recorded['is_isomorphic'])
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_troubleshoot_scan_job_skips_isomorphism_for_ts(self, mock_run_opt):
+        """troubleshoot_scan_job must not call check_xyz_isomorphism for a TS when applying 'change conformer'."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        new_xyz = str_to_xyz("""N       0.91000000    0.52000000    0.00000000
+        H       1.81000000    1.04000000    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91000000    1.23000000    0.72000000""")
+        ts_spc = ARCSpecies(label='TS_trsh', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'scan': [3, 1, 2, 4], 'scan_path': '',
+                                  'invalidation_reason': '', 'success': None, 'symmetry': None,
+                                  'times_dihedral_set': 0, 'trsh_methods': [], 'trsh_counter': 0}}
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_ts_iso_trsh')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_ts_iso_trsh', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.trsh_ess_jobs = True
+        sched.trsh_rotors = True
+
+        job_mock = MagicMock()
+        job_mock.species_label = 'TS_trsh'
+        job_mock.rotor_index = 0
+        job_mock.torsions = [[3, 1, 2, 4]]
+        job_mock.job_name = 'scan_a200'
+
+        with patch('arc.species.species.ARCSpecies.check_xyz_isomorphism') as mock_iso, \
+                patch('arc.scheduler.Scheduler.delete_all_species_jobs'):
+            sched.troubleshoot_scan_job(job=job_mock, methods={'change conformer': new_xyz})
+
+        mock_iso.assert_not_called()
+        self.assertEqual(sched.species_dict['TS_trsh'].final_xyz, new_xyz)
+        mock_run_opt.assert_called_once()
+
+    @patch('arc.scheduler.Scheduler.run_job')
+    def test_troubleshoot_scan_job_skips_isomorphism_for_ts_non_conformer(self, mock_run_job):
+        """troubleshoot_scan_job must not call check_xyz_isomorphism for a TS in the non-'change conformer' branch."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_spc = ARCSpecies(label='TS_trsh_nc', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'scan': [3, 1, 2, 4], 'scan_path': '',
+                                  'invalidation_reason': '', 'success': None, 'symmetry': None,
+                                  'times_dihedral_set': 0, 'trsh_methods': [], 'trsh_counter': 0}}
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_ts_iso_trsh_nc')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_ts_iso_trsh_nc', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.trsh_ess_jobs = True
+        sched.trsh_rotors = True
+
+        job_mock = MagicMock()
+        job_mock.species_label = 'TS_trsh_nc'
+        job_mock.rotor_index = 0
+        job_mock.torsions = [[2, 0, 1, 3]]  # 0-indexed; torsions_to_scans yields the 1-indexed scan [3, 1, 2, 4]
+        job_mock.job_name = 'scan_a201'
+        job_mock.scan_res = 8.0
+        job_mock.xyz = ts_xyz
+        job_mock.level = Level(repr=default_levels_of_theory['scan'])
+        job_mock.local_path_to_output_file = '/fake/path.log'
+
+        with patch('arc.species.species.ARCSpecies.check_xyz_isomorphism') as mock_iso, \
+                patch('arc.scheduler.trsh_scan_job') as mock_trsh_scan:
+            mock_trsh_scan.return_value = [], 4.0
+
+            sched.troubleshoot_scan_job(job=job_mock, methods={'inc_res': None})
+
+        mock_iso.assert_not_called()
+        mock_trsh_scan.assert_called_once_with(
+            label='TS_trsh_nc',
+            scan_res=8.0,
+            scan=[3, 1, 2, 4],
+            scan_list=[[3, 1, 2, 4]],
+            methods={'inc_res': None},
+            log_file='/fake/path.log',
+        )
+
+        mock_run_job.assert_called_once()
+        _, kwargs = mock_run_job.call_args
+        self.assertEqual(kwargs['label'], 'TS_trsh_nc')
+        self.assertEqual(kwargs['xyz'], ts_xyz)
+        self.assertEqual(kwargs['level_of_theory'], job_mock.level)
+        self.assertEqual(kwargs['job_type'], 'scan')
+        self.assertEqual(kwargs['torsions'], [[2, 0, 1, 3]])
+        self.assertEqual(kwargs['scan_trsh'], [])
+        self.assertEqual(kwargs['trsh'], {'scan_res': 4.0})
+        self.assertEqual(kwargs['rotor_index'], 0)
 
     @classmethod
     def tearDownClass(cls):
