@@ -378,10 +378,10 @@ def _render_thermochemistry_block(
             lines.append('                             ' + '  '.join(formatted[i:i + 5]) + '\n')
         lines.append('\n')
 
-    lines.append(f' Zero-point correction=                           {zpe_hartree:.6f} (Hartree/Particle)\n')
+    lines.append(f' Zero-point correction=                           {zpe_hartree:.10f} (Hartree/Particle)\n')
     if e_elect_hartree is not None:
         lines.append(
-            f' Sum of electronic and zero-point Energies=            {e_elect_hartree + zpe_hartree:.6f}\n'
+            f' Sum of electronic and zero-point Energies=            {e_elect_hartree + zpe_hartree:.10f}\n'
         )
     return ''.join(lines)
 
