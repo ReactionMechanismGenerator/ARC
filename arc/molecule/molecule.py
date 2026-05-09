@@ -1957,7 +1957,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi(self, backend=backend)
         except:
-            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logger.debug(f"Identifier generation failed for molecule\n{self.to_adjacency_list()}", exc_info=True)
             raise
 
     def to_augmented_inchi(self, backend='rdkit-first'):
@@ -1974,7 +1974,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi(self, backend=backend, aug_level=2)
         except:
-            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logger.debug(f"Identifier generation failed for molecule\n{self.to_adjacency_list()}", exc_info=True)
             raise
 
     def to_inchi_key(self, backend='rdkit-first'):
@@ -1994,7 +1994,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi_key(self, backend=backend)
         except:
-            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logger.debug(f"Identifier generation failed for molecule\n{self.to_adjacency_list()}", exc_info=True)
             raise
 
     def to_augmented_inchi_key(self, backend='rdkit-first'):
@@ -2012,7 +2012,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi_key(self, backend=backend, aug_level=2)
         except:
-            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logger.debug(f"Identifier generation failed for molecule\n{self.to_adjacency_list()}", exc_info=True)
             raise
 
     def to_smarts(self):
