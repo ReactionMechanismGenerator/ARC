@@ -10,6 +10,7 @@ import unittest
 import arc.species.zmat as zmat
 from arc.exceptions import ZMatError
 from arc.species.species import ARCSpecies
+from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calculate_distance
 
 
 class TestZMat(unittest.TestCase):
@@ -1141,17 +1142,17 @@ class TestZMat(unittest.TestCase):
                                    (0.0, 1.0243364541978242, -0.38437036481785164),
                                    (0.8871155316940229, -0.512157825466657, -0.38436337480993366),
                                    (0.8870866549577128, 0.5121724542017935, 1.8964332054704973),
-                                   (-5.933069423924575e-06, -1.0243432669860233, 1.8964193919074686),
+                                   (-5.933069423905306e-06, -1.0243432669860233, 1.8964193919074686),
                                    (-0.8871155017476918, 0.5121578773371006, 1.8964121044661915),
-                                   (-3.057282799958524, 0.4716164099437675, -3.9577807354027383),
-                                   (-3.1415471826438788, -0.1149906603042059, -2.5637745848892264),
-                                   (-1.85742424554931, -0.6217060421343723, -2.204082995526117),
+                                   (-1.2371110162412278, 1.5988512976253415, -3.179523967596598),
+                                   (-2.044536549389371, 0.6583372765250897, -2.308915632432026),
+                                   (-1.1555439542290347, -0.2794377405723676, -1.7044485793413),
                                    (-2.012299734047888, -1.1618305251779666, -0.8719517400219541),
-                                   (-2.739203398660456, -0.289471719214607, -4.677947695308563),
-                                   (-4.025113512076681, 0.872306258817358, -4.271854391036923),
-                                   (-2.3136079874219595, 1.274535046779022, -3.994035096204675),
-                                   (-3.871932295381926, -0.9306597576029849, -2.5400987960833166),
-                                   (-3.440082669618663, 0.6565731451487455, -1.8462094217817948)]
+                                   (-0.6976483341898274, 1.041479595983335, -3.9524320455066),
+                                   (-1.8844267081583712, 2.3360142855573467, -3.662705121713652),
+                                   (-0.484664958316225, 2.125754527405569, -2.5835014351230994),
+                                   (-2.780771272961152, 0.11998259600025107, -2.915110074783107),
+                                   (-2.5645961739327827, 1.2204340613942746, -1.5260241345006738)]
         expected_ordered_symbols = ['C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H']
         for coords1, coords2 in zip(expected_ordered_coords, ordered_coords):
             for coord1, coord2 in zip(coords1, coords2):
@@ -1161,6 +1162,44 @@ class TestZMat(unittest.TestCase):
         ordered_symbols = zmat.zmat_to_coords(zmat=zmat1, keep_dummy=True)[1]
         expected_ordered_symbols = ['C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'X', 'C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H']
         self.assertEqual(ordered_symbols, expected_ordered_symbols)
+
+    def test_zmat_to_coords_angle_dihedral_independent_refs(self):
+        """Issue #779: angle parameter's reference atom may differ from the dihedral's B atom."""
+        zmat1 = {
+            'symbols': ('C', 'O', 'C', 'O', 'H', 'H', 'H', 'H', 'O'),
+            'coords': ((None, None, None),
+                       ('R_1_0', None, None),
+                       ('R_2_1', 'A_2_1_0', None),
+                       ('R_3_2', 'A_3_2_1', 'D_3_2_1_0'),
+                       ('R_4_0', 'A_4_0_1', 'D_4_0_1_3'),
+                       ('R_5_0', 'A_5_0_1', 'D_5_0_1_4'),
+                       ('R_6_0', 'A_6_0_1', 'D_6_0_1_5'),
+                       ('R_7_2', 'A_7_2_3', 'D_7_2_3_6'),
+                       ('R_8_2', 'A_8_2_1', 'D_8_2_7_3')),
+            'vars': {
+                'R_1_0': 1.4279748215793069, 'R_2_1': 1.7627308829567612,
+                'A_2_1_0': 113.78880933352458,
+                'R_3_2': 1.220223245519294, 'A_3_2_1': 126.68953118378808,
+                'D_3_2_1_0': 6.273929367455621e-06,
+                'R_4_0': 1.093536138062114, 'A_4_0_1': 108.0618680369275,
+                'D_4_0_1_3': 61.484528505772055,
+                'R_5_0': 1.0935361380621144, 'A_5_0_1': 108.06186803692747, 'D_5_0_1_4': 240.0,
+                'R_6_0': 1.0935361380621144, 'A_6_0_1': 108.06186803692747, 'D_6_0_1_5': 240.0,
+                'R_7_2': 1.1010626883230803, 'A_7_2_3': 124.35232167955662,
+                'D_7_2_3_6': 199.80067229824692,
+                'R_8_2': 1.85, 'A_8_2_1': 77.4, 'D_8_2_7_3': 140.0,
+            },
+            'map': {i: i for i in range(9)},
+        }
+        ordered_coords, _ = zmat.zmat_to_coords(zmat=zmat1)
+
+        # Bond 8-2 must equal the specified R_8_2.
+        self.assertAlmostEqual(calculate_distance(coords=ordered_coords, atoms=[8, 2]), 1.85, places=4)
+        # Angle 8-2-1 must equal the specified A_8_2_1 — this is what issue #779 reports broken.
+        self.assertAlmostEqual(calculate_angle(coords=ordered_coords, atoms=[8, 2, 1]), 77.4, places=3)
+        # Dihedral 8-2-7-3 must equal the specified D_8_2_7_3.
+        self.assertAlmostEqual(calculate_dihedral_angle(coords=ordered_coords, torsion=[8, 2, 7, 3]),
+                               140.0, places=3)
 
     def test_consolidate_zmat(self):
         """Test consolidating a zmat"""

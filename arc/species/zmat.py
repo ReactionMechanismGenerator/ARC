@@ -1084,12 +1084,12 @@ def _add_nth_atom_to_coords(zmat: dict,
         We differentiate between two cases for c_z:
         Either atom A is at the origin (case 1), or atom B is at the origin (case 2).
         One of them has to be at the origin (0, 0, 0), since we're adding the 3rd atom (so either A or B were 1st).
-        
+
          y
-         ^                    C                         C
-         |           (1)       \        or     (2)     /
+         ^                    C                        C
+         |           (1)       \        or     (2)    /
          L__ > z           A -- B                    B -- A
-        
+
         In case 1, we need to deduct len(B-C) from the z coordinate of atom B,
         but in case 2 we need to take the positive value of len(B-C).
         The above is also true if alpha(A-B-C) is > 90 degrees.
@@ -1100,6 +1100,11 @@ def _add_nth_atom_to_coords(zmat: dict,
         d_indices = [indices for indices in get_atom_indices_from_zmat_parameter(zmat['coords'][i][2])
                      if indices[0] == i][0]
         a_index, b_index, c_index = d_indices[3], d_indices[2], d_indices[1]
+        a_indices = [indices for indices in get_atom_indices_from_zmat_parameter(zmat['coords'][i][1]) if indices[0] == i][0]
+        c_angle, e_index = a_indices[1], a_indices[2]
+        if c_angle != c_index:
+            raise ZMatError(f"Angle parameter {zmat['coords'][i][1]} and dihedral parameter "
+                            f"{zmat['coords'][i][2]} have inconsistent central atoms ({c_angle} vs {c_index}) for atom {i}.")
         # Atoms B and C aren't necessarily connected in the zmat, calculate from coords.
         bc_length = vectors.get_vector_length([coords[c_index][0] - coords[b_index][0],
                                        coords[c_index][1] - coords[b_index][1],
@@ -1124,10 +1129,42 @@ def _add_nth_atom_to_coords(zmat: dict,
                       [ubc[1], un_cross_ubc[1], un[1]],
                       [ubc[2], un_cross_ubc[2], un[2]]], np.float64)
 
-        # Place atom D in a default coordinate system.
-        d = np.array([- cd_length * math.cos(bcd_angle),
-                      cd_length * math.sin(bcd_angle) * math.cos(abcd_dihedral),
-                      cd_length * math.sin(bcd_angle) * math.sin(abcd_dihedral)])
+        if e_index == b_index:
+            d = np.array([- cd_length * math.cos(bcd_angle),
+                          cd_length * math.sin(bcd_angle) * math.cos(abcd_dihedral),
+                          cd_length * math.sin(bcd_angle) * math.sin(abcd_dihedral)])
+        else:
+            e_local = m.T @ np.array([coords[e_index][0] - coords[c_index][0],  #  "@" is matrix multiplication
+                                      coords[e_index][1] - coords[c_index][1],
+                                      coords[e_index][2] - coords[c_index][2]])
+            e_norm = vectors.get_vector_length(e_local)
+            if e_norm < 1e-12:
+                raise ZMatError(f"Cannot place atom {i}: angle reference atom {e_index} "
+                                f"coincides with vertex {c_index}.")
+            u_x, u_y, u_z = e_local[0] / e_norm, e_local[1] / e_norm, e_local[2] / e_norm
+            k = u_y * math.cos(abcd_dihedral) + u_z * math.sin(abcd_dihedral)
+            r_uk = math.sqrt(u_x * u_x + k * k)
+            if r_uk < 1e-12:
+                raise ZMatError(f"Cannot place atom {i}: degenerate geometry between angle "
+                                f"{zmat['coords'][i][1]} and dihedral {zmat['coords'][i][2]}.")
+            ratio = max(-1.0, min(1.0, math.cos(bcd_angle) / r_uk))
+            psi = math.atan2(k, u_x)
+            delta = math.acos(ratio)
+            def _wrap(angle: float) -> float:
+                while angle > math.pi:
+                    angle -= 2.0 * math.pi
+                while angle <= -math.pi:
+                    angle += 2.0 * math.pi
+                return angle
+            # sin(phi) >= 0 is required so the resulting dihedral is abcd_dihedral, not abcd_dihedral + π.
+            # The (psi - delta) branch matches the standard NeRF placement when E == B; prefer it
+            # when both branches are valid.
+            candidates = [_wrap(psi - delta), _wrap(psi + delta)]
+            phi = next((p for p in candidates if math.sin(p) >= -1e-12), candidates[0])
+            d = np.array([cd_length * math.cos(phi),
+                          cd_length * math.sin(phi) * math.cos(abcd_dihedral),
+                          cd_length * math.sin(phi) * math.sin(abcd_dihedral)])
+
         d = m.dot(d)  # Rotate the coordinate system into the reference frame of orientation defined by A, B, C.
         # Add the coordinates of atom C to the resulting atom D:
         coords.append((float(d[0] + coords[c_index][0]), float(d[1] + coords[c_index][1]), float(d[2] + coords[c_index][2])))
