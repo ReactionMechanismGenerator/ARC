@@ -515,15 +515,18 @@ class TestGaussianAdapter(unittest.TestCase):
         """Test assigning number of cpu's and memory"""
         self.job_8.input_file_memory = None
         self.job_8.submit_script_memory = None
+        self.job_8.submit_script_memory_mib = None
         self.job_8.server = 'server2'
         self.job_8.set_cpu_and_mem()
         self.assertEqual(self.job_8.cpu_cores, 8)
+        self.assertEqual(self.job_8.submit_script_memory_mib, math.ceil(14 * 1024 * 1.1))
+        self.assertLess(self.job_8.input_file_memory, self.job_8.submit_script_memory_mib)
 
     def test_set_input_file_memory(self):
         """Test setting the input_file_memory argument"""
-        expected_memory = math.ceil(14 * 1024)
+        expected_memory = math.floor(math.ceil(14 * 1024 * 1.1) * 0.9)
         self.assertEqual(self.job_1.input_file_memory, expected_memory)
-        self.assertEqual(self.job_2.input_file_memory, 14336)
+        self.assertEqual(self.job_2.input_file_memory, expected_memory)
     
     def test_write_input_file_multi(self):
         """Test writing Gaussian input files"""
@@ -531,7 +534,7 @@ class TestGaussianAdapter(unittest.TestCase):
         with open(os.path.join(self.job_multi.local_path, input_filenames[self.job_multi.job_adapter]), 'r') as f:
             content_multi = f.read()
         job_multi_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2tzvp   IOp(2/9=2000)   
@@ -545,7 +548,7 @@ O       0.00000000    0.00000000    1.00000000
 
 --link1--
 %chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2tzvp   IOp(2/9=2000)   
@@ -559,7 +562,7 @@ O       0.00000000    0.00000000    2.00000000
 
 --link1--
 %chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc) SCRF=(smd, Solvent=water) wb97xd/def2tzvp   IOp(2/9=2000)   
@@ -588,7 +591,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
         job_1_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc)  cbs-qb3   IOp(2/9=2000) IOp(1/12=5,3/44=0)  
@@ -606,7 +609,7 @@ O       0.00000000    0.00000000    1.00000000
         with open(os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]), 'r') as f:
             content_3 = f.read()
         job_3_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2tzvp   IOp(2/9=2000)   
@@ -624,7 +627,7 @@ O       0.00000000    0.00000000    1.00000000
         with open(os.path.join(self.job_4.local_path, input_filenames[self.job_4.job_adapter]), 'r') as f:
             content_4 = f.read()
         job_4_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxStep=5,modredundant,noeigentest) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000)    scf=(direct,tight)
@@ -657,7 +660,7 @@ block
         with open(os.path.join(self.job_5.local_path, input_filenames[self.job_5.job_adapter]), 'r') as f:
             content_5 = f.read()
         job_5_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P  uwb97xd/def2tzvp freq IOp(7/33=1)  integral=(grid=ultrafine, Acc2E=12)  IOp(2/9=2000)    scf=(direct,tight)
@@ -675,7 +678,7 @@ O       0.00000000    0.00000000    1.00000000
         with open(os.path.join(self.job_6.local_path, input_filenames[self.job_6.job_adapter]), 'r') as f:
             content_6 = f.read()
         job_6_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc)  uwb97xd/def2tzvp   IOp(2/9=2000)   
@@ -693,7 +696,7 @@ O       0.00000000    0.00000000    1.00000000
         with open(os.path.join(self.job_7.local_path, input_filenames[self.job_7.job_adapter]), 'r') as f:
             content_7 = f.read()
         job_7_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P irc=(CalcAll,maxpoints=50,reverse,stepsize=7)  uwb97xd/def2tzvp   IOp(2/9=2000)   
@@ -711,7 +714,7 @@ O       0.00000000    0.00000000    1.00000000
         with open(os.path.join(self.job_opt_uff.local_path, input_filenames[self.job_opt_uff.job_adapter]), 'r') as f:
             content_opt_uff = f.read()
         job_opt_uff_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt uff   IOp(2/9=2000)   
@@ -776,7 +779,7 @@ O       0.00000000    0.00000000    1.00000000
         with open(os.path.join(self.job_10.local_path, input_filenames[self.job_10.job_adapter]), 'r') as f:
             content_10 = f.read()
         job_10_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxcycle=100,maxstep=5,tight)  uwb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
@@ -794,7 +797,7 @@ O       0.00000000    0.00000000    1.00000000
         with open(os.path.join(self.job_11.local_path, input_filenames[self.job_11.job_adapter]), 'r') as f:
             content_11 = f.read()
         job_11_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
@@ -820,7 +823,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_12.local_path, input_filenames[self.job_12.job_adapter]), 'r') as f:
             content_12 = f.read()
         job_12_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(direct,tight,xqc)
@@ -846,7 +849,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_13.local_path, input_filenames[self.job_13.job_adapter]), 'r') as f:
             content_13 = f.read()
         job_13_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,direct,tight,xqc)
@@ -872,7 +875,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_14.local_path, input_filenames[self.job_14.job_adapter]), 'r') as f:
             content_14 = f.read()
         job_14_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
@@ -898,7 +901,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_15.local_path, input_filenames[self.job_15.job_adapter]), 'r') as f:
             content_15 = f.read()
         job_15_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,cartesian,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
@@ -925,7 +928,7 @@ H       0.04768200    1.19305700   -0.88359100
             content_16 = f.read()
 
         job_16_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(cartesian) integral=(grid=ultrafine, Acc2E=14) guess=INDO wb97xd   IOp(2/9=2000)        nosymm  scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
@@ -952,7 +955,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_17.local_path, input_filenames[self.job_17.job_adapter]), 'r') as f:
             content_17 = f.read()
         job_17_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       scf=(direct,tight,xqc)
@@ -978,7 +981,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_18.local_path, input_filenames[self.job_18.job_adapter]), 'r') as f:
             content_18 = f.read()
         job_18_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
@@ -1004,7 +1007,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_19.local_path, input_filenames[self.job_19.job_adapter]), 'r') as f:
             content_19 = f.read()
         job_19_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
@@ -1030,7 +1033,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_20.local_path, input_filenames[self.job_20.job_adapter]), 'r') as f:
             content_20 = f.read()
         job_20_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
@@ -1057,7 +1060,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_21.local_path, input_filenames[self.job_21.job_adapter]), 'r') as f:
             content_21 = f.read()
         job_21_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxcycle=100,maxstep=5,tight) guess=INDO wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     int=grid=300590   scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
@@ -1084,7 +1087,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_22.local_path, input_filenames[self.job_22.job_adapter]), 'r') as f:
             content_22 = f.read()
         job_22_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
@@ -1111,7 +1114,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_23.local_path, input_filenames[self.job_23.job_adapter]), 'r') as f:
             content_23 = f.read()
         job_23_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(RFO,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
@@ -1138,7 +1141,7 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(self.job_24.local_path, input_filenames[self.job_24.job_adapter]), 'r') as f:
             content_24 = f.read()
         job_24_expected_input_file = """%chk=check.chk
-%mem=14336mb
+%mem=14193mb
 %NProcShared=8
 
 #P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
