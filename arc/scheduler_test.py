@@ -837,8 +837,9 @@ H      -1.82570782    0.42754384   -0.56130718"""
         project_directory = os.path.join(ARC_PATH, 'Projects',
                                          'arc_project_for_testing_delete_after_usage4')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        caller_species_list = [ts_spc]
         sched = Scheduler(project='test_switch_ts', ess_settings=self.ess_settings,
-                          species_list=[ts_spc],
+                          species_list=caller_species_list,
                           opt_level=Level(repr=default_levels_of_theory['opt']),
                           freq_level=Level(repr=default_levels_of_theory['freq']),
                           sp_level=Level(repr=default_levels_of_theory['sp']),
@@ -867,7 +868,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         ts_spc.irc_label = f'{irc_label_1} {irc_label_2}'
         sched.species_dict[irc_label_1] = irc_spc_1
         sched.species_dict[irc_label_2] = irc_spc_2
-        sched.species_list.extend([irc_spc_1, irc_spc_2])
+        caller_species_list.extend([irc_spc_1, irc_spc_2])
         sched.unique_species_labels.extend([irc_label_1, irc_label_2])
         sched.running_jobs[irc_label_1] = ['opt_a100']
         sched.running_jobs[irc_label_2] = ['opt_a101']
@@ -901,6 +902,14 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertNotIn(irc_label_1, sched.unique_species_labels)
         self.assertNotIn(irc_label_2, sched.unique_species_labels)
         self.assertIsNone(sched.species_dict[ts_label].irc_label)
+
+        # Regression: caller's species_list reference must also have IRC species
+        # removed. If cleanup rebinds self.species_list to a new list, the caller's
+        # reference (e.g. ARC.species) keeps zombie IRC species and later crashes
+        # save_project_info_file with KeyError on self.output[IRC_label].
+        self.assertNotIn(irc_spc_1, caller_species_list)
+        self.assertNotIn(irc_spc_2, caller_species_list)
+        self.assertIs(sched.species_list, caller_species_list)
 
         # Verify job_types reset and convergence cleared.
         self.assertFalse(sched.output[ts_label]['job_types']['opt'])
