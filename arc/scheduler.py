@@ -4451,7 +4451,7 @@ class Scheduler(object):
                     if irc_label in self.output:
                         del self.output[irc_label]
                     if irc_label in self.species_dict:
-                        self.species_list = [spc for spc in self.species_list if spc.label != irc_label]
+                        self.species_list[:] = [spc for spc in self.species_list if spc.label != irc_label]
                         del self.species_dict[irc_label]
                     if irc_label in self.unique_species_labels:
                         self.unique_species_labels.remove(irc_label)
