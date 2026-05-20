@@ -1251,10 +1251,30 @@
         <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">True</span>
 
     <span class="k">if</span> <span class="n">couldnt_trsh</span><span class="p">:</span>
-        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not troubleshoot geometry optimization for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">! &#39;</span>
-                     <span class="sa">f</span><span class="s1">&#39;Tried troubleshooting with the following methods: </span><span class="si">{</span><span class="n">ess_trsh_methods</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="c1"># Count and remove &#39;trsh_attempt&#39; entries for cleaner reporting</span>
+        <span class="n">trsh_attempt_count</span> <span class="o">=</span> <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s1">&#39;trsh_attempt&#39;</span><span class="p">)</span>
+        <span class="n">filtered_methods</span> <span class="o">=</span> <span class="p">[</span><span class="n">method</span> <span class="k">for</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="k">if</span> <span class="n">method</span> <span class="o">!=</span> <span class="s1">&#39;trsh_attempt&#39;</span><span class="p">]</span>
+
+        <span class="c1"># Build the message with the count and filtered methods</span>
+        <span class="k">if</span> <span class="n">trsh_attempt_count</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># We attempted troubleshooting some number of times.</span>
+            <span class="k">if</span> <span class="n">filtered_methods</span><span class="p">:</span>
+                <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Tried troubleshooting </span><span class="si">{</span><span class="n">trsh_attempt_count</span><span class="si">}</span><span class="s1"> time(s), with the following methods: </span><span class="si">{</span><span class="n">filtered_methods</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Edge case: scheduler/appender added &#39;trsh_attempt&#39; but no concrete methods were applied</span>
+                <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Tried troubleshooting </span><span class="si">{</span><span class="n">trsh_attempt_count</span><span class="si">}</span><span class="s1"> time(s); No applicable troubleshooting methods found&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># No explicit &#39;trsh_attempt&#39; marker present. Could be called directly (e.g. unit tests)</span>
+            <span class="k">if</span> <span class="n">filtered_methods</span><span class="p">:</span>
+                <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Tried troubleshooting with the following methods: </span><span class="si">{</span><span class="n">filtered_methods</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># No methods at all</span>
+                <span class="n">message</span> <span class="o">=</span> <span class="s1">&#39;No applicable troubleshooting methods found&#39;</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not troubleshoot </span><span class="si">{</span><span class="n">job_type</span><span class="si">}</span><span class="s1"> for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">! &#39;</span>
+                     <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="n">output_errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Error: Could not troubleshoot </span><span class="si">{</span><span class="n">job_type</span><span class="si">}</span><span class="s1"> for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">! &#39;</span>
-                             <span class="sa">f</span><span class="s1">&#39;Tried troubleshooting with the following methods: </span><span class="si">{</span><span class="n">ess_trsh_methods</span><span class="si">}</span><span class="s1">; &#39;</span><span class="p">)</span>
+                             <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s1">; &#39;</span><span class="p">)</span>
     <span class="k">return</span> <span class="p">(</span><span class="n">output_errors</span><span class="p">,</span>
             <span class="n">ess_trsh_methods</span><span class="p">,</span>
             <span class="n">remove_checkfile</span><span class="p">,</span>
