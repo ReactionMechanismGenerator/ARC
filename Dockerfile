@@ -40,8 +40,8 @@ RUN git clone --depth 1 --branch ${RMG_PY_BRANCH} https://github.com/ReactionMec
     git clone --depth 1 --branch ${ARC_BRANCH} https://github.com/ReactionMechanismGenerator/ARC.git
 
 # Create RMG-Py environment (split into separate layers for GHA cache)
-# Pin python=3.9 to drastically reduce solver search space
-RUN micromamba create -y -v -n rmg_env python=3.9 -f /home/mambauser/Code/RMG-Py/environment.yml && \
+# Pin python=3.11 to drastically reduce solver search space
+RUN micromamba create -y -v -n rmg_env python=3.11 -f /home/mambauser/Code/RMG-Py/environment.yml && \
     micromamba run -n rmg_env micromamba install -y -v -c conda-forge pyjuliacall conda && \
     micromamba clean --all --yes
 
