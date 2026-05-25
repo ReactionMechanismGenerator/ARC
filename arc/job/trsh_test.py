@@ -738,8 +738,11 @@ class TestTrsh(unittest.TestCase):
 
         # Test Orca
         # Orca: test 1
-        # Test troubleshooting insufficient memory issue
-        # Automatically increase memory provided not exceeding maximum available memory
+        # Test troubleshooting insufficient memory issue.
+        # When merely increasing total memory has already been attempted ('memory' is already in
+        # ess_trsh_methods), simply requesting more total memory keeps failing (and previously caused
+        # ARC to resubmit near-identical jobs in an endless loop). Instead, ARC reduces the number of
+        # cpu cores to raise the memory per core (Orca's MaxCore).
         label = 'test'
         level_of_theory = {'method': 'dlpno-ccsd(T)'}
         server = 'server1'
@@ -759,8 +762,9 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(cpu_cores, 32)
-        self.assertAlmostEqual(memory, 327)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertEqual(cpu_cores, 22)
+        self.assertAlmostEqual(memory, 227)
 
         # Orca: test 2
         # Test troubleshooting insufficient memory issue
@@ -813,6 +817,36 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('memory', ess_trsh_methods)
         self.assertEqual(couldnt_trsh, True)
         self.assertLess(cpu_cores, 1)  # can't really run job with less than 1 cpu ^o^
+
+        # Orca: test 3b
+        # Regression test for the Orca 5.x DLPNO-CCSD(T) "out of memory in the triples" loop.
+        # In Orca 5.x the message is "Please increase MaxCore - Skipping calculation" with no explicit
+        # per-core requirement, so determine_ess_status returns 'Insufficient job memory.'. Increasing
+        # total memory was already attempted (ess_trsh_methods=['memory']) and the node is NOT at its
+        # memory ceiling (no 'max_total_job_memory' keyword). Previously ARC kept resubmitting a nearly
+        # identical job forever; instead it must reduce the number of cpu cores so that the memory per
+        # core (Orca's MaxCore) actually increases.
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server2'
+        job_type = 'sp'
+        software = 'orca'
+        fine = False
+        memory_gb = 37
+        cpu_cores = 16
+        num_heavy_atoms = 16
+        ess_trsh_methods = ['memory']
+        job_status = {'keywords': ['MDCI', 'Memory'], 'error': 'Insufficient job memory.'}
+        mem_per_core_before = memory_gb / cpu_cores
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertFalse(couldnt_trsh)
+        self.assertEqual(cpu_cores, 5)  # cpu cores reduced (this breaks the endless retry loop)
+        self.assertAlmostEqual(memory, 29)
+        self.assertGreater(memory / cpu_cores, mem_per_core_before)  # memory per core increased
 
         # Orca: test 4
         # Test troubleshooting too many cpu cores
