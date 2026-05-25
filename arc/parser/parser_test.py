@@ -582,6 +582,50 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 3)
 
+    def test_parse_irc_path_gaussian_forward(self):
+        """parse_irc_path emits per-point energy, RC, grads, direction, and xyz."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertIsNotNone(points)
+        # Gaussian's Point Number: 0 has no CURRENT STRUCTURE block — the
+        # rich parser correctly skips it; 50 stepped points remain.
+        self.assertEqual(len(points), 50)
+        first = points[0]
+        self.assertEqual(first['point_number'], 1)
+        self.assertEqual(first['direction'], 'forward')
+        self.assertAlmostEqual(first['electronic_energy_hartree'], -303.578211343)
+        self.assertAlmostEqual(first['reaction_coordinate'], 0.07236)
+        self.assertAlmostEqual(first['max_gradient'], 0.007275026)
+        self.assertAlmostEqual(first['rms_gradient'], 0.002502813)
+        self.assertEqual(len(first['xyz']['symbols']), 8)
+        # Reaction coordinate increases monotonically along a single
+        # Gaussian IRC branch (cumulative path length).
+        rcs = [p['reaction_coordinate'] for p in points]
+        self.assertEqual(rcs, sorted(rcs))
+        # Every emitted point inherits the FORWARD label.
+        self.assertEqual(
+            sorted({p['direction'] for p in points}),
+            ['forward'],
+        )
+
+    def test_parse_irc_path_gaussian_reverse_direction(self):
+        """The REVERSE branch fixture flips per-point direction labels."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out')
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertIsNotNone(points)
+        self.assertEqual(
+            sorted({p['direction'] for p in points}),
+            ['reverse'],
+        )
+
+    def test_parse_irc_path_failed_log_returns_none(self):
+        """A truncated/failed IRC log yields None — the upstream upload
+        path interprets this as "no rich data" and falls back to the
+        geometry-only parser without aborting the upload."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'irc_failed.out')
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertIsNone(points)
+
     def test_parse_1d_scan_coords(self):
         """Test parsing the optimized coordinates of a torsion scan at each optimization point"""
         path_1 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2.out')
