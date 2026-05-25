@@ -67,6 +67,21 @@ class PipeCoordinator:
         min_tasks = pipe_settings.get('min_tasks', 10)
         if len(tasks) < min_tasks:
             return False
+        # PipeRun.submit_to_scheduler invokes qsub/sbatch on the orchestrator
+        # machine and the worker (`python -m arc.scripts.pipe_worker`) reads
+        # pipe_root from the local filesystem. If this engine's resolved
+        # server is remote, that submission silently errors and the run
+        # deadlocks. Refuse pipe so the planner falls back to per-job queue
+        # submissions over SSH (scheduler.py:546-554). Remote pipe support
+        # tracked separately on the pipe-ssh-support branch.
+        ess_settings = getattr(self.sched, 'ess_settings', None) or {}
+        servers_dict = settings['servers']
+        server_list = ess_settings.get(tasks[0].engine, [])
+        if isinstance(server_list, str):
+            server_list = [server_list]
+        first_server = next((s for s in server_list if s in servers_dict), None)
+        if first_server is not None and first_server != 'local':
+            return False
         ref = tasks[0]
         return all(t.engine == ref.engine
                    and t.task_family == ref.task_family

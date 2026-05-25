@@ -183,13 +183,18 @@ class SSHClient(object):
         Raises:
             ServerError: If the file cannot be downloaded with maximum times to try
         """
-        if not self._check_file_exists(remote_file_path):
-            # Check if a file exists
-            # This doesn't have a real impact now to avoid screwing up ESS trsh
-            # but introduce an opportunity for better troubleshooting.
-            # The current behavior is that if the remote path does not exist
-            # an empty file will be created at the local path
-            logger.debug(f'{remote_file_path} does not exist on {self.server}.')
+        # PBS/SGE epilogues sometimes flush stdout/stderr to the work dir a
+        # second or two after qstat reports the job has left the queue. Briefly
+        # retry the existence check so we don't loud-warn on that race.
+        for attempt in range(3):
+            if self._check_file_exists(remote_file_path):
+                break
+            if attempt < 2:
+                time.sleep(1.0)
+        else:
+            logger.debug(f'{remote_file_path} does not exist on {self.server}; '
+                         f'skipping download.')
+            return
         try:
             self._sftp.get(remotepath=remote_file_path,
                            localpath=local_file_path)
@@ -279,7 +284,7 @@ class SSHClient(object):
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         for i, status_line in enumerate(stdout):
             if i > i_dict[cluster_soft]:
-                job_id = status_line.split(split_by_dict[cluster_soft])[0]
+                job_id = status_line.lstrip().split(split_by_dict[cluster_soft])[0]
                 job_id = job_id.split('.')[0] if '.' in job_id else job_id
                 running_job_ids.append(job_id)
         return running_job_ids
@@ -311,19 +316,22 @@ class SSHClient(object):
                 if 'Requested node configuration is not available' in line:
                     logger.warning('User may be requesting more resources than are available. Please check server '
                                    'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
+                if 'Memory specification can not be satisfied' in line:
+                    logger.warning('User may be requesting more memory than is available. Please check server '
+                                   'settings, such as cpus and memory, in ARC/arc/settings/settings.py.')
                 if cluster_soft.lower() == 'slurm' and 'AssocMaxSubmitJobLimit' in line:
                     logger.warning(f'Max number of submitted jobs was reached, sleeping...')
                     time.sleep(5 * 60)
                     self.submit_job(remote_path=remote_path, recursion=True)
         if recursion:
             return None, None
-        elif cluster_soft.lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
+        elif cluster_soft.lower() in ['oge', 'sge'] and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[2]
-        elif cluster_soft.lower() == 'slurm' and 'submitted' in stdout[0].lower():
+        elif cluster_soft.lower() == 'slurm' and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[3]
-        elif cluster_soft.lower() == 'pbs':
+        elif cluster_soft.lower() == 'pbs' and stdout:
             job_id = stdout[0].split('.')[0]
-        elif cluster_soft.lower() == 'htcondor' and 'submitting' in stdout[0].lower():
+        elif cluster_soft.lower() == 'htcondor' and stdout and 'submitting' in stdout[0].lower():
             # Submitting job(s).
             # 1 job(s) submitted to cluster 443069.
             if len(stdout) and len(stdout[1].split()) and len(stdout[1].split()[-1].split('.')):
@@ -370,16 +378,16 @@ class SSHClient(object):
         """
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.load_system_host_keys(filename=self.key)
+        ssh.load_system_host_keys()
         try:
             # If the server accepts the connection but the SSH daemon doesn't respond in
             # 15 seconds (default in paramiko) due to network congestion, faulty switches,
             # etc..., common solution is enlarging the timeout variable.
-            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
+            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200, key_filename=self.key)
         except:
             # This sometimes gives "SSHException: Error reading SSH protocol banner[Error 104] Connection reset by peer"
             # Try again:
-            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
+            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200, key_filename=self.key)
         sftp = ssh.open_sftp()
         return sftp, ssh
 
@@ -395,7 +403,7 @@ class SSHClient(object):
     @check_connections
     def get_last_modified_time(self,
                                remote_file_path_1: str,
-                               remote_file_path_2: str | None,
+                               remote_file_path_2: str | None = None,
                                ) -> datetime.datetime | None:
         """
         Returns the last modified time of ``remote_file_path_1`` if the file exists,
@@ -488,6 +496,19 @@ class SSHClient(object):
         recursive = ' -R' if recursive else ''
         command = f'chmod{recursive} {mode} {file_name}'
         self._send_command_to_server(command, remote_path)
+
+    def remove_dir(self, remote_path: str) -> None:
+        """
+        Remove a directory on the server.
+
+        Args:
+            remote_path (str): The path to the directory to remove on the remote server.
+        """
+        command = f'rm -r "{remote_path}"'
+        _, stderr = self._send_command_to_server(command)
+        if stderr:
+            raise ServerError(
+                f'Cannot remove dir for the given path ({remote_path}).\nGot: {stderr}')
 
     def _check_file_exists(self,
                            remote_file_path: str,
