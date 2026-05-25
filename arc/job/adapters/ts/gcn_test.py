@@ -12,6 +12,7 @@ import unittest
 from arc.common import ARC_TESTING_PATH
 import arc.job.adapters.ts.gcn_ts as ts_gcn
 from arc.reaction import ARCReaction
+from arc.settings.settings import TS_GCN_PYTHON
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess
 
@@ -67,6 +68,8 @@ class TestGCNAdapter(unittest.TestCase):
         self.assertEqual(r_atoms, expected_r_atoms)
         self.assertEqual(p_atoms, expected_p_atoms)
 
+    @unittest.skipUnless(TS_GCN_PYTHON is not None,
+                         "ts_gcn conda environment not found; GCN subprocess test requires it.")
     def test_run_subprocess_locally(self):
         """Test the run_subprocess_locally() function"""
         self.assertFalse(os.path.isfile(self.ts_path))

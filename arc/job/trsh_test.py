@@ -1089,5 +1089,118 @@ class TestTrsh(unittest.TestCase):
         self.assertTrue(success)
 
 
+def _make_convergence_lines(cycles: list[dict]) -> list[str]:
+    """
+    Render a list of cycle dicts into Gaussian-style 'Item ... Threshold ... Converged?'
+    log lines that `_parse_convergence_table` can read.
+    Each dict supplies max_force, rms_force, max_disp, rms_disp ratios; thresholds
+    default to Gaussian's tight values (1.5e-5 / 1.0e-5 / 6.0e-5 / 4.0e-5).
+    """
+    out: list[str] = []
+    for c in cycles:
+        mf_thr = c.get('max_force_thr', 1.5e-5)
+        rf_thr = c.get('rms_force_thr', 1.0e-5)
+        md_thr = c.get('max_disp_thr',  6.0e-5)
+        rd_thr = c.get('rms_disp_thr',  4.0e-5)
+        mf, rf, md, rd = (
+            c['max_force_ratio'] * mf_thr,
+            c['rms_force_ratio'] * rf_thr,
+            c['max_disp_ratio']  * md_thr,
+            c['rms_disp_ratio']  * rd_thr,
+        )
+        out.append('         Item               Value     Threshold  Converged?\n')
+        out.append(f' Maximum Force            {mf:.6f}     {mf_thr:.6f}     {"YES" if mf <= mf_thr else "NO "}\n')
+        out.append(f' RMS     Force            {rf:.6f}     {rf_thr:.6f}     {"YES" if rf <= rf_thr else "NO "}\n')
+        out.append(f' Maximum Displacement     {md:.6f}     {md_thr:.6f}     {"YES" if md <= md_thr else "NO "}\n')
+        out.append(f' RMS     Displacement     {rd:.6f}     {rd_thr:.6f}     {"YES" if rd <= rd_thr else "NO "}\n')
+    return out
+
+
+class TestDispOnlyUnconverged(unittest.TestCase):
+    """
+    Tests for the flat-PES / opt=tight detection used to tag DispUnconverged
+    on top of MaxOptCycles failures.
+    """
+
+    def test_disp_only_unconverged_detects_flat_pes_pattern(self):
+        # Modeled on rxn_298 opt_a2354 last 5 cycles: forces hover at 1-5x threshold,
+        # max_disp oscillates 7-40x threshold (never improves to threshold).
+        cycles = [
+            {'max_force_ratio': 1.0, 'rms_force_ratio': 0.5, 'max_disp_ratio': 37.0, 'rms_disp_ratio': 17.0},
+            {'max_force_ratio': 2.3, 'rms_force_ratio': 0.9, 'max_disp_ratio': 28.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio': 4.5, 'rms_force_ratio': 1.8, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 4.6, 'rms_force_ratio': 1.7, 'max_disp_ratio': 15.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 1.7, 'rms_force_ratio': 0.8, 'max_disp_ratio': 40.0, 'rms_disp_ratio': 21.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertTrue(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_handles_one_cycle_dip(self):
+        # A motivating-case variant: one cycle's max_disp dips to ~7x while the rest
+        # are well above 10x. The all(>10x) check would miss this; the new rule should
+        # still fire because min_ratio >= 5x and >=3 cycles are >= 10x.
+        cycles = [
+            {'max_force_ratio': 1.0, 'rms_force_ratio': 0.5, 'max_disp_ratio': 30.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio': 2.0, 'rms_force_ratio': 0.8, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 4.5, 'rms_force_ratio': 1.6, 'max_disp_ratio':  7.0, 'rms_disp_ratio':  5.0},
+            {'max_force_ratio': 4.6, 'rms_force_ratio': 1.7, 'max_disp_ratio': 18.0, 'rms_disp_ratio':  8.0},
+            {'max_force_ratio': 1.7, 'rms_force_ratio': 0.8, 'max_disp_ratio': 35.0, 'rms_disp_ratio': 15.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertTrue(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_still_converging_pattern(self):
+        # Forces near threshold but max_disp is monotonically descending: 80x -> 4x.
+        # This run probably just needs more cycles or a different stepper, not no_tight.
+        cycles = [
+            {'max_force_ratio': 1.5, 'rms_force_ratio': 0.6, 'max_disp_ratio': 80.0, 'rms_disp_ratio': 35.0},
+            {'max_force_ratio': 1.4, 'rms_force_ratio': 0.6, 'max_disp_ratio': 40.0, 'rms_disp_ratio': 18.0},
+            {'max_force_ratio': 1.2, 'rms_force_ratio': 0.5, 'max_disp_ratio': 20.0, 'rms_disp_ratio':  9.0},
+            {'max_force_ratio': 1.1, 'rms_force_ratio': 0.4, 'max_disp_ratio': 10.0, 'rms_disp_ratio':  5.0},
+            {'max_force_ratio': 0.9, 'rms_force_ratio': 0.3, 'max_disp_ratio':  4.0, 'rms_disp_ratio':  2.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertFalse(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_large_force_pattern(self):
+        # Displacements stuck high but forces are 20-100x threshold: geometry is
+        # genuinely unconverged. opt=tight isn't the problem; need stepper/maxcycle.
+        cycles = [
+            {'max_force_ratio':  20.0, 'rms_force_ratio':  8.0, 'max_disp_ratio': 30.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio':  50.0, 'rms_force_ratio': 22.0, 'max_disp_ratio': 28.0, 'rms_disp_ratio': 11.0},
+            {'max_force_ratio': 100.0, 'rms_force_ratio': 40.0, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio':  60.0, 'rms_force_ratio': 25.0, 'max_disp_ratio': 18.0, 'rms_disp_ratio':  8.0},
+            {'max_force_ratio':  40.0, 'rms_force_ratio': 18.0, 'max_disp_ratio': 35.0, 'rms_disp_ratio': 15.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertFalse(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_unparseable_table(self):
+        # No convergence table at all.
+        self.assertFalse(trsh._disp_only_unconverged([]))
+        # Garbage that won't match the field tags.
+        self.assertFalse(trsh._disp_only_unconverged(['not a real log line\n'] * 50))
+
+    def test_disp_only_unconverged_real_log_rxn_298_opt_a2354(self):
+        # Regression test against the actual Gaussian log that motivated this fix.
+        # The fixture preserves every cycle's convergence table from opt_a2354
+        # (rxn_298, tert-butyl product, fine=true => opt=tight).
+        fixture = os.path.join(ARC_TESTING_PATH, 'trsh', 'opt_disp_unconverged_a2354.log')
+        with open(fixture) as f:
+            lines = f.readlines()
+        self.assertTrue(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_short_table(self):
+        # Only 4 cycles parsed: not enough to judge. Need >= 5.
+        cycles = [
+            {'max_force_ratio': 1.0, 'rms_force_ratio': 0.5, 'max_disp_ratio': 30.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio': 2.0, 'rms_force_ratio': 0.8, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 4.5, 'rms_force_ratio': 1.6, 'max_disp_ratio': 18.0, 'rms_disp_ratio':  8.0},
+            {'max_force_ratio': 1.7, 'rms_force_ratio': 0.8, 'max_disp_ratio': 35.0, 'rms_disp_ratio': 15.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertFalse(trsh._disp_only_unconverged(lines))
+
+
 if __name__ == "__main__":
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

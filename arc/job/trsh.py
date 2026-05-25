@@ -8,6 +8,7 @@ import os
 import numpy as np
 import pandas as pd
 import re
+from statistics import median
 
 from arc.common import (check_torsion_change,
                         convert_to_hours,
@@ -73,6 +74,13 @@ def determine_ess_status(output_path: str,
     if error:
         return 'errored', keywords, error, line
 
+    # Missing local file is the "remote never produced output" case
+    # (ssh.download_file returns early when the remote path doesn't
+    # exist after retries). Treat it the same as an unreadably-short
+    # log: ARC's troubleshooting layer routes ``NoOutput`` to a retry.
+    if not os.path.isfile(output_path):
+        return 'errored', ['NoOutput'], 'Log file is missing', ''
+
     if software is None:
         software = determine_ess(log_file_path=output_path)
 
@@ -100,6 +108,10 @@ def determine_ess_status(output_path: str,
                                 error = 'Maximum optimization cycles reached.'
                                 cycle_issue = True
                                 line = 'Number of steps exceeded'
+                                if _disp_only_unconverged(forward_lines):
+                                    keywords.append('DispUnconverged')
+                                    error = ('Maximum optimization cycles reached; forces near threshold but '
+                                             'displacement criteria unmet — likely flat PES under opt=tight.')
                                 break
                             elif "Wrong number of Negative eigenvalues" in reverse_lines[j]:
                                 keywords = ['NegEigenvalues', 'GL9999']
@@ -948,6 +960,13 @@ def trsh_ess_job(label: str,
             
         # Check if NegEigenvalues is in the keyword
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+
+        # Drop opt=tight when forces have converged but displacement criteria are unreachable
+        # (flat-PES / floppy-rotor case). Tried before the algorithm-flip ladder so we don't
+        # waste retries cycling RFO/GDIIS/GEDIIS against an unreachable threshold.
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_loose_disp(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        if 'no_tight' in ess_trsh_methods:
+            logger_info.append('dropping opt=tight (forces converged, displacements unreachable)')
 
         # Troubleshoot by increasing opt max cycles
         #P opt=(calcfc,maxstep=5,tight,maxcycle=200) guess=mix wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight,maxcycle=512) iop(3/33=1)
@@ -2051,3 +2070,136 @@ def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
         couldnt_trsh = False
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+
+def trsh_keyword_loose_disp(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
+    """
+    Remediate a MaxOptCycles failure where forces have effectively converged but the
+    displacement criteria under opt=tight cannot be reached (typical of floppy radicals
+    on a flat PES).
+
+    Drops the `tight` opt keyword on the next attempt by recording 'no_tight' in
+    ess_trsh_methods. The Gaussian adapter checks for this flag and omits `tight`
+    from the opt keyword list while keeping the ultrafine integration grid intact.
+    """
+    if 'DispUnconverged' in job_status['keywords'] and 'no_tight' not in ess_trsh_methods:
+        ess_trsh_methods.append('no_tight')
+        couldnt_trsh = False
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+
+def _parse_convergence_table(forward_lines: list[str], max_cycles: int = 10) -> list[dict]:
+    """
+    Parse the per-cycle convergence summary that Gaussian prints between
+    'Item               Value     Threshold  Converged?' and the next 'GradGradGrad' banner.
+
+    Returns up to `max_cycles` of the most recent cycles, each as:
+        {'max_force': float, 'max_force_thr': float, 'max_force_ok': bool,
+         'rms_force': float, 'rms_force_thr': float, 'rms_force_ok': bool,
+         'max_disp':  float, 'max_disp_thr':  float, 'max_disp_ok':  bool,
+         'rms_disp':  float, 'rms_disp_thr':  float, 'rms_disp_ok':  bool}
+    Order is oldest-first within the returned slice. If parsing fails, returns [].
+    """
+    cycles: list[dict] = []
+    fields = (
+        ('Maximum Force',        'max_force'),
+        ('RMS     Force',        'rms_force'),
+        ('Maximum Displacement', 'max_disp'),
+        ('RMS     Displacement', 'rms_disp'),
+    )
+    current: dict = {}
+    for ln in forward_lines:
+        for tag, key in fields:
+            if ln.startswith(' ' + tag) or ln.lstrip().startswith(tag):
+                parts = ln.split()
+                try:
+                    val = float(parts[-3])
+                    thr = float(parts[-2])
+                    ok = parts[-1].strip() == 'YES'
+                except (ValueError, IndexError):
+                    current = {}
+                    break
+                current[key] = val
+                current[key + '_thr'] = thr
+                current[key + '_ok'] = ok
+                if key == 'rms_disp':
+                    cycles.append(current)
+                    current = {}
+                break
+    return cycles[-max_cycles:]
+
+
+def _disp_only_unconverged(forward_lines: list[str]) -> bool:
+    """
+    Decide whether a MaxOptCycles failure is the "displacements only" failure mode:
+    forces hover near threshold across the recent cycles, but displacement
+    thresholds (under opt=tight: 6e-5 / 4e-5 angstrom) are never reached and are
+    not steadily improving.
+
+    Returns True only when the pattern matches a flat / floppy PES with unreachable
+    tight displacement criteria — i.e., where dropping `tight` is the right next
+    move. Returns False for genuinely unconverged geometries (forces still large)
+    or runs where displacements are clearly decreasing toward threshold.
+
+    The window is the last 5 parsed cycles. The thresholds (5x / 10x ratios,
+    50% drop, 1 sign change) were chosen to fit the rxn_298 opt_a2354 data
+    (forces 0.7-4.6x, disp 7-60x, oscillatory) without firing on healthy runs.
+    """
+    cycles = _parse_convergence_table(forward_lines)
+    if len(cycles) < 5:
+        return False
+
+    recent = cycles[-5:]
+
+    force_ratios = [
+        c['max_force'] / c['max_force_thr']
+        for c in recent
+        if c.get('max_force_thr', 0) > 0
+    ]
+    disp_ratios = [
+        c['max_disp'] / c['max_disp_thr']
+        for c in recent
+        if c.get('max_disp_thr', 0) > 0
+    ]
+
+    if len(force_ratios) != len(recent) or len(disp_ratios) != len(recent):
+        return False
+
+    # Forces should hover near the convergence threshold, not be orders of magnitude away.
+    # `max <= 5x` ensures we're not genuinely far off; the OR clause accepts either a single
+    # near-threshold visit (min <= 1.5x — geometry hit the floor) or a noisy trajectory whose
+    # central tendency is near threshold (median <= 3x).
+    forces_near_threshold = (
+        max(force_ratios) <= 5.0
+        and (
+            min(force_ratios) <= 1.5
+            or median(force_ratios) <= 3.0
+        )
+    )
+
+    # Displacements should remain substantially above the tight threshold across the window.
+    # We use min >= 5x (not all > 10x) so a single cycle dipping to ~7x doesn't disqualify.
+    displacements_far_from_threshold = (
+        min(disp_ratios) >= 5.0
+        and sum(r >= 10.0 for r in disp_ratios) >= 3
+    )
+
+    # Avoid firing on a normal optimization that's still moving steadily toward convergence.
+    # If the window's last value is much smaller than the first, the run may just need more cycles.
+    displacement_not_clearly_improving = disp_ratios[-1] > 0.5 * disp_ratios[0]
+
+    # Catch oscillatory behavior typical of this failure mode: at least one sign flip
+    # in the differences between consecutive displacement ratios.
+    deltas = [b - a for a, b in zip(disp_ratios, disp_ratios[1:])]
+    sign_changes = sum(
+        1
+        for a, b in zip(deltas, deltas[1:])
+        if a * b < 0
+    )
+    displacement_oscillatory = sign_changes >= 1
+
+    return (
+        forces_near_threshold
+        and displacements_far_from_threshold
+        and (displacement_not_clearly_improving or displacement_oscillatory)
+    )
