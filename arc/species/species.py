@@ -2184,7 +2184,8 @@ class ARCSpecies(object):
         Args:
             other (ARCSpecies): The other species to compare to.
             map_ (list): A list of atom indices mapping atoms from this species to the other species. (i.e., if
-                         this species has atoms [A, B, C] and the other species has atoms [C, A, B], then map_ would be [1, 2, 0]
+                         this species has atoms [A, B, C] and the other species has atoms [C, A, B],
+                         then ``map_`` would be [1, 2, 0])
         Returns:
             float: The Kabsch RMSD value.
         """
@@ -2223,8 +2224,6 @@ class TSGuess(object):
         project_directory (str, optional): The path to the project directory.
 
     Attributes:
-        initial_xyz (dict): The 3D coordinates guess.
-        opt_xyz (dict): The 3D coordinates after optimization at the ts_guesses level.
         method (str): The method/source used for the xyz guess.
         method_sources (list[str]): All methods/sources that produced an equivalent xyz guess.
         method_index (int): A subindex, used for cases where a single method generates several guesses.
@@ -2258,7 +2257,7 @@ class TSGuess(object):
                  success: bool | None = None,
                  family: str | None = None,
                  xyz: dict | str | None = None,
-                 arc_reaction: Optional = None,
+                 arc_reaction: 'ARCReaction | None' = None,
                  ts_dict: dict | None = None,
                  energy: float | None = None,
                  cluster: list[int] | None = None,

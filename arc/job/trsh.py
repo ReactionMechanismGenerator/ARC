@@ -1942,18 +1942,17 @@ def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, could
 def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
     Check if the job requires change of inaccurate quadrature
-    
-    Explanation
 
-        The integral not enough, under DFT calculations with some basis sets.
+    Explanation:
+        The integral is not accurate enough under DFT calculations with some basis sets.
 
-    Fixing
+    Fixing:
+        Check the input file for a missing basis set or unreasonable structure. If not, use one of the following keywords:
 
-        Check the input file, whether there was some miss in basis set or unreasonable structure. If not, use one of following keywords:
+        1. ``int=ultrafine`` (default in Gaussian 16), or ``int=grid=300590``.
+        2. ``SCF=novaracc``.
+        3. ``guess=INDO``.
 
-            1. int=ultrafine (default in Gaussian 16), or int=grid=300590.
-            2. SCF=novaracc.
-            3. guess=INDO.
         If not work, use (1)~(3) at same time.
 
     """

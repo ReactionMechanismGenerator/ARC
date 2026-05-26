@@ -2,6 +2,8 @@
 A module for plotting and saving output files such as RMG libraries.
 """
 
+from __future__ import annotations
+
 import matplotlib
 # Force matplotlib to not use any Xwindows backend.
 # This must be called before pylab, matplotlib.pyplot, or matplotlib.backends is imported.
@@ -1398,6 +1400,7 @@ def plot_2d_scan_bond_dihedral(results: dict,
         results (dict):
             The results dictionary, dihedrals are assumed to be in degrees (not radians).
             This dictionary has the following structure::
+
                 {'directed_scan_type': <str, used for the fig name>,
                  'scans': <list, entries are lists of torsion indices>,
                  'directed_scan': <dict>, keys are tuples of '{0:.2f}' formatted dihedrals,

@@ -2,6 +2,8 @@
 A module for performing various species-related format conversions.
 """
 
+from __future__ import annotations
+
 import math
 import numpy as np
 import os

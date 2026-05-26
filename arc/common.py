@@ -1132,9 +1132,10 @@ def is_equal_family_product_dicts(dicts1: list[dict],
     """
     Compare two lists of family‐product dictionaries for equality.
     Returns True if they have the same length and, for each corresponding entry:
-      - 'family', 'group_labels', 'own_reverse', 'discovered_in_reverse' are equal
-      - 'products' lists contain Molecules with the same SMILES in the same order
-      - 'r_label_map' and 'p_label_map' dicts are equal
+
+    - ``family``, ``group_labels``, ``own_reverse``, and ``discovered_in_reverse`` are equal.
+    - ``products`` lists contain Molecules with the same SMILES in the same order.
+    - ``r_label_map`` and ``p_label_map`` dicts are equal.
 
     Args:
         dicts1: First list of product‐dicts from determine_possible_reaction_products_from_family.
@@ -1533,8 +1534,9 @@ def signed_angular_diff(phi_1: float, phi_2: float) -> float:
 
     This returns the value of (phi1 - phi2), wrapped into the interval (-180, 180],
     so that the result represents the smallest signed rotation from phi_2 to phi_1:
-      - A positive value means phi1 is ahead of phi2 in the counter-clockwise (CCW) direction.
-      - A negative value means phi1 trails phi2 (i.e., clockwise rotation).
+
+    - A positive value means phi1 is ahead of phi2 in the counter-clockwise (CCW) direction.
+    - A negative value means phi1 trails phi2 (i.e., clockwise rotation).
 
     Args:
         phi_1 (float): First angle in degrees.
