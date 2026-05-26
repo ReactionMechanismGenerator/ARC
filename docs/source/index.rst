@@ -39,9 +39,11 @@ New users should read these pages in order:
    dependencies, and configure personal settings.
 2. :ref:`running` - run ARC from YAML, Python scripts, notebooks, local machines,
    remote servers, and HPC clusters.
-3. :ref:`examples` - copy known-good input patterns for species, reactions,
+3. :ref:`input_reference` - see every accepted ``input.yml`` key and how nested
+   species, reaction, level, and job-type dictionaries are shaped.
+4. :ref:`examples` - copy known-good input patterns for species, reactions,
    transition states, and the Python API.
-4. :ref:`advanced` - customize levels of theory, job types, memory, ESS routing,
+5. :ref:`advanced` - customize levels of theory, job types, memory, ESS routing,
    rotor scans, troubleshooting, and restarts.
 
 Reference
@@ -54,6 +56,7 @@ Reference
    installation
    docker
    running
+   input_reference
    examples
    TS_search
    advanced

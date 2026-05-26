@@ -44,6 +44,10 @@ Or from elsewhere:
 
 ARC writes project files under ``Projects/<project>`` by default unless
 ``project_directory`` is supplied.
+All parameters of :ref:`arc.main.ARC <main>` are legal top-level input file
+keywords. Entries under ``species`` and ``reactions`` define
+:ref:`ARCSpecies <species>` and :ref:`ARCReaction <reaction>` objects. See
+:ref:`input_reference` for the full input-key checklist.
 
 Restart a Project
 -----------------
