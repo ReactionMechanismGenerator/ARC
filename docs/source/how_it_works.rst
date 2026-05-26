@@ -25,6 +25,28 @@ An ARC run follows this general path:
 10. Run statmech processing and write output libraries, plots, status files, and
     processed geometries.
 
+.. graphviz::
+   :caption: The main ARC run loop.
+
+   digraph arc_workflow {
+      graph [rankdir=LR, bgcolor="transparent"];
+      node [shape=box, style="rounded,filled", fillcolor="#f5f7fa", color="#9fb3c8", fontname="Helvetica"];
+      edge [color="#5b6676", fontname="Helvetica"];
+
+      input [label="input.yml\nor restart.yml"];
+      arc [label="ARC project"];
+      objects [label="ARCSpecies\nARCReaction"];
+      scheduler [label="Scheduler"];
+      jobs [label="JobAdapter\nESS jobs"];
+      parse [label="Parsers\nTroubleshooting"];
+      statmech [label="Arkane/statmech\nprocessing"];
+      output [label="restart.yml\nstatus.yml\nlibraries\nplots"];
+
+      input -> arc -> objects -> scheduler -> jobs -> parse -> scheduler;
+      parse -> statmech -> output;
+      scheduler -> output [label="updates"];
+   }
+
 Core Objects
 ------------
 
@@ -71,6 +93,28 @@ Most ESS jobs move through the same lifecycle:
 8. ARC updates output state and ``restart.yml`` so the project can continue
    after interruption.
 
+.. graphviz::
+   :caption: A typical ESS job lifecycle.
+
+   digraph job_lifecycle {
+      graph [rankdir=LR, bgcolor="transparent"];
+      node [shape=box, style="rounded,filled", fillcolor="#f8fafc", color="#9fb3c8", fontname="Helvetica"];
+      edge [color="#5b6676", fontname="Helvetica"];
+
+      needed [label="Job needed"];
+      factory [label="job_factory()"];
+      adapter [label="JobAdapter"];
+      submit [label="write input\nsubmit script"];
+      run [label="scheduler/ESS run"];
+      done [label="parse output"];
+      trsh [label="troubleshoot\nif failed"];
+      state [label="update state\nrestart.yml"];
+
+      needed -> factory -> adapter -> submit -> run -> done -> state;
+      done -> trsh [label="failed"];
+      trsh -> submit [label="resubmit"];
+   }
+
 Execution Paths
 ---------------
 
@@ -96,17 +140,32 @@ Data Flow
 
 The most common data path is:
 
-.. code-block:: text
+.. graphviz::
+   :caption: Data flow from user input to processed outputs.
 
-   input.yml
-      -> ARC(project=..., species=..., reactions=...)
-      -> ARCSpecies / ARCReaction objects
-      -> Scheduler
-      -> JobAdapter
-      -> ESS input + submit script
-      -> ESS output file
-      -> parser
-      -> status.yml, restart.yml, geometry files, RMG libraries, plots
+   digraph data_flow {
+      graph [rankdir=TB, bgcolor="transparent"];
+      node [shape=box, style="rounded,filled", fillcolor="#f5f7fa", color="#9fb3c8", fontname="Helvetica"];
+      edge [color="#5b6676", fontname="Helvetica"];
+
+      input [label="input.yml"];
+      arc [label="ARC(...)"];
+      species [label="ARCSpecies"];
+      reaction [label="ARCReaction"];
+      scheduler [label="Scheduler"];
+      adapter [label="JobAdapter"];
+      ess [label="ESS input/output"];
+      parsed [label="Parsed geometry,\nenergy, freq, scans"];
+      outputs [label="status.yml\nrestart.yml\ngeometry files\nRMG libraries\nplots"];
+
+      input -> arc;
+      arc -> species;
+      arc -> reaction;
+      species -> scheduler;
+      reaction -> scheduler;
+      scheduler -> adapter -> ess -> parsed -> scheduler;
+      scheduler -> outputs;
+   }
 
 Restart files are not a separate format. They are expanded ARC input files that
 also include accumulated state such as running jobs, output paths, and parsed
@@ -120,24 +179,156 @@ XYZ dictionary
     ``isotopes``, and ``coords`` tuples. Most coordinate strings and files are
     normalized into this structure.
 
+    Template:
+
+    .. code-block:: python
+
+       xyz = {
+           'symbols': ('C', 'O', 'H', 'H', 'H', 'H'),
+           'isotopes': (12, 16, 1, 1, 1, 1),
+           'coords': (
+               (0.000000, 0.000000, 0.000000),
+               (1.420000, 0.000000, 0.000000),
+               (-0.540000, 0.935000, 0.000000),
+               (-0.540000, -0.467000, 0.809000),
+               (-0.540000, -0.467000, -0.809000),
+               (1.780000, 0.000000, 0.960000),
+           ),
+       }
+
 Z-matrix dictionary
     Internal-coordinate representation used by geometry and rotor workflows. It
     stores symbols, coordinate parameter names, parameter values, and atom maps.
+
+    Template:
+
+    .. code-block:: python
+
+       zmat = {
+           'symbols': ('C', 'O', 'H'),
+           'coords': (
+               (None, None, None),
+               ('R_1_0', None, None),
+               ('R_2_0', 'A_2_0_1', None),
+           ),
+           'vars': {
+               'R_1_0': 1.42,
+               'R_2_0': 1.09,
+               'A_2_0_1': 109.5,
+           },
+           'map': {0: 0, 1: 1, 2: 2},
+       }
 
 Conformer dictionaries
     Candidate conformers contain an XYZ dictionary plus metadata such as source,
     index, force-field energy, torsion information, chirality information, and
     distance-matrix data where relevant.
 
+    Template:
+
+    .. code-block:: python
+
+       conformer = {
+           'xyz': xyz,
+           'index': 0,
+           'FF energy': 0.0,
+           'source': 'RDKit',
+           'torsion_dihedrals': {(1, 2, 3, 4): 180.0},
+           'chirality': {},
+           'dmat': None,
+       }
+
 Rotor dictionaries
     Species rotor information is stored by rotor index. Entries include pivots,
     tops, scan definitions, torsions, scan paths, invalidation reasons, symmetry,
     and scan results.
 
+    Template:
+
+    .. code-block:: python
+
+       rotors_dict = {
+           0: {
+               'pivots': [1, 2],
+               'top': [2, 3, 4],
+               'scan': [1, 2, 3, 4],
+               'torsion': [0, 1, 2, 3],
+               'success': None,
+               'invalidation_reason': '',
+               'scan_path': '/path/to/scan/output.out',
+               'max_e': None,
+               'trsh_counter': 0,
+               'trsh_methods': [],
+               'symmetry': None,
+               'dimensions': 1,
+               'directed_scan': {},
+           },
+       }
+
 Status dictionaries
     ARC writes structured status information for species, TSs, reactions, job
     convergence, paths, warnings, and errors so users can inspect project state
     without reading every output file.
+
+    Representative ``output/status.yml`` shape:
+
+    .. code-block:: yaml
+
+       species:
+         ethanol:
+           converged: true
+           isomorphism: true
+           paths:
+             geo: /path/to/output/Species/ethanol/geometry/ethanol.xyz
+             freq: /path/to/calcs/Species/ethanol/freq_a123/output.out
+           warnings: []
+           errors: []
+       reactions:
+         ethanol + OH <=> products:
+           converged: false
+           warnings:
+             - TS search incomplete
+
+Job dictionaries
+    The scheduler tracks active and completed jobs by species/reaction label and
+    job type. This is the state that lets ARC restart after interruption.
+
+    Simplified shape:
+
+    .. code-block:: python
+
+       job_dict = {
+           'ethanol': {
+               'conf_opt': {0: '<JobAdapter>'},
+               'opt': {'opt_a123': '<JobAdapter>'},
+               'freq': {'freq_a124': '<JobAdapter>'},
+               'sp': {'sp_a125': '<JobAdapter>'},
+           },
+       }
+
+.. graphviz::
+   :caption: Common ARC data structures and where they are used.
+
+   digraph data_structures {
+      graph [rankdir=LR, bgcolor="transparent"];
+      node [shape=box, style="rounded,filled", fillcolor="#f8fafc", color="#9fb3c8", fontname="Helvetica"];
+      edge [color="#5b6676", fontname="Helvetica"];
+
+      xyz [label="XYZ dict"];
+      zmat [label="Z-matrix dict"];
+      conformer [label="Conformer dict"];
+      rotor [label="Rotor dict"];
+      species [label="ARCSpecies"];
+      scheduler [label="Scheduler"];
+      output [label="status.yml\nrestart.yml"];
+
+      xyz -> species;
+      zmat -> species;
+      conformer -> species;
+      rotor -> species;
+      species -> scheduler;
+      scheduler -> output;
+   }
 
 Where Files Are Written
 -----------------------

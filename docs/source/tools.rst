@@ -1,83 +1,100 @@
 .. _tools:
 
-Standalone tools
+Standalone Tools
 ================
 
-The ARC repository includes various stand-alone scripts, able to perform useful tasks using ARC's functions and methods
-without spawning actual ESS jobs. These scripts are available as iPython Jupyter notebooks under the ``ipython`` folder.
+ARC ships several Jupyter notebooks under ``ipython/Tools``. They are not
+embedded web apps in the documentation site; they are notebooks you open and run
+locally from the repository after activating ``arc_env``.
 
+Run them from the repository root:
 
-ARC ESS diagnostics
-^^^^^^^^^^^^^^^^^^^
+.. code-block:: bash
 
-This tool will search all servers defined in ARC's settings file, and report on the different ESS it finds.
+   conda activate arc_env
+   jupyter notebook ipython/Tools
 
+The notebooks are useful for diagnostics, geometry inspection, conversion, and
+small calculations that reuse ARC internals without launching a full ARC project.
 
-Conformers
-^^^^^^^^^^
+Available Notebooks
+-------------------
 
-This tool uses ARC's method to generate force field conformers.
+``ARC ESS diagnostics.ipynb``
+    Checks configured servers and reports which electronic structure software ARC
+    can find. Use this after editing ``~/.arc/settings.py`` and ``~/.arc/submit.py``.
 
+    GitHub: `ARC ESS diagnostics notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/ARC%20ESS%20diagnostics.ipynb>`__
 
-Delete all ARC jobs
-^^^^^^^^^^^^^^^^^^^
+``conformers.ipynb``
+    Runs ARC conformer-generation utilities for a molecule and lets you inspect
+    candidate conformers before launching expensive ESS jobs.
 
-This tool will delete all jobs on the selected server that have job names starting with ``a_``.
+    GitHub: `Conformers notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/conformers.ipynb>`__
 
-**WARNING**: This script might cause unintentional loss of data (running jobs).
-Make sure you understand exactly what you are doing and what it does before executing it.
-I might delete non-ARC related jobs, and it will delete ARC jobs of all projects you are
-currently running on that server/s.
+``coordinates conversions.ipynb``
+    Demonstrates conversions between XYZ strings, ARC XYZ dictionaries,
+    Z-matrices, and related coordinate formats.
 
+    GitHub: `Coordinate conversions notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/coordinates%20conversions.ipynb>`__
 
-Determine harmonic frequencies scaling factor
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``Plot xyz.ipynb``
+    Visualizes a 3D geometry from XYZ-style input.
 
-This tool uses `Truhlar's method`__ to determine frequency scaling factors for the user's choice of level of theory.
+    GitHub: `Plot XYZ notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/Plot%20xyz.ipynb>`__
 
-__ Truhlar2_
+``Visualize 1D Torsion scan.ipynb``
+    Plots a one-dimensional rotor scan from ARC scan data.
 
+    GitHub: `Visualize 1D torsion scan notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/Visualize%201D%20Torsion%20scan.ipynb>`__
 
-External symmetry and optical isomers
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``Visualize 2D Torsion scan.ipynb``
+    Plots a two-dimensional rotor scan from the YAML files ARC creates for scan
+    surfaces. It can also show the conformer closest to selected dihedral values.
 
-This tool calculates external symmetry and number of optical isomers (1 or 2) from 3D coordinates.
+    GitHub: `Visualize 2D torsion scan notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/Visualize%202D%20Torsion%20scan.ipynb>`__
 
+``External symmetry and optical isomers.ipynb``
+    Calculates external symmetry and optical isomer counts from 3D coordinates.
 
-OneDMin script
-^^^^^^^^^^^^^^
+    GitHub: `External symmetry notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/External%20symmetry%20and%20optical%20isomers.ipynb>`__
 
-This tool assist in determination of r_min and r_max for a OneDMin calculation by visualizing the bath gas
-at these distances from the center of mass of the target species.
+``Determine harmonic frequencies scaling factor.ipynb``
+    Uses Truhlar's method to determine a harmonic frequency scaling factor for a
+    selected level of theory.
 
+    GitHub: `Frequency scaling notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/Determine%20harmonic%20frequencies%20scaling%20factor.ipynb>`__
 
-Perceive_xyz_(xyz_to_smiles)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``Perceive_xyz_(xyz_to_smiles).ipynb``
+    Attempts to infer connectivity and return a SMILES representation from 3D
+    coordinates.
 
-This perception tool returns SMILES for given 3D coordinates.
+    GitHub: `XYZ perception notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/Perceive_xyz_(xyz_to_smiles).ipynb>`__
 
+``OneDMin script.ipynb``
+    Helps choose ``r_min`` and ``r_max`` for OneDMin calculations by visualizing
+    bath gas placement around the target species.
 
-Plot xyz
-^^^^^^^^
+    GitHub: `OneDMin notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/OneDMin%20script.ipynb>`__
 
-This is a plotter tool for 3D coordinates.
+``TS Guesses.ipynb``
+    Demonstrates transition-state guess utilities and inspection workflows.
 
+    GitHub: `TS guesses notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/TS%20Guesses.ipynb>`__
 
-Visualize 1D Torsion scan
-^^^^^^^^^^^^^^^^^^^^^^^^^
+``delete all arc jobs.ipynb``
+    Deletes jobs on a selected server whose names start with ``a_``.
 
-This is a plotter tool for 1D torsion scans.
+    .. warning::
 
+       This notebook can delete running jobs. Use it only when you understand
+       the selected server, user, and job-name filter.
 
-Visualize 2D Torsion scan
-^^^^^^^^^^^^^^^^^^^^^^^^^
+    GitHub: `Delete jobs notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/delete%20all%20arc%20jobs.ipynb>`__
 
-This is a plotter tool for 2D torsion scans created by ARC
-(the YAML file created by ARC is necessary to visuallize this map).
-The user can also change the color pam and resolution of the resulting image.
+Demo notebooks are also available under ``ipython/Demo``:
 
-Specifying a combination of two pivots will show a 3D representation of the respective conformer
-with the closest dihedrals to the ones specified.
-
+* `ARC thermo demo <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Demo/ARC%20thermo%20demo.ipynb>`__
+* `ARC reaction demo using YAML <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Demo/ARC%20rxn%20demo%20using%20YAML.ipynb>`__
 
 .. include:: links.txt
