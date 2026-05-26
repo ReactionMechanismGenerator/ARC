@@ -172,20 +172,47 @@ format expected by the selected ESS.
 Adaptive Levels
 ---------------
 
-Use ``adaptive_levels`` to change methods by molecule size:
+Use ``adaptive_levels`` to change methods by molecule size. ARC expects tuple
+keys for the heavy-atom ranges and tuple keys for grouped job types. In an
+``input.yml`` file, write tuple keys with YAML's ``!!python/tuple`` tag:
 
 .. code-block:: yaml
 
    adaptive_levels:
-     (1, 5):
-       ('opt', 'freq'): wb97xd/6-311+g(2d,2p)
+     ? !!python/tuple [1, 5]
+     :
+       ? !!python/tuple [opt, freq]
+       : wb97xd/6-311+g(2d,2p)
        sp: ccsd(t)-f12/aug-cc-pvtz-f12
-     (6, 15):
-       ('opt', 'freq'): b3lyp/cbsb7
+     ? !!python/tuple [6, 15]
+     :
+       ? !!python/tuple [opt, freq]
+       : b3lyp/cbsb7
        sp: dlpno-ccsd(t)/def2-tzvp
-     (16, 'inf'):
-       ('opt', 'freq'): b3lyp/6-31g(d,p)
+     ? !!python/tuple [16, inf]
+     :
+       ? !!python/tuple [opt, freq]
+       : b3lyp/6-31g(d,p)
        sp: wb97xd/6-311+g(2d,2p)
+
+When using ARC from Python, pass regular Python tuples:
+
+.. code-block:: python
+
+   adaptive_levels = {
+       (1, 5): {
+           ('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
+           'sp': 'ccsd(t)-f12/aug-cc-pvtz-f12',
+       },
+       (6, 15): {
+           ('opt', 'freq'): 'b3lyp/cbsb7',
+           'sp': 'dlpno-ccsd(t)/def2-tzvp',
+       },
+       (16, 'inf'): {
+           ('opt', 'freq'): 'b3lyp/6-31g(d,p)',
+           'sp': 'wb97xd/6-311+g(2d,2p)',
+       },
+   }
 
 Cover the full heavy-atom range without gaps.
 

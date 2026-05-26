@@ -1953,7 +1953,7 @@ def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keywor
         2. ``SCF=novaracc``.
         3. ``guess=INDO``.
 
-        If not work, use (1)~(3) at same time.
+        If that does not work, use (1)~(3) at the same time.
 
     """
     if 'InaccurateQuadrature' in job_status['keywords'] and 'int=grid=300590' not in ess_trsh_methods:
