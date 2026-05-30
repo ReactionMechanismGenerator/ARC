@@ -394,8 +394,13 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0. Default: ``False``.
         """
         species_list = list()
+        seen_labels = set()
         for spc in self.species:
             if e0_only or spc.compute_thermo:
+                if spc.label in seen_labels:
+                    # A catalyst species may appear on both sides of a reaction; declare it only once.
+                    continue
+                seen_labels.add(spc.label)
                 species_list.append({'label': spc.label,
                                      'path': spc.yml_path or os.path.join(statmech_dir, 'species', f'{spc.label}.py'),
                                      'smiles': spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else '',
