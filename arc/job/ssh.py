@@ -788,7 +788,8 @@ class SSHClient(object):
             list: lines of the node hostnames.
         """
         cluster_soft = servers[self.server]['cluster_soft'].lower()
-        if cluster_soft == 'htcondor':
+        if cluster_soft in ['htcondor', 'pbs']:
+            # Node listing is not implemented for these schedulers; return empty.
             return list()
         cmd = list_available_nodes_command[servers[self.server]['cluster_soft']]
         stdout = self._send_command_to_server(command=cmd)[0]
