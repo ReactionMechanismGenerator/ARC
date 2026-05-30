@@ -104,8 +104,12 @@ class TestOrcaAdapter(unittest.TestCase):
         self.job_1.write_input_file()
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
-        job_1_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
-!sp 
+        job_1_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp tightscf normalpno
+!sp
+
+%basis
+AuxC "def2-tzvp/c"
+end
 
 %maxcore 1792
 %pal nprocs 8 end
@@ -130,8 +134,12 @@ end
         self.job_2.write_input_file()
         with open(os.path.join(self.job_2.local_path, input_filenames[self.job_2.job_adapter]), 'r') as f:
             content_2 = f.read()
-        job_2_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
-!sp 
+        job_2_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp tightscf normalpno
+!sp
+
+%basis
+AuxC "def2-tzvp/c"
+end
 
 %maxcore 1792
 %pal nprocs 8 end
@@ -163,8 +171,12 @@ end
         self.job_3.write_input_file()
         with open(os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]), 'r') as f:
             content_3 = f.read()
-        job_3_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
-!sp 
+        job_3_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp tightscf normalpno
+!sp
+
+%basis
+AuxC "def2-tzvp/c"
+end
 
 %maxcore 1792
 %pal nprocs 8 end
@@ -189,7 +201,7 @@ end
         self.assertEqual(content_3, job_3_expected_input_file)
 
     def test_write_input_file_f12_with_cabs(self):
-        """F12 sp_level with a cabs basis emits the CABS token on the ! line."""
+        """F12 sp_level with a cabs basis emits the AuxC and CABS tokens in a %basis block."""
         job_f12 = OrcaAdapter(execution_type='queue',
                               job_type='sp',
                               level=Level(method='DLPNO-CCSD(T)-F12',
@@ -208,8 +220,13 @@ end
         bang_line = content.splitlines()[0]
         self.assertIn('dlpno-ccsd(t)-f12', bang_line)
         self.assertIn('cc-pvtz-f12', bang_line)
-        self.assertIn('aug-cc-pvtz/c', bang_line)
-        self.assertIn('cc-pvtz-f12-cabs', bang_line)
+        # Aux and CABS must NOT be on the ! line (ORCA rejects them there), only the orbital basis.
+        self.assertNotIn('aug-cc-pvtz/c', bang_line)
+        self.assertNotIn('cabs', bang_line.lower())
+        # They must appear inside a %basis block instead.
+        self.assertIn('%basis', content)
+        self.assertIn('AuxC "aug-cc-pvtz/c"', content)
+        self.assertIn('CABS "cc-pvtz-f12-cabs"', content)
 
     def test_write_input_file_f12_without_cabs_raises(self):
         """F12 sp_level without a cabs basis raises at input-file generation."""
@@ -255,8 +272,8 @@ end
         self.job_4.write_input_file()
         with open(os.path.join(self.job_4.local_path, input_filenames[self.job_4.job_adapter]), 'r') as f:
             content_4 = f.read()
-        job_4_expected_input_file = """!uHF  aug-cc-pvtz  tightscf
-!sp 
+        job_4_expected_input_file = """!uHF  aug-cc-pvtz tightscf
+!sp
 
 %maxcore 1792
 %pal nprocs 8 end

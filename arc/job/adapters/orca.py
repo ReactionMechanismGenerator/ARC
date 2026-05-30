@@ -92,9 +92,9 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
 # job_options_keywords: input keywords that control the job
 # method_class: 'HF' for wavefunction methods (hf, mp, cc, dlpno ...). 'KS' for DFT methods.
 # options: additional keywords to control job (e.g., TightSCF, NormalPNO ...)
-input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary_basis}${cabs} ${keywords}
-!${job_type_1} 
-${job_type_2}
+input_template = """!${restricted}${method_class} ${method} ${basis} ${keywords}
+!${job_type_1}
+${job_type_2}${basis_block}
 %%maxcore ${memory}
 %%pal nprocs ${cpus} end
 
@@ -270,9 +270,19 @@ class OrcaAdapter(JobAdapter):
                     'keywords',
                     ]:
             input_dict[key] = ''
-        input_dict['auxiliary_basis'] = _format_orca_basis(self.level.auxiliary_basis or '')
         input_dict['basis'] = _format_orca_basis(self.level.basis or '')
-        input_dict['cabs'] = f' {_format_orca_basis(self.level.cabs)}' if self.level.cabs else ''
+        # In ORCA, the orbital basis is the only basis allowed on the `!` simple-input line.
+        # Auxiliary fitting bases (AuxC) and the F12 CABS must be declared inside a %basis block,
+        # otherwise ORCA raises "UNRECOGNIZED OR DUPLICATED KEYWORD(S) IN SIMPLE INPUT LINE".
+        basis_block_lines = []
+        auxiliary_basis = _format_orca_basis(self.level.auxiliary_basis or '')
+        if auxiliary_basis:
+            basis_block_lines.append(f'AuxC "{auxiliary_basis}"')
+        cabs = _format_orca_basis(self.level.cabs) if self.level.cabs else ''
+        if cabs:
+            basis_block_lines.append(f'CABS "{cabs}"')
+        input_dict['basis_block'] = '\n%basis\n' + '\n'.join(basis_block_lines) + '\nend\n' \
+            if basis_block_lines else ''
         input_dict['charge'] = self.charge
         input_dict['cpus'] = self.cpu_cores
         input_dict['label'] = self.species_label
