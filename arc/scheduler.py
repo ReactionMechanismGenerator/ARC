@@ -3851,7 +3851,7 @@ class Scheduler(object):
             else:
                 for job_type, spawn_job_type in self.job_types.items():
                     if spawn_job_type and not self.output[label]['job_types'][job_type] \
-                            and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conf_opt'])
+                            and not ((self.species_dict[label].is_ts and job_type in ['scan', 'rotors', 'conf_opt'])
                                      or (self.species_dict[label].number_of_atoms == 1
                                          and job_type in ['conf_opt', 'opt', 'fine', 'freq', 'rotors', 'bde'])
                                      or job_type == 'bde' and self.species_dict[label].bdes is None
