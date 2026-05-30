@@ -419,11 +419,16 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             rxn.products = [spc.label for spc in products]
             reaction_species_labels.update(rxn.reactants + rxn.products)
         species_list = list()
+        seen_labels = set()
         for spc in self.species:
             # A species named by a reaction must be declared even when its thermo is not being
             # computed: Arkane's reaction() references species by label from the declared-species
             # dict, so an undeclared reactant/product raises KeyError and no rate is produced.
             if e0_only or spc.compute_thermo or spc.label in reaction_species_labels:
+                if spc.label in seen_labels:
+                    # A catalyst species may appear on both sides of a reaction; declare it only once.
+                    continue
+                seen_labels.add(spc.label)
                 smiles = spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else ''
                 adjlist = ''
                 if smiles:
