@@ -348,7 +348,10 @@ class ReactionFamily(object):
         for mol_1 in reactants[0].mol_list or [reactants[0].mol]:
             for mol_2 in reactants[1].mol_list or [reactants[1].mol]:
                 splits = self.groups_by_label[reactant_to_group_maps[0][0]['subgroup']].split()
-                if len(splits) > 1:
+                # A template with a single (disconnected) group spanning both reactants is matched piecewise.
+                # A template with a group per reactant is matched group by group below, even if a reactant's
+                # own group is disconnected (e.g., a hydroxide-water cluster species).
+                if len(self.reactants) == 1 and len(splits) > 1:
                     for i in [0, 1]:
                         isomorphic_subgraphs_1 = mol_1.find_subgraph_isomorphisms(other=splits[i], save_order=True)
                         isomorphic_subgraphs_2 = mol_2.find_subgraph_isomorphisms(other=splits[not i], save_order=True)
