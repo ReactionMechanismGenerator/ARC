@@ -308,6 +308,21 @@ class TestNMD(unittest.TestCase):
         finally:
             ARCReaction.atom_map = original_atom_map
 
+    def test_get_bond_change_candidates_qa_sn2(self):
+        """
+        Atom mapping a reaction of ionic species can fail since the mapping copies drop the charge.
+        The reaction must then report no atom map rather than raise, and NMD must use the family bonds.
+        """
+        r_species = [ARCSpecies(label='TMA', smiles='C[N+](C)(C)C'), ARCSpecies(label='OH_d1', smiles='[OH-].O')]
+        p_species = [ARCSpecies(label='NMe3', smiles='CN(C)C'), ARCSpecies(label='MeOH_d1', smiles='CO.O')]
+        for spc in r_species + p_species:
+            spc.get_xyz()
+        rxn = ARCReaction(r_species=r_species, p_species=p_species)
+        self.assertEqual(rxn.family, 'qa_sn2')
+        self.assertIsNone(rxn.atom_map)
+        candidates = nmd.get_bond_change_candidates(reaction=rxn)
+        self.assertEqual(candidates, [([(0, 17)], [(0, 1)], [])], msg='Ca-O formed, Ca-N broken')
+
     def test_analyze_ts_normal_mode_displacement_ho2_elimination(self):
         """
         HO2 elimination from ethylperoxy: CCO[O] <=> C=C + [O]O (benchmark reaction 04 regression).
