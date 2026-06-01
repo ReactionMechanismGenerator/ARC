@@ -907,7 +907,7 @@ H       1.24252625    0.91583948   -0.84155142"""
         updated_structures = fam_1.apply_recipe(mols=[reactant], isomorphic_subgraph=isomorphic_subgraph)
         self.assertEqual(len(updated_structures), 1)
         product = Molecule(smiles='NCC=O')
-        self.assertTrue(updated_structures[0].is_isomorphic(product))
+        self.assertTrue(updated_structures[0][0].is_isomorphic(product))
 
     def test_get_reactant_num(self):
         """Test getting the number of reactants from a family"""

@@ -7,6 +7,7 @@ import ast
 import functools
 import os
 import re
+from itertools import combinations
 
 from arc.common import clean_text, get_logger
 from arc.exceptions import InvalidAdjacencyListError
@@ -278,15 +279,16 @@ class ReactionFamily(object):
         products_by_group = dict()
         for isomorphic_subgraph_dict in isomorphic_subgraph_dicts:
             try:
-                product_list = self.apply_recipe(mols=isomorphic_subgraph_dict['mols'],
-                                                 isomorphic_subgraph=isomorphic_subgraph_dict['isomorphic_subgraph'])
+                product_lists = self.apply_recipe(mols=isomorphic_subgraph_dict['mols'],
+                                                  isomorphic_subgraph=isomorphic_subgraph_dict['isomorphic_subgraph'])
             except ValueError:
                 continue
-            if product_list is not None:
+            if product_lists is not None:
                 if isomorphic_subgraph_dict['subgroup'] not in products_by_group:
                     products_by_group[isomorphic_subgraph_dict['subgroup']] = list()
-                products_by_group[isomorphic_subgraph_dict['subgroup']].append((product_list,
-                                                                                isomorphic_subgraph_dict['isomorphic_subgraph']))
+                for product_list in product_lists:
+                    products_by_group[isomorphic_subgraph_dict['subgroup']].append((product_list,
+                                                                                    isomorphic_subgraph_dict['isomorphic_subgraph']))
         return products_by_group
 
     def generate_bimolecular_products(self,
@@ -361,34 +363,44 @@ class ReactionFamily(object):
         products_by_group = dict()
         for isomorphic_subgraph_dict in isomorphic_subgraph_dicts:
             try:
-                product_list = self.apply_recipe(mols=isomorphic_subgraph_dict['mols'],
-                                                 isomorphic_subgraph=isomorphic_subgraph_dict['isomorphic_subgraph'])
+                product_lists = self.apply_recipe(mols=isomorphic_subgraph_dict['mols'],
+                                                  isomorphic_subgraph=isomorphic_subgraph_dict['isomorphic_subgraph'])
             except ValueError:
                 continue
-            if product_list is not None:
+            if product_lists is not None:
                 if isomorphic_subgraph_dict['subgroups'] not in products_by_group:
                     products_by_group[isomorphic_subgraph_dict['subgroups']] = list()
-                products_by_group[isomorphic_subgraph_dict['subgroups']].append((product_list,
-                                                                                isomorphic_subgraph_dict['isomorphic_subgraph']))
+                for product_list in product_lists:
+                    products_by_group[isomorphic_subgraph_dict['subgroups']].append((product_list,
+                                                                                     isomorphic_subgraph_dict['isomorphic_subgraph']))
         return products_by_group
 
     def apply_recipe(self,
                      mols: list[Molecule],
                      isomorphic_subgraph: dict[int, str],
-                     ) -> list[Molecule] | None:
+                     ) -> list[list[Molecule]] | None:
         """
-        Generate a reaction product of this family from a reactant mol and the isomorphic subgraph
-        using the family's recipe.
+        Apply the family recipe to the given reactant molecules and return all possible product sets.
+
+        Merges the reactant molecules into a single structure, applies each action in the recipe,
+        then splits the result into disconnected fragments. If the number of fragments matches
+        ``product_num``, a single product set is returned. If more fragments are produced than
+        ``product_num`` (e.g. when a reactant group contains an unreactive component), all valid
+        ways of grouping the fragments into ``product_num`` products are returned so that the
+        caller can select the set that is isomorphic to the expected products.
 
         Args:
-            mols (['Molecule']): The reactant molecule(s).
-            isomorphic_subgraph (dict[int, str]): A dictionary representing the isomorphic subgraph.
+            mols (list[Molecule]): The reactant molecule(s).
+            isomorphic_subgraph (dict[int, str]): Mapping of atom indices to group atom labels
+                                                  representing the matched subgraph.
 
         Raises:
             ValueError: If an invalid action is encountered.
 
         Returns:
-            list[Molecule] | None: The generated reaction product(s).
+            list[list[Molecule]] | None: A list of candidate product sets, where each set is a
+                                         list of ``product_num`` molecules. Returns ``None`` if
+                                         the recipe cannot produce the expected number of products.
         """
         structure = Molecule()
         for mol in mols:
@@ -448,13 +460,66 @@ class ReactionFamily(object):
         for atom in structure.atoms:
             atom.update_charge()
         structures = structure.split()
-        if self.product_num != len(structures):
+        if len(structures) < self.product_num:
             return None
         updated_structures = list()
-        for structure in structures:
-            structure.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
-            updated_structures.append(structure)
-        return updated_structures
+        for s in structures:
+            s.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
+            updated_structures.append(s)
+        if len(updated_structures) == self.product_num:
+            return [updated_structures]
+        return self._get_merged_product_sets(updated_structures)
+
+    def _get_merged_product_sets(self, structures: list[Molecule]) -> list[list[Molecule]] | None:
+        """
+        Generate all candidate product sets by partitioning disconnected fragments into groups.
+
+        Called when the number of fragments produced after applying the recipe exceeds
+        ``product_num``. Enumerates all ways to assign the fragments into ``product_num``
+        non-empty groups, merging the fragments within each group into a single
+        (potentially disconnected) molecule. The caller is responsible for selecting
+        the candidate set that is isomorphic to the expected reaction products.
+
+        Args:
+            structures (list[Molecule]): The disconnected molecular fragments produced after
+                                         splitting the post-recipe structure.
+
+        Returns:
+            list[list[Molecule]] | None: A list of candidate product sets, each containing
+                                         ``product_num`` molecules. Returns ``None`` if no
+                                         valid partitioning can be generated.
+        """
+        n = len(structures)
+        k = self.product_num
+        result = []
+
+        def partition(remaining, num_groups):
+            if num_groups == 1:
+                yield [remaining]
+                return
+            for size in range(1, len(remaining) - num_groups + 2):
+                for combo in combinations(remaining, size):
+                    if combo[0] != remaining[0]:
+                        continue
+                    rest = [i for i in remaining if i not in combo]
+                    for tail in partition(rest, num_groups - 1):
+                        yield [list(combo)] + tail
+
+        for groups in partition(list(range(n)), k):
+            product_set = []
+            for indices in groups:
+                frags = [structures[i] for i in indices]
+                if len(frags) == 1:
+                    product_set.append(frags[0])
+                else:
+                    merged = frags[0].copy(deep=True)
+                    for frag in frags[1:]:
+                        merged = merged.merge(frag.copy(deep=True))
+                    merged.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
+                    product_set.append(merged)
+            result.append(product_set)
+
+        return result if result else None
 
     def get_reactant_num(self) -> int:
         """
