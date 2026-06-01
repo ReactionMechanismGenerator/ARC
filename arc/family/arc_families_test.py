@@ -138,5 +138,65 @@ class TestEtherHydrolysisReactionFamily(unittest.TestCase):
         self.assertEqual(actions, expected_actions)
 
 
+class TestQASN2ReactionFamily(unittest.TestCase):
+    """
+    Contains unit tests for the qa-tsn2 reaction family.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up the test by defining the qa_sn2 reaction family."""
+        cls.family = ReactionFamily('qa_sn2')
+
+    def test_qa_sn2_reaction(self):
+        """Test if qa-sn2 products are correctly generated."""
+        qa = ARCSpecies(label='QA', smiles='C[N+](C)(C)C')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+
+        alcohol_water = ARCSpecies(label='alcohol_water', smiles='CO.O')
+        amine = ARCSpecies(label='amine', smiles='CN(C)C')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[alcohol_water, amine])
+
+        products = get_reaction_family_products(rxn)
+        product_smiles = [p.to_smiles() for p in products[0]['products']]
+
+        expected_product_smiles = ['CO.O', 'CN(C)C']
+        self.assertEqual(sorted(product_smiles), sorted(expected_product_smiles))
+
+    def test_recipe_actions(self):
+        """Test if the reaction recipe is applied correctly."""
+        groups_file_path = os.path.join(ARC_FAMILIES_PATH, 'qa_sn2.py')
+        with open(groups_file_path, 'r') as f:
+            groups_as_lines = f.readlines()
+
+        actions = get_recipe_actions(groups_as_lines)
+
+        expected_actions = [
+            ['BREAK_BOND', '*1', 1, '*2'],
+            ['FORM_BOND', '*1', 1, '*3'],
+            ['LOSE_PAIR', '*3', '1'],
+            ['GAIN_PAIR', '*2', '1'],
+        ]
+
+        self.assertEqual(actions, expected_actions)
+
+    def test_qa_tsn2_with_longer_alkyl_group(self):
+        """Test if qa-tsn2 products are correctly generated for a longer alkyl substituent."""
+        qa = ARCSpecies(label='QA', smiles='CC[N+](C)(C)C')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+
+        alcohol_water = ARCSpecies(label='alcohol_water', smiles='CCO.O')
+        amine = ARCSpecies(label='amine', smiles='CN(C)C')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[alcohol_water, amine])
+
+        products = get_reaction_family_products(rxn)
+        product_smiles = [p.to_smiles() for p in products[0]['products']]
+
+        expected_product_smiles = ['CCO.O', 'CN(C)C']
+        self.assertEqual(sorted(product_smiles), sorted(expected_product_smiles))
+
+
 if __name__ == '__main__':
     unittest.main()
