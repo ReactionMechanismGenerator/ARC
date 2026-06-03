@@ -377,6 +377,7 @@ class ARCSpecies(object):
         self.label = label
         self.symmetry_number = None
         self.index = None
+        self.do_isomorphism = None
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
@@ -753,6 +754,8 @@ class ARCSpecies(object):
             species_dict['tsg_spawned'] = self.tsg_spawned
         if self.yml_path is not None:
             species_dict['yml_path'] = self.yml_path
+        if self.do_isomorphism is not None:
+            species_dict['do_isomorphism'] = self.do_isomorphism
         if self.run_time is not None:
             species_dict['run_time'] = self.run_time.total_seconds()
         if self.number_of_radicals is not None:
@@ -881,6 +884,8 @@ class ARCSpecies(object):
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
             self.process_xyz(species_dict['xyz'])
         self.multiplicity = species_dict['multiplicity'] if 'multiplicity' in species_dict else None
+        # allow per-species override for do_isomorphism
+        self.do_isomorphism = species_dict['do_isomorphism'] if 'do_isomorphism' in species_dict else None
         self.multi_species = species_dict['multi_species'] if 'multi_species' in species_dict else None
         self.charge = species_dict['charge'] if 'charge' in species_dict else 0
         self.compute_thermo = species_dict['compute_thermo'] if 'compute_thermo' in species_dict else not self.is_ts
@@ -1061,7 +1066,9 @@ class ARCSpecies(object):
                     self.mol_list = [self.mol]
             else:
                 self.mol_list = [self.mol]
-            success = order_atoms_in_mol_list(ref_mol=self.mol.copy(deep=True), mol_list=self.mol_list)
+            do_iso = self.do_isomorphism if self.do_isomorphism is not None else True
+            success = order_atoms_in_mol_list(ref_mol=self.mol.copy(deep=True), mol_list=self.mol_list,
+                                              do_isomorphism=do_iso)
             if not success:
                 self.mol_list = [self.mol]
 

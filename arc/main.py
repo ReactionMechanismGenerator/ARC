@@ -269,6 +269,7 @@ class ARC(object):
                  verbose=logging.INFO,
                  report_e_elect: bool | None = False,
                  skip_nmd: bool | None = False,
+                 do_isomorphism: bool | None = None,
                  ):
 
         if project is None:
@@ -326,6 +327,7 @@ class ARC(object):
         self.ts_adapters = ts_adapters
         self.report_e_elect = report_e_elect
         self.skip_nmd = skip_nmd
+        self.do_isomorphism = do_isomorphism
         for ts_adapter in self.ts_adapters or list():
             if ts_adapter.lower() not in _registered_job_adapters.keys():
                 raise InputError(f'Unknown TS adapter: "{ts_adapter}"')
@@ -350,6 +352,9 @@ class ARC(object):
             if isinstance(spc, dict):
                 # dict representation for ARCSpecies
                 indices_to_pop.append(i)
+                # propagate project-level do_isomorphism to species dicts unless the species overrides it
+                if self.do_isomorphism is not None and 'do_isomorphism' not in spc:
+                    spc['do_isomorphism'] = self.do_isomorphism
                 converted_species.append(ARCSpecies(species_dict=spc))
             elif not isinstance(spc, ARCSpecies):
                 raise ValueError(f'A species should either be an RMG Species object, an ARCSpecies object, '
