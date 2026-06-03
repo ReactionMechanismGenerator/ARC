@@ -1090,7 +1090,7 @@ def xyz_to_str(xyz_dict: dict) -> str | None:
     return "\n".join(lines)
 
 
-def order_atoms(ref_mol, mol):
+def order_atoms(ref_mol, mol, do_isomorphism: bool = True):
     """
     Reorder the atoms in `mol` so their order matches the atom ordering in `ref_mol`.
 
@@ -1101,6 +1101,7 @@ def order_atoms(ref_mol, mol):
     Args:
         ref_mol (Molecule): Reference molecule whose atom ordering is used.
         mol (Molecule): Molecule to reorder. Modified in place.
+        do_isomorphism (bool, optional): If ``False``, skip atom reordering.
 
     Returns:
         None: The function updates `mol.atoms` directly.
@@ -1108,13 +1109,18 @@ def order_atoms(ref_mol, mol):
     ref_mol_is_iso_copy, mol_is_iso_copy = ref_mol.copy(deep=True), mol.copy(deep=True)
     ref_mol_find_iso_copy, mol_find_iso_copy = ref_mol.copy(deep=True), mol.copy(deep=True)
 
+    if not do_isomorphism:
+        return
+
     ref_mol_is_iso_copy = create_a_single_bond_mol_copy(ref_mol_is_iso_copy)
     mol_is_iso_copy = create_a_single_bond_mol_copy(mol_is_iso_copy)
     ref_mol_find_iso_copy = create_a_single_bond_mol_copy(ref_mol_find_iso_copy)
     mol_find_iso_copy = create_a_single_bond_mol_copy(mol_find_iso_copy)
 
     if mol_is_iso_copy.is_isomorphic(ref_mol_is_iso_copy, save_order=True, strict=False):
-        mapping = mol_find_iso_copy.find_isomorphism(ref_mol_find_iso_copy, save_order=True)
+        mapping = mol_find_iso_copy.find_isomorphism(ref_mol_find_iso_copy,
+                                 save_order=True,
+                                 do_isomorphism=do_isomorphism)
         if len(mapping):
             if isinstance(mapping, list):
                 mapping = mapping[0]

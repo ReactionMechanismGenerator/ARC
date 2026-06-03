@@ -1460,13 +1460,16 @@ def set_radicals_by_map(mol, radical_map):
         atom.radical_electrons = radical_map.atoms[i].radical_electrons
 
 
-def order_atoms_in_mol_list(ref_mol: Molecule, mol_list: list[Molecule] | None) -> bool:
+def order_atoms_in_mol_list(ref_mol: Molecule,
+                            mol_list: list[Molecule] | None,
+                            do_isomorphism: bool = True) -> bool:
     """
     Order the atoms in all molecules of ``mol_list`` by the atom order in ``ref_mol``.
 
     Args:
         ref_mol (Molecule): The reference Molecule object.
         mol_list (list[Molecule] | None): Entries are Molecule objects whose atoms will be reordered according to the reference.
+        do_isomorphism (bool, optional): If ``False``, skip atom reordering.
 
     Raises:
         TypeError: If ``ref_mol`` or the entries in ``mol_list`` have a wrong type.
@@ -1477,11 +1480,13 @@ def order_atoms_in_mol_list(ref_mol: Molecule, mol_list: list[Molecule] | None) 
     if not isinstance(ref_mol, Molecule):
         raise TypeError(f'expected mol to be a Molecule instance, got {ref_mol} which is a {type(ref_mol)}.')
     if mol_list is not None:
+        if not do_isomorphism:
+            return True
         for mol in mol_list:
             if not isinstance(mol, Molecule):
                 raise TypeError(f'expected entries of mol_list to be Molecule instances, got {mol} which is a {type(mol)}.')
             try:  # TODO: flag as unordered (or solve)
-                order_atoms(ref_mol, mol)
+                order_atoms(ref_mol, mol, do_isomorphism=do_isomorphism)
             except SanitizationError as e:
                 logger.warning(f'Could not order atoms in\n'
                                f'{mol.copy(deep=True).to_adjacency_list()}\n'
@@ -1493,13 +1498,14 @@ def order_atoms_in_mol_list(ref_mol: Molecule, mol_list: list[Molecule] | None) 
     return True
 
 
-def order_atoms(ref_mol, mol):
+def order_atoms(ref_mol, mol, do_isomorphism: bool = True):
     """
     Order the atoms in ``mol`` by the atom order in ``ref_mol``.
 
     Args:
         ref_mol (Molecule): The reference Molecule object.
         mol (Molecule): The Molecule object to process.
+        do_isomorphism (bool, optional): If ``False``, skip atom reordering.
 
     Raises:
         SanitizationError: If atoms could not be re-ordered.
@@ -1508,6 +1514,8 @@ def order_atoms(ref_mol, mol):
     if not isinstance(mol, Molecule) or not isinstance(ref_mol, Molecule):
         raise TypeError(f'Expected ref_mol & mol to be Molecule instances, got {ref_mol} and {mol} '
                         f'with types {type(ref_mol)} and {type(mol)}.')
+    if not do_isomorphism:
+        return
     ref_mol_is_iso_copy = ref_mol.copy(deep=True)
     mol_is_iso_copy = mol.copy(deep=True)
     ref_mol_find_iso_copy = ref_mol.copy(deep=True)
@@ -1519,7 +1527,9 @@ def order_atoms(ref_mol, mol):
     mol_find_iso_copy = update_molecule(mol_find_iso_copy, to_single_bonds=True)
 
     if mol_is_iso_copy.is_isomorphic(ref_mol_is_iso_copy, save_order=True, strict=False):
-        mapping = mol_find_iso_copy.find_isomorphism(ref_mol_find_iso_copy, save_order=True)
+        mapping = mol_find_iso_copy.find_isomorphism(ref_mol_find_iso_copy,
+                                 save_order=True,
+                                 do_isomorphism=do_isomorphism)
         if len(mapping):
             if isinstance(mapping, list):
                 mapping = mapping[0]

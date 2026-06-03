@@ -1951,7 +1951,7 @@ class Group(Graph):
         # Do the isomorphism comparison
         return Graph.is_isomorphic(self, other, initial_map, generate_initial_map, save_order=save_order)
 
-    def find_isomorphism(self, other, initial_map=None, save_order=False, strict=True):
+    def find_isomorphism(self, other, initial_map=None, save_order=False, strict=True, do_isomorphism=True):
         """
         Returns ``True`` if `other` is isomorphic and ``False``
         otherwise, and the matching mapping. The `initial_map` attribute can be
@@ -1961,6 +1961,8 @@ class Group(Graph):
         and the atoms of `other` for the values. The `other` parameter must
         be a :class:`Group` object, or a :class:`TypeError` is raised.
         """
+        if not do_isomorphism:
+            return []
         if not strict:
             raise NotImplementedError('There is currently no implementation of the strict argument for Group objects.')
         # It only makes sense to compare a Group to a Group for full

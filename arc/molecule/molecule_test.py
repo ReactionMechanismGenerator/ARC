@@ -2,6 +2,7 @@
 # encoding: utf-8
 
 import unittest
+from unittest.mock import patch
 
 from arc.exceptions import InchiException
 from arc.molecule.element import get_element, element_list
@@ -833,6 +834,15 @@ class TestBond(unittest.TestCase):
         self.assertEqual(mol_ch2_s.atoms[0].lone_pairs, 1)
         self.assertEqual(mol_carbonyl.atoms[0].lone_pairs, 2)
         self.assertEqual(mol_carbonyl.atoms[1].lone_pairs, 0)
+
+    def test_find_isomorphism_can_be_disabled(self):
+        """Test that find_isomorphism can skip the graph search when requested."""
+        molecule1 = Molecule().from_smiles('CC')
+        molecule2 = Molecule().from_smiles('CC')
+        with patch('arc.molecule.graph.Graph.find_isomorphism') as mock_find:
+            result = molecule1.find_isomorphism(molecule2, do_isomorphism=False)
+        mock_find.assert_not_called()
+        self.assertEqual(result, [])
 
     def test_get_bond_string(self):
         """Test that bond objects can return a bond string"""

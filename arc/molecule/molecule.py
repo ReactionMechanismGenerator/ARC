@@ -1618,7 +1618,7 @@ class Molecule(Graph):
         result = Graph.is_isomorphic(self, other, initial_map, generate_initial_map, save_order=save_order, strict=strict)
         return result
 
-    def find_isomorphism(self, other, initial_map=None, save_order=False, strict=True):
+    def find_isomorphism(self, other, initial_map=None, save_order=False, strict=True, do_isomorphism=True):
         """
         Returns :data:`True` if `other` is isomorphic and :data:`False`
         otherwise, and the matching mapping. The `initialMap` attribute can be
@@ -1632,7 +1632,10 @@ class Molecule(Graph):
             initial_map (dict, optional): initial atom mapping to use
             save_order (bool, optional):  if ``True``, reset atom order after performing atom isomorphism
             strict (bool, optional):      if ``False``, perform isomorphism ignoring electrons
+            do_isomorphism (bool, optional): if ``False``, skip the isomorphism search and return ``[]``
         """
+        if not do_isomorphism:
+            return []
         # It only makes sense to compare a Molecule to a Molecule for full
         # isomorphism, so raise an exception if this is not what was requested
         if not isinstance(other, Molecule):

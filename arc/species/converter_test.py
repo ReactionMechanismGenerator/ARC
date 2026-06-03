@@ -11,6 +11,7 @@ import os
 import numpy as np
 from scipy.spatial.transform import Rotation
 import unittest
+from unittest.mock import patch
 
 from ase import Atoms
 from rdkit import Chem
@@ -4536,6 +4537,15 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         mol1 = Molecule(smiles='[O-][N+]#N')
         mol2 = Molecule(smiles='[N-]=[N+]=O')
         self.assertTrue(converter.check_isomorphism(mol1, mol2))
+
+    def test_order_atoms_in_mol_list_can_skip_isomorphism(self):
+        """Test that atom ordering can be skipped without calling the reordering helper."""
+        ref_mol = Molecule().from_smiles('CC')
+        mol = Molecule().from_smiles('CC')
+        with patch('arc.species.converter.order_atoms') as mock_order_atoms:
+            result = converter.order_atoms_in_mol_list(ref_mol, [mol], do_isomorphism=False)
+        mock_order_atoms.assert_not_called()
+        self.assertTrue(result)
 
     def test_cluster_confs_by_rmsd(self):
         """Test clustering conformers by RMSD"""
