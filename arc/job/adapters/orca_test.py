@@ -315,6 +315,166 @@ end
         self.assertEqual(self.job_1.files_to_upload, job_1_files_to_upload)
         self.assertEqual(self.job_1.files_to_download, job_1_files_to_download)
 
+    def test_dft_grid_regular_opt(self):
+        """Test that regular opt job uses defgrid2 for DFT"""
+        job_opt = OrcaAdapter(execution_type='queue',
+                              job_type='opt',
+                              level=Level(method='wb97x-d3', basis='def2-tzvp'),
+                              project='test_dft_grid',
+                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                              species=[ARCSpecies(label='CH3O',
+                                                  xyz="""C       0.03807240    0.00035621   -0.00484242
+                                                         O       1.35198769    0.01264937   -0.17195885
+                                                         H      -0.33965241   -0.14992727    1.02079480
+                                                         H      -0.51702680    0.90828035   -0.29592912
+                                                         H      -0.53338088   -0.77135867   -0.54806440""")],
+                              testing=True,
+                              fine=False,
+                              )
+        job_opt.write_input_file()
+        with open(os.path.join(job_opt.local_path, input_filenames[job_opt.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('defgrid2', content)
+        self.assertNotIn('defgrid3', content)
+
+    def test_dft_grid_fine_opt(self):
+        """Test that fine opt job uses defgrid3 for DFT"""
+        job_fine_opt = OrcaAdapter(execution_type='queue',
+                                   job_type='opt',
+                                   level=Level(method='wb97x-d3', basis='def2-tzvp'),
+                                   project='test_dft_grid_fine',
+                                   project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                   species=[ARCSpecies(label='CH3O',
+                                                       xyz="""C       0.03807240    0.00035621   -0.00484242
+                                                              O       1.35198769    0.01264937   -0.17195885
+                                                              H      -0.33965241   -0.14992727    1.02079480
+                                                              H      -0.51702680    0.90828035   -0.29592912
+                                                              H      -0.53338088   -0.77135867   -0.54806440""")],
+                                   testing=True,
+                                   fine=True,
+                                   )
+        job_fine_opt.write_input_file()
+        with open(os.path.join(job_fine_opt.local_path, input_filenames[job_fine_opt.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('defgrid3', content)
+
+    def test_dft_grid_freq(self):
+        """Test that freq job uses defgrid3 for DFT"""
+        job_freq = OrcaAdapter(execution_type='queue',
+                               job_type='freq',
+                               level=Level(method='wb97x-d3', basis='def2-tzvp'),
+                               project='test_dft_grid_freq',
+                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                               species=[ARCSpecies(label='CH3O',
+                                                   xyz="""C       0.03807240    0.00035621   -0.00484242
+                                                          O       1.35198769    0.01264937   -0.17195885
+                                                          H      -0.33965241   -0.14992727    1.02079480
+                                                          H      -0.51702680    0.90828035   -0.29592912
+                                                          H      -0.53338088   -0.77135867   -0.54806440""")],
+                               testing=True,
+                               fine=False,
+                               )
+        job_freq.write_input_file()
+        with open(os.path.join(job_freq.local_path, input_filenames[job_freq.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('defgrid3', content)
+
+    def test_dft_grid_optfreq(self):
+        """Test that optfreq job uses defgrid3 for DFT"""
+        job_optfreq = OrcaAdapter(execution_type='queue',
+                                  job_type='optfreq',
+                                  level=Level(method='wb97x-d3', basis='def2-tzvp'),
+                                  project='test_dft_grid_optfreq',
+                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                  species=[ARCSpecies(label='CH3O',
+                                                      xyz="""C       0.03807240    0.00035621   -0.00484242
+                                                             O       1.35198769    0.01264937   -0.17195885
+                                                             H      -0.33965241   -0.14992727    1.02079480
+                                                             H      -0.51702680    0.90828035   -0.29592912
+                                                             H      -0.53338088   -0.77135867   -0.54806440""")],
+                                  testing=True,
+                                  fine=False,
+                                  )
+        job_optfreq.write_input_file()
+        with open(os.path.join(job_optfreq.local_path, input_filenames[job_optfreq.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('defgrid3', content)
+
+    def test_fine_opt_convergence_tightopt(self):
+        """Test that fine opt job uses TightOpt convergence for DFT"""
+        job_fine_opt = OrcaAdapter(execution_type='queue',
+                                   job_type='opt',
+                                   level=Level(method='wb97x-d3', basis='def2-tzvp'),
+                                   project='test_fine_opt_conv',
+                                   project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                   species=[ARCSpecies(label='CH3O',
+                                                       xyz="""C       0.03807240    0.00035621   -0.00484242
+                                                              O       1.35198769    0.01264937   -0.17195885
+                                                              H      -0.33965241   -0.14992727    1.02079480
+                                                              H      -0.51702680    0.90828035   -0.29592912
+                                                              H      -0.53338088   -0.77135867   -0.54806440""")],
+                                   testing=True,
+                                   fine=True,
+                                   )
+        job_fine_opt.write_input_file()
+        with open(os.path.join(job_fine_opt.local_path, input_filenames[job_fine_opt.job_adapter]), 'r') as f:
+            content = f.read()
+        # TightOpt should be present in fine opt
+        self.assertIn('tightopt', content.lower())
+
+    def test_recalc_hess_in_optts(self):
+        """Test that OptTS job includes calc_Hess true in %geom block"""
+        job_optts = OrcaAdapter(execution_type='queue',
+                                job_type='opt',
+                                level=Level(method='wb97x-d3', basis='def2-tzvp'),
+                                project='test_optts_hess',
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                species=[ARCSpecies(label='TS_example',
+                                                    xyz="""C       0.03807240    0.00035621   -0.00484242
+                                                           O       1.35198769    0.01264937   -0.17195885
+                                                           H      -0.33965241   -0.14992727    1.02079480
+                                                           H      -0.51702680    0.90828035   -0.29592912
+                                                           H      -0.53338088   -0.77135867   -0.54806440""",
+                                                    is_ts=True)],
+                                testing=True,
+                                fine=False,
+                                )
+        job_optts.write_input_file()
+        with open(os.path.join(job_optts.local_path, input_filenames[job_optts.job_adapter]), 'r') as f:
+            content = f.read()
+        # Check that the file contains the %geom block with Calc_Hess and Recalc_Hess
+        self.assertIn('%geom', content)
+        self.assertIn('Calc_Hess true', content)
+        # Check that it's an OptTS job
+        self.assertIn('OptTS', content)
+
+    def test_recalc_hess_not_in_regular_opt(self):
+        """Test that regular Opt job (non-TS) does NOT include Recalc_Hess block"""
+        job_opt_regular = OrcaAdapter(execution_type='queue',
+                                      job_type='opt',
+                                      level=Level(method='wb97x-d3', basis='def2-tzvp'),
+                                      project='test_opt_no_hess',
+                                      project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                      species=[ARCSpecies(label='CH3O',
+                                                          xyz="""C       0.03807240    0.00035621   -0.00484242
+                                                                 O       1.35198769    0.01264937   -0.17195885
+                                                                 H      -0.33965241   -0.14992727    1.02079480
+                                                                 H      -0.51702680    0.90828035   -0.29592912
+                                                                 H      -0.53338088   -0.77135867   -0.54806440""",
+                                                          is_ts=False)],
+                                      testing=True,
+                                      fine=False,
+                                      )
+        job_opt_regular.write_input_file()
+        with open(os.path.join(job_opt_regular.local_path, input_filenames[job_opt_regular.job_adapter]), 'r') as f:
+            content = f.read()
+        # Check that it's a regular Opt job, not OptTS
+        self.assertIn('!Opt', content)
+        self.assertNotIn('OptTS', content)
+        # The %geom Calc_Hess block should NOT be present for regular opt
+        self.assertNotIn('Calc_Hess true', content)
+        self.assertNotIn('Recalc_Hess 5', content)
+
     @classmethod
     def tearDownClass(cls):
         """
