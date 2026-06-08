@@ -2094,6 +2094,34 @@ class ARCSpecies(object):
 
         return [spc1, spc2]
 
+    def _assign_radicals_after_scission(self,
+                                        mol: Molecule,
+                                        label: str = None,
+                                        added_radical: list = None):
+        """
+        A helper function to assign radical electrons to atoms after scission.
+
+        Args:
+            mol (Molecule): The molecule to update.
+            label (str, optional): The label of the species.
+            added_radical (list, optional): A list of labels for which a radical was already added.
+        """
+        for atom in mol.atoms:
+            theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
+                                 - atom.get_total_bond_order() \
+                                 - atom.radical_electrons - \
+                                 2 * atom.lone_pairs
+            if theoretical_charge == atom.charge + 1:
+                # we're missing a radical electron on this atom
+                if added_radical is None:
+                    atom.radical_electrons += 1
+                elif label not in added_radical or label == 'H':
+                    atom.radical_electrons += 1
+                    added_radical.append(label)
+                else:
+                    raise SpeciesError(f'Could not figure out which atom should gain a radical '
+                                       f'due to scission in {self.label}')
+
     def populate_ts_checks(self):
         """Populate (or restart) the .ts_checks attribute with default (``None``) values."""
         if self.is_ts:
