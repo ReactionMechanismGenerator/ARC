@@ -2973,6 +2973,49 @@ H      -1.47626400   -0.10694600   -1.88883800"""
             self.spc1.kabsch(self.spc1, [0, 1, 2])
 
 
+    def test_assign_radicals_after_scission_cyclic(self):
+        """
+        Test radical assignment for a cyclic scission (single molecule result).
+        Using Cyclopropane to represent a true ring opening.
+        """
+        mol = Molecule().from_smiles('C1CC1')
+        
+        # Find a C-C bond to remove to simulate a ring opening
+        for bond in mol.get_all_edges():
+            if bond.atom1.is_carbon() and bond.atom2.is_carbon():
+                c1, c2 = bond.atom1, bond.atom2
+                mol.remove_bond(bond)
+                break
+        
+        self.assertEqual(c1.radical_electrons, 0)
+        self.assertEqual(c2.radical_electrons, 0)
+        
+        spc = ARCSpecies(label='cyclopropane', mol=Molecule().from_smiles('C1CC1'))
+        spc._assign_radicals_after_scission(mol=mol)
+        
+        self.assertEqual(c1.radical_electrons, 1)
+        self.assertEqual(c2.radical_electrons, 1)
+
+    def test_assign_radicals_after_scission_with_added_radical_list(self):
+        """
+        Test radical assignment using the added_radical tracking list (non-cyclic scission).
+        """
+        mol1 = Molecule().from_smiles('[CH3]')
+        mol1.atoms[0].radical_electrons = 0
+        
+        spc = ARCSpecies(label='parent', mol=Molecule().from_smiles('CC'))
+        added_radical = []
+        
+        spc._assign_radicals_after_scission(mol=mol1, label='fragment_A', added_radical=added_radical)
+        self.assertEqual(mol1.atoms[0].radical_electrons, 1)
+        self.assertEqual(added_radical, ['fragment_A'])
+        
+        # Reset the radical electron to simulate another atom in the same fragment needing one
+        mol1.atoms[0].radical_electrons = 0
+        with self.assertRaises(SpeciesError):
+            spc._assign_radicals_after_scission(mol=mol1, label='fragment_A', added_radical=added_radical)
+
+
 class TestTSGuess(unittest.TestCase):
     """
     Contains unit tests for the TSGuess class
