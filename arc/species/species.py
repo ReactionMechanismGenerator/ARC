@@ -2008,13 +2008,7 @@ class ARCSpecies(object):
 
         if len(mol_splits) == 1:  # If cutting leads to only one split, then the split is cyclic.
             mol1 = mol_splits[0]
-            for atom in mol1.atoms:
-                theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
-                                     - atom.get_total_bond_order() \
-                                     - atom.radical_electrons - \
-                                     2 * atom.lone_pairs
-                if theoretical_charge == atom.charge + 1:
-                    atom.radical_electrons += 1
+            self._assign_radicals_after_scission(mol=mol1)
             mol1.update_multiplicity()
             spc1 = ARCSpecies(label=self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_cyclic',
                               mol=mol1,
@@ -2046,19 +2040,7 @@ class ARCSpecies(object):
 
         added_radical = list()
         for mol, label in zip([mol1, mol2], [label1, label2]):
-            for atom in mol.atoms:
-                theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
-                                     - atom.get_total_bond_order() \
-                                     - atom.radical_electrons - \
-                                     2 * atom.lone_pairs
-                if theoretical_charge == atom.charge + 1:
-                    # we're missing a radical electron on this atom
-                    if label not in added_radical or label == 'H':
-                        atom.radical_electrons += 1
-                        added_radical.append(label)
-                    else:
-                        raise SpeciesError(f'Could not figure out which atom should gain a radical '
-                                           f'due to scission in {self.label}')
+            self._assign_radicals_after_scission(mol=mol, label=label, added_radical=added_radical)
         mol1.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
         mol2.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
 
