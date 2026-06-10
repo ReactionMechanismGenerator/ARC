@@ -100,7 +100,7 @@ ts_adapters_for_unknown_unimolecular = ['linear']
 adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
-default_incore_adapters = ['autotst', 'crest', 'gcn', 'heuristics', 'kinbot', 'openbabel', 'torchani', 'psi4', 'xtb', 'xtb_gsm']
+default_incore_adapters = ['autotst', 'crest', 'gcn', 'heuristics', 'kinbot', 'linear', 'openbabel', 'torchani', 'psi4', 'xtb', 'xtb_gsm']
 
 
 def _initialize_adapter(obj: JobAdapter,

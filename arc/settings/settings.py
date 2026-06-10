@@ -89,7 +89,7 @@ global_ess_settings = {
 supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
-ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
+ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
 
 # List here job types to execute by default
 default_job_types = {'conf_opt': True,        # defaults to True if not specified
