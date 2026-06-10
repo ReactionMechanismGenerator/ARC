@@ -608,6 +608,26 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc_dict['mol']['atoms'][0]['element']['isotope'], -1)
         self.assertEqual(spc_dict['mol']['atoms'][0]['atomtype'], 'Cs')
 
+    def test_thermo_at_own_level_round_trip(self):
+        """Test that thermo_at_own_level and adaptive_lot_n_heavy round-trip through as_dict/from_dict"""
+        # Defaults: not serialized, restored to True / None.
+        default_spc = ARCSpecies(label='ethane', smiles='CC')
+        default_dict = default_spc.as_dict()
+        self.assertNotIn('thermo_at_own_level', default_dict)
+        self.assertNotIn('adaptive_lot_n_heavy', default_dict)
+        restored_default = ARCSpecies(species_dict=default_dict)
+        self.assertTrue(restored_default.thermo_at_own_level)
+        self.assertIsNone(restored_default.adaptive_lot_n_heavy)
+
+        # Non-default values: serialized and restored.
+        spc = ARCSpecies(label='ethane', smiles='CC', thermo_at_own_level=False, adaptive_lot_n_heavy=8)
+        spc_dict = spc.as_dict()
+        self.assertFalse(spc_dict['thermo_at_own_level'])
+        self.assertEqual(spc_dict['adaptive_lot_n_heavy'], 8)
+        restored = ARCSpecies(species_dict=spc_dict)
+        self.assertFalse(restored.thermo_at_own_level)
+        self.assertEqual(restored.adaptive_lot_n_heavy, 8)
+
     def test_from_dict(self):
         """Test Species.from_dict()"""
         species_dict = self.spc2.as_dict()

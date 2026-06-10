@@ -1273,5 +1273,125 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
             self.assertEqual(admit_unknown_family, expected_admission)
 
 
+class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
+    """
+    Contains unit tests for the reaction-wide adaptive levels of theory logic
+    (Scheduler._apply_adaptive_reaction_levels and the spawn_job override).
+    """
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
+        # A grain at exactly 1 heavy atom, and another for everything larger, so single-heavy-atom wells
+        # (e.g. CH4, OH) land on a different grain than a 2-heavy-atom reaction.
+        cls.adaptive_levels = {(1, 1): {('opt', 'freq'): Level(repr='wb97xd/def2tzvp'),
+                                        ('sp',): Level(repr='ccsd(t)-f12/cc-pvtz-f12')},
+                               (2, 'inf'): {('opt', 'freq'): Level(repr='b3lyp/6-31g(d,p)'),
+                                            ('sp',): Level(repr='b3lyp/6-311+g(d,p)')}}
+
+    def build_scheduler(self, rxn, species_list, name):
+        """
+        Build a testing Scheduler for a single reaction under the class adaptive levels.
+
+        Args:
+            rxn (ARCReaction): The reaction.
+            species_list (list): The species list.
+            name (str): A unique project name.
+
+        Returns:
+            Scheduler: The constructed (testing) scheduler.
+        """
+        project_directory = os.path.join(ARC_PATH, 'Projects', f'{name}_delete')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        return Scheduler(project=name,
+                         ess_settings=self.ess_settings,
+                         species_list=species_list,
+                         rxn_list=[rxn],
+                         opt_level=Level(repr='b3lyp/6-31g(d,p)'),
+                         sp_level=Level(repr='b3lyp/6-311+g(d,p)'),
+                         freq_level=Level(repr='b3lyp/6-31g(d,p)'),
+                         adaptive_levels=self.adaptive_levels,
+                         project_directory=project_directory,
+                         job_types=initialize_job_types(),
+                         testing=True)
+
+    def test_bimolecular_creates_copies(self):
+        """Test that a reaction with wells on a different grain than the reaction gets relabeled copies"""
+        r = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')]
+        p = [ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')]
+        rxn = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=r, p_species=p)
+        sched = self.build_scheduler(rxn, r + p, 'adaptive_bimol')
+
+        # The reaction is now defined with the copies, and stays self-consistent.
+        self.assertEqual(rxn.reactants, ['CH4_TS0', 'OH_TS0'])
+        self.assertEqual(rxn.products, ['CH3_TS0', 'H2O_TS0'])
+        self.assertEqual([s.label for s in rxn.r_species], ['CH4_TS0', 'OH_TS0'])
+        self.assertEqual(rxn.label, 'CH4_TS0 + OH_TS0 <=> CH3_TS0 + H2O_TS0')
+        rxn.check_attributes()  # Must not raise.
+
+        # The copies are autonomous, evaluated at the reaction-wide level, and not part of the thermo library.
+        for copy_label in ['CH4_TS0', 'OH_TS0', 'CH3_TS0', 'H2O_TS0']:
+            self.assertIn(copy_label, sched.species_dict)
+            self.assertIn(copy_label, sched.output)
+            copy_spc = sched.species_dict[copy_label]
+            self.assertEqual(copy_spc.adaptive_lot_n_heavy, 2)
+            self.assertFalse(copy_spc.compute_thermo)
+            self.assertFalse(copy_spc.include_in_thermo_lib)
+
+        # The originals are untouched - they keep their own granular level and their own thermo.
+        for original_label in ['CH4', 'OH', 'CH3', 'H2O']:
+            original = sched.species_dict[original_label]
+            self.assertIsNone(original.adaptive_lot_n_heavy)
+            self.assertTrue(original.compute_thermo)
+
+    def test_thermo_at_own_level_false_no_copy(self):
+        """Test that with thermo_at_own_level=False the species itself takes the reaction-wide level, with no copy"""
+        r = [ARCSpecies(label='CH4', smiles='C', thermo_at_own_level=False),
+             ARCSpecies(label='OH', smiles='[OH]', thermo_at_own_level=False)]
+        p = [ARCSpecies(label='CH3', smiles='[CH3]', thermo_at_own_level=False),
+             ARCSpecies(label='H2O', smiles='O', thermo_at_own_level=False)]
+        rxn = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=r, p_species=p)
+        sched = self.build_scheduler(rxn, r + p, 'adaptive_noflag')
+
+        self.assertEqual(rxn.label, 'CH4 + OH <=> CH3 + H2O')
+        self.assertFalse(any('_TS' in label for label in sched.species_dict))
+        self.assertEqual(sched.species_dict['CH4'].adaptive_lot_n_heavy, 2)
+
+    def test_unimolecular_no_copy(self):
+        """Test that a reaction whose well shares the reaction's grain gets no copies"""
+        r = [ARCSpecies(label='nC3H7', smiles='[CH2]CC')]
+        p = [ARCSpecies(label='iC3H7', smiles='C[CH]C')]
+        rxn = ARCReaction(label='nC3H7 <=> iC3H7', r_species=r, p_species=p)
+        sched = self.build_scheduler(rxn, r + p, 'adaptive_unimol')
+
+        self.assertEqual(rxn.label, 'nC3H7 <=> iC3H7')
+        self.assertFalse(any('_TS' in label for label in sched.species_dict))
+        self.assertIsNone(sched.species_dict['nC3H7'].adaptive_lot_n_heavy)
+
+    def test_spawn_job_uses_override(self):
+        """Test that determine_adaptive_level is driven by adaptive_lot_n_heavy when set"""
+        spc = ARCSpecies(label='CH4', smiles='C')
+        sched = Scheduler(project='adaptive_override',
+                          ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr='b3lyp/6-31g(d,p)'),
+                          sp_level=Level(repr='b3lyp/6-311+g(d,p)'),
+                          freq_level=Level(repr='b3lyp/6-31g(d,p)'),
+                          adaptive_levels=self.adaptive_levels,
+                          project_directory=os.path.join(ARC_PATH, 'Projects', 'adaptive_override_delete'),
+                          job_types=initialize_job_types(),
+                          testing=True)
+        self.addCleanup(shutil.rmtree, os.path.join(ARC_PATH, 'Projects', 'adaptive_override_delete'),
+                        ignore_errors=True)
+        original = Level(method='CBS-QB3')
+        # 1 heavy atom (own count) -> the (1, 1) grain.
+        self.assertEqual(sched.determine_adaptive_level(original, 'sp', spc.number_of_heavy_atoms).simple(),
+                         'ccsd(t)-f12/cc-pvtz-f12')
+        # With the override set to a 2-heavy-atom reaction, the (2, 'inf') grain is used instead.
+        spc.adaptive_lot_n_heavy = 2
+        heavy = spc.adaptive_lot_n_heavy if spc.adaptive_lot_n_heavy is not None else spc.number_of_heavy_atoms
+        self.assertEqual(sched.determine_adaptive_level(original, 'sp', heavy).simple(), 'b3lyp/6-311+g(d,p)')
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
