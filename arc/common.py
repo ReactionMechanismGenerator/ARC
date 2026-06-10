@@ -1513,7 +1513,7 @@ def get_angle_in_180_range(angle: float,
                            round_to: int | None = 2,
                            ) -> float:
     """
-    Get the corresponding angle in the -180 to +180 degree range, (-180,180]
+    Get the corresponding angle in the -180 to +180 degree range, [-180, 180)
 
     Args:
         angle (float): An angle in degrees.

@@ -369,7 +369,7 @@ def get_weight_grid(rxn: ARCReaction,
 
 def interp_dihedral_deg(a: float, b: float, w: float = 0.5) -> float:
     """
-    Interpolate dihedral angles in degrees along the shortest signed difference in (-180, 180].
+    Interpolate dihedral angles in degrees along the shortest signed difference in [-180, 180).
     E.g., the distance between -179 and 179 is 2 degrees, not 358.
 
     Args:
