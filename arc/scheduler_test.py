@@ -13,6 +13,7 @@ import shutil
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
+from arc.job.adapters.common import default_incore_adapters, ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.plotter import save_conformers_file
@@ -1193,6 +1194,51 @@ H      -1.82570782    0.42754384   -0.56130718"""
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestSpawnTsJobsAdmission(unittest.TestCase):
+    """
+    Contains unit tests for the TS adapter admission logic of Scheduler.spawn_ts_jobs().
+    """
+
+    def test_spawn_ts_jobs_unknown_family_admission_predicate(self):
+        """Test the admission predicate for TS adapters of reactions with an unknown family."""
+        self.assertIn('linear', ts_adapters_for_unknown_unimolecular)
+        self.assertIn('linear', default_incore_adapters)
+        reactant_xyz = """C  -1.3087    0.0068    0.0318
+                          C   0.1715   -0.0344    0.0210
+                          N   0.9054   -0.9001    0.6395
+                          O   2.1683   -0.5483    0.3437
+                          N   2.1499    0.5449   -0.4631
+                          N   0.9613    0.8655   -0.6660
+                          H  -1.6558    0.9505    0.4530
+                          H  -1.6934   -0.0680   -0.9854
+                          H  -1.6986   -0.8169    0.6255"""
+        reactant = ARCSpecies(label='azide_r', smiles='C([C]1=[N]O[N]=[N]1)', xyz=reactant_xyz)
+        product_xyz = """C  -1.0108   -0.0114   -0.0610
+                         C   0.4780    0.0191    0.0139
+                         N   1.2974   -0.9930    0.4693
+                         O   0.6928   -1.9845    0.8337
+                         N   1.7456    1.9701   -0.6976
+                         N   1.1642    1.0763   -0.3716
+                         H  -1.4020    0.9134   -0.4821
+                         H  -1.3327   -0.8499   -0.6803
+                         H  -1.4329   -0.1554    0.9349"""
+        product = ARCSpecies(label='azide_p', smiles='[N-]=[N+]=C(N=O)C', xyz=product_xyz)
+        rxn_unimolecular = ARCReaction(r_species=[reactant], p_species=[product])
+        self.assertIsNone(rxn_unimolecular.family)
+        rxn_bimolecular = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                                 ARCSpecies(label='CH4', smiles='C')],
+                                      p_species=[ARCSpecies(label='H2', smiles='[H][H]'),
+                                                 ARCSpecies(label='CH3', smiles='[CH3]')])
+        self.assertEqual(rxn_bimolecular.family, 'H_Abstraction')
+        # Replicates the three-clause admission predicate from Scheduler.spawn_ts_jobs() (scheduler.py).
+        for rxn, expected_admission in [(rxn_unimolecular, True), (rxn_bimolecular, False)]:
+            family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
+            admit_unknown_family = (not family_known
+                                    and 'linear' in ts_adapters_for_unknown_unimolecular
+                                    and rxn.is_unimolecular())
+            self.assertEqual(admit_unknown_family, expected_admission)
 
 
 if __name__ == '__main__':

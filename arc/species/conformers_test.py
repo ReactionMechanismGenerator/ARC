@@ -583,6 +583,19 @@ H       0.68104300    0.74807180    0.61546062""")]
         self.assertEqual(num_min, 250)
         self.assertEqual(num_def, 7500)
 
+    def test_generate_force_field_conformers_economic_generation(self):
+        """Test that economic_generation threads through to determine_number_of_conformers_to_generate."""
+        mol = Molecule(smiles='CCCCC')
+        torsions, _ = conformers.determine_rotors([mol])
+        confs_default = conformers.generate_force_field_conformers(
+            mol_list=[mol], label='pentane', torsion_num=len(torsions), charge=0, multiplicity=1)
+        confs_economic = conformers.generate_force_field_conformers(
+            mol_list=[mol], label='pentane', torsion_num=len(torsions), charge=0, multiplicity=1,
+            economic_generation=True)
+        self.assertEqual(len(confs_default), 500)
+        self.assertEqual(len(confs_economic), 250)
+        self.assertLess(len(confs_economic), len(confs_default))
+
     def test_openbabel_force_field(self):
         """Test Open Babel force field"""
         xyz = """S      -0.19093478    0.57933906    0.00000000

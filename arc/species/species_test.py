@@ -1535,6 +1535,18 @@ H      -1.99779884    0.76292039   -1.08682170"""
         self.assertEqual(spc.mol.atoms[0].element.symbol, 'C')
         self.assertEqual(spc.mol.atoms[10].element.symbol, 'H')
 
+    def test_radical_perception_hint_skipped_on_multiplicity_mismatch(self):
+        """Test that the mol radical-count perception hint is not applied when mol and species multiplicities differ."""
+        # The adjlist mol is a triplet O atom (2 radicals), but the user specifies a singlet species.
+        # The radical count of self.mol must not be forced on perception (mol_from_xyz),
+        # so the perceived singlet O atom carries no radicals.
+        spc = ARCSpecies(label='O_singlet', adjlist='multiplicity 3\n1 O u2 p2 c0',
+                         xyz='O 0.0 0.0 0.0', multiplicity=1)
+        self.assertEqual(spc.multiplicity, 1)
+        self.assertIsNotNone(spc.mol)
+        self.assertEqual(spc.mol.multiplicity, 1)
+        self.assertEqual(sum(atom.radical_electrons for atom in spc.mol.atoms), 0)
+
     def test_preserving_multiplicity(self):
         """Test that multiplicity is being preserved, especially when it is guessed differently from xyz"""
         multiplicity_list = [2, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 3, 2, 1]

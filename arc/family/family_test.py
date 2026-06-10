@@ -797,6 +797,34 @@ H      -0.83821148   -0.26602407    0.00000000"""
                                          ['GAIN_RADICAL', '*1', '1'],
                                          ['LOSE_RADICAL', '*3', '1']])
 
+    def test_reaction_family_cache_returns_same_instance(self):
+        """Test that ReactionFamily instances are cached per (label, consider_arc_families) key."""
+        fam_1 = ReactionFamily('intra_H_migration')
+        fam_2 = ReactionFamily('intra_H_migration')
+        self.assertIs(fam_1, fam_2)
+        fam_3 = ReactionFamily('H_Abstraction')
+        self.assertIsNot(fam_1, fam_3)
+        fam_4 = ReactionFamily('intra_H_migration', consider_arc_families=False)
+        self.assertIsNot(fam_1, fam_4)
+        self.assertEqual(fam_4.label, 'intra_H_migration')
+
+    def test_reaction_family_none_label_raises(self):
+        """Test that constructing a ReactionFamily without a label raises a ValueError."""
+        with self.assertRaises(ValueError):
+            ReactionFamily(None)
+
+    def test_reaction_family_not_reinitialized_on_second_construction(self):
+        """Test that a second construction of a cached ReactionFamily skips re-initialization."""
+        fam = ReactionFamily('1,2_Insertion_CO', consider_arc_families=False)
+        original_label = fam.label
+        try:
+            fam.label = 'sentinel'
+            fam_again = ReactionFamily('1,2_Insertion_CO', consider_arc_families=False)
+            self.assertIs(fam_again, fam)
+            self.assertEqual(fam_again.label, 'sentinel')
+        finally:
+            fam.label = original_label
+
     def test_generate_products(self):
         """Test generating products from a family reaction"""
         nc3h7_xyz = """C       1.37804814    0.27791806   -0.19510872

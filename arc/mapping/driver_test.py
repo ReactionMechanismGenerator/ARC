@@ -12,7 +12,7 @@ from arc.common import ARC_PATH
 from arc.family import get_reaction_family_products
 from arc.mapping.driver import *
 from arc.reaction import ARCReaction
-from arc.mapping.engine import check_atom_map
+from arc.mapping.engine import check_atom_map, label_species_atoms, map_pairs
 from arc.species.species import ARCSpecies
 
 from itertools import permutations
@@ -874,6 +874,20 @@ class TestMappingDriver(unittest.TestCase):
         self.assertIn(atom_map[6], [6, 8])
         self.assertIn(atom_map[7], [6, 7])
         self.assertIn(atom_map[8], [7, 8])
+
+    def test_map_pairs_failure_condition_guarded_in_map_rxn(self):
+        """
+        Test the condition guarded by map_rxn(): a fragment pair that cannot be mapped
+        makes map_pairs() return a list containing None, in which case map_rxn() returns None
+        instead of passing the maps to glue_maps().
+        """
+        ethanol = ARCSpecies(label='ethanol', smiles='CCO')
+        dms = ARCSpecies(label='dimethyl_ether', smiles='COC')
+        label_species_atoms([ethanol])
+        label_species_atoms([dms])
+        fragment_maps = map_pairs([(ethanol, dms)])
+        self.assertEqual(fragment_maps, [None])
+        self.assertTrue(any(fragment_map is None for fragment_map in fragment_maps))
 
     def test_convert_label_dict(self):
         """Test the convert_label_dict() function."""
