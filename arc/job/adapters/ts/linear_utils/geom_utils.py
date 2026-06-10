@@ -100,6 +100,25 @@ def mol_to_adjacency(mol: Molecule) -> dict[int, set[int]]:
     return adj
 
 
+def bond_order_map(mol: Molecule) -> dict[tuple[int, int], float]:
+    """
+    Build a ``{(min_idx, max_idx): bond_order}`` map for every bond in the molecule.
+
+    Args:
+        mol (Molecule): RMG Molecule.
+
+    Returns:
+        dict[tuple[int, int], float]: Canonical bond key to bond order.
+    """
+    a2i = atom_index_map(mol)
+    out: dict[tuple[int, int], float] = {}
+    for atom in mol.atoms:
+        ia = a2i[atom]
+        for nbr, bond in atom.bonds.items():
+            out[canonical_bond(ia, a2i[nbr])] = float(bond.order)
+    return out
+
+
 def bfs_fragment(adj: dict[int, set[int]],
                  start: int,
                  block: set[int] | None = None,

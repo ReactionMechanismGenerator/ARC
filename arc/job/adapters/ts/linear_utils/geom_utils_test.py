@@ -14,6 +14,7 @@ import numpy as np
 from arc.job.adapters.ts.linear_utils.geom_utils import (
     atom_index_map,
     bfs_path,
+    bond_order_map,
     canonical_bond,
     dihedral_deg,
     downstream,
@@ -266,8 +267,9 @@ class TestGeomUtils(unittest.TestCase):
 
     def test_dihedral_deg_range(self):
         """Result is always in [-180, 180]."""
+        rng = np.random.default_rng(42)
         for _ in range(20):
-            points = [np.random.randn(3) for _ in range(4)]
+            points = [rng.standard_normal(3) for _ in range(4)]
             d = dihedral_deg(*points)
             self.assertGreaterEqual(d, -180.0)
             self.assertLessEqual(d, 180.0)
@@ -327,6 +329,44 @@ class TestMolToAdjacency(unittest.TestCase):
         for ci in c_indices:
             c_neighbors = [j for j in adj[ci] if mol.atoms[j].symbol == 'C']
             self.assertEqual(len(c_neighbors), 2)
+
+
+class TestBondOrderMap(unittest.TestCase):
+    """Tests for the bond_order_map function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def test_methane_all_single_bonds(self):
+        """Methane: four C-H bonds, all of order 1.0."""
+        mol = Molecule().from_smiles('C')
+        orders = bond_order_map(mol)
+        self.assertEqual(len(orders), 4)
+        for (a, b), order in orders.items():
+            self.assertLess(a, b)
+            self.assertEqual(order, 1.0)
+            self.assertIsInstance(order, float)
+
+    def test_ethylene_double_bond(self):
+        """Ethylene: the C=C bond has order 2.0, the C-H bonds order 1.0."""
+        mol = Molecule().from_smiles('C=C')
+        orders = bond_order_map(mol)
+        c_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        cc_key = (min(c_indices), max(c_indices))
+        self.assertEqual(orders[cc_key], 2.0)
+        self.assertEqual(len(orders), 5)
+        for key, order in orders.items():
+            if key != cc_key:
+                self.assertEqual(order, 1.0)
+
+    def test_propene_mixed_orders(self):
+        """Propene: one C=C (2.0), one C-C (1.0), six C-H (1.0)."""
+        mol = Molecule().from_smiles('C=CC')
+        orders = bond_order_map(mol)
+        self.assertEqual(len(orders), 8)
+        self.assertEqual(sorted(orders.values()), [1.0] * 7 + [2.0])
 
 
 class TestSplitMolAtBonds(unittest.TestCase):
