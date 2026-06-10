@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import os
 import shutil
 
+
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
@@ -1183,6 +1184,37 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(kwargs['scan_trsh'], [])
         self.assertEqual(kwargs['trsh'], {'scan_res': 4.0})
         self.assertEqual(kwargs['rotor_index'], 0)
+
+    def test_report_running_jobs_snapshot(self):
+        """The snapshot file is overwritten on change and left untouched (heartbeat only) on no change."""
+        path = self.sched1.running_jobs_snapshot_path
+        if os.path.isfile(path):
+            os.remove(path)
+        self.sched1._last_status_payload = None
+        self.sched1.running_jobs = {'spcA': ['opt_a1234']}
+        self.sched1.active_pipes = {}
+
+        # First call: file doesn't exist, snapshot must be written.
+        self.sched1.report_running_jobs_snapshot()
+        snapshot = read_yaml_file(path)
+        self.assertIn('timestamp', snapshot)
+        self.assertEqual(snapshot['running_jobs'], {'spcA': ['opt_a1234']})
+
+        # Second call with identical payload: file must be left untouched.
+        first_mtime = os.path.getmtime(path)
+        self.sched1.report_running_jobs_snapshot()
+        self.assertEqual(os.path.getmtime(path), first_mtime)
+
+        # Mutating the live running_jobs lists must not alias the stored payload.
+        self.sched1.running_jobs['spcA'].append('sp_b5678')
+        self.assertNotEqual(self.sched1._last_status_payload['running_jobs'], self.sched1.running_jobs)
+
+        # Third call after a change: the file must be overwritten with the new snapshot only.
+        self.sched1.report_running_jobs_snapshot()
+        snapshot = read_yaml_file(path)
+        self.assertEqual(snapshot['running_jobs'], {'spcA': ['opt_a1234', 'sp_b5678']})
+
+        os.remove(path)
 
     @classmethod
     def tearDownClass(cls):
