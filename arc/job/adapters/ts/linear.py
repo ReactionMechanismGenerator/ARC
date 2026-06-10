@@ -544,7 +544,7 @@ def postprocess_isomerization_records(unique: list[GuessRecord],
                 rec.xyz, fallback_fb, fallback_bb, fallback_changed)
 
     # 4. Late local reactive-center cleanup (internal-CH₂ pathway)
-    atom_to_idx_iso = {a: i for i, a in enumerate(r_mol.atoms)}
+    atom_to_idx_iso = atom_index_map(r_mol)
     for rec in unique:
         _apply_internal_ch2_cleanup_to_isomerization_record(
             rec, r_mol, atom_to_idx_iso)
@@ -877,57 +877,84 @@ class LinearAdapter(JobAdapter):
             if not rxn.is_unimolecular():
                 logger.warning(f'The linear TS search adapter requires a unimolecular reaction; skipping {rxn}.')
                 continue
-            if rxn.family is not None and rxn.family not in supported_families:
+            if rxn.family is not None and rxn.family in ts_adapters_by_rmg_family and rxn.family not in supported_families:
                 logger.warning(f'The linear TS search adapter does not support the {rxn.family} reaction family.')
                 continue
-            rxn.ts_species = rxn.ts_species or ARCSpecies(label='TS',
-                                                          is_ts=True,
-                                                          charge=rxn.charge,
-                                                          multiplicity=rxn.multiplicity,
-                                                          )
-            weights = get_weight_grid(rxn)
-            all_xyzs_so_far: list[dict] = []
-            for w_i, w in enumerate(weights):
-                t0 = datetime.datetime.now()
-                xyzs = interpolate(rxn=rxn, weight=w, existing_xyzs=all_xyzs_so_far)
-                t_ex = datetime.datetime.now() - t0
-                if not xyzs:
-                    continue
-                all_xyzs_so_far.extend(xyzs)
-
-                for xyz_i, xyz in enumerate(xyzs):
-                    if colliding_atoms(xyz):
+            if any(spc.get_xyz() is None for spc in rxn.r_species + rxn.p_species):
+                logger.warning(f'The linear TS search adapter requires coordinates for all species; skipping {rxn}.')
+                continue
+            # Snapshot shared reaction state via the private attributes (the property
+            # getters compute on access). interpolate() may set approximate values
+            # (e.g., a heavy-backbone atom map or a wider-family-set product_dicts)
+            # for intra-call communication between strategies; these must not
+            # survive this job (the scheduler persists the reaction right after).
+            atom_map_snapshot = rxn._atom_map
+            family_snapshot = rxn._family
+            family_own_reverse_snapshot = rxn._family_own_reverse
+            product_dicts_snapshot = rxn._product_dicts
+            try:
+                rxn.ts_species = rxn.ts_species or ARCSpecies(label='TS',
+                                                              is_ts=True,
+                                                              charge=rxn.charge,
+                                                              multiplicity=rxn.multiplicity,
+                                                              )
+                weights = get_weight_grid(rxn)
+                all_xyzs_so_far: list[dict] = []
+                # Per-reaction memo: atom maps and the wider-family-set scan
+                # outcome are weight-invariant, so compute them once per job
+                # instead of once per weight iteration.
+                map_cache: dict = {}
+                for w_i, w in enumerate(weights):
+                    t0 = datetime.datetime.now()
+                    xyzs = interpolate(rxn=rxn, weight=w, existing_xyzs=all_xyzs_so_far, map_cache=map_cache)
+                    t_ex = datetime.datetime.now() - t0
+                    if not xyzs:
                         continue
-                    unique = True
-                    for other_tsg in rxn.ts_species.ts_guesses:
-                        if almost_equal_coords(xyz, other_tsg.initial_xyz):
-                            if 'linear' not in other_tsg.method.lower():
-                                other_tsg.method += f' and Linear (w={w:.2f}, {xyz_i})'
-                            unique = False
-                            break
+                    all_xyzs_so_far.extend(xyzs)
 
-                    if unique:
-                        method = f'Linear (w={w:.2f}, {xyz_i})'
-                        ts_guess = TSGuess(method=method,
-                                           index=len(rxn.ts_species.ts_guesses),
-                                           method_index=w_i,
-                                           t0=t0,
-                                           execution_time=t_ex,
-                                           success=True,
-                                           family=rxn.family,
-                                           xyz=xyz,
-                                           )
-                        rxn.ts_species.ts_guesses.append(ts_guess)
+                    for xyz_i, xyz in enumerate(xyzs):
+                        if colliding_atoms(xyz):
+                            continue
+                        unique = True
+                        for other_tsg in rxn.ts_species.ts_guesses:
+                            if almost_equal_coords(xyz, other_tsg.initial_xyz):
+                                if 'linear' not in other_tsg.method.lower():
+                                    other_tsg.method += f' and Linear (w={w:.2f}, {xyz_i})'
+                                unique = False
+                                break
 
-                        save_geo(xyz=xyz,
-                                 path=self.local_path,
-                                 filename=f'Linear w={w:.2f}, {xyz_i}',
-                                 format_='xyz',
-                                 comment=f'Linear w={w:.2f}, {xyz_i}, family: {rxn.family}',
-                                 )
+                        if unique:
+                            method = f'Linear (w={w:.2f}, {xyz_i})'
+                            ts_guess = TSGuess(method=method,
+                                               index=len(rxn.ts_species.ts_guesses),
+                                               method_index=w_i,
+                                               t0=t0,
+                                               execution_time=t_ex,
+                                               success=True,
+                                               family=rxn.family,
+                                               xyz=xyz,
+                                               )
+                            rxn.ts_species.ts_guesses.append(ts_guess)
+
+                            save_geo(xyz=xyz,
+                                     path=self.local_path,
+                                     filename=f'Linear w={w:.2f}, {xyz_i}',
+                                     format_='xyz',
+                                     comment=f'Linear w={w:.2f}, {xyz_i}, family: {rxn.family}',
+                                     )
+            except Exception as e:
+                logger.error(f'Linear TS adapter failed for {rxn.label}: {e}', exc_info=True)
+                continue
+            finally:
+                # Restore only after the whole weights loop, so intra-job caching
+                # (e.g., the wider-family-set product_dicts) persists across weights.
+                rxn._atom_map = atom_map_snapshot
+                rxn._family = family_snapshot
+                rxn._family_own_reverse = family_own_reverse_snapshot
+                rxn._product_dicts = product_dicts_snapshot
 
             if len(self.reactions) < 5:
-                successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'linear' in tsg.method])
+                successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'linear' in tsg.method.lower()])
                 if successes:
                     logger.info(f'Linear successfully found {successes} TS guesses for {rxn.label}.')
                 else:
@@ -1082,6 +1109,78 @@ def _reposition_migrating_atom(xyz: dict,
             'coords': tuple(tuple(row) for row in coords)}
 
 
+def _use_ring_closure(r_mol: Molecule,
+                      bond_pair: tuple[int, int],
+                      site_dist: float,
+                      symbols: tuple,
+                      ) -> bool:
+    """
+    Decide whether a forming bond should be built via torsion-driven ring closure.
+
+    Ring closure is used when the forming-bond atoms are far apart, the
+    graph path between them contains cumulated bonds, or a non-H pair is
+    separated by a long graph path while still > 3.0 Å apart.
+
+    Args:
+        r_mol (Molecule): Reactant RMG Molecule.
+        bond_pair (tuple[int, int]): Forming bond as a pair of atom indices.
+        site_dist (float): Current distance between the bond atoms in Angstrom.
+        symbols (tuple): Atom symbols in reactant order.
+
+    Returns:
+        bool: Whether ring closure should be attempted.
+    """
+    both_h = symbols[bond_pair[0]] == 'H' or symbols[bond_pair[1]] == 'H'
+    path_len = get_path_length(r_mol, bond_pair[0], bond_pair[1])
+    return (site_dist > RING_CLOSURE_THRESHOLD
+            or path_has_cumulated_bonds(r_mol, bond_pair)
+            or (not both_h and path_len is not None and path_len >= 3
+                and site_dist > 3.0))
+
+
+def _reposition_monovalent_migration(rc_xyz: dict,
+                                     r_mol: Molecule,
+                                     symbols: tuple,
+                                     bond_pair: tuple[int, int],
+                                     bb: list[tuple[int, int]],
+                                     ) -> dict:
+    """
+    Reposition the migrating atom of a ring-closure guess for monovalent migrations.
+
+    Applies :func:`_reposition_migrating_atom` only for true monovalent
+    atom migration (e.g. F, Cl, Br — non-H, exactly 1 bond in R, present
+    in both a breaking and a forming bond); otherwise returns the guess
+    unchanged.
+
+    Args:
+        rc_xyz (dict): Ring-closure TS guess XYZ.
+        r_mol (Molecule): Reactant RMG Molecule.
+        symbols (tuple): Atom symbols in reactant order.
+        bond_pair (tuple[int, int]): Forming bond as a pair of atom indices.
+        bb (list[tuple[int, int]]): Breaking bonds.
+
+    Returns:
+        dict: The (possibly repositioned) TS guess XYZ.
+    """
+    mig_idx = bond_pair[0] if symbols[bond_pair[0]] != 'H' else bond_pair[1]
+    atom_in_bb = any(mig_idx in b for b in bb)
+    n_bonds = len(r_mol.atoms[mig_idx].bonds)
+    if symbols[mig_idx] == 'H' or not atom_in_bb or n_bonds != 1:
+        return rc_xyz
+    acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
+    atom_to_idx = atom_index_map(r_mol)
+    don_idx = None
+    for nbr in r_mol.atoms[mig_idx].bonds:
+        ni = atom_to_idx[nbr]
+        if ni != acc_idx and r_mol.atoms[ni].symbol != 'H':
+            don_idx = ni
+            break
+    if don_idx is None:
+        return rc_xyz
+    rc_coords = np.array(rc_xyz['coords'], dtype=float)
+    return _reposition_migrating_atom(rc_xyz, rc_coords, mig_idx, don_idx, acc_idx, mol=r_mol)
+
+
 def _get_ring_preservation_bonds(mol: Molecule,
                                  reactive_core: set[int],
                                  changing_bonds: set[tuple[int, int]],
@@ -1125,6 +1224,43 @@ def _get_ring_preservation_bonds(mol: Molecule,
                 ring_bond_pairs.append((bonded_idx, reactive_idx))
                 expanded.add(bonded_idx)
     return ring_bond_pairs, expanded
+
+
+def _inject_ring_bond_constraint(ring_bonds: list[tuple[int, int]],
+                                 bb: list[tuple[int, int]],
+                                 fb: list[tuple[int, int]],
+                                 constraints: dict,
+                                 reactive_xyz_indices: set[int],
+                                 ) -> None:
+    """
+    Add at most one ring-preservation bond to the ``R_atom`` constraints.
+
+    The first ring bond whose endpoints are not already constrained is
+    appended to ``constraints['R_atom']``; the first endpoint of every
+    other ring bond is dropped from ``reactive_xyz_indices``. Both
+    containers are modified in place.
+
+    Args:
+        ring_bonds (list[tuple[int, int]]): Ring-preservation bonds from
+            :func:`_get_ring_preservation_bonds`.
+        bb (list[tuple[int, int]]): Breaking bonds.
+        fb (list[tuple[int, int]]): Forming bonds.
+        constraints (dict): R-constraints dict; ``'R_atom'`` is extended in place.
+        reactive_xyz_indices (set[int]): Reactive atom indices; pruned in place.
+    """
+    if not ring_bonds:
+        return
+    reactive_bond_atoms = {a for bond in bb + fb for a in bond}
+    constrained_atoms = reactive_bond_atoms | {a for pair in constraints.get('R_atom', []) for a in pair}
+    added = False
+    for rb in ring_bonds:
+        if not added and rb[0] not in constrained_atoms and rb[1] not in constrained_atoms:
+            constraints['R_atom'].append(rb)
+            constrained_atoms.add(rb[0])
+            constrained_atoms.add(rb[1])
+            added = True
+        else:
+            reactive_xyz_indices.discard(rb[0])
 
 
 def _fix_broken_ring_bonds(xyz: dict,
@@ -1454,9 +1590,49 @@ def cleanup_after_existing_h_migration(ts_xyz: dict,
     )
 
 
+def cached_map_rxn(rxn: ARCReaction,
+                   product_dict_index: int,
+                   map_cache: dict | None = None,
+                   ) -> list[int] | None:
+    """
+    Call :func:`map_rxn` for a specific product_dict path, memoizing the result.
+
+    ``map_rxn`` deep-copies all species and runs scissors, conformer embedding,
+    and isomorphism checks, yet its result is weight-invariant, so memoizing it
+    avoids redoing identical work across the interpolation weight sweep.
+    Both ``None`` results and raised exceptions are cached so that failures are
+    not retried per weight (a cached exception is re-raised to preserve the
+    call-site semantics).
+
+    Args:
+        rxn (ARCReaction): The reaction to map.
+        product_dict_index (int): Index into ``rxn.product_dicts`` identifying the path.
+        map_cache (dict, optional): Per-job memo dict; ``None`` disables caching.
+
+    Returns:
+        list[int] | None: The atom map for the path, or ``None`` if mapping failed.
+    """
+    key = ('map_rxn', product_dict_index)
+    if map_cache is not None and key in map_cache:
+        cached = map_cache[key]
+        if isinstance(cached, Exception):
+            raise cached
+        return cached
+    try:
+        atom_map = map_rxn(rxn=rxn, product_dict_index_to_try=product_dict_index)
+    except Exception as e:
+        if map_cache is not None:
+            map_cache[key] = e
+        raise
+    if map_cache is not None:
+        map_cache[key] = atom_map
+    return atom_map
+
+
 def interpolate(rxn: ARCReaction,
                 weight: float = 0.5,
                 existing_xyzs: list[dict] | None = None,
+                map_cache: dict | None = None,
                 ) -> list[dict] | None:
     """
     Search for a TS by interpolating internal coords.
@@ -1466,20 +1642,23 @@ def interpolate(rxn: ARCReaction,
         weight (float): Interpolation weight (0=reactant-like, 1=product-like).
         existing_xyzs (list[dict], optional): Previously generated XYZ guesses
             (e.g. from earlier weight iterations) to deduplicate against.
+        map_cache (dict, optional): Per-job memo dict shared across weight iterations,
+            caching atom maps and the wider-family-set scan outcome; ``None`` disables caching.
 
     Returns:
         list[dict] | None: XYZ coordinate guesses in reactant atom ordering.
     """
     if rxn.is_isomerization():
-        return interpolate_isomerization(rxn=rxn, weight=weight, existing_xyzs=existing_xyzs)
+        return interpolate_isomerization(rxn=rxn, weight=weight, existing_xyzs=existing_xyzs, map_cache=map_cache)
     elif rxn.is_unimolecular():
-        return interpolate_addition(rxn=rxn, weight=weight, existing_xyzs=existing_xyzs)
+        return interpolate_addition(rxn=rxn, weight=weight, existing_xyzs=existing_xyzs, map_cache=map_cache)
     return None
 
 
 def interpolate_addition(rxn: ARCReaction,
                          weight: float = 0.5,
                          existing_xyzs: list[dict] | None = None,
+                         map_cache: dict | None = None,
                          ) -> list[dict] | None:
     """
     Search for a TS of a non-isomerization unimolecular reaction where one side
@@ -1513,6 +1692,10 @@ def interpolate_addition(rxn: ARCReaction,
         weight (float): Interpolation weight (0 = reactant-like, 1 = product-like).
         existing_xyzs (list[dict], optional): Previously generated XYZ guesses
             (e.g. from earlier weight iterations) to deduplicate against.
+        map_cache (dict, optional): Per-job memo dict shared across weight iterations,
+            caching per-path atom maps (keys ``('map_rxn', i)``) and an empty
+            wider-family-set scan outcome (key ``'wider_scan_empty'``);
+            ``None`` disables caching.
 
     Returns:
         list[dict] | None: Validated XYZ coordinate guesses in the unimolecular-species
@@ -1521,15 +1704,18 @@ def interpolate_addition(rxn: ARCReaction,
     if not (0.0 <= weight <= 1.0):
         return None
 
-    n_r = len(rxn.r_species)
-    n_p = len(rxn.p_species)
+    # Stoichiometric (not unique-species) counts, so that symmetric
+    # dissociations like C2H6 <=> CH3 + CH3 are classified correctly.
+    reactants, products = rxn.get_reactants_and_products(return_copies=False)
+    n_r = len(reactants)
+    n_p = len(products)
     if n_r == 1 and n_p > 1:
-        uni_species = rxn.r_species[0]
-        multi_species = rxn.p_species
+        uni_species = reactants[0]
+        multi_species = products
         uni_is_product = False
     elif n_p == 1 and n_r > 1:
-        uni_species = rxn.p_species[0]
-        multi_species = rxn.r_species
+        uni_species = products[0]
+        multi_species = reactants
         uni_is_product = True
     else:
         logger.debug(f'Linear addition (rxn={rxn.label}): not an addition/dissociation reaction.')
@@ -1543,7 +1729,7 @@ def interpolate_addition(rxn: ARCReaction,
     # Korcek_step1/2 (which live outside the default set) keep the H
     # migration their recipe prescribes instead of silently falling
     # through to the heavy-only heuristic path.
-    if not rxn.product_dicts:
+    if not rxn.product_dicts and not (map_cache is not None and map_cache.get('wider_scan_empty')):
         try:
             wider_pds = rxn.get_product_dicts(
                 rmg_family_set='all',
@@ -1562,6 +1748,11 @@ def interpolate_addition(rxn: ARCReaction,
             logger.debug(f'Linear addition (rxn={rxn.label}): wider family-set '
                          f'retry recovered family={wider_pds[0].get("family")} '
                          f'with {len(wider_pds)} product_dict(s).')
+        elif map_cache is not None:
+            # Cache the negative outcome so the full all-families scan
+            # runs at most once per job (it would otherwise repeat on
+            # every weight iteration for family-less reactions).
+            map_cache['wider_scan_empty'] = True
 
     ts_records: list[GuessRecord] = []
     seen_split_sets: set[frozenset] = set()
@@ -1624,7 +1815,13 @@ def interpolate_addition(rxn: ARCReaction,
         pd0 = rxn.product_dicts[0]
         rl0 = pd0.get('r_label_map')
         if rl0 is not None:
-            bb_re, fb_re = rxn.get_expected_changing_bonds(r_label_dict=rl0)
+            try:
+                bb_re, fb_re = rxn.get_expected_changing_bonds(
+                    r_label_dict=rl0, family=pd0.get('family') or rxn.family)
+            except KeyError as e:
+                logger.debug(f'Linear addition (rxn={rxn.label}): Retroene recipe label {e} '
+                             f'missing from r_label_map; skipping bespoke builder.')
+                bb_re, fb_re = None, None
             if bb_re and fb_re:
                 ts_re = build_retroene_ts(uni_xyz, uni_mol,
                                           breaking_bonds=list(bb_re),
@@ -1656,7 +1853,13 @@ def interpolate_addition(rxn: ARCReaction,
         if r_label_map is None:
             continue
 
-        bb, fb = rxn.get_expected_changing_bonds(r_label_dict=r_label_map)
+        try:
+            bb, fb = rxn.get_expected_changing_bonds(
+                r_label_dict=r_label_map, family=product_dict.get('family') or rxn.family)
+        except KeyError as e:
+            logger.debug(f'Linear addition (rxn={rxn.label}, path={i}): recipe label {e} '
+                         f'missing from r_label_map; skipping path.')
+            continue
         all_reactive_r: list[tuple[int, int]] = list(bb or []) + list(fb or [])
         if not all_reactive_r:
             continue
@@ -1664,7 +1867,7 @@ def interpolate_addition(rxn: ARCReaction,
         # Convert to uni-species ordering.
         if uni_is_product:
             try:
-                atom_map = map_rxn(rxn=rxn, product_dict_index_to_try=i)
+                atom_map = cached_map_rxn(rxn=rxn, product_dict_index=i, map_cache=map_cache)
             except Exception:
                 atom_map = None
             if atom_map is None:
@@ -1716,12 +1919,7 @@ def interpolate_addition(rxn: ARCReaction,
 
             # Identify migrating atoms: atoms in the small product that are
             # only bonded (in the reactant) to atoms in the large product.
-            adj_full: dict[int, set[int]] = {k: set() for k in range(len(uni_mol.atoms))}
-            for atom in uni_mol.atoms:
-                ia = atom_to_idx[atom]
-                for nbr in atom.edges:
-                    ib = atom_to_idx[nbr]
-                    adj_full[ia].add(ib)
+            adj_full = mol_to_adjacency(uni_mol)
             heavy_in_small = [idx for idx in small_prod_atoms
                               if uni_xyz['symbols'][idx] != 'H']
             if heavy_in_small:
@@ -1914,13 +2112,20 @@ def interpolate_addition(rxn: ARCReaction,
             r_label_map = product_dict.get('r_label_map')
             if r_label_map is None:
                 continue
-            bb_conc, fb_conc = rxn.get_expected_changing_bonds(r_label_dict=r_label_map)
+            try:
+                bb_conc, fb_conc = rxn.get_expected_changing_bonds(
+                    r_label_dict=r_label_map, family=product_dict.get('family') or rxn.family)
+            except KeyError as e:
+                logger.debug(f'Linear addition (rxn={rxn.label}): concerted recipe label {e} '
+                             f'missing from r_label_map; skipping path.')
+                continue
             if not bb_conc or not fb_conc:
                 continue
             if uni_is_product:
                 try:
-                    am = map_rxn(rxn=rxn,
-                                 product_dict_index_to_try=rxn.product_dicts.index(product_dict))
+                    am = cached_map_rxn(rxn=rxn,
+                                        product_dict_index=rxn.product_dicts.index(product_dict),
+                                        map_cache=map_cache)
                 except Exception:
                     am = None
                 if am is None:
@@ -1969,7 +2174,13 @@ def interpolate_addition(rxn: ARCReaction,
         r_label_map = product_dict.get('r_label_map')
         if r_label_map is None:
             continue
-        bb_sn2, fb_sn2 = rxn.get_expected_changing_bonds(r_label_dict=r_label_map)
+        try:
+            bb_sn2, fb_sn2 = rxn.get_expected_changing_bonds(
+                r_label_dict=r_label_map, family=product_dict.get('family') or rxn.family)
+        except KeyError as e:
+            logger.debug(f'Linear addition (rxn={rxn.label}): SN2 recipe label {e} '
+                         f'missing from r_label_map; skipping path.')
+            continue
         if not bb_sn2 or not fb_sn2 or len(bb_sn2) != 1 or len(fb_sn2) != 1:
             continue
         bb_atoms_sn2 = {a for bond in bb_sn2 for a in bond}
@@ -1991,12 +2202,7 @@ def interpolate_addition(rxn: ARCReaction,
 
         # Build molecular-graph adjacency (not distance-based) for
         # fragment detection — avoids false bonds from close contacts.
-        mol_adj: dict[int, set[int]] = {k: set() for k in range(len(uni_xyz['symbols']))}
-        atom_to_idx_sn2 = {a: idx for idx, a in enumerate(uni_mol.atoms)}
-        for atom in uni_mol.atoms:
-            i = atom_to_idx_sn2[atom]
-            for nbr in atom.bonds:
-                mol_adj[i].add(atom_to_idx_sn2[nbr])
+        mol_adj = mol_to_adjacency(uni_mol)
 
         # Step 1.5: orient the leaving group away from the attacking atom.
         # If the fb_other-pivot-bb_other angle < 90° the leaving group is
@@ -2008,14 +2214,7 @@ def interpolate_addition(rxn: ARCReaction,
         if d_att > 1e-6 and d_lea > 1e-6:
             cos_angle = np.dot(vec_attack, vec_leave_cur) / (d_att * d_lea)
             if cos_angle > 0:  # angle < 90° → leaving group on same side
-                leave_frag: set[int] = set()
-                q_leave = deque([bb_other])
-                while q_leave:
-                    node = q_leave.popleft()
-                    if node in leave_frag or node == pivot:
-                        continue
-                    leave_frag.add(node)
-                    q_leave.extend(mol_adj[node] - leave_frag - {pivot})
+                leave_frag = bfs_fragment(mol_adj, bb_other, block={pivot})
                 for k in leave_frag:
                     sn2_coords[k] = 2.0 * sn2_coords[pivot] - sn2_coords[k]
 
@@ -2028,14 +2227,7 @@ def interpolate_addition(rxn: ARCReaction,
         if d_break_cur > 1e-6 and d_break_target > d_break_cur:
             direction = vec_leave / d_break_cur
             displacement = direction * (d_break_target - d_break_cur)
-            frag: set[int] = set()
-            queue_sn2 = deque([bb_other])
-            while queue_sn2:
-                node = queue_sn2.popleft()
-                if node in frag or node == pivot:
-                    continue
-                frag.add(node)
-                queue_sn2.extend(mol_adj[node] - frag - {pivot})
+            frag = bfs_fragment(mol_adj, bb_other, block={pivot})
             for k in frag:
                 sn2_coords[k] += displacement
 
@@ -2048,14 +2240,7 @@ def interpolate_addition(rxn: ARCReaction,
         if d_form_cur > 1e-6 and d_form_target > d_form_cur:
             direction_form = vec_form / d_form_cur
             disp_form = direction_form * (d_form_target - d_form_cur)
-            frag_form: set[int] = set()
-            queue_form = deque([fb_other])
-            while queue_form:
-                node = queue_form.popleft()
-                if node in frag_form or node == pivot:
-                    continue
-                frag_form.add(node)
-                queue_form.extend(mol_adj[node] - frag_form - {pivot})
+            frag_form = bfs_fragment(mol_adj, fb_other, block={pivot})
             for k in frag_form:
                 sn2_coords[k] += disp_form
 
@@ -2165,12 +2350,7 @@ def interpolate_addition(rxn: ARCReaction,
         # --- Detect cross bonds for concerted builder ---
         # After cutting split bonds, two single-atom fragments that can
         # merge to match a product (e.g. two H's → H₂) form a cross bond.
-        _adj_cut: dict[int, set[int]] = {k: set() for k in range(len(uni_mol.atoms))}
-        for atom in uni_mol.atoms:
-            ia = atom_to_idx[atom]
-            for nbr in atom.edges:
-                ib = atom_to_idx[nbr]
-                _adj_cut[ia].add(ib)
+        _adj_cut = mol_to_adjacency(uni_mol)
         for a, b in cut:
             _adj_cut[a].discard(b)
             _adj_cut[b].discard(a)
@@ -2349,7 +2529,7 @@ def interpolate_addition(rxn: ARCReaction,
         if len([s for s in smallest_sp.get_xyz()['symbols'] if s != 'H']) == 1:
             # Carbene C = product C with the most H neighbors
             # (CH₃/CH₂ group at the insertion site).
-            atom_to_idx_uni = {a: i for i, a in enumerate(uni_mol.atoms)}
+            atom_to_idx_uni = atom_index_map(uni_mol)
             uni_syms = uni_xyz['symbols']
             for atom in uni_mol.atoms:
                 idx = atom_to_idx_uni[atom]
@@ -2761,18 +2941,7 @@ def _build_path_context(r_xyz: dict, r_mol: Molecule, op_xyz: dict,
         r_mol, reactive_xyz_indices, changing_bonds, ring_sets)
 
     constraints = get_r_constraints(expected_breaking_bonds=bb, expected_forming_bonds=fb)
-    if ring_bonds:
-        reactive_bond_atoms = {a for bond in bb + fb for a in bond}
-        constrained_atoms = reactive_bond_atoms | {a for pair in constraints.get('R_atom', []) for a in pair}
-        added = False
-        for rb in ring_bonds:
-            if not added and rb[0] not in constrained_atoms and rb[1] not in constrained_atoms:
-                constraints['R_atom'].append(rb)
-                constrained_atoms.add(rb[0])
-                constrained_atoms.add(rb[1])
-                added = True
-            else:
-                reactive_xyz_indices.discard(rb[0])
+    _inject_ring_bond_constraint(ring_bonds, bb, fb, constraints, reactive_xyz_indices)
 
     # Near-attack rotation.
     fb_in_ring = _reactive_heavy_atoms_share_ring(fb, r_mol, r_xyz['symbols'], ring_sets)
@@ -2809,6 +2978,18 @@ def _build_path_context(r_xyz: dict, r_mol: Molecule, op_xyz: dict,
         path_spec=path_spec,
     )
 
+_BESPOKE_PATH_BUILDERS: dict = {
+    '1,3_sigmatropic_rearrangement': (build_1_3_sigmatropic_rearrangement_ts,
+                                      'bespoke_1_3_sigmatropic', '1,3_sigmatropic'),
+    'Intra_OH_migration': (build_intra_oh_migration_ts,
+                           'bespoke_intra_oh_migration', 'Intra_OH_migration'),
+    'intra_OH_migration': (build_intra_oh_migration_ts,
+                           'bespoke_intra_oh_migration', 'Intra_OH_migration'),
+    'intra_substitutionS_isomerization': (build_intra_substitution_s_isomerization_ts,
+                                          'bespoke_intra_substitutionS', 'intra_substitutionS'),
+}
+
+
 def _strategy_bespoke_family(ctx: _PathContext) -> _StrategyResult:
     """
     Dispatch to a family-specific bespoke builder when available.
@@ -2819,44 +3000,17 @@ def _strategy_bespoke_family(ctx: _PathContext) -> _StrategyResult:
     wrapped in a :class:`GuessRecord`; on ``None`` the pipeline
     continues to generic strategies.
     """
-    if ctx.family == '1,3_sigmatropic_rearrangement' and ctx.bb and ctx.fb:
-        ts = build_1_3_sigmatropic_rearrangement_ts(
-            r_xyz=ctx.r_xyz, r_mol=ctx.r_mol,
-            breaking_bonds=ctx.bb, forming_bonds=ctx.fb)
+    entry = _BESPOKE_PATH_BUILDERS.get(ctx.family)
+    if entry is not None and ctx.bb and ctx.fb:
+        builder, strategy_label, log_name = entry
+        ts = builder(r_xyz=ctx.r_xyz, r_mol=ctx.r_mol,
+                     breaking_bonds=ctx.bb, forming_bonds=ctx.fb)
         if ts is not None and not colliding_atoms(ts):
-            logger.debug(f'Linear ({ctx.label}): used bespoke 1,3_sigmatropic builder.')
+            logger.debug(f'Linear ({ctx.label}): used bespoke {log_name} builder.')
             return _StrategyResult(
                 guesses=[GuessRecord(
                     xyz=ts, bb=list(ctx.bb), fb=list(ctx.fb),
-                    family=ctx.family, strategy='bespoke_1_3_sigmatropic',
-                    anchor_xyz=ctx.r_xyz,
-                    reactive_indices=ctx.reactive_xyz_indices,
-                    path_spec=ctx.path_spec)],
-                halt=False)
-    if ctx.family in ('Intra_OH_migration', 'intra_OH_migration') and ctx.bb and ctx.fb:
-        ts = build_intra_oh_migration_ts(
-            r_xyz=ctx.r_xyz, r_mol=ctx.r_mol,
-            breaking_bonds=ctx.bb, forming_bonds=ctx.fb)
-        if ts is not None and not colliding_atoms(ts):
-            logger.debug(f'Linear ({ctx.label}): used bespoke Intra_OH_migration builder.')
-            return _StrategyResult(
-                guesses=[GuessRecord(
-                    xyz=ts, bb=list(ctx.bb), fb=list(ctx.fb),
-                    family=ctx.family, strategy='bespoke_intra_oh_migration',
-                    anchor_xyz=ctx.r_xyz,
-                    reactive_indices=ctx.reactive_xyz_indices,
-                    path_spec=ctx.path_spec)],
-                halt=False)
-    if ctx.family == 'intra_substitutionS_isomerization' and ctx.bb and ctx.fb:
-        ts = build_intra_substitution_s_isomerization_ts(
-            r_xyz=ctx.r_xyz, r_mol=ctx.r_mol,
-            breaking_bonds=ctx.bb, forming_bonds=ctx.fb)
-        if ts is not None and not colliding_atoms(ts):
-            logger.debug(f'Linear ({ctx.label}): used bespoke intra_substitutionS builder.')
-            return _StrategyResult(
-                guesses=[GuessRecord(
-                    xyz=ts, bb=list(ctx.bb), fb=list(ctx.fb),
-                    family=ctx.family, strategy='bespoke_intra_substitutionS',
+                    family=ctx.family, strategy=strategy_label,
                     anchor_xyz=ctx.r_xyz,
                     reactive_indices=ctx.reactive_xyz_indices,
                     path_spec=ctx.path_spec)],
@@ -2910,14 +3064,7 @@ def _strategy_ring_closure(ctx: _PathContext) -> _StrategyResult:
     for bond_pair in ctx.fb:
         r_coords = np.array(ctx.r_xyz_na['coords'] if ctx.r_xyz_na else ctx.r_xyz['coords'], dtype=float)
         site_dist = float(np.linalg.norm(r_coords[bond_pair[0]] - r_coords[bond_pair[1]]))
-        both_h = (ctx.r_xyz['symbols'][bond_pair[0]] == 'H'
-                  or ctx.r_xyz['symbols'][bond_pair[1]] == 'H')
-        path_len = get_path_length(ctx.r_mol, bond_pair[0], bond_pair[1])
-        use_rc = (site_dist > RING_CLOSURE_THRESHOLD
-                  or path_has_cumulated_bonds(ctx.r_mol, bond_pair)
-                  or (not both_h and path_len is not None and path_len >= 3
-                      and site_dist > 3.0))
-        if not use_rc:
+        if not _use_ring_closure(ctx.r_mol, bond_pair, site_dist, ctx.r_xyz['symbols']):
             continue
         if abs(ctx.weight - 0.5) > 0.01:
             continue
@@ -2925,25 +3072,8 @@ def _strategy_ring_closure(ctx: _PathContext) -> _StrategyResult:
         rc_xyz = ring_closure_xyz(src_xyz, ctx.r_mol, forming_bond=bond_pair)
         if rc_xyz is None:
             continue
-        # Reposition only for true monovalent atom migration (F, Cl, Br):
-        # non-H, 1 bond in R, present in both a breaking and forming bond.
-        mig_idx = bond_pair[0] if ctx.r_xyz['symbols'][bond_pair[0]] != 'H' else bond_pair[1]
-        atom_in_bb = any(mig_idx in b for b in ctx.bb)
-        n_bonds = len(ctx.r_mol.atoms[mig_idx].bonds)
-        if ctx.r_xyz['symbols'][mig_idx] != 'H' and atom_in_bb and n_bonds == 1:
-            acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
-            atom_to_idx = {a: idx for idx, a in enumerate(ctx.r_mol.atoms)}
-            don_idx = None
-            for nbr in ctx.r_mol.atoms[mig_idx].bonds:
-                ni = atom_to_idx[nbr]
-                if ni != acc_idx and ctx.r_mol.atoms[ni].symbol != 'H':
-                    don_idx = ni
-                    break
-            if don_idx is not None:
-                rc_coords = np.array(rc_xyz['coords'], dtype=float)
-                rc_xyz = _reposition_migrating_atom(
-                    rc_xyz, rc_coords, mig_idx, don_idx, acc_idx,
-                    mol=ctx.r_mol)
+        rc_xyz = _reposition_monovalent_migration(rc_xyz, ctx.r_mol, ctx.r_xyz['symbols'],
+                                                  bond_pair, list(ctx.bb))
         rc_xyz, migrating_hs = postprocess_ts_guess(
             rc_xyz, ctx.r_mol, list(ctx.fb), list(ctx.bb),
             family=ctx.family, r_label_map=ctx.r_label_map)
@@ -3008,6 +3138,91 @@ def _strategy_zmat_interpolation(ctx: _PathContext) -> _StrategyResult:
     return _StrategyResult(guesses=guesses, halt=False)
 
 
+def direct_contraction(r_xyz: dict,
+                       r_mol: 'Molecule',
+                       bond_pair: tuple[int, int],
+                       weight: float,
+                       ) -> tuple[dict, int, int, float, float] | None:
+    """
+    Contract a short forming bond from the reactant geometry with breathing compensation.
+
+    Moves the terminal endpoint of ``bond_pair`` (the one with fewer heavy
+    neighbors) and its H-only substituents partway toward the partner so the
+    bond reaches 1.35x its single-bond length, then pushes any neighbor bond
+    compressed below 1.10x its single-bond length back out (breathing
+    compensation).
+
+    Args:
+        r_xyz (dict): Reactant XYZ.
+        r_mol (Molecule): Reactant RMG Molecule in the same atom order.
+        bond_pair (tuple[int, int]): Forming bond as a pair of atom indices.
+        weight (float): Interpolation weight (0.5 = TS midpoint).
+
+    Returns:
+        tuple[dict, int, int, float, float] | None:
+            ``(ts_xyz, mover, target, site_dist, contracted_dist)``, or
+            ``None`` if the bond is unsuitable (too long/short, already at
+            target) or the contracted geometry has colliding atoms.
+    """
+    r_coords_arr = np.array(r_xyz['coords'], dtype=float)
+    site_dist = float(np.linalg.norm(r_coords_arr[bond_pair[0]] - r_coords_arr[bond_pair[1]]))
+    if site_dist > 3.0 or site_dist < 1e-6:
+        return None
+    # Move the terminal atom (fewer heavy neighbors).
+    atom_to_idx = atom_index_map(r_mol)
+    n_heavy_0 = sum(1 for nbr in r_mol.atoms[bond_pair[0]].bonds
+                    if r_mol.atoms[atom_to_idx[nbr]].symbol != 'H')
+    n_heavy_1 = sum(1 for nbr in r_mol.atoms[bond_pair[1]].bonds
+                    if r_mol.atoms[atom_to_idx[nbr]].symbol != 'H')
+    if n_heavy_0 <= n_heavy_1:
+        mover, target = bond_pair[0], bond_pair[1]
+    else:
+        mover, target = bond_pair[1], bond_pair[0]
+    sbl = get_single_bond_length(
+        r_xyz['symbols'][mover], r_xyz['symbols'][target]) or 1.5
+    d_target = sbl * 1.35
+    if d_target >= site_dist:
+        return None
+    # Move only the mover and its H-only substituents; backbone
+    # neighbors stay in place.
+    vec = r_coords_arr[target] - r_coords_arr[mover]
+    shift = (vec / site_dist) * (site_dist - d_target) * weight / 0.5
+    frag: set[int] = {mover}
+    for nbr in r_mol.atoms[mover].bonds:
+        ni = atom_to_idx[nbr]
+        if r_mol.atoms[ni].symbol == 'H':
+            frag.add(ni)
+    coords_dc = r_coords_arr.copy()
+    for k in frag:
+        coords_dc[k] += shift
+    # Breathing compensation: push neighbors outward if the
+    # contraction compressed their bond below single-bond length.
+    for nbr in r_mol.atoms[mover].bonds:
+        ni = atom_to_idx[nbr]
+        if ni == target or ni in frag:
+            continue
+        new_dist = float(np.linalg.norm(coords_dc[mover] - coords_dc[ni]))
+        sbl_mn = get_single_bond_length(
+            r_xyz['symbols'][mover], r_xyz['symbols'][ni]) or 1.5
+        ts_floor = sbl_mn * 1.10  # TS bonds are ~10% longer than equilibrium
+        if new_dist < ts_floor:
+            vec_mn = coords_dc[ni] - coords_dc[mover]
+            dir_mn = vec_mn / new_dist
+            push_dist = ts_floor - new_dist
+            nbr_frag: set[int] = {ni}
+            for nbr2 in r_mol.atoms[ni].bonds:
+                ni2 = atom_to_idx[nbr2]
+                if r_xyz['symbols'][ni2] == 'H':
+                    nbr_frag.add(ni2)
+            for k in nbr_frag:
+                coords_dc[k] += dir_mn * push_dist
+    ts_dc = {'symbols': r_xyz['symbols'], 'isotopes': r_xyz['isotopes'],
+             'coords': tuple(tuple(row) for row in coords_dc)}
+    if colliding_atoms(ts_dc):
+        return None
+    return ts_dc, mover, target, site_dist, site_dist - float(np.linalg.norm(shift))
+
+
 def _strategy_direct_contraction(ctx: _PathContext) -> _StrategyResult:
     """
     Build TS by contracting short forming bonds from the reactant geometry.
@@ -3026,68 +3241,16 @@ def _strategy_direct_contraction(ctx: _PathContext) -> _StrategyResult:
         return _StrategyResult()
     guesses = []
     for bond_pair in ctx.fb:
-        r_coords_arr = np.array(ctx.r_xyz['coords'], dtype=float)
-        site_dist = float(np.linalg.norm(r_coords_arr[bond_pair[0]] - r_coords_arr[bond_pair[1]]))
-        if site_dist > 3.0 or site_dist < 1e-6:
+        dc = direct_contraction(ctx.r_xyz, ctx.r_mol, bond_pair, ctx.weight)
+        if dc is None:
             continue
-        # Move the terminal atom (fewer heavy neighbors).
-        atom_to_idx = {a: idx for idx, a in enumerate(ctx.r_mol.atoms)}
-        n_heavy_0 = sum(1 for nbr in ctx.r_mol.atoms[bond_pair[0]].bonds
-                        if ctx.r_mol.atoms[atom_to_idx[nbr]].symbol != 'H')
-        n_heavy_1 = sum(1 for nbr in ctx.r_mol.atoms[bond_pair[1]].bonds
-                        if ctx.r_mol.atoms[atom_to_idx[nbr]].symbol != 'H')
-        if n_heavy_0 <= n_heavy_1:
-            mover, target = bond_pair[0], bond_pair[1]
-        else:
-            mover, target = bond_pair[1], bond_pair[0]
-        sbl = get_single_bond_length(
-            ctx.r_xyz['symbols'][mover], ctx.r_xyz['symbols'][target]) or 1.5
-        d_target = sbl * 1.35
-        if d_target >= site_dist:
-            continue
-        # Move only the mover and its H-only substituents; backbone
-        # neighbors stay in place.
-        vec = r_coords_arr[target] - r_coords_arr[mover]
-        direction = vec / site_dist
-        shift = direction * (site_dist - d_target) * ctx.weight / 0.5
-        frag: set[int] = {mover}
-        for nbr in ctx.r_mol.atoms[mover].bonds:
-            ni = atom_to_idx[nbr]
-            if ctx.r_mol.atoms[ni].symbol == 'H':
-                frag.add(ni)
-        coords_dc = r_coords_arr.copy()
-        for k in frag:
-            coords_dc[k] += shift
-        # Breathing compensation: push neighbors outward if the
-        # contraction compressed their bond below single-bond length.
-        for nbr in ctx.r_mol.atoms[mover].bonds:
-            ni = atom_to_idx[nbr]
-            if ni == target or ni in frag:
-                continue
-            new_dist = float(np.linalg.norm(coords_dc[mover] - coords_dc[ni]))
-            sbl_mn = get_single_bond_length(
-                ctx.r_xyz['symbols'][mover], ctx.r_xyz['symbols'][ni]) or 1.5
-            ts_floor = sbl_mn * 1.10  # TS bonds are ~10% longer than equilibrium
-            if new_dist < ts_floor:
-                vec_mn = coords_dc[ni] - coords_dc[mover]
-                dir_mn = vec_mn / new_dist
-                push_dist = ts_floor - new_dist
-                nbr_frag: set[int] = {ni}
-                for nbr2 in ctx.r_mol.atoms[ni].bonds:
-                    ni2 = atom_to_idx[nbr2]
-                    if ctx.r_xyz['symbols'][ni2] == 'H':
-                        nbr_frag.add(ni2)
-                for k in nbr_frag:
-                    coords_dc[k] += dir_mn * push_dist
-        ts_dc = {'symbols': ctx.r_xyz['symbols'], 'isotopes': ctx.r_xyz['isotopes'],
-                  'coords': tuple(tuple(row) for row in coords_dc)}
-        if not colliding_atoms(ts_dc):
-            guesses.append(GuessRecord(xyz=ts_dc, bb=list(ctx.bb), fb=list(ctx.fb),
-                                       family=ctx.family, strategy='direct_contraction',
-                                       anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices,
-                                       path_spec=ctx.path_spec))
-            logger.debug(f'Linear ({ctx.label}): used direct-contraction builder '
-                         f'(mover={mover}, target={target}, d={site_dist:.2f}→{site_dist-float(np.linalg.norm(shift)):.2f}).')
+        ts_dc, mover, target, site_dist, d_contracted = dc
+        guesses.append(GuessRecord(xyz=ts_dc, bb=list(ctx.bb), fb=list(ctx.fb),
+                                   family=ctx.family, strategy='direct_contraction',
+                                   anchor_xyz=ctx.r_xyz, reactive_indices=ctx.reactive_xyz_indices,
+                                   path_spec=ctx.path_spec))
+        logger.debug(f'Linear ({ctx.label}): used direct-contraction builder '
+                     f'(mover={mover}, target={target}, d={site_dist:.2f}→{d_contracted:.2f}).')
     return _StrategyResult(guesses=guesses, halt=False)
 
 
@@ -3120,7 +3283,7 @@ def _strategy_3center_shift(ctx: _PathContext) -> _StrategyResult:
     bb_other = ctx.bb[0][0] if ctx.bb[0][1] == pivot else ctx.bb[0][1]
     fb_other = ctx.fb[0][0] if ctx.fb[0][1] == pivot else ctx.fb[0][1]
 
-    atom_to_idx = {a: idx for idx, a in enumerate(ctx.r_mol.atoms)}
+    atom_to_idx = atom_index_map(ctx.r_mol)
     n_heavy_pivot = sum(1 for nbr in ctx.r_mol.atoms[pivot].bonds
                         if ctx.r_mol.atoms[atom_to_idx[nbr]].symbol != 'H')
 
@@ -3290,6 +3453,7 @@ def _try_bespoke_family_fallbacks(r_xyz: dict,
 def interpolate_isomerization(rxn: ARCReaction,
                               weight: float = 0.5,
                               existing_xyzs: list[dict] | None = None,
+                              map_cache: dict | None = None,
                               ) -> list[dict] | None:
     """
     Search for a TS of an A <=> B (1 to 1) isomerization reaction by interpolating internal coords.
@@ -3337,6 +3501,8 @@ def interpolate_isomerization(rxn: ARCReaction,
             (e.g. from earlier weight iterations). New guesses that are
             near-identical to any entry in this list are suppressed, preventing
             duplicate TS guesses across multiple calls with different weights.
+        map_cache (dict, optional): Per-job memo dict shared across weight iterations,
+            caching per-path atom maps (keys ``('map_rxn', i)``); ``None`` disables caching.
 
     Returns:
         list[dict] | None: Validated, deduplicated XYZ coordinate guesses in reactant atom ordering.
@@ -3385,7 +3551,12 @@ def interpolate_isomerization(rxn: ARCReaction,
         if r_label_dict is None:
             logger.debug(f'Linear (rxn={rxn.label}, path={i}): r_label_dict is None; skipping path.')
             continue
-        bb, fb = rxn.get_expected_changing_bonds(r_label_dict=r_label_dict)
+        try:
+            bb, fb = rxn.get_expected_changing_bonds(r_label_dict=r_label_dict, family=path_family)
+        except KeyError as e:
+            logger.debug(f'Linear (rxn={rxn.label}, path={i}): recipe label {e} '
+                         f'missing from r_label_dict; skipping path.')
+            continue
         if bb is None or fb is None:
             logger.debug(f'Linear (rxn={rxn.label}, path={i}): get_expected_changing_bonds returned None; skipping path.')
             continue
@@ -3454,7 +3625,7 @@ def interpolate_isomerization(rxn: ARCReaction,
         # equivalent atoms (e.g., distinct H's in intra_H_migration), so
         # we must not reuse the global rxn.atom_map for all paths.
         try:
-            atom_map = map_rxn(rxn=rxn, product_dict_index_to_try=i)
+            atom_map = cached_map_rxn(rxn=rxn, product_dict_index=i, map_cache=map_cache)
         except Exception as e:
             logger.debug(f'Linear (rxn={rxn.label}, path={i}): map_rxn raised {type(e).__name__}: {e}; skipping path.')
             continue
@@ -3530,62 +3701,24 @@ def interpolate_isomerization(rxn: ARCReaction,
             rl = product_dict.get('r_label_map')
             if rl is None:
                 continue
-            bb_dc, fb_dc = rxn.get_expected_changing_bonds(r_label_dict=rl)
+            try:
+                bb_dc, fb_dc = rxn.get_expected_changing_bonds(
+                    r_label_dict=rl, family=product_dict.get('family') or rxn.family)
+            except KeyError as e:
+                logger.debug(f'Linear (rxn={rxn.label}): direct-contraction recipe label {e} '
+                             f'missing from r_label_map; skipping path.')
+                continue
             if bb_dc or not fb_dc:
                 continue
             for bond_pair_dc in fb_dc:
-                r_coords_dc = np.array(r_xyz['coords'], dtype=float)
-                site_d = float(np.linalg.norm(r_coords_dc[bond_pair_dc[0]] - r_coords_dc[bond_pair_dc[1]]))
-                if site_d > 3.0 or site_d < 1e-6:
+                dc = direct_contraction(r_xyz, r_mol, bond_pair_dc, weight)
+                if dc is None:
                     continue
-                atom_to_idx_dc = {a: idx for idx, a in enumerate(r_mol.atoms)}
-                nh0 = sum(1 for nbr in r_mol.atoms[bond_pair_dc[0]].bonds
-                          if r_mol.atoms[atom_to_idx_dc[nbr]].symbol != 'H')
-                nh1 = sum(1 for nbr in r_mol.atoms[bond_pair_dc[1]].bonds
-                          if r_mol.atoms[atom_to_idx_dc[nbr]].symbol != 'H')
-                mover = bond_pair_dc[0] if nh0 <= nh1 else bond_pair_dc[1]
-                target_dc = bond_pair_dc[1] if mover == bond_pair_dc[0] else bond_pair_dc[0]
-                sbl_dc = get_single_bond_length(
-                    r_xyz['symbols'][mover], r_xyz['symbols'][target_dc]) or 1.5
-                d_tgt = sbl_dc * 1.35
-                if d_tgt >= site_d:
-                    continue
-                vec_dc = r_coords_dc[target_dc] - r_coords_dc[mover]
-                shift_dc = (vec_dc / site_d) * (site_d - d_tgt) * weight / 0.5
-                frag_dc: set[int] = {mover}
-                for nbr_dc in r_mol.atoms[mover].bonds:
-                    ni_dc = atom_to_idx_dc[nbr_dc]
-                    if r_mol.atoms[ni_dc].symbol == 'H':
-                        frag_dc.add(ni_dc)
-                for k in frag_dc:
-                    r_coords_dc[k] += shift_dc
-                # Breathing compensation.
-                for nbr_bc in r_mol.atoms[mover].bonds:
-                    ni_bc = atom_to_idx_dc[nbr_bc]
-                    if ni_bc == target_dc or ni_bc in frag_dc:
-                        continue
-                    new_d = float(np.linalg.norm(r_coords_dc[mover] - r_coords_dc[ni_bc]))
-                    sbl_bc = get_single_bond_length(
-                        r_xyz['symbols'][mover], r_xyz['symbols'][ni_bc]) or 1.5
-                    ts_floor_bc = sbl_bc * 1.10
-                    if new_d < ts_floor_bc:
-                        vec_bc = r_coords_dc[ni_bc] - r_coords_dc[mover]
-                        dir_bc = vec_bc / new_d
-                        push_d = ts_floor_bc - new_d
-                        bc_frag: set[int] = {ni_bc}
-                        for nbr2_bc in r_mol.atoms[ni_bc].bonds:
-                            ni2_bc = atom_to_idx_dc[nbr2_bc]
-                            if r_xyz['symbols'][ni2_bc] == 'H':
-                                bc_frag.add(ni2_bc)
-                        for k in bc_frag:
-                            r_coords_dc[k] += dir_bc * push_d
-                ts_dc = {'symbols': r_xyz['symbols'], 'isotopes': r_xyz['isotopes'],
-                          'coords': tuple(tuple(row) for row in r_coords_dc)}
-                if not colliding_atoms(ts_dc):
-                    ts_xyzs.append(GuessRecord(xyz=ts_dc, bb=list(bb_dc), fb=list(fb_dc),
-                                               strategy='direct_contraction_supplement'))
-                    logger.debug(f'Linear (rxn={rxn.label}): direct-contraction from recipe '
-                                 f'(mover={mover}, target={target_dc}).')
+                ts_dc, mover, target_dc, _, _ = dc
+                ts_xyzs.append(GuessRecord(xyz=ts_dc, bb=list(bb_dc), fb=list(fb_dc),
+                                           strategy='direct_contraction_supplement'))
+                logger.debug(f'Linear (rxn={rxn.label}): direct-contraction from recipe '
+                             f'(mover={mover}, target={target_dc}).')
             if ts_xyzs:
                 break
 
@@ -3605,6 +3738,9 @@ def interpolate_isomerization(rxn: ARCReaction,
         p_xyz = rxn.p_species[0].get_xyz()
         p_mol = rxn.p_species[0].mol
 
+        # Tracks whether p_mol shares the (reordered) p_xyz reactant frame;
+        # when False, the product-frame bond-set filtering below is unsafe.
+        p_mol_frame_ok = True
         bb_map_from_reorder = None
         if r_xyz['symbols'] != p_xyz['symbols']:
             # Symbols differ — try backbone_atom_map (handles ring-forming
@@ -3614,10 +3750,11 @@ def interpolate_isomerization(rxn: ARCReaction,
                 p_xyz = order_xyz_by_atom_map(xyz=p_xyz, atom_map=bb_map_from_reorder)
                 try:
                     p_mol = order_mol_by_atom_map(p_mol, bb_map_from_reorder)
-                except Exception:
+                except Exception as e:
                     logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — '
                                  f'failed to reorder product molecule by backbone atom map: {e}',
                                  exc_info=True)
+                    p_mol_frame_ok = False
                 if rxn.atom_map is None:
                     rxn.atom_map = bb_map_from_reorder
                 logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — '
@@ -3639,12 +3776,28 @@ def interpolate_isomerization(rxn: ARCReaction,
                     p_xyz = order_xyz_by_atom_map(xyz=p_xyz, atom_map=bb_map)
                     try:
                         p_mol = order_mol_by_atom_map(p_mol, bb_map)
-                    except Exception:
-                        pass  # keep original p_mol
+                    except Exception as e:
+                        logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — '
+                                     f'failed to reorder product molecule by backbone atom map: {e}.')
+                        p_mol_frame_ok = False
                     logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — '
                                  f'using backbone atom map.')
                 elif rxn.atom_map is None:
                     rxn.atom_map = list(range(n_atoms))
+                elif bb_map_from_reorder is None:
+                    # rxn.atom_map exists but the product was never reordered
+                    # into the reactant frame; reorder so downstream geometry
+                    # and bond-set math share the reactant indexing (mirrors
+                    # the backbone-map branch above).
+                    try:
+                        p_xyz = order_xyz_by_atom_map(xyz=p_xyz, atom_map=rxn.atom_map)
+                        p_mol = order_mol_by_atom_map(p_mol, rxn.atom_map)
+                        logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — '
+                                     f'reordered P atoms via the reaction atom map.')
+                    except Exception as e:
+                        logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — '
+                                     f'failed to reorder the product by rxn.atom_map: {e}.')
+                        p_mol_frame_ok = False
 
                 try:
                     fb, bb = rxn.get_formed_and_broken_bonds()
@@ -3666,7 +3819,7 @@ def interpolate_isomerization(rxn: ARCReaction,
             _fallback_bb = list(bb)
             _fallback_changed = list(changed)
 
-            if bb_map is not None:
+            if bb_map is not None and p_mol_frame_ok:
                 # get_formed_and_broken_bonds() reports order-only changes
                 # (single↔double) as BOTH formed and broken. Filter to
                 # truly new (in P not R) / truly removed (in R not P).
@@ -3708,7 +3861,7 @@ def interpolate_isomerization(rxn: ARCReaction,
                     reactive_xyz_indices.update(bond)
                 # Also mark direct neighbors: they shift when a reactive
                 # atom moves and should not trigger backbone-drift rejection.
-                atom_to_idx_fb = {a: idx for idx, a in enumerate(r_mol.atoms)}
+                atom_to_idx_fb = atom_index_map(r_mol)
                 for idx in list(reactive_xyz_indices):
                     for nbr in r_mol.atoms[idx].bonds:
                         reactive_xyz_indices.add(atom_to_idx_fb[nbr])
@@ -3719,18 +3872,7 @@ def interpolate_isomerization(rxn: ARCReaction,
                 anchors = find_smart_anchors(r_mol, breaking_bonds=list(bb), forming_bonds=list(fb))
                 constraints = get_r_constraints(expected_breaking_bonds=list(bb),
                                                 expected_forming_bonds=list(fb))
-                if ring_bonds_fb:
-                    reactive_bond_atoms_fb = {a for bond in bb + fb for a in bond}
-                    constrained_atoms_fb = reactive_bond_atoms_fb | {a for pair in constraints.get('R_atom', []) for a in pair}
-                    added_fb = False
-                    for rb in ring_bonds_fb:
-                        if not added_fb and rb[0] not in constrained_atoms_fb and rb[1] not in constrained_atoms_fb:
-                            constraints['R_atom'].append(rb)
-                            constrained_atoms_fb.add(rb[0])
-                            constrained_atoms_fb.add(rb[1])
-                            added_fb = True
-                        else:
-                            reactive_xyz_indices.discard(rb[0])
+                _inject_ring_bond_constraint(ring_bonds_fb, bb, fb, constraints, reactive_xyz_indices)
 
                 # Skip near-attack for backbone-map cases where the
                 # reaction occurs within a pre-existing ring — rotating
@@ -3766,38 +3908,14 @@ def interpolate_isomerization(rxn: ARCReaction,
                     r_coords = np.array(r_xyz['coords'], dtype=float)
                     site_dist = float(np.linalg.norm(
                         r_coords[bond_pair[0]] - r_coords[bond_pair[1]]))
-                    both_h_fb = (r_xyz['symbols'][bond_pair[0]] == 'H'
-                                 or r_xyz['symbols'][bond_pair[1]] == 'H')
-                    path_len = get_path_length(r_mol, bond_pair[0], bond_pair[1])
-                    use_rc = (site_dist > RING_CLOSURE_THRESHOLD
-                              or path_has_cumulated_bonds(r_mol, bond_pair)
-                              or (not both_h_fb and path_len is not None and path_len >= 3
-                                  and site_dist > 3.0))
-                    if use_rc:
+                    if _use_ring_closure(r_mol, bond_pair, site_dist, r_xyz['symbols']):
                         needs_ring_closure = True
                         if abs(weight - 0.5) <= 0.01:
                             rc_xyz = ring_closure_xyz(r_xyz, r_mol,
                                                        forming_bond=bond_pair)
                             if rc_xyz is not None:
-                                # Reposition only for true monovalent atom migration
-                                # (F, Cl — 1 bond in R), not ring closure.
-                                mig_idx = bond_pair[0] if r_xyz['symbols'][bond_pair[0]] != 'H' else bond_pair[1]
-                                atom_in_bb = any(mig_idx in b for b in bb)
-                                n_bonds_fb = len(r_mol.atoms[mig_idx].bonds)
-                                if r_xyz['symbols'][mig_idx] != 'H' and atom_in_bb and n_bonds_fb == 1:
-                                    acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
-                                    atom_to_idx_rc = {a: idx for idx, a in enumerate(r_mol.atoms)}
-                                    don_idx = None
-                                    for nbr in r_mol.atoms[mig_idx].bonds:
-                                        ni = atom_to_idx_rc[nbr]
-                                        if ni != acc_idx and r_mol.atoms[ni].symbol != 'H':
-                                            don_idx = ni
-                                            break
-                                    if don_idx is not None:
-                                        rc_coords = np.array(rc_xyz['coords'], dtype=float)
-                                        rc_xyz = _reposition_migrating_atom(
-                                            rc_xyz, rc_coords, mig_idx, don_idx, acc_idx,
-                                            mol=r_mol)
+                                rc_xyz = _reposition_monovalent_migration(
+                                    rc_xyz, r_mol, r_xyz['symbols'], bond_pair, list(bb))
                                 # Try H-migration postprocessing first
                                 # (triangulates H); fall back to generic
                                 # if H-migration validation rejects it.
@@ -3824,7 +3942,7 @@ def interpolate_isomerization(rxn: ARCReaction,
                         site_d = float(np.linalg.norm(r_coords_dc[bond_pair_dc[0]] - r_coords_dc[bond_pair_dc[1]]))
                         if site_d > 3.0 or site_d < 1e-6:
                             continue
-                        atom_to_idx_dc = {a: idx for idx, a in enumerate(r_mol.atoms)}
+                        atom_to_idx_dc = atom_index_map(r_mol)
                         nh0 = sum(1 for nbr in r_mol.atoms[bond_pair_dc[0]].bonds
                                   if r_mol.atoms[atom_to_idx_dc[nbr]].symbol != 'H')
                         nh1 = sum(1 for nbr in r_mol.atoms[bond_pair_dc[1]].bonds
@@ -3838,19 +3956,7 @@ def interpolate_isomerization(rxn: ARCReaction,
                             continue
                         vec_dc = r_coords_dc[target] - r_coords_dc[mover]
                         shift_dc = (vec_dc / site_d) * (site_d - d_tgt) * weight / 0.5
-                        mol_adj_dc2: dict[int, set[int]] = {k: set() for k in range(n_atoms)}
-                        for atom_dc in r_mol.atoms:
-                            ii = atom_to_idx_dc[atom_dc]
-                            for nbr_dc in atom_dc.bonds:
-                                mol_adj_dc2[ii].add(atom_to_idx_dc[nbr_dc])
-                        frag_dc: set[int] = set()
-                        q_dc = deque([mover])
-                        while q_dc:
-                            nd = q_dc.popleft()
-                            if nd in frag_dc or nd == target:
-                                continue
-                            frag_dc.add(nd)
-                            q_dc.extend(mol_adj_dc2[nd] - frag_dc - {target})
+                        frag_dc = bfs_fragment(mol_to_adjacency(r_mol), mover, block={target})
                         for k in frag_dc:
                             r_coords_dc[k] += shift_dc
                         ts_dc = {'symbols': r_xyz['symbols'], 'isotopes': r_xyz['isotopes'],
@@ -4011,7 +4117,13 @@ def interpolate_isomerization(rxn: ARCReaction,
     for pd in rxn.product_dicts:
         rl = pd.get('r_label_map')
         if rl:
-            bb_i, fb_i = rxn.get_expected_changing_bonds(r_label_dict=rl)
+            try:
+                bb_i, fb_i = rxn.get_expected_changing_bonds(
+                    r_label_dict=rl, family=pd.get('family') or rxn.family)
+            except KeyError as e:
+                logger.debug(f'Linear (rxn={rxn.label}): changing-bonds union recipe label {e} '
+                             f'missing from r_label_map; skipping path.')
+                continue
             for b in list(bb_i or []) + list(fb_i or []):
                 changing_all.add((min(b), max(b)))
     reactive_all: set[int] = set()

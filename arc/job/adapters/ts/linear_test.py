@@ -27,18 +27,19 @@ respective implementations under
 """
 
 import math
-import os
 import shutil
+import tempfile
 import unittest
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 
-from arc.common import ARC_PATH, almost_equal_coords, get_single_bond_length
+from arc.common import almost_equal_coords, get_single_bond_length
 from arc.job.adapters.ts.linear import (GuessRecord,
                                         LinearAdapter,
                                         build_ring_scission_ts,
+                                        cached_map_rxn,
                                         cleanup_after_existing_h_migration,
                                         interpolate,
                                         interpolate_addition,
@@ -172,6 +173,80 @@ def assert_unique_guesses(test_case: unittest.TestCase,
                                f'Guess {j + 1}:\n{xyz_to_str(ts_xyzs[j])}')
 
 
+def _make_rxn_1() -> ARCReaction:
+    """
+    Construct a fresh CPD <=> C5_carbene (Cyclopentadiene_scission) reaction.
+
+    Returns:
+        ARCReaction: The ring-opening isomerization reaction.
+    """
+    return ARCReaction(r_species=[ARCSpecies(label='CPD', smiles='C1C=CC=C1',
+                                             xyz="""C      -1.11689933   -0.16076292   -0.17157587
+                                                    C      -0.34122713    1.12302797   -0.12498608
+                                                    C       0.95393962    0.86179733    0.10168911
+                                                    C       1.14045506   -0.56033684    0.22004768
+                                                    C      -0.03946631   -1.17782376    0.06650470
+                                                    H      -1.58827673   -0.30386166   -1.14815401
+                                                    H      -1.87502410   -0.19463481    0.61612857
+                                                    H      -0.77193310    2.10401684   -0.25572143
+                                                    H       1.74801386    1.58807889    0.18578522
+                                                    H       2.09208098   -1.03534789    0.40412258
+                                                    H      -0.20166282   -2.24415315    0.10615953""")],
+                       p_species=[ARCSpecies(label='C5_carbene', adjlist="""1  C u0 p1 c0 {2,S} {6,S}
+                                                                            2  C u0 p0 c0 {1,S} {3,D} {7,S}
+                                                                            3  C u0 p0 c0 {2,D} {4,S} {8,S}
+                                                                            4  C u0 p0 c0 {3,S} {5,D} {9,S}
+                                                                            5  C u0 p0 c0 {4,D} {10,S} {11,S}
+                                                                            6  H u0 p0 c0 {1,S}
+                                                                            7  H u0 p0 c0 {2,S}
+                                                                            8  H u0 p0 c0 {3,S}
+                                                                            9  H u0 p0 c0 {4,S}
+                                                                            10 H u0 p0 c0 {5,S}
+                                                                            11 H u0 p0 c0 {5,S}""",
+                                             xyz="""C       2.62023459    0.49362130   -0.23013873
+                                                    C       1.48006570   -0.33866786   -0.38699247
+                                                    C       1.53457595   -1.45115429   -1.13132450
+                                                    C       0.40179762   -2.32741928   -1.31937443
+                                                    C       0.45595744   -3.43865596   -2.06277224
+                                                    H       3.47507694    1.11901971   -0.11163109
+                                                    H       0.56454036   -0.04212124    0.11659958
+                                                    H       2.46516705   -1.72493574   -1.62516589
+                                                    H      -0.53390611   -2.06386676   -0.83047533
+                                                    H      -0.42088759   -4.06846526   -2.17670487
+                                                    H       1.36205133   -3.75009763   -2.57288841""")])
+
+
+def _make_rxn_2() -> ARCReaction:
+    """
+    Construct a fresh CCONO <=> CCNO2 (intra_NO2_ONO_conversion) reaction.
+
+    Returns:
+        ARCReaction: The isomerization reaction.
+    """
+    return ARCReaction(r_species=[ARCSpecies(label='CCONO', smiles='CCON=O',
+                                             xyz="""C      -1.36894499    0.07118059   -0.24801399
+                                                    C      -0.01369535    0.17184136    0.42591278
+                                                    O      -0.03967083   -0.62462610    1.60609048
+                                                    N       1.23538512   -0.53558048    2.24863846
+                                                    O       1.25629155   -1.21389295    3.27993827
+                                                    H      -2.16063255    0.41812452    0.42429392
+                                                    H      -1.39509985    0.66980796   -1.16284741
+                                                    H      -1.59800183   -0.96960842   -0.49986392
+                                                    H       0.19191326    1.21800574    0.68271847
+                                                    H       0.76371340   -0.19234475   -0.25650067""")],
+                       p_species=[ARCSpecies(label='CCNO2', smiles='CC[N+](=O)[O-]',
+                                             xyz="""C      -1.12362739   -0.04664655   -0.08575959
+                                                    C       0.24488022   -0.51587553    0.36119196
+                                                    N       0.57726975   -1.77875156   -0.37104243
+                                                    O       1.16476543   -1.66382529   -1.45384186
+                                                    O       0.24561669   -2.84385320    0.16410116
+                                                    H      -1.87655344   -0.80826847    0.13962125
+                                                    H      -1.14729169    0.14493421   -1.16405294
+                                                    H      -1.41423043    0.87863077    0.42354512
+                                                    H       1.02430791    0.21530309    0.12674144
+                                                    H       0.27058353   -0.73979548    1.43184405""")])
+
+
 class TestHeuristicsAdapter(unittest.TestCase):
     """
     Contains unit tests for the HeuristicsAdapter class.
@@ -183,63 +258,8 @@ class TestHeuristicsAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rxn_1 = ARCReaction(r_species=[ARCSpecies(label='CPD', smiles='C1C=CC=C1',
-                                                      xyz="""C      -1.11689933   -0.16076292   -0.17157587
-                                                             C      -0.34122713    1.12302797   -0.12498608
-                                                             C       0.95393962    0.86179733    0.10168911
-                                                             C       1.14045506   -0.56033684    0.22004768
-                                                             C      -0.03946631   -1.17782376    0.06650470
-                                                             H      -1.58827673   -0.30386166   -1.14815401
-                                                             H      -1.87502410   -0.19463481    0.61612857
-                                                             H      -0.77193310    2.10401684   -0.25572143
-                                                             H       1.74801386    1.58807889    0.18578522
-                                                             H       2.09208098   -1.03534789    0.40412258
-                                                             H      -0.20166282   -2.24415315    0.10615953""")],
-                                p_species=[ARCSpecies(label='C5_carbene', adjlist="""1  C u0 p1 c0 {2,S} {6,S}
-                                                                                     2  C u0 p0 c0 {1,S} {3,D} {7,S}
-                                                                                     3  C u0 p0 c0 {2,D} {4,S} {8,S}
-                                                                                     4  C u0 p0 c0 {3,S} {5,D} {9,S}
-                                                                                     5  C u0 p0 c0 {4,D} {10,S} {11,S}
-                                                                                     6  H u0 p0 c0 {1,S}
-                                                                                     7  H u0 p0 c0 {2,S}
-                                                                                     8  H u0 p0 c0 {3,S}
-                                                                                     9  H u0 p0 c0 {4,S}
-                                                                                     10 H u0 p0 c0 {5,S}
-                                                                                     11 H u0 p0 c0 {5,S}""",
-                                                      xyz="""C       2.62023459    0.49362130   -0.23013873
-                                                             C       1.48006570   -0.33866786   -0.38699247
-                                                             C       1.53457595   -1.45115429   -1.13132450
-                                                             C       0.40179762   -2.32741928   -1.31937443
-                                                             C       0.45595744   -3.43865596   -2.06277224
-                                                             H       3.47507694    1.11901971   -0.11163109
-                                                             H       0.56454036   -0.04212124    0.11659958
-                                                             H       2.46516705   -1.72493574   -1.62516589
-                                                             H      -0.53390611   -2.06386676   -0.83047533
-                                                             H      -0.42088759   -4.06846526   -2.17670487
-                                                             H       1.36205133   -3.75009763   -2.57288841""")])
-
-        cls.rxn_2 = ARCReaction(r_species=[ARCSpecies(label='CCONO', smiles='CCON=O',
-                                                      xyz="""C      -1.36894499    0.07118059   -0.24801399
-                                                             C      -0.01369535    0.17184136    0.42591278
-                                                             O      -0.03967083   -0.62462610    1.60609048
-                                                             N       1.23538512   -0.53558048    2.24863846
-                                                             O       1.25629155   -1.21389295    3.27993827
-                                                             H      -2.16063255    0.41812452    0.42429392
-                                                             H      -1.39509985    0.66980796   -1.16284741
-                                                             H      -1.59800183   -0.96960842   -0.49986392
-                                                             H       0.19191326    1.21800574    0.68271847
-                                                             H       0.76371340   -0.19234475   -0.25650067""")],
-                                p_species=[ARCSpecies(label='CCNO2', smiles='CC[N+](=O)[O-]',
-                                                      xyz="""C      -1.12362739   -0.04664655   -0.08575959
-                                                             C       0.24488022   -0.51587553    0.36119196
-                                                             N       0.57726975   -1.77875156   -0.37104243
-                                                             O       1.16476543   -1.66382529   -1.45384186
-                                                             O       0.24561669   -2.84385320    0.16410116
-                                                             H      -1.87655344   -0.80826847    0.13962125
-                                                             H      -1.14729169    0.14493421   -1.16405294
-                                                             H      -1.41423043    0.87863077    0.42354512
-                                                             H       1.02430791    0.21530309    0.12674144
-                                                             H       0.27058353   -0.73979548    1.43184405""")])
+        cls.rxn_1 = _make_rxn_1()
+        cls.rxn_2 = _make_rxn_2()
 
     def test_average_zmat_params(self):
         """Test the average_zmat_params() function."""
@@ -959,6 +979,116 @@ H       2.05354047   -0.10415729    1.58865243"""
             result = interpolate(self.rxn_2, weight=w)
             self.assertIsNotNone(result, msg=f'interpolate returned None for boundary weight {w}')
             self.assertIsInstance(result, list)
+
+    def test_cached_map_rxn(self):
+        """Test the cached_map_rxn() function."""
+        # A prepopulated cache entry is returned as-is without calling map_rxn
+        # (map_rxn could never return this sentinel object) and is not overwritten.
+        sentinel = [9, 9, 9]
+        cache = {('map_rxn', 0): sentinel}
+        self.assertIs(cached_map_rxn(rxn=self.rxn_2, product_dict_index=0, map_cache=cache), sentinel)
+        self.assertIs(cache[('map_rxn', 0)], sentinel)
+        # A cached None result is honored (failures are not retried).
+        cache = {('map_rxn', 0): None}
+        self.assertIsNone(cached_map_rxn(rxn=self.rxn_2, product_dict_index=0, map_cache=cache))
+        self.assertIn(('map_rxn', 0), cache)
+        # A cached exception is re-raised to preserve call-site semantics.
+        cache = {('map_rxn', 0): ValueError('cached failure')}
+        with self.assertRaises(ValueError):
+            cached_map_rxn(rxn=self.rxn_2, product_dict_index=0, map_cache=cache)
+        # An empty cache is populated by a real map_rxn call, and a second call
+        # returns the very same cached object.
+        cache = dict()
+        result_1 = cached_map_rxn(rxn=self.rxn_2, product_dict_index=0, map_cache=cache)
+        self.assertIn(('map_rxn', 0), cache)
+        self.assertIs(cache[('map_rxn', 0)], result_1)
+        self.assertIs(cached_map_rxn(rxn=self.rxn_2, product_dict_index=0, map_cache=cache), result_1)
+        # No cache (map_cache=None) keeps the plain map_rxn behavior.
+        self.assertEqual(cached_map_rxn(rxn=self.rxn_2, product_dict_index=0, map_cache=None), result_1)
+
+    def test_interpolate_isomerization_map_cache_reuse(self):
+        """interpolate_isomerization() populates the per-job map cache and reuses it across weight calls."""
+        cache = dict()
+        result_1 = interpolate_isomerization(self.rxn_2, weight=0.5, map_cache=cache)
+        self.assertIsInstance(result_1, list)
+        map_keys = [key for key in cache if isinstance(key, tuple) and key[0] == 'map_rxn']
+        self.assertTrue(map_keys, msg='Expected the map cache to be populated after the first call.')
+        snapshot = dict(cache)
+        result_2 = interpolate_isomerization(self.rxn_2, weight=0.65, map_cache=cache)
+        self.assertIsInstance(result_2, list)
+        self.assertEqual(set(cache.keys()), set(snapshot.keys()))
+        for key, value in snapshot.items():
+            self.assertIs(cache[key], value,
+                          msg=f'Cache entry {key} was overwritten instead of reused on the second call.')
+
+    def test_interpolate_addition_wider_scan_empty_marker_populated(self):
+        """interpolate_addition() caches an empty wider-family-set scan outcome in the per-job cache."""
+        # H2O2 <=> H2 + O2 matches no RMG/ARC family even with the 'all' family set.
+        r = ARCSpecies(label='H2O2', smiles='OO', xyz="""O       0.00000000    0.72793000   -0.05015000
+O       0.00000000   -0.72793000   -0.05015000
+H       0.78206000    0.94686000    0.40118000
+H      -0.78206000   -0.94686000    0.40118000""")
+        p1 = ARCSpecies(label='H2', smiles='[H][H]', xyz="""H 0.0 0.0 0.371
+H 0.0 0.0 -0.371""")
+        p2 = ARCSpecies(label='O2', smiles='[O][O]', xyz="""O 0.0 0.0 0.604
+O 0.0 0.0 -0.604""")
+        rxn = ARCReaction(r_species=[r], p_species=[p1, p2])
+        cache = dict()
+        result = interpolate_addition(rxn, weight=0.5, map_cache=cache)
+        self.assertIsInstance(result, list)
+        self.assertTrue(cache.get('wider_scan_empty'),
+                        msg='Expected the empty wider-family-set scan outcome to be cached.')
+        # A repeated call with the same cache keeps the marker.
+        interpolate_addition(rxn, weight=0.35, map_cache=cache)
+        self.assertTrue(cache.get('wider_scan_empty'))
+        # Without a cache, the standalone behavior is unchanged.
+        self.assertIsInstance(interpolate_addition(rxn, weight=0.5), list)
+
+    def test_interpolate_addition_wider_scan_empty_marker_prevents_rescan(self):
+        """A prepopulated 'wider_scan_empty' marker prevents the all-family-set re-scan."""
+        # OC1CC(C)OO1 <=> CC(C)=O + OC=O: the wider scan recovers Korcek_step2
+        # (positive control: test_interpolate_korcek_step2); with the marker
+        # prepopulated, the scan must be skipped, so no product_dicts and no
+        # family may be recovered.
+        r = ARCSpecies(label='R', smiles='OC1CC(C)OO1', xyz="""O       2.24879740   -0.60288879   -0.61333491
+C       1.57371209    0.04810206    0.45127457
+C       0.22294576   -0.58878552    0.64811736
+C      -0.61576351    0.24712755   -0.27994372
+C      -2.09858764    0.18320384    0.02866078
+O      -0.12479259    1.56634922   -0.03969215
+O       1.33454248    1.41337976    0.10504694
+H       3.11409720   -0.16350527   -0.66741772
+H       2.18959683   -0.01025467    1.35388451
+H      -0.09844973   -0.43616204    1.68554384
+H       0.18774256   -1.65691471    0.41684740
+H      -0.43624076   -0.00498099   -1.33176411
+H      -2.30557569    0.51236113    1.05290855
+H      -2.48665452   -0.83141064   -0.10098054
+H      -2.65275729    0.85777810   -0.63272727""")
+        p1 = ARCSpecies(label='P1', smiles='CC(C)=O', xyz="""C       1.27586049   -0.20311519   -0.02275731
+C       0.00452324    0.57012170   -0.24664672
+C      -1.27830828   -0.10541516    0.15623466
+O       0.01347981    1.69903580   -0.73503936
+H       1.24624439   -1.13132851   -0.59865800
+H       1.38830626   -0.42276962    1.04177383
+H       2.13211808    0.39115663   -0.35359592
+H      -1.25777130   -0.32155350    1.22720667
+H      -1.38833773   -1.04508735   -0.39212641
+H      -2.12451706    0.54376791   -0.08169526""")
+        p2 = ARCSpecies(label='P2', smiles='OC=O', xyz="""O       0.80871183   -0.54502054   -0.13494187
+C      -0.41707829   -0.03415895    0.05655464
+O      -0.60811294    1.16486843    0.13270033
+H       1.39322951    0.24033937   -0.18369670
+H      -1.17675011   -0.82602831    0.12938360""")
+        rxn = ARCReaction(r_species=[r], p_species=[p1, p2])
+        cache = {'wider_scan_empty': True}
+        result = interpolate_addition(rxn, weight=0.5, map_cache=cache)
+        self.assertIsInstance(result, list)
+        self.assertFalse(rxn.product_dicts,
+                         msg='Expected the wider family-set scan to be skipped, but product_dicts were recovered.')
+        self.assertIsNone(rxn._family,
+                          msg='Expected the wider family-set scan to be skipped, but a family was recovered.')
+        self.assertTrue(cache.get('wider_scan_empty'))
 
     # -----------------------------------------------------------------------
     # Tests for specific RMG families ***
@@ -5079,34 +5209,40 @@ H       0.94413319   -0.68860760   -0.83098698"""
 
     def test_linear_adapter(self):
         """Test the LinearAdapter class."""
-        self.assertEqual(self.rxn_1.family, 'Cyclopentadiene_scission')
+        rxn_1 = _make_rxn_1()
+        self.assertEqual(rxn_1.family, 'Cyclopentadiene_scission')
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         linear_1 = LinearAdapter(job_type='tsg',
-                                 reactions=[self.rxn_1],
+                                 reactions=[rxn_1],
                                  testing=True,
                                  project='test',
-                                 project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_linear', 'rxn_1'),
+                                 project_directory=project_directory,
                                  )
-        self.assertIsNone(self.rxn_1.ts_species)
+        self.assertIsNone(rxn_1.ts_species)
         linear_1.execute()
-        self.assertGreater(len(self.rxn_1.ts_species.ts_guesses), 0)
-        self.assertEqual(self.rxn_1.ts_species.ts_guesses[0].initial_xyz['symbols'],
+        self.assertGreater(len(rxn_1.ts_species.ts_guesses), 0)
+        self.assertEqual(rxn_1.ts_species.ts_guesses[0].initial_xyz['symbols'],
                          ('C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'))
 
     def test_linear_adapter_2(self):
         """Test the LinearAdapter class for intra_NO2_ONO_conversion"""
-        self.rxn_2.family = 'intra_NO2_ONO_conversion'
-        self.rxn_2.atom_map = [0, 1, 3, 2, 4, 5, 7, 6, 9, 8]
-        self.assertEqual(self.rxn_2.family, 'intra_NO2_ONO_conversion')
+        rxn_2 = _make_rxn_2()
+        rxn_2.family = 'intra_NO2_ONO_conversion'
+        rxn_2.atom_map = [0, 1, 3, 2, 4, 5, 7, 6, 9, 8]
+        self.assertEqual(rxn_2.family, 'intra_NO2_ONO_conversion')
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         linear_2 = LinearAdapter(job_type='tsg',
-                                 reactions=[self.rxn_2],
+                                 reactions=[rxn_2],
                                  testing=True,
                                  project='test',
-                                 project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_linear', 'rxn_2'),
+                                 project_directory=project_directory,
                                  )
-        self.assertIsNone(self.rxn_2.ts_species)
+        self.assertIsNone(rxn_2.ts_species)
         linear_2.execute()
-        self.assertGreater(len(self.rxn_2.ts_species.ts_guesses), 0)
-        self.assertEqual(self.rxn_2.ts_species.ts_guesses[0].initial_xyz['symbols'],
+        self.assertGreater(len(rxn_2.ts_species.ts_guesses), 0)
+        self.assertEqual(rxn_2.ts_species.ts_guesses[0].initial_xyz['symbols'],
                          ('C', 'C', 'O', 'N', 'O', 'H', 'H', 'H', 'H', 'H'))
 
     def test_get_r_constraints(self):
@@ -5783,13 +5919,104 @@ H       0.97222065   -1.40727159   -1.00427440"""
                             msg=f'atom {idx} ({xyz["symbols"][idx]}) moved on a fresh propane geometry — the '
                                 f'local-geometry orchestrator gates should have left it untouched')
 
-    @classmethod
-    def tearDownClass(cls):
+    def _new_ccono_rxn(self) -> ARCReaction:
         """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests.
+        Construct a fresh CCONO <=> CCNO2 isomerization reaction for adapter state tests.
+
+        Returns:
+            ARCReaction: The reaction with a preset family and atom map.
         """
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_linear'), ignore_errors=True)
+        rxn = _make_rxn_2()
+        rxn.family = 'intra_NO2_ONO_conversion'
+        rxn.atom_map = [0, 1, 3, 2, 4, 5, 7, 6, 9, 8]
+        return rxn
+
+    def test_execute_incore_restores_reaction_state(self):
+        """Test that execute_incore() does not permanently mutate shared reaction state."""
+        rxn = self._new_ccono_rxn()
+        self.assertIsNone(rxn._product_dicts)
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                )
+        adapter.execute()
+        self.assertGreater(len(rxn.ts_species.ts_guesses), 0)
+        self.assertEqual(rxn._atom_map, [0, 1, 3, 2, 4, 5, 7, 6, 9, 8])
+        self.assertEqual(rxn._family, 'intra_NO2_ONO_conversion')
+        self.assertIsNone(rxn._product_dicts)
+
+    def test_interpolate_addition_symmetric_dissociation(self):
+        """Test that a symmetric dissociation (C2H6 <=> CH3 + CH3) is classified as a dissociation."""
+        c2h6 = ARCSpecies(label='C2H6', smiles='CC',
+                          xyz="""C      -0.75560000    0.00000000    0.00000000
+                                 C       0.75560000    0.00000000    0.00000000
+                                 H      -1.16560000    0.99270000    0.00000000
+                                 H      -1.16560000   -0.49640000    0.85960000
+                                 H      -1.16560000   -0.49640000   -0.85960000
+                                 H       1.16560000   -0.99270000    0.00000000
+                                 H       1.16560000    0.49640000   -0.85960000
+                                 H       1.16560000    0.49640000    0.85960000""")
+        ch3 = ARCSpecies(label='CH3', smiles='[CH3]',
+                         xyz="""C       0.00000000    0.00000000    0.00000000
+                                H       1.07900000    0.00000000    0.00000000
+                                H      -0.53950000    0.93440000    0.00000000
+                                H      -0.53950000   -0.93440000    0.00000000""")
+        rxn = ARCReaction(reactants=['C2H6'], products=['CH3', 'CH3'],
+                          r_species=[c2h6], p_species=[ch3])
+        with self.assertLogs(logger='arc', level='DEBUG') as cm:
+            ts_xyzs = interpolate_addition(rxn, weight=0.5)
+        self.assertFalse(any('not an addition/dissociation' in line for line in cm.output))
+        self.assertIsInstance(ts_xyzs, list)
+        self.assertGreater(len(ts_xyzs), 0)
+        n_atoms = len(c2h6.get_xyz()['symbols'])
+        for ts_xyz in ts_xyzs:
+            self.assertEqual(len(ts_xyz['symbols']), n_atoms)
+
+    def test_execute_incore_skips_species_without_coordinates(self):
+        """Test that execute_incore() skips a reaction whose species lack coordinates without raising."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C')],
+                          p_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')])
+        rxn.family = 'intra_H_migration'
+        rxn.multiplicity = 2
+        rxn.charge = 0
+        for spc in rxn.r_species + rxn.p_species:
+            spc.mol = None
+            spc.mol_list = None
+            spc.conformers = []
+            spc.cheap_conformer = None
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                )
+        with self.assertLogs(logger='arc', level='WARNING') as cm:
+            adapter.execute()
+        self.assertTrue(any('requires coordinates' in line for line in cm.output))
+        self.assertIsNone(rxn.ts_species)
+
+    def test_execute_incore_isolates_interpolate_crash(self):
+        """Test that an exception raised inside interpolate() does not propagate out of execute()."""
+        rxn = self._new_ccono_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                )
+        with patch('arc.job.adapters.ts.linear.interpolate', side_effect=RuntimeError('test crash')):
+            with self.assertLogs(logger='arc', level='ERROR') as cm:
+                adapter.execute()
+        self.assertTrue(any('Linear TS adapter failed' in line and 'test crash' in line for line in cm.output))
+        self.assertIsNone(rxn._product_dicts)
 
 
 class TestCleanupAfterExistingHMigration(unittest.TestCase):
