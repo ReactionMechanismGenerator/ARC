@@ -252,9 +252,10 @@ Adaptive levels of theory
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 ARC allows users to adapt the level of theory to the size of the molecule.
 To do so, pass the ``adaptive_levels`` attribute, which is a list of entries.
-Each entry is a dictionary with an ``atom_range`` 2-list giving the heavy
-(non-hydrogen) atom count range (the upper bound may be ``inf``), and a ``levels``
-mapping from job type to the respective level of theory (a string or a dictionary).
+Each entry is a dictionary with two keys: ``atom_range``, a two-element list ``[min, max]``
+giving the species' size as a range of heavy (non-hydrogen) atom counts (the upper bound of
+the last range must be ``inf``); and ``levels``, a mapping from job type(s) to the level of
+theory (a string or a dictionary) to use for that size range.
 Job types that share a level may be given as a single whitespace- or comma-separated
 key (e.g. ``opt freq``). Don't forget to bound the entire range between 1 and
 ``inf``, and make sure there aren't any gaps in the heavy atom ranges. For example::
@@ -283,12 +284,12 @@ levels (defined separately, e.g., via ``opt_level``, or using ARC's defaults).
 When a species participates in a reaction, all of the reaction's species (the TS and the
 reactant/product wells) are energy-evaluated at a single, reaction-consistent level keyed
 by the largest participant (the TS), so the barrier is computed at one consistent level.
-By default (the per-species ``thermo_at_own_level`` flag, ``True``) each species'
-thermochemistry is still computed at its own size-appropriate (granular) adaptive level: an
-autonomous, relabeled copy of any well that lands on a coarser grain than its reaction is
-created and used by the reaction (at the reaction-wide level), while the original species
-keeps its own level for thermochemistry. Set ``thermo_at_own_level=False`` on a species to
-have it evaluated at the reaction-wide level directly (no copy, coarser thermochemistry).
+By default (the per-species ``thermo_at_own_level`` flag, ``False``) a well whose own size
+falls on a finer grain than its reaction's is evaluated directly at the reaction-wide
+(coarser) level, and its thermochemistry uses that same level. Set ``thermo_at_own_level=True`` on a species
+to instead compute its thermochemistry at its own size-appropriate (granular) adaptive level:
+an autonomous, relabeled copy of the species is then created and used by the reaction (at the
+reaction-wide level), while the original keeps its own level for thermochemistry.
 
 
 Control job memory allocation
