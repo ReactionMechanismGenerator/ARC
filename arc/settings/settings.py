@@ -34,34 +34,18 @@ import sys
 #        'un': '<username>',
 #    },
 # }
+# Campaign config (uncommitted): ARC runs on OL and submits to zeus via SSH (PBS).
+# Ported from zeus's proven ~/.arc/settings.py + submit.py (server was 'local' there; here it is
+# the remote 'zeus' server). Submit-script paths (g16/orca/gtmp/queues) run on zeus nodes, unchanged.
 servers = {
-    'server1': {
-        'cluster_soft': 'OGE',
-        'address': 'server1.host.edu',
-        'un': '<username>',
-        'key': 'path_to_rsa_key',
-        'max_simultaneous_jobs': 10,  # optional, "check_status_command" must be set to only return jobs for your user
-    },
-    'server2': {
-        'cluster_soft': 'Slurm',
-        'address': 'server2.host.edu',
-        'un': '<username>',
-        'key': 'path_to_rsa_key',
-        'cpus': 24,  # number of cpu's per node, optional (default: 8)
-        'memory': 256,  # amount of memory per node in GB, optional (default: 16)
-    },
-    'server3': {
+    'zeus': {  # Each Zeus node has ~80 cores / 378 GB RAM; submit from OL over SSH (PBS)
         'cluster_soft': 'PBS',
-        'address': 'server3.host.edu',
-        'un': '<username>',
-        'key': 'path_to_rsa_key',
-    },
-    'local': {
-        'cluster_soft': 'HTCondor',
-        'un': '<username>',
-        'cpus': 48,
-        'queues': {'':''},  # {'queue_name':'HH:MM:SS'}
-        'excluded_queues': ['queue_name1', 'queue_name2'],
+        'address': 'zeus.technion.ac.il',  # bare 'zeus' does NOT resolve on OL (DNS search domain)
+        'un': 'alon',
+        'key': '/home/alon/.ssh/known_hosts',  # ARC's 'key' is the known_hosts file (load_system_host_keys), NOT the auth key
+        'cpus': 16,
+        'memory': 1000,
+        'max_simultaneous_jobs': 150,
     },
 }
 
@@ -69,27 +53,16 @@ servers = {
 # An ordered list of servers indicates priority
 # Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
 global_ess_settings = {
-    'cfour': 'local',
-    'gaussian': ['local', 'server2'],
-    'gcn': 'local',
-    'mockter': 'local',
-    'molpro': ['local', 'server2'],
-    'onedmin': 'server1',
-    'orca': 'local',
-    'qchem': 'server1',
-    'terachem': 'server1',
-    'xtb': 'local',
-    'xtb_gsm': 'local',
-    'torchani': 'local',
-    'openbabel': 'local',
-    'orca_neb': 'local',
+    'gaussian': ['zeus'],
+    'molpro': ['zeus'],
+    'orca': ['zeus'],
 }
 
 # Electronic structure software ARC may access (use lowercase):
 supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
-ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
+ts_adapters = ['heuristics', 'linear']  # campaign setting (linear_ts branch); see INDEX.md
 
 # List here job types to execute by default
 default_job_types = {'conf_opt': True,        # defaults to True if not specified
@@ -123,26 +96,26 @@ levels_ess = {
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
                         'Slurm': '/usr/bin/squeue -u $USER',
-                        'PBS': '/usr/local/bin/qstat -u $USER',
+                        'PBS': '/opt/pbs/bin/qstat -u $USER',
                         'HTCondor': """condor_q -cons 'Member(Jobstatus,{1,2})' -af:j '{"0","P","R","X","C","H",">","S"}[JobStatus]' RequestCpus RequestMemory JobName  '(Time() - EnteredCurrentStatus)'""",
                         }
 
 submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub',
                   'Slurm': '/usr/bin/sbatch',
-                  'PBS': '/usr/local/bin/qsub',
+                  'PBS': '/opt/pbs/bin/qsub',
                   'HTCondor': 'condor_submit',
                   }
 
 delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
                   'Slurm': '/usr/bin/scancel',
-                  'PBS': '/usr/local/bin/qdel',
+                  'PBS': '/opt/pbs/bin/qdel',
                   'HTCondor': 'condor_rm',
                   }
 
 list_available_nodes_command = {
     'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
     'Slurm': 'sinfo -o "%n %t %O %E"',
-    'PBS': 'pbsnodes',
+    'PBS': '/opt/pbs/bin/pbsnodes',
     }
 
 submit_filenames = {'OGE': 'submit.sh',
@@ -294,8 +267,8 @@ workers_coeff = {'A': 2.0, 'b': 0.25, 'cap': 100, 'max_one': 3, 'max_two': 9}
 
 # Default job memory, cpu, time settings
 default_job_settings = {
-    'job_total_memory_gb': 14,
-    'job_cpu_cores': 8,
+    'job_total_memory_gb': 25,  # campaign: matches proven zeus ~/.arc settings
+    'job_cpu_cores': 16,        # campaign: matches proven zeus ~/.arc settings
     'job_time_limit_hrs': 120,
     'job_max_server_node_memory_allocation': 0.95,  # e.g., at most 95% node memory will be used per job **if needed**
 }

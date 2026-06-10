@@ -395,7 +395,7 @@ class SSHClient(object):
     @check_connections
     def get_last_modified_time(self,
                                remote_file_path_1: str,
-                               remote_file_path_2: Optional[str],
+                               remote_file_path_2: Optional[str] = None,
                                ) -> Optional[datetime.datetime]:
         """
         Returns the last modified time of ``remote_file_path_1`` if the file exists,

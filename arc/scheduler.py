@@ -839,7 +839,7 @@ class Scheduler(object):
 
             should_sleep = self.timer and (self.running_jobs or self.active_pipes)
             if should_sleep:
-                time.sleep(30)  # wait 30 sec before bugging the servers again.
+                time.sleep(180)  # wait 180 sec before bugging the servers again.
             t = time.time() - self.report_time
             if t > 3600 and (self.running_jobs or self.active_pipes):
                 self.report_time = time.time()

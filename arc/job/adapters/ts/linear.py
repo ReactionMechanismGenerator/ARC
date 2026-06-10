@@ -756,15 +756,17 @@ class LinearAdapter(JobAdapter):
                  species: Optional[List[ARCSpecies]] = None,
                  testing: bool = False,
                  times_rerun: int = 0,
+                 run_multi_species: bool = False,  # accepted for factory compatibility; LinearAdapter is incore geom-gen only
                  torsions: Optional[List[List[int]]] = None,
                  tsg: Optional[int] = None,
                  xyz: Optional[dict] = None,
+                 **kwargs,  # absorb any other kwargs job_factory passes (queue, etc.); LinearAdapter is incore geom-gen only
                  ):
 
         self.incore_capacity = 50
         self.job_adapter = 'linear'
         self.command = None
-        self.execution_type = execution_type or 'incore'
+        self.execution_type = 'incore'  # LinearAdapter is incore-only (no server); ignore any queue execution_type the scheduler passes
 
         if reactions is None:
             raise ValueError('Cannot execute TS Linear without ARCReaction object(s).')
