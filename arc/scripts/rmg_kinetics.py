@@ -2,12 +2,25 @@
 # encoding: utf-8
 
 """
-A standalone script to run RMG
-and get kinetic rate coefficients for reactions
+A standalone script to run RMG and get kinetic rate coefficients for reactions.
+
+Output units (per entry returned by ``get_kinetics_from_reactions``):
+    - ``A``:    cm^3/(mol*s) for bimolecular reactions, s^-1 for unimolecular
+                (3-body: cm^6/(mol^2*s)). Reported in the units stored on the
+                Arrhenius object after the SI->cm conversion below.
+    - ``n``:    dimensionless temperature exponent.
+    - ``Ea``:   kJ/mol (converted from SI J/mol).
+    - ``T_min``, ``T_max``: K.
 """
 
+import copy
 import os
+import sys
 from typing import Dict, List, Optional, Tuple
+
+# Make ``from common import ...`` work no matter how this script is invoked
+# (e.g. ``python /abs/path/to/rmg_kinetics.py``, ``cd elsewhere && python ...``).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common import parse_command_line_arguments, read_yaml_file, save_yaml_file
 
@@ -15,6 +28,7 @@ from rmgpy.data.kinetics.common import find_degenerate_reactions
 from rmgpy.data.kinetics.family import KineticsFamily
 from rmgpy.data.rmg import RMGDatabase
 from rmgpy import settings as rmg_settings
+from rmgpy.kinetics import Arrhenius, ArrheniusEP, KineticsModel
 from rmgpy.reaction import same_species_lists, Reaction
 from rmgpy.species import Species
 
@@ -35,11 +49,12 @@ def main():
     """
     args = parse_command_line_arguments()
     input_file = args.file
+    output_file = args.output or input_file
     reaction_list = read_yaml_file(path=input_file)
     if not isinstance(reaction_list, list):
         raise ValueError(f'The content of {input_file} must be a list, got {reaction_list} which is a {type(reaction_list)}')
     result = get_rate_coefficients(reaction_list)
-    save_yaml_file(path=input_file, content=result)
+    save_yaml_file(path=output_file, content=result)
 
 
 def get_rate_coefficients(reaction_list: List[Dict]) -> List[Dict]:
@@ -62,6 +77,42 @@ def get_rate_coefficients(reaction_list: List[Dict]) -> List[Dict]:
     return reaction_list
 
 
+def get_a_factor_si_to_cm(num_reactants: int) -> float:
+    """
+    Get the factor that converts an Arrhenius A-factor from SI (m-based) units to
+    cm-based units, based on the reaction molecularity.
+
+    Args:
+        num_reactants (int): The number of reactants.
+
+    Returns:
+        float: 1.0 for unimolecular (s^-1), 1e6 for bimolecular (m^3->cm^3),
+               1e12 for termolecular (m^6->cm^6). Defaults to 1.0 otherwise.
+    """
+    return {1: 1.0, 2: 1e6, 3: 1e12}.get(num_reactants, 1.0)
+
+
+def scale_kinetics_by_degeneracy(kinetics: KineticsModel,
+                                 degeneracy: float,
+                                 ) -> KineticsModel:
+    """
+    Scale Arrhenius-type kinetics in place by the reaction-path degeneracy.
+
+    Non-Arrhenius forms (e.g. Chebyshev, PDepArrhenius) are returned unchanged,
+    since ``change_rate`` would otherwise corrupt their parameters.
+
+    Args:
+        kinetics (KineticsModel): An RMG kinetics object.
+        degeneracy (float): The reaction-path degeneracy to scale by.
+
+    Returns:
+        KineticsModel: The (possibly scaled) kinetics object.
+    """
+    if isinstance(kinetics, (Arrhenius, ArrheniusEP)):
+        kinetics.change_rate(degeneracy)
+    return kinetics
+
+
 def determine_rmg_kinetics(rmgdb: RMGDatabase,
                            reaction: Reaction,
                            dh_rxn298: Optional[float] = None,
@@ -71,6 +122,13 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
     Determine kinetics for `reaction` (an RMG Reaction object) from RMG's database, if possible.
     Assigns a list of all matching entries from both libraries and families.
 
+    Note:
+        Family entries originating from the training set are intentionally filtered out
+        (an empty returned list therefore means "no matching libraries and only training-set
+        family hits", not necessarily "no match at all"). Database kinetics are deep-copied
+        before any in-place mutation (degeneracy scaling, unit conversion) so the loaded
+        ``rmgdb`` instance remains unchanged across calls.
+
     Args:
         rmgdb (RMGDatabase): The RMG database instance.
         reaction (Reaction): The RMG Reaction object.
@@ -79,6 +137,7 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
 
     Returns: list[dict]
         All matching RMG reactions kinetics (both libraries and families) as a dict of parameters.
+        Empty list if nothing matched (or only training-set entries matched).
     """
     rmg_reactions = list()
     # Libraries:
@@ -89,19 +148,22 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
                 library_reaction.comment = f'Library: {library.label}'
                 rmg_reactions.append(library_reaction)
                 break
-    # # Families:
-    A_units = "cm^3/(mol*s)" if len(reaction.reactants) == 2 else "s^-1"
+    # Families:
+    a_factor = get_a_factor_si_to_cm(len(reaction.reactants))
     fam_list = loop_families(rmgdb, reaction)
     dh_rxn298 = dh_rxn298 or get_dh_rxn298(rmgdb=rmgdb, reaction=reaction)  # J/mol
     for family, degenerate_reactions in fam_list:
         for deg_rxn in degenerate_reactions:
             kinetics_list = family.get_kinetics(reaction=deg_rxn, template_labels=deg_rxn.template, degeneracy=deg_rxn.degeneracy)
             for kinetics_detailes in kinetics_list:
-                kinetics = kinetics_detailes[0]
-                kinetics.change_rate(deg_rxn.degeneracy)
+                # Deep-copy before mutating so the database object isn't double-scaled
+                # if the same family rule is queried again for another reaction.
+                kinetics = copy.deepcopy(kinetics_detailes[0])
+                kinetics = scale_kinetics_by_degeneracy(kinetics, deg_rxn.degeneracy)
                 if hasattr(kinetics, 'to_arrhenius'):
                     kinetics = kinetics.to_arrhenius(dh_rxn298)  # Convert ArrheniusEP to Arrhenius
-                kinetics.A.value_si = kinetics.A.value_si * (1e6 if A_units == "cm^3/(mol*s)" else 1)
+                if a_factor != 1.0 and isinstance(kinetics, Arrhenius):
+                    kinetics.A.value_si = kinetics.A.value_si * a_factor
                 deg_rxn.kinetics = kinetics
                 deg_rxn.comment = f'Family: {deg_rxn.family}'
                 if 'training' in deg_rxn.kinetics.comment:
@@ -150,7 +212,11 @@ def get_kinetics_from_reactions(reactions: List[Reaction]) -> List[Dict]:
     """
     kinetics_list = list()
     for rxn in reactions:
-        print(f'rxn: {rxn}, kinetics: {rxn.kinetics}, comment: {rxn.comment}')
+        try:
+            rxn_repr = str(rxn)
+        except (TypeError, AttributeError):
+            rxn_repr = '<reaction without reactants/products labels>'
+        print(f'rxn: {rxn_repr}, kinetics: {rxn.kinetics}, comment: {rxn.comment}', file=sys.stderr)
         kinetics_list.append({
             'kinetics': rxn.kinetics.__repr__(),
             'comment': rxn.comment,
