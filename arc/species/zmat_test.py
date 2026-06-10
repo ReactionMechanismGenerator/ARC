@@ -2306,6 +2306,24 @@ H   1.3230  -1.0712   1.2760""")
         with self.assertRaises(ValueError):
             zmat.xyz_to_zmat(self.co2, anchors=[0, 1, 2])
 
+    def test_xyz_to_zmat_invalid_anchors_raise(self):
+        """Test that empty, too long, out-of-bounds, and duplicate anchors raise a ValueError."""
+        with self.assertRaises(ValueError):
+            zmat.xyz_to_zmat(self.co2, anchors=[])
+        with self.assertRaises(ValueError):
+            zmat.xyz_to_zmat(self.co2, anchors=[0, 1, 2, 0])
+        with self.assertRaises(ValueError):
+            zmat.xyz_to_zmat(self.co2, anchors=[0, 5])
+        with self.assertRaises(ValueError):
+            zmat.xyz_to_zmat(self.co2, anchors=[1, 1])
+
+    def test_xyz_to_zmat_anchors_too_close_raises(self):
+        """Test that two anchor atoms closer than the minimal distance threshold raise a ValueError."""
+        overlapping_xyz = {'symbols': ('H', 'H'), 'isotopes': (1, 1),
+                           'coords': ((0.0, 0.0, 0.0), (0.05, 0.0, 0.0))}
+        with self.assertRaises(ValueError):
+            zmat.xyz_to_zmat(overlapping_xyz, anchors=[0, 1])
+
     def test_find_smart_anchors_spectator_backbone(self):
         """
         Test 1: 1-pentanol (CCCCCO) with a breaking C-O bond.

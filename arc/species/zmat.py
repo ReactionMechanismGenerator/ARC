@@ -1500,8 +1500,8 @@ def find_smart_anchors(mol: Molecule,
         anchor_2 = None
 
     result = [a for a in (anchor_0, anchor_1, anchor_2) if a is not None]
-    assert len(result) == len(set(result)), \
-        f'find_smart_anchors: produced non-unique anchors {result} (graph data may have a self-loop)'
+    if len(result) != len(set(result)):
+        raise ValueError(f'find_smart_anchors: produced non-unique anchors {result} (graph data may have a self-loop)')
     return result
 
 
@@ -2550,6 +2550,9 @@ def update_zmat_by_xyz(zmat: dict,
           compute it (which would IndexError).
         - If `xyz` *does* include dummy coordinates (coords length covers those indices),
           then the dummy-related variables will be updated as well.
+        - Only non-consolidated zmats are supported: for consolidated variable names
+          (e.g., 'A_3_2_1|A_4_2_1') only the first atom group is recomputed and its
+          value is applied to all packed rows.
 
     Args:
         zmat (dict): The zmat to update.
