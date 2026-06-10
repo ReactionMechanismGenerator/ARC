@@ -118,7 +118,10 @@
                             <span class="n">TrshError</span><span class="p">,</span>
                             <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.imports</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.adapters.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">all_families_ts_adapters</span><span class="p">,</span> <span class="n">default_incore_adapters</span><span class="p">,</span> <span class="n">ts_adapters_by_rmg_family</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.adapters.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">all_families_ts_adapters</span><span class="p">,</span>
+                                      <span class="n">default_incore_adapters</span><span class="p">,</span>
+                                      <span class="n">ts_adapters_by_rmg_family</span><span class="p">,</span>
+                                      <span class="n">ts_adapters_for_unknown_unimolecular</span><span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">job_factory</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.local</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_running_jobs_ids</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.pipe.pipe_coordinator</span><span class="w"> </span><span class="kn">import</span> <span class="n">PipeCoordinator</span>
@@ -1844,11 +1847,19 @@
                     <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">tsg_spawned</span> <span class="o">=</span> <span class="kc">True</span>
                     <span class="n">tsg_index</span> <span class="o">=</span> <span class="mi">0</span>
                     <span class="k">for</span> <span class="n">method</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span><span class="p">:</span>
-                        <span class="k">if</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">all_families_ts_adapters</span> <span class="ow">or</span> \
-                                <span class="p">(</span><span class="n">rxn</span><span class="o">.</span><span class="n">family</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-                                 <span class="ow">and</span> <span class="n">rxn</span><span class="o">.</span><span class="n">family</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">ts_adapters_by_rmg_family</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
-                                 <span class="ow">and</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">ts_adapters_by_rmg_family</span><span class="p">[</span><span class="n">rxn</span><span class="o">.</span><span class="n">family</span><span class="p">])</span> \
+                        <span class="n">family_known</span> <span class="o">=</span> <span class="p">(</span><span class="n">rxn</span><span class="o">.</span><span class="n">family</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                                        <span class="ow">and</span> <span class="n">rxn</span><span class="o">.</span><span class="n">family</span> <span class="ow">in</span> <span class="n">ts_adapters_by_rmg_family</span><span class="p">)</span>
+                        <span class="n">admit_unknown_family</span> <span class="o">=</span> <span class="p">(</span><span class="ow">not</span> <span class="n">family_known</span>
+                                                <span class="ow">and</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">ts_adapters_for_unknown_unimolecular</span>
+                                                <span class="ow">and</span> <span class="n">rxn</span><span class="o">.</span><span class="n">is_unimolecular</span><span class="p">())</span>
+                        <span class="k">if</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">all_families_ts_adapters</span> \
+                                <span class="ow">or</span> <span class="p">(</span><span class="n">family_known</span> <span class="ow">and</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">ts_adapters_by_rmg_family</span><span class="p">[</span><span class="n">rxn</span><span class="o">.</span><span class="n">family</span><span class="p">])</span> \
+                                <span class="ow">or</span> <span class="n">admit_unknown_family</span> \
                                 <span class="ow">or</span> <span class="s1">&#39;mock&#39;</span> <span class="ow">in</span> <span class="n">method</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="n">admit_unknown_family</span><span class="p">:</span>
+                                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Admitting TS adapter </span><span class="si">{</span><span class="n">method</span><span class="si">!r}</span><span class="s1"> for reaction </span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> &#39;</span>
+                                            <span class="sa">f</span><span class="s1">&#39;via ts_adapters_for_unknown_unimolecular &#39;</span>
+                                            <span class="sa">f</span><span class="s1">&#39;(RMG family is </span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">family</span><span class="si">!r}</span><span class="s1">).&#39;</span><span class="p">)</span>
                             <span class="bp">self</span><span class="o">.</span><span class="n">run_job</span><span class="p">(</span><span class="n">job_type</span><span class="o">=</span><span class="s1">&#39;tsg&#39;</span><span class="p">,</span>
                                          <span class="n">job_adapter</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
                                          <span class="n">reactions</span><span class="o">=</span><span class="p">[</span><span class="n">rxn</span><span class="p">],</span>

@@ -146,6 +146,8 @@
                 <span class="n">consolidate</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                 <span class="n">consolidation_tols</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                 <span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">atom_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">anchors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate a z-matrix from cartesian coordinates.</span>
@@ -182,9 +184,16 @@
 <span class="sd">            Fragments represented by the species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 <span class="sd">            indices are 0-indexed.</span>
+<span class="sd">        atom_order (list[int], optional): The order in which atoms should be added to the zmat.</span>
+<span class="sd">        anchors (list[int], optional): A list of up to 3 atom indices (0-indexed) to serve as the root of the</span>
+<span class="sd">                                       Z-matrix. If provided, these atoms will be placed at positions 0, 1, and 2</span>
+<span class="sd">                                       in the Z-matrix respectively. The remaining atoms are ordered by the standard</span>
+<span class="sd">                                       ARC logic. Raises ``ValueError`` if the anchors are invalid (out of bounds,</span>
+<span class="sd">                                       duplicates, too close, or collinear).</span>
 
 <span class="sd">    Raises:</span>
 <span class="sd">        ZMatError: If the zmat could not be generated.</span>
+<span class="sd">        ValueError: If ``anchors`` contains invalid indices, duplicates, atoms that are too close, or a collinear triad.</span>
 
 <span class="sd">    Returns: dict[str, tuple]</span>
 <span class="sd">        The z-matrix.</span>
@@ -204,7 +213,27 @@
                                     <span class="sa">f</span><span class="s1">&#39;coordinates with only </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s2">&quot;symbols&quot;</span><span class="p">])</span><span class="si">}</span><span class="s1"> atoms:</span><span class="se">\n</span><span class="si">{</span><span class="n">constraints</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
     <span class="n">xyz</span> <span class="o">=</span> <span class="n">xyz</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
     <span class="n">zmat</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;symbols&#39;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(),</span> <span class="s1">&#39;coords&#39;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(),</span> <span class="s1">&#39;vars&#39;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(),</span> <span class="s1">&#39;map&#39;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">()}</span>
-    <span class="n">atom_order</span> <span class="o">=</span> <span class="n">get_atom_order</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span> <span class="n">mol</span><span class="o">=</span><span class="n">mol</span><span class="p">,</span> <span class="n">constraints_dict</span><span class="o">=</span><span class="n">constraints</span><span class="p">,</span> <span class="n">fragments</span><span class="o">=</span><span class="n">fragments</span><span class="p">)</span>
+    <span class="n">atom_order</span> <span class="o">=</span> <span class="n">atom_order</span> <span class="ow">or</span> <span class="n">get_atom_order</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span> <span class="n">mol</span><span class="o">=</span><span class="n">mol</span><span class="p">,</span> <span class="n">constraints_dict</span><span class="o">=</span><span class="n">constraints</span><span class="p">,</span> <span class="n">fragments</span><span class="o">=</span><span class="n">fragments</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">anchors</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">anchors</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="p">(</span><span class="mi">1</span> <span class="o">&lt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">anchors</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">3</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;anchors must be a list or tuple of 1-3 atom indices, got: </span><span class="si">{</span><span class="n">anchors</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="n">num_atoms</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;symbols&#39;</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">anchors</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="n">num_atoms</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;anchor index </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s1"> is out of bounds for a molecule with </span><span class="si">{</span><span class="n">num_atoms</span><span class="si">}</span><span class="s1"> atoms&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">anchors</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">anchors</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;anchors must not contain duplicate indices, got: </span><span class="si">{</span><span class="n">anchors</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">anchors</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">dist</span> <span class="o">=</span> <span class="n">vectors</span><span class="o">.</span><span class="n">calculate_param</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">],</span> <span class="n">atoms</span><span class="o">=</span><span class="p">[</span><span class="n">anchors</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">anchors</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span> <span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">dist</span> <span class="o">&lt;=</span> <span class="mf">0.1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Anchors </span><span class="si">{</span><span class="n">anchors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s1"> and </span><span class="si">{</span><span class="n">anchors</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s1"> are too close (</span><span class="si">{</span><span class="n">dist</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1"> Å); &#39;</span>
+                                 <span class="sa">f</span><span class="s1">&#39;cannot define a valid Z-matrix reference distance.&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">anchors</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">angle</span> <span class="o">=</span> <span class="n">vectors</span><span class="o">.</span><span class="n">calculate_param</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">],</span> <span class="n">atoms</span><span class="o">=</span><span class="p">[</span><span class="n">anchors</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">anchors</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">anchors</span><span class="p">[</span><span class="mi">2</span><span class="p">]],</span> <span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">is_angle_linear</span><span class="p">(</span><span class="n">angle</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">5.0</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Anchors </span><span class="si">{</span><span class="n">anchors</span><span class="si">}</span><span class="s1"> are collinear (angle at atom </span><span class="si">{</span><span class="n">anchors</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s1"> = </span><span class="si">{</span><span class="n">angle</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">°); &#39;</span>
+                                 <span class="sa">f</span><span class="s1">&#39;cannot define a valid torsional plane.&#39;</span><span class="p">)</span>
+        <span class="n">atom_order</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">anchors</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="n">a</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">atom_order</span> <span class="k">if</span> <span class="n">a</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">anchors</span><span class="p">]</span>
     <span class="n">connectivity</span> <span class="o">=</span> <span class="n">get_connectivity</span><span class="p">(</span><span class="n">mol</span><span class="o">=</span><span class="n">mol</span><span class="p">)</span> <span class="k">if</span> <span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
     <span class="n">skipped_atoms</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>  <span class="c1"># atoms for which constrains are applied</span>
     <span class="k">for</span> <span class="n">atom_index</span> <span class="ow">in</span> <span class="n">atom_order</span><span class="p">:</span>
@@ -1410,10 +1439,8 @@
 
 
 
-<div class="viewcode-block" id="get_atom_connectivity_from_mol">
-<a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.get_atom_connectivity_from_mol">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_atom_connectivity_from_mol</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">,</span>
-                                   <span class="n">atom1</span><span class="p">:</span> <span class="s1">&#39;Atom&#39;</span><span class="p">,</span>
+                                   <span class="n">atom1</span><span class="p">:</span> <span class="n">Atom</span><span class="p">,</span>
                                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the connectivity of ``atom`` in ``mol``.</span>
@@ -1427,8 +1454,7 @@
 <span class="sd">        list[int]: 0-indices of atoms in ``mol`` connected to ``atom``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="p">[</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atom2</span><span class="p">)</span> <span class="k">for</span> <span class="n">atom2</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">atom1</span><span class="o">.</span><span class="n">edges</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">atom2</span><span class="o">.</span><span class="n">is_non_hydrogen</span><span class="p">()]</span> \
-        <span class="o">+</span> <span class="p">[</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atom2</span><span class="p">)</span> <span class="k">for</span> <span class="n">atom2</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">atom1</span><span class="o">.</span><span class="n">edges</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">atom2</span><span class="o">.</span><span class="n">is_hydrogen</span><span class="p">()]</span></div>
-
+        <span class="o">+</span> <span class="p">[</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atom2</span><span class="p">)</span> <span class="k">for</span> <span class="n">atom2</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">atom1</span><span class="o">.</span><span class="n">edges</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">atom2</span><span class="o">.</span><span class="n">is_hydrogen</span><span class="p">()]</span>
 
 
 <div class="viewcode-block" id="get_connectivity">
@@ -1453,6 +1479,161 @@
 
 
 
+<div class="viewcode-block" id="find_smart_anchors">
+<a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.find_smart_anchors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_smart_anchors</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">,</span>
+                       <span class="n">breaking_bonds</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">forming_bonds</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Find up to 3 contiguous atom indices to serve as a stable Z-matrix coordinate frame.</span>
+
+<span class="sd">    The algorithm prioritizes &quot;spectator&quot; atoms (those not participating in any breaking</span>
+<span class="sd">    or forming bonds) that are directly adjacent to the reactive core. The returned list</span>
+<span class="sd">    forms a contiguous chain: result[0] is bonded to result[1], and result[1] is bonded</span>
+<span class="sd">    to result[2]. The list has length 1, 2, or 3 depending on the size of the molecule.</span>
+
+<span class="sd">    Selection hierarchy:</span>
+
+<span class="sd">    Step 1 – Define the reactive core as the union of all atom indices appearing in</span>
+<span class="sd">             ``breaking_bonds`` and ``forming_bonds``. If both are absent the core is empty.</span>
+
+<span class="sd">    Step 2 – Spectator-rooted backbone: pick the heaviest spectator adjacent to the core</span>
+<span class="sd">             as Anchor 0, then extend along its neighbors using a tiered preference</span>
+<span class="sd">             (spectator + non-breaking bond &gt; any non-breaking bond &gt; any neighbor).</span>
+<span class="sd">             Within each tier the heaviest atom wins. Reactive-core atoms are accepted</span>
+<span class="sd">             at later positions when no spectator continuation is available, so long as</span>
+<span class="sd">             the connecting bond is not in ``breaking_bonds``.</span>
+
+<span class="sd">    Step 3 – Detached-spectator fallback: no spectator borders the core but some exist.</span>
+<span class="sd">             Root at the heaviest spectator and walk outward via the same tier rules.</span>
+
+<span class="sd">    Step 4 – Fully-reactive fallback (no spectators): pick the heaviest atom as Anchor 0,</span>
+<span class="sd">             its heaviest non-breaking neighbor as Anchor 1, and a non-Anchor-0 neighbor</span>
+<span class="sd">             of Anchor 1 as Anchor 2.</span>
+
+<span class="sd">    Step 5 – Collinearity correction: drop Anchor 2 if Anchor 1 is sp-hybridized (exactly</span>
+<span class="sd">             two heavy-atom neighbors, no H), since the triad would otherwise be collinear</span>
+<span class="sd">             and could not define a torsional plane.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mol (Molecule): The RMG Molecule object whose graph will be traversed.</span>
+<span class="sd">        breaking_bonds (list[tuple[int, int]], optional): Pairs of 0-indexed atom indices</span>
+<span class="sd">            whose bond is breaking in the reaction.</span>
+<span class="sd">        forming_bonds (list[tuple[int, int]], optional): Pairs of 0-indexed atom indices</span>
+<span class="sd">            whose bond is forming in the reaction.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        list[int]: A list of 1–3 unique, contiguous atom indices (0-indexed) ordered so</span>
+<span class="sd">                   that consecutive entries are bonded to one another.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">num_atoms</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">num_atoms</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">num_atoms</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">breaking_bond_set</span><span class="p">:</span> <span class="nb">set</span> <span class="o">=</span> <span class="p">{(</span><span class="nb">min</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="ow">in</span> <span class="p">(</span><span class="n">breaking_bonds</span> <span class="ow">or</span> <span class="p">[])}</span>
+    <span class="n">forming_bond_set</span><span class="p">:</span> <span class="nb">set</span> <span class="o">=</span> <span class="p">{(</span><span class="nb">min</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="ow">in</span> <span class="p">(</span><span class="n">forming_bonds</span> <span class="ow">or</span> <span class="p">[])}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_is_breaking</span><span class="p">(</span><span class="n">i</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">j</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">))</span> <span class="ow">in</span> <span class="n">breaking_bond_set</span>
+
+    <span class="c1"># Step 1: define the reactive core.</span>
+    <span class="n">reactive_core</span><span class="p">:</span> <span class="nb">set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">bond</span> <span class="ow">in</span> <span class="n">breaking_bond_set</span> <span class="o">|</span> <span class="n">forming_bond_set</span><span class="p">:</span>
+        <span class="n">reactive_core</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">bond</span><span class="p">)</span>
+
+    <span class="n">spectator_atoms</span><span class="p">:</span> <span class="nb">set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">num_atoms</span><span class="p">))</span> <span class="o">-</span> <span class="n">reactive_core</span>
+    <span class="n">connectivity</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="n">get_connectivity</span><span class="p">(</span><span class="n">mol</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_atomic_number</span><span class="p">(</span><span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the atomic number, used as a priority weight (higher = heavier).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">atom_index</span><span class="p">]</span><span class="o">.</span><span class="n">number</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_is_sp_hybridized</span><span class="p">(</span><span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Detect sp hybridization (linear geometry) by exactly two heavy-atom neighbors.&quot;&quot;&quot;</span>
+        <span class="n">neighbors</span> <span class="o">=</span> <span class="n">connectivity</span><span class="p">[</span><span class="n">atom_index</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">neighbors</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">nbr</span><span class="p">]</span><span class="o">.</span><span class="n">symbol</span> <span class="o">!=</span> <span class="s1">&#39;H&#39;</span> <span class="k">for</span> <span class="n">nbr</span> <span class="ow">in</span> <span class="n">neighbors</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_pick_next</span><span class="p">(</span><span class="n">used</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">current_atom</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">prefer_spectators</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Pick the best continuation atom from the neighbors of *current_atom*, skipping any in *used*.</span>
+
+<span class="sd">        ``used`` makes the uniqueness invariant explicit: every neighbor already chosen as an</span>
+<span class="sd">        earlier anchor is passed in and excluded here, so the returned atom is guaranteed</span>
+<span class="sd">        distinct from all of them. Pass an empty set to skip nothing.</span>
+
+<span class="sd">        Priority order:</span>
+<span class="sd">          1. spectator + non-breaking bond (if prefer_spectators)</span>
+<span class="sd">          2. any non-breaking bond</span>
+<span class="sd">          3. any neighbor (last resort)</span>
+<span class="sd">        Within each tier, the heaviest atom wins.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">nbr</span> <span class="k">for</span> <span class="n">nbr</span> <span class="ow">in</span> <span class="n">connectivity</span><span class="p">[</span><span class="n">current_atom</span><span class="p">]</span> <span class="k">if</span> <span class="n">nbr</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">used</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">candidates</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">prefer_spectators</span><span class="p">:</span>
+            <span class="n">spectator_non_breaking</span> <span class="o">=</span> <span class="p">[</span><span class="n">nbr</span> <span class="k">for</span> <span class="n">nbr</span> <span class="ow">in</span> <span class="n">candidates</span>
+                                      <span class="k">if</span> <span class="n">nbr</span> <span class="ow">in</span> <span class="n">spectator_atoms</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_is_breaking</span><span class="p">(</span><span class="n">current_atom</span><span class="p">,</span> <span class="n">nbr</span><span class="p">)]</span>
+            <span class="k">if</span> <span class="n">spectator_non_breaking</span><span class="p">:</span>
+                <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">spectator_non_breaking</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_atomic_number</span><span class="p">)</span>
+        <span class="n">non_breaking</span> <span class="o">=</span> <span class="p">[</span><span class="n">nbr</span> <span class="k">for</span> <span class="n">nbr</span> <span class="ow">in</span> <span class="n">candidates</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_breaking</span><span class="p">(</span><span class="n">current_atom</span><span class="p">,</span> <span class="n">nbr</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="n">non_breaking</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">non_breaking</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_atomic_number</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">candidates</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_atomic_number</span><span class="p">)</span>
+
+    <span class="n">anchor_0</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">anchor_1</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">anchor_2</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">spectators_bordering_core</span> <span class="o">=</span> <span class="p">[</span><span class="n">atom</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">spectator_atoms</span> <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">nbr</span> <span class="ow">in</span> <span class="n">reactive_core</span> <span class="k">for</span> <span class="n">nbr</span> <span class="ow">in</span> <span class="n">connectivity</span><span class="p">[</span><span class="n">atom</span><span class="p">])]</span>
+
+    <span class="k">if</span> <span class="n">spectators_bordering_core</span><span class="p">:</span>
+        <span class="c1"># Step 2: spectator-rooted backbone.</span>
+        <span class="n">anchor_0</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">spectators_bordering_core</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_atomic_number</span><span class="p">)</span>
+        <span class="n">anchor_1_candidates</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">connectivity</span><span class="p">[</span><span class="n">anchor_0</span><span class="p">])</span>
+        <span class="n">spectator_non_breaking</span> <span class="o">=</span> <span class="p">[</span><span class="n">nbr</span> <span class="k">for</span> <span class="n">nbr</span> <span class="ow">in</span> <span class="n">anchor_1_candidates</span> <span class="k">if</span> <span class="n">nbr</span> <span class="ow">in</span> <span class="n">spectator_atoms</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_is_breaking</span><span class="p">(</span><span class="n">anchor_0</span><span class="p">,</span> <span class="n">nbr</span><span class="p">)]</span>
+        <span class="n">non_breaking</span> <span class="o">=</span> <span class="p">[</span><span class="n">nbr</span> <span class="k">for</span> <span class="n">nbr</span> <span class="ow">in</span> <span class="n">anchor_1_candidates</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_breaking</span><span class="p">(</span><span class="n">anchor_0</span><span class="p">,</span> <span class="n">nbr</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="n">spectator_non_breaking</span><span class="p">:</span>
+            <span class="n">anchor_1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">spectator_non_breaking</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_atomic_number</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">non_breaking</span><span class="p">:</span>
+            <span class="n">anchor_1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">non_breaking</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_atomic_number</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">anchor_1_candidates</span><span class="p">:</span>
+            <span class="n">anchor_1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">anchor_1_candidates</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_atomic_number</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">anchor_1</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">num_atoms</span> <span class="o">&gt;=</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">anchor_2</span> <span class="o">=</span> <span class="n">_pick_next</span><span class="p">({</span><span class="n">anchor_0</span><span class="p">,</span> <span class="n">anchor_1</span><span class="p">},</span> <span class="n">anchor_1</span><span class="p">)</span>
+
+    <span class="k">elif</span> <span class="n">spectator_atoms</span><span class="p">:</span>
+        <span class="c1"># Step 3: detached-spectator fallback.</span>
+        <span class="n">anchor_0</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">spectator_atoms</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_atomic_number</span><span class="p">)</span>
+        <span class="n">anchor_1</span> <span class="o">=</span> <span class="n">_pick_next</span><span class="p">(</span><span class="n">used</span><span class="o">=</span><span class="nb">set</span><span class="p">(),</span> <span class="n">current_atom</span><span class="o">=</span><span class="n">anchor_0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">anchor_1</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">num_atoms</span> <span class="o">&gt;=</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">anchor_2</span> <span class="o">=</span> <span class="n">_pick_next</span><span class="p">({</span><span class="n">anchor_0</span><span class="p">,</span> <span class="n">anchor_1</span><span class="p">},</span> <span class="n">anchor_1</span><span class="p">)</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Step 4: fully-reactive fallback.</span>
+        <span class="n">anchor_0</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">num_atoms</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="n">_atomic_number</span><span class="p">)</span>
+        <span class="n">anchor_0_neighbors</span> <span class="o">=</span> <span class="n">connectivity</span><span class="p">[</span><span class="n">anchor_0</span><span class="p">]</span>
+        <span class="n">non_breaking_neighbors</span> <span class="o">=</span> <span class="p">[</span><span class="n">nbr</span> <span class="k">for</span> <span class="n">nbr</span> <span class="ow">in</span> <span class="n">anchor_0_neighbors</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_breaking</span><span class="p">(</span><span class="n">anchor_0</span><span class="p">,</span> <span class="n">nbr</span><span class="p">)]</span>
+        <span class="n">anchor_1_candidates</span> <span class="o">=</span> <span class="n">non_breaking_neighbors</span> <span class="ow">or</span> <span class="n">anchor_0_neighbors</span>
+        <span class="k">if</span> <span class="n">anchor_1_candidates</span><span class="p">:</span>
+            <span class="n">anchor_1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">anchor_1_candidates</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_atomic_number</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">anchor_1</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">num_atoms</span> <span class="o">&gt;=</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">anchor_2</span> <span class="o">=</span> <span class="n">_pick_next</span><span class="p">({</span><span class="n">anchor_0</span><span class="p">,</span> <span class="n">anchor_1</span><span class="p">},</span> <span class="n">anchor_1</span><span class="p">)</span>
+
+    <span class="c1"># Step 5: drop anchor_2 when the triad would be collinear.</span>
+    <span class="k">if</span> <span class="n">anchor_2</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">anchor_1</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">_is_sp_hybridized</span><span class="p">(</span><span class="n">anchor_1</span><span class="p">):</span>
+        <span class="n">anchor_2</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">result</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="p">(</span><span class="n">anchor_0</span><span class="p">,</span> <span class="n">anchor_1</span><span class="p">,</span> <span class="n">anchor_2</span><span class="p">)</span> <span class="k">if</span> <span class="n">a</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">result</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;find_smart_anchors: produced non-unique anchors </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s1"> (graph data may have a self-loop)&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span></div>
+
+
+
 <div class="viewcode-block" id="order_fragments_by_constraints">
 <a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.order_fragments_by_constraints">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">order_fragments_by_constraints</span><span class="p">(</span><span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
@@ -1467,7 +1648,7 @@
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 <span class="sd">        constraints_dict (dict, optional):</span>
 <span class="sd">            A dictionary of atom constraints. The function will try to find an atom order in which all constrained atoms</span>
-<span class="sd">            are after the atoms they are constraint to.</span>
+<span class="sd">            are after the atoms they are constrained to.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        list[list[int]]: The ordered fragments list.</span>
@@ -1510,7 +1691,7 @@
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
 <span class="sd">        constraints_dict (dict, optional):</span>
 <span class="sd">            A dictionary of atom constraints. The function will try to find an atom order in which all constrained atoms</span>
-<span class="sd">            are after the atoms they are constraint to.</span>
+<span class="sd">            are after the atoms they are constrained to.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        list[int]: The atom order, 0-indexed.</span>
@@ -2517,6 +2698,92 @@
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="n">char</span><span class="o">.</span><span class="n">isdigit</span><span class="p">()</span> <span class="k">for</span> <span class="n">char</span> <span class="ow">in</span> <span class="n">index</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
         <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">index</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
     <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Expected either an int or a string on the format &quot;X15&quot;, got </span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="check_ordered_zmats">
+<a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.check_ordered_zmats">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_ordered_zmats</span><span class="p">(</span><span class="n">zmat_1</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+                        <span class="n">zmat_2</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+                        <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check whether the ZMats have the same order of atoms and the same variable names.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        zmat_1 (dict): ZMat 1.</span>
+<span class="sd">        zmat_2 (dict): ZMat 2.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: Whether the ZMats are ordered.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">zmat_1</span><span class="p">[</span><span class="s1">&#39;symbols&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">zmat_2</span><span class="p">[</span><span class="s1">&#39;symbols&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">zmat_1</span><span class="p">[</span><span class="s1">&#39;vars&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="o">==</span> <span class="n">zmat_2</span><span class="p">[</span><span class="s1">&#39;vars&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="update_zmat_by_xyz">
+<a class="viewcode-back" href="../../../api/zmat.html#arc.species.zmat.update_zmat_by_xyz">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">update_zmat_by_xyz</span><span class="p">(</span><span class="n">zmat</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+                       <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">],</span>
+                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Update a zmat vars by xyz.</span>
+
+<span class="sd">    Notes:</span>
+<span class="sd">        - If the zmat contains dummy atoms (e.g., symbols &#39;X&#39; and map entries like &#39;X19&#39;),</span>
+<span class="sd">          the corresponding dummy coordinates are often NOT present in `xyz[&#39;coords&#39;]`.</span>
+<span class="sd">          In that case we keep the original zmat variable value instead of trying to</span>
+<span class="sd">          compute it (which would IndexError).</span>
+<span class="sd">        - If `xyz` *does* include dummy coordinates (coords length covers those indices),</span>
+<span class="sd">          then the dummy-related variables will be updated as well.</span>
+<span class="sd">        - Only non-consolidated zmats are supported: for consolidated variable names</span>
+<span class="sd">          (e.g., &#39;A_3_2_1|A_4_2_1&#39;) only the first atom group is recomputed and its</span>
+<span class="sd">          value is applied to all packed rows.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        zmat (dict): The zmat to update.</span>
+<span class="sd">        xyz (dict): The xyz to update from, with keys &#39;symbols&#39; and &#39;coords&#39;.</span>
+<span class="sd">                    The &#39;coords&#39; can be a list of tuples or a dict with &#39;coords&#39; key.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        dict: The updated zmat with vars updated based on the provided xyz.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">zmat_out</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;symbols&#39;</span><span class="p">:</span> <span class="n">zmat</span><span class="p">[</span><span class="s1">&#39;symbols&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;coords&#39;</span><span class="p">:</span> <span class="n">zmat</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;vars&#39;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">zmat</span><span class="p">[</span><span class="s1">&#39;vars&#39;</span><span class="p">]),</span>
+        <span class="s1">&#39;map&#39;</span><span class="p">:</span> <span class="n">zmat</span><span class="p">[</span><span class="s1">&#39;map&#39;</span><span class="p">],</span>
+    <span class="p">}</span>
+
+    <span class="n">coords</span> <span class="o">=</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">&#39;coords&#39;</span> <span class="ow">in</span> <span class="n">xyz</span> <span class="k">else</span> <span class="n">xyz</span>
+    <span class="n">n_atoms_xyz</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+
+    <span class="n">new_vars</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">old_val</span> <span class="ow">in</span> <span class="n">zmat_out</span><span class="p">[</span><span class="s1">&#39;vars&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="c1"># indices from parameter name (e.g., R_8_6 -&gt; [8, 6], etc.)</span>
+        <span class="n">indices</span> <span class="o">=</span> <span class="n">get_atom_indices_from_zmat_parameter</span><span class="p">(</span><span class="n">key</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">mapped</span> <span class="o">=</span> <span class="p">[</span><span class="n">zmat_out</span><span class="p">[</span><span class="s1">&#39;map&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">indices</span><span class="p">]</span>
+        <span class="n">atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">convertible</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">mapped</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">m</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;X&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">m</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">isdigit</span><span class="p">():</span>
+                    <span class="n">atoms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="mi">1</span><span class="p">:]))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">convertible</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="k">break</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+                <span class="n">atoms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">convertible</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="k">break</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="n">convertible</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">any</span><span class="p">(</span><span class="n">a</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">a</span> <span class="o">&gt;=</span> <span class="n">n_atoms_xyz</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">atoms</span><span class="p">):</span>
+            <span class="n">new_vars</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">old_val</span>
+            <span class="k">continue</span>
+        <span class="n">new_vars</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">vectors</span><span class="o">.</span><span class="n">calculate_param</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">coords</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="n">atoms</span><span class="p">)</span>
+
+    <span class="n">zmat_out</span><span class="p">[</span><span class="s1">&#39;vars&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_vars</span>
+    <span class="k">return</span> <span class="n">zmat_out</span></div>
 
 </pre></div>
 

@@ -253,6 +253,7 @@
                         <span class="n">return_all_conformers</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
                         <span class="n">plot_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                         <span class="n">print_logs</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                        <span class="n">economic_generation</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
                         <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate conformers for (non-TS) species starting from a list of RMG Molecules.</span>
@@ -284,6 +285,10 @@
 <span class="sd">                                   If None, the plot will not be shown (nor saved).</span>
 <span class="sd">        print_logs (bool, optional): Whether define a logger so logs are also printed to stdout.</span>
 <span class="sd">                                     Useful when run outside of ARC. True to print.</span>
+<span class="sd">        economic_generation (bool, optional): Use a scaled-down (but still n_rotors- / n_heavy-dependent)</span>
+<span class="sd">                                              conformer count for cheap use-cases such as BDE scissors</span>
+<span class="sd">                                              fragments and atom-mapping fingerprints. Ignored when</span>
+<span class="sd">                                              ``num_confs_to_generate`` is given explicitly.</span>
 
 <span class="sd">    Raises:</span>
 <span class="sd">        ConformerError: If something goes wrong.</span>
@@ -356,7 +361,7 @@
         <span class="n">torsions</span><span class="p">,</span> <span class="n">tops</span> <span class="o">=</span> <span class="n">determine_rotors</span><span class="p">(</span><span class="n">mol_list</span><span class="p">)</span>
     <span class="n">conformers</span> <span class="o">=</span> <span class="n">generate_force_field_conformers</span><span class="p">(</span>
         <span class="n">mol_list</span><span class="o">=</span><span class="n">mol_list</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">xyzs</span><span class="o">=</span><span class="n">xyzs</span><span class="p">,</span> <span class="n">torsion_num</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">torsions</span><span class="p">),</span> <span class="n">charge</span><span class="o">=</span><span class="n">charge</span><span class="p">,</span> <span class="n">multiplicity</span><span class="o">=</span><span class="n">multiplicity</span><span class="p">,</span>
-        <span class="n">num_confs</span><span class="o">=</span><span class="n">num_confs_to_generate</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="n">force_field</span><span class="p">)</span>
+        <span class="n">num_confs</span><span class="o">=</span><span class="n">num_confs_to_generate</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="n">force_field</span><span class="p">,</span> <span class="n">economic_generation</span><span class="o">=</span><span class="n">economic_generation</span><span class="p">)</span>
 
     <span class="n">lowest_confs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">conformers</span><span class="p">):</span>
@@ -744,6 +749,7 @@
                                     <span class="n">xyzs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                                     <span class="n">num_confs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                                     <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;MMFF94s&#39;</span><span class="p">,</span>
+                                    <span class="n">economic_generation</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
                                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate conformers using RDKit and OpenBabel and optimize them using a force field</span>
@@ -758,6 +764,8 @@
 <span class="sd">        multiplicity (int): The species spin multiplicity.</span>
 <span class="sd">        num_confs (int, optional): The number of conformers to generate.</span>
 <span class="sd">        force_field (str, optional): The type of force field to use.</span>
+<span class="sd">        economic_generation (bool, optional): When ``num_confs`` is not given, scale the auto-determined</span>
+<span class="sd">                                              conformer count down (still a function of n_rotors / n_heavy).</span>
 
 <span class="sd">    Raises:</span>
 <span class="sd">        ConformerError: If xyzs is given and it is not a list, or its entries are not strings.</span>
@@ -770,7 +778,7 @@
     <span class="k">if</span> <span class="n">num_confs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">num_confs</span><span class="p">,</span> <span class="n">num_chiral_centers</span> <span class="o">=</span> <span class="n">determine_number_of_conformers_to_generate</span><span class="p">(</span>
             <span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">heavy_atoms</span><span class="o">=</span><span class="n">number_of_heavy_atoms</span><span class="p">,</span> <span class="n">torsion_num</span><span class="o">=</span><span class="n">torsion_num</span><span class="p">,</span> <span class="n">mol</span><span class="o">=</span><span class="n">mol_list</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
-            <span class="n">xyz</span><span class="o">=</span><span class="n">xyzs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">xyzs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">xyz</span><span class="o">=</span><span class="n">xyzs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">xyzs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span> <span class="n">minimalist</span><span class="o">=</span><span class="n">economic_generation</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">num_chiral_centers</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
     <span class="n">chiral_centers</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">num_chiral_centers</span> <span class="k">else</span> <span class="sa">f</span><span class="s1">&#39;, </span><span class="si">{</span><span class="n">num_chiral_centers</span><span class="si">}</span><span class="s1"> chiral centers,&#39;</span>

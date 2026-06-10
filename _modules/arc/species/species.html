@@ -1246,6 +1246,7 @@
                             <span class="n">n_confs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
                             <span class="n">e_confs</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
                             <span class="n">plot_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                            <span class="n">economic_generation</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                             <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Generate conformers.</span>
@@ -1257,6 +1258,10 @@
 <span class="sd">                                       (unique) generated conformers will be stored in the .conformers attribute.</span>
 <span class="sd">            plot_path (str, optional): A folder path in which the plot will be saved.</span>
 <span class="sd">                                       If None, the plot will not be shown (nor saved).</span>
+<span class="sd">            economic_generation (bool, optional): Use a scaled-down (but still n_rotors / n_heavy-dependent)</span>
+<span class="sd">                                                  conformer count. Intended for cheap use-cases such as BDE</span>
+<span class="sd">                                                  scissors fragments and atom-mapping fingerprints, where</span>
+<span class="sd">                                                  full auto-scaling is wasteful.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_ts</span><span class="p">:</span>
             <span class="k">return</span>
@@ -1277,6 +1282,7 @@
                                                       <span class="n">return_all_conformers</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
                                                       <span class="n">plot_path</span><span class="o">=</span><span class="n">plot_path</span><span class="p">,</span>
                                                       <span class="n">diastereomers</span><span class="o">=</span><span class="n">diastereomers</span><span class="p">,</span>
+                                                      <span class="n">economic_generation</span><span class="o">=</span><span class="n">economic_generation</span><span class="p">,</span>
                                                       <span class="p">)</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">lowest_confs</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">conformers</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">conf</span><span class="p">[</span><span class="s1">&#39;xyz&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">conf</span> <span class="ow">in</span> <span class="n">lowest_confs</span><span class="p">])</span>
@@ -1789,10 +1795,19 @@
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;symbols&#39;</span><span class="p">]):</span>
                 <span class="k">raise</span> <span class="n">SpeciesError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The number of atoms in the molecule and in the coordinates of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> is different.&#39;</span>
                                    <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Got:</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">to_adjacency_list</span><span class="p">()</span><span class="si">}</span><span class="se">\n</span><span class="s1">and:</span><span class="se">\n</span><span class="si">{</span><span class="n">xyz</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="c1"># Use the mol&#39;s radical count as a perception hint only when</span>
+            <span class="c1"># the user didn&#39;t specify n_radicals AND the mol&#39;s multiplicity</span>
+            <span class="c1"># matches the species multiplicity (avoids e.g., forcing triplet</span>
+            <span class="c1"># perception on a user-specified singlet O atom).</span>
+            <span class="n">_n_rad_for_perception</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">number_of_radicals</span>
+            <span class="k">if</span> <span class="n">_n_rad_for_perception</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">_mol_n_rad</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">radical_electrons</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">_mol_n_rad</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span><span class="p">:</span>
+                    <span class="n">_n_rad_for_perception</span> <span class="o">=</span> <span class="n">_mol_n_rad</span>
             <span class="n">perceived_mol</span> <span class="o">=</span> <span class="n">perceive_molecule_from_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span>
                                                        <span class="n">charge</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">charge</span><span class="p">,</span>
                                                        <span class="n">multiplicity</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span><span class="p">,</span>
-                                                       <span class="n">n_radicals</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">number_of_radicals</span><span class="p">,</span>
+                                                       <span class="n">n_radicals</span><span class="o">=</span><span class="n">_n_rad_for_perception</span><span class="p">,</span>
                                                        <span class="n">n_fragments</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get_n_fragments</span><span class="p">(),</span>
                                                        <span class="p">)</span>
             <span class="k">if</span> <span class="n">perceived_mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -2165,7 +2180,7 @@
                               <span class="n">charge</span><span class="o">=</span><span class="n">mol_splits</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get_net_charge</span><span class="p">(),</span>
                               <span class="n">compute_thermo</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
                               <span class="n">e0_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-            <span class="n">spc1</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">()</span>
+            <span class="n">spc1</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">(</span><span class="n">economic_generation</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
             <span class="k">return</span> <span class="p">[</span><span class="n">spc1</span><span class="p">]</span>
         <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">mol_splits</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
             <span class="n">mol1</span><span class="p">,</span> <span class="n">mol2</span> <span class="o">=</span> <span class="n">mol_splits</span>
@@ -2220,7 +2235,7 @@
                           <span class="n">compute_thermo</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
                           <span class="n">e0_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                           <span class="n">keep_mol</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="n">spc1</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">()</span>
+        <span class="n">spc1</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">(</span><span class="n">economic_generation</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">spc1</span><span class="o">.</span><span class="n">rotors_dict</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="n">spc2</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="n">label2</span><span class="p">,</span>
                           <span class="n">mol</span><span class="o">=</span><span class="n">mol2</span><span class="p">,</span>
@@ -2230,7 +2245,7 @@
                           <span class="n">compute_thermo</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
                           <span class="n">e0_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                           <span class="n">keep_mol</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="n">spc2</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">()</span>
+        <span class="n">spc2</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">(</span><span class="n">economic_generation</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">spc2</span><span class="o">.</span><span class="n">rotors_dict</span> <span class="o">=</span> <span class="kc">None</span>
 
         <span class="k">return</span> <span class="p">[</span><span class="n">spc1</span><span class="p">,</span> <span class="n">spc2</span><span class="p">]</span>
@@ -2654,7 +2669,7 @@
             <span class="n">xyz</span> <span class="o">=</span> <span class="n">xyz_to_str</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">xyz</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">almost_equal_tsgs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="s1">&#39;TSGuess&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">almost_equal_tsgs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">TSGuess</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine whether two TSGuess object instances represent the same geometry.</span>
 

@@ -420,6 +420,8 @@
 </li>
       <li><a href="api/converter.html#arc.species.converter.check_molecule_list_order">check_molecule_list_order() (in module arc.species.converter)</a>
 </li>
+      <li><a href="api/zmat.html#arc.species.zmat.check_ordered_zmats">check_ordered_zmats() (in module arc.species.zmat)</a>
+</li>
       <li><a href="api/main.html#arc.main.ARC.check_project_name">check_project_name() (arc.main.ARC method)</a>
 </li>
       <li><a href="api/ssh.html#arc.job.ssh.SSHClient.check_running_jobs_ids">check_running_jobs_ids() (arc.job.ssh.SSHClient method)</a>
@@ -608,10 +610,10 @@
 </li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.determine_multiplicity_from_descriptors">determine_multiplicity_from_descriptors() (arc.species.species.ARCSpecies method)</a>
 </li>
-      <li><a href="api/species.html#arc.species.species.ARCSpecies.determine_multiplicity_from_xyz">determine_multiplicity_from_xyz() (arc.species.species.ARCSpecies method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api/species.html#arc.species.species.ARCSpecies.determine_multiplicity_from_xyz">determine_multiplicity_from_xyz() (arc.species.species.ARCSpecies method)</a>
+</li>
       <li><a href="api/conformers.html#arc.species.conformers.determine_number_of_conformers_to_generate">determine_number_of_conformers_to_generate() (in module arc.species.conformers)</a>
 </li>
       <li><a href="api/species.html#arc.species.species.determine_occ">determine_occ() (in module arc.species.species)</a>
@@ -632,8 +634,6 @@
 </li>
       <li><a href="api/conformers.html#arc.species.conformers.determine_smallest_atom_index_in_scan">determine_smallest_atom_index_in_scan() (in module arc.species.conformers)</a>
 </li>
-      <li><a href="api/common.html#arc.common.determine_top_group_indices">determine_top_group_indices() (in module arc.common)</a>
-</li>
       <li><a href="api/conformers.html#arc.species.conformers.determine_torsion_sampling_points">determine_torsion_sampling_points() (in module arc.species.conformers)</a>
 </li>
       <li><a href="api/conformers.html#arc.species.conformers.determine_torsion_symmetry">determine_torsion_symmetry() (in module arc.species.conformers)</a>
@@ -641,8 +641,6 @@
       <li><a href="api/main.html#arc.main.ARC.determine_unique_species_labels">determine_unique_species_labels() (arc.main.ARC method)</a>
 </li>
       <li><a href="api/conformers.html#arc.species.conformers.determine_well_width_tolerance">determine_well_width_tolerance() (in module arc.species.conformers)</a>
-</li>
-      <li><a href="api/common.html#arc.common.dfs">dfs() (in module arc.common)</a>
 </li>
       <li><a href="api/converter.html#arc.species.converter.dihedral_constraint">dihedral_constraint() (in module arc.species.converter)</a>
 </li>
@@ -730,6 +728,8 @@
 </li>
       <li><a href="api/ssh.html#arc.job.ssh.SSHClient.find_package">find_package() (arc.job.ssh.SSHClient method)</a>
 </li>
+      <li><a href="api/zmat.html#arc.species.zmat.find_smart_anchors">find_smart_anchors() (in module arc.species.zmat)</a>
+</li>
       <li><a href="api/main.html#arc.main.ARC.fine_only">fine_only (arc.main.ARC attribute)</a>
 
       <ul>
@@ -799,8 +799,6 @@
       <li><a href="api/vectors.html#arc.species.vectors.get_angle">get_angle() (in module arc.species.vectors)</a>
 </li>
       <li><a href="api/common.html#arc.common.get_angle_in_180_range">get_angle_in_180_range() (in module arc.common)</a>
-</li>
-      <li><a href="api/zmat.html#arc.species.zmat.get_atom_connectivity_from_mol">get_atom_connectivity_from_mol() (in module arc.species.zmat)</a>
 </li>
       <li><a href="api/zmat.html#arc.species.zmat.get_atom_indices_from_zmat_parameter">get_atom_indices_from_zmat_parameter() (in module arc.species.zmat)</a>
 </li>
@@ -952,10 +950,10 @@
       </ul></li>
       <li><a href="api/common.html#arc.common.is_angle_linear">is_angle_linear() (in module arc.common)</a>
 </li>
-      <li><a href="api/zmat.html#arc.species.zmat.is_atom_in_linear_angle">is_atom_in_linear_angle() (in module arc.species.zmat)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api/zmat.html#arc.species.zmat.is_atom_in_linear_angle">is_atom_in_linear_angle() (in module arc.species.zmat)</a>
+</li>
       <li><a href="api/zmat.html#arc.species.zmat.is_atom_in_new_fragment">is_atom_in_new_fragment() (in module arc.species.zmat)</a>
 </li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.is_diatomic">is_diatomic() (arc.species.species.ARCSpecies method)</a>
@@ -985,8 +983,6 @@
       <li><a href="api/species.html#arc.species.species.ARCSpecies.is_water">is_water() (arc.species.species.ARCSpecies method)</a>
 </li>
       <li><a href="api/common.html#arc.common.is_xyz_linear">is_xyz_linear() (in module arc.common)</a>
-</li>
-      <li><a href="api/common.html#arc.common.is_xyz_mol_match">is_xyz_mol_match() (in module arc.common)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -1203,13 +1199,17 @@
         <li><a href="api/scheduler.html#arc.scheduler.Scheduler.orbitals_level">(arc.scheduler.Scheduler attribute)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/converter.html#arc.species.converter.order_atoms">order_atoms() (in module arc.species.converter)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/converter.html#arc.species.converter.order_atoms_in_mol_list">order_atoms_in_mol_list() (in module arc.species.converter)</a>
 </li>
       <li><a href="api/zmat.html#arc.species.zmat.order_fragments_by_constraints">order_fragments_by_constraints() (in module arc.species.zmat)</a>
+</li>
+      <li><a href="api/converter.html#arc.species.converter.order_mol_by_atom_map">order_mol_by_atom_map() (in module arc.species.converter)</a>
+</li>
+      <li><a href="api/converter.html#arc.species.converter.order_xyz_by_atom_map">order_xyz_by_atom_map() (in module arc.species.converter)</a>
 </li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.original_label">original_label (arc.species.species.ARCSpecies attribute)</a>
 </li>
@@ -1471,18 +1471,16 @@
 </li>
       <li><a href="api/common.html#arc.common.signed_angular_diff">signed_angular_diff() (in module arc.common)</a>
 </li>
-      <li><a href="api/level.html#arc.level.Level.simple">simple() (arc.level.Level method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api/level.html#arc.level.Level.simple">simple() (arc.level.Level method)</a>
+</li>
       <li><a href="api/main.html#arc.main.ARC.skip_nmd">skip_nmd (arc.main.ARC attribute)</a>
 
       <ul>
         <li><a href="api/scheduler.html#arc.scheduler.Scheduler.skip_nmd">(arc.scheduler.Scheduler attribute)</a>
 </li>
       </ul></li>
-      <li><a href="api/common.html#arc.common.sort_atoms_in_descending_label_order">sort_atoms_in_descending_label_order() (in module arc.common)</a>
-</li>
       <li><a href="api/common.html#arc.common.sort_two_lists_by_the_first">sort_two_lists_by_the_first() (in module arc.common)</a>
 </li>
       <li><a href="api/converter.html#arc.species.converter.sort_xyz_using_indices">sort_xyz_using_indices() (in module arc.species.converter)</a>
@@ -1704,6 +1702,8 @@
       <li><a href="api/conformers.html#arc.species.conformers.update_mol">update_mol() (in module arc.species.conformers)</a>
 </li>
       <li><a href="api/converter.html#arc.species.converter.update_molecule">update_molecule() (in module arc.species.converter)</a>
+</li>
+      <li><a href="api/zmat.html#arc.species.zmat.update_zmat_by_xyz">update_zmat_by_xyz() (in module arc.species.zmat)</a>
 </li>
       <li><a href="api/zmat.html#arc.species.zmat.update_zmat_with_new_atom">update_zmat_with_new_atom() (in module arc.species.zmat)</a>
 </li>

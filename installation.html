@@ -153,10 +153,16 @@ installation folder by, e.g., <code class="docutils literal notranslate"><span c
 <p>Additional source options (examples):</p>
 <p>make install-rmg RMG_ARGS=”–source –conda”
 make install-rmg RMG_ARGS=”–source –pip”</p>
-<p>Optional extras (examples):</p>
-<p>make install-rmg RMG_ARGS=”–rms”
-make install-rmg RMG_ARGS=”–source –rms –ssh”</p>
 <p>See <code class="docutils literal notranslate"><span class="pre">devtools/install_rmg.sh</span> <span class="pre">--help</span></code> for all flags.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>ARC’s installer covers RMG-Py + RMG-database + Arkane. It does
+<strong>not</strong> install RMS (Reaction Mechanism Simulator, the Julia-based
+pdep / kinetics solver) — that path has been removed from
+<code class="docutils literal notranslate"><span class="pre">install_rmg.sh</span></code>. If you need RMS for your workflow, follow the
+upstream RMG installation guide:
+<a class="reference external" href="https://reactionmechanismgenerator.github.io/RMG-Py/users/rmg/installation/index.html">RMG-Py installation docs</a>.</p>
+</div>
 </li>
 <li><p>Source install RMG-Py + RMG-database manually, then set <cite>RMG_PY_PATH</cite> and <cite>RMG_DB_PATH</cite> in your shell or
 <cite>.arc/settings.py</cite>.</p></li>

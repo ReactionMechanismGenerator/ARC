@@ -80,8 +80,6 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.convert_list_index_0_to_1"><code class="docutils literal notranslate"><span class="pre">convert_list_index_0_to_1()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.convert_to_hours"><code class="docutils literal notranslate"><span class="pre">convert_to_hours()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.delete_check_files"><code class="docutils literal notranslate"><span class="pre">delete_check_files()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#arc.common.determine_top_group_indices"><code class="docutils literal notranslate"><span class="pre">determine_top_group_indices()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#arc.common.dfs"><code class="docutils literal notranslate"><span class="pre">dfs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.distance_matrix"><code class="docutils literal notranslate"><span class="pre">distance_matrix()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.estimate_orca_mem_cpu_requirement"><code class="docutils literal notranslate"><span class="pre">estimate_orca_mem_cpu_requirement()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.extremum_list"><code class="docutils literal notranslate"><span class="pre">extremum_list()</span></code></a></li>
@@ -111,7 +109,6 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.is_str_float"><code class="docutils literal notranslate"><span class="pre">is_str_float()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.is_str_int"><code class="docutils literal notranslate"><span class="pre">is_str_int()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.is_xyz_linear"><code class="docutils literal notranslate"><span class="pre">is_xyz_linear()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#arc.common.is_xyz_mol_match"><code class="docutils literal notranslate"><span class="pre">is_xyz_mol_match()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.key_by_val"><code class="docutils literal notranslate"><span class="pre">key_by_val()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.log_footer"><code class="docutils literal notranslate"><span class="pre">log_footer()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.log_header"><code class="docutils literal notranslate"><span class="pre">log_header()</span></code></a></li>
@@ -120,7 +117,6 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.safe_copy_file"><code class="docutils literal notranslate"><span class="pre">safe_copy_file()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.save_yaml_file"><code class="docutils literal notranslate"><span class="pre">save_yaml_file()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.signed_angular_diff"><code class="docutils literal notranslate"><span class="pre">signed_angular_diff()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#arc.common.sort_atoms_in_descending_label_order"><code class="docutils literal notranslate"><span class="pre">sort_atoms_in_descending_label_order()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.sort_two_lists_by_the_first"><code class="docutils literal notranslate"><span class="pre">sort_two_lists_by_the_first()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.string_representer"><code class="docutils literal notranslate"><span class="pre">string_representer()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.sum_list_entries"><code class="docutils literal notranslate"><span class="pre">sum_list_entries()</span></code></a></li>
@@ -414,52 +410,6 @@ Pass <code class="docutils literal notranslate"><span class="pre">True</span></c
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="arc.common.determine_top_group_indices">
-<span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">determine_top_group_indices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Molecule</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Atom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Atom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/common.html#determine_top_group_indices"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.determine_top_group_indices" title="Link to this definition"></a></dt>
-<dd><p>Determine the indices of a “top group” in a molecule.
-The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
-Two <code class="docutils literal notranslate"><span class="pre">atom_list_to_explore</span></code> are used so the list the loop iterates through isn’t changed within the loop.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>mol</strong> (<em>Molecule</em>) – The Molecule object to explore.</p></li>
-<li><p><strong>atom1</strong> (<em>Atom</em>) – The pivotal atom in mol.</p></li>
-<li><p><strong>atom2</strong> (<em>Atom</em>) – The beginning of the top relative to atom1 in mol.</p></li>
-<li><p><strong>index</strong> (<em>int</em><em>, </em><em>optional</em>) – Whether to return 1-index or 0-index conventions. 1 for 1-index.</p></li>
-</ul>
-</dd>
-</dl>
-<dl class="simple">
-<dt>Returns: tuple[list, bool]</dt><dd><ul class="simple">
-<li><p>The indices of the atoms in the top (either 0-index or 1-index, as requested).</p></li>
-<li><p>Whether the top has heavy atoms (is not just a hydrogen atom). <code class="docutils literal notranslate"><span class="pre">True</span></code> if it has heavy atoms.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="arc.common.dfs">
-<span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">dfs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Molecule</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sort_result</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/common.html#dfs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.dfs" title="Link to this definition"></a></dt>
-<dd><p>A depth-first search algorithm for graph traversal of a Molecule object instance.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>mol</strong> (<em>Molecule</em>) – The Molecule to search.</p></li>
-<li><p><strong>start</strong> (<em>int</em>) – The index of the first atom in the search.</p></li>
-<li><p><strong>sort_result</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to sort the returned visited indices.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Indices of all atoms connected to the starting atom.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>list[int]</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="arc.common.distance_matrix">
 <span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">distance_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span></span></span><a class="reference internal" href="../_modules/arc/common.html#distance_matrix"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.distance_matrix" title="Link to this definition"></a></dt>
 <dd><p>Compute the Euclidean distance matrix between rows of two arrays.</p>
@@ -542,7 +492,7 @@ where some entries could be <code class="docutils literal notranslate"><span cla
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.common.get_angle_in_180_range">
 <span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">get_angle_in_180_range</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">angle</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">round_to</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="reference internal" href="../_modules/arc/common.html#get_angle_in_180_range"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.get_angle_in_180_range" title="Link to this definition"></a></dt>
-<dd><p>Get the corresponding angle in the -180 to +180 degree range.</p>
+<dd><p>Get the corresponding angle in the -180 to +180 degree range, [-180, 180)</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1013,28 +963,6 @@ Returns True if they have the same length and, for each corresponding entry:</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="arc.common.is_xyz_mol_match">
-<span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">is_xyz_mol_match</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Molecule</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/arc/common.html#is_xyz_mol_match"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.is_xyz_mol_match" title="Link to this definition"></a></dt>
-<dd><p>A helper function that matches RMG’s Molecule object to an xyz,
-used in _scissors to match xyz and the cut products.
-This function only checks the molecular formula.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>mol</strong> – rmg Molecule object</p></li>
-<li><p><strong>xyz</strong> – coordinates of the cut product</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code> if the xyz and molecule match, <code class="docutils literal notranslate"><span class="pre">False</span></code> otherwise</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>bool</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="arc.common.key_by_val">
 <span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">key_by_val</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dictionary</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/arc/common.html#key_by_val"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.key_by_val" title="Link to this definition"></a></dt>
 <dd><p>A helper function for getting a key from a dictionary corresponding to a certain value.
@@ -1189,20 +1117,6 @@ so that the result represents the smallest signed rotation from phi_2 to phi_1:<
 <span class="go">-20.0</span>
 </pre></div>
 </div>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="arc.common.sort_atoms_in_descending_label_order">
-<span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">sort_atoms_in_descending_label_order</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Molecule</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/common.html#sort_atoms_in_descending_label_order"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.sort_atoms_in_descending_label_order" title="Link to this definition"></a></dt>
-<dd><p>If all atoms in the molecule object have a label, this function reassign the
-.atoms in Molecule with a list of atoms with the orders based on the labels of the atoms.
-for example, [int(atom.label) for atom in mol.atoms] is [1, 4, 32, 7],
-then the function will return the new atom with the order [1, 4, 7, 32]</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>mol</strong> (<em>Molecule</em>) – An RMG Molecule object, with labeled atoms</p>
-</dd>
-</dl>
 </dd></dl>
 
 <dl class="py function">
