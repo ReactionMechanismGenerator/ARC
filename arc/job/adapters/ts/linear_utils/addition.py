@@ -636,8 +636,8 @@ def build_concerted_ts(uni_xyz: dict,
     For each **split bond** (breaking), both endpoints are pushed apart
     symmetrically toward the Pauling TS estimate. For each **cross bond**
     (forming), both endpoints are pulled together toward the Pauling TS
-    estimate. The displacements are scaled by *weight* and applied
-    iteratively (3 rounds) to allow coupled adjustments to converge.
+    estimate. The displacements are applied iteratively (10 rounds) to
+    allow coupled adjustments to converge.
 
     This handles concerted eliminations (e.g. XY_elimination_hydroxyl)
     and retro-cycloadditions where multiple bonds change simultaneously.
@@ -796,25 +796,7 @@ def stretch_bond(uni_xyz: dict,
     cross_bonds = cross_bonds or []
 
     adj = mol_to_adjacency(uni_mol)
-    for a, b in split_bonds:
-        adj[a].discard(b)
-        adj[b].discard(a)
-
-    visited: set[int] = set()
-    fragments: list[set[int]] = []
-    for start in range(n_atoms):
-        if start in visited:
-            continue
-        component: set[int] = set()
-        queue: deque = deque([start])
-        while queue:
-            node = queue.popleft()
-            if node in visited:
-                continue
-            visited.add(node)
-            component.add(node)
-            queue.extend(adj[node] - visited)
-        fragments.append(component)
+    fragments = _connected_components(adj, n_atoms, split_bonds)
 
     if len(fragments) < 2:
         logger.debug(f'Linear addition ({label}): split bonds did not fragment molecule.')
@@ -1232,9 +1214,9 @@ def migrate_h_between_fragments(ts_xyz: dict,
     3. Compares with product compositions to find H surplus/deficit.
     4. For each surplus fragment, finds the H atom closest to the deficit
        fragment and places it on the donor→acceptor axis at a TS-like
-       distance (interpolated by ``weight``). Using the donor→acceptor
-       axis instead of a direct H→acceptor line avoids near-collisions
-       with other atoms in the source fragment (e.g. the C in a CO₂ group).
+       distance. Using the donor→acceptor axis instead of a direct
+       H→acceptor line avoids near-collisions with other atoms in the
+       source fragment (e.g. the C in a CO₂ group).
 
     Args:
         ts_xyz: TS guess XYZ from ``stretch_bond`` (already stretched).
@@ -1251,25 +1233,7 @@ def migrate_h_between_fragments(ts_xyz: dict,
     # ---- 1. Build adjacency and fragment ----
     atom_to_idx = atom_index_map(uni_mol)
     adj = mol_to_adjacency(uni_mol)
-    for a, b in split_bonds:
-        adj[a].discard(b)
-        adj[b].discard(a)
-
-    visited: set[int] = set()
-    fragments: list[set[int]] = []
-    for start in range(n_atoms):
-        if start in visited:
-            continue
-        component: set[int] = set()
-        queue: deque = deque([start])
-        while queue:
-            node = queue.popleft()
-            if node in visited:
-                continue
-            visited.add(node)
-            component.add(node)
-            queue.extend(adj[node] - visited)
-        fragments.append(component)
+    fragments = _connected_components(adj, n_atoms, split_bonds)
 
     if len(fragments) != n_products:
         return ts_xyz
@@ -1639,21 +1603,7 @@ def detect_intra_frag_ring_bonds(mol: Molecule,
         adj[a].discard(b)
         adj[b].discard(a)
 
-    visited: set[int] = set()
-    fragments: list[set[int]] = []
-    for start in range(n_atoms):
-        if start in visited:
-            continue
-        comp: set[int] = set()
-        queue: deque = deque([start])
-        while queue:
-            node = queue.popleft()
-            if node in comp:
-                continue
-            comp.add(node)
-            queue.extend(n for n in adj[node] if n not in comp)
-        visited |= comp
-        fragments.append(comp)
+    fragments = _connected_components(adj, n_atoms, [])
 
     # A forming bond must have at least one endpoint adjacent to a severed edge.
     split_endpoints: set[int] = set()

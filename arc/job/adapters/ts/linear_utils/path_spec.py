@@ -68,7 +68,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from arc.common import get_single_bond_length
-from arc.job.adapters.ts.linear_utils.geom_utils import atom_index_map, canonical_bond, mol_to_adjacency
+from arc.job.adapters.ts.linear_utils.geom_utils import bond_order_map, canonical_bond, mol_to_adjacency
 from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA, validate_ts_guess
 
 if TYPE_CHECKING:
@@ -96,17 +96,8 @@ def _canon_list(bonds) -> list[CanonicalBond]:
 # ---------------------------------------------------------------------------
 
 def _bond_order_map(mol: Molecule) -> dict[CanonicalBond, float]:
-    """Return a {(min,max) -> bond_order} dict for every bond in *mol*."""
-    atom_to_idx = atom_index_map(mol)
-    out: dict[CanonicalBond, float] = {}
-    for atom in mol.atoms:
-        ia = atom_to_idx[atom]
-        for nbr, bond in atom.bonds.items():
-            ib = atom_to_idx[nbr]
-            key = canonical_bond(ia, ib)
-            if key not in out:
-                out[key] = float(bond.order)
-    return out
+    """Return a {(min,max) -> bond_order} dict for every bond in *mol* (thin alias of :func:`bond_order_map`)."""
+    return bond_order_map(mol)
 
 
 def _all_bonds(mol: Molecule) -> list[CanonicalBond]:
@@ -1124,13 +1115,7 @@ def has_committed_spectator_group(path_spec: ReactionPathSpec,
     # 0.85 × sbl(single) and would false-positive; double bonds (~1.20-1.34 Å)
     # are borderline but kept in-check so real wrong-channel contacts (e.g.
     # C=O spectator) are still caught at the threshold below.
-    atom_to_idx_mol = {atom: i for i, atom in enumerate(r_mol.atoms)}
-    bond_order_lookup: dict[tuple[int, int], float] = {}
-    for atom in r_mol.atoms:
-        ia = atom_to_idx_mol[atom]
-        for nbr, bond in atom.bonds.items():
-            ib = atom_to_idx_mol[nbr]
-            bond_order_lookup[(min(ia, ib), max(ia, ib))] = bond.order
+    bond_order_lookup = bond_order_map(r_mol)
 
     n_atoms = len(symbols)
     for ep in sorted(heavy_reactive_endpoints):
@@ -1460,6 +1445,5 @@ def validate_addition_guess(xyz: dict,
                                                 path_spec=path_spec,
                                                 r_mol=uni_mol,
                                                 family=path_spec.family,
-                                                reactive_indices=set(path_spec.reactive_atoms),
                                                 label=label)
     return validate_ts_guess(xyz, set(), list(forming_bonds or []), uni_mol, label=label)

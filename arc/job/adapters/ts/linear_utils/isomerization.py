@@ -232,27 +232,7 @@ def path_has_cumulated_bonds(mol: Molecule,
     """
     i_atom, j_atom = forming_bond
 
-    adj = mol_to_adjacency(mol)
-
-    prev: dict[int, int | None] = {i_atom: None}
-    queue: deque = deque([i_atom])
-    path: list[int] | None = None
-    while queue:
-        node = queue.popleft()
-        for nbr in adj[node]:
-            if nbr not in prev:
-                prev[nbr] = node
-                if nbr == j_atom:
-                    p: list[int] = []
-                    cur: int | None = j_atom
-                    while cur is not None:
-                        p.append(cur)
-                        cur = prev[cur]
-                    path = p[::-1]
-                    break
-                queue.append(nbr)
-        if path is not None:
-            break
+    path = bfs_path(mol_to_adjacency(mol), i_atom, j_atom)
 
     if path is None or len(path) < 3:
         return False

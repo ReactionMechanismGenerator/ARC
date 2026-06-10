@@ -31,7 +31,6 @@ from arc.job.adapters.ts.linear_utils.postprocess import (
     has_misdirected_migrating_h,
     adjust_reactive_bond_distances,
     has_broken_nonreactive_bond,
-    has_close_h_pair_on_same_parent,
     fix_forming_bond_distances,
     fix_nonreactive_h_distances,
     fix_crowded_h_atoms,
@@ -542,36 +541,6 @@ class TestGeometryFixers(unittest.TestCase):
         coords_orig = np.array(self.ethane_xyz['coords'])
         coords_new = np.array(result['coords'])
         np.testing.assert_allclose(coords_new, coords_orig, atol=0.01)
-
-    def test_has_close_h_pair_rejects_endocyclic_ts0(self):
-        """
-        Test that a TS with H atoms too close on the same parent is rejected.
-        Uses the actual TS0 from test_interpolate_intra_r_add_endocyclic where
-        C0 has H6-H7=1.076 Å and C5 has H13-H14=0.791 Å (both unphysical).
-        """
-        mol = ARCSpecies(label='R', smiles='[CH2]C(=C)CC=C', xyz={
-            'symbols': ('C','C','C','C','C','C','H','H','H','H','H','H','H','H','H'),
-            'isotopes': (12,12,12,12,12,12,1,1,1,1,1,1,1,1,1),
-            'coords': ((-1.278, 1.000, 0.801), (-1.019, -0.230, 0.090),
-                       (-0.026, -0.293, -0.810), (-1.884, -1.427, 0.425),
-                       (-3.277, -1.295, -0.130), (-4.393, -1.321, 0.610),
-                       (-2.110, 1.062, 1.493), (-0.686, 1.889, 0.615),
-                       (0.598, 0.564, -1.040), (0.189, -1.212, -1.348),
-                       (-1.903, -1.570, 1.513), (-1.442, -2.342, 0.010),
-                       (-3.361, -1.180, -1.209), (-4.360, -1.437, 1.689),
-                       (-5.369, -1.223, 0.145))}).mol
-        # TS0 with collapsed H pairs: C0 H6-H7=1.076, C5 H13-H14=0.791
-        ts_xyz = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
-                  'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-                  'coords': ((-0.698, 0.878, -1.128), (-1.019, -0.230, 0.090),
-                             (-0.026, -0.293, -0.810), (-1.800, -1.506, 0.302),
-                             (-2.597, -2.324, -0.720), (-1.908, -3.108, -1.776),
-                             (-0.375, 0.424, -1.560), (-0.153, 1.320, -0.605),  # H6-H7 close!
-                             (0.977, -0.419, -0.436), (-0.082, 0.296, -1.757),
-                             (-2.864, -1.265, 0.201), (-1.648, -1.965, 1.282),
-                             (-2.126, -3.643, -0.260), (-2.189, -2.831, -2.143),
-                             (-1.631, -3.385, -2.174))}  # H13-H14 close!
-        self.assertTrue(has_close_h_pair_on_same_parent(ts_xyz, mol, min_hh_dist=1.2))
 
     def test_orient_h_on_internal_reactive_center(self):
         """

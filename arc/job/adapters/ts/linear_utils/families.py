@@ -33,6 +33,7 @@ from arc.common import get_single_bond_length
 from arc.job.adapters.ts.linear_utils.geom_utils import (
     atom_index_map,
     bfs_fragment,
+    bond_order_map,
     canonical_bond,
     dihedral_deg,
     mol_to_adjacency,
@@ -41,6 +42,7 @@ from arc.job.adapters.ts.linear_utils.geom_utils import (
     xyz_with_coords,
 )
 from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
+from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA
 from arc.species.species import colliding_atoms
 
 if TYPE_CHECKING:
@@ -48,8 +50,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
-PAULING_DELTA: float = 0.42
 
 _SIGMATROPIC_BREAK_STRETCH: float = 0.77
 _SIGMATROPIC_FORM_STRETCH: float = 0.38
@@ -202,14 +202,7 @@ def build_xy_elimination_ts(uni_xyz: dict,
     symbols = uni_xyz['symbols']
 
     adj = mol_to_adjacency(uni_mol)
-    atom_to_idx = atom_index_map(uni_mol)
-    bond_orders: dict[tuple[int, int], float] = {}
-    for atom in uni_mol.atoms:
-        ia = atom_to_idx[atom]
-        for nbr, bond in atom.bonds.items():
-            ib = atom_to_idx[nbr]
-            key = canonical_bond(ia, ib)
-            bond_orders[key] = bond.order
+    bond_orders = bond_order_map(uni_mol)
 
     # --- Step 1: Identify the 6-membered ring atoms ---
     c_carb = o_double = o_hydroxyl = h_hydroxyl = None
@@ -581,14 +574,7 @@ def build_baeyer_villiger_step2_ts(uni_xyz: dict,
     symbols = uni_xyz['symbols']
 
     adj = mol_to_adjacency(uni_mol)
-    atom_to_idx = atom_index_map(uni_mol)
-    bond_orders: dict[tuple[int, int], float] = {}
-    for atom in uni_mol.atoms:
-        ia = atom_to_idx[atom]
-        for nbr, bond in atom.bonds.items():
-            ib = atom_to_idx[nbr]
-            key = canonical_bond(ia, ib)
-            bond_orders[key] = bond.order
+    bond_orders = bond_order_map(uni_mol)
 
     # Step 1: Find the O-O peroxide bond.
     oo_bond = next(((a, b) for a, b in split_bonds if symbols[a] == 'O' == symbols[b]), None)
@@ -882,13 +868,7 @@ def build_korcek_step1_ts(r_xyz: dict,
     atom_to_idx = atom_index_map(r_mol)
 
     adj = mol_to_adjacency(r_mol)
-    bond_orders: dict[tuple[int, int], float] = {}
-    for atom in r_mol.atoms:
-        ia = atom_to_idx[atom]
-        for nbr, bond in atom.bonds.items():
-            ib = atom_to_idx[nbr]
-            key = canonical_bond(ia, ib)
-            bond_orders[key] = bond.order
+    bond_orders = bond_order_map(r_mol)
 
     # Step 1: Collect all carbonyl C=O pairs.
     carbonyl_pairs = []
@@ -975,31 +955,9 @@ def build_korcek_step1_ts(r_xyz: dict,
     o_dbl_pos = coords[best_o_dbl]
     h_pos = coords[h_peroxide]
 
-    ax = o_dbl_pos - o_term_pos
-    ax_d = float(np.linalg.norm(ax))
-    if ax_d > 1e-6:
-        ax_h = ax / ax_d
-        r1 = d_h_target
-        r2 = d_h_target
-        if ax_d <= r1 + r2:
-            xp = ax_d / 2.0
-            hp_sq = r1 ** 2 - xp ** 2
-            hp = float(np.sqrt(max(hp_sq, 0.0)))
-        else:
-            xp = r1
-            hp = 0.0
-        proj = o_term_pos + ax_h * np.dot(h_pos - o_term_pos, ax_h)
-        perp = h_pos - proj
-        pn = float(np.linalg.norm(perp))
-        if pn > 1e-8:
-            ph = perp / pn
-        else:
-            arb = np.array([1.0, 0.0, 0.0])
-            if abs(float(np.dot(ax_h, arb))) > 0.9:
-                arb = np.array([0.0, 1.0, 0.0])
-            ph = np.cross(ax_h, arb)
-            ph /= max(float(np.linalg.norm(ph)), 1e-10)
-        coords[h_peroxide] = o_term_pos + ax_h * xp + ph * hp
+    new_h_pos = two_sphere_intersection(o_term_pos, d_h_target, o_dbl_pos, d_h_target, h_pos)
+    if new_h_pos is not None:
+        coords[h_peroxide] = new_h_pos
 
     ts_xyz = xyz_with_coords(rc_xyz, coords)
     if colliding_atoms(ts_xyz):

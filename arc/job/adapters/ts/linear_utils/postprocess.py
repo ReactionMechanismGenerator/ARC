@@ -5,8 +5,7 @@ handlers for TS-guess geometries.
 This module contains three tiers of functionality:
 
 **Rejection filters** (return ``bool``):
-    Functions like ``has_broken_nonreactive_bond``,
-    ``has_close_h_pair_on_same_parent``, ``has_detached_hydrogen``,
+    Functions like ``has_broken_nonreactive_bond``, ``has_detached_hydrogen``,
     ``has_misdirected_migrating_h``, ``has_excessive_backbone_drift``.
     These check for pathological geometries and return ``True`` when a
     guess should be discarded.
@@ -344,42 +343,6 @@ def has_broken_nonreactive_bond(xyz: dict,
             d = float(np.linalg.norm(coords_arr[ia] - coords_arr[ib]))
             if d > sbl * max_stretch_ratio:
                 return True
-    return False
-
-
-def has_close_h_pair_on_same_parent(xyz: dict,
-                                    mol: Molecule,
-                                    min_hh_dist: float = 1.2,
-                                    ) -> bool:
-    """
-    Return ``True`` if any two H atoms bonded to the same heavy atom are
-    closer than *min_hh_dist*.
-
-    Two H atoms on the same carbon should be ~1.75 Å apart (tetrahedral) or
-    ~1.73 Å (trigonal planar).  Distances below 1.2 Å indicate a collapsed
-    or unphysical H arrangement from failed Z-matrix interpolation.
-
-    Args:
-        xyz: XYZ coordinate dictionary.
-        mol: Reactant molecule providing bond topology.
-        min_hh_dist: Minimum acceptable H-H distance (Å). Default 1.2.
-
-    Returns:
-        ``True`` if a close H pair is detected.
-    """
-    symbols = xyz['symbols']
-    coords_arr = np.array(xyz['coords'], dtype=float)
-    atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
-    for atom in mol.atoms:
-        ia = atom_to_idx[atom]
-        if symbols[ia] == 'H':
-            continue
-        h_list = [atom_to_idx[nbr] for nbr in atom.bonds if symbols[atom_to_idx[nbr]] == 'H']
-        for i in range(len(h_list)):
-            for j in range(i + 1, len(h_list)):
-                d = float(np.linalg.norm(coords_arr[h_list[i]] - coords_arr[h_list[j]]))
-                if d < min_hh_dist:
-                    return True
     return False
 
 
@@ -1276,6 +1239,9 @@ def has_inward_migrating_group_h(xyz: dict,
     ``True`` if the average H direction from the migrating atom has a positive
     projection onto the backbone centroid direction — i.e., the H's point inward.
 
+    This is a validation/test-support detector for the inward-CH2 invariant
+    (exercised by the regression tests), not part of the repair pipeline.
+
     Args:
         xyz: XYZ coordinate dictionary.
         mol: Reactant molecule providing bond topology.
@@ -1784,7 +1750,10 @@ def postprocess_h_migration(xyz: dict,
     3. Stagger donor terminal H atoms (only when migrating H is present).
     4. Fix non-reactive H distances (reset H atoms displaced by interpolation).
     5. Fix crowded H atoms (redistribute terminal H groups).
-    6. Fix migrating-group umbrella orientation.
+    6. Repair crowded CH2 and orient donor H atoms away from the acceptor
+       (only when a terminal donor is present).
+    7. Fix non-bonded H clashes.
+    8. Fix migrating-group umbrella orientation.
 
     Args:
         xyz: Raw TS guess XYZ dictionary.
