@@ -506,7 +506,7 @@ def xyz_to_ase(xyz_dict: dict) -> Atoms:
         xyz_dict (dict): The ARC xyz format.
 
     Returns:
-        Type[Atoms]: The corresponding ASE Atom object.
+        type[Atoms]: The corresponding ASE Atom object.
     """
     return Atoms(xyz_dict['symbols'], xyz_dict['coords'])
 
@@ -1726,8 +1726,8 @@ def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None)
     return new_xyz
 
 
-def check_isomorphism(mol1: 'Molecule',
-                      mol2: 'Molecule',
+def check_isomorphism(mol1: Molecule,
+                      mol2: Molecule,
                       filter_structures: bool = True,
                       convert_to_single_bonds: bool = False) -> bool:
     """
@@ -2470,3 +2470,100 @@ def kabsch(xyz1: dict, xyz2: dict) -> float:
     coords1, coords2 = np.array(xyz1['coords']), np.array(xyz2['coords'])
     _, score = Rotation.align_vectors(coords1, coords2)
     return score
+
+
+def order_xyz_by_atom_map(xyz: dict,
+                          atom_map: list,
+                          ) -> dict:
+    """
+    Reorder xyz coordinates according to the atom map.
+
+    The mapping is "output → input": ``atom_map[i]`` is the index in the
+    *input* xyz of the atom that should appear at position ``i`` in the
+    returned xyz. Equivalently, ``returned[i] = input[atom_map[i]]``.
+
+    For maps from :func:`arc.mapping.driver.map_rxn`
+    (``atom_map[reactant_i] = product_i``), pass the **product** xyz as
+    ``xyz`` to obtain a reactant-aligned reordering.
+
+    Args:
+        xyz (dict): The xyz coordinates in the original atom ordering.
+        atom_map (list): ``atom_map[i]`` is the index of the atom that
+            should appear at position *i* in the returned xyz. Must be a
+            permutation of ``range(n)`` where ``n`` is the number of atoms.
+
+    Raises:
+        ValueError: If ``atom_map`` length does not match the number of atoms,
+            if any index is out of range, or if any index is duplicated
+            (which would silently drop atoms and clone others).
+
+    Returns:
+        dict: The reordered xyz coordinates.
+    """
+    n = len(xyz['symbols'])
+    if len(atom_map) != n:
+        raise ValueError(f'order_xyz_by_atom_map: atom_map length ({len(atom_map)}) does not match '
+                         f'xyz atom count ({n}).')
+    for i, src in enumerate(atom_map):
+        if not (0 <= src < n):
+            raise ValueError(f'order_xyz_by_atom_map: atom_map[{i}] = {src} is out of range '
+                             f'for an xyz with {n} atoms.')
+    if len(set(atom_map)) != n:
+        raise ValueError(f'order_xyz_by_atom_map: atom_map must be a permutation; '
+                         f'got duplicate indices in {atom_map}.')
+    symbols = [xyz['symbols'][i] for i in atom_map]
+    isotopes = [xyz['isotopes'][i] for i in atom_map] if 'isotopes' in xyz else None
+    coords = [xyz['coords'][i] for i in atom_map]
+    return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
+
+
+def order_mol_by_atom_map(mol: Molecule,
+                          atom_map: list[int],
+                          ) -> Molecule:
+    """
+    Return a deep copy of ``mol`` whose atoms list has been reordered so that
+    index *i* in the returned molecule corresponds to the atom at
+    ``atom_map[i]`` in the original.
+
+    This is the molecular-graph counterpart of :func:`order_xyz_by_atom_map`,
+    using the same "output → input" convention: ``returned[i] = input[atom_map[i]]``.
+    For maps from :func:`arc.mapping.driver.map_rxn`
+    (``atom_map[reactant_i] = product_i``), pass the **product** mol as
+    ``mol`` to obtain a reactant-aligned reordering.
+
+    The bonds in the returned molecule are **unchanged** — they are references
+    between the same Atom objects, so the original topology is preserved exactly.
+    Calling ``mol.update()`` after the reorder refreshes any cached ring/
+    aromaticity information.
+
+    Args:
+        mol (Molecule): An RMG Molecule in its original atom ordering.
+        atom_map (list[int]): ``atom_map[i]`` is the index of the atom that should
+            appear at position *i* in the returned molecule. Must be a
+            permutation of ``range(n)`` where ``n`` is the number of atoms.
+
+    Raises:
+        ValueError: If ``atom_map`` length does not match the number of atoms in ``mol``,
+            if any mapped index is out of range, or if any index is duplicated
+            (which would silently drop atoms and clone others).
+
+    Returns:
+        Molecule: A deep copy of ``mol`` with atoms reordered according to ``atom_map``.
+    """
+    n = len(mol.atoms)
+    if len(atom_map) != n:
+        raise ValueError(f'order_mol_by_atom_map: atom_map length ({len(atom_map)}) does not match '
+                         f'mol atom count ({n}).')
+    for i, src in enumerate(atom_map):
+        if not (0 <= src < n):
+            raise ValueError(f'order_mol_by_atom_map: atom_map[{i}] = {src} is out of range '
+                             f'for a molecule with {n} atoms.')
+    if len(set(atom_map)) != n:
+        raise ValueError(f'order_mol_by_atom_map: atom_map must be a permutation; '
+                         f'got duplicate indices in {atom_map}.')
+    reordered = mol.copy(deep=True)
+    reordered.atoms = [reordered.atoms[atom_map[i]] for i in range(n)]
+    explicit_order = reordered.atoms[:]   # save our ordering before update() reorders
+    reordered.update()
+    reordered.atoms = explicit_order      # restore explicit ordering
+    return reordered

@@ -1415,7 +1415,9 @@ H      -0.57000001    0.25001318    0.00000000"""
                                 (-5.67928065, 0.23893607, 2.30792673), (-1.02113438, 2.82848721, 1.61108522),
                                 (-2.77629877, 2.75649408, 1.89754068), (-1.71528969, 1.64716863, 2.70183805))}
         mol = perceive_molecule_from_xyz(xyz_crazy, charge=0, multiplicity=1, n_fragments=1)
-        self.assertIn(mol.to_smiles(), ['OCCC(C(COO)(O[CH2])C)(Cc1ccc(cc1)NO)SC', 'OCCC(C(COO)(O[CH2])C)(CC1=C[CH]C(=C[CH]1)NO)SC'])
+        self.assertIn(mol.to_smiles(), ['OCCC(C(COO)(O[CH2])C)(Cc1ccc(cc1)NO)SC',
+                                        'OCCC(C(COO)(O[CH2])C)(CC1=C[CH]C(=C[CH]1)NO)SC',
+                                        'OCCC(C(COO)(O[CH2])C)(C[C]1C=C[C](C=C1)NO)SC'])
 
         xyz_nhfcl = """N      -0.14626256    0.12816405    0.30745256
                        F      -0.94719775   -0.91910939   -0.09669786

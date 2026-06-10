@@ -168,6 +168,9 @@ class TestARCReaction(unittest.TestCase):
                                                   ARCSpecies(label='N2H4', smiles='NN', xyz=cls.n2h4_xyz)],
                                        p_species=[ARCSpecies(label='H2O2', smiles='OO', xyz=cls.h2o2_xyz),
                                                   ARCSpecies(label='N2H3', smiles='N[NH]', xyz=cls.n2h3_xyz)])
+        cls.rxn14 = ARCReaction(r_species=[ARCSpecies(label='CH3CH2NH2', smiles='CCN')],
+                                p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                           ARCSpecies(label='NH3', smiles='N')])
 
     def test_str(self):
         """Test the string representation of the object"""
@@ -386,6 +389,26 @@ class TestARCReaction(unittest.TestCase):
         self.assertFalse(self.rxn7.is_isomerization())
         self.assertFalse(self.rxn8.is_isomerization())
         self.assertFalse(self.rxn9.is_isomerization())
+        self.assertTrue(self.rxn11.is_isomerization())
+        self.assertFalse(self.rxn12.is_isomerization())
+        self.assertFalse(self.rxn_13_w_xyz.is_isomerization())
+        self.assertFalse(self.rxn14.is_isomerization())
+
+    def test_is_unimolecular(self):
+        """Test the is_unimolecular() method"""
+        self.assertFalse(self.rxn1.is_unimolecular())
+        self.assertFalse(self.rxn2.is_unimolecular())
+        self.assertTrue(self.rxn3.is_unimolecular())
+        self.assertFalse(self.rxn4.is_unimolecular())
+        self.assertFalse(self.rxn5.is_unimolecular())
+        self.assertFalse(self.rxn6.is_unimolecular())
+        self.assertFalse(self.rxn7.is_unimolecular())
+        self.assertFalse(self.rxn8.is_unimolecular())
+        self.assertTrue(self.rxn9.is_unimolecular())
+        self.assertTrue(self.rxn11.is_unimolecular())
+        self.assertFalse(self.rxn12.is_unimolecular())
+        self.assertFalse(self.rxn_13_w_xyz.is_unimolecular())
+        self.assertTrue(self.rxn14.is_unimolecular())
 
     def test_rxn_family(self):
         """Test that ARC gets the correct RMG family for different reactions"""
@@ -614,6 +637,19 @@ class TestARCReaction(unittest.TestCase):
             r_label_dict={'*1': 1, '*2': 2, '*3': 6})
         self.assertEqual(expected_breaking_bonds, [(2, 6)])
         self.assertEqual(expected_forming_bonds, [(1, 6)])
+        # Passing the reaction's own family explicitly should give identical results.
+        expected_breaking_bonds, expected_forming_bonds = self.rxn11.get_expected_changing_bonds(
+            r_label_dict={'*1': 1, '*2': 2, '*3': 6}, family='intra_H_migration')
+        self.assertEqual(expected_breaking_bonds, [(2, 6)])
+        self.assertEqual(expected_forming_bonds, [(1, 6)])
+        # Passing a different family should use that family's recipe.
+        expected_breaking_bonds, expected_forming_bonds = self.rxn11.get_expected_changing_bonds(
+            r_label_dict={'*1': 1, '*2': 2, '*3': 6}, family='H_Abstraction')
+        self.assertEqual(expected_breaking_bonds, [(1, 2)])
+        self.assertEqual(expected_forming_bonds, [(2, 6)])
+        # A recipe label missing from r_label_dict raises a KeyError (callers guard against this).
+        with self.assertRaises(KeyError):
+            self.rxn11.get_expected_changing_bonds(r_label_dict={'*1': 1, '*2': 2}, family='H_Abstraction')
 
     def test_get_number_of_atoms_in_reaction_zone(self):
         """Test the get_number_of_atoms_in_reaction_zone() method."""

@@ -280,8 +280,7 @@ class ARC(object):
         self.verbose = verbose
         self.project_directory = project_directory if project_directory is not None \
             else os.path.join(ARC_PATH, 'Projects', self.project)
-        if not os.path.exists(self.project_directory):
-            os.makedirs(self.project_directory)
+        os.makedirs(self.project_directory, exist_ok=True)
         self.output = output
         self.output_multi_spc = output_multi_spc
         self.standardize_output_paths()  # depends on self.project_directory
