@@ -89,6 +89,8 @@ class TestJobAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        for dir_name in ('test_JobAdapter', 'test_JobAdapter_scan', 'test_JobAdapter_ServerTimeLimit'):
+            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, dir_name), ignore_errors=True)
         cls.job_1 = GaussianAdapter(execution_type='queue',
                                     job_type='conf_opt',
                                     level=Level(method='cbs-qb3'),
@@ -339,18 +341,6 @@ class TestJobAdapter(unittest.TestCase):
         # We do not do assert equal because a user may have different queues from the settings.py originally during cls
         self.assertIn('short_queue', self.job_6.attempted_queues)
         self.assertIn('middle_queue', self.job_6.attempted_queues)
-
-
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
-        """
-        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'), ignore_errors=True)
-        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_scan'), ignore_errors=True)
-        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit'), ignore_errors=True)
 
 
 class TestRotateCSV(unittest.TestCase):
