@@ -97,20 +97,22 @@ class ARC(object):
         ess_settings (dict, optional): A dictionary of available ESS (keys) and a corresponding server list (values).
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
                                   Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
-        adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms in
-            the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are dictionaries. Keys of the
-            sub-dictionaries are tuples of job types, values are levels of theory (str, dict or Level).
+        adaptive_levels (list, optional): A list of levels of theory for ranges of the number of heavy atoms in the
+            molecule. Each entry is a dictionary with an ``atom_range`` 2-list (min_num_atoms, max_num_atoms; the upper
+            bound may be ``'inf'``) and a ``levels`` mapping from job type to level of theory (str, dict or Level).
+            Job types sharing a level may be given as a whitespace- or comma-separated key (e.g. ``'opt freq'``).
             Job types not defined in adaptive levels will have non-adaptive (regular) levels.
             Example::
 
-                adaptive_levels = {(1, 5):      {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
-                                                 'sp': 'ccsd(t)-f12/aug-cc-pvtz-f12'},
-                                   (6, 15):     {('opt', 'freq'): 'b3lyp/cbsb7',
-                                                 'sp': 'dlpno-ccsd(t)/def2-tzvp'},
-                                   (16, 30):    {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
-                                                 'sp': 'wb97xd/6-311+g(2d,2p)'},
-                                   (31, 'inf'): {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
-                                                 'sp': 'b3lyp/6-311+g(d,p)'}}
+                adaptive_levels = [{'atom_range': [1, 5],
+                                    'levels': {'opt freq': 'wb97xd/6-311+g(2d,2p)',
+                                               'sp': 'ccsd(t)-f12/aug-cc-pvtz-f12'}},
+                                   {'atom_range': [6, 15],
+                                    'levels': {'opt freq': 'b3lyp/cbsb7',
+                                               'sp': 'dlpno-ccsd(t)/def2-tzvp'}},
+                                   {'atom_range': [16, 'inf'],
+                                    'levels': {'opt freq': 'b3lyp/6-31g(d,p)',
+                                               'sp': 'wb97xd/6-311+g(2d,2p)'}}]
 
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor. Could be automatically determined
                                              if not available in Arkane and not provided by the user.
@@ -162,9 +164,8 @@ class ARC(object):
         ts_guess_level (Level): Level of theory for comparisons of TS guesses between different methods.
         irc_level (Level): The level of theory to use for IRC calculations.
         orbitals_level (Level): Level of theory for molecular orbitals calculations.
-        adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms in
-            the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are dictionaries. Keys of the
-            sub-dictionaries are tuples of job types, values are levels of theory (str, dict or Level).
+        adaptive_levels (dict): The processed adaptive levels, keyed by (min_num_atoms, max_num_atoms) tuples, each
+            mapping job-type tuples to ``Level`` objects (built from the user-facing ``adaptive_levels`` list).
             Job types not defined in adaptive levels will have non-adaptive (regular) levels.
         output (dict): Output dictionary with status and final QM file paths for all species. Only used for restarting,
                        the actual object used is in the Scheduler class.
@@ -430,8 +431,10 @@ class ARC(object):
         """
         restart_dict = dict()
         if self.adaptive_levels is not None:
-            restart_dict['adaptive_levels'] = {atom_range: {job_type: level.as_dict() for job_type, level in levels_dict}
-                                               for atom_range, levels_dict in self.adaptive_levels.items()}
+            restart_dict['adaptive_levels'] = [
+                {'atom_range': [atom_range[0], atom_range[1]],
+                 'levels': {' '.join(job_types): level.as_dict() for job_types, level in levels_dict.items()}}
+                for atom_range, levels_dict in self.adaptive_levels.items()]
         if self.allow_nonisomorphic_2d:
             restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
         if self.arkane_level_of_theory is not None:
@@ -1255,44 +1258,62 @@ class ARC(object):
             self.output = dict()
 
 
-def process_adaptive_levels(adaptive_levels: dict | None) -> dict | None:
+def process_adaptive_levels(adaptive_levels: list | None) -> dict | None:
     """
     Process the ``adaptive_levels`` argument.
 
-    Args:
-        adaptive_levels (dict): The adaptive levels dictionary.
+    The user-facing form is a YAML-friendly list of entries, each a dictionary with an
+    ``atom_range`` 2-list (the heavy-atom count range, the upper bound may be the string
+    ``'inf'`` or ``float('inf')``) and a ``levels`` mapping of job types to levels of theory.
+    Job types that share a level may be given as a single whitespace- or comma-separated key
+    (e.g. ``'opt freq'``). A level value may be a string or a ``Level`` dictionary. For example::
 
-    Returns: dict
-        The processed adaptive levels dictionary.
+        adaptive_levels = [{'atom_range': [1, 6],
+                            'levels': {'opt freq': 'wb97xd/def2tzvp',
+                                       'sp': 'ccsd(t)-f12/cc-pvtz-f12'}},
+                           {'atom_range': [7, 'inf'],
+                            'levels': {'opt freq': 'b3lyp/6-31g(d,p)',
+                                       'sp': 'dlpno-ccsd(t)/def2-tzvp'}}]
+
+    Args:
+        adaptive_levels (list): The adaptive levels specification (a list of entries).
+
+    Returns: dict | None
+        The processed adaptive levels keyed by ``(min_heavy_atoms, max_heavy_atoms)`` tuples,
+        each mapping job-type tuples to ``Level`` objects, or ``None`` if the input is ``None``.
     """
     if adaptive_levels is None:
         return None
-    processed = dict()
-    if not isinstance(adaptive_levels, dict):
-        raise InputError(f'The adaptive levels argument must be a dictionary, '
+    if not isinstance(adaptive_levels, list):
+        raise InputError(f'The adaptive levels argument must be a list of entries, '
                          f'got {adaptive_levels} which is a {type(adaptive_levels)}')
-    for atom_range, adaptive_level in adaptive_levels.items():
-        if not isinstance(atom_range, tuple) \
-                or not all([isinstance(a, int) or a == 'inf' for a in atom_range]) \
-                or len(atom_range) != 2:
-            raise InputError(f'Keys of the adaptive levels argument must be 2-length tuples of integers or an "inf" '
-                             f'indicator, got {atom_range} which is a {type(atom_range)} in:\n{adaptive_levels}')
-        if not isinstance(adaptive_level, dict):
-            raise InputError(f'Each adaptive level in the adaptive levels argument must be a dictionary, '
-                             f'got {adaptive_level} which is a {type(adaptive_level)} in:\n{adaptive_levels}')
+    processed = dict()
+    for entry in adaptive_levels:
+        if not isinstance(entry, dict) or 'atom_range' not in entry or 'levels' not in entry:
+            raise InputError(f'Each adaptive levels entry must be a dictionary with "atom_range" and "levels" '
+                             f'keys, got {entry} which is a {type(entry)} in:\n{adaptive_levels}')
+        atom_range = entry['atom_range']
+        if not isinstance(atom_range, (list, tuple)) or len(atom_range) != 2 \
+                or not isinstance(atom_range[0], int) \
+                or not (isinstance(atom_range[1], int) or atom_range[1] in ('inf', float('inf'))):
+            raise InputError(f'The "atom_range" of each adaptive levels entry must be a 2-length list of an integer '
+                             f'lower bound and an integer or "inf" upper bound, got {atom_range} '
+                             f'in:\n{adaptive_levels}')
+        atom_range = (atom_range[0], 'inf' if atom_range[1] in ('inf', float('inf')) else atom_range[1])
+        levels = entry['levels']
+        if not isinstance(levels, dict):
+            raise InputError(f'The "levels" of each adaptive levels entry must be a dictionary, '
+                             f'got {levels} which is a {type(levels)} in:\n{adaptive_levels}')
         processed[atom_range] = dict()
-        for sub_key, level in adaptive_level.items():
-            new_sub_key = (sub_key,) if isinstance(sub_key, str) else sub_key
-            if not isinstance(new_sub_key, tuple):
-                raise InputError(f'Job types specifications in adaptive levels must be tuples, got {sub_key} '
-                                 f'which is a {type(sub_key)} in:\n{adaptive_levels}')
-            new_level = Level(repr=level)
-            processed[atom_range][new_sub_key] = new_level
-    atom_ranges = sorted(list(adaptive_levels.keys()), key=lambda x: x[0])
+        for job_types, level in levels.items():
+            job_type_tuple = tuple(job_types.replace(',', ' ').split())
+            processed[atom_range][job_type_tuple] = Level(repr=level)
+    atom_ranges = sorted(processed.keys(), key=lambda x: x[0])
     for i, atom_range in enumerate(atom_ranges):
         if i and atom_ranges[i-1][1] + 1 != atom_ranges[i][0]:
-            raise InputError(f'Atom ranges of adaptive levels must be consecutive. '
-                             f'Got:\n{list(adaptive_levels.keys())}')
+            raise InputError(f'Atom ranges of adaptive levels must be consecutive. Got:\n{atom_ranges}')
+    if atom_ranges[0][0] != 1:
+        raise InputError(f'The first atom range must start at 1, got {atom_ranges[0][0]} in {atom_ranges}')
     if atom_ranges[-1][1] != 'inf':
         raise InputError(f'The last atom range must be "inf", got {atom_ranges[-1][1]} in {atom_ranges}')
     return processed
