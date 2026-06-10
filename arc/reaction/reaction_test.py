@@ -637,6 +637,19 @@ class TestARCReaction(unittest.TestCase):
             r_label_dict={'*1': 1, '*2': 2, '*3': 6})
         self.assertEqual(expected_breaking_bonds, [(2, 6)])
         self.assertEqual(expected_forming_bonds, [(1, 6)])
+        # Passing the reaction's own family explicitly should give identical results.
+        expected_breaking_bonds, expected_forming_bonds = self.rxn11.get_expected_changing_bonds(
+            r_label_dict={'*1': 1, '*2': 2, '*3': 6}, family='intra_H_migration')
+        self.assertEqual(expected_breaking_bonds, [(2, 6)])
+        self.assertEqual(expected_forming_bonds, [(1, 6)])
+        # Passing a different family should use that family's recipe.
+        expected_breaking_bonds, expected_forming_bonds = self.rxn11.get_expected_changing_bonds(
+            r_label_dict={'*1': 1, '*2': 2, '*3': 6}, family='H_Abstraction')
+        self.assertEqual(expected_breaking_bonds, [(1, 2)])
+        self.assertEqual(expected_forming_bonds, [(2, 6)])
+        # A recipe label missing from r_label_dict raises a KeyError (callers guard against this).
+        with self.assertRaises(KeyError):
+            self.rxn11.get_expected_changing_bonds(r_label_dict={'*1': 1, '*2': 2}, family='H_Abstraction')
 
     def test_get_number_of_atoms_in_reaction_zone(self):
         """Test the get_number_of_atoms_in_reaction_zone() method."""

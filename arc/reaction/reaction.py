@@ -393,7 +393,7 @@ class ARCReaction(object):
         Returns:
             bool: Whether this is an isomerization reaction.
         """
-        reactants, products = self.get_reactants_and_products()
+        reactants, products = self.get_reactants_and_products(return_copies=False)
         return len(reactants) == 1 and len(products) == 1
 
     def is_unimolecular(self):
@@ -403,7 +403,7 @@ class ARCReaction(object):
         Returns:
             bool: Whether this is a unimolecular reaction.
         """
-        reactants, products = self.get_reactants_and_products()
+        reactants, products = self.get_reactants_and_products(return_copies=False)
         return len(reactants) == 1 or len(products) == 1
 
     def set_label_reactants_products(self, species_list: list[ARCSpecies] | None = None):
@@ -797,6 +797,7 @@ class ARCReaction(object):
 
     def get_expected_changing_bonds(self,
                                     r_label_dict: dict[str, int],
+                                    family: str | None = None,
                                     ) -> tuple[list[tuple[int, int]] | None, list[tuple[int, int]] | None]:
         """
         Get the expected forming and breaking bonds from the RMG reaction template.
@@ -804,19 +805,22 @@ class ARCReaction(object):
         Args:
             r_label_dict (dict[str, int]): The RMG reaction atom labels and corresponding atom indices
                                            of atoms in a TemplateReaction.
+            family (str, optional): The reaction family label to take the recipe from.
+                                    Defaults to the reaction's own family.
 
         Returns:
             tuple[list[tuple[int, int]], list[tuple[int, int]]]:
                 A list of tuples of atom indices representing breaking and forming bonds.
         """
-        if self.family is None:
+        family = family or self.family
+        if family is None:
             return None, None
-        family = ReactionFamily(label=self.family)
+        reaction_family = ReactionFamily(label=family)
         # E.g.: [['BREAK_BOND', '*1', 1, '*2'], ['FORM_BOND', '*2', 1, '*3'], ['GAIN_RADICAL', '*1', '1']]
         expected_breaking_bonds = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
-                                   for action in family.actions if action[0] == 'BREAK_BOND']
+                                   for action in reaction_family.actions if action[0] == 'BREAK_BOND']
         expected_forming_bonds = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
-                                  for action in family.actions if action[0] == 'FORM_BOND']
+                                  for action in reaction_family.actions if action[0] == 'FORM_BOND']
         return expected_breaking_bonds, expected_forming_bonds
 
     def get_number_of_atoms_in_reaction_zone(self) -> int | None:
