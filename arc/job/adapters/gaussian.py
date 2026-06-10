@@ -41,7 +41,7 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
 # fixed fraction of the submit-script memory for non-Gaussian overhead such as
 # the scheduler, runtime, scratch bookkeeping, and Gaussian allocations outside
 # the explicit %mem budget.
-GAUSSIAN_MEMORY_HEADROOM_FRACTION = 0.90
+GAUSSIAN_MEMORY_HEADROOM_FRACTION = 0.80
 
 
 # job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',
