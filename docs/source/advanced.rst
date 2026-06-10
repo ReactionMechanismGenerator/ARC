@@ -283,12 +283,12 @@ levels (defined separately, e.g., via ``opt_level``, or using ARC's defaults).
 When a species participates in a reaction, all of the reaction's species (the TS and the
 reactant/product wells) are energy-evaluated at a single, reaction-consistent level keyed
 by the largest participant (the TS), so the barrier is computed at one consistent level.
-By default (the per-species ``thermo_at_own_level`` flag, ``True``) each species'
-thermochemistry is still computed at its own size-appropriate (granular) adaptive level: an
-autonomous, relabeled copy of any well that lands on a coarser grain than its reaction is
-created and used by the reaction (at the reaction-wide level), while the original species
-keeps its own level for thermochemistry. Set ``thermo_at_own_level=False`` on a species to
-have it evaluated at the reaction-wide level directly (no copy, coarser thermochemistry).
+By default (the per-species ``thermo_at_own_level`` flag, ``False``) a well whose own size
+falls on a finer grain than its reaction's is evaluated directly at the reaction-wide
+(coarser) level, and its thermochemistry uses that same level. Set ``thermo_at_own_level=True`` on a species
+to instead compute its thermochemistry at its own size-appropriate (granular) adaptive level:
+an autonomous, relabeled copy of the species is then created and used by the reaction (at the
+reaction-wide level), while the original keeps its own level for thermochemistry.
 
 
 Control job memory allocation

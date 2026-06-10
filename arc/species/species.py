@@ -109,10 +109,10 @@ class ARCSpecies(object):
         bond_corrections (dict, optional): The bond additivity corrections (BAC) to be used. Determined from the
                                            structure if not directly given.
         compute_thermo (bool, optional): Whether to calculate thermodynamic properties for this species.
-        thermo_at_own_level (bool, optional): Relevant only when ``adaptive_levels`` are used. If ``True`` (default),
-            the species' thermochemistry is computed at its own size-appropriate (granular) adaptive level even when
-            it participates in a reaction; the reaction's energetics then use a separate relabeled copy of the species
-            evaluated at the reaction-consistent level. If ``False``, the species itself is evaluated at the
+        thermo_at_own_level (bool, optional): Relevant only when ``adaptive_levels`` are used. If ``True``, the
+            species' thermochemistry is computed at its own size-appropriate (granular) adaptive level even when it
+            participates in a reaction; the reaction's energetics then use a separate relabeled copy of the species
+            evaluated at the reaction-consistent level. If ``False`` (default), the species itself is evaluated at the
             reaction-consistent (coarser) level and no copy is made.
         include_in_thermo_lib (bool, optional): Whether to include in the output RMG library.
         e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0.
@@ -317,7 +317,7 @@ class ARCSpecies(object):
                  charge: int | None = None,
                  checkfile: str | None = None,
                  compute_thermo: bool | None = None,
-                 thermo_at_own_level: bool = True,
+                 thermo_at_own_level: bool = False,
                  adaptive_lot_n_heavy: int | None = None,
                  include_in_thermo_lib: bool | None = True,
                  consider_all_diastereomers: bool = True,
@@ -702,7 +702,7 @@ class ARCSpecies(object):
             species_dict['charge'] = self.charge
         if not self.compute_thermo and not self.is_ts:
             species_dict['compute_thermo'] = self.compute_thermo
-        if not self.thermo_at_own_level:
+        if self.thermo_at_own_level:
             species_dict['thermo_at_own_level'] = self.thermo_at_own_level
         if self.adaptive_lot_n_heavy is not None:
             species_dict['adaptive_lot_n_heavy'] = self.adaptive_lot_n_heavy
@@ -902,7 +902,7 @@ class ARCSpecies(object):
         self.multi_species = species_dict['multi_species'] if 'multi_species' in species_dict else None
         self.charge = species_dict['charge'] if 'charge' in species_dict else 0
         self.compute_thermo = species_dict['compute_thermo'] if 'compute_thermo' in species_dict else not self.is_ts
-        self.thermo_at_own_level = species_dict['thermo_at_own_level'] if 'thermo_at_own_level' in species_dict else True
+        self.thermo_at_own_level = species_dict['thermo_at_own_level'] if 'thermo_at_own_level' in species_dict else False
         self.adaptive_lot_n_heavy = species_dict['adaptive_lot_n_heavy'] if 'adaptive_lot_n_heavy' in species_dict else None
         self.include_in_thermo_lib = species_dict['include_in_thermo_lib'] if 'include_in_thermo_lib' in species_dict else True
         self.e0_only = species_dict['e0_only'] if 'e0_only' in species_dict else False
