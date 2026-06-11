@@ -124,6 +124,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.post_sp_actions"><code class="docutils literal notranslate"><span class="pre">Scheduler.post_sp_actions()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.process_conformers"><code class="docutils literal notranslate"><span class="pre">Scheduler.process_conformers()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.process_directed_scans"><code class="docutils literal notranslate"><span class="pre">Scheduler.process_directed_scans()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.report_running_jobs_snapshot"><code class="docutils literal notranslate"><span class="pre">Scheduler.report_running_jobs_snapshot()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.restore_running_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.restore_running_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_composite_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_composite_job()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_conformer_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_conformer_jobs()</span></code></a></li>
@@ -1056,6 +1057,15 @@ If more than one conformer is available, they will be optimized at the DFT confo
 </ul>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.report_running_jobs_snapshot">
+<span class="sig-name descname"><span class="pre">report_running_jobs_snapshot</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.report_running_jobs_snapshot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.report_running_jobs_snapshot" title="Link to this definition"></a></dt>
+<dd><p>Overwrite <code class="docutils literal notranslate"><span class="pre">&lt;project&gt;/running_jobs.yml</span></code> with a timestamped snapshot of
+the currently running jobs and active pipes. If the payload is identical
+to the previous snapshot, the file is left untouched and only a one-line
+heartbeat is logged to ARC.log.</p>
 </dd></dl>
 
 <dl class="py method">
