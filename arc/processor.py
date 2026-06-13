@@ -10,6 +10,7 @@ from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file
 from arc.imports import settings
 from arc.level import Level
 from arc.job.local import execute_command
+from arc.statmech.arkane import filter_real_stderr_lines
 from arc.statmech.factory import statmech_factory
 
 
@@ -28,6 +29,42 @@ def resolve_neb_level(ts_adapters: list) -> Level | None:
         if neb_level_repr:
             return Level(repr=neb_level_repr)
     return None
+
+
+def classify_species_for_thermo(species_dict: dict,
+                                output_dict: dict,
+                                ) -> tuple[list, list, list]:
+    """
+    Sort project species into buckets for thermo computation.
+
+    Transition states and IRC endpoint species are skipped: TSs are not real thermo
+    targets, and IRC endpoints are spawned only to verify TS connectivity (created
+    with ``compute_thermo=False`` and a non-None ``irc_label`` pointing back at the
+    parent TS). Including them would produce spurious "did not converge" errors.
+
+    Args:
+        species_dict (dict): Keys are species labels, values are ``ARCSpecies`` objects.
+        output_dict (dict): Keys are species labels, values are output sub-dicts that
+                            include a ``'convergence'`` flag.
+
+    Returns:
+        tuple[list, list, list]:
+            - converged: Species that should receive a full thermo treatment.
+            - e0_only: Species that should receive ``E0`` only.
+            - unconverged: Species that were intended to receive thermo but did not converge.
+    """
+    converged, e0_only, unconverged = list(), list(), list()
+    for spc in species_dict.values():
+        if spc.is_ts or spc.irc_label is not None:
+            continue
+        if (spc.compute_thermo or spc.e0_only) and output_dict[spc.label]['convergence']:
+            if spc.e0_only:
+                e0_only.append(spc)
+            else:
+                converged.append(spc)
+        else:
+            unconverged.append(spc)
+    return converged, e0_only, unconverged
 
 
 def process_arc_project(thermo_adapter: str,
@@ -153,16 +190,8 @@ def process_arc_project(thermo_adapter: str,
 
     # 2. Thermo
     if compute_thermo:
-        for spc in species_dict.values():
-            if spc.is_ts:
-                continue
-            if (spc.compute_thermo or spc.e0_only) and output_dict[spc.label]['convergence']:
-                if spc.e0_only:
-                    converged_e0_only_species.append(spc)
-                else:
-                    converged_species.append(spc)
-            else:
-                unconverged_species.append(spc)
+        converged_species, converged_e0_only_species, unconverged_species = \
+            classify_species_for_thermo(species_dict=species_dict, output_dict=output_dict)
     if unconverged_species:
         logger.info('\n\n')
         logger.error(f'The following species did not converge:\n{", ".join([spc.label for spc in unconverged_species])}.\n'
@@ -270,8 +299,9 @@ def compare_thermo(species_for_thermo_lib: list,
                 'fi"',
                 ]
     stdout, stderr = execute_command(command=commands, no_fail=True)
-    if len(stderr):
-        logger.error(f'Error while running RMG thermo script: {stderr}')
+    real_stderr = filter_real_stderr_lines(stderr) if stderr else []
+    if real_stderr:
+        logger.error(f'Error while running RMG thermo script: {real_stderr}')
     species_list = read_yaml_file(path=species_thermo_path)
     for original_spc, rmg_spc in zip(species_for_thermo_lib, species_list):
         h298, s298, comment = rmg_spc.get('h298', None), rmg_spc.get('s298', None), rmg_spc.get('comment', None)
