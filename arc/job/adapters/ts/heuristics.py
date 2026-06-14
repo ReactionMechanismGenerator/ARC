@@ -46,6 +46,8 @@ FAMILY_SETS = {'hydrolysis_set_1': ['carbonyl_based_hydrolysis', 'ether_hydrolys
 
 DIHEDRAL_INCREMENT = 30
 
+HR_DIHEDRAL_SCAN_VALUES = [-175.0, -128.0, -86.0, -18.0, 41.0, 99.0, 158.0]
+
 ELECTRONEGATIVITIES = read_yaml_file(os.path.join(ARC_PATH, 'data', 'electronegativity.yml'))
 
 logger = get_logger()
@@ -271,6 +273,18 @@ class HeuristicsAdapter(JobAdapter):
                     tsg = TSGuess(method='Heuristics')
                     tsg.tic()
                     xyzs, families, indices = hydrolysis(reaction=rxn)
+                    tsg.tok()
+                    if not xyzs:
+                        logger.warning(f'Heuristics TS search failed to generate any valid TS guesses for {rxn.label}.')
+                        continue
+                except ValueError:
+                    continue
+
+            if rxn.family == 'qa_sn2':
+                try:
+                    tsg = TSGuess(method='Heuristics')
+                    tsg.tic()
+                    xyzs, families = qa_sn2(reaction=rxn)
                     tsg.tok()
                     if not xyzs:
                         logger.warning(f'Heuristics TS search failed to generate any valid TS guesses for {rxn.label}.')
@@ -970,7 +984,7 @@ def hydrolysis(reaction: ARCReaction) -> tuple[list[dict], list[dict], list[int]
     """
     xyz_guesses_total, zmats_total, reaction_families, guesses_indices = [], [], [], []
     product_dicts, carbonyl_based_and_ether_families = get_products_and_check_families(reaction)
-    hydrolysis_parameters = load_hydrolysis_parameters()
+    hydrolysis_parameters = load_family_parameters("hydrolysis_families_parameters.yml")
     dihedrals_to_change_num, max_dihedrals_found = 0, 0
     if reaction._family is not None:
         product_dicts = [pd for pd in product_dicts if pd.get("family") == reaction._family]
@@ -1093,15 +1107,17 @@ def get_products_and_check_families(reaction: ARCReaction) -> tuple[list[dict], 
     return product_dicts, (carbonyl_based_present and ether_present)
 
 
-def load_hydrolysis_parameters() -> dict:
+def load_family_parameters(filename: str) -> dict:
     """
-    Load parameters for hydrolysis reactions from the YAML configuration file.
+    Load reaction family parameters from a YAML file in ARC's data directory.
+
+    Args:
+        filename (str): Name of the YAML file (e.g. 'hydrolysis_families_parameters.yml').
 
     Returns:
-        dict: Hydrolysis parameters loaded from the configuration file containing
-              family sets and specific parameters for different reaction types.
+        dict: Parameters loaded from the file.
     """
-    return read_yaml_file(os.path.join(ARC_PATH, "data", "hydrolysis_families_parameters.yml"))
+    return read_yaml_file(os.path.join(ARC_PATH, "data", filename))
 
 
 def has_carbonyl_based_hydrolysis(reaction_families: list[dict]) -> bool:
@@ -1679,6 +1695,429 @@ def check_ts_bonds(transition_state_xyz: dict, tested_atom_indices: list) -> boo
     h1_has_valid_bonds = (h1_bonds[0][0] in {oxygen_index, b_index}and h1_bonds[1][0] in {oxygen_index, b_index})
     h2_has_valid_bonds = h2_bonds[0][0] == oxygen_index
     return oxygen_has_valid_bonds and h1_has_valid_bonds and h2_has_valid_bonds
+
+
+def get_main_reactant_and_oh_d1_from_sn2_reaction(reaction: 'ARCReaction') -> tuple['ARCSpecies', 'ARCSpecies']:
+    """
+    Get the QA reactant and OH_d1 species from a SN2 reaction.
+
+    Args:
+        reaction: An ARCReaction instance.
+
+    Returns:
+        Tuple containing:
+            - ARCSpecies: The QA reactant
+            - ARCSpecies: The OH_d1 species (contains a negatively charged O)
+
+    Raises:
+        ValueError: If the expected species cannot be identified.
+    """
+    arc_reactants, _ = reaction.get_reactants_and_products()
+    qa_reactant, oh_d1 = None, None
+    for spc in arc_reactants:
+        if any(atom.charge == -1 for atom in spc.mol.atoms):
+            oh_d1 = spc
+        else:
+            qa_reactant = spc
+    if qa_reactant is None or oh_d1 is None:
+        raise ValueError("SN2 reaction must include a QA reactant and an OH_d1 species (with charge -1 on O).")
+    return qa_reactant, oh_d1
+
+
+def extract_sn2_reactant_and_indices(reaction: 'ARCReaction',
+                                      product_dict: dict,
+                                      ) -> tuple['ARCSpecies', 'ARCSpecies', dict, dict]:
+    """
+    Extract the reactant molecules and relevant atomic indices for the QA SN2 reaction.
+
+    Atom scheme for the TS structure::
+
+                R1
+                |
+         d  —  Ca — — N
+                |
+                O_r — H_r ··· O_w(H1_w, H2_w)
+
+    Description:
+        - Ca (*1): Electrophilic carbon, receives nucleophilic attack from O_r.
+        - N (*2): Quaternary ammonium nitrogen, leaving group.
+        - O_r (*3): Hydroxide oxygen, nucleophile.
+        - H_r: Hydrogen on O_r.
+        - O_w, H1_w, H2_w: Water molecule from OH_d1.
+        - R1: Most electronegative neighbor of Ca (geometry reference).
+
+    Args:
+        reaction: An ARCReaction instance.
+        product_dict: Dictionary containing reaction product information and atom mappings.
+
+    Returns:
+        Tuple containing:
+            - ARCSpecies: The QA reactant
+            - ARCSpecies: The OH_d1 species
+            - dict: Initial XYZ coordinates of the QA reactant
+            - dict: xyz_indices with keys Ca, N, R1, d, O_r, H_r, O_w, H1_w, n_qa, atom_order
+    """
+    main_reactant, oh_d1 = get_main_reactant_and_oh_d1_from_sn2_reaction(reaction)
+    Ca_xyz = product_dict['r_label_map']['*1']
+    N_xyz = product_dict['r_label_map']['*2']
+    O_r_xyz = product_dict['r_label_map']['*3']
+
+    R1_xyz, _ = get_neighbors_by_electronegativity(main_reactant, Ca_xyz, N_xyz, two_neighbors=False)
+
+    n_qa = len(main_reactant.mol.atoms)
+    O_r_seq  = n_qa
+    H_r_seq  = n_qa + 1
+    H1_w_seq = n_qa + 2
+    O_w_seq  = n_qa + 3
+
+    local_O_r_idx = O_r_xyz - n_qa
+    O_r_atom = oh_d1.mol.atoms[local_O_r_idx]
+    H_r_local = oh_d1.mol.atoms.index(list(O_r_atom.edges.keys())[0])
+    O_w_local = next(
+        oh_d1.mol.atoms.index(atom)
+        for atom in oh_d1.mol.atoms
+        if atom.element.symbol == 'O' and oh_d1.mol.atoms.index(atom) != local_O_r_idx
+    )
+    O_w_atom = oh_d1.mol.atoms[O_w_local]
+    H_w_neighbors = [oh_d1.mol.atoms.index(n) for n in O_w_atom.edges.keys()]
+    H1_w_local, H2_w_local = H_w_neighbors[0], H_w_neighbors[1]
+
+    xyz_indices = {
+        'Ca':   Ca_xyz,
+        'N':    N_xyz,
+        'R1':   R1_xyz,
+        'O_r':  O_r_seq,
+        'H_r':  H_r_seq,
+        'H1_w': H1_w_seq,
+        'O_w':  O_w_seq,
+        'atom_order': [local_O_r_idx, H_r_local, H1_w_local, O_w_local, H2_w_local],
+    }
+    return main_reactant, oh_d1, main_reactant.get_xyz(), xyz_indices
+
+
+def process_sn2_chosen_d_indices(initial_xyz: dict,
+                                  xyz_indices: dict,
+                                  sn2_parameters: dict,
+                                  oh_d1: 'ARCSpecies',
+                                  zmats_total: list[dict],
+                                  threshold: float = 0.8,
+                                  ) -> tuple[dict, list[dict], list[dict]]:
+    """
+    Stretch the Ca-N bond and place the five OH_d1 atoms to generate QA SN2 TS guesses.
+
+    Strategy:
+        1. Try the original (unmodified) Z-matrix after bond stretching.
+        2. If no valid guesses are found, search the QA reactant Z-matrix for backbone
+           dihedral angles that involve all three of N, Ca, and R1.  Generate variants
+           of those dihedrals using adjustment factors of ±15°, ±25°, ±35°, ±45°, ±55°
+           (via generate_dihedral_variants) and retry placement on each variant.
+        3. If still no valid guesses, retry with the same dihedrals flipped by 180°.
+
+    Args:
+        initial_xyz (dict): Initial Cartesian coordinates of the QA reactant.
+        xyz_indices (dict): Atom indices: Ca, N, R1, O_r, H_r, H1_w, O_w, n_qa, atom_order.
+        sn2_parameters (dict): QA SN2 parameters loaded from YAML.
+        oh_d1 (ARCSpecies): The OH_d1 species.
+        zmats_total (list[dict]): Accumulated Z-matrices to avoid duplicates.
+
+    Returns:
+        tuple: Chosen indices dict, list of TS guess XYZ dicts, and updated Z-matrices.
+    """
+    chosen_xyz_indices = {k: xyz_indices[k] for k in ('Ca', 'N', 'R1', 'O_r', 'H_r', 'H1_w', 'O_w')}
+    infra_indices = {
+        'a': xyz_indices['Ca'],
+        'b': xyz_indices['N'],
+        'e': xyz_indices['R1'],
+        'd': None,
+    }
+    current_zmat, zmat_indices = setup_zmat_indices(initial_xyz, infra_indices)
+    stretch_ab_bond(current_zmat, infra_indices, zmat_indices, sn2_parameters, 'qa_sn2')
+
+    # Step 1: try the original (unmodified) zmat
+    ts_guesses, zmats_total = process_sn2_adjustments(
+        sn2_parameters, current_zmat, oh_d1, xyz_indices, zmats_total, threshold=threshold
+    )
+    if ts_guesses:
+        return chosen_xyz_indices, ts_guesses, zmats_total
+
+    # Step 2: find backbone dihedrals involving N, Ca, and R1, then try adjusted variants
+    matches = get_matching_dihedrals(current_zmat, zmat_indices['a'], zmat_indices['b'],
+                                     zmat_indices['e'], zmat_indices['d'])
+    if not matches:
+        return {}, [], zmats_total
+
+    adjustment_factors = [15, 25, 35, 45, 55]
+    adjusted_zmats = []
+    for indices in matches:
+        adjusted_zmats.extend(generate_dihedral_variants(current_zmat, indices, adjustment_factors))
+
+    for zmat_to_process in adjusted_zmats:
+        ts_guesses, zmats_total = process_sn2_adjustments(
+            sn2_parameters, zmat_to_process, oh_d1, xyz_indices, zmats_total, threshold=threshold
+        )
+        if ts_guesses:
+            return chosen_xyz_indices, ts_guesses, zmats_total
+
+    # Step 3: retry with each matching dihedral flipped by 180°
+    flipped_zmats = []
+    for indices in matches:
+        flipped_zmats.extend(generate_dihedral_variants(current_zmat, indices, adjustment_factors, flip=True))
+
+    for zmat_to_process in flipped_zmats:
+        ts_guesses, zmats_total = process_sn2_adjustments(
+            sn2_parameters, zmat_to_process, oh_d1, xyz_indices, zmats_total, threshold=threshold
+        )
+        if ts_guesses:
+            return chosen_xyz_indices, ts_guesses, zmats_total
+
+    return {}, [], zmats_total
+
+
+def process_sn2_adjustments(sn2_parameters: dict,
+                             initial_zmat: dict,
+                             oh_d1: 'ARCSpecies',
+                             xyz_indices: dict,
+                             zmats_total: list[dict],
+                             threshold: float = 0.8,
+                             ) -> tuple[list[dict], list[dict]]:
+    """
+    Build internal coordinate arrays and invoke TS guess generation for QA SN2.
+
+    The five OH_d1 atoms (O_r, H_r, O_w, H1_w, H2_w) are placed sequentially
+    using internal coordinates derived from the QA reactant geometry and YAML parameters.
+
+    Internal coordinate definitions (L-M-N-X convention, X = new atom):
+        - O_r:  r(Ca-O_r),    a(N-Ca-O_r),      d(R1-N-Ca-O_r)
+        - H_r:  r(O_r-H_r),   a(Ca-O_r-H_r),    d(N-Ca-O_r-H_r)   [scanned over HR_DIHEDRAL_SCAN_VALUES]
+        - H1_w: r(O_r-H1_w),  a(H_r-O_r-H1_w),  d(Ca-H_r-O_r-H1_w)   [H-bond bridge: O_r accepts H1_w]
+        - O_w:  r(H1_w-O_w),  a(O_r-H1_w-O_w),  d(H_r-O_r-H1_w-O_w)
+        - H2_w: r(O_w-H2_w),  a(H1_w-O_w-H2_w), d(O_r-H1_w-O_w-H2_w)
+
+    Args:
+        sn2_parameters (dict): QA SN2 parameters loaded from YAML.
+        initial_zmat (dict): Z-matrix of the QA reactant after Ca-N bond stretching.
+        oh_d1 (ARCSpecies): The OH_d1 species.
+        xyz_indices (dict): Dictionary of atom indices.
+        zmats_total (list[dict]): Accumulated Z-matrices.
+
+    Returns:
+        tuple[list[dict], list[dict]]: Generated TS guess XYZ dicts and updated Z-matrices.
+    """
+    Ca_xyz   = xyz_indices['Ca']
+    N_xyz    = xyz_indices['N']
+    R1_xyz   = xyz_indices['R1']
+    O_r_seq  = xyz_indices['O_r']
+    H_r_seq  = xyz_indices['H_r']
+    H1_w_seq = xyz_indices['H1_w']
+    O_w_seq  = xyz_indices['O_w']
+
+    r_atoms = [Ca_xyz, O_r_seq, O_r_seq,  H1_w_seq, O_w_seq]
+    a_atoms = [
+        [N_xyz,   Ca_xyz ],
+        [Ca_xyz,  O_r_seq],
+        [H_r_seq, O_r_seq],
+        [O_r_seq, H1_w_seq],
+        [H1_w_seq, O_w_seq],
+    ]
+    d_atoms = [
+        [R1_xyz,  N_xyz,    Ca_xyz  ],
+        [N_xyz,   Ca_xyz,   O_r_seq ],
+        [Ca_xyz,  H_r_seq,  O_r_seq ],
+        [H_r_seq, O_r_seq,  H1_w_seq],
+        [O_r_seq, H1_w_seq, O_w_seq ],
+    ]
+
+    params = sn2_parameters['family_parameters']['qa_sn2']
+    r_value = params['r_value']
+    a_value = params['a_value']
+    d_values = params['d_values']
+
+    return generate_sn2_ts_guess(zmat_to_xyz(initial_zmat), oh_d1, r_atoms, a_atoms, d_atoms,
+                                  r_value, a_value, d_values, zmats_total, xyz_indices, threshold=threshold)
+
+
+def generate_sn2_ts_guess(initial_xyz: dict,
+                           oh_d1: 'ARCSpecies',
+                           r_atoms: list[int],
+                           a_atoms: list[list[int]],
+                           d_atoms: list[list[int]],
+                           r_value: list[float],
+                           a_value: list[float],
+                           d_values: list[list],
+                           zmats_total: list[dict],
+                           xyz_indices: dict,
+                           threshold: float = 0.8,
+                           ) -> tuple[list[dict], list[dict]]:
+    """
+    Generate Cartesian TS guesses by sequentially placing the five OH_d1 atoms.
+
+    The 'scan' entry at d_values[row][1] (the N-Ca-O_r-H_r dihedral) is expanded
+    by substituting each value from HR_DIHEDRAL_SCAN_VALUES, so each YAML row
+    produces up to len(HR_DIHEDRAL_SCAN_VALUES) candidate geometries.
+
+    Args:
+        initial_xyz (dict): XYZ of the QA reactant after Ca-N bond stretching.
+        oh_d1 (ARCSpecies): Provides element symbols for each atom to place.
+        r_atoms (list[int]): Reference atom index for each of the 5 placements.
+        a_atoms (list[list[int]]): Angle-defining atom pairs for each placement.
+        d_atoms (list[list[int]]): Dihedral-defining atom triplets for each placement.
+        r_value (list[float]): Bond distances for each placement.
+        a_value (list[float]): Bond angles for each placement.
+        d_values (list[list]): Dihedral rows from YAML; index 1 may be 'scan'.
+        zmats_total (list[dict]): Existing Z-matrices (duplicate filter).
+        xyz_indices (dict): Must contain O_r, H_r, Ca, N, atom_order keys.
+        threshold (float, optional): Collision detection threshold. Defaults to 0.8.
+
+    Returns:
+        tuple[list[dict], list[dict]]: Accepted TS guess XYZ dicts and updated Z-matrices.
+    """
+    xyz_guesses = []
+    O_r_seq  = xyz_indices['O_r']
+    H_r_seq  = xyz_indices['H_r']
+    H1_w_seq = xyz_indices['H1_w']
+    O_w_seq  = xyz_indices['O_w']
+    Ca_xyz   = xyz_indices['Ca']
+    N_xyz    = xyz_indices['N']
+    atom_order = xyz_indices['atom_order']
+
+    for d_value_row in d_values:
+        hr_d_val = d_value_row[1]
+        hr_scan = HR_DIHEDRAL_SCAN_VALUES if hr_d_val == 'scan' else [hr_d_val]
+
+        for hr_dihedral in hr_scan:
+            expanded_row = list(d_value_row)
+            expanded_row[1] = hr_dihedral
+
+            xyz_guess = copy.deepcopy(initial_xyz)
+            failed = False
+            for i in range(5):
+                xyz_guess = add_atom_to_xyz_using_internal_coords(
+                    xyz=xyz_guess,
+                    element=oh_d1.mol.atoms[atom_order[i]].element.symbol,
+                    r_index=r_atoms[i],
+                    a_indices=a_atoms[i],
+                    d_indices=d_atoms[i],
+                    r_value=r_value[i],
+                    a_value=a_value[i],
+                    d_value=expanded_row[i],
+                )
+                if xyz_guess is None:
+                    failed = True
+                    break
+            if failed:
+                continue
+
+            are_valid_bonds = check_sn2_ts_bonds(xyz_guess, [O_r_seq, H_r_seq, Ca_xyz, H1_w_seq, O_w_seq])
+            colliding = colliding_atoms(xyz_guess, threshold=threshold)
+            duplicate = any(compare_zmats(existing, xyz_to_zmat(xyz_guess)) for existing in zmats_total)
+
+            if not colliding and not duplicate and are_valid_bonds:
+                xyz_guesses.append(xyz_guess)
+                zmats_total.append(xyz_to_zmat(xyz_guess))
+
+            else:
+                print(f"Rejected SN2 TS guess with O_r-H_r dihedral {hr_dihedral}°: "
+                      f"{xyz_guess if colliding else ''}; ")
+
+    return xyz_guesses, zmats_total
+
+
+def check_sn2_ts_bonds(xyz_guess: dict, atom_indices: list[int]) -> bool:
+    """
+    Validate the bonding geometry of a QA SN2 TS guess.
+
+    Checks:
+        1. O_r's nearest heavy atom is Ca (forming C-O bond dominates).
+        2. H_r's nearest atom is O_r (O-H bond intact).
+        3. H1_w's nearest atom is O_w (covalent O_w-H1_w ~1.0 Å) and nearest heavy atom after O_w is O_r (H-bond ···O_r).
+        4. H2_w's nearest atom is O_w (covalent O_w-H2_w bond ~0.96 Å).
+        5. O_w's two nearest atoms are H1_w and H2_w (both covalent bonds intact).
+
+    Args:
+        xyz_guess (dict): The TS guess coordinates.
+        atom_indices (list[int]): [O_r_seq, H_r_seq, Ca_xyz, H1_w_seq, O_w_seq].
+
+    Returns:
+        bool: True if all checks pass.
+    """
+    O_r_seq, H_r_seq, Ca_xyz, H1_w_seq, O_w_seq = atom_indices
+    H2_w_seq = O_w_seq + 1
+
+    o_r_bonds = sorted_distances_of_atom(xyz_guess, O_r_seq)
+    for bond_idx, _ in o_r_bonds:
+        if bond_idx == Ca_xyz:
+            break
+        if xyz_guess['symbols'][bond_idx] != 'H':
+            return False
+
+    h_r_bonds = sorted_distances_of_atom(xyz_guess, H_r_seq)
+    if h_r_bonds[0][0] != O_r_seq:
+        return False
+
+    h1_w_bonds = sorted_distances_of_atom(xyz_guess, H1_w_seq)
+    if h1_w_bonds[0][0] != O_w_seq:
+        return False
+    h1_w_heavy = [idx for idx, _ in h1_w_bonds if xyz_guess['symbols'][idx] != 'H']
+    if len(h1_w_heavy) < 2 or h1_w_heavy[1] != O_r_seq:
+        return False
+
+    h2_w_bonds = sorted_distances_of_atom(xyz_guess, H2_w_seq)
+    if h2_w_bonds[0][0] != O_w_seq:
+        return False
+
+    o_w_bonds = sorted_distances_of_atom(xyz_guess, O_w_seq)
+    o_w_nearest_two = {o_w_bonds[0][0], o_w_bonds[1][0]}
+    if o_w_nearest_two != {H1_w_seq, H2_w_seq}:
+        return False
+
+    return True
+
+
+def has_nitrile_group(spc: 'ARCSpecies') -> bool:
+    """Return True if the species contains at least one C≡N (nitrile) group."""
+    for atom in spc.mol.atoms:
+        for neighbor, bond in atom.edges.items():
+            if bond.is_triple() and atom.element.symbol == 'C' and neighbor.element.symbol == 'N':
+                return True
+    return False
+
+
+def qa_sn2(reaction: 'ARCReaction') -> tuple[list[dict], list[str]]:
+    """
+    Generate TS guesses for reactions of the ARC "qa_sn2" family.
+
+    Args:
+        reaction (ARCReaction): The reaction to process.
+
+    Returns:
+        Tuple containing:
+            - list[dict]: Cartesian coordinates of TS guesses.
+            - list[str]: Reaction family label for each guess.
+    """
+    xyz_guesses_total, zmats_total, reaction_families = [], [], []
+    product_dicts = get_reaction_family_products(
+        rxn=reaction,
+        rmg_family_set="default",
+        consider_rmg_families=False,
+        consider_arc_families=True,
+    )
+    product_dicts = [pd for pd in product_dicts if pd.get('family') == 'qa_sn2']
+    if not product_dicts:
+        raise ValueError("No qa_sn2 family products found for this reaction.")
+
+    sn2_parameters = load_family_parameters("qa_sn2_parameters.yml")
+
+    for product_dict in product_dicts:
+        main_reactant, oh_d1, initial_xyz, xyz_indices = extract_sn2_reactant_and_indices(reaction, product_dict)
+        threshold = 0.6 if has_nitrile_group(main_reactant) else 0.8
+        _, xyz_guesses, zmats_total = process_sn2_chosen_d_indices(
+            initial_xyz, xyz_indices, sn2_parameters, oh_d1, zmats_total, threshold=threshold
+        )
+        if xyz_guesses:
+            xyz_guesses_total.extend(xyz_guesses)
+            reaction_families.extend(['qa_sn2'] * len(xyz_guesses))
+
+    return xyz_guesses_total, reaction_families
 
 
 register_job_adapter('heuristics', HeuristicsAdapter)

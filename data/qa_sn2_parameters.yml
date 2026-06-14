@@ -1,0 +1,20 @@
+# Configuration file for QA-SN2 reaction parameters
+
+family_parameters:
+  qa_sn2:
+    r_value: [2.07, 0.959, 2.62, 1.006, 0.958]
+    a_value: [166.0, 102.3, 107.6, 174.3, 104.1]
+    d_values:
+      #  R1-N-Ca-Or  N-Ca-Or-Hr  Ca-Hr-Or-H1w  Hr-Or-H1w-Ow  Or-H1w-Ow-H2w
+      - [-163.56,  scan,   97.3,  -114.4,   69.6]
+      - [-163.56,  scan,   97.3,  -114.4,  -69.6]
+      - [-163.56,  scan,  -97.3,   114.4,   69.6]
+      - [-163.56,  scan,  -97.3,   114.4,  -69.6]
+
+    # Multiplicative factor applied to the breaking C-N bond length
+    stretch: 1.4
+
+units:
+  distances: Angstroms
+  angles: degrees
+  stretching_factors: dimensionless
