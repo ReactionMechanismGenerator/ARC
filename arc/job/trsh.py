@@ -914,7 +914,14 @@ def trsh_ess_job(label: str,
         # - Changing Computational Parameters
         remove_checkfile, ess_trsh_methods, couldnt_trsh = trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh)
         if remove_checkfile:
-             logger_info.append('that failed with "Basis set data is not on the checkpoint file" by removing the checkfile.')
+            if 'No data on chk file' in job_status.get('error', '') or 'Error in GetGes' in job_status.get('error', ''):
+                if 'guess=mix' not in ess_trsh_methods:
+                    ess_trsh_methods.append('guess=mix')
+                if 'guess=mix' not in trsh_keyword:
+                    trsh_keyword.append('guess=mix')
+                logger_info.append(f'that failed with "{job_status["error"]}" by removing the checkfile and using guess=mix.')
+            else:
+                logger_info.append('that failed with "Basis set data is not on the checkpoint file" by removing the checkfile.')
 
         # Check if InternalCoordinateError is in the keyword or opt=(cartesian)
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword,couldnt_trsh)
