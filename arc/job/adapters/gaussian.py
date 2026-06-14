@@ -389,6 +389,9 @@ class GaussianAdapter(JobAdapter):
             if 'guess=INDO' in input_dict['trsh']:
                 input_dict['job_type_1'] += 'guess=INDO'
                 input_dict['trsh'] = input_dict['trsh'].replace('guess=INDO', '')
+            elif 'guess=mix' in input_dict['trsh']:
+                input_dict['job_type_1'] += ' guess=mix'
+                input_dict['trsh'] = input_dict['trsh'].replace('guess=mix', '')
             else:
                 input_dict['job_type_1'] += ' guess=read' if self.checkfile is not None and os.path.isfile(self.checkfile) \
                     else ' guess=mix'
