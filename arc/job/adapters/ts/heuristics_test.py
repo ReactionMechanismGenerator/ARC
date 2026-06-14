@@ -30,6 +30,9 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             generate_dihedral_variants,
                                             check_dao_angle,
                                             check_ts_bonds,
+                                            load_family_parameters,
+                                            check_sn2_ts_bonds,
+                                            has_nitrile_group,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
@@ -137,6 +140,50 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                                                      H      -0.60052507   -0.86954495   -0.63086438
                                                                      H       0.30391344    2.59629139    0.17435159""")
 
+        cls.tma = ARCSpecies(label='TMA', smiles='C[N+](C)(C)C', xyz="""C   0.32629948   1.46357429  -0.26044001
+        N  -0.00000001  -0.00000004  -0.00000002
+        C  -0.53562668  -0.63505944  -1.27520715
+        C  -1.05144842  -0.09811020   1.09598369
+        C   1.26077561  -0.73040463   0.43966336
+        H  -0.58986326   1.97215483  -0.57490666
+        H   1.08232075   1.51488451  -1.04955136
+        H   0.70928106   1.90320241   0.66527590
+        H   0.23196131  -0.55558259  -2.05070036
+        H  -0.76441414  -1.68498288  -1.06974487
+        H  -1.44022261  -0.09831400  -1.57605350
+        H  -1.94912095   0.43142931   0.76331336
+        H  -0.64997572   0.36247710   2.00349483
+        H  -1.27331421  -1.15523964   1.26962329
+        H   1.63121642  -0.26133127   1.35598324
+        H   2.00425486  -0.64964994  -0.35884503
+        H   1.00787712  -1.77904796   0.62211151""")
+        cls.oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O', xyz="""O   0.09218386  -1.12466927   0.00000000
+        O  -0.30799026   1.48010372   0.00000000
+        H   0.14642271  -2.10188764   0.00000000
+        H  -0.56801745   0.50781377   0.00000000
+        H   0.63740113   1.23863942   0.00000000""")
+        cls.methanol_water = ARCSpecies(label='MeOH_water', smiles='CO.O', xyz="""C   0.18578383  -0.74379564   0.70625041
+        O   0.78804603  -1.78016323   1.46352191
+        O  -0.69121538   1.68322749  -1.41943841
+        H   0.80584717   0.15411066   0.76272470
+        H   0.08250090  -1.06654728  -0.33253152
+        H  -0.80226276  -0.52985803   1.12035918
+        H   0.84185459  -1.45954453   2.37979857
+        H  -1.32259038   1.59349278  -2.15004196
+        H  -0.70720706   2.63181294  -1.21844482""")
+        cls.trimethylamine = ARCSpecies(label='NMe3', smiles='CN(C)C', xyz="""C   1.31438808  -0.44451979   0.02289995
+        N   0.03378693   0.02743087  -0.50251848
+        C  -1.03831158  -0.90110194  -0.14590539
+        C  -0.26252131   1.36795188   0.00141230
+        H   1.56377815  -1.42582986  -0.39602755
+        H   2.12326729   0.23511663  -0.26774394
+        H   1.30947115  -0.52728195   1.11590377
+        H  -1.12822746  -0.98477449   0.94293767
+        H  -2.00872404  -0.58928786  -0.54914581
+        H  -0.81644887  -1.90672625  -0.52028739
+        H   0.49732543   2.10022805  -0.29512729
+        H  -1.23515940   1.71145197  -0.36824704
+        H  -0.32723290   1.36198629   1.09523222""")
         cls.water = ARCSpecies(label='H2O', smiles='O', xyz="""O      -0.00032700    0.39565700    0.00000000
         H      -0.75690800   -0.19845300    0.00000000
         H       0.75723500   -0.19720400    0.00000000""")
@@ -1182,6 +1229,108 @@ H      -3.45360689    0.15275707   -0.76116277""")
         self.assertTrue(rxn.ts_species.is_ts)
         self.assertEqual(rxn.ts_species.ts_guesses[0].initial_xyz['symbols'],
                          ('N', 'C', 'C', 'C', 'N', 'H', 'H', 'O', 'H', 'H'))
+
+    def test_load_family_parameters(self):
+        """
+        Test that load_family_parameters correctly loads QA SN2 and hydrolysis YAMLs.
+        """
+        sn2 = load_family_parameters("qa_sn2_parameters.yml")
+        self.assertIn('family_parameters', sn2)
+        self.assertIn('qa_sn2', sn2['family_parameters'])
+        qa = sn2['family_parameters']['qa_sn2']
+        self.assertEqual(len(qa['r_value']), 5)
+        self.assertEqual(len(qa['a_value']), 5)
+        self.assertEqual(len(qa['d_values']), 4)
+        for row in qa['d_values']:
+            self.assertEqual(len(row), 5)
+            self.assertEqual(row[1], 'scan')
+        self.assertIsInstance(qa['stretch'], float)
+
+        hydrolysis = load_family_parameters("hydrolysis_families_parameters.yml")
+        self.assertIn('family_parameters', hydrolysis)
+        self.assertIn('family_sets', hydrolysis)
+
+    def test_check_sn2_ts_bonds(self):
+        """
+        Test check_sn2_ts_bonds with passing and failing geometries.
+        """
+        # Atom layout used throughout:
+        #   0=Ca, 1=N, 2=R1(H), 3=O_r, 4=H_r, 5=H1_w, 6=O_w, 7=H2_w
+        # atom_indices = [O_r_seq=3, H_r_seq=4, Ca_xyz=0, H1_w_seq=5, O_w_seq=6]
+        INDICES = [3, 4, 0, 5, 6]
+
+        def make_xyz(coords):
+            return {'symbols': ('C', 'N', 'H', 'O', 'H', 'H', 'O', 'H'),
+                    'isotopes': (12, 14, 1, 16, 1, 1, 16, 1),
+                    'coords': coords}
+
+        valid_coords = (
+            ( 0.0,   0.0,  0.0),
+            ( 1.5,   0.0,  0.0),
+            ( 0.0,   1.0,  0.0),
+            (-2.07,  0.0,  0.0),
+            (-2.07,  0.96, 0.0),
+            (-4.69,  0.0,  0.0),
+            (-5.696, 0.0,  0.0),
+            (-5.696, 0.958,0.0),
+        )
+        self.assertTrue(check_sn2_ts_bonds(make_xyz(valid_coords), INDICES))
+
+        # Failing: heavy atom N closer to O_r than Ca
+        fail_heavy = list(valid_coords)
+        fail_heavy[1] = (2.5, 0.0, 0.0)   # N far right
+        fail_heavy[3] = (1.5, 0.0, 0.0)   # O_r at 1.5 from Ca, 1.0 from N → N is first heavy atom
+        fail_heavy[4] = (1.5, 0.96, 0.0)
+        fail_heavy[5] = (-1.12, 0.0, 0.0)
+        fail_heavy[6] = (-2.126, 0.0, 0.0)
+        self.assertFalse(check_sn2_ts_bonds(make_xyz(tuple(fail_heavy)), INDICES))
+
+        # Failing: H_r not bonded to O_r (Ca is closer to H_r)
+        fail_hr = list(valid_coords)
+        fail_hr[4] = (-1.0, 0.0, 0.0)   # H_r: 1.0 Å from Ca, 1.07 Å from O_r
+        self.assertFalse(check_sn2_ts_bonds(make_xyz(tuple(fail_hr)), INDICES))
+
+        # Failing: H1_w nearest is not O_w (H1_w collapsed onto O_r)
+        fail_h1w_nearest = list(valid_coords)
+        fail_h1w_nearest[5] = (-3.0, 0.0, 0.0)   # H1_w: 0.93 Å from O_r, 2.696 Å from O_w → O_r is nearest
+        self.assertFalse(check_sn2_ts_bonds(make_xyz(tuple(fail_h1w_nearest)), INDICES))
+
+        # Failing: H1_w nearest is O_w but second nearest is not O_r (H-bond broken)
+        fail_h1w_second = list(valid_coords)
+        fail_h1w_second[3] = (-8.0, 0.0, 0.0)   # O_r moved far away → second nearest to H1_w is no longer O_r
+        fail_h1w_second[4] = (-8.0, 0.96, 0.0)  # H_r follows O_r
+        self.assertFalse(check_sn2_ts_bonds(make_xyz(tuple(fail_h1w_second)), INDICES))
+
+        # Failing: H2_w detached from O_w
+        fail_h2w = list(valid_coords)
+        fail_h2w[7] = (-2.07, 0.0, 0.0)   # H2_w lands on O_r position → nearest is O_r not O_w
+        self.assertFalse(check_sn2_ts_bonds(make_xyz(tuple(fail_h2w)), INDICES))
+
+        # Failing: O_w's two nearest atoms are not both water H's (H1_w and H2_w far away)
+        fail_ow = list(valid_coords)
+        fail_ow[5] = (-4.69, 5.0, 0.0)   # H1_w moved far from O_w
+        fail_ow[7] = (-5.696, 5.0, 0.0)  # H2_w moved far from O_w
+        self.assertFalse(check_sn2_ts_bonds(make_xyz(tuple(fail_ow)), INDICES))
+
+    def test_heuristics_for_qa_sn2(self):
+        """
+        Test heuristics for QA SN2: C[N+](C)(C)C + [OH-].O <=> CO.O + CN(C)C.
+        """
+        rxn = ARCReaction(r_species=[self.tma, self.oh_d1],
+                          p_species=[self.methanol_water, self.trimethylamine],
+                          family='qa_sn2')
+        adapter = HeuristicsAdapter(job_type='tsg',
+                                    reactions=[rxn],
+                                    testing=True,
+                                    project='test',
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_qasn2'))
+        adapter.execute_incore()
+        self.assertEqual(rxn.family, 'qa_sn2')
+        self.assertTrue(rxn.ts_species.is_ts)
+        self.assertGreater(len(rxn.ts_species.ts_guesses), 0)
+        symbols = rxn.ts_species.ts_guesses[0].initial_xyz['symbols']
+        self.assertEqual(len(symbols), 22)
+        self.assertEqual(sorted(symbols[17:]), ['H', 'H', 'H', 'O', 'O'])
 
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""
@@ -2243,13 +2392,29 @@ H      -0.30139889    0.23142254    3.12085495"""
         result = check_ts_bonds(initial_xyz, [7, 8, 9, 2, 4])
         self.assertTrue(result)
 
+    def test_has_nitrile_group(self):
+        """Test has_nitrile_group detects C≡N correctly."""
+        # True: acetonitrile — canonical nitrile
+        self.assertTrue(has_nitrile_group(ARCSpecies(label='acetonitrile', smiles='CC#N')))
+        # True: hydrogen cyanide — simplest nitrile
+        self.assertTrue(has_nitrile_group(ARCSpecies(label='HCN', smiles='[H]C#N')))
+        # True: acrylonitrile — nitrile with a vinyl group
+        self.assertTrue(has_nitrile_group(ARCSpecies(label='acrylonitrile', smiles='C=CC#N')))
+        # False: trimethylamine — has N but no triple bond
+        self.assertFalse(has_nitrile_group(ARCSpecies(label='TMA', smiles='CN(C)C')))
+        # False: acetylene — has C≡C triple bond but no N
+        self.assertFalse(has_nitrile_group(ARCSpecies(label='acetylene', smiles='C#C')))
+        # False: methylamine — has N, single bonds only
+        self.assertFalse(has_nitrile_group(ARCSpecies(label='methylamine', smiles='CN')))
+
     @classmethod
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests.
         """
-        for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile'):
+        for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile',
+                    'heuristics_qasn2', 'heuristics_sn2_print'):
             shutil.rmtree(os.path.join(ARC_TESTING_PATH, sub), ignore_errors=True)
 
 
