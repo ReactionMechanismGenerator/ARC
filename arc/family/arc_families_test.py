@@ -198,5 +198,71 @@ class TestQASN2ReactionFamily(unittest.TestCase):
         self.assertEqual(sorted(product_smiles), sorted(expected_product_smiles))
 
 
+class TestQAHofmannEliminationReactionFamily(unittest.TestCase):
+    """
+    Contains unit tests for the qa_hofmann_elimination reaction family.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up the test by defining the qa_hofmann_elimination reaction family."""
+        cls.family = ReactionFamily('qa_hoffman')
+
+    def test_qa_hofmann_elimination_reaction(self):
+        """Test if qa_hofmann_elimination products are correctly generated."""
+        qa = ARCSpecies(label='QA', smiles='CC[N+](C)(C)C')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+
+        alkene = ARCSpecies(label='alkene', smiles='C=C')
+        amine = ARCSpecies(
+            label='amine', smiles='CN(C)C')
+        water_dimer = ARCSpecies(label='water_dimer', smiles='O.O')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[alkene, amine, water_dimer])
+
+        products = get_reaction_family_products(rxn)
+        product_smiles = [p.to_smiles() for p in products[0]['products']]
+
+        expected_product_smiles = ['C=C', 'CN(C)C', 'O.O']
+        self.assertEqual(sorted(product_smiles), sorted(expected_product_smiles))
+
+    def test_recipe_actions(self):
+        """Test if the reaction recipe is applied correctly."""
+        groups_file_path = os.path.join(ARC_FAMILIES_PATH, 'qa_hoffman.py')
+        with open(groups_file_path, 'r') as f:
+            groups_as_lines = f.readlines()
+
+        actions = get_recipe_actions(groups_as_lines)
+
+        expected_actions = [
+            ['BREAK_BOND', '*1', 1, '*2'],
+            ['BREAK_BOND', '*3', 1, '*4'],
+            ['CHANGE_BOND', '*1', 1, '*3'],
+            ['FORM_BOND', '*5', 1, '*4'],
+            ['LOSE_PAIR', '*5', '1'],
+            ['GAIN_PAIR', '*2', '1'],
+        ]
+
+        self.assertEqual(actions, expected_actions)
+
+    def test_qa_hofmann_elimination_with_longer_alkyl_group(self):
+        """Test if qa_hofmann_elimination products are correctly generated for a longer alkyl substituent."""
+        qa = ARCSpecies(label='QA', smiles='CCC[N+](C)(C)C')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+
+        alkene = ARCSpecies(label='alkene', smiles='C=CC')
+        amine = ARCSpecies(label='amine', smiles='CN(C)C')
+        water_dimer = ARCSpecies(label='water_dimer', smiles='O.O')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[alkene, amine, water_dimer])
+
+        products = get_reaction_family_products(rxn)
+        product_smiles = [p.to_smiles() for p in products[0]['products']]
+
+        expected_product_smiles = ['C=CC', 'CN(C)C', 'O.O']
+        self.assertEqual(sorted(product_smiles), sorted(expected_product_smiles))
+
+
+
 if __name__ == '__main__':
     unittest.main()
