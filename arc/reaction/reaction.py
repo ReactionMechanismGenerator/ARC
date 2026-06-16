@@ -4,7 +4,7 @@ A module for representing a reaction.
 
 from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError, InputError
-from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
+from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name, get_current_family_name
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species.converter import (check_xyz_dict,
                                    sort_xyz_using_indices,
@@ -271,6 +271,7 @@ class ARCReaction(object):
         """
         if value is not None and not isinstance(value, str):
             raise InputError(f'Reaction family must be a string, got {value} which is a {type(value)}.')
+        value = get_current_family_name(value)
         self._family = value
         self._family_determined = True
         self._family_own_reverse = None

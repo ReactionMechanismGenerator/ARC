@@ -46,6 +46,22 @@ RESONANCE_SEARCH_LIMIT: int | None = None
 
 REACTION_FAMILY_CACHE: dict[tuple[str, bool], 'ReactionFamily'] = {}
 
+# Former family labels mapped to their current labels, so that restart files written with a former label still load.
+LEGACY_FAMILY_NAMES = {'qa_hoffman': 'qa_hofmann'}
+
+
+def get_current_family_name(family: str | None) -> str | None:
+    """
+    Get the current label of a reaction family, translating a former (legacy) label.
+
+    Args:
+        family (str): The family label.
+
+    Returns:
+        str | None: The current family label.
+    """
+    return LEGACY_FAMILY_NAMES.get(family, family) if isinstance(family, str) else family
+
 # Pre-compiled regex patterns
 ENTRY_PATTERN = re.compile(r'entry\((.*?)\)', re.DOTALL)
 LABEL_PATTERN = re.compile(r'label\s*=\s*(["\'])(.*?)\1|label\s*=\s*(\w+)')
@@ -1531,4 +1547,4 @@ def check_family_name(family: str
     """
     if not isinstance(family, str) and family is not None:
         raise TypeError("Family name must be a string or None.")
-    return family in get_all_families() or family is None
+    return get_current_family_name(family) in get_all_families() or family is None

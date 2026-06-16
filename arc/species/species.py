@@ -25,6 +25,7 @@ from arc.common import (almost_equal_coords,
                         )
 from arc.exceptions import AtomTypeError, InputError, InvalidAdjacencyListError, RotorError, SpeciesError, TSError, \
     SanitizationError
+from arc.family.family import get_current_family_name
 from arc.imports import settings
 from arc.level import Level
 from arc.molecule.atomtype import ATOMTYPES
@@ -2614,7 +2615,7 @@ class TSGuess(object):
                 self.success = True
                 self.execution_time = datetime.timedelta(seconds=0)
             self.arc_reaction = arc_reaction
-            self.family = family
+            self.family = get_current_family_name(family)
             self.imaginary_freqs = None
             self.conformer_index = None
             self.successful_irc = None
@@ -2751,7 +2752,7 @@ class TSGuess(object):
                 raise TSError('If no method is specified, an xyz guess must be given (initial_xyz).')
             self.success = self.success if self.success is not None else True
             self.execution_time = datetime.timedelta(seconds=0)
-        self.family = ts_dict['family'] if 'family' in ts_dict else None
+        self.family = get_current_family_name(ts_dict['family']) if 'family' in ts_dict else None
         self.log_path = ts_dict['log_path'] if 'log_path' in ts_dict else None
         if isinstance(ts_dict.get('method_source_paths'), dict):
             self.method_source_paths = {
