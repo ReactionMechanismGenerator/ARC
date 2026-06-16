@@ -72,6 +72,13 @@ build/*
 
 *.log
 *.xml
+# Test fixtures: real ESS log files / XML are tracked under arc/testing/
+!arc/testing/**/*.log
+!arc/testing/**/*.xml
 
-# AI Agent files
+# AI Agent files and folders
 AGENTS.md
+.claude/*
+.vexb/*
+
+ARC.egg-info/*

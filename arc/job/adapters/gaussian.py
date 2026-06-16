@@ -306,10 +306,14 @@ class GaussianAdapter(JobAdapter):
                         if input_dict['trsh']:
                             input_dict['trsh'] += ' '
                         input_dict['trsh'] += 'scf=(tight,direct)'
+                # 'no_tight' is set by trsh_keyword_loose_disp when a previous attempt hit
+                # MaxOptCycles with forces converged but displacement criteria unreachable.
+                drop_tight = 'no_tight' in self.ess_trsh_methods
+                fine_opt = [] if drop_tight else ['tight']
                 if self.is_ts:
-                    keywords.extend(['tight', 'maxstep=5'])
+                    keywords.extend(fine_opt + ['maxstep=5'])
                 else:
-                    keywords.extend(['tight', 'maxstep=5', f'maxcycle={max_c}'])
+                    keywords.extend(fine_opt + ['maxstep=5', f'maxcycle={max_c}'])
             input_dict['job_type_1'] = "opt" if self.level.method_type not in ['dft', 'composite', 'wavefunction']\
                 else f"opt=({', '.join(key for key in keywords)})"
 

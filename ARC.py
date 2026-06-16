@@ -11,6 +11,8 @@ import os
 
 from arc.common import read_yaml_file
 from arc.main import ARC
+from arc.tckdb.config import TCKDBConfig
+from arc.tckdb.sweep import run_upload_sweep
 
 
 def parse_command_line_arguments(command_line_args=None):
@@ -59,8 +61,32 @@ def main():
     input_dict['verbose'] = input_dict['verbose'] if 'verbose' in input_dict else verbose
     if 'project_directory' not in input_dict or not input_dict['project_directory']:
         input_dict['project_directory'] = project_directory
+
+    tckdb_config = TCKDBConfig.from_dict(input_dict.pop('tckdb', None))
+
     arc_object = ARC(**input_dict)
-    arc_object.execute()
+    arc_object.tckdb_config = tckdb_config
+    if tckdb_config is not None:
+        print(f'TCKDB integration enabled: {tckdb_config.base_url}')
+
+    # Persistent SSH pool lives for the duration of the run; close it
+    # explicitly on every exit path (success, error, ctrl-C) so we don't
+    # leave paramiko Transports orphaned. Lazily instantiated on first
+    # remote-queue job, so this is a no-op for fully-local runs.
+    try:
+        arc_object.execute()
+
+        if tckdb_config is not None:
+            from arc.tckdb.adapter import TCKDBAdapter
+            adapter = TCKDBAdapter(tckdb_config, project_directory=arc_object.project_directory)
+            run_upload_sweep(
+                adapter=adapter,
+                project_directory=arc_object.project_directory,
+                tckdb_config=tckdb_config,
+            )
+    finally:
+        from arc.job.ssh_pool import reset_default_pool
+        reset_default_pool()
 
 
 if __name__ == '__main__':
