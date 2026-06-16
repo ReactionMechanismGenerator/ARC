@@ -27,6 +27,7 @@ from arc.family.family import (ReactionFamily,
                                filter_products_by_reaction,
                                get_reaction_family_products,
                                get_all_families,
+                               get_non_ring_bonds,
                                get_rmg_family_directories,
                                get_entries,
                                split_entries,
@@ -1082,6 +1083,12 @@ H       1.24252625    0.91583948   -0.84155142"""
                            'products=["X_H_or_Xrad_H_Xbirad_H_Xtrirad_H", "Y_rad_birad_trirad_quadrad"], ' +
                            'ownReverse=True)', 'reversible = True']
         self.assertTrue(is_own_reverse(groups_as_lines))
+
+    def test_get_non_ring_bonds(self):
+        """Test parsing the labeled bonds that must not be in a ring."""
+        self.assertEqual(get_non_ring_bonds(["productNum = 3\n", "non_ring_bonds = [('*1', '*2')]\n"]), [('*1', '*2')])
+        self.assertEqual(get_non_ring_bonds(["productNum = 3\n"]), list())
+        self.assertEqual(ReactionFamily('H_Abstraction').non_ring_bonds, list())
 
     def test_get_product_num(self):
         """Test getting the number of products from a family"""
