@@ -161,6 +161,7 @@ class ReactionFamily(object):
         self.groups_as_lines = read_groups_file_lines(label, consider_arc_families)
         self.reversible = is_reversible(self.groups_as_lines)
         self.own_reverse = is_own_reverse(self.groups_as_lines)
+        self.non_ring_bonds = get_non_ring_bonds(self.groups_as_lines)
         
         reactant_labels = get_initial_reactant_labels_from_template(self.groups_as_lines)
         all_necessary_entries = get_entries(self.groups_as_lines, entry_labels=reactant_labels, recursive=True)
@@ -436,6 +437,8 @@ class ReactionFamily(object):
         for mol in mols:
             structure = structure.merge(mol.copy(deep=True))
         structure = add_labels_to_molecule(structure, isomorphic_subgraph)
+        if self._has_a_ring_bond(structure, self.non_ring_bonds):
+            return None
         for action in self.actions:
             if action[0] in ['CHANGE_BOND', 'FORM_BOND', 'BREAK_BOND']:
                 structure.reset_connectivity_values()
@@ -552,6 +555,25 @@ class ReactionFamily(object):
             result.append(product_set)
 
         return result if result else None
+
+    @staticmethod
+    def _has_a_ring_bond(structure: Molecule, labeled_bonds: list[tuple[str, str]]) -> bool:
+        """
+        Check whether any of the given labeled bonds is in a ring of the structure.
+
+        Args:
+            structure (Molecule): The labeled reactant structure.
+            labeled_bonds (list[tuple[str, str]]): Pairs of atom labels, e.g., ``[('*1', '*2')]``.
+
+        Returns:
+            bool: Whether any of the labeled bonds exists and is in a ring.
+        """
+        for label_1, label_2 in labeled_bonds:
+            atoms_1, atoms_2 = structure.get_labeled_atoms(label_1), structure.get_labeled_atoms(label_2)
+            if atoms_1 and atoms_2 and structure.has_bond(atoms_1[0], atoms_2[0]) \
+                    and structure.is_bond_in_cycle(structure.get_bond(atoms_1[0], atoms_2[0])):
+                return True
+        return False
 
     def get_has_a_disconnected_reactant(self) -> bool:
         """
@@ -1220,6 +1242,24 @@ def is_own_reverse(groups_as_lines: list[str]) -> bool:
     if match:
         return match.group(1) == 'True'
     return False
+
+
+def get_non_ring_bonds(groups_as_lines: list[str]) -> list[tuple[str, str]]:
+    """
+    Get the labeled bonds of the reaction family that must not be in a ring, given in the groups file as, e.g.,
+    ``non_ring_bonds = [('*1', '*2')]``. A site where such a bond is in a ring does not match the family.
+
+    Args:
+        groups_as_lines (list[str]): The template content string.
+
+    Returns:
+        list[tuple[str, str]]: The pairs of atom labels, an empty list if none are given.
+    """
+    for line in groups_as_lines:
+        stripped = line.strip()
+        if stripped.startswith('non_ring_bonds'):
+            return [tuple(pair) for pair in ast.literal_eval(stripped.split('=', 1)[1].strip())]
+    return list()
 
 
 def get_reactant_groups_from_template(groups_as_lines: list[str],
