@@ -94,6 +94,7 @@ def determine_ess_status(output_path: str,
                     if 'l9999.exe' in line or 'link 9999' in line:
                         cycle_issue = False
                         neg_eigenvalues = False
+                        polarization_error = False
                         for j in range(i, len_reversed_lines):
                             if 'Number of steps exceeded' in reverse_lines[j]:
                                 keywords = ['MaxOptCycles', 'GL9999']
@@ -107,7 +108,13 @@ def determine_ess_status(output_path: str,
                                 neg_eigenvalues = True
                                 line = 'Wrong number of Negative eigenvalues'
                                 break
-                        if not cycle_issue and not neg_eigenvalues:
+                            elif 'Error on total polarization charges' in reverse_lines[j]:
+                                keywords = ['Unconverged', 'GL9999', 'NoSymm']
+                                error = 'Error on total polarization charges (SCRF/SMD convergence failure)'
+                                polarization_error = True
+                                line = 'Error on total polarization charges'
+                                break
+                        if not cycle_issue and not neg_eigenvalues and not polarization_error:
                             keywords = ['Unconverged', 'GL9999']  # GL stand for Gaussian Link
                             error = 'Unconverged'
                     elif 'l101.exe' in line:

@@ -1,0 +1,22 @@
+ Entering Gaussian System, Link 0=g16
+ Initial command:
+ /usr/local/g16/l1.exe "/scratch/g16/Gau-12345.inp" -scrdir="/scratch/g16/"
+ Entering Link 1 = /usr/local/g16/l1.exe PID=     12345.
+
+ Copyright (c) 1988-2019, Gaussian, Inc.  All Rights Reserved.
+
+ #P opt=(cartesian,calcfc,maxcycle=200,tight) SCRF=(smd,Solvent=dimethylsulfoxide) wb97xd/jul-cc-pvtz
+
+ pr2
+
+ 0 1
+ C   0.000000   0.000000   0.000000
+
+ Error on total polarization charges =  0.04304
+ (Enter /usr/local/g16/l9999.exe)
+
+ Error termination request processed by link 9999.
+ Error termination via Lnk1e in /usr/local/g16/l9999.exe at Tue Jun 16 12:39:18 2026.
+ Job cpu time:       1 days 22 hours 50 minutes 16.4 seconds.
+ Elapsed time:       0 days  2 hours 57 minutes 47.6 seconds.
+ File lengths (MBytes):  RWF=    101 Int=      0 D2E=      0 Chk=     11 Scr=      1

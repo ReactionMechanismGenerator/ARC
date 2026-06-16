@@ -129,7 +129,16 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(keywords, ["MaxOptCycles", "GL9999",])
         self.assertEqual(error, "Maximum optimization cycles reached.")
         self.assertIn("Number of steps exceeded", line)
-        
+
+        path = os.path.join(self.base_path["gaussian"], "polarization_charges.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="pr2", job_type="opt"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["Unconverged", "GL9999", "NoSymm"])
+        self.assertEqual(error, "Error on total polarization charges (SCRF/SMD convergence failure)")
+        self.assertIn("Error on total polarization charges", line)
+
         path = os.path.join(self.base_path["gaussian"], "inaccurate_quadrature.out")
         status, keywords, error, line = trsh.determine_ess_status(
             output_path=path, species_label="Zr2O4H", job_type="opt"
