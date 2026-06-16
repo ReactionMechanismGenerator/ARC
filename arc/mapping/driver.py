@@ -303,6 +303,9 @@ def map_rxn(rxn: ARCReaction,
         return None
 
     fragment_maps = map_pairs(pairs)
+    if any(m is None for m in fragment_maps):
+        logger.debug(f'map_rxn (rxn={rxn}, pdi={pdi}): one or more fragment maps failed; returning None.')
+        return None
     total_atoms = sum(len(sp.mol.atoms) for sp in reactants)
     atom_map = glue_maps(maps=fragment_maps,
                          pairs=pairs,

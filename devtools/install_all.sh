@@ -125,7 +125,7 @@ else
     echo "ℹ️  --no-ext flag set. Skipping external-dependency installs."
 fi
 
-# 4) Clean up disk space
+# 3) Clean up disk space
 run_devtool clean.sh --conda
 
 popd >/dev/null

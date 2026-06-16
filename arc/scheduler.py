@@ -35,7 +35,10 @@ from arc.exceptions import (InputError,
                             TrshError,
                             )
 from arc.imports import settings
-from arc.job.adapters.common import all_families_ts_adapters, default_incore_adapters, ts_adapters_by_rmg_family
+from arc.job.adapters.common import (all_families_ts_adapters,
+                                      default_incore_adapters,
+                                      ts_adapters_by_rmg_family,
+                                      ts_adapters_for_unknown_unimolecular)
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
@@ -336,7 +339,9 @@ class Scheduler(object):
         self.initialize_output_dict()
 
         self.restart_path = os.path.join(self.project_directory, 'restart.yml')
+        self.running_jobs_snapshot_path = os.path.join(self.project_directory, 'running_jobs.yml')
         self.report_time = time.time()  # init time for reporting status every 1 hr
+        self._last_status_payload: dict | None = None
         self.servers = list()
         self.composite_method = composite_method
         self.conformer_opt_level = conformer_opt_level
@@ -898,13 +903,32 @@ class Scheduler(object):
             t = time.time() - self.report_time
             if t > 3600 and (self.running_jobs or self.active_pipes):
                 self.report_time = time.time()
-                if self.running_jobs:
-                    logger.info(f'Currently running jobs:\n{pprint.pformat(self.running_jobs)}')
-                if self.active_pipes:
-                    logger.info(f'Active pipe runs: {list(self.active_pipes.keys())}')
+                self.report_running_jobs_snapshot()
 
         # Generate a TS report:
         self.generate_final_ts_guess_report()
+
+    def report_running_jobs_snapshot(self) -> None:
+        """
+        Overwrite ``<project>/running_jobs.yml`` with a timestamped snapshot of
+        the currently running jobs and active pipes. If the payload is identical
+        to the previous snapshot, the file is left untouched and only a one-line
+        heartbeat is logged to ARC.log.
+        """
+        payload = {'running_jobs': {label: list(job_names) for label, job_names in self.running_jobs.items()},
+                   'active_pipes': list(self.active_pipes.keys())}
+        n_species = len(self.running_jobs)
+        n_jobs = sum(len(v) for v in self.running_jobs.values())
+        n_pipes = len(self.active_pipes)
+        summary = f'{n_species} species / {n_jobs} jobs / {n_pipes} active pipes'
+        if payload == self._last_status_payload:
+            logger.info(f'Status unchanged: {summary}.')
+            return
+        snapshot = {'timestamp': datetime.datetime.now().isoformat(timespec='seconds'),
+                    **payload}
+        save_yaml_file(path=self.running_jobs_snapshot_path, content=snapshot)
+        logger.info(f'Status changed: {summary}; snapshot written to running_jobs.yml.')
+        self._last_status_payload = payload
 
     def run_job(self,
                 job_type: str,
@@ -1779,11 +1803,19 @@ class Scheduler(object):
                     rxn.ts_species.tsg_spawned = True
                     tsg_index = 0
                     for method in self.ts_adapters:
-                        if method in all_families_ts_adapters or \
-                                (rxn.family is not None
-                                 and rxn.family in list(ts_adapters_by_rmg_family.keys())
-                                 and method in ts_adapters_by_rmg_family[rxn.family]) \
+                        family_known = (rxn.family is not None
+                                        and rxn.family in ts_adapters_by_rmg_family)
+                        admit_unknown_family = (not family_known
+                                                and method in ts_adapters_for_unknown_unimolecular
+                                                and rxn.is_unimolecular())
+                        if method in all_families_ts_adapters \
+                                or (family_known and method in ts_adapters_by_rmg_family[rxn.family]) \
+                                or admit_unknown_family \
                                 or 'mock' in method:
+                            if admit_unknown_family:
+                                logger.info(f'Admitting TS adapter {method!r} for reaction {rxn.label} '
+                                            f'via ts_adapters_for_unknown_unimolecular '
+                                            f'(RMG family is {rxn.family!r}).')
                             self.run_job(job_type='tsg',
                                          job_adapter=method,
                                          reactions=[rxn],

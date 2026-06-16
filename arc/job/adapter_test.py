@@ -95,11 +95,8 @@ class TestJobAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        # Register project-dir cleanups before any fixture creation so they
-        # still fire if a constructor below raises mid-setUpClass — that's
-        # how leftover scratch files end up committed to the repo.
-        for subdir in ('test_JobAdapter', 'test_JobAdapter_scan', 'test_JobAdapter_ServerTimeLimit'):
-            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, subdir), ignore_errors=True)
+        for dir_name in ('test_JobAdapter', 'test_JobAdapter_scan', 'test_JobAdapter_ServerTimeLimit'):
+            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, dir_name), ignore_errors=True)
         cls.job_1 = GaussianAdapter(execution_type='queue',
                                     job_type='conf_opt',
                                     level=Level(method='cbs-qb3'),

@@ -1,7 +1,7 @@
 """
 Module for writing the consolidated output.yml at the end of an ARC run.
 
-output.yml supersedes output/status.yml and <project>.info — it consolidates
+output.yml supersedes output/status.yml and <project>.info: it consolidates
 all result data into a single file with run-relative paths so downstream
 consumers (TCKDB, analysis scripts) need only one file.
 
@@ -1167,7 +1167,7 @@ def _get_ts_imag_freq(spc) -> float | None:
 
 
 def _thermo_to_dict(thermo) -> dict:
-    """Convert a ThermoData object to a plain, unit-labelled dict."""
+    """Convert a ThermoData object to a plain, unit-labeled dict."""
     def _scalar(x):
         """Extract the numeric value from a (value, units) tuple or a plain number."""
         if isinstance(x, (list, tuple)) and len(x) >= 1:

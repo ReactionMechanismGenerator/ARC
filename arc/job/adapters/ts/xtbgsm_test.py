@@ -29,6 +29,9 @@ class TestxTBGSMAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        for i in range(10):
+            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, f'test_xTBAGSMdapter_{i}'),
+                                ignore_errors=True)
         cls.job_1 = xTBGSMAdapter(project='test_1',
                                   job_type='tsg',
                                   project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAGSMdapter_1'),
