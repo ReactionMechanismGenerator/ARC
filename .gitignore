@@ -75,3 +75,10 @@ build/*
 
 # AI Agent files
 AGENTS.md
+spec.md
+
+# Other AI things
+.agents
+ARC.egg*
+uv*
+*graphify*

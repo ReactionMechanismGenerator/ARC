@@ -41,7 +41,7 @@ class YAMLParser(ESSAdapter, ABC):
         Returns: dict[str, tuple] | None
             The cartesian geometry.
         """
-        for key in ['xyz', 'opt_xyz']:
+        for key in ['opt_xyz', 'xyz']:
             if key in self.data.keys():
                 return self.data[key] if isinstance(self.data[key], dict) else str_to_xyz(self.data[key])
         return None
@@ -53,7 +53,7 @@ class YAMLParser(ESSAdapter, ABC):
         Returns: np.ndarray | None
             The parsed frequencies (in cm^-1).
         """
-        freqs = self.data.get('freqs')
+        freqs = self.data.get('freqs') or self.data.get('frequencies')
         return np.array(freqs, dtype=np.float64) if freqs else None
 
     def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
@@ -63,8 +63,8 @@ class YAMLParser(ESSAdapter, ABC):
         Returns: tuple[np.ndarray | None, np.ndarray | None]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
-        freqs = self.data.get('freqs')
-        modes = self.data.get('modes')
+        freqs = self.data.get('freqs') or self.data.get('frequencies')
+        modes = self.data.get('modes') or self.data.get('normal_modes')
         if freqs and modes:
             return (
                 np.array(freqs, dtype=np.float64) if freqs is not None else None,
@@ -84,12 +84,12 @@ class YAMLParser(ESSAdapter, ABC):
 
     def parse_e_elect(self) -> float | None:
         """
-        Parse the electronic energy from an sp job output file.
+        Parse the electronic energy from the YAML file.
 
         Returns: float | None
             The electronic energy in kJ/mol.
         """
-        energy = self.data.get('sp')
+        energy = self.data.get('sp') or self.data.get('energy')
         return energy
 
     def parse_zpe_correction(self) -> float | None:
