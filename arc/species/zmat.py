@@ -667,10 +667,13 @@ def determine_d_atoms_from_connectivity(zmat: dict,
                         if num_of_neighbors == 1:
                             # Atom A is only connected to B, use the dummy atom on atom B as atom A.
                             b_neighbors = connectivity[atom_b]
-                            x_neighbor = [neighbor for neighbor in b_neighbors
-                                          if xyz['symbols'][neighbor] == 'X'][0]
-                            if key_by_val(zmat['map'], f'X{x_neighbor}') not in d_atoms:
-                                zmat_index = key_by_val(zmat['map'], f'X{x_neighbor}')
+                            try:
+                                x_neighbor = [neighbor for neighbor in b_neighbors
+                                              if xyz['symbols'][neighbor] == 'X'][0]
+                                if key_by_val(zmat['map'], f'X{x_neighbor}') not in d_atoms:
+                                    zmat_index = key_by_val(zmat['map'], f'X{x_neighbor}')
+                                    break
+                            except (IndexError, ValueError):
                                 break
                         elif num_of_neighbors == 2:
                             # atom A is only connected to B and E, check the E -- B -- C angle.
