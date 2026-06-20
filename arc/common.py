@@ -36,6 +36,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger('arc')
 logging.getLogger('matplotlib.font_manager').disabled = True
 
+try:
+    from rdkit import RDLogger
+    RDLogger.DisableLog('rdApp.*')
+except ImportError:
+    pass
+
 # Absolute path to the ARC folder.
 ARC_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 ARC_TESTING_PATH = os.path.join(ARC_PATH, 'arc', 'testing')
