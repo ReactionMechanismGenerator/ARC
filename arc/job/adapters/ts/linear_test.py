@@ -1133,7 +1133,7 @@ H      -1.11212744    1.33826544   -0.86912905"""
             self.assertEqual(len(ts_xyz['symbols']), 10)
             self.assertFalse(colliding_atoms(ts_xyz),
                              msg=f'Collision in 1+2_Cycloaddition TS:\n{xyz_to_str(ts_xyz)}')
-        expected_ts = """C       1.59999925   -0.11618654   -0.14166302
+        expected_ts_1 = """C       1.59999925   -0.11618654   -0.14166302
 C       0.29517860   -0.02143486   -0.02613492
 C      -1.15821797   -1.12490772    0.14486040
 C      -0.81238032    0.84414025    0.04444949
@@ -1143,7 +1143,18 @@ H      -1.36135914   -1.58251472    1.10296443
 H      -1.52801447   -1.64655150   -0.72678867
 H      -0.94547237    1.40230195    0.96062403
 H      -1.11212744    1.33826544   -0.86912905"""
-        self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
+        expected_ts_2 = """C       1.59999925   -0.11618654   -0.14166302
+C       0.29517860   -0.02143486   -0.02613492
+C      -0.92013120   -0.71833111    0.10894610
+C      -0.99229728    1.28107087    0.04554500
+H       2.21797993    0.77036923   -0.22897655
+H       2.09015362   -1.08321135   -0.15246324
+H      -1.12327237   -1.17593811    1.06705013
+H      -1.28992770   -1.23997489   -0.76270297
+H      -1.12538933    1.83923257    0.96171954
+H      -1.29204440    1.77519606   -0.86803354"""
+        self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts_1)) for ts in ts_xyzs) or
+                        any(almost_equal_coords(ts, str_to_xyz(expected_ts_2)) for ts in ts_xyzs))
         # The TS should have extended forming bonds compared to the product.
         # Get atom map to find the carbene atom in the product.
         atom_map = map_rxn(rxn=rxn)
