@@ -247,9 +247,9 @@ def _make_rxn_2() -> ARCReaction:
                                                     H       0.27058353   -0.73979548    1.43184405""")])
 
 
-class TestHeuristicsAdapter(unittest.TestCase):
+class TestLinearAdapter(unittest.TestCase):
     """
-    Contains unit tests for the HeuristicsAdapter class.
+    Contains unit tests for the LinearAdapter class.
     """
 
     @classmethod
