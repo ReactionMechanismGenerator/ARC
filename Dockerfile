@@ -47,12 +47,13 @@ RUN micromamba create -y -v -n rmg_env python=3.11 -f /home/mambauser/Code/RMG-P
 
 RUN micromamba run -n rmg_env make -C /home/mambauser/Code/RMG-Py -j"$(nproc)"
 
-RUN micromamba run -n rmg_env bash -c "\
+RUN micromamba run -n rmg_env bash -c '\
+      export PATH=$(julia -e "print(Sys.BINDIR)"):$PATH && \
       cd /home/mambauser/Code/RMG-Py && \
       export RMS_INSTALLER=continuous && \
       export RMS_BRANCH=for_rmg && \
       source install_rms.sh \
-    "
+    '
 
 WORKDIR /home/mambauser/Code/ARC
 RUN micromamba create -y -v -n arc_env python=3.14 -c conda-forge -c danagroup -f environment.yml && \
