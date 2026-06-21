@@ -463,7 +463,7 @@ class ARCSpecies(object):
                         self.multiplicity = self.mol.multiplicity
                     if self.charge is None:
                         self.charge = self.mol.get_net_charge()
-            if regen_mol:
+            if regen_mol and not (self.mol is not None and self.keep_mol):
                 # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
                 # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
                 if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
@@ -2007,12 +2007,17 @@ class ARCSpecies(object):
                 sort_atoms_in_descending_label_order(split)
 
         if len(mol_splits) == 1:  # If cutting leads to only one split, then the split is cyclic.
+            mol1 = mol_splits[0]
+            self._assign_radicals_after_scission(mol=mol1)
+            mol1.update_multiplicity()
             spc1 = ARCSpecies(label=self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_cyclic',
-                              mol=mol_splits[0],
-                              multiplicity=mol_splits[0].multiplicity,
-                              charge=mol_splits[0].get_net_charge(),
+                              mol=mol1,
+                              xyz=self.final_xyz,
+                              multiplicity=mol1.multiplicity,
+                              charge=mol1.get_net_charge(),
                               compute_thermo=False,
-                              e0_only=True)
+                              e0_only=True,
+                              keep_mol=True)
             spc1.generate_conformers(economic_generation=True)
             return [spc1]
         elif len(mol_splits) == 2:
@@ -2035,19 +2040,7 @@ class ARCSpecies(object):
 
         added_radical = list()
         for mol, label in zip([mol1, mol2], [label1, label2]):
-            for atom in mol.atoms:
-                theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
-                                     - atom.get_total_bond_order() \
-                                     - atom.radical_electrons - \
-                                     2 * atom.lone_pairs
-                if theoretical_charge == atom.charge + 1:
-                    # we're missing a radical electron on this atom
-                    if label not in added_radical or label == 'H':
-                        atom.radical_electrons += 1
-                        added_radical.append(label)
-                    else:
-                        raise SpeciesError(f'Could not figure out which atom should gain a radical '
-                                           f'due to scission in {self.label}')
+            self._assign_radicals_after_scission(mol=mol, label=label, added_radical=added_radical)
         mol1.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
         mol2.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
 
@@ -2082,6 +2075,34 @@ class ARCSpecies(object):
         spc2.rotors_dict = None
 
         return [spc1, spc2]
+
+    def _assign_radicals_after_scission(self,
+                                        mol: Molecule,
+                                        label: str = None,
+                                        added_radical: list = None):
+        """
+        A helper function to assign radical electrons to atoms after scission.
+
+        Args:
+            mol (Molecule): The molecule to update.
+            label (str, optional): The label of the species.
+            added_radical (list, optional): A list of labels for which a radical was already added.
+        """
+        for atom in mol.atoms:
+            theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
+                                 - atom.get_total_bond_order() \
+                                 - atom.radical_electrons - \
+                                 2 * atom.lone_pairs
+            if theoretical_charge == atom.charge + 1:
+                # we're missing a radical electron on this atom
+                if added_radical is None:
+                    atom.radical_electrons += 1
+                elif label not in added_radical or label == 'H':
+                    atom.radical_electrons += 1
+                    added_radical.append(label)
+                else:
+                    raise SpeciesError(f'Could not figure out which atom should gain a radical '
+                                       f'due to scission in {self.label}')
 
     def populate_ts_checks(self):
         """Populate (or restart) the .ts_checks attribute with default (``None``) values."""

@@ -24,6 +24,37 @@ ARC_FAMILIES_PATH = settings['ARC_FAMILIES_PATH']
 logger = get_logger()
 
 
+REACTION_FAMILY_CACHE: dict[tuple[str, bool], 'ReactionFamily'] = {}
+
+# Pre-compiled regex patterns
+ENTRY_PATTERN = re.compile(r'entry\((.*?)\)', re.DOTALL)
+LABEL_PATTERN = re.compile(r'label\s*=\s*(["\'])(.*?)\1|label\s*=\s*(\w+)')
+GROUP_PATTERN = re.compile(r'group\s*=\s*(?:("""(.*?)"""|"(.*?)"|\'(.*?)\')|(OR\{.*?\}))', re.DOTALL)
+REVERSIBLE_PATTERN = re.compile(r'reversible\s*=\s*(True|False)')
+OWN_REVERSE_PATTERN = re.compile(r'ownReverse\s*=\s*(True|False)')
+RECIPE_PATTERN = re.compile(r'recipe\((.*?)\)', re.DOTALL)
+REACTANTS_PATTERN = re.compile(r'reactants\s*=\s*\[(.*?)\]', re.DOTALL)
+PRODUCTS_PATTERN = re.compile(r'products\s*=\s*\[(.*?)\]', re.DOTALL)
+ACTIONS_PATTERN = re.compile(r'actions\s*=\s*\[(.*?)\]', re.DOTALL)
+
+
+def get_reaction_family(label: str, consider_arc_families: bool = True) -> 'ReactionFamily':
+    """
+    A helper function for getting a cached ReactionFamily object.
+
+    Args:
+        label (str): The reaction family label.
+        consider_arc_families (bool, optional): Whether to consider ARC's custom families.
+
+    Returns:
+        ReactionFamily: The ReactionFamily object.
+    """
+    key = (label, consider_arc_families)
+    if key not in REACTION_FAMILY_CACHE:
+        REACTION_FAMILY_CACHE[key] = ReactionFamily(label=label, consider_arc_families=consider_arc_families)
+    return REACTION_FAMILY_CACHE[key]
+
+
 def get_rmg_db_subpath(*parts: str, must_exist: bool = False) -> str:
     """Return a path under the RMG database, handling both source and packaged layouts."""
     if RMG_DB_PATH is None:
@@ -108,7 +139,17 @@ class ReactionFamily(object):
         self.groups_as_lines = read_groups_file_lines(label, consider_arc_families)
         self.reversible = is_reversible(self.groups_as_lines)
         self.own_reverse = is_own_reverse(self.groups_as_lines)
-        self.reactants = get_reactant_groups_from_template(self.groups_as_lines)
+        
+        reactant_labels = get_initial_reactant_labels_from_template(self.groups_as_lines)
+        all_necessary_entries = get_entries(self.groups_as_lines, entry_labels=reactant_labels, recursive=True)
+        self.reactants = get_reactant_groups_from_template(self.groups_as_lines, entries=all_necessary_entries)
+        self.entries = all_necessary_entries
+        
+        self.groups = {}
+        for reactant_group in self.reactants:
+            for label in reactant_group:
+                if label not in self.groups and label in self.entries:
+                    self.groups[label] = Group().from_adjacency_list(self.entries[label])
         self.reactant_num = self.get_reactant_num()
         self.product_num = get_product_num(self.groups_as_lines)
         entry_labels = list()
@@ -156,6 +197,9 @@ class ReactionFamily(object):
                 for group_label in group_labels:
                     group = self.groups_by_label[group_label]
                     for mol in reactant.mol_list or [reactant.mol]:
+                        if not any(a.atomtype for a in mol.atoms):
+                            # Update atomtypes if they are missing (e.g., from SMILES)
+                            mol.update_atomtypes(log_species=False, raise_exception=False)
                         splits = group.split()
                         if mol.is_subgraph_isomorphic(other=group, save_order=True) \
                                 or len(splits) > 1 and any(mol.is_subgraph_isomorphic(other=g, save_order=True) for g in splits):
@@ -297,9 +341,15 @@ class ReactionFamily(object):
                         group_2 = self.groups_by_label[reactant_to_group_map_2['subgroup']]
                         isomorphic_subgraphs_1 = mol_1.find_subgraph_isomorphisms(other=group_1, save_order=True)
                         isomorphic_subgraphs_2 = mol_2.find_subgraph_isomorphisms(other=group_2, save_order=True)
+                        
                         if len(isomorphic_subgraphs_1) and len(isomorphic_subgraphs_2):
                             for isomorphic_subgraph_1 in isomorphic_subgraphs_1:
                                 for isomorphic_subgraph_2 in isomorphic_subgraphs_2:
+                                    # Create the combined isomorphic subgraph.
+                                    # Note: get_isomorphic_subgraph needs to know which subgraph corresponds to which template index.
+                                    # It assumes mol_1 corresponds to the first group match and mol_2 to the second.
+                                    # The labels are already inside the group_atom.label.
+                                    
                                     isomorphic_subgraph_dicts.append(
                                         {'mols': [mol_1, mol_2],
                                          'subgroups': (reactant_to_group_map_1['subgroup'],
@@ -422,7 +472,7 @@ class ReactionFamily(object):
                 if match:
                     return int(match.group(1))
         if len(self.reactants) == 1:
-            group = Group().from_adjacency_list(get_group_adjlist(self.groups_as_lines, entry_label=self.reactants[0][0]))
+            group = self.groups[self.reactants[0][0]]
             groups = group.split()
             return len(groups)
         else:
@@ -523,7 +573,7 @@ def determine_possible_reaction_products_from_family(rxn: ARCReaction,
                     and whether the family's template also represents its own reverse.
     """
     product_dicts = list()
-    family = ReactionFamily(label=family_label, consider_arc_families=consider_arc_families)
+    family = get_reaction_family(label=family_label, consider_arc_families=consider_arc_families)
     products = family.generate_products(reactants=rxn.get_reactants_and_products(return_copies=True)[0])
     if products:
         for group_labels, product_lists in products.items():
@@ -765,11 +815,10 @@ def is_reversible(groups_as_lines: list[str]) -> bool:
     Returns:
         bool: Whether the reaction family is reversible.
     """
-    for line in groups_as_lines:
-        if 'reversible = True' in line:
-            return True
-        if 'reversible = False' in line:
-            return False
+    groups_str = ''.join(groups_as_lines)
+    match = REVERSIBLE_PATTERN.search(groups_str)
+    if match:
+        return match.group(1) == 'True'
     return True
 
 
@@ -780,15 +829,16 @@ def is_own_reverse(groups_as_lines: list[str]) -> bool:
     Returns:
         bool: Whether the reaction family's template also represents its own reverse.
     """
-    for line in groups_as_lines:
-        if 'ownReverse=True' in line:
-            return True
-        if 'ownReverse=False' in line:
-            return False
+    groups_str = ''.join(groups_as_lines)
+    match = OWN_REVERSE_PATTERN.search(groups_str)
+    if match:
+        return match.group(1) == 'True'
     return False
 
 
-def get_reactant_groups_from_template(groups_as_lines: list[str]) -> list[list[str]]:
+def get_reactant_groups_from_template(groups_as_lines: list[str],
+                                      entries: dict[str, str] | None = None,
+                                      ) -> list[list[str]]:
     """
     Get the reactant groups from a template content string.
     Descends the entries if a group is defined as an OR complex,
@@ -796,20 +846,24 @@ def get_reactant_groups_from_template(groups_as_lines: list[str]) -> list[list[s
 
     Args:
         groups_as_lines (list[str]): The template content string.
+        entries (dict[str, str], optional): Pre-extracted entries.
 
     Returns:
         list[list[str]]: The non-complex reactant groups.
     """
     reactant_labels = get_initial_reactant_labels_from_template(groups_as_lines)
+    if entries is None:
+        entries = get_entries(groups_as_lines, entry_labels=reactant_labels)
     result = list()
     for reactant_label in reactant_labels:
-        if 'OR{' not in get_group_adjlist(groups_as_lines, entry_label=reactant_label):
+        adj = get_group_adjlist(groups_as_lines, entry_label=reactant_label, entries=entries)
+        if 'OR{' not in adj:
             result.append([reactant_label])
         else:
             stack = [reactant_label]
-            while any('OR{' in get_group_adjlist(groups_as_lines, entry_label=label) for label in stack):
+            while any('OR{' in get_group_adjlist(groups_as_lines, entry_label=label, entries=entries) for label in stack):
                 label = stack.pop(0)
-                group_adjlist = get_group_adjlist(groups_as_lines, entry_label=label)
+                group_adjlist = get_group_adjlist(groups_as_lines, entry_label=label, entries=entries)
                 if 'OR{' not in group_adjlist:
                     stack.append(label)
                 else:
@@ -851,7 +905,7 @@ def descent_complex_group(group: str) -> list[str]:
         list[str]: The non-complex reactant group labels, e.g.: ['Xtrirad_H', 'Xbirad_H', 'Xrad_H', 'X_H'].
     """
     if group.startswith('OR{') and group.endswith('}'):
-        group = [g.strip() for g in group[3:-1].split(',')]
+        group = [c.strip() for c in group[3:-1].split(',')]
     if isinstance(group, str):
         group = [group]
     return group
@@ -871,13 +925,15 @@ def get_initial_reactant_labels_from_template(groups_as_lines: list[str],
     Returns:
         list[str]: The reactant groups.
     """
-    labels = list()
-    for line in groups_as_lines:
-        match = re.search(r'products=\[(.*?)\]', line) if products else re.search(r'reactants=\[(.*?)\]', line)
-        if match:
-            labels = match.group(1).replace('"', '').split(', ')
-            break
-    return labels
+    groups_str = ''.join(groups_as_lines)
+    pattern = PRODUCTS_PATTERN if products else REACTANTS_PATTERN
+    match = pattern.search(groups_str)
+    if match:
+        content = match.group(1)
+        # Use regex to find all quoted strings (with backreferences) or unquoted words
+        labels = re.findall(r'(["\'])(.*?)\1|(\w+)', content)
+        return [label[1] or label[2] for label in labels]
+    return list()
 
 
 def get_recipe_actions(groups_as_lines: list[str]) -> list[list[str]]:
@@ -982,32 +1038,63 @@ def split_entries(groups_str: str) -> list[str]:
 
 def get_entries(groups_as_lines: list[str],
                 entry_labels: list[str],
+                recursive: bool = False,
                 ) -> dict[str, str]:
     """
-    Get the requested entries grom a template content string.
+    Get the requested entries from a template content string.
 
     Args:
         groups_as_lines (list[str]): The template content string.
-        entry_labels (list[str]): The entry labels to extract.
+        entry_labels (list[str], optional): The entry labels to extract. If None, all entries are extracted.
+        recursive (bool, optional): Whether to recursively extract child entries for OR complexes.
 
     Returns:
         dict[str, str]: The extracted entries, keys are the labels, values are the groups.
     """
-    groups_str = ''.join(groups_as_lines)
-    entries = split_entries(groups_str)
-    specific_entries = dict()
-    for i, entry in enumerate(entries):
-        label_match = re.search(r'label\s*=\s*"(.*?)"', entry)
-        group_match = re.search(r'group\s*=(.*?)(?=\w+\s*=)', entry, re.DOTALL)
-        if label_match is not None and group_match is not None and label_match.group(1) in entry_labels:
-            specific_entries[label_match.group(1)] = clean_text(group_match.group(1))
-        if i > 2000:
-            break
-    return specific_entries
+    groups_str = "\n" + "".join(groups_as_lines)
+    # Split by `entry(` but keep the delimiter-ish part
+    parts = re.split(r"\nentry\s*\(", groups_str)
+    
+    temp_entries = {}
+    label_pat = re.compile(r"label\s*=\s*(?:([\"'])(.*?)\1|(\w+))")
+    group_pat = re.compile(r"group\s*=\s*(?:\"\"\"(.*?)\"\"\"|([\"'])(.*?)\2|(OR\{.*?\}))", re.DOTALL)
+
+    for part in parts[1:]: # Skip the header
+        label_match = label_pat.search(part)
+        group_match = group_pat.search(part)
+        if label_match and group_match:
+            label = label_match.group(2) or label_match.group(3)
+            # Extract the matched regex group (1 for triple quotes, 3 for single/double quotes, 4 for OR complex)
+            adj = group_match.group(1) or group_match.group(3) or group_match.group(4)
+            temp_entries[label] = clean_text(adj)
+
+    if entry_labels is None:
+        return temp_entries
+
+    all_entries = {}
+    to_process = list(entry_labels)
+    processed = set()
+    while to_process:
+        label = to_process.pop()
+        if label in processed or label not in temp_entries:
+            continue
+        processed.add(label)
+        adj = temp_entries[label]
+        if recursive and 'OR{' in adj:
+            # Match OR{label1, label2, ...}
+            or_match = re.search(r'OR\s*\{\s*(.*?)\s*\}', adj, re.DOTALL)
+            if or_match:
+                children_str = or_match.group(1)
+                children = [c.strip() for c in children_str.split(',')]
+                to_process.extend(children)
+        else:
+            all_entries[label] = adj
+    return all_entries
 
 
 def get_group_adjlist(groups_as_lines: list[str],
                       entry_label: str,
+                      entries: dict[str, str] | None = None,
                       ) -> str:
     """
     Get the corresponding group value for the given entry label.
@@ -1015,10 +1102,13 @@ def get_group_adjlist(groups_as_lines: list[str],
     Args:
         groups_as_lines (list[str]): The template content string.
         entry_label (str): The entry label to extract.
+        entries (dict[str, str], optional): Pre-extracted entries.
 
     Returns:
         str: The extracted group.
     """
+    if entries is not None and entry_label in entries:
+        return entries[entry_label]
     specific_entries = get_entries(groups_as_lines, entry_labels=[entry_label])
     return specific_entries[entry_label]
 
