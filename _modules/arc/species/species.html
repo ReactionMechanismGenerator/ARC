@@ -549,7 +549,7 @@
                         <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">multiplicity</span>
                     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">charge</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                         <span class="bp">self</span><span class="o">.</span><span class="n">charge</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">get_net_charge</span><span class="p">()</span>
-            <span class="k">if</span> <span class="n">regen_mol</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">regen_mol</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">keep_mol</span><span class="p">):</span>
                 <span class="c1"># Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.</span>
                 <span class="c1"># It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.</span>
                 <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">final_xyz</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">most_stable_conformer</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">conformers</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">:</span>
@@ -2174,12 +2174,17 @@
                 <span class="n">sort_atoms_in_descending_label_order</span><span class="p">(</span><span class="n">split</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mol_splits</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>  <span class="c1"># If cutting leads to only one split, then the split is cyclic.</span>
+            <span class="n">mol1</span> <span class="o">=</span> <span class="n">mol_splits</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_assign_radicals_after_scission</span><span class="p">(</span><span class="n">mol</span><span class="o">=</span><span class="n">mol1</span><span class="p">)</span>
+            <span class="n">mol1</span><span class="o">.</span><span class="n">update_multiplicity</span><span class="p">()</span>
             <span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">+</span> <span class="s1">&#39;_BDE_&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;_&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;_cyclic&#39;</span><span class="p">,</span>
-                              <span class="n">mol</span><span class="o">=</span><span class="n">mol_splits</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
-                              <span class="n">multiplicity</span><span class="o">=</span><span class="n">mol_splits</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">multiplicity</span><span class="p">,</span>
-                              <span class="n">charge</span><span class="o">=</span><span class="n">mol_splits</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get_net_charge</span><span class="p">(),</span>
+                              <span class="n">mol</span><span class="o">=</span><span class="n">mol1</span><span class="p">,</span>
+                              <span class="n">xyz</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">final_xyz</span><span class="p">,</span>
+                              <span class="n">multiplicity</span><span class="o">=</span><span class="n">mol1</span><span class="o">.</span><span class="n">multiplicity</span><span class="p">,</span>
+                              <span class="n">charge</span><span class="o">=</span><span class="n">mol1</span><span class="o">.</span><span class="n">get_net_charge</span><span class="p">(),</span>
                               <span class="n">compute_thermo</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-                              <span class="n">e0_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                              <span class="n">e0_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                              <span class="n">keep_mol</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
             <span class="n">spc1</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">(</span><span class="n">economic_generation</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
             <span class="k">return</span> <span class="p">[</span><span class="n">spc1</span><span class="p">]</span>
         <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">mol_splits</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
@@ -2202,19 +2207,7 @@
 
         <span class="n">added_radical</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">mol</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">([</span><span class="n">mol1</span><span class="p">,</span> <span class="n">mol2</span><span class="p">],</span> <span class="p">[</span><span class="n">label1</span><span class="p">,</span> <span class="n">label2</span><span class="p">]):</span>
-            <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">:</span>
-                <span class="n">theoretical_charge</span> <span class="o">=</span> <span class="n">elements</span><span class="o">.</span><span class="n">PeriodicSystem</span><span class="o">.</span><span class="n">valence_electrons</span><span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">symbol</span><span class="p">]</span> \
-                                     <span class="o">-</span> <span class="n">atom</span><span class="o">.</span><span class="n">get_total_bond_order</span><span class="p">()</span> \
-                                     <span class="o">-</span> <span class="n">atom</span><span class="o">.</span><span class="n">radical_electrons</span> <span class="o">-</span> \
-                                     <span class="mi">2</span> <span class="o">*</span> <span class="n">atom</span><span class="o">.</span><span class="n">lone_pairs</span>
-                <span class="k">if</span> <span class="n">theoretical_charge</span> <span class="o">==</span> <span class="n">atom</span><span class="o">.</span><span class="n">charge</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:</span>
-                    <span class="c1"># we&#39;re missing a radical electron on this atom</span>
-                    <span class="k">if</span> <span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">added_radical</span> <span class="ow">or</span> <span class="n">label</span> <span class="o">==</span> <span class="s1">&#39;H&#39;</span><span class="p">:</span>
-                        <span class="n">atom</span><span class="o">.</span><span class="n">radical_electrons</span> <span class="o">+=</span> <span class="mi">1</span>
-                        <span class="n">added_radical</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
-                    <span class="k">else</span><span class="p">:</span>
-                        <span class="k">raise</span> <span class="n">SpeciesError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not figure out which atom should gain a radical &#39;</span>
-                                           <span class="sa">f</span><span class="s1">&#39;due to scission in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_assign_radicals_after_scission</span><span class="p">(</span><span class="n">mol</span><span class="o">=</span><span class="n">mol</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">added_radical</span><span class="o">=</span><span class="n">added_radical</span><span class="p">)</span>
         <span class="n">mol1</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">log_species</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">raise_atomtype_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">sort_atoms</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
         <span class="n">mol2</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">log_species</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">raise_atomtype_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">sort_atoms</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 
@@ -2249,6 +2242,34 @@
         <span class="n">spc2</span><span class="o">.</span><span class="n">rotors_dict</span> <span class="o">=</span> <span class="kc">None</span>
 
         <span class="k">return</span> <span class="p">[</span><span class="n">spc1</span><span class="p">,</span> <span class="n">spc2</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_assign_radicals_after_scission</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                                        <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">,</span>
+                                        <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                        <span class="n">added_radical</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A helper function to assign radical electrons to atoms after scission.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            mol (Molecule): The molecule to update.</span>
+<span class="sd">            label (str, optional): The label of the species.</span>
+<span class="sd">            added_radical (list, optional): A list of labels for which a radical was already added.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">:</span>
+            <span class="n">theoretical_charge</span> <span class="o">=</span> <span class="n">elements</span><span class="o">.</span><span class="n">PeriodicSystem</span><span class="o">.</span><span class="n">valence_electrons</span><span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">symbol</span><span class="p">]</span> \
+                                 <span class="o">-</span> <span class="n">atom</span><span class="o">.</span><span class="n">get_total_bond_order</span><span class="p">()</span> \
+                                 <span class="o">-</span> <span class="n">atom</span><span class="o">.</span><span class="n">radical_electrons</span> <span class="o">-</span> \
+                                 <span class="mi">2</span> <span class="o">*</span> <span class="n">atom</span><span class="o">.</span><span class="n">lone_pairs</span>
+            <span class="k">if</span> <span class="n">theoretical_charge</span> <span class="o">==</span> <span class="n">atom</span><span class="o">.</span><span class="n">charge</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="c1"># we&#39;re missing a radical electron on this atom</span>
+                <span class="k">if</span> <span class="n">added_radical</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">atom</span><span class="o">.</span><span class="n">radical_electrons</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">elif</span> <span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">added_radical</span> <span class="ow">or</span> <span class="n">label</span> <span class="o">==</span> <span class="s1">&#39;H&#39;</span><span class="p">:</span>
+                    <span class="n">atom</span><span class="o">.</span><span class="n">radical_electrons</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">added_radical</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">SpeciesError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not figure out which atom should gain a radical &#39;</span>
+                                       <span class="sa">f</span><span class="s1">&#39;due to scission in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
 
 <div class="viewcode-block" id="ARCSpecies.populate_ts_checks">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.populate_ts_checks">[docs]</a>
