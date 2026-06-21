@@ -12,7 +12,7 @@ from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
 from arc.imports import settings
-from arc.settings.settings import ARC_PYTHON, find_executable
+from arc.settings.settings import ARC_PYTHON, UMA_LATEST_MODEL, find_executable
 
 if TYPE_CHECKING:
     from arc.level import Level
@@ -25,7 +25,11 @@ logger = get_logger()
 DEFAULT_ASE_ENV = {
     'torchani': 'TANI_PYTHON',
     'xtb': 'XTB_PYTHON',
+    'uma': 'UMA_PYTHON',
 }
+
+# Level methods that select the UMA calculator. 'uma' resolves to the latest model.
+UMA_METHODS = ('uma', 'uma-s-1', 'uma-s-1p1')
 
 class ASEAdapter(JobAdapter):
     """
@@ -77,12 +81,13 @@ class ASEAdapter(JobAdapter):
         self.job_adapter = 'ase'
         self.execution_type = execution_type or 'incore'
         self.incore_capacity = 100
-        
+
         self.sp = None
         self.opt_xyz = None
         self.freqs = None
 
         self.args = args or dict()
+        self.level = level  # also set by _initialize_adapter; needed early by get_python_executable
         self.python_executable = self.get_python_executable()
         self.script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'ase_script.py')
 
@@ -128,11 +133,46 @@ class ASEAdapter(JobAdapter):
                             xyz=xyz,
                             )
 
+    def determine_calculator_name(self) -> str:
+        """
+        Determine the ASE calculator name, from ``args['keyword']['calculator']`` if given,
+        otherwise inferred from the level method (e.g., a 'uma' method selects the UMA calculator).
+
+        Returns:
+            str: The lowercased calculator name (empty string if undetermined).
+        """
+        calc = (self.args or dict()).get('keyword', dict()).get('calculator', '')
+        if not calc and self.level is not None and getattr(self.level, 'method', None) \
+                and self.level.method.lower() in UMA_METHODS:
+            calc = 'uma'
+        return calc.lower()
+
+    def determine_settings(self) -> dict:
+        """
+        Build the ``settings`` block passed to ase_script.py: the user's ``args['keyword']`` plus
+        a resolved ``calculator`` and, for UMA, default ``model`` (the level method, with 'uma'
+        resolving to the latest model), ``task``, and ``device``.
+
+        Returns:
+            dict: The resolved ASE run settings.
+        """
+        settings_dict = dict((self.args or dict()).get('keyword', dict()))
+        calc = self.determine_calculator_name()
+        if calc:
+            settings_dict.setdefault('calculator', calc)
+        if calc == 'uma':
+            if 'model' not in settings_dict:
+                method = self.level.method.lower() if self.level is not None and self.level.method else 'uma'
+                settings_dict['model'] = UMA_LATEST_MODEL if method == 'uma' else method
+            settings_dict.setdefault('task', 'omol')
+            settings_dict.setdefault('device', 'cpu')
+        return settings_dict
+
     def get_python_executable(self) -> str:
         """
         Identify the correct Python executable based on the calculator.
         """
-        calc = self.args.get('keyword', {}).get('calculator', '').lower()
+        calc = self.determine_calculator_name()
         env_mapping = settings.get('ASE_CALCULATORS_ENV', DEFAULT_ASE_ENV)
         env_var_name = env_mapping.get(calc)
         
@@ -157,15 +197,39 @@ class ASEAdapter(JobAdapter):
             'xyz': self.xyz,
             'charge': self.charge,
             'multiplicity': self.multiplicity,
+            'is_ts': self.species[0].is_ts if self.species else False,
             'constraints': self.constraints,
-            'settings': self.args.get('keyword', {}),
+            'irc_direction': self.irc_direction,
+            'settings': self.determine_settings(),
         }
         save_yaml_file(os.path.join(self.local_path, 'input.yml'), input_dict)
+
+    def warn_if_unreliable_uma_sp(self) -> None:
+        """
+        Warn if this is a UMA single point on a species whose absolute UMA energy is unreliable
+        (an isolated atom or triplet O2). UMA's geometries/frequencies are fine; only the absolute
+        energy of these under-represented species is off, so a DFT single point is preferable.
+
+        Reference: This is a known issue for general machine learning interatomic potentials (MLIPs)
+        such as UMA (https://arxiv.org/abs/2405.20235), where atomic energy offsets do not accurately
+        model isolated non-bonded atoms or highly specific spin states like triplet O2.
+        """
+        if self.job_type not in ['sp', 'conf_sp'] or self.determine_calculator_name() != 'uma':
+            return
+        symbols = self.xyz['symbols'] if self.xyz is not None else tuple()
+        is_atom = len(symbols) == 1
+        is_triplet_o2 = len(symbols) == 2 and all(s == 'O' for s in symbols) and self.multiplicity == 3
+        if is_atom or is_triplet_o2:
+            label = self.species[0].label if self.species else 'species'
+            logger.warning(f'Computing a UMA single point for {label} (an isolated atom or triplet O2). '
+                           f'UMA absolute energies are unreliable for these under-represented species; '
+                           f'consider using a DFT single point instead.')
 
     def execute_incore(self) -> None:
         """
         Execute the job incore.
         """
+        self.warn_if_unreliable_uma_sp()
         self.write_input_file()
         cmd = [self.python_executable, self.script_path, '--yml_path', self.local_path]
         process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

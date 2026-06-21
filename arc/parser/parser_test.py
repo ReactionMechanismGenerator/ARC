@@ -1117,6 +1117,96 @@ H      -1.69381305    0.40788834    0.90078104"""
         path5 = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
         self.assertEqual(parser.parse_ess_version(path5), 'Molpro 2015.1.37')
 
+    def test_yaml_parser(self):
+        """Test the YAMLParser adapter for all its parse methods."""
+        import tempfile
+        from arc.parser.adapters.yaml import YAMLParser
+        from arc.constants import E_h_kJmol, bohr_to_angstrom
+        import yaml
+
+        yaml_data = {
+            'opt_xyz': {
+                'symbols': ('C', 'H', 'H', 'H', 'H'),
+                'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.09), (1.03, 0.0, -0.36), (-0.51, 0.89, -0.36), (-0.51, -0.89, -0.36))
+            },
+            'freqs': [1000.0, 1500.0, 3000.0],
+            'normal_modes': [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            'T1': 0.012,
+            'sp': -100.5,
+            'zpe': 50.2,
+            'energies': [-40.0, -39.9],
+            'angles': [0.0, 180.0],
+            'scan_coords': [
+                {'symbols': ('H', 'H'), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 0.74))},
+                "H 0.0 0.0 0.0\nH 0.0 0.0 0.8"
+            ],
+            'irc_traj': [
+                {'symbols': ('H', 'H'), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 0.75))},
+                "H 0.0 0.0 0.0\nH 0.0 0.0 0.85"
+            ],
+            'dipole': [1.0, 2.0, 3.0],
+            'polarizability': 1.5
+        }
+
+        with tempfile.NamedTemporaryFile(suffix='.yml', mode='w', delete=False) as f:
+            yaml.dump(yaml_data, f)
+            temp_path = f.name
+
+        try:
+            adapter = YAMLParser(log_file_path=temp_path)
+            self.assertIsNone(adapter.logfile_contains_errors())
+
+            # Test parse_geometry
+            geom = adapter.parse_geometry()
+            self.assertEqual(geom['symbols'], ('C', 'H', 'H', 'H', 'H'))
+            self.assertEqual(geom['coords'][0], (0.0, 0.0, 0.0))
+
+            # Test parse_frequencies
+            freqs = adapter.parse_frequencies()
+            np.testing.assert_array_almost_equal(freqs, np.array([1000.0, 1500.0, 3000.0]))
+
+            # Test parse_normal_mode_displacement
+            modes_f, modes_d = adapter.parse_normal_mode_displacement()
+            np.testing.assert_array_almost_equal(modes_f, np.array([1000.0, 1500.0, 3000.0]))
+            np.testing.assert_array_almost_equal(modes_d, np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]))
+
+            # Test parse_t1
+            self.assertEqual(adapter.parse_t1(), 0.012)
+
+            # Test parse_e_elect
+            self.assertEqual(adapter.parse_e_elect(), -100.5)
+
+            # Test parse_zpe_correction
+            self.assertEqual(adapter.parse_zpe_correction(), 50.2)
+
+            # Test parse_1d_scan_energies
+            e_scan, a_scan = adapter.parse_1d_scan_energies()
+            self.assertEqual(a_scan, [0.0, 180.0])
+            self.assertAlmostEqual(e_scan[0], 0.0)
+            self.assertAlmostEqual(e_scan[1], 0.1 * E_h_kJmol)
+
+            # Test parse_1d_scan_coords
+            coords = adapter.parse_1d_scan_coords()
+            self.assertEqual(len(coords), 2)
+            self.assertEqual(coords[0]['symbols'], ('H', 'H'))
+            self.assertEqual(coords[1]['symbols'], ('H', 'H'))
+
+            # Test parse_irc_traj
+            traj = adapter.parse_irc_traj()
+            self.assertEqual(len(traj), 2)
+            self.assertEqual(traj[0]['symbols'], ('H', 'H'))
+            self.assertEqual(traj[1]['symbols'], ('H', 'H'))
+
+            # Test parse_dipole_moment
+            self.assertAlmostEqual(adapter.parse_dipole_moment(), np.linalg.norm([1.0, 2.0, 3.0]))
+
+            # Test parse_polarizability
+            self.assertAlmostEqual(adapter.parse_polarizability(), 1.5 * (bohr_to_angstrom ** 3))
+
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
