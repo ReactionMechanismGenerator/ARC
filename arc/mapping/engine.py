@@ -12,7 +12,7 @@ from collections import deque
 from itertools import product
 from typing import TYPE_CHECKING
 
-from arc.common import convert_list_index_0_to_1, extremum_list, get_angle_in_180_range, logger, signed_angular_diff
+from arc.common import convert_list_index_0_to_1, extremum_list, get_angle_in_180_range, is_angle_linear, logger, signed_angular_diff
 from arc.exceptions import AtomTypeError, ConformerError, InputError, SpeciesError
 from arc.family import ReactionFamily
 from arc.molecule import Molecule
@@ -20,7 +20,7 @@ from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, xyz_from_data
-from arc.species.vectors import calculate_dihedral_angle, get_delta_angle
+from arc.species.vectors import calculate_angle, calculate_dihedral_angle, get_delta_angle
 
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom
@@ -537,10 +537,16 @@ def get_backbone_dihedral_angles(spc_1: ARCSpecies,
                     torsion_2 = [backbone_map[t_1] for t_1 in torsion_1]
                     if all(pivot_2 in [torsion_2[1], torsion_2[2]]
                            for pivot_2 in [rotor_dict_2['torsion'][1], rotor_dict_2['torsion'][2]]):
+                        xyz_1, xyz_2 = spc_1.get_xyz(), spc_2.get_xyz()
+                        if is_angle_linear(calculate_angle(coords=xyz_1, atoms=torsion_1[:3], index=0)) \
+                                or is_angle_linear(calculate_angle(coords=xyz_1, atoms=torsion_1[1:], index=0)) \
+                                or is_angle_linear(calculate_angle(coords=xyz_2, atoms=torsion_2[:3], index=0)) \
+                                or is_angle_linear(calculate_angle(coords=xyz_2, atoms=torsion_2[1:], index=0)):
+                            continue
                         torsions.append({'torsion 1': torsion_1,
                                          'torsion 2': torsion_2,
-                                         'angle 1': calculate_dihedral_angle(coords=spc_1.get_xyz(), torsion=torsion_1),
-                                         'angle 2': calculate_dihedral_angle(coords=spc_2.get_xyz(), torsion=torsion_2)})
+                                         'angle 1': calculate_dihedral_angle(coords=xyz_1, torsion=torsion_1),
+                                         'angle 2': calculate_dihedral_angle(coords=xyz_2, torsion=torsion_2)})
     return torsions
 
 
