@@ -118,8 +118,15 @@ class YAMLParser(ESSAdapter, ABC):
         return None, None
 
     def parse_1d_scan_coords(self) -> list[dict[str, tuple]] | None:
-        """Parse 1D scan coordinates from YAML data."""
-        # Not implemented.
+        """
+        Parse 1D scan coordinates from YAML data.
+
+        Returns: Optional[List[Dict[str, tuple]]]
+            The Cartesian coordinates (xyz dicts) for each scan point.
+        """
+        scan_coords = self.data.get('scan_coords')
+        if scan_coords:
+            return [xyz if isinstance(xyz, dict) else str_to_xyz(xyz) for xyz in scan_coords]
         return None
 
     def parse_scan_conformers(self) -> 'pd.DataFrame' | None:
@@ -139,7 +146,9 @@ class YAMLParser(ESSAdapter, ABC):
         Returns: list[dict[str, tuple]]
             The Cartesian coordinates for each scan point.
         """
-        # Not implemented.
+        irc_traj = self.data.get('irc_traj')
+        if irc_traj:
+            return [xyz if isinstance(xyz, dict) else str_to_xyz(xyz) for xyz in irc_traj]
         return None
 
     def parse_nd_scan_energies(self) -> dict | None:

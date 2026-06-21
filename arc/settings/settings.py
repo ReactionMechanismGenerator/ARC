@@ -268,7 +268,12 @@ ase_default_options_dict = {'optimizer': 'BFGS',
 
 ASE_CALCULATORS_ENV = {'torchani': 'TANI_PYTHON',
                        'xtb': 'SELLA_PYTHON',
+                       'uma': 'UMA_PYTHON',
                        }
+
+# UMA (Universal Models for Atoms, Meta FAIR fairchem-core). The 'uma' calculator/level resolves
+# to the latest model implemented in ARC; older checkpoints (e.g. 'uma-s-1') are named explicitly.
+UMA_LATEST_MODEL = 'uma-s-1p1'
 
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 
@@ -337,8 +342,8 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
 # Default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, XTB_PYTHON, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
-    None, None, None, None, None, None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, UMA_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, XTB_PYTHON, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
+    None, None, None, None, None, None, None, None, None, None, None
 
 home = os.getenv("HOME") or os.path.expanduser("~")
 
@@ -375,6 +380,7 @@ def find_executable(env_name, executable_name='python'):
     return None
 
 TANI_PYTHON = find_executable('tani_env')
+UMA_PYTHON = find_executable('uma_env')
 SELLA_PYTHON = find_executable('sella_env')
 OB_PYTHON = find_executable('ob_env')
 TS_GCN_PYTHON = find_executable('ts_gcn')
