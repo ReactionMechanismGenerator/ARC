@@ -204,7 +204,7 @@ class ASEAdapter(JobAdapter):
         }
         save_yaml_file(os.path.join(self.local_path, 'input.yml'), input_dict)
 
-    def warn_if_unreliable_uma_sp(self) -> None:
+    def warn_if_unreliable_uma_sp(self) -> bool:
         """
         Warn if this is a UMA single point on a species whose absolute UMA energy is unreliable
         (an isolated atom or triplet O2). UMA's geometries/frequencies are fine; only the absolute
@@ -215,7 +215,7 @@ class ASEAdapter(JobAdapter):
         model isolated non-bonded atoms or highly specific spin states like triplet O2.
         """
         if self.job_type not in ['sp', 'conf_sp'] or self.determine_calculator_name() != 'uma':
-            return
+            return False
         symbols = self.xyz['symbols'] if self.xyz is not None else tuple()
         is_atom = len(symbols) == 1
         is_triplet_o2 = len(symbols) == 2 and all(s == 'O' for s in symbols) and self.multiplicity == 3
@@ -224,6 +224,8 @@ class ASEAdapter(JobAdapter):
             logger.warning(f'Computing a UMA single point for {label} (an isolated atom or triplet O2). '
                            f'UMA absolute energies are unreliable for these under-represented species; '
                            f'consider using a DFT single point instead.')
+            return True
+        return False
 
     def execute_incore(self) -> None:
         """
