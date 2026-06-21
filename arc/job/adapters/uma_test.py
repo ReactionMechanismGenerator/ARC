@@ -125,10 +125,9 @@ class TestUMAViaASEAdapter(unittest.TestCase):
                         project_directory=os.path.join(self.base, 'o2'),
                         level=Level(method='uma'),
                         species=[ARCSpecies(label='O2', xyz='O 0 0 0\nO 0 0 1.2', multiplicity=3)], testing=True)
-        with self.assertLogs(level='WARNING'):
-            o2.warn_if_unreliable_uma_sp()
-        # An ordinary species does not warn (no log record -> assertLogs would fail, so assert via no-raise).
-        self.job_method.warn_if_unreliable_uma_sp()
+        
+        self.assertTrue(o2.warn_if_unreliable_uma_sp())
+        self.assertFalse(self.job_method.warn_if_unreliable_uma_sp())
 
     def test_output_yml_round_trip(self):
         """Test a UMA/ASE output.yml is read back by ARC's YAML parser (incl. IRC/scan keys)."""
