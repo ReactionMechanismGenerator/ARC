@@ -43,7 +43,8 @@ from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
 from arc.job.ssh import SSHClient
-from arc.job.trsh import (scan_quality_check,
+from arc.job.trsh import (get_gaussian_point_group,
+                          scan_quality_check,
                           trsh_conformer_isomorphism,
                           trsh_ess_job,
                           trsh_negative_freq,
@@ -2545,11 +2546,24 @@ class Scheduler(object):
                             spc.initial_xyz = multi_species_opt_xyzs[spc.label]
                 else:
                     self.species_dict[label].initial_xyz = opt_xyz
+                # For SCRF fine opts where Gaussian reported C1: add nosymm proactively.
+                # SCRF cavity grids are not rotationally invariant; with C1, Gaussian reorients
+                # the molecule at each step, causing SCRF grid noise that prevents tight convergence.
+                # nosymm keeps the molecule in Input orientation, eliminating this noise.
+                fine_trsh = None
+                fine_ess_trsh_methods = None
+                if job.level.solvation_method is not None \
+                        and get_gaussian_point_group(job.local_path_to_output_file) == 'C1':
+                    fine_trsh = ['nosymm']
+                    fine_ess_trsh_methods = ['NoSymm']
+                    logger.info(f'Adding nosymm to fine opt for {label}: SCRF job with C1 symmetry.')
                 self.run_job(label=species_labels if multi_species else label,
                              xyz=opt_xyz if not multi_species else None,
                              level_of_theory=job.level,
                              job_type='opt',
                              fine=True,
+                             trsh=fine_trsh,
+                             ess_trsh_methods=fine_ess_trsh_methods,
                              )
             else:
                 success = True
