@@ -9,6 +9,7 @@ dependencies:
   - conda-forge::python =3.14
   - conda-forge::numpy  >=2.1.*
   - conda-forge::pip
+  - setuptools
 
   # ─── core networking (for Jupyter notebooks) ──
   - conda-forge::urllib3
