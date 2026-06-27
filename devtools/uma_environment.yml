@@ -1,0 +1,11 @@
+name: uma_env
+channels:
+  - conda-forge
+dependencies:
+  - python =3.12
+  - numpy
+  - pandas
+  - pyyaml
+  - setuptools
+  - pip
+  - huggingface_hub

@@ -8,7 +8,7 @@ DEVTOOLS_DIR := devtools
 
 .PHONY: all help clean test test-unittests test-functional test-all \
         install-all install-ci install-rmg install-rmgdb install-autotst install-gcn \
-        install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-ob \
+        install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-uma install-ob \
         lite check-env compile
 
 
@@ -36,6 +36,7 @@ help:
 	@echo "  install-sella    Install Sella"
 	@echo "  install-xtb      Install xTB"
 	@echo "  install-torchani Install TorchANI"
+	@echo "  install-uma      Install UMA (fairchem MLIP, gated model; users only, not CI)"
 	@echo "  install-ob       Install OpenBabel"
 	@echo ""
 	@echo "Maintenance:"
@@ -98,6 +99,11 @@ install-xtb:
 
 install-torchani:
 	bash $(DEVTOOLS_DIR)/install_torchani.sh
+
+# UMA (fairchem MLIP). Not part of install-ci: the model is gated (Meta license + HuggingFace
+# token) and heavy, so this is a manual, user-driven setup. See devtools/install_uma.sh.
+install-uma:
+	bash $(DEVTOOLS_DIR)/install_uma.sh
 
 install-ob:
 	bash $(DEVTOOLS_DIR)/install_ob.sh
