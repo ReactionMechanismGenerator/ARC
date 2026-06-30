@@ -1480,6 +1480,11 @@ def order_atoms_in_mol_list(ref_mol: Molecule, mol_list: list[Molecule] | None) 
         for mol in mol_list:
             if not isinstance(mol, Molecule):
                 raise TypeError(f'expected entries of mol_list to be Molecule instances, got {mol} which is a {type(mol)}.')
+            # Fast path: if atom IDs already match ref_mol in the same positions, no VF2 needed.
+            if (len(mol.atoms) == len(ref_mol.atoms)
+                    and all(m.id == r.id and m.id != -1
+                            for m, r in zip(mol.atoms, ref_mol.atoms))):
+                continue
             try:  # TODO: flag as unordered (or solve)
                 order_atoms(ref_mol, mol)
             except SanitizationError as e:
@@ -2563,7 +2568,5 @@ def order_mol_by_atom_map(mol: Molecule,
                          f'got duplicate indices in {atom_map}.')
     reordered = mol.copy(deep=True)
     reordered.atoms = [reordered.atoms[atom_map[i]] for i in range(n)]
-    explicit_order = reordered.atoms[:]   # save our ordering before update() reorders
-    reordered.update()
-    reordered.atoms = explicit_order      # restore explicit ordering
+    reordered.update(sort_atoms=False)
     return reordered
