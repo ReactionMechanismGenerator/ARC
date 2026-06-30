@@ -15,6 +15,10 @@
 *.o
 *.html
 
+# Exception: hand-written C kernel committed alongside its source
+!arc/species/_zmat_c_kernels.c
+!arc/species/_zmat_c_kernels.so
+
 # PyCharm project files
 .idea/*
 venv/
