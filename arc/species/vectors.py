@@ -201,6 +201,10 @@ def calculate_angle(coords: list | tuple | dict,
     if not all([isinstance(a, int) for a in new_atoms]):
         raise VectorsError(f'all entries in atoms must be integers, got: {new_atoms} ({[type(a) for a in new_atoms]})')
     new_atoms = [a - index for a in new_atoms]  # convert 1-index to 0-index
+    if _ck_available:
+        c0, c1, c2 = coords[new_atoms[0]], coords[new_atoms[1]], coords[new_atoms[2]]
+        deg = _ck.zmat_a_f32(c0[0], c0[1], c0[2], c1[0], c1[1], c1[2], c2[0], c2[1], c2[2])
+        return deg if 'degs' in units else math.radians(deg)
     coords = np.asarray(coords, dtype=np.float32)
     v1 = coords[new_atoms[1]] - coords[new_atoms[0]]
     v2 = coords[new_atoms[1]] - coords[new_atoms[2]]
