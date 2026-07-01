@@ -463,7 +463,15 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
         script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'save_arkane_thermo.py')
         rmg_db_path = RMG_DB_PATH or ""
-        if RMG_PYTHON and os.path.isfile(RMG_PYTHON):
+        mamba_exe = os.environ.get('MAMBA_EXE', '')
+        if mamba_exe and os.path.isfile(mamba_exe):
+            commands = [
+                f'cd {statmech_dir}',
+                f'export RMG_DB_PATH="{rmg_db_path}"',
+                f'export RMG_DATABASE="{rmg_db_path}"',
+                f'"{mamba_exe}" run -n {RMG_ENV_NAME} python {script_path}',
+            ]
+        elif RMG_PYTHON and os.path.isfile(RMG_PYTHON):
             rmg_bin = os.path.dirname(RMG_PYTHON)
             commands = [
                 f'export PATH="{rmg_bin}:$PATH"',
@@ -557,11 +565,20 @@ def run_arkane(statmech_dir: str) -> bool:
         return False
     rmg_db_path = RMG_DB_PATH or ""
     arkane_suffix = ' 2> >(tee -a stderr.log >&2) | tee -a stdout.log'
-    if RMG_PYTHON and os.path.isfile(RMG_PYTHON):
-        # Use the resolved Python directly — avoids broken conda/micromamba shims (e.g.
-        # micromamba installs a condabin/conda wrapper that fails with
-        # "ModuleNotFoundError: No module named 'conda'" when conda is not installed).
-        # Prepend the env's bin dir so co-installed binaries (e.g. symmetry) are found.
+    arkane_cmd = f'python -m arkane input.py{arkane_suffix}'
+    mamba_exe = os.environ.get('MAMBA_EXE', '')
+    if mamba_exe and os.path.isfile(mamba_exe):
+        # MAMBA_EXE is set by setup-micromamba; use it to properly activate rmg_env.
+        # Calling RMG_PYTHON directly without activation inherits arc_env's CONDA_PREFIX /
+        # LD_LIBRARY_PATH which corrupts OB plugin loading and silently kills Arkane.
+        shell_script = rf'''bash -c 'set -euo pipefail
+cd "{statmech_dir}"
+export RMG_DB_PATH="{rmg_db_path}"
+export RMG_DATABASE="{rmg_db_path}"
+"{mamba_exe}" run -n {RMG_ENV_NAME} {arkane_cmd}' '''
+    elif RMG_PYTHON and os.path.isfile(RMG_PYTHON):
+        # Direct Python path — works in envs where MAMBA_EXE is absent (mambaforge, conda)
+        # but micromamba's condabin/conda shim would fail.
         rmg_bin = os.path.dirname(RMG_PYTHON)
         shell_script = rf'''bash -c 'set -euo pipefail
 cd "{statmech_dir}"
@@ -570,7 +587,6 @@ export RMG_DB_PATH="{rmg_db_path}"
 export RMG_DATABASE="{rmg_db_path}"
 "{RMG_PYTHON}" -m arkane input.py{arkane_suffix}' '''
     else:
-        arkane_cmd = f'python -m arkane input.py{arkane_suffix}'
         shell_script = rf'''bash -lc 'set -euo pipefail
 cd "{statmech_dir}"
 export RMG_DB_PATH="{rmg_db_path}"

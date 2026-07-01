@@ -327,7 +327,12 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> tup
                 'bac_type': bac_type,
             })
 
-            if rmg_python and os.path.isfile(rmg_python):
+            mamba_exe = os.environ.get('MAMBA_EXE', '')
+            if mamba_exe and os.path.isfile(mamba_exe):
+                commands = [
+                    f'"{mamba_exe}" run -n {rmg_env} python {script_path} {tmp_in} {tmp_out}',
+                ]
+            elif rmg_python and os.path.isfile(rmg_python):
                 rmg_bin = os.path.dirname(rmg_python)
                 commands = [
                     f'export PATH="{rmg_bin}:$PATH"',
@@ -408,7 +413,12 @@ def _compute_point_groups(species_dict: dict, project_directory: str) -> dict[st
         os.close(fd_out)
         save_yaml_file(path=tmp_in, content=pg_input)
 
-        if rmg_python and os.path.isfile(rmg_python):
+        mamba_exe = os.environ.get('MAMBA_EXE', '')
+        if mamba_exe and os.path.isfile(mamba_exe):
+            commands = [
+                f'"{mamba_exe}" run -n {rmg_env} python {script_path} {tmp_in} {tmp_out}',
+            ]
+        elif rmg_python and os.path.isfile(rmg_python):
             rmg_bin = os.path.dirname(rmg_python)
             commands = [
                 f'export PATH="{rmg_bin}:$PATH"',
