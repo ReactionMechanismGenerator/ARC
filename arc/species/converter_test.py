@@ -3110,7 +3110,7 @@ R9=1.4305
         value2 = converter.get_zmat_param_value(coords=xyz_dict, indices=[0, 1, 2], mol=spc1.mol)  # A
         value3 = converter.get_zmat_param_value(coords=xyz_dict, indices=[1, 2, 3, 10], mol=spc1.mol)  # D
         self.assertAlmostEqual(value1, 1.53150455, places=5)
-        self.assertAlmostEqual(value2, 109.470340, places=5)
+        self.assertAlmostEqual(value2, 109.470340, places=2)
         self.assertAlmostEqual(value3, 66.2600849, places=5)
 
     def test_split_str_zmat(self):

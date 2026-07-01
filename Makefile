@@ -123,3 +123,7 @@ compile:
 	@ python utilities.py check-python
 	python setup.py build_ext main --inplace --build-temp .
 	@ python utilities.py check-dependencies
+	@echo "Compiling arc/species/_zmat_c_kernels.so…"
+	gcc -O3 -march=native -ffast-math -shared -fPIC \
+	    -o arc/species/_zmat_c_kernels.so \
+	    arc/species/_zmat_c_kernels.c -lm
