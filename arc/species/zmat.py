@@ -613,7 +613,7 @@ def determine_d_atoms(zmat: dict[str, dict | tuple],
                                 except (IndexError, KeyError):
                                     continue
                 except (IndexError, KeyError):
-                    pass
+                    pass  # d_atoms[1]/[2] not yet in map; ZMatError raised below if still unresolved
         if any([d_atom not in list(zmat['map'].keys()) for d_atom in d_atoms[1:]]):
             raise ZMatError(f'A reference D atom in {d_atoms} for the index atom {atom_index} has not been '
                             f'added to the zmat yet. Added atoms are (zmat index: xyz index): {zmat["map"]}.')
@@ -651,7 +651,7 @@ def determine_d_atoms_without_connectivity(zmat: dict,
                                       zmat['map'][i]) < _NERF_CROSS_SQ_MIN:
                         continue
                 except (IndexError, KeyError):
-                    pass
+                    pass  # d_atoms[1]/[2] not yet mapped; accept candidate without cross-product check
                 d_atoms.append(i)
                 break
     if len(d_atoms) < 4:
@@ -669,7 +669,7 @@ def determine_d_atoms_without_connectivity(zmat: dict,
                                           zmat['map'][i]) < _NERF_CROSS_SQ_MIN:
                             continue
                     except (IndexError, KeyError, TypeError):
-                        pass
+                        pass  # dummy atom may lack full map entry; accept without cross-product check
                     d_atoms.append(i)
                     break
     return d_atoms
