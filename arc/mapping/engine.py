@@ -22,7 +22,6 @@ from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, xyz_from_data
 from arc.species.vectors import apply_rodrigues_rotation, calculate_dihedral_angle, get_delta_angle
-from arc.species.zmat import get_all_neighbors
 
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom

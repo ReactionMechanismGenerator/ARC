@@ -13,7 +13,6 @@ available : bool
 """
 
 import ctypes
-import math
 import os
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -48,4 +47,4 @@ if not os.environ.get('ARC_NO_C_KERNELS'):
         lib = _lib
         available = True
     except Exception:
-        pass
+        pass  # .so absent or mis-compiled; available stays False → pure-Python fallback used
