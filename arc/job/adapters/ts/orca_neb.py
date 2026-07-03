@@ -17,7 +17,7 @@ from arc.job.adapters.common import is_restricted, which
 from arc.job.adapters.orca import OrcaAdapter, _format_orca_method, _format_orca_basis
 from arc.job.factory import register_job_adapter
 from arc.job.local import execute_command
-from arc.level import Level
+from arc.level import Level, plain_level_dict
 from arc.parser.parser import parse_geometry
 from arc.species import TSGuess
 from arc.species.converter import xyz_to_xyz_file_format
@@ -320,6 +320,7 @@ class OrcaNEBAdapter(OrcaAdapter):
                       index=len(self.reactions[0].ts_species.ts_guesses),
                       success=False,
                       t0=self.initial_time,
+                      level=plain_level_dict(self.level),
                       )
         if os.path.isfile(self.local_path_to_output_file):
             tsg.initial_xyz = parse_geometry(self.local_path_to_output_file)

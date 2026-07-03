@@ -3118,6 +3118,21 @@ class TestTSGuess(unittest.TestCase):
         self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_sources', 'method_index', 'success', 'index',
                                                            'conformer_index', 'initial_xyz', 'opt_xyz'])
 
+    def test_level_round_trip(self):
+        """Test that the TSGuess.level attribute survives an as_dict()/from_dict() round trip"""
+        level = {'method': 'wb97x-d3', 'basis': 'def2-tzvp', 'software': 'orca'}
+        tsg = TSGuess(method='orca_neb', success=True, level=level)
+        tsg_dict = tsg.as_dict()
+        self.assertEqual(tsg_dict['level'], level)
+        tsg_restored = TSGuess(ts_dict=tsg_dict)
+        self.assertEqual(tsg_restored.level, level)
+        # A guess without a level round-trips to None and omits the key.
+        tsg_no_level = TSGuess(method='gcn', success=True)
+        self.assertIsNone(tsg_no_level.level)
+        tsg_no_level_dict = tsg_no_level.as_dict()
+        self.assertNotIn('level', tsg_no_level_dict)
+        self.assertIsNone(TSGuess(ts_dict=tsg_no_level_dict).level)
+
     def test_process_xyz(self):
         """Test the process_xyz() method"""
         # path
