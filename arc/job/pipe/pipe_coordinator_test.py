@@ -72,6 +72,7 @@ def _make_mock_sched(project_directory, ess_settings=None):
     sched.ess_settings = {'orca': ['local'], 'mockter': ['local']}
     sched.testing = True
     sched.server_job_ids = list()
+    sched.completed_job_records = list()
     sched.ess_settings = ess_settings if ess_settings is not None else {'mockter': ['local']}
     spc = ARCSpecies(label='H2O', smiles='O')
     spc.conformers = [None] * 5
@@ -358,6 +359,50 @@ class TestIngestPipeResults(unittest.TestCase):
         with patch('arc.job.pipe.pipe_coordinator.ingest_completed_task') as mock_ingest:
             self.coord.ingest_pipe_results(pipe)
             mock_ingest.assert_called_once()
+
+    def test_ingest_records_task_cost(self):
+        """A terminal task yields one cost record shaped like Scheduler job records."""
+        task = _make_spec('t_cost', conformer_index=1)
+        pipe = self.coord.submit_pipe_run('run_cost', [task])
+        _complete_task(pipe.pipe_root, 't_cost')
+        with patch('arc.job.pipe.pipe_coordinator.ingest_completed_task'):
+            self.coord.ingest_pipe_results(pipe)
+        self.assertEqual(len(self.sched.completed_job_records), 1)
+        record = self.sched.completed_job_records[0]
+        self.assertEqual(record['job_name'], 'pipe_run_cost/t_cost')
+        self.assertEqual(record['label'], 'H2O')
+        self.assertEqual(record['job_type'], 'conf_opt')
+        self.assertEqual(record['job_adapter'], 'mockter')
+        self.assertEqual(record['server'], 'pipe')
+        self.assertEqual(record['cpu_cores'], 4)
+        self.assertIsNotNone(record['run_time_sec'])
+        self.assertGreaterEqual(record['run_time_sec'], 0.0)
+        self.assertEqual(record['job_status'], TaskState.COMPLETED.value)
+
+    def test_ingest_cost_dedup_on_reingest(self):
+        """Re-ingesting the same pipe run (e.g., after a restart) must not double-count."""
+        task = _make_spec('t_dedup')
+        pipe = self.coord.submit_pipe_run('run_dedup', [task])
+        _complete_task(pipe.pipe_root, 't_dedup')
+        with patch('arc.job.pipe.pipe_coordinator.ingest_completed_task'):
+            self.coord.ingest_pipe_results(pipe)
+            self.coord.ingest_pipe_results(pipe)
+        self.assertEqual(len(self.sched.completed_job_records), 1)
+
+    def test_ingest_cost_skips_non_terminal_and_handles_missing_timing(self):
+        """Non-terminal tasks are not recorded; cancelled tasks are, with a None run time."""
+        now = time.time()
+        pending_task = _make_spec('t_pending')
+        cancelled_task = _make_spec('t_cancelled')
+        pipe = self.coord.submit_pipe_run('run_mixed', [pending_task, cancelled_task])
+        update_task_state(pipe.pipe_root, 't_cancelled', new_status=TaskState.CANCELLED,
+                          ended_at=now)
+        self.coord.ingest_pipe_results(pipe)
+        self.assertEqual(len(self.sched.completed_job_records), 1)
+        record = self.sched.completed_job_records[0]
+        self.assertEqual(record['job_name'], 'pipe_run_mixed/t_cancelled')
+        self.assertIsNone(record['run_time_sec'])
+        self.assertEqual(record['job_status'], TaskState.CANCELLED.value)
 
     def test_ingest_skips_unreadable_state(self):
         """Ingestion continues when a task's state.json is missing."""

@@ -95,8 +95,10 @@ records collected as jobs complete (persisted in the restart file, so restarted 
 keep their history). Jobs with unavailable run time or core count are **counted**, not
 silently dropped, so analysis scripts know the coverage. Wall time is queue-confounded
 and should be treated as a secondary metric; ESS execution time and core-hours are the
-primary cost measures. Pipe-mode tasks are not individually tracked and are therefore
-not included in the per-job aggregates.
+primary cost measures. Pipe-mode tasks are recorded at ingestion with the same record
+shape (`server: pipe`, the pipe engine as the ESS, `required_cores` as the core count,
+and the last attempt's `started_at`..`ended_at` span as the run time), so per-ESS
+aggregates cover both Scheduler jobs and pipe tasks.
 
 | Field | Type | Description |
 |---|---|---|

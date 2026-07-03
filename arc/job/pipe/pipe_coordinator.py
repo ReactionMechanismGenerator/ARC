@@ -329,6 +329,7 @@ class PipeCoordinator:
                 logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                              f'could not read state, skipping.')
                 continue
+            self._record_pipe_task_cost(pipe=pipe, spec=spec, state=state)
             if state.status == TaskState.COMPLETED.value:
                 ingest_completed_task(pipe.run_id, pipe.pipe_root, spec, state,
                                       self.sched.species_dict, self.sched.output)
@@ -347,6 +348,45 @@ class PipeCoordinator:
                         f'for troubleshooting. Deferring post-ingestion workflow.')
         else:
             self._post_ingest_pipe_run(pipe)
+
+    def _record_pipe_task_cost(self, pipe: PipeRun, spec: TaskSpec, state: TaskStateRecord) -> None:
+        """
+        Record a per-task cost entry for a terminal pipe task, matching the shape of
+        ``Scheduler._record_completed_job`` records so the output.yml cost metrics
+        aggregate pipe tasks and Scheduler jobs uniformly.
+
+        Timing covers the task's last attempt (``started_at``..``ended_at`` from the
+        task state); tasks that never ran are counted with a missing run time rather
+        than dropped. Ingestion may be re-entered for a pipe run after a restart, so
+        records are deduplicated by job name.
+
+        Args:
+            pipe (PipeRun): The pipe run being ingested.
+            spec (TaskSpec): The task's specification (engine, cores, family, owner).
+            state (TaskStateRecord): The task's terminal state record.
+        """
+        terminal_statuses = (TaskState.COMPLETED.value, TaskState.FAILED_ESS.value,
+                             TaskState.FAILED_TERMINAL.value, TaskState.CANCELLED.value)
+        if state.status not in terminal_statuses:
+            return
+        records = getattr(self.sched, 'completed_job_records', None)
+        if records is None:
+            return
+        job_name = f'pipe_{pipe.run_id}/{spec.task_id}'
+        if any(record.get('job_name') == job_name for record in records):
+            return
+        run_time_sec = state.ended_at - state.started_at \
+            if state.started_at is not None and state.ended_at is not None else None
+        records.append({
+            'job_name': job_name,
+            'label': spec.owner_key,
+            'job_type': spec.task_family,
+            'job_adapter': spec.engine,
+            'server': 'pipe',
+            'cpu_cores': spec.required_cores,
+            'run_time_sec': run_time_sec,
+            'job_status': state.status,
+        })
 
     def _post_ingest_pipe_run(self, pipe: PipeRun) -> None:
         """

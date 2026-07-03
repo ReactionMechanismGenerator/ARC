@@ -311,10 +311,11 @@ def _compute_cost_metrics(completed_job_records: list | None, t0: float | None) 
     Aggregate per-job cost records into run-level cost metrics.
 
     Per-job records come from ``Scheduler.completed_job_records`` (collected at job
-    completion and persisted in the restart file). Jobs missing run-time or core-count
-    data are counted (``jobs_missing_time`` / ``jobs_missing_cores``) rather than
-    silently dropped, so downstream analysis knows the coverage. Pipe-mode tasks are
-    not individually tracked and are therefore not included.
+    completion and persisted in the restart file). Pipe-mode tasks are recorded into
+    the same list at ingestion (``PipeCoordinator._record_pipe_task_cost``, with
+    ``server='pipe'`` and the pipe engine as the ESS). Jobs missing run-time or
+    core-count data are counted (``jobs_missing_time`` / ``jobs_missing_cores``)
+    rather than silently dropped, so downstream analysis knows the coverage.
 
     Args:
         completed_job_records (list, optional): Entries are dicts with at least
