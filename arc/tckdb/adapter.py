@@ -3553,10 +3553,9 @@ def _freq_result_payload(record: Mapping[str, Any]) -> dict[str, Any] | None:
     if has_modes_source:
         try:
             modes = []
-            for i, f in enumerate(raw_freqs, start=1):
+            for f in raw_freqs:
                 freq = float(f)
                 modes.append({
-                    "mode_index": i,
                     "frequency_cm1": freq,
                     "is_imaginary": freq < 0,
                 })
@@ -3567,7 +3566,39 @@ def _freq_result_payload(record: Mapping[str, Any]) -> dict[str, Any] | None:
                 record.get("label"), raw_freqs, exc,
             )
             return None
-        out["modes"] = modes
+        # ARC's statmech ``harmonic_frequencies_cm1`` lists only the REAL
+        # vibrational modes; a transition state's imaginary (reaction-
+        # coordinate) frequency is carried separately in ``imag_freq_cm1``.
+        # Re-insert it as an imaginary mode so ``modes`` is internally
+        # consistent with ``n_imag`` — the TCKDB FreqResultPayload validator
+        # requires count(is_imaginary) == n_imag.
+        n_imag = out.get("n_imag")
+        imag = record.get("imag_freq_cm1")
+        if n_imag and imag is not None and not any(
+            m["is_imaginary"] for m in modes
+        ):
+            try:
+                modes.insert(0, {
+                    "frequency_cm1": -abs(float(imag)),
+                    "is_imaginary": True,
+                })
+            except (TypeError, ValueError):
+                pass
+        imag_count = sum(1 for m in modes if m["is_imaginary"])
+        if n_imag is not None and imag_count != n_imag:
+            # Cannot reconcile modes with n_imag (e.g. a higher-order saddle
+            # with a single stored imag_freq_cm1). Emit the scalar
+            # n_imag/imag_freq_cm1 without ``modes`` rather than a payload the
+            # backend validator would reject.
+            logger.warning(
+                "TCKDB freq modes omitted for label=%s: could not reconcile "
+                "n_imag=%s with %d imaginary mode(s) from statmech.",
+                record.get("label"), n_imag, imag_count,
+            )
+        else:
+            for i, m in enumerate(modes, start=1):
+                m["mode_index"] = i
+            out["modes"] = modes
     return out or None
 
 
