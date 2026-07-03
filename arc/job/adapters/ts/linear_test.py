@@ -523,7 +523,7 @@ H       2.05354047   -0.10415729    1.58865243"""
         rxn = ARCReaction(r_species=[r], p_species=[p])
 
         atom_map = None
-        for _i in range(max(len(rxn.product_dicts), 5)):
+        for _i in range(len(rxn.product_dicts)):
             atom_map = map_rxn(rxn=rxn, product_dict_index_to_try=_i)
             if atom_map is not None:
                 break
