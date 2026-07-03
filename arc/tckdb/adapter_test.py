@@ -29,8 +29,11 @@ from arc.tckdb.adapter import (
     arc_to_tckdb_ea_units,
 )
 from arc.tckdb.config import TCKDBArtifactConfig, TCKDBConfig
+from arc.common import ARC_PATH
 
+ARC_TESTING_PATH = os.path.join(ARC_PATH, 'arc', 'testing')
 
+from tckdb_schemas.fragments.calculation import HessianPayload, HessianSource
 from tckdb_schemas.workflows.computed_species_upload import (
     ComputedSpeciesUploadRequest,
 )
@@ -2632,6 +2635,63 @@ class TestComputedSpeciesBundle(unittest.TestCase):
         self.assertEqual(freq["artifacts"][0]["filename"], "freq.log")
         self.assertEqual(len(sp["artifacts"]), 1)
         self.assertEqual(sp["artifacts"][0]["filename"], "sp.log")
+
+    # ---------------- 12c: Cartesian Hessian attaches to the freq calc
+    def test_freq_calc_carries_parsed_cartesian_hessian(self):
+        """A freq_log with a Gaussian FC block yields an inline ``hessian``.
+
+        Uses the real 2-atom NH Gaussian freq log (21-entry lower triangle,
+        native hartree/bohr²). The default record's 2-atom xyz matches, so the
+        HessianPayload's 3N(3N+1)/2 invariant holds.
+        """
+        record = _full_record()
+        record["freq_log"] = os.path.join(
+            ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs',
+            'Species', 'NH_freq.out',
+        )
+        _, _, payload = self._submit(record=record)
+        freq = next(c for c in payload["conformers"][0]["additional_calculations"]
+                    if c["type"] == "freq")
+        self.assertIn("hessian", freq)
+        hessian = freq["hessian"]
+        self.assertEqual(hessian["source"], "parsed_log")
+        self.assertEqual(hessian["parser_version"], "arc-hessian-1")
+        triangle = hessian["lower_triangle_hartree_bohr2"]
+        self.assertEqual(len(triangle), 21)  # 2 atoms -> 3N=6 -> 6*7/2
+        # Native hartree/bohr²: N-H stretch diagonal ~0.39, never ~1e3 (SI J/m²).
+        self.assertLess(max(abs(v) for v in triangle), 5.0)
+        # The attached hessian dict validates under the TCKDB schema.
+        payload_obj = HessianPayload(**hessian)
+        self.assertEqual(payload_obj.source, HessianSource.parsed_log)
+        # The hessian geometry coincides with the freq calc's input geometry.
+        self.assertEqual(
+            hessian["geometry"]["xyz_text"],
+            freq["input_geometries"][0]["xyz_text"],
+        )
+
+    # ---------------- 12d: absent freq_log => no hessian, never raises
+    def test_freq_calc_without_log_has_no_hessian(self):
+        """No freq_log on the record => no ``hessian`` key, payload still builds."""
+        record = _full_record()
+        record.pop("freq_log", None)
+        _, _, payload = self._submit(record=record)
+        freq = next(c for c in payload["conformers"][0]["additional_calculations"]
+                    if c["type"] == "freq")
+        self.assertNotIn("hessian", freq)
+
+    # ---------------- 12e: freq_log without an FC block => no hessian
+    def test_freq_calc_log_without_fc_block_has_no_hessian(self):
+        """A freq log lacking the FC block (no IOp(7/33=1)) attaches no hessian."""
+        record = _full_record()
+        # A Q-Chem freq log has no Gaussian FC block and an unsupported ESS
+        # for Hessian extraction; the adapter must skip silently.
+        record["freq_log"] = os.path.join(
+            ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out',
+        )
+        _, _, payload = self._submit(record=record)
+        freq = next(c for c in payload["conformers"][0]["additional_calculations"]
+                    if c["type"] == "freq")
+        self.assertNotIn("hessian", freq)
 
     # ---------------- 13: artifacts disabled = no artifact lists emitted
     def test_artifact_disabled_produces_no_artifacts(self):

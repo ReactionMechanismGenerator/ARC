@@ -120,6 +120,21 @@ _CALC_KEY_OPT_COARSE = "opt_coarse"
 _CALC_KEY_FREQ = "freq"
 _CALC_KEY_SP = "sp"
 
+# Version tag stamped onto every parsed Hessian payload. Bump when the
+# Cartesian-Hessian parsing in ``arc/parser/adapters/{gaussian,orca}.py``
+# changes in a way that would alter the emitted lower-triangle values.
+_HESSIAN_PARSER_VERSION = "arc-hessian-1"
+
+# ESS name (from ``arc.parser.parser.determine_ess``) → TCKDB
+# ``HessianSource`` enum value. Gaussian prints the Hessian inside the log
+# (``parsed_log``); Orca writes it to a sibling ``.hess`` file
+# (``parsed_hess``). Other ESS engines have no Cartesian-Hessian parser
+# wired up, so they are absent and the Hessian is simply skipped.
+_HESSIAN_SOURCE_BY_ESS = {
+    "gaussian": "parsed_log",
+    "orca": "parsed_hess",
+}
+
 # Per-calc record-field map for output_log artifacts. Same convention as
 # `_LOG_FIELD_BY_CALC_KEY` in the existing artifact path: the species
 # record carries `<job>_log` paths that come straight from
@@ -1161,6 +1176,16 @@ class TCKDBAdapter:
         )
         if output_geometries:
             calc["output_geometries"] = output_geometries
+        # Optional inline Cartesian Hessian for freq calcs (DR-0030). Parsed
+        # from the freq job's ESS output; skipped silently when unavailable so
+        # it can never break payload construction.
+        if role == _CALC_KEY_FREQ:
+            hessian = self._build_freq_hessian_payload(
+                species_record=species_record,
+                geometry_xyz_text=conformer_xyz_text,
+            )
+            if hessian is not None:
+                calc["hessian"] = hessian
         artifacts = self._inline_artifacts_for_calc(species_record, calc_role=role)
         # Schema defaults `artifacts: []`. Emit explicitly only when we have
         # bytes to send (or when artifact upload is enabled and we want to
@@ -1451,6 +1476,70 @@ class TCKDBAdapter:
         if self._project_directory is not None:
             return Path(self._project_directory) / path
         return path.resolve()
+
+    def _build_freq_hessian_payload(
+        self,
+        *,
+        species_record: Mapping[str, Any],
+        geometry_xyz_text: str | None,
+    ) -> dict[str, Any] | None:
+        """Build the optional ``hessian`` payload for a freq calculation.
+
+        Parses the Cartesian Hessian from the freq job's ESS output (Gaussian
+        log block or Orca sibling ``.hess`` file) via the parser-layer adapters,
+        and packs it into the TCKDB ``HessianPayload`` shape:
+        ``{"geometry": {"xyz_text": ...}, "lower_triangle_hartree_bohr2":
+        [...], "source": "parsed_log"|"parsed_hess", "parser_version": ...}``.
+
+        The Hessian is native atomic units (hartree/bohr²) straight from the
+        parser — no unit conversion is applied here. ``geometry_xyz_text`` is
+        the freq calc's input geometry (the conformer's optimized xyz, already
+        normalized to standard XYZ), which is the configuration the Hessian was
+        computed at.
+
+        Returns ``None`` — never raises — when the Hessian is unavailable for
+        any reason (no geometry, no freq log on disk, unknown/unsupported ESS,
+        missing FC block / ``.hess``, monatomic species, or any parse error).
+        The Hessian is strictly optional and must never break payload
+        construction.
+        """
+        if not geometry_xyz_text:
+            return None
+        log_path = species_record.get(_LOG_FIELD_BY_CALC_KEY[_CALC_KEY_FREQ])
+        if not log_path:
+            return None
+        resolved = self._resolve_local_path(log_path)
+        if resolved is None or not resolved.is_file():
+            return None
+        try:
+            # Late import: keeps the ESS parser adapters (heavyweight) off the
+            # adapter's import path unless a Hessian is actually being built.
+            from arc.parser.parser import determine_ess
+            from arc.parser.factory import ess_factory
+
+            ess_name = determine_ess(str(resolved), raise_error=False)
+            source = _HESSIAN_SOURCE_BY_ESS.get(ess_name) if ess_name else None
+            if source is None:
+                return None
+            ess_adapter = ess_factory(str(resolved), ess_name)
+            parse = getattr(ess_adapter, "parse_cartesian_hessian_lower_triangle", None)
+            if parse is None:
+                return None
+            triangle = parse()
+        except Exception as exc:  # noqa: BLE001 — Hessian is best-effort only.
+            logger.debug(
+                "TCKDB bundle: Hessian parse skipped for label=%s (%s)",
+                species_record.get("label"), exc,
+            )
+            return None
+        if not triangle:
+            return None
+        return {
+            "geometry": {"xyz_text": geometry_xyz_text},
+            "lower_triangle_hartree_bohr2": triangle,
+            "source": source,
+            "parser_version": _HESSIAN_PARSER_VERSION,
+        }
 
     def _parse_irc_trajectories(
         self,
