@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.job.adapters.ts.kinbot_ts module
 """
 
+import math
 import os
 import shutil
 import subprocess
@@ -43,24 +44,35 @@ class TestKinBotAdapter(unittest.TestCase):
         """
         A method that is run before each unit test in this class.
         """
-        self.addCleanup(shutil.rmtree, self.project_dir, ignore_errors=True)
         self.rxn_1 = ARCReaction(reactants=['CC[O]'], products=['[CH2]CO'],
                                  r_species=[ARCSpecies(label='CC[O]', smiles='CC[O]')],
                                  p_species=[ARCSpecies(label='[CH2]CO', smiles='[CH2]CO')])
 
-    def get_adapter(self, dir_name: str = 'tst1') -> KinBotAdapter:
+    def _remove_test_dir(self, path: str):
+        """A helper function to remove a single test's project directory (and the shared
+        parent directory if it is empty). Tests may run in parallel (pytest-xdist), so
+        each test must only ever remove its own subdirectory."""
+        shutil.rmtree(path, ignore_errors=True)
+        try:
+            os.rmdir(self.project_dir)
+        except OSError:
+            pass
+
+    def get_adapter(self, dir_name: str) -> KinBotAdapter:
         """A helper function to instantiate a KinBotAdapter instance."""
+        project_directory = os.path.join(self.project_dir, dir_name)
+        self.addCleanup(self._remove_test_dir, project_directory)
         return KinBotAdapter(job_type='tsg',
                              reactions=[self.rxn_1],
                              testing=True,
                              project='test',
-                             project_directory=os.path.join(self.project_dir, dir_name),
+                             project_directory=project_directory,
                              )
 
     def test_family_map(self):
         """Test that the KinBot family map supports the expected RMG families."""
         self.assertEqual(self.rxn_1.family, 'intra_H_migration')
-        adapter = self.get_adapter()
+        adapter = self.get_adapter(dir_name='tst_family_map')
         self.assertIn('intra_H_migration', adapter.supported_families)
         self.assertEqual(adapter.family_map['intra_H_migration'],
                          ['intra_H_migration', 'intra_H_migration_suprafacial'])
@@ -68,7 +80,7 @@ class TestKinBotAdapter(unittest.TestCase):
 
     def test_missing_kinbot_python(self):
         """Test that execute_incore() raises if the kinbot_env python executable is missing."""
-        adapter = self.get_adapter()
+        adapter = self.get_adapter(dir_name='tst_missing_python')
         with mock.patch.object(kinbot_ts, 'KINBOT_PYTHON', None):
             with self.assertRaises(FileNotFoundError):
                 adapter.execute_incore()
@@ -76,7 +88,7 @@ class TestKinBotAdapter(unittest.TestCase):
     def test_intra_h_migration(self):
         """Test KinBot for intra H migration reactions with a mocked subprocess boundary."""
         self.assertEqual(self.rxn_1.family, 'intra_H_migration')
-        adapter = self.get_adapter()
+        adapter = self.get_adapter(dir_name='tst1')
         captured = dict()
 
         def fake_run_in_conda_env(python_executable, script_path, *script_args, check=False):
@@ -94,6 +106,7 @@ class TestKinBotAdapter(unittest.TestCase):
                                 'success': True,
                                 'coords': kinbot_list_to_coords(well['structure']),
                                 'execution_time': '0:00:00.104819',
+                                'uma_refined': False,
                                 })
             save_yaml_file(path=input_dict['yml_out_path'], content=results)
             return subprocess.CompletedProcess(args=[], returncode=0, stdout='', stderr='')
@@ -113,7 +126,8 @@ class TestKinBotAdapter(unittest.TestCase):
         self.assertEqual(input_dict['charge'], 0)
         self.assertEqual(input_dict['multiplicity'], 2)
         self.assertEqual(input_dict['families'], ['intra_H_migration', 'intra_H_migration_suprafacial'])
-        self.assertEqual(input_dict['step'], 20)
+        self.assertIn('uma', input_dict)
+        self.assertFalse(input_dict['uma']['refine'])  # UMA refinement is opt-in, off by default.
         self.assertEqual(input_dict['yml_out_path'], adapter.yml_out_path)
         directions = [well['direction'] for well in input_dict['wells']]
         self.assertIn('F', directions)
@@ -176,6 +190,68 @@ class TestKinBotAdapter(unittest.TestCase):
         self.assertFalse(ts_guesses[1].success)
         self.assertEqual(ts_guesses[1].method_direction, 'R')
         self.assertEqual(ts_guesses[1].method_index, 1)
+
+    def test_uma_refinement_flag(self):
+        """Test that the UMA settings cross the boundary and that refined guesses are marked in the method."""
+        adapter = self.get_adapter(dir_name='tst4')
+        captured = dict()
+
+        def fake_run_in_conda_env(python_executable, script_path, *script_args, check=False):
+            input_dict = read_yaml_file(path=script_args[1])
+            captured['input_dict'] = input_dict
+            f_well = next(well for well in input_dict['wells'] if well['direction'] == 'F')
+            r_well = next(well for well in input_dict['wells'] if well['direction'] == 'R')
+            results = [{'direction': 'F', 'success': True,
+                        'coords': kinbot_list_to_coords(f_well['structure']),
+                        'execution_time': '0:00:01.5', 'uma_refined': True},
+                       {'direction': 'R', 'success': True,
+                        'coords': kinbot_list_to_coords(r_well['structure']),
+                        'execution_time': '0:00:01.5', 'uma_refined': False,
+                        'uma_error': 'The Sella saddle-point search on the UMA potential did not converge.'},
+                       ]
+            save_yaml_file(path=input_dict['yml_out_path'], content=results)
+            return subprocess.CompletedProcess(args=[], returncode=0, stdout='', stderr='')
+
+        uma_on = dict(kinbot_ts.KINBOT_UMA_SETTINGS)
+        uma_on['refine'] = True
+        with mock.patch.object(kinbot_ts, 'KINBOT_PYTHON', kinbot_ts.__file__), \
+                mock.patch.object(kinbot_ts, 'KINBOT_UMA_SETTINGS', uma_on), \
+                mock.patch.object(kinbot_ts, 'run_in_conda_env', side_effect=fake_run_in_conda_env):
+            adapter.execute_incore()
+
+        self.assertTrue(captured['input_dict']['uma']['refine'])
+        ts_guesses = self.rxn_1.ts_species.ts_guesses
+        self.assertEqual(len(ts_guesses), 2)
+        # A UMA-refined guess is distinguishable, and both variants keep containing 'kinbot'.
+        self.assertEqual(ts_guesses[0].method, 'kinbot-uma')
+        self.assertEqual(ts_guesses[1].method, 'kinbot')
+        self.assertTrue(all('kinbot' in tsg.method for tsg in ts_guesses))
+
+    @unittest.skipIf(kinbot_ts.KINBOT_PYTHON is None or not os.path.isfile(kinbot_ts.KINBOT_PYTHON),
+                     'A kinbot_env installation is required for this test')
+    def test_template_modification_end_to_end(self):
+        """
+        Test, against a real kinbot_env, that the constraint templates are actually applied:
+        the TS guess geometries must differ from the well geometries they started from.
+        This exercises non-empty get_constraints() 'change' lists for the intra_H_migration
+        family through the full per-family step sequence (a regression test for calling
+        get_constraints() with a step beyond the family's max_step, which yields empty
+        constraints and returns the unmodified well geometry).
+        """
+        adapter = self.get_adapter(dir_name='tst_e2e')
+        adapter.execute_incore()
+        ts_guesses = [tsg for tsg in self.rxn_1.ts_species.ts_guesses if tsg.success]
+        self.assertGreaterEqual(len(ts_guesses), 2)
+        well_xyzs = {'F': self.rxn_1.r_species[0].get_xyz(), 'R': self.rxn_1.p_species[0].get_xyz()}
+        directions = set()
+        for tsg in ts_guesses:
+            directions.add(tsg.method_direction)
+            well_coords = well_xyzs[tsg.method_direction]['coords']
+            max_displacement = max(math.dist(guess_coord, well_coord)
+                                   for guess_coord, well_coord
+                                   in zip(tsg.initial_xyz['coords'], well_coords))
+            self.assertGreater(max_displacement, 0.1)
+        self.assertEqual(directions, {'F', 'R'})
 
 
 if __name__ == '__main__':
