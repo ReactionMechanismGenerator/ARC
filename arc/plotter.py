@@ -14,7 +14,7 @@ import os
 import shutil
 from matplotlib.backends.backend_pdf import PdfPages
 from mpl_toolkits.mplot3d import Axes3D
-from typing import List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import py3Dmol as p3D
 from rdkit import Chem
@@ -45,6 +45,9 @@ from arc.species.converter import (check_xyz_dict,
                                    )
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies, rmg_mol_to_dict_repr
+
+if TYPE_CHECKING:
+    from arc.reaction import ARCReaction
 
 
 PRETTY_UNITS = {'(s^-1)': r' (s$^-1$)',
@@ -419,7 +422,7 @@ def log_bde_report(path, bde_report, spc_dict):
 # *** Parity and kinetic plots ***
 
 def draw_thermo_parity_plots(species_list: list,
-                             path: Optional[str] = None):
+                             path: str | None = None):
     """
     Draws parity plots of calculated thermo and RMG's estimates.
     Saves a thermo.info file if a ``path`` is specified.
@@ -497,10 +500,10 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
 
 
 def draw_kinetics_plots(rxn_list: list,
-                        T_min: Optional[Tuple[float, str]] = None,
-                        T_max: Optional[Tuple[float, str]] = None,
+                        T_min: tuple[float, str] | None = None,
+                        T_max: tuple[float, str] | None = None,
                         T_count: int = 50,
-                        path: Optional[str] = None,
+                        path: str | None = None,
                         ) -> None:
     """
     Draws plots of calculated rate coefficients and RMG's estimates.
@@ -652,13 +655,13 @@ def text_plotter(x_data, y_data, labels, text_positions, axis, txt_width, txt_he
 
 # *** Files (libraries, xyz, conformers) ***
 
-def save_geo(species: Optional[ARCSpecies] = None,
-             xyz: Optional[dict] = None,
-             project_directory: Optional[str] = None,
-             path: Optional[str] = None,
-             filename: Optional[str] = None,
+def save_geo(species: ARCSpecies | None = None,
+             xyz: dict | None = None,
+             project_directory: str | None = None,
+             path: str | None = None,
+             filename: str | None = None,
              format_: str = 'all',
-             comment: Optional[str] = None,
+             comment: str | None = None,
              ):
     """
     Save a geometry file.
@@ -913,14 +916,14 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
 
 def save_conformers_file(project_directory: str,
                          label: str,
-                         xyzs: List[dict],
-                         level_of_theory: Union[Level, str],
-                         multiplicity: Optional[int] = None,
-                         charge: Optional[int] = None,
+                         xyzs: list[dict],
+                         level_of_theory: Level | str,
+                         multiplicity: int | None = None,
+                         charge: int | None = None,
                          is_ts: bool = False,
-                         energies: Optional[List[float]] = None,
-                         ts_methods: Optional[List[str]] = None,
-                         im_freqs: Optional[List[List[float]]] = None,
+                         energies: list[float] | None = None,
+                         ts_methods: list[str] | None = None,
+                         im_freqs: list[list[float]] | None = None,
                          log_content: bool = False,
                          before_optimization: bool = True,
                          sp_flag = False,
@@ -933,7 +936,7 @@ def save_conformers_file(project_directory: str,
         project_directory (str): The path to the project's directory.
         label (str): The species label.
         xyzs (list): Entries are dict-format xyz coordinates of conformers.
-        level_of_theory (Union[Level, str]): The level of theory used for the conformers' optimization.
+        level_of_theory (Level | str): The level of theory used for the conformers' optimization.
         multiplicity (int, optional): The species multiplicity, used for perceiving the molecule.
         charge (int, optional): The species charge, used for perceiving the molecule.
         is_ts (bool, optional): Whether the species represents a TS. True if it does.
@@ -1140,25 +1143,25 @@ def plot_torsion_angles(torsion_angles,
     return num_comb
 
 
-def plot_1d_rotor_scan(angles: Optional[Union[list, tuple, np.array]] = None,
-                       energies: Optional[Union[list, tuple, np.array]] = None,
-                       results: Optional[dict] = None,
-                       path: Optional[str] = None,
-                       scan: Optional[Union[list, tuple]] = None,
+def plot_1d_rotor_scan(angles: list | tuple | np.ndarray | None = None,
+                       energies: list | tuple | np.ndarray | None = None,
+                       results: dict | None = None,
+                       path: str | None = None,
+                       scan: list | tuple | None = None,
                        comment: str = '',
                        units: str = 'degrees',
-                       original_dihedral: Optional[float] = None,
+                       original_dihedral: float | None = None,
                        label=None,
                        ):
     """
     Plots a 1D rotor PES for energy vs. angles. Either ``angles`` and ``energies`` or ``results`` must be given.
 
     Args:
-        angles (Union[list, tuple, np.array], optional): Dihedral angles.
-        energies (Union[list, tuple, np.array], optional): The energies in kJ/mol.
+        angles (list | tuple | np.ndarray, optional): Dihedral angles.
+        energies (list | tuple | np.ndarray, optional): The energies in kJ/mol.
         results (dict, optional): The results dictionary, dihedrals are assumed to be in degrees (not radians).
         path (str, optional): The folder path for saving the rotor scan image and comments.
-        scan (Union[list, tuple], optional): The pivotal atoms of the scan.
+        scan (list | tuple, optional): The pivotal atoms of the scan.
         comment (str, optional): Reason for invalidating this rotor.
         units (str, optional): The ``angle`` units, either 'degrees' or 'radians'.
         original_dihedral (float, optional): The actual dihedral angle of this torsion before the scan.
@@ -1234,12 +1237,12 @@ def plot_1d_rotor_scan(angles: Optional[Union[list, tuple, np.array]] = None,
 
 
 def plot_2d_rotor_scan(results: dict,
-                       path: Optional[str] = None,
+                       path: str | None = None,
                        label: str = '',
                        cmap: str = 'Blues',
                        resolution: int = 90,
                        mark_lowest_conformations: bool = False,
-                       original_dihedrals: Optional[List[float]] = None,
+                       original_dihedrals: list[float] | None = None,
                        ):
     """
     Plot a 2D rotor scan.
@@ -1380,13 +1383,13 @@ def plot_2d_rotor_scan(results: dict,
 
 
 def plot_2d_scan_bond_dihedral(results: dict,
-                               path: Optional[str] = None,
+                               path: str | None = None,
                                label: str = '',
                                cmap: str = 'Blues',
                                resolution: int = 90,
                                font_size: float = 15,
-                               figsize: Tuple[float, float] = (12, 8),
-                               original_dihedrals: Optional[List[float]] = None,
+                               figsize: tuple[float, float] = (12, 8),
+                               original_dihedrals: list[float] | None = None,
                                ):
     """
     Plot a 2D scan where one coordinate is bond length and another is a dihedral angle.
@@ -1575,10 +1578,10 @@ def clean_scan_results(results: dict) -> dict:
     return results_
 
 
-def make_multi_species_output_file(species_list: List['ARCSpecies'],
+def make_multi_species_output_file(species_list: list[ARCSpecies],
                                    label: str,
                                    path: str,
-                                   software: Optional[str] = 'gaussian'
+                                   software: str | None = 'gaussian'
                                    ) -> dict:
         """
         Slice the big cluster output file down to individual multi species output file.
@@ -1629,7 +1632,7 @@ def make_multi_species_output_file(species_list: List['ARCSpecies'],
         return output_file_path_dict
 
 
-def delete_multi_species_output_file(species_list: List['ARCSpecies'],
+def delete_multi_species_output_file(species_list: list[ARCSpecies],
                                      label: str,
                                      multi_species_path_dict: dict,
                                      ):
@@ -1646,7 +1649,7 @@ def delete_multi_species_output_file(species_list: List['ARCSpecies'],
         os.remove(multi_species_path_dict[spc_label])
 
 
-def get_rxn_units_and_conversion_factor(rxn: 'ARCReaction') -> Tuple[str, float]:  # todo: add tests
+def get_rxn_units_and_conversion_factor(rxn: ARCReaction) -> tuple[str, float]:  # todo: add tests
     """
     Get the units and conversion factor for the reaction rate coefficient.
 
@@ -1654,7 +1657,7 @@ def get_rxn_units_and_conversion_factor(rxn: 'ARCReaction') -> Tuple[str, float]
         rxn (ARCReaction): The reaction object.
 
     Returns:
-        Tuple[str, float]: The units and conversion factor from m^3 units to cm^3 units.
+        tuple[str, float]: The units and conversion factor from m^3 units to cm^3 units.
     """
     reaction_order = len(rxn.get_reactants_and_products()[0])
     units = ''

@@ -16,9 +16,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 from arc.common import get_logger
 from arc.imports import settings
 
-from arc.job.pipe.pipe_run import PipeRun, SCHEDULER_VISIBILITY_GRACE, ingest_completed_task
 from arc.job.factory import job_factory
-from arc.job.pipe.pipe_run import PipeRun, ingest_completed_task
+from arc.job.pipe.pipe_run import PipeRun, SCHEDULER_VISIBILITY_GRACE, ingest_completed_task
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
     TaskStateRecord, get_task_attempt_dir, read_task_state,
@@ -50,11 +49,11 @@ class PipeCoordinator:
 
     def __init__(self, sched: 'Scheduler'):
         self.sched = sched
-        self.active_pipes: Dict[str, PipeRun] = {}
-        self._pipe_poll_failures: Dict[str, int] = {}
-        self._last_pipe_summary: Dict[str, str] = {}
+        self.active_pipes: dict[str, PipeRun] = {}
+        self._pipe_poll_failures: dict[str, int] = {}
+        self._last_pipe_summary: dict[str, str] = {}
 
-    def should_use_pipe(self, tasks: List[TaskSpec]) -> bool:
+    def should_use_pipe(self, tasks: list[TaskSpec]) -> bool:
         """
         Determine whether a list of tasks is eligible for pipe-mode execution.
 
@@ -80,7 +79,7 @@ class PipeCoordinator:
                    and t.required_memory_mb == ref.required_memory_mb
                    for t in tasks[1:])
 
-    def _compute_pipe_root(self, run_id: str, tasks: List[TaskSpec]) -> str:
+    def _compute_pipe_root(self, run_id: str, tasks: list[TaskSpec]) -> str:
         """
         Compute the pipe_root path under ``calcs/``, following ARC's directory convention.
 
@@ -140,7 +139,7 @@ class PipeCoordinator:
         except OSError as e:
             logger.warning(f'Could not write task_summary.txt for {pipe.run_id}: {e}')
 
-    def submit_pipe_run(self, run_id: str, tasks: List[TaskSpec],
+    def submit_pipe_run(self, run_id: str, tasks: list[TaskSpec],
                         cluster_software: str = 'slurm') -> PipeRun:
         """
         Create, stage, and register a new pipe run.

@@ -27,7 +27,6 @@ SKIP_CLEAN=false
 SKIP_EXT=false
 SKIP_ARC=false
 SKIP_RMG=false
-ARC_INSTALLED=false
 RMG_ARGS=()
 ARC_ARGS=()
 EXT_ARGS=()
@@ -91,21 +90,8 @@ if [[ "${CI:-false}" != "true" && "${SKIP_ARC:-false}" != "true" ]]; then
 
     echo "=== Installing ARC ==="
     run_devtool install_arc.sh "${ARC_ARGS[@]}"
-    ARC_INSTALLED=true
 else
-    ARC_INSTALLED=false
     echo ":information_source:  CI detected or --no-arc flag set. Skip cleaning ARC installation."
-fi
-
-# 3) PyRDL (needs arc_env, but not ARC install)
-if [[ "${CI:-false}" == "true" ]]; then
-    echo "=== Installing PyRDL (CI) ==="
-    bash devtools/install_pyrdl.sh
-elif [[ $ARC_INSTALLED == true ]]; then
-    echo "=== Installing PyRDL ==="
-    bash devtools/install_pyrdl.sh
-else
-    echo "ℹ️  Skipping PyRDL install because ARC installation was skipped."
 fi
 
 if [[ $SKIP_EXT == false ]]; then
@@ -147,7 +133,7 @@ else
     echo "ℹ️  --no-ext flag set. Skipping external-dependency installs."
 fi
 
-# 4) Clean up disk space
+# 3) Clean up disk space
 run_devtool clean.sh --conda
 
 popd >/dev/null

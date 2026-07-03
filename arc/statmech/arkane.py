@@ -6,7 +6,7 @@ import os
 import re
 import shutil
 from abc import ABC
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 from mako.template import Template
 
@@ -36,7 +36,6 @@ PBAC_SECTION_END = "mbac = {"
 MBAC_SECTION_START = "mbac = {"
 MBAC_SECTION_END = "freq_dict ="
 FREQ_SECTION_START = "freq_dict = {"
-
 
 main_input_template = """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
@@ -131,10 +130,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         calcs_directory (str): The path to the ARC project calculations directory.
         output_dict (dict): Keys are labels, values are output file paths.
                             See Scheduler for a description of this dictionary.
-        bac_type (Optional[str]): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
+        bac_type (str | None): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
                                   ``None`` to not use BAC.
-        species (List[ARCSpecies]): A list of ARCSpecies objects to compute thermodynamic properties for.
-        reactions (Optional[List[ARCReaction]]): A list of ARCReaction objects to compute kinetics for.
+        species (list[ARCSpecies]): A list of ARCSpecies objects to compute thermodynamic properties for.
+        reactions (list[ARCReaction] | None): A list of ARCReaction objects to compute kinetics for.
         sp_level (Level, optional): The level of theory used for energy corrections.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         skip_nmd (bool, optional): Whether to skip the normal mode displacement check. ``True`` to skip.
@@ -147,11 +146,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                  output_directory: str,
                  calcs_directory: str,
                  output_dict: dict,
-                 species: List['ARCSpecies'],
-                 reactions: Optional[List['ARCReaction']] = None,
-                 bac_type: Optional[str] = None,
-                 sp_level: Optional['Level'] = None,
-                 freq_level: Optional['Level'] = None,
+                 species: list[ARCSpecies],
+                 reactions: list[ARCReaction] | None = None,
+                 bac_type: str | None = None,
+                 sp_level: Level | None = None,
+                 freq_level: Level | None = None,
                  freq_scale_factor: float = 1.0,
                  skip_nmd: bool = False,
                  species_dict: dict = None,
@@ -655,7 +654,7 @@ def clean_output_directory(species_path: str,  # todo
 
 
 def create_statmech_dir(calcs_directory: str,
-                        subdir: Optional[str] = None,
+                        subdir: str | None = None,
                         delete_existing_subdir: bool = True,
                         ) -> str:
     """
@@ -679,18 +678,18 @@ def create_statmech_dir(calcs_directory: str,
     return statmech_dir
 
 
-def _extract_section(file_path: str, section_start: str, section_end: Optional[str] = None) -> Optional[str]:
+def _extract_section(file_path: str, section_start: str, section_end: str | None = None) -> str | None:
     """
     Extract a section from a file between section_start and section_end.
 
     Args:
         file_path (str): Path to the file to read.
         section_start (str): String marking the start of the section.
-        section_end (Optional[str]): String marking the end of the section.
+        section_end (str | None): String marking the end of the section.
                                      If ``None``, reads to the end of the file.
 
     Returns:
-        Optional[str]: Extracted section as string, or None if not found.
+        str | None: Extracted section as string, or None if not found.
     """
     if not os.path.isfile(file_path):
         return None
@@ -707,8 +706,7 @@ def _extract_section(file_path: str, section_start: str, section_end: Optional[s
     return text[start_idx:end_idx + len(section_end)]
 
 
-
-def get_qm_corrections_files() -> List[str]:
+def get_qm_corrections_files() -> list[str]:
     """
     Return quantum corrections data.py paths from the RMG database.
     """
@@ -726,7 +724,7 @@ def get_qm_corrections_files() -> List[str]:
     return existing
 
 
-def _normalize_name(name: Optional[str]) -> Optional[str]:
+def _normalize_name(name: str | None) -> str | None:
     """
     Normalize a method or basis name for comparison:
       - lowercase
@@ -773,7 +771,7 @@ def _parse_lot_params(lot_str: str) -> dict:
 
 def _iter_level_keys_from_section(file_path: str,
                                   section_start: str,
-                                  section_end: Optional[str] = None) -> List[str]:
+                                  section_end: str | None = None) -> list[str]:
     """
     Return all LevelOfTheory(...) key strings that appear as dictionary keys
     in a given section of data.py.
@@ -793,7 +791,7 @@ def _iter_level_keys_from_section(file_path: str,
 def _available_years_for_level(level: "Level",
                                file_path: str,
                                section_start: str,
-                               section_end: Optional[str] = None) -> List[Optional[int]]:
+                               section_end: str | None = None) -> list[int | None]:
     """
     Return a sorted list of available year suffixes for a given Level in a section.
     """
@@ -834,7 +832,7 @@ def _available_years_for_level(level: "Level",
     return sorted(years, key=lambda y: (-1 if y is None else y))
 
 
-def _format_years(years: List[Optional[int]]) -> str:
+def _format_years(years: list[int | None]) -> str:
     """
     Format a list of years for logging.
     """
@@ -844,10 +842,10 @@ def _format_years(years: List[Optional[int]]) -> str:
 
 
 def find_best_across_files(level: "Level",
-                            qm_corr_files: List[str],
+                            qm_corr_files: list[str],
                             section_start: str,
-                            section_end: Optional[str],
-                            ) -> Optional[str]:
+                            section_end: str | None,
+                            ) -> str | None:
     """
     Search all quantum-corrections files for the best matching LevelOfTheory key.
 
@@ -861,10 +859,10 @@ def find_best_across_files(level: "Level",
 
 
 def _all_available_years(level: "Level",
-                         qm_corr_files: List[str],
+                         qm_corr_files: list[str],
                          section_start: str,
-                         section_end: Optional[str],
-                         ) -> List[Optional[int]]:
+                         section_end: str | None,
+                         ) -> list[int | None]:
     """
     Aggregate available year suffixes for a Level across all quantum-corrections files.
     """
@@ -875,9 +873,9 @@ def _all_available_years(level: "Level",
 
 
 def _warn_no_match(level: "Level",
-                   qm_corr_files: List[str],
+                   qm_corr_files: list[str],
                    section_start: str,
-                   section_end: Optional[str],
+                   section_end: str | None,
                    label: str = "AEC",
                    ) -> None:
     """
@@ -904,7 +902,7 @@ def _warn_no_match(level: "Level",
 def _find_best_level_key_for_sp_level(level: "Level",
                                       file_path: str,
                                       section_start: str,
-                                      section_end: Optional[str] = None) -> Optional[str]:
+                                      section_end: str | None = None) -> str | None:
     """
     Given an ARC Level and a data.py section, find the LevelOfTheory(...) key string
     that best matches the level's method/basis, allowing:
@@ -980,7 +978,7 @@ def _find_best_level_key_for_sp_level(level: "Level",
     return best_key
 
 
-def _level_to_str(level: 'Level') -> str:
+def _level_to_str(level: Level) -> str:
     """
     Convert Level to Arkane's LevelOfTheory string representation.
 
@@ -1002,10 +1000,10 @@ def _level_to_str(level: 'Level') -> str:
     return f"LevelOfTheory({','.join(parts)})".replace('-', '')
 
 
-def get_arkane_model_chemistry(sp_level: 'Level',
-                               freq_level: Optional['Level'] = None,
-                               freq_scale_factor: Optional[float] = None,
-                               ) -> Optional[str]:
+def get_arkane_model_chemistry(sp_level: Level,
+                               freq_level: Level | None = None,
+                               freq_scale_factor: float | None = None,
+                               ) -> str | None:
     """
     Get Arkane model chemistry string with database validation.
 
@@ -1022,11 +1020,11 @@ def get_arkane_model_chemistry(sp_level: 'Level',
 
     Args:
         sp_level (Level): Level of theory for energy.
-        freq_level (Optional[Level]): Level of theory for frequencies.
-        freq_scale_factor (Optional[float]): Frequency scaling factor.
+        freq_level (Level | None): Level of theory for frequencies.
+        freq_scale_factor (float | None): Frequency scaling factor.
 
     Returns:
-        Optional[str]: Arkane-compatible model chemistry string.
+        str | None: Arkane-compatible model chemistry string.
     """
     qm_corr_files = get_qm_corrections_files()
 
@@ -1060,7 +1058,7 @@ def get_arkane_model_chemistry(sp_level: 'Level',
     )
 
 
-def check_arkane_aec(sp_level: 'Level', raise_error: bool = False) -> bool:
+def check_arkane_aec(sp_level: Level, raise_error: bool = False) -> bool:
     """
     Check that Arkane has AEC for the given sp level of theory (no BAC check).
     Used when bac_type is None but we still want to verify AEC availability.
@@ -1087,7 +1085,7 @@ def check_arkane_aec(sp_level: 'Level', raise_error: bool = False) -> bool:
     return best_aec_key is not None
 
 
-def check_arkane_bacs(sp_level: 'Level',
+def check_arkane_bacs(sp_level: Level,
                       bac_type: str = 'p',
                       raise_error: bool = False,
                       ) -> bool:

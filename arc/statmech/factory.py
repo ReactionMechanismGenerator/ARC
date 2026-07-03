@@ -2,7 +2,7 @@
 A module for generating statmech adapters.
 """
 
-from typing import TYPE_CHECKING, List, Optional, Type
+from typing import TYPE_CHECKING
 
 from arc.statmech.adapter import StatmechAdapter
 
@@ -16,14 +16,14 @@ _registered_statmech_adapters = {}
 
 
 def register_statmech_adapter(statmech_adapter_label: str,
-                              statmech_adapter_class: Type[StatmechAdapter],
+                              statmech_adapter_class: type[StatmechAdapter],
                               ) -> None:
     """
     A register for statmech adapters.
 
     Args:
         statmech_adapter_label (StatmechEnum): A string representation for a statmech adapter.
-        statmech_adapter_class (Type[StatmechAdapter]): The statmech adapter class (a child of StatmechAdapter).
+        statmech_adapter_class (type[StatmechAdapter]): The statmech adapter class (a child of StatmechAdapter).
 
     Raises:
         TypeError: If statmech_class is not a subclass of StatmechAdapter.
@@ -37,16 +37,16 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                      output_directory: str,
                      calcs_directory: str,
                      output_dict: dict,
-                     species: List['ARCSpecies'],
-                     reactions: Optional[List['ARCReaction']] = None,
-                     bac_type: Optional[str] = 'p',
-                     sp_level: Optional['Level'] = None,
-                     freq_level: Optional['Level'] = None,
+                     species: list[ARCSpecies],
+                     reactions: list[ARCReaction] | None = None,
+                     bac_type: str | None = 'p',
+                     sp_level: Level | None = None,
+                     freq_level: Level | None = None,
                      freq_scale_factor: float = 1.0,
                      skip_nmd: bool = False,
                      species_dict: dict = None,
-                     T_min: Optional[tuple] = None,
-                     T_max: Optional[tuple] = None,
+                     T_min: tuple | None = None,
+                     T_max: tuple | None = None,
                      T_count: int = 50,
                      ) -> StatmechAdapter:
     """
@@ -58,10 +58,10 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
         calcs_directory (str): The path to the ARC project calculations directory.
         output_dict (dict): Keys are labels, values are output file paths.
                             See Scheduler for a description of this dictionary.
-        bac_type (Optional[str], optional): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
+        bac_type (str | None, optional): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
                                             ``None`` to not use BAC.
-        species (List[ARCSpecies]): A list of ARCSpecies objects to compute thermodynamic properties for.
-        reactions (Optional[List[ARCReaction]]): A list of ARCReaction objects to compute kinetics for.
+        species (list[ARCSpecies]): A list of ARCSpecies objects to compute thermodynamic properties for.
+        reactions (list[ARCReaction] | None): A list of ARCReaction objects to compute kinetics for.
         sp_level (Level, optional): The level of theory used for energy corrections.
         freq_level (Level, optional): The level of theory used for frequency calculations.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.

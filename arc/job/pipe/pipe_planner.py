@@ -25,7 +25,8 @@ Note on TSG:
 """
 
 from collections import Counter
-from typing import TYPE_CHECKING, Callable, List, Set, Tuple
+from typing import TYPE_CHECKING
+from collections.abc import Callable
 
 from arc.common import get_logger
 from arc.imports import settings
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
     from arc.job.pipe.pipe_coordinator import PipeCoordinator
     from arc.reaction import ARCReaction
     from arc.scheduler import Scheduler
+
 
 logger = get_logger()
 
@@ -85,7 +87,7 @@ class PipePlanner:
                       run_id: str,
                       level,
                       job_type: str,
-                      build_tasks_fn: Callable[..., List[TaskSpec]],
+                      build_tasks_fn: Callable[..., list[TaskSpec]],
                       log_msg: str,
                       ) -> bool:
         """
@@ -111,7 +113,7 @@ class PipePlanner:
     # Family-specific routing — each returns the handled subset
     # ------------------------------------------------------------------
 
-    def try_pipe_conformers(self, label: str) -> Set[int]:
+    def try_pipe_conformers(self, label: str) -> set[int]:
         """
         Route conformer optimization through pipe mode.
 
@@ -131,7 +133,7 @@ class PipePlanner:
         )
         return set(range(n_conformers)) if submitted else set()
 
-    def try_pipe_conf_sp(self, label: str, conformer_indices: List[int]) -> Set[int]:
+    def try_pipe_conf_sp(self, label: str, conformer_indices: list[int]) -> set[int]:
         """
         Route conformer SP jobs through pipe mode for the given candidate indices.
 
@@ -164,7 +166,7 @@ class PipePlanner:
         )
         return candidate_set if submitted else set()
 
-    def try_pipe_tsg(self, rxn: 'ARCReaction', methods: List[str]) -> Set[str]:
+    def try_pipe_tsg(self, rxn: ARCReaction, methods: list[str]) -> set[str]:
         """
         Route TSG methods through pipe mode, grouped by method.
 
@@ -200,7 +202,7 @@ class PipePlanner:
             piped_methods.add(method)
         return piped_methods
 
-    def try_pipe_ts_opt(self, label: str, xyzs: List[dict], level) -> Set[int]:
+    def try_pipe_ts_opt(self, label: str, xyzs: list[dict], level) -> set[int]:
         """
         Route TS optimization jobs through pipe mode.
 
@@ -218,7 +220,7 @@ class PipePlanner:
         )
         return set(range(len(xyzs))) if submitted else set()
 
-    def try_pipe_species_sp(self, labels: List[str]) -> Set[str]:
+    def try_pipe_species_sp(self, labels: list[str]) -> set[str]:
         """
         Batch species SP jobs through pipe mode.
 
@@ -238,7 +240,7 @@ class PipePlanner:
         )
         return set(labels) if submitted else set()
 
-    def try_pipe_species_freq(self, labels: List[str]) -> Set[str]:
+    def try_pipe_species_freq(self, labels: list[str]) -> set[str]:
         """
         Batch species freq jobs through pipe mode.
 
@@ -258,7 +260,7 @@ class PipePlanner:
         )
         return set(labels) if submitted else set()
 
-    def try_pipe_irc(self, labels_and_directions: List[Tuple[str, str]]) -> Set[Tuple[str, str]]:
+    def try_pipe_irc(self, labels_and_directions: list[tuple[str, str]]) -> set[tuple[str, str]]:
         """
         Batch IRC jobs through pipe mode.
 
@@ -290,7 +292,7 @@ class PipePlanner:
         )
         return set(labels_and_directions) if submitted else set()
 
-    def try_pipe_rotor_scans_1d(self, label: str, rotor_indices: List[int]) -> Set[int]:
+    def try_pipe_rotor_scans_1d(self, label: str, rotor_indices: list[int]) -> set[int]:
         """
         Batch 1D rotor scan jobs through pipe mode.
 

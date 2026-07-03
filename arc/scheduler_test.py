@@ -11,9 +11,11 @@ from unittest.mock import MagicMock, patch
 import os
 import shutil
 
+
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
+from arc.job.adapters.common import default_incore_adapters, ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.plotter import save_conformers_file
@@ -999,7 +1001,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         sched._pending_pipe_irc.add((ts_label, 'forward'))
         sched._pending_pipe_irc.add((ts_label, 'reverse'))
 
-        # Call switch_ts — should pick guess 1 and clean up all state from guess 0.
+        # Call switch_ts, should pick guess 1 and clean up all state from guess 0.
         sched.switch_ts(ts_label)
 
         # Verify guess 1 was selected.
@@ -1134,6 +1136,34 @@ H      -1.82570782    0.42754384   -0.56130718"""
         # rotors_dict=None must be preserved — do not re-enable rotor scans.
         self.assertIsNone(sched2.species_dict[ts_label2].rotors_dict)
 
+    @patch('arc.scheduler.Scheduler.run_job')
+    def test_run_sp_monoatomic_dlpno(self, mock_run_job):
+        """Monoatomic H falls back to HF; heavier atoms (O) keep DLPNO intact."""
+        dlpno_level = Level(method='DLPNO-CCSD(T)-F12', basis='cc-pVTZ-F12',
+                            auxiliary_basis='aug-cc-pVTZ/C', cabs='cc-pVTZ-F12-CABS',
+                            software='orca')
+
+        for label, smiles in [('H_atom', '[H]'), ('O_atom', '[O]')]:
+            self.sched1.species_dict[label] = ARCSpecies(label=label, smiles=smiles)
+            self.sched1.job_dict[label] = {}
+            self.sched1.output[label] = {'paths': {}, 'job_types': {},
+                                         'errors': '', 'warnings': '', 'conformers': ''}
+
+        # Single-electron atom → HF fallback, aux/cabs preserved.
+        self.sched1.run_sp_job(label='H_atom', level=dlpno_level)
+        h_level = mock_run_job.call_args.kwargs['level_of_theory']
+        self.assertEqual(h_level.method, 'hf')
+        self.assertEqual(h_level.basis, 'cc-pvtz-f12')
+        self.assertEqual(h_level.auxiliary_basis, 'aug-cc-pvtz/c')
+        self.assertEqual(h_level.cabs, 'cc-pvtz-f12-cabs')
+
+        # Heavier monoatomic → DLPNO level unchanged.
+        mock_run_job.reset_mock()
+        self.sched1.run_sp_job(label='O_atom', level=dlpno_level)
+        o_level = mock_run_job.call_args.kwargs['level_of_theory']
+        self.assertEqual(o_level.method, 'dlpno-ccsd(t)-f12')
+        self.assertEqual(o_level.cabs, 'cc-pvtz-f12-cabs')
+
     def test_check_directed_scan_job_skips_isomorphism_for_ts(self):
         """check_directed_scan_job must not call check_xyz_isomorphism for a TS; is_isomorphic is recorded as True."""
         ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
@@ -1219,6 +1249,102 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(sched.species_dict['TS_trsh'].final_xyz, new_xyz)
         mock_run_opt.assert_called_once()
 
+    @patch('arc.scheduler.Scheduler.run_job')
+    def test_troubleshoot_scan_job_skips_isomorphism_for_ts_non_conformer(self, mock_run_job):
+        """troubleshoot_scan_job must not call check_xyz_isomorphism for a TS in the non-'change conformer' branch."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_spc = ARCSpecies(label='TS_trsh_nc', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'scan': [3, 1, 2, 4], 'scan_path': '',
+                                  'invalidation_reason': '', 'success': None, 'symmetry': None,
+                                  'times_dihedral_set': 0, 'trsh_methods': [], 'trsh_counter': 0}}
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_ts_iso_trsh_nc')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_ts_iso_trsh_nc', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.trsh_ess_jobs = True
+        sched.trsh_rotors = True
+
+        job_mock = MagicMock()
+        job_mock.species_label = 'TS_trsh_nc'
+        job_mock.rotor_index = 0
+        job_mock.torsions = [[2, 0, 1, 3]]  # 0-indexed; torsions_to_scans yields the 1-indexed scan [3, 1, 2, 4]
+        job_mock.job_name = 'scan_a201'
+        job_mock.scan_res = 8.0
+        job_mock.xyz = ts_xyz
+        job_mock.level = Level(repr=default_levels_of_theory['scan'])
+        job_mock.local_path_to_output_file = '/fake/path.log'
+
+        with patch('arc.species.species.ARCSpecies.check_xyz_isomorphism') as mock_iso, \
+                patch('arc.scheduler.trsh_scan_job') as mock_trsh_scan:
+            mock_trsh_scan.return_value = [], 4.0
+
+            sched.troubleshoot_scan_job(job=job_mock, methods={'inc_res': None})
+
+        mock_iso.assert_not_called()
+        mock_trsh_scan.assert_called_once_with(
+            label='TS_trsh_nc',
+            scan_res=8.0,
+            scan=[3, 1, 2, 4],
+            scan_list=[[3, 1, 2, 4]],
+            methods={'inc_res': None},
+            log_file='/fake/path.log',
+        )
+
+        mock_run_job.assert_called_once()
+        _, kwargs = mock_run_job.call_args
+        self.assertEqual(kwargs['label'], 'TS_trsh_nc')
+        self.assertEqual(kwargs['xyz'], ts_xyz)
+        self.assertEqual(kwargs['level_of_theory'], job_mock.level)
+        self.assertEqual(kwargs['job_type'], 'scan')
+        self.assertEqual(kwargs['torsions'], [[2, 0, 1, 3]])
+        self.assertEqual(kwargs['scan_trsh'], [])
+        self.assertEqual(kwargs['trsh'], {'scan_res': 4.0})
+        self.assertEqual(kwargs['rotor_index'], 0)
+
+    def test_report_running_jobs_snapshot(self):
+        """The snapshot file is overwritten on change and left untouched (heartbeat only) on no change."""
+        path = self.sched1.running_jobs_snapshot_path
+        if os.path.isfile(path):
+            os.remove(path)
+        self.sched1._last_status_payload = None
+        self.sched1.running_jobs = {'spcA': ['opt_a1234']}
+        self.sched1.active_pipes = {}
+
+        # First call: file doesn't exist, snapshot must be written.
+        self.sched1.report_running_jobs_snapshot()
+        snapshot = read_yaml_file(path)
+        self.assertIn('timestamp', snapshot)
+        self.assertEqual(snapshot['running_jobs'], {'spcA': ['opt_a1234']})
+
+        # Second call with identical payload: file must be left untouched.
+        first_mtime = os.path.getmtime(path)
+        self.sched1.report_running_jobs_snapshot()
+        self.assertEqual(os.path.getmtime(path), first_mtime)
+
+        # Mutating the live running_jobs lists must not alias the stored payload.
+        self.sched1.running_jobs['spcA'].append('sp_b5678')
+        self.assertNotEqual(self.sched1._last_status_payload['running_jobs'], self.sched1.running_jobs)
+
+        # Third call after a change: the file must be overwritten with the new snapshot only.
+        self.sched1.report_running_jobs_snapshot()
+        snapshot = read_yaml_file(path)
+        self.assertEqual(snapshot['running_jobs'], {'spcA': ['opt_a1234', 'sp_b5678']})
+
+        os.remove(path)
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -1229,6 +1355,51 @@ H      -1.82570782    0.42754384   -0.56130718"""
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestSpawnTsJobsAdmission(unittest.TestCase):
+    """
+    Contains unit tests for the TS adapter admission logic of Scheduler.spawn_ts_jobs().
+    """
+
+    def test_spawn_ts_jobs_unknown_family_admission_predicate(self):
+        """Test the admission predicate for TS adapters of reactions with an unknown family."""
+        self.assertIn('linear', ts_adapters_for_unknown_unimolecular)
+        self.assertIn('linear', default_incore_adapters)
+        reactant_xyz = """C  -1.3087    0.0068    0.0318
+                          C   0.1715   -0.0344    0.0210
+                          N   0.9054   -0.9001    0.6395
+                          O   2.1683   -0.5483    0.3437
+                          N   2.1499    0.5449   -0.4631
+                          N   0.9613    0.8655   -0.6660
+                          H  -1.6558    0.9505    0.4530
+                          H  -1.6934   -0.0680   -0.9854
+                          H  -1.6986   -0.8169    0.6255"""
+        reactant = ARCSpecies(label='azide_r', smiles='C([C]1=[N]O[N]=[N]1)', xyz=reactant_xyz)
+        product_xyz = """C  -1.0108   -0.0114   -0.0610
+                         C   0.4780    0.0191    0.0139
+                         N   1.2974   -0.9930    0.4693
+                         O   0.6928   -1.9845    0.8337
+                         N   1.7456    1.9701   -0.6976
+                         N   1.1642    1.0763   -0.3716
+                         H  -1.4020    0.9134   -0.4821
+                         H  -1.3327   -0.8499   -0.6803
+                         H  -1.4329   -0.1554    0.9349"""
+        product = ARCSpecies(label='azide_p', smiles='[N-]=[N+]=C(N=O)C', xyz=product_xyz)
+        rxn_unimolecular = ARCReaction(r_species=[reactant], p_species=[product])
+        self.assertIsNone(rxn_unimolecular.family)
+        rxn_bimolecular = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                                 ARCSpecies(label='CH4', smiles='C')],
+                                      p_species=[ARCSpecies(label='H2', smiles='[H][H]'),
+                                                 ARCSpecies(label='CH3', smiles='[CH3]')])
+        self.assertEqual(rxn_bimolecular.family, 'H_Abstraction')
+        # Replicates the three-clause admission predicate from Scheduler.spawn_ts_jobs() (scheduler.py).
+        for rxn, expected_admission in [(rxn_unimolecular, True), (rxn_bimolecular, False)]:
+            family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
+            admit_unknown_family = (not family_known
+                                    and 'linear' in ts_adapters_for_unknown_unimolecular
+                                    and rxn.is_unimolecular())
+            self.assertEqual(admit_unknown_family, expected_admission)
 
 
 if __name__ == '__main__':

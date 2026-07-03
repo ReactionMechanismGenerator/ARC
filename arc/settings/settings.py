@@ -89,13 +89,14 @@ global_ess_settings = {
     'torchani': 'local',
     'openbabel': 'local',
     'orca_neb': 'local',
+    'ase': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
+supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
-ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb', 'crest']
+ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb', 'crest']
 
 # List here job types to execute by default
 default_job_types = {'conf_opt': True,        # defaults to True if not specified
@@ -163,7 +164,8 @@ t_max_format = {'OGE': 'hours',
                 'HTCondor': 'hours',
                 }
 
-input_filenames = {'cfour': 'ZMAT',
+input_filenames = {'ase': 'input.yml',
+                   'cfour': 'ZMAT',
                    'gaussian': 'input.gjf',
                    'mockter': 'input.yml',
                    'molpro': 'input.in',
@@ -175,7 +177,8 @@ input_filenames = {'cfour': 'ZMAT',
                    'xtb': 'input.sh',
                    }
 
-output_filenames = {'cfour': 'output.out',
+output_filenames = {'ase': 'output.yml',
+                    'cfour': 'output.out',
                     'gaussian': 'input.log',
                     'gcn': 'output.yml',
                     'mockter': 'output.yml',
@@ -264,6 +267,15 @@ orca_neb_settings = {'keyword': {
                     'level': 'wb97xd/def2tzvp',
                     }
 
+ase_default_options_dict = {'optimizer': 'BFGS',
+                            'fmax': 0.001,
+                            'steps': 1000,
+                            }
+
+ASE_CALCULATORS_ENV = {'torchani': 'TANI_PYTHON',
+                       'xtb': 'SELLA_PYTHON',
+                       }
+
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 
 # A scan with better resolution (lower number here) takes more time to compute,
@@ -317,6 +329,9 @@ pipe_settings = {
     'env_setup': {},           # Engine-specific shell setup commands, e.g.,
                                # {'gaussian': 'source /usr/local/g09/setup.sh',
                                #  'orca': 'source /usr/local/orca-5.0.4/setup.sh && source /usr/local/openmpi-4.1.1/setup.sh'}
+    'pre_cmd': '',             # Global shell commands injected before every pipe worker invocation.
+                               # Useful for e.g. 'conda activate arc_env' when the auto-detected
+                               # LD_LIBRARY_PATH is not sufficient.
     'scratch_base': '',        # Base directory for worker scratch (e.g., '/gtmp'). Leave empty for system default.
 }
 
@@ -328,8 +343,8 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
 # Default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
-    None, None, None, None, None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, XTB_PYTHON, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
+    None, None, None, None, None, None, None, None, None, None
 
 home = os.getenv("HOME") or os.path.expanduser("~")
 
@@ -366,13 +381,28 @@ def find_executable(env_name, executable_name='python'):
     return None
 
 TANI_PYTHON = find_executable('tani_env')
+SELLA_PYTHON = find_executable('sella_env')
 OB_PYTHON = find_executable('ob_env')
 TS_GCN_PYTHON = find_executable('ts_gcn')
 AUTOTST_PYTHON = find_executable('tst_env')
 ARC_PYTHON = find_executable('arc_env')
+XTB_PYTHON = find_executable('xtb_env')
 RMG_ENV_NAME = 'rmg_env'
 RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')
+
+# Ensure BABEL_LIBDIR and BABEL_DATADIR are set before any openbabel import.
+# The danagroup conda build doesn't ship activate scripts that configure these.
+# Remove once the danagroup package is fixed upstream.
+_ob_prefix = os.environ.get('CONDA_PREFIX', sys.prefix)
+if not os.environ.get('BABEL_LIBDIR'):
+    _ob_lib_dirs = glob.glob(os.path.join(_ob_prefix, 'lib', 'openbabel', '*'))
+    if _ob_lib_dirs and os.path.isdir(_ob_lib_dirs[0]):
+        os.environ['BABEL_LIBDIR'] = _ob_lib_dirs[0]
+if not os.environ.get('BABEL_DATADIR'):
+    _ob_data_dirs = glob.glob(os.path.join(_ob_prefix, 'share', 'openbabel', '*'))
+    if _ob_data_dirs and os.path.isdir(_ob_data_dirs[0]):
+        os.environ['BABEL_DATADIR'] = _ob_data_dirs[0]
 
 # Set RMG_DB_PATH with fallback methods
 rmg_db_candidates, rmg_candidates = list(), list()

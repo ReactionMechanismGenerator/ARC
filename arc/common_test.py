@@ -31,10 +31,32 @@ class TestCommon(unittest.TestCase):
     Contains unit tests for ARC's common module
     """
     @classmethod
+    def _clean_globalized_restart_artifact(cls):
+        """Remove the globalized restart-paths artifact written by
+        :meth:`test_globalize_paths`.
+
+        Called from BOTH ``setUpClass`` (defensive: wipes a stale
+        artifact left behind by a previously interrupted run) and
+        ``tearDownClass`` (the normal cleanup path).  This makes the
+        cleanup self-healing: a Ctrl+C, ``kill``, or hard error during
+        a previous run cannot leave the next run inheriting the prior
+        ``restart_paths_globalized.yml``.
+        """
+        globalized_restart_path = os.path.join(
+            common.ARC_TESTING_PATH, 'restart', '4_globalized_paths',
+            'restart_paths_globalized.yml')
+        if os.path.isfile(globalized_restart_path):
+            try:
+                os.remove(path=globalized_restart_path)
+            except OSError as e:
+                print(f'Could not remove stale globalized restart artifact {globalized_restart_path}: {e}')
+
+    @classmethod
     def setUpClass(cls):
         """
         A method that is run before all unit tests in this class.
         """
+        cls._clean_globalized_restart_artifact()
         cls.maxDiff = None
         cls.default_job_types = {'conf_opt': True,
                                  'opt': True,
@@ -875,13 +897,13 @@ class TestCommon(unittest.TestCase):
         globalized_restart_path = os.path.join(project_directory, 'restart_paths_globalized.yml')
         content = common.read_yaml_file(globalized_restart_path)
         self.assertEqual(content['output']['restart'], 'Restarted ARC at 2020-02-28 12:51:14.446086; ')
-        self.assertIn('ARC/arc/testing/restart/4_globalized_paths/calcs/Species/HCN/freq_a38229/output.out',
+        self.assertIn('arc/testing/restart/4_globalized_paths/calcs/Species/HCN/freq_a38229/output.out',
                       content['output']['spc']['paths']['freq'])
         self.assertNotIn('gpfs/workspace/users/user', content['output']['spc']['paths']['freq'])
 
         path = '/home/user/runs/ARC/ARC_Project/calcs/Species/H/sp_a4339/output.out'
         new_path = common.globalize_path(path, project_directory)
-        self.assertIn('/ARC/arc/testing/restart/4_globalized_paths/calcs/Species/H/sp_a4339/output.out', new_path)
+        self.assertIn('arc/testing/restart/4_globalized_paths/calcs/Species/H/sp_a4339/output.out', new_path)
 
     def test_globalize_path(self):
         """Test rebasing a single path to the current ARC project"""
@@ -1077,8 +1099,8 @@ class TestCommon(unittest.TestCase):
         """Test the getting a corresponding angle in the -180 to +180 range"""
         self.assertEqual(common.get_angle_in_180_range(0), 0)
         self.assertEqual(common.get_angle_in_180_range(10), 10)
-        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589), -5.364589)
-        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589), -5.364589)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589, round_to=None), -5.364589)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589, round_to=None), -5.364589)
         self.assertEqual(common.get_angle_in_180_range(-120), -120)
         self.assertAlmostEqual(common.get_angle_in_180_range(179.999), 180, 2)
         self.assertEqual(common.get_angle_in_180_range(180), -180)
@@ -1098,6 +1120,7 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_angle_in_180_range(-270), 90)
         self.assertAlmostEqual(common.get_angle_in_180_range(45.5), 45.5, places=7)
         self.assertAlmostEqual(common.get_angle_in_180_range(719.9), -0.1, places=7)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589, round_to=2), -5.36)
 
     def test_signed_angular_diff(self):
         """Test the signed angular difference between two angles"""
@@ -1396,10 +1419,7 @@ class TestCommon(unittest.TestCase):
         """
         A function that is run ONCE after all unit tests in this class.
         """
-        globalized_restart_path = os.path.join(common.ARC_TESTING_PATH, 'restart', '4_globalized_paths',
-                                               'restart_paths_globalized.yml')
-        if os.path.isfile(globalized_restart_path):
-            os.remove(path=globalized_restart_path)
+        cls._clean_globalized_restart_artifact()
 
 
 if __name__ == '__main__':

@@ -7,7 +7,6 @@ and get thermodynamic properties for species
 """
 
 import os
-from typing import List
 
 from common import parse_command_line_arguments, read_yaml_file, save_yaml_file
 
@@ -41,15 +40,15 @@ def main():
     save_yaml_file(path=input_file, content=result)
 
 
-def get_thermo(species_list: List[dict]) -> List[dict]:
+def get_thermo(species_list: list[dict]) -> list[dict]:
     """
     Get thermo properties for a list of species.
 
     Args:
-        species_list (List[dict]): A list of species dictionaries.
+        species_list (list[dict]): A list of species dictionaries.
 
     Returns:
-        List[dict]: A list of species dictionaries with thermo properties.
+        list[dict]: A list of species dictionaries with thermo properties.
     """
     print('Loading RMG database...')
     rmgdb = load_rmg_database()

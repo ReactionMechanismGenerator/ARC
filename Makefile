@@ -7,7 +7,7 @@
 DEVTOOLS_DIR := devtools
 
 .PHONY: all help clean test test-unittests test-functional test-all \
-        install-all install-ci install-pyrdl install-rmg install-rmgdb install-autotst install-gcn \
+        install-all install-ci install-rmg install-rmgdb install-autotst install-gcn \
         install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-ob \
         lite check-env compile
 
@@ -27,7 +27,6 @@ help:
 	@echo "Installation:"
 	@echo "  install          Install all external dependencies"
 	@echo "  install-ci       Install all external dependencies for CI (no clean)"
-	@echo "  install-pyrdl    Install PyRDL"
 	@echo "  install-rmg      Install RMG (default: packaged, override via RMG_ARGS=...)"
 	@echo "  install-rmgdb    Install RMG-database"
 	@echo "  install-autotst  Install AutoTST"
@@ -64,7 +63,7 @@ install-all: install
 
 install:
 	@echo "Installing all external ARC dependencies..."
-	bash $(DEVTOOLS_DIR)/install_all.sh --rmg-rms
+	bash $(DEVTOOLS_DIR)/install_all.sh
 
 install-ci:
 	@echo "Installing all external ARC dependencies for CI (no clean)..."
@@ -72,10 +71,7 @@ install-ci:
 
 install-lite:
 	@echo "Installing ARC's lite version (no external dependencies)..."
-	bash $(DEVTOOLS_DIR)/install_all.sh --no-ext --rmg-rms
-
-install-pyrdl:
-	bash $(DEVTOOLS_DIR)/install_pyrdl.sh
+	bash $(DEVTOOLS_DIR)/install_all.sh --no-ext
 
 install-rmg:
 	bash $(DEVTOOLS_DIR)/install_rmg.sh $(RMG_ARGS)

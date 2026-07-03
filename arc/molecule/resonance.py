@@ -27,7 +27,6 @@ Currently supported resonance types:
 """
 
 import cython
-from typing import List
 
 import arc.molecule.filtration as filtration
 import arc.molecule.pathfinder as pathfinder
@@ -138,7 +137,7 @@ def generate_resonance_structures_safely(mol,
                                          keep_isomorphic=False,
                                          filter_structures=True,
                                          save_order=True,
-                                         ) -> List[Molecule]:
+                                         ) -> list[Molecule]:
     """
     Generates resonance structures for a given molecule with specified options safely.
     A wrapper for generate_resonance_structures().
@@ -161,7 +160,7 @@ def generate_resonance_structures(mol,
                                   keep_isomorphic=False,
                                   filter_structures=True,
                                   save_order=True,
-                                  ) -> List[Molecule]:
+                                  ) -> list[Molecule]:
     """
     Generate and return all the resonance structures for the input molecule.
 

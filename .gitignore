@@ -30,6 +30,7 @@ examples/
 
 # Unit test files
 .coverage
+.coverage.*
 testing/*
 htmlcov/*
 arc/testing/gcn_tst/
@@ -55,6 +56,10 @@ timer.dat
 # .vscode
 .vscode
 
+# Claude
+CLAUDE.md
+.claude/*
+
 # .trunk folder
 .trunk
 
@@ -70,3 +75,10 @@ build/*
 
 # AI Agent files
 AGENTS.md
+spec.md
+
+# Other AI things
+.agents
+ARC.egg*
+uv*
+*graphify*

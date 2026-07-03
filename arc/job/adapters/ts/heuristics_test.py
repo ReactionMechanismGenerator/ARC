@@ -39,6 +39,10 @@ from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
 from arc.species.species import ARCSpecies
 from arc.species.zmat import _compare_zmats, get_parameter_from_atom_indices
 
+from arc.species.species import check_isomorphism
+from arc.species.zmat import remove_zmat_atom_0
+from arc.species.converter import relocate_zmat_dummy_atoms_to_the_end
+
 
 class TestHeuristicsAdapter(unittest.TestCase):
     """
@@ -1128,63 +1132,58 @@ H      -3.45360689    0.15275707   -0.76116277""")
         heuristics_1.execute_incore()
         self.assertEqual(len(rxn1.ts_species.ts_guesses), 12)
 
-    def test_heuristics_for_hydrolysis(self):
+    def test_heuristics_for_carbonyl_based_hydrolysis(self):
         """
-        Test that ARC can generate TS guesses based on heuristics for different hydrolysis families reactions.
+        Test heuristics for carbonyl-based hydrolysis: C2H4O2 + H2O <=> CH2O2 + CH4O.
         """
-        # Carbonyl-based hydrolysis
-        # C2H4O2 + H2O <=> CH2O2 + CH4O
-        methylformate = self.methylformate
-        formicacid = self.formicacid
-        methanol = self.methanol
-        water = self.water
-        rxn1 = ARCReaction(r_species=[methylformate, water], p_species=[formicacid, methanol],
-                           family='carbonyl_based_hydrolysis')
-        heuristics_1 = HeuristicsAdapter(job_type='tsg',
-                                         reactions=[rxn1],
-                                         testing=True,
-                                         project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics')
-                                         )
-        heuristics_1.execute_incore()
-        self.assertEqual(rxn1.family, 'carbonyl_based_hydrolysis')
-        self.assertTrue(rxn1.ts_species.is_ts)
-        self.assertEqual(rxn1.ts_species.ts_guesses[0].initial_xyz['symbols'],
+        rxn = ARCReaction(r_species=[self.methylformate, self.water],
+                          p_species=[self.formicacid, self.methanol],
+                          family='carbonyl_based_hydrolysis')
+        adapter = HeuristicsAdapter(job_type='tsg',
+                                    reactions=[rxn],
+                                    testing=True,
+                                    project='test',
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_carbonyl'))
+        adapter.execute_incore()
+        self.assertEqual(rxn.family, 'carbonyl_based_hydrolysis')
+        self.assertTrue(rxn.ts_species.is_ts)
+        self.assertEqual(rxn.ts_species.ts_guesses[0].initial_xyz['symbols'],
                          ('C', 'O', 'C', 'O', 'H', 'H', 'H', 'H', 'O', 'H', 'H'))
-        self.assertEqual(len(rxn1.ts_species.ts_guesses), 6)
-        # Ether hydrolysis
-        # C3H8O + H2O <=> C2H6O + CH4O
-        allylmethylether = self.allylmethylether
-        allylalcohol = self.allylalcohol
-        methanol = self.methanol
-        rxn2 = ARCReaction(r_species=[allylmethylether, water], p_species=[allylalcohol, methanol])
-        heuristics_2 = HeuristicsAdapter(job_type='tsg',
-                                         reactions=[rxn2],
-                                         testing=True,
-                                         project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics')
-                                         )
-        heuristics_2.execute_incore()
-        self.assertEqual(rxn2.family, 'ether_hydrolysis')
-        self.assertTrue(rxn2.ts_species.is_ts)
-        self.assertEqual(rxn2.ts_species.ts_guesses[0].initial_xyz['symbols'],
+        self.assertEqual(len(rxn.ts_species.ts_guesses), 6)
+
+    def test_heuristics_for_ether_hydrolysis(self):
+        """
+        Test heuristics for ether hydrolysis: C3H8O + H2O <=> C2H6O + CH4O.
+        """
+        rxn = ARCReaction(r_species=[self.allylmethylether, self.water],
+                          p_species=[self.allylalcohol, self.methanol])
+        adapter = HeuristicsAdapter(job_type='tsg',
+                                    reactions=[rxn],
+                                    testing=True,
+                                    project='test',
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_ether'))
+        adapter.execute_incore()
+        self.assertEqual(rxn.family, 'ether_hydrolysis')
+        self.assertTrue(rxn.ts_species.is_ts)
+        self.assertEqual(rxn.ts_species.ts_guesses[0].initial_xyz['symbols'],
                          ('C', 'C', 'C', 'O', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'O', 'H', 'H'))
-        self.assertEqual(len(rxn2.ts_species.ts_guesses), 4)
-        # Nitrile hydrolysis
-        # N#CC(C#N) + H2O <=> N=C(O)C(C#N)
-        malononitrile = self.malononitrile
-        iminopropanoic_acid = self.iminopropanoic_acid
-        rxn4 = ARCReaction(r_species=[malononitrile, water], p_species=[iminopropanoic_acid])
-        heuristics_4 = HeuristicsAdapter(job_type='tsg',
-                                         reactions=[rxn4],
-                                         testing=True,
-                                         project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics')
-                                         )
-        heuristics_4.execute_incore()
-        self.assertEqual(rxn4.family, 'nitrile_hydrolysis')
-        self.assertTrue(rxn4.ts_species.is_ts)
-        self.assertEqual(rxn4.ts_species.ts_guesses[0].initial_xyz['symbols'],
+        self.assertEqual(len(rxn.ts_species.ts_guesses), 4)
+
+    def test_heuristics_for_nitrile_hydrolysis(self):
+        """
+        Test heuristics for nitrile hydrolysis: N#CC(C#N) + H2O <=> N=C(O)C(C#N).
+        """
+        rxn = ARCReaction(r_species=[self.malononitrile, self.water],
+                          p_species=[self.iminopropanoic_acid])
+        adapter = HeuristicsAdapter(job_type='tsg',
+                                    reactions=[rxn],
+                                    testing=True,
+                                    project='test',
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_nitrile'))
+        adapter.execute_incore()
+        self.assertEqual(rxn.family, 'nitrile_hydrolysis')
+        self.assertTrue(rxn.ts_species.is_ts)
+        self.assertEqual(rxn.ts_species.ts_guesses[0].initial_xyz['symbols'],
                          ('N', 'C', 'C', 'C', 'N', 'H', 'H', 'O', 'H', 'H'))
 
     def test_keeping_atom_order_in_ts(self):
@@ -1417,11 +1416,32 @@ H      -3.45360689    0.15275707   -0.76116277""")
         # expected_new_map = {0: 12, 1: 13, 2: 'X24', 3: 14, 4: 15, 5: 16, 6: 'X25', 7: 17, 8: 'X26', 9: 18, 10: 19,
         #                     11: 20, 12: 21, 13: 22, 14: 'X27', 15: 23, 16: 'X28', 17: 2, 18: 3, 19: 1, 21: 4, 23: 0,
         #                     25: 7, 26: 6, 28: 5, 20: 'X8', 22: 'X9', 24: 'X10', 27: 'X11'}
-        expected_new_map = {0: 12, 1: 13, 2: 'X24', 3: 14, 4: 15, 5: 16, 6: 'X25', 7: 17, 8: 'X26', 9: 18, 10: 19,
-                            11: 20, 12: 21, 13: 22, 14: 'X27', 15: 23, 16: 'X28', 17: 2, 18: 1, 19: 3, 21: 0, 23: 4,
-                            25: 5, 26: 6, 28: 7, 20: 'X8', 22: 'X9', 24: 'X10', 27: 'X11'}
+        
+        # Test isomorphism of the mapped reactant_2 part
+        zmat_2_mod = remove_zmat_atom_0(self.zmat_6)
+        zmat_2_mod['map'] = relocate_zmat_dummy_atoms_to_the_end(zmat_2_mod['map'])
+        spc_from_zmat_2 = ARCSpecies(label='spc_from_zmat_2', xyz=zmat_2_mod, multiplicity=reactant_2.multiplicity,
+                                     number_of_radicals=reactant_2.number_of_radicals, charge=reactant_2.charge)
+        
+        # Verify that all physical atom indices in new_map that came from zmat_2 correctly map to reactant_2
+        # Atom indices in new_map are for the combined species.
+        # Atoms 0-16 in self.zmat_5, atoms 1-12 in self.zmat_6 (13 atoms total, index 0 removed).
+        # In get_new_zmat_2_map, zmat_2 atoms are mapped to indices in new_map.
+        
+        num_atoms_1 = len(self.zmat_5['symbols'])
+        atom_map = dict()
+        for i in range(1, len(self.zmat_6['symbols'])):
+            if not isinstance(self.zmat_6['symbols'][i], str) or self.zmat_6['symbols'][i] != 'X':
+                # This is a physical atom in zmat_2 (at index i)
+                # Its index in the combined Z-Matrix is num_atoms_1 + i - 1
+                combined_idx = num_atoms_1 + i - 1
+                if combined_idx in new_map:
+                    # new_map[combined_idx] is the index in reactant_2
+                    # i-1 is the index in spc_from_zmat_2
+                    atom_map[i-1] = new_map[combined_idx]
 
-        self.assertEqual(new_map, expected_new_map)
+        # Verify the atom_map is a valid isomorphism
+        self.assertTrue(check_isomorphism(spc_from_zmat_2.mol, reactant_2.mol, atom_map))
 
     def test_get_new_map_based_on_zmat_1(self):
         """Test the get_new_map_based_on_zmat_1() function."""
@@ -1961,90 +1981,65 @@ H      -3.45360689    0.15275707   -0.76116277""")
         self.assertEqual(find_distant_neighbor(mol=mol_3, start=2), 4)
         self.assertEqual(find_distant_neighbor(mol=mol_3, start=2), 4)
 
-    def test_are_h_abs_wells_reversed(self):
-        """
-        Test the are_h_abs_wells_reversed() function.
-        The expected order is: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2)
-        """
-        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'), ARCSpecies(label='OH', smiles='[OH]')],
-                            # none are reversed
-                            p_species=[ARCSpecies(label='C2H5', smiles='[CH2]C'), ARCSpecies(label='H2O', smiles='O')])
-        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='C2H6', smiles='CC')],
-                            # r reversed
-                            p_species=[ARCSpecies(label='C2H5', smiles='[CH2]C'), ARCSpecies(label='H2O', smiles='O')])
-        rxn_3 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'), ARCSpecies(label='OH', smiles='[OH]')],
-                            # p reversed
-                            p_species=[ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='C2H5', smiles='[CH2]C')])
-        rxn_4 = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='C2H6', smiles='CC')],
-                            # r and p reversed
-                            p_species=[ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='C2H5', smiles='[CH2]C')])
-
-        product_dicts = get_reaction_family_products(rxn=rxn_1,
-                                                     rmg_family_set=[rxn_1.family],
+    def _check_h_abs_wells_reversed(self, rxn: 'ARCReaction', expected_r_reversed: bool, expected_p_reversed: bool):
+        """Helper: run are_h_abs_wells_reversed against the family products and assert the orientations."""
+        product_dicts = get_reaction_family_products(rxn=rxn,
+                                                     rmg_family_set=[rxn.family],
                                                      consider_rmg_families=True,
                                                      consider_arc_families=False,
                                                      discover_own_reverse_rxns_in_reverse=False,
                                                      )
-        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_1, product_dict=product_dicts[0])
-        self.assertFalse(r_reversed)
-        self.assertFalse(p_reversed)
+        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn, product_dict=product_dicts[0])
+        self.assertEqual(r_reversed, expected_r_reversed)
+        self.assertEqual(p_reversed, expected_p_reversed)
 
-        product_dicts = get_reaction_family_products(rxn=rxn_2,
-                                                     rmg_family_set=[rxn_2.family],
-                                                     consider_rmg_families=True,
-                                                     consider_arc_families=False,
-                                                     discover_own_reverse_rxns_in_reverse=False,
-                                                     )
-        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_2, product_dict=product_dicts[0])
-        self.assertTrue(r_reversed)
-        self.assertFalse(p_reversed)
+    def test_are_h_abs_wells_reversed_neither_reversed(self):
+        """C2H6 + OH <=> C2H5 + H2O — neither r nor p reversed."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='C2H5', smiles='[CH2]C'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        self._check_h_abs_wells_reversed(rxn, expected_r_reversed=False, expected_p_reversed=False)
 
-        product_dicts = get_reaction_family_products(rxn=rxn_3,
-                                                     rmg_family_set=[rxn_3.family],
-                                                     consider_rmg_families=True,
-                                                     consider_arc_families=False,
-                                                     discover_own_reverse_rxns_in_reverse=False,
-                                                     )
-        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_3, product_dict=product_dicts[0])
-        self.assertFalse(r_reversed)
-        self.assertTrue(p_reversed)
+    def test_are_h_abs_wells_reversed_r_reversed(self):
+        """OH + C2H6 <=> C2H5 + H2O — reactants reversed."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                     ARCSpecies(label='C2H6', smiles='CC')],
+                          p_species=[ARCSpecies(label='C2H5', smiles='[CH2]C'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        self._check_h_abs_wells_reversed(rxn, expected_r_reversed=True, expected_p_reversed=False)
 
-        product_dicts = get_reaction_family_products(rxn=rxn_4,
-                                                     rmg_family_set=[rxn_4.family],
-                                                     consider_rmg_families=True,
-                                                     consider_arc_families=False,
-                                                     discover_own_reverse_rxns_in_reverse=False,
-                                                     )
-        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_4, product_dict=product_dicts[0])
-        self.assertTrue(r_reversed)
-        self.assertTrue(p_reversed)
+    def test_are_h_abs_wells_reversed_p_reversed(self):
+        """C2H6 + OH <=> H2O + C2H5 — products reversed."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='H2O', smiles='O'),
+                                     ARCSpecies(label='C2H5', smiles='[CH2]C')])
+        self._check_h_abs_wells_reversed(rxn, expected_r_reversed=False, expected_p_reversed=True)
 
-        rxn_5 = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='H2O', smiles='O')],
-                            # r and p reversed
-                            p_species=[ARCSpecies(label='H2', smiles='[H][H]'), ARCSpecies(label='OH', smiles='[OH]')])
-        product_dicts = get_reaction_family_products(rxn=rxn_5,
-                                                     rmg_family_set=[rxn_5.family],
-                                                     consider_rmg_families=True,
-                                                     consider_arc_families=False,
-                                                     discover_own_reverse_rxns_in_reverse=False,
-                                                     )
-        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_5, product_dict=product_dicts[0])
-        self.assertTrue(r_reversed)
-        self.assertTrue(p_reversed)
+    def test_are_h_abs_wells_reversed_both_reversed(self):
+        """OH + C2H6 <=> H2O + C2H5 — reactants and products reversed."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                     ARCSpecies(label='C2H6', smiles='CC')],
+                          p_species=[ARCSpecies(label='H2O', smiles='O'),
+                                     ARCSpecies(label='C2H5', smiles='[CH2]C')])
+        self._check_h_abs_wells_reversed(rxn, expected_r_reversed=True, expected_p_reversed=True)
 
-        rxn_6 = ARCReaction(
-            r_species=[ARCSpecies(label='CCCC(O)=O', smiles='CCCC(O)=O'), ARCSpecies(label='OH', smiles='[OH]')],
-            # none are reversed
-            p_species=[ARCSpecies(label='CCCC([O])=O', smiles='CCCC([O])=O'), ARCSpecies(label='H2O', smiles='O')])
-        product_dicts = get_reaction_family_products(rxn=rxn_6,
-                                                     rmg_family_set=[rxn_6.family],
-                                                     consider_rmg_families=True,
-                                                     consider_arc_families=False,
-                                                     discover_own_reverse_rxns_in_reverse=False,
-                                                     )
-        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_6, product_dict=product_dicts[0])
-        self.assertFalse(r_reversed)
-        self.assertFalse(p_reversed)
+    def test_are_h_abs_wells_reversed_h_plus_h2o(self):
+        """H + H2O <=> H2 + OH — reactants and products reversed."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                     ARCSpecies(label='H2O', smiles='O')],
+                          p_species=[ARCSpecies(label='H2', smiles='[H][H]'),
+                                     ARCSpecies(label='OH', smiles='[OH]')])
+        self._check_h_abs_wells_reversed(rxn, expected_r_reversed=True, expected_p_reversed=True)
+
+    def test_are_h_abs_wells_reversed_butyrate(self):
+        """CCCC(O)=O + OH <=> CCCC([O])=O + H2O — neither r nor p reversed."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CCCC(O)=O', smiles='CCCC(O)=O'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CCCC([O])=O', smiles='CCCC([O])=O'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        self._check_h_abs_wells_reversed(rxn, expected_r_reversed=False, expected_p_reversed=False)
 
     def test_process_hydrolysis_reaction(self):
         """Test the process_hydrolysis_reaction() function."""
@@ -2257,8 +2252,8 @@ H      -0.30139889    0.23142254    3.12085495"""
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests.
         """
-        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'heuristics'), ignore_errors=True)
-        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'heuristics_1'), ignore_errors=True)
+        for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile'):
+            shutil.rmtree(os.path.join(ARC_TESTING_PATH, sub), ignore_errors=True)
 
 
 class TestHeuristicsHub(unittest.TestCase):

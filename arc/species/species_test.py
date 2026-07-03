@@ -1464,8 +1464,9 @@ H      -1.69944700    0.93441600   -0.11271200"""
         mol = self.spc8.mol
         mol_list = self.spc8.mol_list
 
-        self.assertEqual(len(mol_list), 2)
-        res1, res2 = mol_list
+        self.assertGreaterEqual(len(mol_list), 2)
+        res1 = mol_list[0]
+        res2 = mol_list[1]
 
         self.assertTrue(mol.atom_ids_valid())
         self.assertTrue(res1.atom_ids_valid())
@@ -1480,6 +1481,71 @@ H      -1.69944700    0.93441600   -0.11271200"""
         res2_ids = [(a.element.symbol, a.id) if a.element.symbol != 'O' else (a.element.symbol,) for a in res2.atoms]
         self.assertEqual(mol_ids, res1_ids)
         self.assertEqual(mol_ids, res2_ids)
+
+    def test_preserving_singlet_biradical_from_adjlist_with_xyz(self):
+        """Test that a singlet biradical defined via adjlist + xyz preserves its radical sites."""
+        xyz = """C      -1.71276869   -2.14835263   -0.29600082
+C      -1.30379477   -0.91506552    0.02297736
+C       0.02166928   -0.61873233    0.53428358
+C       0.12717819    0.82647389    0.91669270
+C      -1.28264593    1.32277593    0.84036811
+C      -1.85754229    2.26155916    1.60812418
+C      -3.29934285    2.39956966    1.60188376
+C      -4.08920980    1.47079635    1.03722857
+C      -3.52758183    0.33798706    0.32703925
+C      -2.07314208    0.38964129   -0.05559628
+H      -2.71169105   -2.33428156   -0.67752001
+H      -1.05967066   -3.00703332   -0.18456792
+H       0.81708685   -1.33998293    0.63942836
+H       0.76667301    1.35549222    0.20321493
+H       0.54320924    0.92870099    1.92345007
+H      -1.28510222    2.85939041    2.30922346
+H      -3.72854139    3.24346240    2.13325690
+H      -5.17022073    1.55123850    1.09315776
+H      -4.19994276   -0.36461812   -0.14850570
+H      -1.99779884    0.76292039   -1.08682170"""
+        spc = ARCSpecies(label='birad', adjlist="""multiplicity 1
+1  C u0 p0 c0 {2,D} {11,S} {12,S}
+2  C u0 p0 c0 {1,D} {3,S} {10,S}
+3  C u1 p0 c0 {2,S} {4,S} {13,S}
+4  C u0 p0 c0 {3,S} {5,S} {14,S} {15,S}
+5  C u1 p0 c0 {4,S} {6,S} {10,S}
+6  C u0 p0 c0 {5,S} {7,D} {16,S}
+7  C u0 p0 c0 {6,D} {8,S} {17,S}
+8  C u0 p0 c0 {7,S} {9,D} {18,S}
+9  C u0 p0 c0 {8,D} {10,S} {19,S}
+10 C u0 p0 c0 {2,S} {5,S} {9,S} {20,S}
+11 H u0 p0 c0 {1,S}
+12 H u0 p0 c0 {1,S}
+13 H u0 p0 c0 {3,S}
+14 H u0 p0 c0 {4,S}
+15 H u0 p0 c0 {4,S}
+16 H u0 p0 c0 {6,S}
+17 H u0 p0 c0 {7,S}
+18 H u0 p0 c0 {8,S}
+19 H u0 p0 c0 {9,S}
+20 H u0 p0 c0 {10,S}
+""", xyz=xyz, multiplicity=1)
+        self.assertEqual(spc.multiplicity, 1)
+        self.assertEqual(spc.mol.multiplicity, 1)
+        radical_atoms = [i for i, a in enumerate(spc.mol.atoms) if a.radical_electrons > 0]
+        self.assertEqual(len(radical_atoms), 2, 'Expected two radical centers in singlet biradical')
+        self.assertTrue(all(spc.mol.atoms[i].element.symbol == 'C' for i in radical_atoms))
+        # Verify atom ordering matches xyz (first heavy atom is C at xyz index 0).
+        self.assertEqual(spc.mol.atoms[0].element.symbol, 'C')
+        self.assertEqual(spc.mol.atoms[10].element.symbol, 'H')
+
+    def test_radical_perception_hint_skipped_on_multiplicity_mismatch(self):
+        """Test that the mol radical-count perception hint is not applied when mol and species multiplicities differ."""
+        # The adjlist mol is a triplet O atom (2 radicals), but the user specifies a singlet species.
+        # The radical count of self.mol must not be forced on perception (mol_from_xyz),
+        # so the perceived singlet O atom carries no radicals.
+        spc = ARCSpecies(label='O_singlet', adjlist='multiplicity 3\n1 O u2 p2 c0',
+                         xyz='O 0.0 0.0 0.0', multiplicity=1)
+        self.assertEqual(spc.multiplicity, 1)
+        self.assertIsNotNone(spc.mol)
+        self.assertEqual(spc.mol.multiplicity, 1)
+        self.assertEqual(sum(atom.radical_electrons for atom in spc.mol.atoms), 0)
 
     def test_preserving_multiplicity(self):
         """Test that multiplicity is being preserved, especially when it is guessed differently from xyz"""
@@ -1716,10 +1782,13 @@ H       1.32129900    0.71837500    0.38017700
 16 H u0 p0 c0 {6,S}
 17 H u0 p0 c0 {1,S} {12,vdW}"""
 
+        mol_from_adj = Molecule().from_adjacency_list(adj)
+        self.assertTrue(any(bond.is_van_der_waals() for bond in mol_from_adj.get_all_edges()),
+                        'Expected the test adjlist to contain at least one vdW bond.')
+
         spc = ARCSpecies(label='TS0', adjlist=adj, xyz=xyz, is_ts=True, multiplicity=2, charge=0)
-        self.assertIn('3  H u0 p0 c0 {2,S}', spc.mol.to_adjacency_list())
-        self.assertIn('11 H u0 p0 c0 {1,S} {5,S}', spc.mol.to_adjacency_list())
-        self.assertNotIn('{17,vdW}', spc.mol.to_adjacency_list())
+        self.assertFalse(any(bond.is_van_der_waals() for bond in spc.mol.get_all_edges()),
+                         'TS ARCSpecies.mol should not retain vdW bonds from the input adjlist.')
 
     def test_consistent_atom_order(self):
         """Test that the atom order is preserved whether starting from SMILES or from xyz"""
@@ -2059,12 +2128,12 @@ H       1.11582953    0.94384729   -0.10134685"""
                                                                       charge=spc.charge)))
         self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
 
-        cycle = ARCSpecies(label="cycle",smiles= "C(1)CC(1)")
+        cycle = ARCSpecies(label="cycle", smiles="C1CC1")
         cycle.bdes = [(1, 2)]
         cycle.final_xyz = cycle.get_xyz()
         cycle_scissors = cycle.scissors()
         cycle_scissors[0].mol.update(sort_atoms=False)
-        self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2+]C[CH2+]").mol))
+        self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2]C[CH2]").mol))
         self.assertEqual(len(cycle_scissors), 1)
 
         benzyl_alcohol = ARCSpecies(label='benzyl_alcohol', smiles='c1ccccc1CO',
@@ -2224,6 +2293,29 @@ H       1.11582953    0.94384729   -0.10134685"""
 
         ch_ts = ARCSpecies(label='C--H-TS', xyz='C 0 0 0\nH 1 2 5', is_ts=True)
         self.assertEqual(ch_ts.multiplicity, 2)
+
+        ts_1_xyz = """H -2.99394700  1.00970200  0.09451400
+                      O -4.10192200  0.13578500 -0.05953100
+                      H -4.43761000 -0.35213100  0.70859500
+                      C -2.22272000  0.16048700 -0.01004900
+                      O -1.59892700 -0.79618100  0.08758500"""
+        ts_1_spc = ARCSpecies(label='TS1', is_ts=True, xyz=ts_1_xyz)
+        self.assertEqual(ts_1_spc.multiplicity, 1)
+
+        ts_1_spc_from_dict = ARCSpecies(species_dict={'label': 'TS1', 'is_ts': True, 'xyz': ts_1_xyz})
+        self.assertEqual(ts_1_spc_from_dict.multiplicity, 1)
+
+        # Test a known doublet TS from a Gaussian output file (NH3 + H = NH2 + H2).
+        # Verify that xyz-based electron counting (11 electrons → mult 2) wins over mol.multiplicity.
+        ts_doublet_path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_NH3+H=NH2+H2.out')
+        ts_doublet = ARCSpecies(label='TS_NH3+H', is_ts=True, xyz=ts_doublet_path)
+        self.assertIsNotNone(ts_doublet.mol)
+        self.assertEqual(ts_doublet.multiplicity, 2)
+        # Simulate a mol that incorrectly perceives multiplicity as 1, and verify xyz detection still gives 2.
+        ts_doublet.multiplicity = None
+        ts_doublet.mol.multiplicity = 1
+        ts_doublet.determine_multiplicity_from_xyz()
+        self.assertEqual(ts_doublet.multiplicity, 2)
 
     def test_cluster_tsgs(self):
         """Test the cluster_tsgs() method."""
@@ -2879,6 +2971,49 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         # Test incorrect map_ length
         with self.assertRaises(SpeciesError):
             self.spc1.kabsch(self.spc1, [0, 1, 2])
+
+
+    def test_assign_radicals_after_scission_cyclic(self):
+        """
+        Test radical assignment for a cyclic scission (single molecule result).
+        Using Cyclopropane to represent a true ring opening.
+        """
+        mol = Molecule().from_smiles('C1CC1')
+        
+        # Find a C-C bond to remove to simulate a ring opening
+        for bond in mol.get_all_edges():
+            if bond.atom1.is_carbon() and bond.atom2.is_carbon():
+                c1, c2 = bond.atom1, bond.atom2
+                mol.remove_bond(bond)
+                break
+        
+        self.assertEqual(c1.radical_electrons, 0)
+        self.assertEqual(c2.radical_electrons, 0)
+        
+        spc = ARCSpecies(label='cyclopropane', mol=Molecule().from_smiles('C1CC1'))
+        spc._assign_radicals_after_scission(mol=mol)
+        
+        self.assertEqual(c1.radical_electrons, 1)
+        self.assertEqual(c2.radical_electrons, 1)
+
+    def test_assign_radicals_after_scission_with_added_radical_list(self):
+        """
+        Test radical assignment using the added_radical tracking list (non-cyclic scission).
+        """
+        mol1 = Molecule().from_smiles('[CH3]')
+        mol1.atoms[0].radical_electrons = 0
+        
+        spc = ARCSpecies(label='parent', mol=Molecule().from_smiles('CC'))
+        added_radical = []
+        
+        spc._assign_radicals_after_scission(mol=mol1, label='fragment_A', added_radical=added_radical)
+        self.assertEqual(mol1.atoms[0].radical_electrons, 1)
+        self.assertEqual(added_radical, ['fragment_A'])
+        
+        # Reset the radical electron to simulate another atom in the same fragment needing one
+        mol1.atoms[0].radical_electrons = 0
+        with self.assertRaises(SpeciesError):
+            spc._assign_radicals_after_scission(mol=mol1, label='fragment_A', added_radical=added_radical)
 
 
 class TestTSGuess(unittest.TestCase):

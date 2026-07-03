@@ -7,8 +7,6 @@ Fixed on 01.06.2020 by Sebastian Ehlert
 @author: dohm
 '''
 
-from __future__ import print_function
-
 import sys, os
 element_symbols_lc=["bq","h","he","li","be","b","c","n","o","f","ne",
                  "na","mg","al","si","p","s","cl","ar","k","ca","sc",

@@ -2,8 +2,6 @@
 A module for representing a reaction.
 """
 
-from typing import Dict, List, Optional, Tuple, Union
-
 from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
@@ -35,10 +33,10 @@ class ARCReaction(object):
     Args:
         label (str, optional): The reaction's label in the format `r1 + r2 <=> p1 + p2`
                                (or unimolecular on either side, as appropriate).
-        reactants (List[str], optional): A list of reactant *labels* corresponding to an :ref:`ARCSpecies <species>`.
-        products (List[str], optional): A list of product *labels* corresponding to an :ref:`ARCSpecies <species>`.
-        r_species (List[ARCSpecies], optional): A list of reactants :ref:`ARCSpecies <species>` objects.
-        p_species (List[ARCSpecies], optional): A list of products :ref:`ARCSpecies <species>` objects.
+        reactants (list[str], optional): A list of reactant *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        products (list[str], optional): A list of product *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        r_species (list[ARCSpecies], optional): A list of reactants :ref:`ARCSpecies <species>` objects.
+        p_species (list[ARCSpecies], optional): A list of products :ref:`ARCSpecies <species>` objects.
         ts_label (str, optional): The :ref:`ARCSpecies <species>` label of the respective TS.
         ts_xyz_guess (list, optional): A list of TS XYZ user guesses, each in a string format.
         family (str, optional): The reaction family, if applicable.
@@ -51,7 +49,7 @@ class ARCReaction(object):
         preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)
                                                  between which distances and dihedrals of these pivots must be
                                                  preserved. Used for identification of rotors which break a TS.
-        kinetics (Dict[str, Union[float, Tuple[float, str]]], optional): The high pressure limit rate coefficient
+        kinetics (dict[str, float | tuple[float, str]], optional): The high pressure limit rate coefficient
                                                                          calculated by ARC. Keys are 'A' (value, unit),
                                                                          n (value), and Ea (value, unit).
 
@@ -60,16 +58,16 @@ class ARCReaction(object):
                      (or unimolecular on either side, as appropriate).
         family (str): The RMG kinetic family, if applicable.
         family_own_reverse (bool): Whether the RMG family is its own reverse.
-        reactants (List[str]): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
-        products (List[str]): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
-        r_species (List[ARCSpecies]): A list of reactants :ref:`ARCSpecies <species>` objects.
-        p_species (List[ARCSpecies]): A list of products :ref:`ARCSpecies <species>` objects.
+        reactants (list[str]): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
+        products (list[str]): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
+        r_species (list[ARCSpecies]): A list of reactants :ref:`ARCSpecies <species>` objects.
+        p_species (list[ARCSpecies]): A list of products :ref:`ARCSpecies <species>` objects.
         ts_species (ARCSpecies): The :ref:`ARCSpecies <species>` corresponding to the reaction's TS.
         dh_rxn298 (float): The heat of reaction at 298K in J/mol.
-        kinetics (Dict[str, Union[float, Tuple[float, str]]]): The high pressure limit rate coefficient
+        kinetics (dict[str, float | tuple[float, str]]): The high pressure limit rate coefficient
                                                                calculated by ARC. Keys are 'A' (value, unit),
                                                                n (value), and Ea (value, unit).
-        rmg_kinetics (List[Dict[str, float]]): The Arrhenius kinetics from RMG's libraries and families.
+        rmg_kinetics (list[dict[str, float]]): The Arrhenius kinetics from RMG's libraries and families.
                                                Each dict has 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol as keys,
                                                and a 'comment' key with a description of the source of the kinetics.
         long_kinetic_description (str): A description for the species entry in the thermo library outputted.
@@ -81,28 +79,28 @@ class ARCReaction(object):
         ts_label (str): The :ref:`ARCSpecies <species>` label of the respective TS.
         preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
                                        distances and dihedrals of these pivots must be preserved.
-        product_dicts (List[dict]): A list of dictionaries with the RMG reaction family products.
-        atom_map (List[int]): An atom map, mapping the reactant atoms to the product atoms.
+        product_dicts (list[dict]): A list of dictionaries with the RMG reaction family products.
+        atom_map (list[int]): An atom map, mapping the reactant atoms to the product atoms.
                               I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
                               reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
         done_opt_r_n_p (bool): Whether the optimization of all reactants and products is complete.
     """
     def __init__(self,
                  label: str = '',
-                 reactants: Optional[List[str]] = None,
-                 products: Optional[List[str]] = None,
-                 r_species: Optional[List[ARCSpecies]] = None,
-                 p_species: Optional[List[ARCSpecies]] = None,
-                 ts_label: Optional[str] = None,
-                 ts_xyz_guess: Optional[list] = None,
-                 family: Optional[str] = None,
-                 xyz: Optional[list] = None,
-                 multiplicity: Optional[int] = None,
-                 charge: Optional[int] = None,
-                 reaction_dict: Optional[dict] = None,
-                 species_list: Optional[List[ARCSpecies]] = None,
-                 preserve_param_in_scan: Optional[list] = None,
-                 kinetics: Dict[str, Union[float, Tuple[float, str]]] = None,
+                 reactants: list[str] | None = None,
+                 products: list[str] | None = None,
+                 r_species: list[ARCSpecies] | None = None,
+                 p_species: list[ARCSpecies] | None = None,
+                 ts_label: str | None = None,
+                 ts_xyz_guess: list | None = None,
+                 family: str | None = None,
+                 xyz: list | None = None,
+                 multiplicity: int | None = None,
+                 charge: int | None = None,
+                 reaction_dict: dict | None = None,
+                 species_list: list[ARCSpecies] | None = None,
+                 preserve_param_in_scan: list | None = None,
+                 kinetics: dict[str, float | tuple[float, str]] = None,
                  ):
         self.arrow = ' <=> '
         self.plus = ' + '
@@ -111,10 +109,13 @@ class ARCReaction(object):
         self.kinetics = kinetics
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
-        if check_family_name(family):
-            self.family = family
-        else:
-            raise ValueError(f"Invalid family name: {family}")
+        self._family = None
+        self._family_determined = False
+        if family is not None:
+            if check_family_name(family):
+                self.family = family
+            else:
+                raise ValueError(f"Invalid family name: {family}")
         self._family_own_reverse = False
         self.ts_label = ts_label
         self.dh_rxn298 = None
@@ -203,7 +204,7 @@ class ARCReaction(object):
             if self._multiplicity is not None:
                 logger.info(f'Setting multiplicity of reaction {self.label} to {self._multiplicity}')
             else:
-                logger.Error(f'Could not determine multiplicity for the reaction: {self.label}')
+                logger.error(f'Could not determine multiplicity for the reaction: {self.label}')
         return self._multiplicity
 
     @multiplicity.setter
@@ -216,14 +217,16 @@ class ARCReaction(object):
     @property
     def family(self):
         """The RMG reaction family"""
-        if self._family is None:
+        if not self._family_determined:
             self._family, self._family_own_reverse = self.determine_family()
+            self._family_determined = True
         return self._family
 
     @family.setter
     def family(self, value):
         """Allow setting family"""
         self._family = value
+        self._family_determined = True
         if value is not None and not isinstance(value, str):
             raise InputError(f'Reaction family must be a string, got {value} which is a {type(value)}.')
 
@@ -300,7 +303,7 @@ class ARCReaction(object):
 
     def from_dict(self,
                   reaction_dict: dict,
-                  species_list: Optional[list] = None,
+                  species_list: list | None = None,
                   ):
         """
         A helper function for loading this object from a dictionary in a YAML file for restarting ARC.
@@ -390,14 +393,25 @@ class ARCReaction(object):
 
     def is_isomerization(self):
         """
-        Determine whether this is an isomerization reaction.
+        Determine whether this is an isomerization reaction (i.e., A <=> B).
 
         Returns:
             bool: Whether this is an isomerization reaction.
         """
-        return True if len(self.r_species) == 1 and len(self.p_species) == 1 else False
+        reactants, products = self.get_reactants_and_products(return_copies=False)
+        return len(reactants) == 1 and len(products) == 1
 
-    def set_label_reactants_products(self, species_list: Optional[List[ARCSpecies]] = None):
+    def is_unimolecular(self):
+        """
+        Determine whether this is a unimolecular reaction (e.g., A <=> B or A <=> B + C or A + B <=> C).
+
+        Returns:
+            bool: Whether this is a unimolecular reaction.
+        """
+        reactants, products = self.get_reactants_and_products(return_copies=False)
+        return len(reactants) == 1 or len(products) == 1
+
+    def set_label_reactants_products(self, species_list: list[ARCSpecies] | None = None):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
         # First make sure that reactants and products labels are defined (most often used).
         if not len(self.reactants) or not len(self.products):
@@ -516,17 +530,17 @@ class ARCReaction(object):
                           consider_rmg_families: bool = True,
                           consider_arc_families: bool = True,
                           discover_own_reverse_rxns_in_reverse: bool = False,
-                          ) -> List[dict]:
+                          ) -> list[dict]:
         """
         A helper function for getting the RMG family product_dicts using the ARC family module.
 
         Structure of the returned product_dicts::
 
             [{'family': str: Family label,
-              'group_labels': Tuple[str, str]: Group labels used to generate the products,
-              'products': List['Molecule']: The generated products,
-              'r_label_map': Dict[int, str]: Mapping of reactant atom indices to labels,
-              'p_label_map': Dict[str, int]: Mapping of product labels to atom indices
+              'group_labels': tuple[str, str]: Group labels used to generate the products,
+              'products': list[Molecule]: The generated products,
+              'r_label_map': dict[int, str]: Mapping of reactant atom indices to labels,
+              'p_label_map': dict[str, int]: Mapping of product labels to atom indices
                                              (refers to the given 'products' in this dict
                                              and not to the products of the original reaction),
               'own_reverse': bool: Whether the family's template also represents its own reverse,
@@ -534,7 +548,7 @@ class ARCReaction(object):
              ]
 
         Returns:
-            List[dict]: A list of dictionaries with the RMG reaction family products.
+            list[dict]: A list of dictionaries with the RMG reaction family products.
         """
         product_dicts = get_reaction_family_products(rxn=self,
                                                      rmg_family_set=rmg_family_set,
@@ -552,13 +566,16 @@ class ARCReaction(object):
                          ):
         """
         Determine the RMG reaction family.
-        Populates the .family, and .family_own_reverse attributes.
 
         Args:
             rmg_family_set (str, optional): The RMG family set to use.
             consider_rmg_families (bool, optional): Whether to consider RMG's families in addition to ARC's.
             consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
+
+        Returns:
+            tuple[str | None, bool | None]: The reaction family label,
+                and whether the family's template also represents its own reverse.
         """
         if rmg_family_set == 'default' and consider_rmg_families and consider_arc_families and not discover_own_reverse_rxns_in_reverse:
             # these are the default values, don't bother generating a new product_dicts list, use the property
@@ -652,14 +669,14 @@ class ARCReaction(object):
             self.done_opt_r_n_p = all(spc.final_xyz is not None for spc in self.r_species + self.p_species)
 
     def check_atom_balance(self,
-                           ts_xyz: Optional[dict] = None,
+                           ts_xyz: dict | None = None,
                            raise_error: bool = True,
                            ) -> bool:
         """
         Check atom balance between reactants, TSs, and product wells.
 
         Args:
-            ts_xyz (Optional[dict]): An alternative TS xyz to check.
+            ts_xyz (dict | None): An alternative TS xyz to check.
                                      If unspecified, user guesses and the ts_species will be checked.
             raise_error (bool, optional): Whether to raise an error if an imbalance is found.
 
@@ -737,8 +754,8 @@ class ARCReaction(object):
         return True
 
     def get_species_count(self,
-                          species: Optional[ARCSpecies] = None,
-                          label: Optional[str] = None,
+                          species: ARCSpecies | None = None,
+                          label: str | None = None,
                           well: int = 0,
                           ) -> int:
         """
@@ -751,7 +768,7 @@ class ARCReaction(object):
             well (int, optional): Either ``0`` or ``1`` for the reactants or products well, respectively.
 
         Returns:
-            Optional[int]:
+            int | None:
                 The number of occurrences of this species in the respective well.
         """
         if species is None and label is None:
@@ -766,7 +783,7 @@ class ARCReaction(object):
 
     def get_reactants_and_products(self,
                                    return_copies: bool = True,
-                                   ) -> Tuple[List[ARCSpecies], List[ARCSpecies]]:
+                                   ) -> tuple[list[ARCSpecies], list[ARCSpecies]]:
         """
         Get a list of reactant and product species including duplicate species, if any.
         The species could either be ``ARCSpecies`` or ``RMGSpecies`` object instance.
@@ -774,7 +791,7 @@ class ARCReaction(object):
         Args:
             return_copies (bool, optional): Whether to return unique object instances using the copy() method.
 
-        Returns: Tuple[List[ARCSpecies], List[ARCSpecies]]
+        Returns: tuple[list[ARCSpecies], list[ARCSpecies]]
             The reactants and products.
         """
         reactants, products = list(), list()
@@ -787,30 +804,34 @@ class ARCReaction(object):
         return reactants, products
 
     def get_expected_changing_bonds(self,
-                                    r_label_dict: Dict[str, int],
-                                    ) -> Tuple[Optional[List[Tuple[int, int]]], Optional[List[Tuple[int, int]]]]:
+                                    r_label_dict: dict[str, int],
+                                    family: str | None = None,
+                                    ) -> tuple[list[tuple[int, int]] | None, list[tuple[int, int]] | None]:
         """
         Get the expected forming and breaking bonds from the RMG reaction template.
 
         Args:
-            r_label_dict (Dict[str, int]): The RMG reaction atom labels and corresponding atom indices
+            r_label_dict (dict[str, int]): The RMG reaction atom labels and corresponding atom indices
                                            of atoms in a TemplateReaction.
+            family (str, optional): The reaction family label to take the recipe from.
+                                    Defaults to the reaction's own family.
 
         Returns:
-            Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+            tuple[list[tuple[int, int]], list[tuple[int, int]]]:
                 A list of tuples of atom indices representing breaking and forming bonds.
         """
-        if self.family is None:
+        family = family or self.family
+        if family is None:
             return None, None
-        family = ReactionFamily(label=self.family)
+        reaction_family = ReactionFamily(label=family)
         # E.g.: [['BREAK_BOND', '*1', 1, '*2'], ['FORM_BOND', '*2', 1, '*3'], ['GAIN_RADICAL', '*1', '1']]
         expected_breaking_bonds = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
-                                   for action in family.actions if action[0] == 'BREAK_BOND']
+                                   for action in reaction_family.actions if action[0] == 'BREAK_BOND']
         expected_forming_bonds = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
-                                  for action in family.actions if action[0] == 'FORM_BOND']
+                                  for action in reaction_family.actions if action[0] == 'FORM_BOND']
         return expected_breaking_bonds, expected_forming_bonds
 
-    def get_number_of_atoms_in_reaction_zone(self) -> Optional[int]:
+    def get_number_of_atoms_in_reaction_zone(self) -> int | None:
         """
         Get the number of atoms that participate in the reaction zone according to the reaction's RMG recipe.
 
@@ -829,12 +850,12 @@ class ARCReaction(object):
         labels = set(labels)
         return len(labels)
 
-    def get_single_mapped_product_xyz(self) -> Optional[ARCSpecies]:
+    def get_single_mapped_product_xyz(self) -> ARCSpecies | None:
         """
         Get a copy of the product species with mapped cartesian coordinates of a reaction with a single product.
 
         Returns:
-            Optional[ARCSpecies]: The corresponding ARCSpecies object with mapped coordinates.
+            ARCSpecies | None: The corresponding ARCSpecies object with mapped coordinates.
         """
         if len(self.p_species) > 1:
             logger.error(f'Can only return a mapped product for reactions with a single product, '
@@ -849,7 +870,7 @@ class ARCReaction(object):
                                     )
         return mapped_product
 
-    def get_reactants_xyz(self, return_format='str') -> Union[dict, str]:
+    def get_reactants_xyz(self, return_format='str') -> dict | str:
         """
         Get a combined string/dict representation of the cartesian coordinates of all reactant species.
 
@@ -857,7 +878,7 @@ class ARCReaction(object):
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
                                  Default: ``'str'``.
 
-        Returns: Union[dict, str]
+        Returns: dict | str
             The combined cartesian coordinates.
 
         Todo:
@@ -881,7 +902,7 @@ class ARCReaction(object):
             xyz_dict = xyz_to_str(xyz_dict)
         return xyz_dict
 
-    def get_products_xyz(self, return_format='str') -> Union[dict, str]:
+    def get_products_xyz(self, return_format='str') -> dict | str:
         """
         Get a combined string/dict representation of the cartesian coordinates of all product species.
         The resulting coordinates are ordered as the reactants using an atom map.
@@ -890,7 +911,7 @@ class ARCReaction(object):
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
                                  Default: ``'str'``.
 
-        Returns: Union[dict, str]
+        Returns: dict | str
             The combined cartesian coordinates.
 
         Todo:
@@ -914,12 +935,12 @@ class ARCReaction(object):
             xyz_dict = xyz_to_str(xyz_dict)
         return xyz_dict
 
-    def get_element_mass(self) -> List[float]:
+    def get_element_mass(self) -> list[float]:
         """
         Get the mass of all elements of a reaction. Uses the atom order of the reactants.
 
         Returns:
-            List[float]: The masses of all elements in the reactants.
+            list[float]: The masses of all elements in the reactants.
         """
         masses = list()
         for reactant in self.get_reactants_and_products()[0]:
@@ -929,7 +950,7 @@ class ARCReaction(object):
 
     def get_bonds(self,
                   r_bonds_only: bool = False,
-                  ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+                  ) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
         """
         Get the connectivity of the reactants and products, all mapped to the atom indices of the reactants.
 
@@ -937,7 +958,7 @@ class ARCReaction(object):
             r_bonds_only (bool, optional): Whether to return only the reactant bonds.
 
         Returns:
-            Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+            tuple[list[tuple[int, int]], list[tuple[int, int]]]:
                 A length-2 tuple is which entries represent reactants and product information, respectively.
                 Each entry is a list of tuples, each represents a bond and contains sorted atom indices.
         """
@@ -968,7 +989,7 @@ class ARCReaction(object):
 
     def _get_reactive_bonds_from_family(
         self,
-    ) -> Optional[Tuple[List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]]]]:
+    ) -> tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]] | None:
         """
         Derive formed, broken, and order-changed bonds directly from the RMG family's
         recipe actions and ``r_label_map``, bypassing ``atom_map``.
@@ -978,7 +999,7 @@ class ARCReaction(object):
         and is sufficient for NMD validation which only needs reactive-atom roles.
 
         Returns:
-            Optional[Tuple[formed, broken, changed]]: ``None`` when the family or
+            tuple[formed, broken, changed] | None: ``None`` when the family or
             ``r_label_map`` is unavailable and the label-based path cannot be taken.
         """
         if self.family is None or not self.product_dicts:
@@ -1011,10 +1032,10 @@ class ARCReaction(object):
 
     @staticmethod
     def _resolve_label_index(
-        label_map: Dict[str, int],
+        label_map: dict[str, int],
         label: str,
         preferred_occurrence: int = 0,
-    ) -> Optional[int]:
+    ) -> int | None:
         """Resolve an RMG label (e.g. ``'*1'``) to a global atom index in ``label_map``.
 
         When the same label appears twice in a recipe (e.g. ``R_Recombination``),
@@ -1025,11 +1046,11 @@ class ARCReaction(object):
             return None
         return label_map[keys[min(preferred_occurrence, len(keys) - 1)]]
 
-    def get_formed_and_broken_bonds(self) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+    def get_formed_and_broken_bonds(self) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
         """
         Get all bonds that were formed or broken in the reaction.
         Returns:
-            Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]: The formed and broken bonds.
+            tuple[list[tuple[int, int]], list[tuple[int, int]]]: The formed and broken bonds.
         """
         if self.atom_map is None and self.family and self.product_dicts:
             family_bonds = self._get_reactive_bonds_from_family()
@@ -1045,11 +1066,11 @@ class ARCReaction(object):
         formed_bonds, broken_bonds = p_bonds - r_bonds, r_bonds - p_bonds
         return list(formed_bonds), list(broken_bonds)
 
-    def get_changed_bonds(self) -> List[Tuple[int, int]]:
+    def get_changed_bonds(self) -> list[tuple[int, int]]:
         """
         Get all bonds that change their bond order in the reaction.
         Returns:
-            List[Tuple[int, int]]: The bonds that change their bond order.
+            list[tuple[int, int]]: The bonds that change their bond order.
         """
         if self.atom_map is None and self.family and self.product_dicts:
             family_bonds = self._get_reactive_bonds_from_family()
@@ -1094,7 +1115,7 @@ class ARCReaction(object):
                 changed_bonds.append(bond)
         return changed_bonds
 
-    def copy_e0_values(self, other_rxn: Optional['ARCReaction']):
+    def copy_e0_values(self, other_rxn: ARCReaction | None):
         """
         Copy the E0 values from another reaction object instance for the TS
         and for all species if they have corresponding labels.
@@ -1109,7 +1130,7 @@ class ARCReaction(object):
                     if spc.label == other_spc.label:
                         spc.e0 = spc.e0 or other_spc.e0
 
-    def get_rxn_smiles(self) -> Optional[str]:
+    def get_rxn_smiles(self) -> str | None:
         """
         returns the reaction smiles of the reaction.
 
@@ -1129,16 +1150,16 @@ class ARCReaction(object):
         return ".".join(smiles_r)+">>"+".".join(smiles_p)
 
 
-def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:
+def remove_dup_species(species_list: list[ARCSpecies]) -> list[ARCSpecies]:
     """
     Remove duplicate species from a species list.
     Used when assigning r_species and p_species.
 
     Args:
-        species_list (List[ARCSpecies]): The species list to process.
+        species_list (list[ARCSpecies]): The species list to process.
 
     Returns:
-        List[ARCSpecies]: A list of species without duplicates.
+        list[ARCSpecies]: A list of species without duplicates.
     """
     if species_list is None or not(len(species_list)):
         return list()

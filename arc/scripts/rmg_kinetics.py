@@ -7,7 +7,7 @@ and get kinetic rate coefficients for reactions
 """
 
 import os
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from common import parse_command_line_arguments, read_yaml_file, save_yaml_file
 
@@ -42,15 +42,15 @@ def main():
     save_yaml_file(path=input_file, content=result)
 
 
-def get_rate_coefficients(reaction_list: List[dict]) -> List[dict]:
+def get_rate_coefficients(reaction_list: List[Dict]) -> List[Dict]:
     """
     Get rate coefficients for a list of reactions.
 
     Args:
-        reaction_list (List[dict]): The list of reactions.
+        reaction_list (list[dict]): The list of reactions.
 
     Returns:
-        List[dict]: The list of reactions with rate coefficients.
+        list[dict]: The list of reactions with rate coefficients.
     """
     print('Loading RMG database...')
     rmgdb = load_rmg_database()
@@ -66,7 +66,7 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
                            reaction: Reaction,
                            dh_rxn298: Optional[float] = None,
                            family: Optional[str] = None,
-                           ) -> List[dict]:
+                           ) -> List[Dict]:
     """
     Determine kinetics for `reaction` (an RMG Reaction object) from RMG's database, if possible.
     Assigns a list of all matching entries from both libraries and families.
@@ -77,7 +77,7 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
         dh_rxn298 (float, optional): The heat of reaction at 298 K in J/mol.
         family (str, optional): The RMG family label.
 
-    Returns: List[dict]
+    Returns: list[dict]
         All matching RMG reactions kinetics (both libraries and families) as a dict of parameters.
     """
     rmg_reactions = list()
@@ -138,14 +138,14 @@ def get_dh_rxn298(rmgdb: RMGDatabase,
     return dh_rxn
 
 
-def get_kinetics_from_reactions(reactions: List[Reaction]) -> List[dict]:
+def get_kinetics_from_reactions(reactions: List[Reaction]) -> List[Dict]:
     """
     Get kinetics from a list of RMG Reaction objects.
 
     Args:
-        reactions (List[Reaction]): The RMG Reaction objects.
+        reactions (list[Reaction]): The RMG Reaction objects.
 
-    Returns: List[dict]
+    Returns: list[dict]
         The kinetics as a dict of parameters.
     """
     kinetics_list = list()
@@ -174,7 +174,7 @@ def loop_families(rmgdb: RMGDatabase,
         rmgdb (RMGDatabase): The RMG database instance.
         reaction (Reaction): The RMG Reaction object instance.
 
-    Returns: List[Tuple['KineticsFamily', list]]
+    Returns: list[tuple['KineticsFamily', list]]
         Entries are tuples of a corresponding RMG KineticsFamily instance and a list of degenerate reactions.
     """
     reaction = reaction.copy()  # Use a copy to avoid changing atom order in the molecules by RMG.

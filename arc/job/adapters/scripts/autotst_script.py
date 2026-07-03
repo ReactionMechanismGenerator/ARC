@@ -6,11 +6,15 @@ A standalone script to retrieve xyz data from AutoTST,
 should be run under the tst_env.
 """
 
+# tst_env is Python 3.9; this script uses PEP 604 union syntax
+# (``str | None``) for parity with the rest of ARC. The future-import
+# defers annotation evaluation so 3.9 doesn't choke at def-time.
+from __future__ import annotations
+
 import argparse
 import numpy as np
 import os
 import yaml
-from typing import Optional
 
 from autotst.reaction import Reaction
 
@@ -38,8 +42,8 @@ def parse_command_line_arguments(command_line_args=None):
     return args
 
 
-def main(reaction_label: Optional[str] = None,
-         output_path: Optional[str] = None,
+def main(reaction_label: str | None = None,
+         output_path: str | None = None,
          ) -> None:
     """
     Run AutoTST to generate TS guesses.

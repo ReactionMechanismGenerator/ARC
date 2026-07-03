@@ -18,7 +18,7 @@ import shutil
 import time
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -40,7 +40,6 @@ from arc.species.vectors import calculate_dihedral_angle
 if TYPE_CHECKING:
     from arc.species import ARCSpecies
 
-
 logger = get_logger()
 
 default_job_settings, servers, submit_filenames, t_max_format, input_filenames, output_filenames = \
@@ -48,6 +47,18 @@ default_job_settings, servers, submit_filenames, t_max_format, input_filenames, 
     settings['input_filenames'], settings['output_filenames']
 
 constraint_type_dict = {2: 'B', 3: 'A', 4: 'D'}
+
+# ARC keeps job-memory math in base-2 units internally. In other words, ARC's
+# "GB" behaves as GiB and is converted using 1 GiB = 1024 MiB. This is
+# deliberate: many chemistry codes and cluster templates ultimately consume an
+# integer "MB"-style value, and using a consistent binary convention avoids
+# mixing 1000- and 1024-based conversions in different parts of the pipeline.
+# Human-facing decimal capacities are smaller when expressed in base-2, e.g.
+# 10 GB (decimal) ~= 9.31 GiB. ARC therefore interprets job_memory_gb=10 as
+# 10 GiB, not 10 decimal GB.
+MEMORY_GB_TO_MIB = 1024
+DEFAULT_JOB_MEMORY_OVERHEAD = 1.10
+CAPPED_JOB_MEMORY_OVERHEAD = 1.05
 
 
 class JobEnum(str, Enum):
@@ -81,6 +92,7 @@ class JobEnum(str, Enum):
             - gan  # Generative adversarial networks, https://doi.org/10.1063/5.0055094
     """
     # ESS
+    ase = 'ase'
     cfour = 'cfour'
     gaussian = 'gaussian'
     mockter = 'mockter'
@@ -95,10 +107,11 @@ class JobEnum(str, Enum):
 
     # TS search methods
     autotst = 'autotst'  # AutoTST, 10.1021/acs.jpca.7b07361, 10.26434/chemrxiv.13277870.v2
+    gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
     heuristics = 'heuristics'  # ARC's heuristics
     crest = 'crest'  # CREST conformer/TS search
     kinbot = 'kinbot'  # KinBot, 10.1016/j.cpc.2019.106947
-    gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
+    linear = 'linear'  # ARC's linear TS search
     user = 'user'  # user guesses
     xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
     orca_neb = 'orca_neb'
@@ -399,7 +412,7 @@ class JobAdapter(ABC):
                 self.set_initial_and_final_times()
         self.final_time = self.final_time or datetime.datetime.now()
 
-    def set_initial_and_final_times(self, ssh: Optional[SSHClient] = None):
+    def set_initial_and_final_times(self, ssh: SSHClient | None = None):
         """
         Set the end time of the job.
 
@@ -440,7 +453,7 @@ class JobAdapter(ABC):
             self.run_time = None
 
     @staticmethod
-    def _rotate_csv_if_needed(csv_path: str, max_lines: int = 10000, line_count: Optional[int] = None) -> None:
+    def _rotate_csv_if_needed(csv_path: str, max_lines: int = 10000, line_count: int | None = None) -> None:
         """
         Rotate a CSV file if it reaches or exceeds ``max_lines`` lines (including the header).
         The archived file is renamed with a timestamp suffix in the same directory.
@@ -582,21 +595,25 @@ class JobAdapter(ABC):
                            f'exceeds {100 * job_max_server_node_memory_allocation}% of the the maximum node memory on '
                            f'{self.server}. Setting it to {job_max_server_node_memory_allocation * max_mem:.2f} GB.')
             self.job_memory_gb = job_max_server_node_memory_allocation * max_mem
-            total_submit_script_memory = self.job_memory_gb * 1024 * 1.05  # MB
+            total_submit_script_memory_mib = math.ceil(self.job_memory_gb * MEMORY_GB_TO_MIB * CAPPED_JOB_MEMORY_OVERHEAD)
             self.job_status[1]['keywords'].append('max_total_job_memory')  # Useful info when troubleshooting.
         else:
-            total_submit_script_memory = self.job_memory_gb * 1024 * 1.1  # MB
+            total_submit_script_memory_mib = math.ceil(self.job_memory_gb * MEMORY_GB_TO_MIB * DEFAULT_JOB_MEMORY_OVERHEAD)
+        self.submit_script_memory_mib = total_submit_script_memory_mib
         # Determine amount of memory in submit script based on cluster job scheduling system.
         cluster_software = servers[self.server].get('cluster_soft').lower() if self.server is not None else None
         if cluster_software in ['oge', 'sge', 'htcondor']:
-            # In SGE, "-l h_vmem=5000M" specifies the memory for all cores to be 5000 MB.
-            self.submit_script_memory = math.ceil(total_submit_script_memory)  # in MB
+            # ARC uses MiB internally and passes that integer consistently to scheduler templates.
+            self.submit_script_memory = total_submit_script_memory_mib
         if cluster_software in ['pbs']:
-            # In PBS, "#PBS -l select=1:ncpus=8:mem=12000000" specifies the memory for all cores to be 12 MB.
-            self.submit_script_memory = math.ceil(total_submit_script_memory) * 1E6  # in Bytes
+            # ARC keeps the PBS request in MiB as well. The template still uses
+            # an "mb" suffix, but the integer is derived from the same base-2
+            # MiB count used everywhere else in ARC.
+            self.submit_script_memory = total_submit_script_memory_mib
         elif cluster_software in ['slurm']:
-            # In Slurm, "#SBATCH --mem-per-cpu=2000" specifies the memory **per cpu/thread** to be 2000 MB.
-            self.submit_script_memory = math.ceil(total_submit_script_memory / self.cpu_cores)  # in MB
+            # In Slurm, "#SBATCH --mem-per-cpu=2000" is a per-core request, so
+            # we divide ARC's total MiB budget across the requested cores.
+            self.submit_script_memory = math.ceil(total_submit_script_memory_mib / self.cpu_cores)
         self.set_input_file_memory()
 
     def as_dict(self) -> dict:
@@ -880,7 +897,7 @@ class JobAdapter(ABC):
                     val: str,
                     key1: str = 'keyword',
                     key2: str = 'general',
-                    separator: Optional[str] = None,
+                    separator: str | None = None,
                     check_val_exists: bool = True,
                     ):
         """
@@ -1008,16 +1025,16 @@ class JobAdapter(ABC):
         return run_job
 
     def save_output_file(self,
-                         key: Optional[str] = None,
-                         val: Optional[Union[float, dict, np.ndarray]] = None,
-                         content_dict: Optional[dict] = None,
+                         key: str | None = None,
+                         val: float | dict | np.ndarray | None = None,
+                         content_dict: dict | None = None,
                          ):
         """
         Save the output of a job to the YAML output file.
 
         Args:
             key (str, optional): The key for the YAML output file.
-            val (Union[float, dict, np.ndarray], optional): The value to be stored.
+            val (float | dict | np.ndarray, optional): The value to be stored.
             content_dict (dict, optional): A dictionary to store.
 
         """

@@ -3,6 +3,7 @@ import arc.job.adapters.ts.crest
 import arc.job.adapters.ts.gcn_ts
 import arc.job.adapters.ts.heuristics
 import arc.job.adapters.ts.kinbot_ts
+import arc.job.adapters.ts.linear
+import arc.job.adapters.ts.orca_neb
 import arc.job.adapters.ts.seed_hub
 import arc.job.adapters.ts.xtb_gsm
-import arc.job.adapters.ts.orca_neb

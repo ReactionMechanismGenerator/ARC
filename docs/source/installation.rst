@@ -26,7 +26,7 @@ Note:
 Clone and setup path
 ^^^^^^^^^^^^^^^^^^^^
 
-- Download and install the `Anaconda Python Platform`__ for Python 3.7 or higher if you haven't already.
+- Download and install the `Anaconda Python Platform`__ for Python 3.14 or higher if you haven't already.
 - Get git and appropriate compilers if you don't have them already by typing ``sudo apt install git gcc g++ make``
   in a terminal.
 - Clone ARC's repository to by typing the following command in the desired folder (e.g., under `~/Code/`)::
@@ -69,12 +69,17 @@ Install dependencies
     make install-rmg RMG_ARGS="--source --conda"
     make install-rmg RMG_ARGS="--source --pip"
 
-    Optional extras (examples)::
-
-    make install-rmg RMG_ARGS="--rms"
-    make install-rmg RMG_ARGS="--source --rms --ssh"
-
     See ``devtools/install_rmg.sh --help`` for all flags.
+
+    .. note::
+
+       ARC's installer covers RMG-Py + RMG-database + Arkane. It does
+       **not** install RMS (Reaction Mechanism Simulator, the Julia-based
+       pdep / kinetics solver) — that path has been removed from
+       ``install_rmg.sh``. If you need RMS for your workflow, follow the
+       upstream RMG installation guide:
+       `RMG-Py installation docs
+       <https://reactionmechanismgenerator.github.io/RMG-Py/users/rmg/installation/index.html>`_.
 
   - Source install RMG-Py + RMG-database manually, then set `RMG_PY_PATH` and `RMG_DB_PATH` in your shell or
     `.arc/settings.py`.

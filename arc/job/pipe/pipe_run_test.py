@@ -198,6 +198,62 @@ class TestPipeRunWriteSubmitScript(unittest.TestCase):
         self.assertFalse(mode & stat.S_IXUSR, '.sub should not be executable')
 
 
+class TestPipeRunEnvPreamble(unittest.TestCase):
+    """Tests for _build_env_preamble and env injection into submit scripts."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_env_preamble_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _make_run(self, cluster_software='slurm', n_tasks=3):
+        tasks = [_make_spec(f't_{i}') for i in range(n_tasks)]
+        run = PipeRun(project_directory=self.tmpdir, run_id='env_test',
+                      tasks=tasks, cluster_software=cluster_software,
+                      max_workers=n_tasks)
+        run.stage()
+        return run
+
+    def test_ld_library_path_in_slurm_script(self):
+        """LD_LIBRARY_PATH export appears in generated slurm submit script."""
+        run = self._make_run('slurm')
+        path = run.write_submit_script()
+        with open(path) as f:
+            content = f.read()
+        self.assertIn('export LD_LIBRARY_PATH=', content)
+        self.assertIn('export CONDA_PREFIX=', content)
+
+    def test_ld_library_path_in_pbs_script(self):
+        """LD_LIBRARY_PATH export appears in generated PBS submit script."""
+        run = self._make_run('pbs')
+        path = run.write_submit_script()
+        with open(path) as f:
+            content = f.read()
+        self.assertIn('export LD_LIBRARY_PATH=', content)
+
+    def test_ld_library_path_before_python(self):
+        """LD_LIBRARY_PATH export appears before the python command."""
+        run = self._make_run('slurm')
+        path = run.write_submit_script()
+        with open(path) as f:
+            content = f.read()
+        ld_pos = content.index('export LD_LIBRARY_PATH=')
+        py_pos = content.index('-m arc.scripts.pipe_worker')
+        self.assertLess(ld_pos, py_pos)
+
+    def test_pre_cmd_injected(self):
+        """User-configured pre_cmd appears in the submit script."""
+        from unittest.mock import patch
+        run = self._make_run('slurm')
+        patched = {'pre_cmd': 'module load openbabel/3.1'}
+        with patch.dict('arc.job.pipe.pipe_run.pipe_settings', patched):
+            path = run.write_submit_script()
+        with open(path) as f:
+            content = f.read()
+        self.assertIn('module load openbabel/3.1', content)
+
+
 class TestPipeRunReconcile(unittest.TestCase):
 
     def setUp(self):

@@ -40,8 +40,8 @@ RUN git clone --depth 1 --branch ${RMG_PY_BRANCH} https://github.com/ReactionMec
     git clone --depth 1 --branch ${ARC_BRANCH} https://github.com/ReactionMechanismGenerator/ARC.git
 
 # Create RMG-Py environment (split into separate layers for GHA cache)
-# Pin python=3.9 to drastically reduce solver search space
-RUN micromamba create -y -v -n rmg_env python=3.9 -f /home/mambauser/Code/RMG-Py/environment.yml && \
+# Pin python=3.11 to drastically reduce solver search space
+RUN micromamba create -y -v -n rmg_env python=3.11 -f /home/mambauser/Code/RMG-Py/environment.yml && \
     micromamba run -n rmg_env micromamba install -y -v -c conda-forge pyjuliacall conda && \
     micromamba clean --all --yes
 
@@ -55,12 +55,12 @@ RUN micromamba run -n rmg_env bash -c "\
     "
 
 WORKDIR /home/mambauser/Code/ARC
-RUN micromamba create -y -v -n arc_env python=3.12 -f environment.yml && \
+RUN micromamba create -y -v -n arc_env python=3.14 -c conda-forge -c danagroup -f environment.yml && \
     micromamba install -y -v -n arc_env -c conda-forge pytest && \
     micromamba clean --all -f -y
 
 RUN micromamba run -n arc_env bash -euxo pipefail -c \
-      "make compile && bash ./devtools/install_pyrdl.sh" && \
+      "make compile" && \
     micromamba clean --all --yes
 
 # Stage 2: Final image

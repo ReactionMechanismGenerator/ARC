@@ -1817,8 +1817,8 @@ multiplicity 2
         spc3 = Molecule()
         spc3.props['foo'] = 'bla'
         self.assertEqual(self.molecule[0].props['foo'], 'bar')
-        self.assertDictEqual(spc2.props, {})
-        self.assertDictEqual(spc3.props, {'foo': 'bla'})
+        self.assertEqual(spc2.props, {})
+        self.assertEqual(spc3.props, {'foo': 'bla'})
 
     def test_saturate_aromatic_radical(self):
         """

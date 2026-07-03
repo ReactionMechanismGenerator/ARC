@@ -13,6 +13,8 @@ dependencies:
   - torchvision =0.14.1
   - torchaudio =0.13.1
   - cpuonly
+  - mkl <2024
+  - intel-openmp <2024
   - scikit-learn
   - matplotlib
   - ipython

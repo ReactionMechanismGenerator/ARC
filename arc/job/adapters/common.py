@@ -9,7 +9,7 @@ import shutil
 import sys
 import re
 
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 from arc.common import get_logger
 from arc.imports import settings
@@ -20,106 +20,128 @@ if TYPE_CHECKING:
     from arc.reaction import ARCReaction
     from arc.species import ARCSpecies
 
+
 logger = get_logger()
 
 default_job_settings, global_ess_settings, rotor_scan_resolution = \
     settings['default_job_settings'], settings['global_ess_settings'], settings['rotor_scan_resolution']
 
-ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot'],
-                             '1,2_Insertion_CO': ['kinbot'],
-                             '1,2_Insertion_carbene': ['kinbot'],
-                             '1,2_shiftC': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             '1,2_shiftS': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb'],
-                             '1,3_Insertion_CO2': ['kinbot'],
-                             '1,3_Insertion_ROR': ['kinbot'],
-                             '1,3_Insertion_RSR': ['kinbot'],
-                             '1,4_Cyclic_birad_scission': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             '2+2_cycloaddition': ['kinbot'],
-                             '6_membered_central_C-C_shift': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             'Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             'Cyclic_Ether_Formation': ['kinbot'],
-                             'Cyclopentadiene_scission': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             'Diels_alder_addition': ['kinbot'],
+ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'linear'],
+                             '1,2_Insertion_CO': ['kinbot', 'linear'],
+                             '1,2_Insertion_carbene': ['kinbot', 'linear'],
+                             '1,2_NH3_elimination': ['linear'],
+                             '1,2_XY_interchange': ['orca_neb', 'linear'],
+                             '1,2_shiftC': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             '1,2_shiftS': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             '1,3_Insertion_CO2': ['kinbot', 'linear'],
+                             '1,3_Insertion_ROR': ['kinbot', 'linear'],
+                             '1,3_Insertion_RSR': ['kinbot', 'linear'],
+                             '1,3_NH3_elimination': ['linear'],
+                             '1,3_sigmatropic_rearrangement': ['linear'],
+                             '1,4_Cyclic_birad_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             '1,4_Linear_birad_scission': ['linear'],
+                             '2+2_cycloaddition': ['kinbot', 'linear'],
+                             '6_membered_central_C-C_shift': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Baeyer-Villiger_step2': ['linear'],
+                             'Birad_recombination': ['linear'],
+                             'Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Cyclic_Ether_Formation': ['kinbot', 'linear'],
+                             'Cyclic_Thioether_Formation': ['linear'],
+                             'Cyclopentadiene_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Diels_alder_addition': ['kinbot', 'linear'],
+                             'Diels_alder_addition_Aromatic': ['linear'],
+                             'HO2_Elimination_from_PeroxyRadical': ['kinbot', 'linear'],
                              'H_Abstraction': ['heuristics', 'autotst', 'crest'],
+                             'Intra_2+2_cycloaddition_Cd': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Intra_5_membered_conjugated_C=C_C=C_addition': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Intra_Diels_alder_monocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Intra_RH_Add_Endocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Intra_RH_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Intra_R_Add_Endocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Intra_R_Add_ExoTetCyclic': ['kinbot', 'linear'],
+                             'Intra_R_Add_Exo_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Intra_R_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Intra_Retro_Diels_alder_bicyclic': ['kinbot', 'linear'],
+                             'Intra_ene_reaction': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Ketoenol': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Korcek_step1': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Korcek_step2': ['kinbot', 'linear'],
+                             'R_Addition_COm': ['kinbot', 'linear'],
+                             'R_Addition_CSm': ['kinbot', 'linear'],
+                             'R_Addition_MultipleBond': ['autotst', 'kinbot', 'linear'],
+                             'Retroene': ['kinbot', 'linear'],
+                             'Singlet_Carbene_Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'XY_Addition_MultipleBond': ['linear'],
+                             'XY_elimination_hydroxyl': ['linear'],
                              'carbonyl_based_hydrolysis': ['heuristics'],
                              'ether_hydrolysis': ['heuristics'],
-                             'nitrile_hydrolysis': ['heuristics'],
-                             'HO2_Elimination_from_PeroxyRadical': ['kinbot'],
-                             'Intra_2+2_cycloaddition_Cd': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             'Intra_5_membered_conjugated_C=C_C=C_addition': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             'Intra_Diels_alder_monocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb'],
-                             'Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             'Intra_ene_reaction': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb'],
-                             'intra_H_migration': ['autotst', 'gcn', 'kinbot', 'xtb_gsm', 'orca_neb'],
-                             'intra_NO2_ONO_conversion': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             'intra_OH_migration': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb'],
-                             'Intra_RH_Add_Endocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb'],
-                             'Intra_RH_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb'],
-                             'Intra_R_Add_Endocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb'],
-                             'Intra_R_Add_Exo_scission': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             'Intra_R_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb'],
-                             'Intra_R_Add_ExoTetCyclic': ['kinbot'],
-                             'Intra_Retro_Diels_alder_bicyclic': ['kinbot'],
-                             'intra_substitutionCS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             'intra_substitutionS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             'Ketoenol': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb'],
-                             'Korcek_step1': ['gcn', 'xtb_gsm', 'orca_neb'],
-                             'Korcek_step2': ['kinbot'],
-                             'R_Addition_COm': ['kinbot'],
-                             'R_Addition_CSm': ['kinbot'],
-                             'R_Addition_MultipleBond': ['autotst', 'kinbot'],
-                             'Retroene': ['kinbot'],
-                             'Singlet_Carbene_Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb'],
+                             'halocarbene_recombination': ['linear'],
+                             'halocarbene_recombination_double': ['linear'],
+                             'intra_H_migration': ['autotst', 'gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'intra_NO2_ONO_conversion': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'intra_OH_migration': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'intra_halogen_migration': ['linear'],
+                             'intra_substitutionCS_cyclization': ['linear'],
+                             'intra_substitutionCS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'intra_substitutionS_cyclization': ['linear'],
+                             'intra_substitutionS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'lone_electron_pair_bond': ['linear'],
+                             'nitrile_hydrolysis': ['heuristics']
                              }
 
 all_families_ts_adapters = []
-adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani']
+
+# Adapters that may run on any unimolecular reaction when RMG fails to assign a
+# family. These adapters must tolerate rxn.family being None or unknown.
+ts_adapters_for_unknown_unimolecular = ['linear']
+
+adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani', 'ase']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
-default_incore_adapters = ['autotst', 'crest', 'gcn', 'heuristics', 'kinbot', 'psi4', 'xtb', 'xtb_gsm', 'torchani',
-                           'openbabel']
+default_incore_adapters = ['autotst', 'crest', 'gcn', 'heuristics', 'kinbot', 'linear', 'openbabel', 'torchani', 'psi4', 'xtb', 'xtb_gsm']
 
 
-def _initialize_adapter(obj: 'JobAdapter',
+def _initialize_adapter(obj: JobAdapter,
                         is_ts: bool,
                         project: str,
                         project_directory: str,
-                        job_type: Union[List[str], str],
-                        args: Optional[dict] = None,
-                        bath_gas: Optional[str] = None,
-                        checkfile: Optional[str] = None,
-                        conformer: Optional[int] = None,
-                        constraints: Optional[List[Tuple[List[int], float]]] = None,
-                        cpu_cores: Optional[str] = None,
-                        dihedral_increment: Optional[float] = None,
-                        dihedrals: Optional[List[float]] = None,
-                        directed_scan_type: Optional[str] = None,
-                        ess_settings: Optional[dict] = None,
-                        ess_trsh_methods: Optional[List[str]] = None,
+                        job_type: list[str] | str,
+                        args: dict | None = None,
+                        bath_gas: str | None = None,
+                        checkfile: str | None = None,
+                        conformer: int | None = None,
+                        constraints: list[tuple[list[int], float]] | None = None,
+                        cpu_cores: str | None = None,
+                        dihedral_increment: float | None = None,
+                        dihedrals: list[float] | None = None,
+                        directed_scan_type: str | None = None,
+                        ess_settings: dict | None = None,
+                        ess_trsh_methods: list[str] | None = None,
                         fine: bool = False,
-                        initial_time: Optional[Union['datetime.datetime', str]] = None,
-                        irc_direction: Optional[str] = None,
-                        job_id: Optional[int] = None,
+                        initial_time: datetime.datetime | str | None = None,
+                        irc_direction: str | None = None,
+                        job_id: int | None = None,
                         job_memory_gb: float = 14.0,
-                        job_name: Optional[str] = None,
-                        job_num: Optional[int] = None,
-                        job_server_name: Optional[str] = None,
-                        job_status: Optional[List[Union[dict, str]]] = None,
-                        level: Optional[Level] = None,
-                        max_job_time: Optional[float] = None,
+                        job_name: str | None = None,
+                        job_num: int | None = None,
+                        job_server_name: str | None = None,
+                        job_status: list[dict | str] | None = None,
+                        level: Level | None = None,
+                        max_job_time: float | None = None,
                         run_multi_species: bool = False,
-                        reactions: Optional[List['ARCReaction']] = None,
-                        rotor_index: Optional[int] = None,
-                        server: Optional[str] = None,
-                        server_nodes: Optional[list] = None,
-                        queue: Optional[str] = None,
-                        attempted_queues: Optional[List[str]] = None,
-                        species: Optional[List['ARCSpecies']] = None,
+                        reactions: list[ARCReaction] | None = None,
+                        rotor_index: int | None = None,
+                        server: str | None = None,
+                        server_nodes: list | None = None,
+                        queue: str | None = None,
+                        attempted_queues: list[str] | None = None,
+                        species: list[ARCSpecies] | None = None,
                         testing: bool = False,
                         times_rerun: int = 0,
-                        torsions: Optional[List[List[int]]] = None,
-                        tsg: Optional[int] = None,
-                        xyz: Optional[Union[dict, List[dict]]] = None,
+                        torsions: list[list[int]] | None = None,
+                        tsg: int | None = None,
+                        xyz: dict | list[dict] | None = None,
                         ):
     """
     A common Job adapter initializer function.
@@ -182,6 +204,7 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.server_nodes = server_nodes or list()
     obj.species = [species] if species is not None and not isinstance(species, list) else species
     obj.submit_script_memory = None
+    obj.submit_script_memory_mib = None
     obj.testing = testing
     obj.times_rerun = times_rerun
     obj.torsions = [torsions] if torsions is not None and not isinstance(torsions[0], list) else torsions
@@ -255,7 +278,7 @@ def _initialize_adapter(obj: 'JobAdapter',
     check_argument_consistency(obj)
 
 
-def is_restricted(obj: 'JobAdapter') -> Union[bool, List[bool]]:
+def is_restricted(obj: JobAdapter) -> bool | list[bool]:
     """
     Check whether a Job Adapter should be executed as restricted or unrestricted.
     If the job adapter contains a list of species, return True or False per species.
@@ -264,7 +287,7 @@ def is_restricted(obj: 'JobAdapter') -> Union[bool, List[bool]]:
         obj: The job adapter object.
 
     Returns:
-        Union[bool, List[bool]]: Whether to run as restricted (``True``) or not (``False``).
+        bool | list[bool]: Whether to run as restricted (``True``) or not (``False``).
     """
     if not obj.run_multi_species:
         return is_species_restricted(obj)
@@ -272,8 +295,8 @@ def is_restricted(obj: 'JobAdapter') -> Union[bool, List[bool]]:
         return [is_species_restricted(obj, species) for species in obj.species]
 
 
-def is_species_restricted(obj: 'JobAdapter',
-                          species: Optional['ARCSpecies'] = None,
+def is_species_restricted(obj: JobAdapter,
+                          species: ARCSpecies | None = None,
                           ) -> bool:
     """
     Check whether a species should be executed as restricted or unrestricted.
@@ -304,7 +327,7 @@ def is_species_restricted(obj: 'JobAdapter',
     return True
 
 
-def check_argument_consistency(obj: 'JobAdapter'):
+def check_argument_consistency(obj: JobAdapter):
     """
     Check that general arguments of a job adapter are consistent.
 
@@ -462,8 +485,8 @@ def input_dict_strip(input_dict: dict) -> dict:
     return stripped_dict
 
 
-def set_job_args(args: Optional[dict],
-                 level: Optional['Level'],
+def set_job_args(args: dict | None,
+                 level: Level | None,
                  job_name: str,
                  ) -> dict:
     """
@@ -485,17 +508,17 @@ def set_job_args(args: Optional[dict],
     return args
 
 
-def which(command: Union[str, list],
+def which(command: str | list,
           return_bool: bool = True,
           raise_error: bool = False,
-          raise_msg: Optional[str] = None,
-          env: Optional[str] = None,
-          ) -> Optional[Union[bool, str]]:
+          raise_msg: str | None = None,
+          env: str | None = None,
+          ) -> bool | str | None:
     """
     Test to see if a command (or a software package via its executable command) is available.
 
     Args:
-        command (Union[str, list]): The command(s) to check (checking whether at least one is available).
+        command (str | list): The command(s) to check (checking whether at least one is available).
         return_bool (bool, optional): Whether to return a Boolean answer.
         raise_error (bool, optional): Whether to raise an error is the command is not found.
         raise_msg (str, optional): An error message to print in addition to a generic message if the command isn't found.
@@ -505,7 +528,7 @@ def which(command: Union[str, list],
         ModuleNotFoundError: If ``raise_error`` is True and the command wasn't found.
 
     Returns:
-        Optional[Union[bool, str]]:
+        bool | str | None:
             The command path or ``None``, returns ``True`` or ``False`` if ``return_bool`` is set to ``True``.
     """
     if env is None:
@@ -534,7 +557,7 @@ def which(command: Union[str, list],
         return ans
 
 
-def combine_parameters(input_dict: dict, terms: list) -> Tuple[dict, List]:
+def combine_parameters(input_dict: dict, terms: list) -> tuple[dict, list]:
     """
     Extract and combine specific parameters from a dictionary's string values based on a list of terms.
 

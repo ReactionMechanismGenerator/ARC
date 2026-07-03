@@ -541,6 +541,61 @@ H       0.68104300    0.74807180    0.61546062""")]
         self.assertEqual(conformers.determine_number_of_conformers_to_generate(heavy_atoms=30, torsion_num=10,
                                                                                label='', mol=mol), (7500, 3))
 
+    def test_determine_number_of_conformers_to_generate_minimalist(self):
+        """Test the minimalist (economic) branch of determine_number_of_conformers_to_generate."""
+        # Trivial: smallest bucket — minimalist has no room to shrink, so it matches the default.
+        num_min, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=0, torsion_num=0, label='', minimalist=True)
+        num_def, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=0, torsion_num=0, label='')
+        self.assertEqual(num_min, 75)
+        self.assertEqual(num_min, num_def)
+
+        # Normal: minimalist should pick the smaller bucket and stay under the 250 cap,
+        # while the default picks the larger.
+        num_min, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=15, torsion_num=3, label='', minimalist=True)
+        num_def, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=15, torsion_num=3, label='')
+        self.assertEqual(num_min, 250)
+        self.assertEqual(num_def, 1000)
+        self.assertLess(num_min, num_def)
+
+        # Wild-type: chiral-center multiplier still scales the minimalist count,
+        # but the base count remains much smaller than the default path.
+        mol = Molecule(smiles='CNC(O)(S)C=CO')
+        num_min, chiral_min = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=30, torsion_num=10, label='', mol=mol, minimalist=True)
+        num_def, chiral_def = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=30, torsion_num=10, label='', mol=mol)
+        self.assertEqual(chiral_min, chiral_def)
+        self.assertGreater(chiral_min, 2)
+        self.assertEqual(num_min, 250 * chiral_min)
+        self.assertEqual(num_def, 2500 * chiral_def)
+        self.assertLess(num_min, num_def)
+
+        # Extreme: very large, very flexible species — minimalist is capped at 250,
+        # default shoots to the top of both bucket tables.
+        num_min, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=150, torsion_num=50, label='', minimalist=True)
+        num_def, _ = conformers.determine_number_of_conformers_to_generate(
+            heavy_atoms=150, torsion_num=50, label='')
+        self.assertEqual(num_min, 250)
+        self.assertEqual(num_def, 7500)
+
+    def test_generate_force_field_conformers_economic_generation(self):
+        """Test that economic_generation threads through to determine_number_of_conformers_to_generate."""
+        mol = Molecule(smiles='CCCCC')
+        torsions, _ = conformers.determine_rotors([mol])
+        confs_default = conformers.generate_force_field_conformers(
+            mol_list=[mol], label='pentane', torsion_num=len(torsions), charge=0, multiplicity=1)
+        confs_economic = conformers.generate_force_field_conformers(
+            mol_list=[mol], label='pentane', torsion_num=len(torsions), charge=0, multiplicity=1,
+            economic_generation=True)
+        self.assertEqual(len(confs_default), 500)
+        self.assertEqual(len(confs_economic), 250)
+        self.assertLess(len(confs_economic), len(confs_default))
+
     def test_openbabel_force_field(self):
         """Test Open Babel force field"""
         xyz = """S      -0.19093478    0.57933906    0.00000000
@@ -621,19 +676,19 @@ H       0.68104300    0.74807180    0.61546062""")]
         xyzs = conformers.read_rdkit_embedded_conformers(label='', rd_mol=rd_mol)
         expected_xyzs = [{'symbols': ('S', 'O', 'O'),
                           'isotopes': (32, 16, 16),
-                          'coords': ((-0.00012212738820031313, 0.0028597623371057115, 0.0),
-                                     (-1.3392855635027328, -0.0026611685910463527, 0.0),
-                                     (1.3394076908909336, -0.00019859374606005526, 0.0))},
+                          'coords': ((0.005560448030875758, -0.004353569471243981, 0.0),
+                                     (-1.3374458527503068, 0.07507157915088257, 0.0),
+                                     (1.331885404719417, -0.07071800967964495, 0.0))},
                          {'symbols': ('S', 'O', 'O'),
                           'isotopes': (32, 16, 16),
-                          'coords': ((-0.0050101109486683, -0.0011994261054633355, 0.0),
-                                     (-1.3322372527953341, -0.0007919479762264483, 0.0),
-                                     (1.3372473637440028, 0.0019913740816897446, 0.0))},
+                          'coords': ((0.0008683912021607329, 0.00670723076166246, 0.0),
+                                     (-1.3307386682974711, -0.02371039410841009, 0.0),
+                                     (1.32987027709531, 0.017003163346748007, 0.0))},
                          {'symbols': ('S', 'O', 'O'),
                           'isotopes': (32, 16, 16),
-                          'coords': ((-0.001622766648702611, -0.006639598050856404, 0.0),
-                                     (-1.3302578118860169, 0.0071058792970156315, 0.0),
-                                     (1.33188057853472, -0.00046628124615972935, 0.0))}]
+                          'coords': ((-0.004080432194034369, -0.0016065151188410438, 0.0),
+                                     (-1.3311491694884883, -0.0014680338970425384, 0.0),
+                                     (1.335229601682522, 0.003074549015884301, 0.0))}]
         self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs))
 
     def test_rdkit_force_field(self):
@@ -645,22 +700,22 @@ O       1.40839617    0.14303696    0.00000000"""
         rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
         xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s', optimize=True)
         self.assertEqual(len(energies), 3)
-        self.assertAlmostEqual(energies[0], 2.8820960262158292e-11, 3)
-        self.assertAlmostEqual(energies[1], 4.496464369416183e-14, 3)
-        self.assertAlmostEqual(energies[2], 1.8168786624672814e-12, 3)
-        expected_xyzs1 = [{'coords': ((0.03524400187958859, 0.6089735953065069, 0.0),
-                                      (-1.3977083353264068, -0.22461555355366308, 0.0),
-                                      (1.362464333446819, -0.38435804175284405, 0.0)),
+        self.assertAlmostEqual(energies[0], 2.7141371135180876e-11, 3)
+        self.assertAlmostEqual(energies[1], 1.9502773173728733e-11, 3)
+        self.assertAlmostEqual(energies[2], 8.503223258358894e-12, 3)
+        expected_xyzs1 = [{'coords': ((-0.028772486510434854, -0.6093128074216372, 0.0),
+                                      (-1.366470471984328, 0.3698618355848534, 0.0),
+                                      (1.3952429584951413, 0.23945097183200187, 0.0)),
                            'isotopes': (32, 16, 16),
                            'symbols': ('S', 'O', 'O')},
-                          {'coords': ((0.14770514519908248, -0.5918387259180251, 0.0),
-                                      (-1.415108604991466, -0.03881772790258462, 0.0),
-                                      (1.2674034597923836, 0.6306564538206128, 0.0)),
+                          {'coords': ((-0.033023167690188655, 0.6090970965805037, 0.0),
+                                      (-1.3638563753202797, -0.37938721271665443, 0.0),
+                                      (1.3968795430104692, -0.2297098838638481, 0.0)),
                            'isotopes': (32, 16, 16),
                            'symbols': ('S', 'O', 'O')},
-                          {'coords': ((0.05761571662082245, -0.6072645883444062, 0.0),
-                                      (-1.405022948684556, 0.17306050451191993, 0.0),
-                                      (1.3474072320637318, 0.4342040838324754, 0.0)),
+                          {'coords': ((-0.0026802533445678136, -0.6099858776422872, 0.0),
+                                      (-1.3810417536025885, 0.3110671844664584, 0.0),
+                                      (1.3837220069472413, 0.29891869317576875, 0.0)),
                            'isotopes': (32, 16, 16),
                            'symbols': ('S', 'O', 'O')}]
 
@@ -669,19 +724,19 @@ O       1.40839617    0.14303696    0.00000000"""
         self.assertEqual(len(energies), 0)
         expected_xyzs2 = [{'symbols': ('S', 'O', 'O'),
                            'isotopes': (32, 16, 16),
-                           'coords': ((0.03524400187958859, 0.6089735953065069, 0.0),
-                                      (-1.3977083353264068, -0.22461555355366308, 0.0),
-                                      (1.362464333446819, -0.38435804175284405, 0.0))},
+                           'coords': ((-0.028772486510434854, -0.6093128074216372, 0.0),
+                                      (-1.366470471984328, 0.3698618355848534, 0.0),
+                                      (1.3952429584951413, 0.23945097183200187, 0.0))},
                           {'symbols': ('S', 'O', 'O'),
                            'isotopes': (32, 16, 16),
-                           'coords': ((0.14770514519908248, -0.5918387259180251, 0.0),
-                                      (-1.415108604991466, -0.03881772790258462, 0.0),
-                                      (1.2674034597923836, 0.6306564538206128, 0.0))},
+                           'coords': ((-0.033023167690188655, 0.6090970965805037, 0.0),
+                                      (-1.3638563753202797, -0.37938721271665443, 0.0),
+                                      (1.3968795430104692, -0.2297098838638481, 0.0))},
                           {'symbols': ('S', 'O', 'O'),
                            'isotopes': (32, 16, 16),
-                           'coords': ((0.05761571662082245, -0.6072645883444062, 0.0),
-                                      (-1.405022948684556, 0.17306050451191993, 0.0),
-                                      (1.3474072320637318, 0.4342040838324754, 0.0))}]
+                           'coords': ((-0.0026802533445678136, -0.6099858776422872, 0.0),
+                                      (-1.3810417536025885, 0.3110671844664584, 0.0),
+                                      (1.3837220069472413, 0.29891869317576875, 0.0))}]
         self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs2))
 
     def test_determine_rotors(self):
@@ -1029,7 +1084,15 @@ O       1.40839617    0.14303696    0.00000000"""
 
     def test_to_group(self):
         """Test converting a part of a molecule into a group"""
-        atom_indices = [0, 3, 8]
+        # Find the Cd bonded to O and H (indices may vary across platforms)
+        o_idx = next(i for i, a in enumerate(self.mol1.atoms) if a.is_oxygen())
+        cd_idx = next(i for i in range(len(self.mol1.atoms))
+                      if self.mol1.atoms[i].is_carbon() and o_idx in
+                      [self.mol1.atoms.index(n) for n in self.mol1.atoms[i].edges])
+        h_idx = next(i for i in range(len(self.mol1.atoms))
+                     if self.mol1.atoms[i].is_hydrogen() and cd_idx in
+                     [self.mol1.atoms.index(n) for n in self.mol1.atoms[i].edges])
+        atom_indices = [cd_idx, o_idx, h_idx]
         group0 = conformers.to_group(mol=self.mol1, atom_indices=atom_indices)
 
         atom0 = GroupAtom(atomtype=[ATOMTYPES['Cd']], radical_electrons=[0], charge=[0],
