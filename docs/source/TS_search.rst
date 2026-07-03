@@ -151,7 +151,8 @@ performs automated reaction discovery and TS search using semiempirical
 or DFT methods.  KinBot explores the potential energy surface starting from
 a given species and locates TS geometries for elementary reactions.
 
-Runs as a subprocess.  Requires the ``kinbot`` conda environment.
+Runs as a subprocess.  Requires the ``kinbot_env`` conda environment
+(created by ``devtools/install_kinbot.sh``).
 
 
 TS-GCN (``'gcn'``)

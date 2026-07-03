@@ -1,45 +1,39 @@
 """
 An adapter for executing KinBot jobs
 
+KinBot is run in its own dedicated conda environment (``kinbot_env``, see
+``devtools/install_kinbot.sh``) via the standalone worker script
+``arc/job/adapters/scripts/kinbot_script.py``, which is invoked through
+``run_in_conda_env`` (like the GCN and AutoTST adapters).
+
 https://github.com/zadorlab/KinBot
 """
 
 import datetime
+import os
 from typing import TYPE_CHECKING
 
-from arc.common import almost_equal_coords, get_logger
+from arc.common import ARC_PATH, almost_equal_coords, get_logger, read_yaml_file, save_yaml_file
+from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
+from arc.job.env_run import run_in_conda_env
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import xyz_from_data, xyz_to_kinbot_list
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
-HAS_KINBOT = True
-try:
-    from kinbot.modify_geom import modify_coordinates
-    from kinbot.reaction_finder import ReactionFinder
-    from kinbot.reaction_generator import ReactionGenerator
-    from kinbot.parameters import Parameters
-    from kinbot.qc import QuantumChemistry
-    from kinbot.stationary_pt import StationaryPoint
-except (ImportError, ModuleNotFoundError):
-    HAS_KINBOT = False
-
 if TYPE_CHECKING:
     from arc.level import Level
-    from arc.molecule import Molecule
     from arc.reaction import ARCReaction
     from arc.species import ARCSpecies
 
 
-logger = get_logger()
+KINBOT_PYTHON = settings['KINBOT_PYTHON']
+KINBOT_UMA_SETTINGS = settings['kinbot_uma_settings']
+KINBOT_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'kinbot_script.py')
 
-if not HAS_KINBOT:
-    # Create a dummy class to properly compile this module if KinBot is missing.
-    class ReactionGenerator(object):
-        def __init__(self, species, par, qc, input_file):
-            self.species, self.par, self.qc, self.input_file = species, par, qc, input_file
+logger = get_logger()
 
 
 class KinBotAdapter(JobAdapter):
@@ -136,7 +130,7 @@ class KinBotAdapter(JobAdapter):
         self.incore_capacity = 20
         self.job_adapter = 'kinbot'
         self.execution_type = execution_type or 'incore'
-        self.command = None  # KinBot does not have an executable file, just an API.
+        self.command = 'kinbot_script.py'
         self.url = 'https://github.com/zadorlab/KinBot'
 
         self.family_map = {'1+2_Cycloaddition': ['r12_cycloaddition'],
@@ -242,7 +236,8 @@ class KinBotAdapter(JobAdapter):
         Set additional file paths specific for the adapter.
         Called from set_file_paths() and extends it.
         """
-        pass
+        self.yml_in_path = os.path.join(self.local_path, 'input.yml')
+        self.yml_out_path = os.path.join(self.local_path, 'output.yml')
 
     def set_input_file_memory(self) -> None:
         """
@@ -254,9 +249,11 @@ class KinBotAdapter(JobAdapter):
         """
         Execute a job incore.
         """
-        if not HAS_KINBOT:
-            raise ModuleNotFoundError(f'Could not import KinBot, make sure it is properly installed.\n'
-                                      f'See {self.url} for more information, or use the Makefile provided with ARC.')
+        if not KINBOT_PYTHON or not os.path.isfile(KINBOT_PYTHON):
+            raise FileNotFoundError('The KinBot python executable was not found. '
+                                    'Make sure the kinbot_env exists and KINBOT_PYTHON is configured '
+                                    '(run devtools/install_kinbot.sh to create the environment). '
+                                    f'See {self.url} for more information.')
 
         self._log_job_execution()
         self.initial_time = self.initial_time if self.initial_time else datetime.datetime.now()
@@ -282,67 +279,9 @@ class KinBotAdapter(JobAdapter):
                                  f'Got {len(rxn.r_species)} reactants and {rxn.p_species} products in\n{rxn}.')
                     continue
 
-                method_index = 0
-                for method_direction, spc in species_to_explore.items():
-                    symbols = spc.get_xyz()['symbols']
-                    for m, mol in enumerate(spc.mol_list):
-                        reaction_generator = set_up_kinbot(mol=mol,
-                                                           families=self.family_map[rxn.family],
-                                                           kinbot_xyz=xyz_to_kinbot_list(spc.get_xyz()),
-                                                           multiplicity=rxn.multiplicity,
-                                                           charge=rxn.charge,
-                                                           )
-                        for r, kinbot_rxn in enumerate(reaction_generator.species.reac_obj):
-                            step, fix, change, release = kinbot_rxn.get_constraints(step=20,
-                                                                                    geom=kinbot_rxn.species.geom)
-                            ts_guess = TSGuess(method=f'KinBot',
-                                               method_direction=method_direction,
-                                               method_index=method_index,
-                                               index=len(rxn.ts_species.ts_guesses),
-                                               )
-                            ts_guess.tic()
-
-                            change_starting_zero = list()
-                            for c in change:
-                                c_new = [ci - 1 for ci in c[:-1]]
-                                c_new.append(c[-1])
-                                change_starting_zero.append(c_new)
-
-                            success, coords = modify_coordinates(species=kinbot_rxn.species,
-                                                                 name=kinbot_rxn.instance_name,
-                                                                 geom=kinbot_rxn.species.geom,
-                                                                 changes=change_starting_zero,
-                                                                 bond=kinbot_rxn.species.bond,
-                                                                 )
-
-                            ts_guess.tok()
-                            unique = True
-
-                            if success:
-                                ts_guess.success = True
-                                xyz = xyz_from_data(coords=coords, symbols=symbols)
-                                if xyz is None or colliding_atoms(xyz):
-                                    success = False
-                                else:
-                                    for other_tsg in rxn.ts_species.ts_guesses:
-                                        if other_tsg.success and almost_equal_coords(xyz, other_tsg.initial_xyz):
-                                            if 'kinbot' not in other_tsg.method.lower():
-                                                other_tsg.method += ' and KinBot'
-                                            unique = False
-                                            break
-                                    if unique:
-                                        ts_guess.process_xyz(xyz)
-                                        save_geo(xyz=xyz,
-                                                 path=self.local_path,
-                                                 filename=f'KinBot {method_direction} {method_index}',
-                                                 format_='xyz',
-                                                 comment=f'KinBot {method_direction} {method_index}'
-                                                 )
-                            if not success:
-                                ts_guess.success = False
-                            if unique:
-                                rxn.ts_species.ts_guesses.append(ts_guess)
-                                method_index += 1
+                self.write_kinbot_input_file(rxn=rxn, species_to_explore=species_to_explore)
+                results = self.run_kinbot_subprocess(rxn=rxn)
+                self.parse_kinbot_results(rxn=rxn, results=results, species_to_explore=species_to_explore)
 
             if len(self.reactions) < 5:
                 successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'kinbot' in tsg.method])
@@ -353,75 +292,129 @@ class KinBotAdapter(JobAdapter):
 
         self.final_time = datetime.datetime.now()
 
+    def write_kinbot_input_file(self,
+                                rxn: 'ARCReaction',
+                                species_to_explore: dict,
+                                ) -> None:
+        """
+        Write the YAML input file for the KinBot worker script.
+
+        Args:
+            rxn (ARCReaction): The reaction to explore.
+            species_to_explore (dict): Keys are 'F'/'R' directions, values are the respective ARCSpecies.
+        """
+        wells = list()
+        for method_direction, spc in species_to_explore.items():
+            kinbot_xyz = xyz_to_kinbot_list(spc.get_xyz())
+            for mol in spc.mol_list:
+                wells.append({'direction': method_direction,
+                              'smiles': mol.to_smiles(),
+                              'structure': kinbot_xyz,
+                              })
+        input_dict = {'charge': rxn.charge,
+                      'multiplicity': rxn.multiplicity,
+                      'families': self.family_map[rxn.family],
+                      'wells': wells,
+                      'uma': dict(KINBOT_UMA_SETTINGS),
+                      'yml_out_path': self.yml_out_path,
+                      }
+        save_yaml_file(path=self.yml_in_path, content=input_dict)
+
+    def run_kinbot_subprocess(self, rxn: 'ARCReaction') -> list:
+        """
+        Run the KinBot worker script in the kinbot_env environment and read its results.
+
+        Args:
+            rxn (ARCReaction): The reaction being explored (only used for logging).
+
+        Returns:
+            list: The TS guess result dictionaries read from the worker's output file.
+        """
+        if os.path.isfile(self.yml_out_path):
+            # Remove a stale output file, so a failed subprocess isn't mistaken for fresh results.
+            os.remove(self.yml_out_path)
+        # Routed via run_in_conda_env so arc_env's activation vars don't
+        # leak into the child (see arc/job/env_run.py).
+        output = run_in_conda_env(KINBOT_PYTHON, KINBOT_SCRIPT_PATH,
+                                  '--yml_in_path', self.yml_in_path,
+                                  )
+        if output.returncode:
+            logger.warning(f'The KinBot subprocess did not give a successful return code for {rxn}.\n'
+                           f'Got return code: {output.returncode}\n'
+                           f'stdout: {output.stdout}\n'
+                           f'stderr: {output.stderr}')
+        results = read_yaml_file(path=self.yml_out_path) if os.path.isfile(self.yml_out_path) else list()
+        return results or list()
+
+    def parse_kinbot_results(self,
+                             rxn: 'ARCReaction',
+                             results: list,
+                             species_to_explore: dict,
+                             ) -> None:
+        """
+        Parse the KinBot worker results into TSGuess objects on the reaction's TS species.
+
+        Args:
+            rxn (ARCReaction): The reaction to which the results belong.
+            results (list): The TS guess result dictionaries from the worker script.
+            species_to_explore (dict): Keys are 'F'/'R' directions, values are the respective ARCSpecies.
+        """
+        method_index = 0
+        for result in results:
+            method_direction = result.get('direction')
+            if method_direction not in species_to_explore:
+                logger.warning(f'Got an unexpected direction {method_direction} from the KinBot '
+                               f'worker script for {rxn}, skipping this entry.')
+                continue
+            if result.get('error'):
+                logger.warning(f'The KinBot worker script reported an error for {rxn} '
+                               f'in the {method_direction} direction:\n{result["error"]}')
+            symbols = species_to_explore[method_direction].get_xyz()['symbols']
+            # Record UMA refinement in the method name so downstream/benchmark analysis can
+            # distinguish refined from raw template guesses. Both variants contain 'kinbot',
+            # which keeps the existing dedup and success-count logic intact.
+            method = 'KinBot-UMA' if result.get('uma_refined') else 'KinBot'
+            ts_guess = TSGuess(method=method,
+                               method_direction=method_direction,
+                               method_index=method_index,
+                               index=len(rxn.ts_species.ts_guesses),
+                               execution_time=result.get('execution_time'),
+                               )
+            success = bool(result.get('success')) and result.get('coords') is not None
+            unique = True
+
+            if success:
+                ts_guess.success = True
+                xyz = xyz_from_data(coords=result['coords'], symbols=symbols)
+                if xyz is None or colliding_atoms(xyz):
+                    success = False
+                else:
+                    for other_tsg in rxn.ts_species.ts_guesses:
+                        if other_tsg.success and almost_equal_coords(xyz, other_tsg.initial_xyz):
+                            if 'kinbot' not in other_tsg.method.lower():
+                                other_tsg.method += ' and KinBot'
+                            unique = False
+                            break
+                    if unique:
+                        ts_guess.process_xyz(xyz)
+                        save_geo(xyz=xyz,
+                                 path=self.local_path,
+                                 filename=f'KinBot {method_direction} {method_index}',
+                                 format_='xyz',
+                                 comment=f'KinBot {method_direction} {method_index}',
+                                 )
+            if not success:
+                ts_guess.success = False
+            if unique:
+                rxn.ts_species.ts_guesses.append(ts_guess)
+                method_index += 1
+
     def execute_queue(self):
         """
         (Execute a job to the server's queue.)
         A single KinBot job will always be executed incore.
         """
         self.execute_incore()
-
-
-def set_up_kinbot(mol: 'Molecule',
-                  families: list[str],
-                  kinbot_xyz: list[str | float],
-                  multiplicity: int,
-                  charge: int,
-                  ) -> ReactionGenerator:
-    """
-    This will set up KinBot to run for a unimolecular reaction starting from the single reactant side.
-
-    Args:
-        mol (Molecule): The RMG Molecule instance representing the unimolecular well to react.
-        families (list[str]): The specific KinBot families to try.
-        kinbot_xyz (list): The cartesian coordinates of the well in the KinBot list format.
-        multiplicity (int): The well/reaction multiplicity.
-        charge (int): The well/reaction charge.
-
-    Returns:
-        ReactionGenerator: The KinBot ReactionGenerator instance.
-    """
-    params = Parameters()
-    params.par['title'] = 'ARC'
-    # molecule information
-    params.par['smiles'] = mol.to_smiles()
-    params.par['structure'] = kinbot_xyz
-    params.par['charge'] = charge
-    params.par['mult'] = multiplicity
-    params.par['dimer'] = 0
-    # steps
-    params.par['reaction_search'] = 1
-    params.par['families'] = families
-    params.par['homolytic_scissions'] = 0
-    params.par['pes'] = 0
-    params.par['high_level'] = 0
-    params.par['conformer_search'] = 0
-    params.par['me'] = 0
-    #     params.par['one_reaction_fam'] = 1
-    params.par['ringrange'] = [3, 9]
-
-    well = StationaryPoint(name='well0',
-                           charge=charge,
-                           mult=multiplicity,
-                           structure=kinbot_xyz,
-                           )
-
-    well.calc_chemid()
-    well.bond_mx()
-    well.find_cycle()
-    well.find_atom_eqv()
-    well.find_conf_dihedral()
-
-    qc = QuantumChemistry(params.par)
-    rxn_finder = ReactionFinder(well, params.par, qc)
-    rxn_finder.find_reactions()
-
-    reaction_generator = ReactionGenerator(species=well,
-                                           par=params.par,
-                                           qc=qc,
-                                           input_file=None,
-                                           )
-
-    return reaction_generator
 
 
 register_job_adapter('kinbot', KinBotAdapter)
