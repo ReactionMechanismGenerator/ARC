@@ -93,12 +93,14 @@ write_hook() {  # env_name  repo_path
   rm -f "$act" "$deact"
 
   # --- activation hook -----------------------------------------------------
+  # Unquoted delimiter: $repo and $(date) expand at write time; runtime
+  # variables are escaped so they expand at activation time.
   cat <<ACTHOOK >"$act"
 # TS-GCN hook – $(date +%F)
 export TSGCN_ROOT="$repo"
-case ":\$PYTHONPATH:" in
-  *":\$TSGCN_ROOT:") ;; \
-  *) export PYTHONPATH="\$TSGCN_ROOT:\${PYTHONPATH:-}" ;; 
+case ":\${PYTHONPATH:-}:" in
+  *":\$TSGCN_ROOT:"*) ;;
+  *) export PYTHONPATH="\$TSGCN_ROOT\${PYTHONPATH:+:\$PYTHONPATH}" ;;
 esac
 ACTHOOK
 
