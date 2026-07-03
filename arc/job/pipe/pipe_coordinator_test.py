@@ -239,7 +239,7 @@ class TestPollPipes(unittest.TestCase):
         """Resubmitted pipe job ID is added to server_job_ids."""
         pipe = self.coord.submit_pipe_run('run_resub', [_make_spec('t_resub')])
 
-        def fake_reconcile():
+        def fake_reconcile(scheduler_job_alive=True):
             pipe._needs_resubmission = True
             return {TaskState.PENDING.value: 1}
 
@@ -254,46 +254,55 @@ class TestIsSchedulerJobAlive(unittest.TestCase):
 
     def test_none_server_ids_returns_true(self):
         pipe = MagicMock()
+        pipe.submitted_at = None
         pipe.scheduler_job_id = '12345[]'
         self.assertTrue(PipeCoordinator._is_scheduler_job_alive(pipe, None))
 
     def test_none_scheduler_job_id_returns_true(self):
         pipe = MagicMock()
+        pipe.submitted_at = None
         pipe.scheduler_job_id = None
         self.assertTrue(PipeCoordinator._is_scheduler_job_alive(pipe, ['12345[0]']))
 
     def test_pbs_array_element_in_queue(self):
         pipe = MagicMock()
+        pipe.submitted_at = None
         pipe.scheduler_job_id = '4018898[]'
         self.assertTrue(PipeCoordinator._is_scheduler_job_alive(pipe, ['4018898[2]', '9999']))
 
     def test_pbs_array_not_in_queue(self):
         pipe = MagicMock()
+        pipe.submitted_at = None
         pipe.scheduler_job_id = '4018898[]'
         self.assertFalse(PipeCoordinator._is_scheduler_job_alive(pipe, ['9999', '5555']))
 
     def test_non_array_job_in_queue(self):
         pipe = MagicMock()
+        pipe.submitted_at = None
         pipe.scheduler_job_id = '12345'
         self.assertTrue(PipeCoordinator._is_scheduler_job_alive(pipe, ['12345', '9999']))
 
     def test_non_array_job_not_in_queue(self):
         pipe = MagicMock()
+        pipe.submitted_at = None
         pipe.scheduler_job_id = '12345'
         self.assertFalse(PipeCoordinator._is_scheduler_job_alive(pipe, ['9999']))
 
     def test_empty_queue(self):
         pipe = MagicMock()
+        pipe.submitted_at = None
         pipe.scheduler_job_id = '12345[]'
         self.assertFalse(PipeCoordinator._is_scheduler_job_alive(pipe, []))
 
     def test_slurm_array_element_in_queue(self):
         pipe = MagicMock()
+        pipe.submitted_at = None
         pipe.scheduler_job_id = '12345'
         self.assertTrue(PipeCoordinator._is_scheduler_job_alive(pipe, ['12345_7', '9999']))
 
     def test_slurm_array_not_in_queue(self):
         pipe = MagicMock()
+        pipe.submitted_at = None
         pipe.scheduler_job_id = '12345'
         self.assertFalse(PipeCoordinator._is_scheduler_job_alive(pipe, ['99999_7']))
 
