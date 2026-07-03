@@ -1347,15 +1347,18 @@ H       0.93760911   -0.05885406   -0.10079043"""
         ts_xyzs = interpolate_addition(rxn, weight=0.5)
         self.assertIsNotNone(ts_xyzs)
         self.assertGreaterEqual(len(ts_xyzs), 1)
-        # 3-membered ring in reactant ordering: *1=N0 (NH2), *2=N1 (central), *4=H5 (mig).
-        # Targets: N-N ~ sbl+0.42 = 1.87, N-H ~ sbl+0.42 = 1.46.
+        # Targets: N-N breaking ~ 1.87 Å, migrating N-H bonds ~ 1.46 Å each.
+        # Checks are element-based to be agnostic to symmetric atom-map choices.
         ts_coords = np.array(ts_xyzs[0]['coords'])
-        d_nn = float(np.linalg.norm(ts_coords[0] - ts_coords[1]))  # *1-*2 N-N breaking
-        d_nh1 = float(np.linalg.norm(ts_coords[1] - ts_coords[5]))  # *2-*4 N-H breaking
-        d_nh2 = float(np.linalg.norm(ts_coords[0] - ts_coords[5]))  # *1-*4 N-H forming
-        self.assertAlmostEqual(d_nn, 1.87, delta=0.05)
-        self.assertAlmostEqual(d_nh1, 1.46, delta=0.05)
-        self.assertAlmostEqual(d_nh2, 1.46, delta=0.05)
+        ts_syms = ts_xyzs[0]['symbols']
+        n_idx = [i for i, s in enumerate(ts_syms) if s == 'N']
+        h_idx = [i for i, s in enumerate(ts_syms) if s == 'H']
+        nn_dists = [float(np.linalg.norm(ts_coords[i] - ts_coords[j])) for i in n_idx for j in n_idx if i < j]
+        nh_dists = [float(np.linalg.norm(ts_coords[i] - ts_coords[j])) for i in n_idx for j in h_idx]
+        self.assertTrue(any(abs(d - 1.87) <= 0.05 for d in nn_dists),
+                        msg=f'No N-N distance near 1.87; found: {sorted(nn_dists)}')
+        self.assertGreaterEqual(sum(1 for d in nh_dists if abs(d - 1.46) <= 0.05), 2,
+                                msg=f'Expected ≥2 N-H distances near 1.46; found: {sorted(nh_dists)}')
         # Verify the dispatcher routes correctly.
         ts_xyzs_dispatch = interpolate(rxn, weight=0.5)
         self.assertIsNotNone(ts_xyzs_dispatch)
