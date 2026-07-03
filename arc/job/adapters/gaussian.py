@@ -332,7 +332,11 @@ class GaussianAdapter(JobAdapter):
                         if input_dict['trsh']:
                             input_dict['trsh'] += ' '
                         input_dict['trsh'] += 'scf=(tight,direct)'
-                tight_kw = [] if self._user_requested_verytight() else ['tight']
+                # 'no_tight' is set by trsh_keyword_loose_disp when a previous attempt hit
+                # MaxOptCycles with forces converged but displacement criteria unreachable.
+                # 'tight' is also dropped when the user requested verytight, which replaces it.
+                drop_tight = 'no_tight' in self.ess_trsh_methods or self._user_requested_verytight()
+                tight_kw = [] if drop_tight else ['tight']
                 if self.is_ts:
                     keywords.extend([*tight_kw, 'maxstep=5'])
                 else:

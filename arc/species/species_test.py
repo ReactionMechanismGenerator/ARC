@@ -256,6 +256,35 @@ class TestARCSpecies(unittest.TestCase):
         n_rad = ARCSpecies(label='N', smiles='[N]')
         self.assertTrue(n_rad.is_monoatomic())
 
+    def test_monoatomic_species_get_trivial_final_xyz(self):
+        """Atoms skip opt, so ``__init__`` synthesizes the origin geometry up
+        front. Without this, every consumer that checks ``final_xyz is not
+        None`` (TS-search dispatch in particular) silently misbehaves on
+        reactions involving a monoatomic reactant or product."""
+        h_rad = ARCSpecies(label='H_atom', smiles='[H]')
+        self.assertIsNotNone(h_rad.final_xyz)
+        self.assertEqual(h_rad.final_xyz['symbols'], ('H',))
+        self.assertEqual(h_rad.final_xyz['coords'], ((0.0, 0.0, 0.0),))
+
+        n_rad = ARCSpecies(label='N_atom', smiles='[N]')
+        self.assertIsNotNone(n_rad.final_xyz)
+        self.assertEqual(n_rad.final_xyz['symbols'], ('N',))
+
+    def test_polyatomic_species_no_synthesized_final_xyz(self):
+        """Negative case: don't invent geometry for species that legitimately
+        need an opt to determine their geometry."""
+        ch3 = ARCSpecies(label='CH3', smiles='[CH3]')
+        self.assertIsNone(ch3.final_xyz)
+
+    def test_existing_final_xyz_not_overwritten_for_atom(self):
+        """If an atom is constructed with a user-supplied xyz (non-origin), the
+        synthesis must not clobber it."""
+        cl_xyz = """Cl     0.10000000    0.20000000    0.30000000"""
+        cl = ARCSpecies(label='Cl', smiles='[Cl]', xyz=cl_xyz)
+        self.assertIsNotNone(cl.final_xyz)
+        self.assertEqual(cl.final_xyz['symbols'], ('Cl',))
+        self.assertNotEqual(cl.final_xyz['coords'], ((0.0, 0.0, 0.0),))
+
     def test_is_diatomic(self):
         """Test the is_diatomic() method."""
         self.assertFalse(self.spc1.is_diatomic())
@@ -1691,13 +1720,19 @@ H       1.32129900    0.71837500    0.38017700
         spc3 = ARCSpecies(species_dict=species_dict3)
         spc4 = ARCSpecies(species_dict=species_dict4)
 
+        # All four fixtures use atomic carbon 'C', so the monoatomic
+        # geometry hook in __init__ promotes the available conformer/
+        # initial_xyz into final_xyz. Conformer routing still works
+        # exactly as before — that's what this test's original intent
+        # was — but final_xyz is now the source of truth even for atoms
+        # that never run an opt.
         self.assertIsNone(spc1.initial_xyz)
-        self.assertIsNone(spc1.final_xyz)
+        self.assertEqual(spc1.final_xyz, {'coords': ((0.1, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
         self.assertEqual(spc1.conformers, [{'coords': ((0.1, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
         self.assertEqual(spc1.conformer_energies, [None])
 
         self.assertEqual(spc2.initial_xyz, {'coords': ((0.2, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
-        self.assertIsNone(spc2.final_xyz)
+        self.assertEqual(spc2.final_xyz, {'coords': ((0.2, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
         self.assertEqual(spc2.conformers, [])
         self.assertEqual(spc2.conformer_energies, [])
 
@@ -1707,7 +1742,7 @@ H       1.32129900    0.71837500    0.38017700
         self.assertEqual(spc3.conformer_energies, [])
 
         self.assertIsNone(spc4.initial_xyz)
-        self.assertIsNone(spc4.final_xyz)
+        self.assertEqual(spc4.final_xyz, {'coords': ((0.4, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
         self.assertEqual(spc4.conformers, [{'coords': ((0.4, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)},
                                            {'coords': ((0.5, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
         self.assertEqual(spc4.conformer_energies, [None, None])

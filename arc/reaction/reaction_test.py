@@ -877,6 +877,44 @@ H       1.12853146   -0.86793870    0.06973060"""
         rxn_2.check_done_opt_r_n_p()
         self.assertEqual(rxn_2.done_opt_r_n_p, False)
 
+    def test_check_done_opt_r_n_p_with_monoatomic_reactant(self):
+        """Atoms skip opt entirely, so before the species-init synthesis fix,
+        an H_Abstraction reaction with [H] as reactant or product would never
+        flip ``done_opt_r_n_p`` to True — silently blocking TS-search dispatch
+        in scheduler.py (see ``spawn_ts_jobs``)."""
+        ethane_xyz = """C      0.64340000     0.33900000    -0.16980000
+                        C     -0.66730000    -0.31410000     0.16730000
+                        H      1.40700000    -0.43230000    -0.09610000
+                        H      0.75020000     0.67440000    -1.19910000
+                        H      0.99460000     1.08270000     0.54210000
+                        H     -0.65730000    -0.72540000     1.17790000
+                        H     -0.89640000    -1.12500000    -0.52580000
+                        H     -1.48860000     0.40690000     0.11350000"""
+        ethyl_xyz = """C     -0.62010000     0.01890000    -0.00170000
+                       C      0.85890000    -0.05530000     0.05000000
+                       H     -1.07380000    -0.97300000    -0.05590000
+                       H     -0.96800000     0.57060000    -0.88720000
+                       H     -1.03030000     0.53690000     0.86780000
+                       H      1.39390000    -0.83860000    -0.46950000
+                       H      1.43940000     0.74040000     0.49650000"""
+        h2_xyz = """H     -0.18030000     0.20060000    -0.02170000
+                    H      0.31280000    -0.34800000     0.03770000"""
+        ethane = ARCSpecies(label='ethane', smiles='CC', xyz=ethane_xyz)
+        ethyl = ARCSpecies(label='ethyl', smiles='C[CH2]', xyz=ethyl_xyz)
+        h2 = ARCSpecies(label='H2', smiles='[H][H]', xyz=h2_xyz)
+        h_atom = ARCSpecies(label='H_atom', smiles='[H]')
+        # Polyatomic species need an opt to populate final_xyz; emulate that
+        # post-opt state by promoting their conformer here.
+        ethane.final_xyz = ethane.conformers[0]
+        ethyl.final_xyz = ethyl.conformers[0]
+        h2.final_xyz = h2.conformers[0]
+        # Sanity: the atom never received an opt result, but the species init
+        # synthesized its trivial geometry so the reaction gate can pass.
+        self.assertIsNotNone(h_atom.final_xyz)
+        rxn = ARCReaction(r_species=[ethane, h_atom], p_species=[ethyl, h2])
+        rxn.check_done_opt_r_n_p()
+        self.assertTrue(rxn.done_opt_r_n_p)
+
     def tests_white_space_in_reaction_label(self):
         """Test that an extra white space in the reaction label does not confuse ARC."""
         hno = ARCSpecies(label='HNO', smiles='N=O')

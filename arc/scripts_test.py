@@ -99,8 +99,8 @@ class TestSaveArkaneThermo(unittest.TestCase):
             self.assertEqual(len(data[label]['nasa_low']['coeffs']), 7)
             self.assertEqual(len(data[label]['nasa_high']['coeffs']), 7)
 
-    def test_cp_data_present(self):
-        """Verify tabulated Cp data is extracted."""
+    def test_thermo_points_present(self):
+        """Verify tabulated thermo points (Cp + H + S + G per T) are extracted."""
         script = os.path.join(ARC_PATH, 'arc', 'scripts', 'save_arkane_thermo.py')
         subprocess.run(
             ['conda', 'run', '-n', 'rmg_env', 'python', script],
@@ -109,12 +109,17 @@ class TestSaveArkaneThermo(unittest.TestCase):
         data = read_yaml_file(os.path.join(self.tmp_dir, 'thermo.yaml'))
 
         for label in ['CHO', 'CH4', 'CH2O', 'CH3']:
-            self.assertIn('cp_data', data[label], f'Missing cp_data for {label}')
-            cp = data[label]['cp_data']
-            self.assertIsInstance(cp, list)
-            self.assertGreater(len(cp), 0)
-            self.assertIn('temperature_k', cp[0])
-            self.assertIn('cp_j_mol_k', cp[0])
+            self.assertIn('thermo_points', data[label],
+                          f'Missing thermo_points for {label}')
+            points = data[label]['thermo_points']
+            self.assertIsInstance(points, list)
+            self.assertGreater(len(points), 0)
+            first = points[0]
+            for key in ('temperature_k', 'cp_j_mol_k', 'h_kj_mol',
+                        's_j_mol_k', 'g_kj_mol'):
+                self.assertIn(key, first,
+                              f'{label} thermo_points[0] missing {key}')
+                self.assertIsInstance(first[key], (int, float))
 
 
 if __name__ == '__main__':

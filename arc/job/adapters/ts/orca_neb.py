@@ -39,15 +39,15 @@ input_template = """
 %%maxcore ${memory}
 %%pal nprocs ${cpus} end
 
-%%neb 
+%%neb
    Interpolation    ${interpolation}
    NImages  ${nnodes}
    PrintLevel   3
    PreOpt           ${preopt}
-   NEB_END_XYZFILE "${abs_path}/product.xyz"
+   NEB_END_XYZFILE "product.xyz"
 END
 
-* XYZFILE ${charge} ${multiplicity} ${abs_path}/reactant.xyz
+* XYZFILE ${charge} ${multiplicity} reactant.xyz
 """
 
 
@@ -222,7 +222,6 @@ class OrcaNEBAdapter(OrcaAdapter):
         input_dict['cpus'] = self.cpu_cores
         input_dict['charge'] = self.charge
         input_dict['multiplicity'] = self.multiplicity
-        input_dict['abs_path'] = self.local_path
 
         # NEB specific parameters
         neb_settings = orca_neb_settings.get('keyword', {})

@@ -1357,6 +1357,65 @@ H      -1.82570782    0.42754384   -0.56130718"""
             shutil.rmtree(project_directory, ignore_errors=True)
 
 
+class TestTsGuessPathsKey(unittest.TestCase):
+    """Direct unit tests for ``_ts_guess_paths_key``.
+
+    Guards the contract that the scheduler routes each TS-guess
+    adapter's log path into a method-specific slot under
+    ``output[label]['paths']`` (``neb`` / ``gsm``) — so the TCKDB
+    adapter can dispatch a method-aware ``path_search`` parent calc
+    without inspecting the file. Geometry-only methods (no log to
+    file) must return ``None``.
+    """
+
+    def setUp(self):
+        from arc.scheduler import _ts_guess_paths_key
+        self.resolve = _ts_guess_paths_key
+
+    def test_orca_neb_routes_to_neb_slot(self):
+        self.assertEqual(self.resolve('orca_neb'), 'neb')
+
+    def test_xtb_gsm_underscore_routes_to_gsm_slot(self):
+        self.assertEqual(self.resolve('xtb_gsm'), 'gsm')
+
+    def test_xtb_gsm_dash_form_routes_to_gsm_slot(self):
+        # The xtb_gsm adapter sets ``tsg.method = 'xTB-GSM'`` (capital
+        # form with dash) on the produced TSGuess — see
+        # ``arc/job/adapters/ts/xtb_gsm.py:process_run``. The lookup
+        # must be case- and whitespace-insensitive so the scheduler
+        # routes both string forms to the same slot.
+        self.assertEqual(self.resolve('xTB-GSM'), 'gsm')
+        self.assertEqual(self.resolve('  xtb-gsm  '), 'gsm')
+        self.assertEqual(self.resolve('XTB_GSM'), 'gsm')
+
+    def test_geometry_only_methods_return_none(self):
+        for m in ('Heuristics', 'AutoTST', 'KinBot', 'GCN',
+                  'user guess 0', 'user guess 1'):
+            self.assertIsNone(self.resolve(m), msg=f'unexpected match: {m}')
+
+    def test_non_string_inputs_return_none(self):
+        self.assertIsNone(self.resolve(None))
+        self.assertIsNone(self.resolve(42))
+        self.assertIsNone(self.resolve({'method': 'xtb_gsm'}))
+
+
+class TestPathsTemplateInitialization(unittest.TestCase):
+    """``initialize_output_dict`` must seed both ``neb`` and ``gsm``
+    slots on TS species so the per-method routing in
+    ``run_ts_conformer_jobs`` / ``determine_most_likely_ts_conformer``
+    can write into pre-existing keys (and the post-restart reset path
+    in ``restart_species`` preserves them).
+    """
+
+    def test_ts_species_paths_template_includes_gsm(self):
+        # Light test: assert the source of truth at the literal call
+        # site; a full Scheduler-instance test is heavy and adds no
+        # signal beyond the static template check.
+        with open(os.path.join(ARC_PATH, 'arc', 'scheduler.py')) as f:
+            sched_src = f.read()
+        self.assertIn("self.output[species.label]['paths']['gsm'] = ''", sched_src)
+
+
 class TestSpawnTsJobsAdmission(unittest.TestCase):
     """
     Contains unit tests for the TS adapter admission logic of Scheduler.spawn_ts_jobs().

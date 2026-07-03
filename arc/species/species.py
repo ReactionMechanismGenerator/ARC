@@ -533,8 +533,40 @@ class ARCSpecies(object):
                                        f'Expected tuples of two 1-indexed atoms, got:\n{self.bdes}')
 
         self.set_mol_list()
+        self._init_monoatomic_geometry()
         if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
             self.populate_ts_checks()
+
+    def _init_monoatomic_geometry(self) -> None:
+        """Promote (or synthesize) a one-atom geometry into ``final_xyz``.
+
+        ARC skips opt for atoms (nothing to optimize), so without this hook
+        ``final_xyz`` would stay ``None`` for the entire run. That breaks
+        invariants downstream — most visibly ``Reaction.check_done_opt_r_n_p``
+        gates TS-search dispatch on every reactant/product having a non-None
+        ``final_xyz``, so atomic reactants (e.g. ``[H]`` in H_Abstraction)
+        silently block all TSG jobs. Setting the one-atom geometry up front
+        gives every consumer a single, consistent invariant: a converged
+        species has a geometry.
+
+        Prefers any user-supplied geometry already on the species
+        (``initial_xyz`` / first conformer / cheap conformer) so we don't
+        clobber explicit input. Falls back to origin coordinates when none of
+        those exist — for an atom, the choice of frame is arbitrary anyway.
+        """
+        if self.is_ts or self.final_xyz is not None:
+            return
+        if self.mol is None or len(self.mol.atoms) != 1:
+            return
+        existing = (self.initial_xyz
+                    or (self.conformers[0] if self.conformers else None)
+                    or self.most_stable_conformer
+                    or self.cheap_conformer)
+        if existing is not None:
+            self.final_xyz = existing
+            return
+        symbol = self.mol.atoms[0].element.symbol
+        self.final_xyz = xyz_from_data(coords=((0.0, 0.0, 0.0),), symbols=(symbol,))
 
     def __str__(self) -> str:
         """Return a string representation of the object"""
@@ -1350,6 +1382,7 @@ class ARCSpecies(object):
                                  'trsh_counter': 0,
                                  'trsh_methods': list(),
                                  'scan_path': '',
+                                 'scan_software': '',
                                  'directed_scan_type': key,
                                  'directed_scan': dict(),
                                  'dimensions': 0,
@@ -2565,7 +2598,7 @@ class ThermoData(object):
                  comment='',
                  nasa_low=None,
                  nasa_high=None,
-                 cp_data=None,
+                 thermo_points=None,
                  ):
         """
         Args:
@@ -2581,7 +2614,11 @@ class ThermoData(object):
             comment (str): Additional comments or description
             nasa_low (dict): Low-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
             nasa_high (dict): High-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
-            cp_data (list): Tabulated Cp: list of {temperature_k, cp_j_mol_k} dicts.
+            thermo_points (list): Tabulated per-temperature thermochemistry:
+                list of dicts with ``temperature_k``, ``cp_j_mol_k``,
+                ``h_kj_mol``, ``s_j_mol_k``, ``g_kj_mol``. Older field
+                name was ``cp_data`` (Cp-only); the field now carries
+                the full TCKDB ``thermo_point`` shape.
         """
         self.H298 = H298
         self.S298 = S298
@@ -2595,7 +2632,7 @@ class ThermoData(object):
         self.comment = comment
         self.nasa_low = nasa_low
         self.nasa_high = nasa_high
-        self.cp_data = cp_data
+        self.thermo_points = thermo_points
 
     def __repr__(self):
         """
@@ -2629,7 +2666,7 @@ class ThermoData(object):
         return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
                              self.Cp0, self.CpInf, self.Tmin, self.Tmax,
                              self.data, self.comment,
-                             self.nasa_low, self.nasa_high, self.cp_data))
+                             self.nasa_low, self.nasa_high, self.thermo_points))
 
     def update(self, data: dict):
         """

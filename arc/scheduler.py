@@ -29,6 +29,7 @@ from arc.common import (extremum_list,
                         torsions_to_scans,
                         )
 from arc.exceptions import (InputError,
+                            JobError,
                             SchedulerError,
                             SpeciesError,
                             TrshError,
@@ -68,6 +69,28 @@ if TYPE_CHECKING:
 
 
 logger = get_logger()
+
+
+# TS-guess adapter ``method`` strings → ``output[label]['paths']`` slot
+# carrying the produced log-path. Distinct slots so consumers (notably
+# the TCKDB adapter) can dispatch a method-aware path_search calc
+# without inspecting the file. Match is case- and whitespace-insensitive.
+# Geometry-only methods (heuristics, AutoTST, KinBot, GCN, user XYZ)
+# don't appear here — they have no log artifact to file.
+_TS_GUESS_METHOD_TO_PATHS_KEY: dict[str, str] = {
+    'orca_neb': 'neb',
+    'xtb_gsm': 'gsm',
+    'xtb-gsm': 'gsm',
+}
+
+
+def _ts_guess_paths_key(method: object) -> str | None:
+    """Return the ``output[label]['paths']`` slot for a TS-guess method,
+    or ``None`` for geometry-only / unknown methods."""
+    if not isinstance(method, str):
+        return None
+    return _TS_GUESS_METHOD_TO_PATHS_KEY.get(method.strip().lower())
+
 
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
     default_job_types, default_ts_adapters, max_ess_trsh, max_rotor_trsh, rotor_scan_resolution, servers_dict = \
@@ -297,6 +320,7 @@ class Scheduler(object):
         self.freq_scale_factor = freq_scale_factor
         self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
         self.ts_adapters = [ts_adapter.lower() for ts_adapter in self.ts_adapters]
+        self.ts_adapters = self._filter_unavailable_ts_adapters(self.ts_adapters)
         self.output = output or dict()
         self.output_multi_spc = dict()
         self.report_e_elect = report_e_elect
@@ -533,6 +557,40 @@ class Scheduler(object):
         self.timer = True
         if not self.testing:
             self.schedule_jobs()
+
+    @staticmethod
+    def _filter_unavailable_ts_adapters(ts_adapters: list[str]) -> list[str]:
+        """Drop TS adapters whose backing software/conda env isn't installed.
+
+        ARC's default ``ts_adapters`` list assumes every sister env (ts_gcn,
+        tst_env, ...) exists on every host. On dev machines that's rarely
+        true; the missing-env case used to surface 300 frames deep as
+        ``TypeError: argument should be a str ... not 'NoneType'`` from
+        ``Path(None)``. Filtering at scheduler init turns that into a clear
+        warning the user can act on.
+        """
+        env_requirements = {
+            'gcn': ('TS_GCN_PYTHON', 'ts_gcn'),
+            'autotst': ('AUTOTST_PYTHON', 'tst_env'),
+        }
+        kept = []
+        for adapter in ts_adapters:
+            requirement = env_requirements.get(adapter)
+            if requirement is None:
+                kept.append(adapter)
+                continue
+            setting_name, env_name = requirement
+            if settings.get(setting_name):
+                kept.append(adapter)
+                continue
+            logger.warning(
+                f"TS adapter '{adapter}' is configured but its backing software "
+                f"was not found ({setting_name} is unset; expected the '{env_name}' "
+                f"conda env). Skipping this adapter for the current run. To use it, "
+                f"either install the '{env_name}' env or remove '{adapter}' from "
+                f"your ts_adapters in input.yml / arc/settings/settings.py."
+            )
+        return kept
 
     def flush_pending_pipe_batches(self) -> None:
         """
@@ -1089,7 +1147,7 @@ class Scheduler(object):
         if job.job_status[0] != 'done' or job.job_status[1]['status'] != 'done':
             try:
                 job.determine_job_status()  # Also downloads the output file.
-            except IOError:
+            except (IOError, JobError):
                 if job.job_type not in ['orbitals']:
                     logger.warning(f'Tried to determine status of job {job.job_name}, '
                                    f'but it seems like the job never ran. Re-running job.')
@@ -1172,6 +1230,11 @@ class Scheduler(object):
                 for rotors_dict in self.species_dict[label].rotors_dict.values():
                     if rotors_dict['pivots'] in [job.pivots, job.pivots[0]]:
                         rotors_dict['scan_path'] = job.local_path_to_output_file
+                        rotors_dict['scan_software'] = job.job_adapter
+            try:
+                job.remove_remote_files()
+            except Exception as e:
+                logger.warning(f'Could not remove remote files for job {job.job_name}: {e}')
             self.save_restart_dict()
             return True
 
@@ -1328,8 +1391,10 @@ class Scheduler(object):
                     self.run_composite_job(label)
                 self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
                 self.species_dict[label].successful_methods = [self.species_dict[label].ts_guesses[0].method]
-                if getattr(self.species_dict[label].ts_guesses[0], 'log_path', None):
-                    self.output[label]['paths']['neb'] = self.species_dict[label].ts_guesses[0].log_path
+                tsg0 = self.species_dict[label].ts_guesses[0]
+                paths_key = _ts_guess_paths_key(tsg0.method)
+                if paths_key and getattr(tsg0, 'log_path', None):
+                    self.output[label]['paths'][paths_key] = tsg0.log_path
 
     def run_opt_job(self, label: str, fine: bool = False):
         """
@@ -2374,8 +2439,9 @@ class Scheduler(object):
                     self.species_dict[label].initial_xyz = tsg.opt_xyz
                     self.species_dict[label].final_xyz = None
                     self.species_dict[label].ts_guesses_exhausted = False
-                    if getattr(tsg, 'log_path', None):
-                        self.output[label]['paths']['neb'] = tsg.log_path
+                    paths_key = _ts_guess_paths_key(tsg.method)
+                    if paths_key and getattr(tsg, 'log_path', None):
+                        self.output[label]['paths'][paths_key] = tsg.log_path
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
@@ -2921,6 +2987,13 @@ class Scheduler(object):
             job (JobAdapter): The IRC job object.
         """
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
+        # Track IRC direction in lockstep with the path list so downstream
+        # consumers (TCKDB computed-reaction upload) can label points
+        # forward/reverse without filename guesswork. setdefault handles
+        # restarts from older projects whose 'paths' dict predates this key.
+        self.output[label]['paths'].setdefault('irc_directions', list()).append(
+            getattr(job, 'irc_direction', None)
+        )
         index = 1
         if len(self.output[label]['paths']['irc']) == 2:
             index = 2
@@ -3091,6 +3164,7 @@ class Scheduler(object):
         # Save the path and invalidation reason for debugging and tracking the file.
         # If ``success`` is None, it means that the job is being troubleshooted.
         self.species_dict[label].rotors_dict[job.rotor_index]['scan_path'] = job.local_path_to_output_file
+        self.species_dict[label].rotors_dict[job.rotor_index]['scan_software'] = job.job_adapter
         self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] += invalidation_reason
 
         # If energies were obtained, draw the scan curve.
@@ -3794,7 +3868,10 @@ class Scheduler(object):
                     logger.info(f'Deleted job {job_name}')
                     job.delete()
         self.running_jobs[label] = list()
-        self.output[label]['paths'] = {key: '' if key != 'irc' else list() for key in self.output[label]['paths'].keys()}
+        self.output[label]['paths'] = {
+            key: list() if key in ('irc', 'irc_directions') else ''
+            for key in self.output[label]['paths'].keys()
+        }
         for job_type in self.output[label]['job_types']:
             # rotors and bde are initialised to True (see initialize_output_dict) because
             # species with no torsional modes / no BDE targets should not be blocked from
@@ -4002,8 +4079,12 @@ class Scheduler(object):
                     if species.is_ts:
                         if 'irc' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['irc'] = list()
+                        if 'irc_directions' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['irc_directions'] = list()
                         if 'neb' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['neb'] = ''
+                        if 'gsm' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['gsm'] = ''
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:

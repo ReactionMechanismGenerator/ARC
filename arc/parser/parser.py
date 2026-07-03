@@ -222,10 +222,27 @@ parse_1d_scan_coords = make_parser(
     error_message='Could not parse 1d scan coords from {path}',
 )
 
+parse_1d_scan_energies_hartree = make_parser(
+    parse_method='parse_1d_scan_energies_hartree',
+    return_type=tuple[list[float] | None, list[float] | None],
+    error_message='Could not parse 1d scan absolute energies (Hartree) from {path}',
+)
+
 parse_irc_traj = make_parser(
     parse_method='parse_irc_traj',
     return_type=list[dict[str, tuple]] | None,
     error_message='Could not parse IRC trajectory from {path}',
+)
+
+# Rich IRC parser. Sibling of parse_irc_traj — emits per-point dicts with
+# energy, reaction coordinate, gradients, direction, and xyz so consumers
+# don't have to align fields across multiple narrow parses. ESS adapters
+# that don't implement parse_irc_path get None back from make_parser
+# (graceful fallback to the geometry-only parse_irc_traj at call sites).
+parse_irc_path = make_parser(
+    parse_method='parse_irc_path',
+    return_type=list[dict] | None,
+    error_message='Could not parse rich IRC path from {path}',
 )
 
 parse_scan_conformers = make_parser(
@@ -263,6 +280,69 @@ parse_ess_version = make_parser(
     return_type=str | None,
     error_message='Could not parse ESS version from {path}',
 )
+
+
+def parse_1d_scan_full_result(log_file_path: str) -> dict:
+    """
+    Parse a 1D rotor scan log into a single bundle of derived quantities suitable
+    for both ARC-internal use and TCKDB upload.
+
+    The returned dict aggregates what individual narrow parsers expose so that
+    callers (in particular the ``output.yml`` writer) don't have to re-walk the
+    log file three times. Fields are populated independently — any of them may
+    be ``None`` if the underlying parser cannot extract that information for the
+    given ESS log; the wrapper never raises.
+
+    Args:
+        log_file_path (str): Path to the ESS scan log.
+
+    Returns: dict
+        ``{
+            'angles_deg': list[float] | None,
+            'relative_energies_kj_mol': list[float] | None,
+            'absolute_energies_hartree': list[float] | None,
+            'zero_energy_reference_hartree': float | None,   # min absolute energy
+            'geometries': list[dict[str, tuple]] | None,
+        }``
+
+        ``angles_deg`` is taken from the relative-energies parse (the
+        established source of truth) when available, else from the absolute
+        parse. ``zero_energy_reference_hartree`` is the minimum of
+        ``absolute_energies_hartree`` when present, else ``None``.
+    """
+    rel_energies, rel_angles = parse_1d_scan_energies(log_file_path=log_file_path)
+    abs_energies, abs_angles = parse_1d_scan_energies_hartree(log_file_path=log_file_path)
+    geometries = parse_1d_scan_coords(log_file_path=log_file_path)
+
+    # Coerce numpy outputs (Gaussian's relative path returns lists; older code
+    # paths and ORCA may return ndarrays) to plain lists so YAML/JSON
+    # serialisers downstream don't choke on numpy scalars.
+    def _to_list(x):
+        if x is None:
+            return None
+        try:
+            return [float(v) for v in x]
+        except TypeError:
+            return None
+
+    rel_energies = _to_list(rel_energies)
+    rel_angles = _to_list(rel_angles)
+    abs_energies = _to_list(abs_energies)
+    abs_angles = _to_list(abs_angles)
+
+    angles = rel_angles if rel_angles is not None else abs_angles
+
+    zero_ref = None
+    if abs_energies:
+        zero_ref = min(abs_energies)
+
+    return {
+        'angles_deg': angles,
+        'relative_energies_kj_mol': rel_energies,
+        'absolute_energies_hartree': abs_energies,
+        'zero_energy_reference_hartree': zero_ref,
+        'geometries': geometries,
+    }
 
 
 def parse_1d_scan_energies_from_specific_angle(log_file_path: str,
@@ -423,7 +503,11 @@ def parse_trajectory(path: str) -> list[dict[str, tuple]] | None:
         Entries are xyz's on the trajectory.
     """
     ess_file, traj = False, None
-    if path.split('.')[-1] != 'xyz':
+    # GSM emits stringfile.xyz0000, stringfile.xyz0001, ... — the four-digit
+    # suffix is the GSM iteration index, not a different format. Treat any
+    # ``.xyz`` followed by optional digits as a plain XYZ trajectory and skip
+    # the ESS sniff (which would warn benignly on a non-ESS file).
+    if not re.search(r'\.xyz\d*$', path):
         ess_file = bool(determine_ess(log_file_path=path, raise_error=False))
     if ess_file:
         try:

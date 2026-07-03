@@ -306,6 +306,13 @@ class xTBGSMAdapter(JobAdapter):
         self.tm2orca_path = os.path.join(self.local_path, 'tm2orca.py')
         self.scratch_initial0000_path = os.path.join(self.local_path, 'scratch', 'initial0000.xyz')
         self.stringfile_path = os.path.join(self.local_path, 'stringfile.xyz0000')
+        # Side-effect directory written by the patched ``ograd`` wrapper.
+        # Holds per-node ``<label>.energy``/``<label>.gradient``/
+        # ``<label>.xtbout`` files preserved for the TCKDB path_search
+        # adapter. Empty/absent for older runs whose ograd predates the
+        # preservation step — the parser handles that case as
+        # geometry-only.
+        self.gsm_node_outputs_path = os.path.join(self.local_path, 'gsm_node_outputs')
 
     def set_inpfileq_keywords(self) -> dict:
         """
@@ -393,6 +400,13 @@ class xTBGSMAdapter(JobAdapter):
             tsg.initial_xyz = traj[int((len(traj) - 1) / 2) + 1]
             tsg.execution_time = self.final_time - self.initial_time
             tsg.success = True
+            # Provenance for the TCKDB path_search adapter: the GSM
+            # stringfile is the result-bearing artifact of a successful
+            # GSM run (the ESS log/string is what the consumer needs to
+            # anchor a parent calc). The scheduler reads this attribute
+            # to populate ``output[label]['paths']['gsm']`` (separate
+            # from ``paths['neb']`` — distinct method, distinct slot).
+            tsg.log_path = self.stringfile_path
         self.reactions[0].ts_species.ts_guesses.append(tsg)
 
     def cleanup_files(self):
