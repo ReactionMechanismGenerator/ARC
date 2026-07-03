@@ -447,6 +447,31 @@ class Level(object):
                     self.compatible_ess.append(ess)
 
 
+def plain_level_dict(level: Level | None) -> dict | None:
+    """
+    Serialize a Level object into a plain, YAML-safe dictionary.
+
+    Removes the derived 'repr' and 'compatible_ess' keys, and converts a nested
+    solvation_scheme_level Level object into its string representation.
+    This is the representation used for recording levels of theory in output.yml
+    and on TSGuess objects.
+
+    Args:
+        level (Level, optional): The level of theory to serialize.
+
+    Returns:
+        dict | None: A plain dictionary representation, or ``None`` if ``level`` is ``None``.
+    """
+    if level is None:
+        return None
+    level_dict = level.as_dict()
+    level_dict.pop('repr', None)
+    level_dict.pop('compatible_ess', None)
+    if isinstance(level_dict.get('solvation_scheme_level'), Level):
+        level_dict['solvation_scheme_level'] = str(level_dict['solvation_scheme_level'])
+    return level_dict
+
+
 def assign_frequency_scale_factor(level: str | Level) -> int | None:
     """
     Assign a frequency scaling factor to a level of theory.

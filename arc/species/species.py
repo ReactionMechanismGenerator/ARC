@@ -2268,6 +2268,9 @@ class TSGuess(object):
         t0 (datetime.datetime, optional): Initial time of spawning the guess job.
         execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.
         log_path (str, optional): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
+        level (dict, optional): A plain dictionary representation of the level of theory at which the guess-generating
+                                adapter ran its electronic structure calculations (e.g., the NEB level for orca_neb,
+                                GFN2-xTB for xtb_gsm). ``None`` for pure ML/template based guess methods.
         project_directory (str, optional): The path to the project directory.
 
     Attributes:
@@ -2293,6 +2296,8 @@ class TSGuess(object):
         errors (str): Problems experienced with this TSGuess. Used for logging.
         cluster (list[int]): Indices of TSGuess object instances clustered together.
         log_path (str): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
+        level (dict): The level of theory the guess-generating adapter ran its electronic structure calculations at,
+                      as a plain dictionary. ``None`` for pure ML/template based guess methods.
     """
 
     def __init__(self,
@@ -2311,6 +2316,7 @@ class TSGuess(object):
                  energy: float | None = None,
                  cluster: list[int] | None = None,
                  log_path: str | None = None,
+                 level: dict | None = None,
                  project_directory: str | None = None,
                  ):
 
@@ -2334,6 +2340,7 @@ class TSGuess(object):
             self.energy = energy
             self.cluster = cluster
             self.log_path = log_path
+            self.level = level
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
@@ -2419,6 +2426,8 @@ class TSGuess(object):
         ts_dict['success'] = self.success
         if self.energy is not None:
             ts_dict['energy'] = self.energy
+        if self.level is not None:
+            ts_dict['level'] = self.level
         ts_dict['index'] = self.index
         if self.imaginary_freqs is not None:
             ts_dict['imaginary_freqs'] = [float(f) for f in self.imaginary_freqs]
@@ -2477,6 +2486,7 @@ class TSGuess(object):
             self.execution_time = datetime.timedelta(seconds=0)
         self.family = ts_dict['family'] if 'family' in ts_dict else None
         self.log_path = ts_dict['log_path'] if 'log_path' in ts_dict else None
+        self.level = ts_dict['level'] if 'level' in ts_dict else None
         self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
 
     def process_xyz(self,
