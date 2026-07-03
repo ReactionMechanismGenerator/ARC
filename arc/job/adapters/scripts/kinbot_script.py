@@ -30,8 +30,10 @@ Output (YAML file written to ``yml_out_path``): a list of TS guess dicts with ke
 
 import argparse
 import datetime
+import json
 import os
 import sys
+import tempfile
 import traceback
 
 import yaml
@@ -63,21 +65,34 @@ def set_up_kinbot(smiles: str,
     Returns:
         ReactionGenerator: The KinBot ReactionGenerator instance.
     """
-    params = Parameters()
-    params.par['title'] = 'ARC'
-    # molecule information
-    params.par['smiles'] = smiles
-    params.par['structure'] = structure
-    params.par['charge'] = charge
-    params.par['mult'] = multiplicity
-    # steps
-    params.par['reaction_search'] = 1
-    params.par['families'] = families
-    params.par['pes'] = 0
-    params.par['high_level'] = 0
-    params.par['conformer_search'] = 0
-    params.par['me'] = 0
-    params.par['ringrange'] = [3, 9]
+    par_dict = {'title': 'ARC',
+                # molecule information
+                'smiles': smiles,
+                'structure': structure,
+                'charge': charge,
+                'mult': multiplicity,
+                # steps
+                'reaction_search': 1,
+                'families': families,
+                'pes': 0,
+                'high_level': 0,
+                'conformer_search': 0,
+                'me': 0,
+                'ringrange': [3, 9],
+                # Not used in ARC's flow (no KinBot QC jobs are ever spawned), but
+                # Parameters refuses to initialize without a barrier threshold (kcal/mol).
+                'barrier_threshold': 200.0,
+                }
+    # Parameters validates its values at construction time (and calls sys.exit() on
+    # invalid ones), so the overrides must be supplied via a JSON input file rather
+    # than by mutating params.par after the fact.
+    fd, par_path = tempfile.mkstemp(suffix='.json', prefix='kinbot_params_', dir=os.getcwd(), text=True)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            json.dump(par_dict, f)
+        params = Parameters(par_path)
+    finally:
+        os.remove(par_path)
 
     well = StationaryPoint(name='well0',
                            charge=charge,
