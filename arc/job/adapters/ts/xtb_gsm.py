@@ -25,7 +25,7 @@ from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
 from arc.job.local import change_mode, execute_command
-from arc.level import Level
+from arc.level import Level, plain_level_dict
 from arc.parser.parser import parse_trajectory
 from arc.species import TSGuess
 from arc.species.converter import xyz_to_xyz_file_format
@@ -390,10 +390,14 @@ class xTBGSMAdapter(JobAdapter):
         """
         Process a completed xTB-GSM run.
         """
+        # The GSM run is driven by the ograd script which executes plain ``xtb --grad``,
+        # i.e., GFN2-xTB (the xtb default), unless a level was explicitly set for this job.
         tsg = TSGuess(method='xTB-GSM',
                       index=len(self.reactions[0].ts_species.ts_guesses),
                       success=False,
                       t0=self.initial_time,
+                      level=plain_level_dict(self.level) if self.level is not None
+                      else {'method': 'gfn2-xtb', 'software': 'xtb'},
                       )
         if os.path.isfile(self.stringfile_path):
             traj = parse_trajectory(self.stringfile_path)

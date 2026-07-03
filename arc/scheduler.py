@@ -209,6 +209,9 @@ class Scheduler(object):
         running_jobs (dict): A dictionary of currently running jobs (a subset of `job_dict`).
                              Keys are species/TS label, values are lists of job names (e.g. 'conformer3', 'opt_a123').
         server_job_ids (list): A list of relevant job IDs currently running on the server.
+        completed_job_records (list[dict]): Lightweight per-job cost records (name, type, adapter, server, cores,
+                                            run time in seconds, status) accumulated as jobs complete.
+                                            Persisted in the restart file and used for output.yml cost metrics.
         output (dict): Output dictionary with status per job type and final QM file paths for all species.
         output_multi_spc (dict): Output dictionary with status per job type of multi-species clusters.
         ess_settings (dict): A dictionary of available ESS and a corresponding server list.
@@ -303,6 +306,7 @@ class Scheduler(object):
         self.job_dict = dict()
         self.server_job_ids = list()
         self.completed_incore_jobs = list()
+        self.completed_job_records = list()
         self.running_jobs = dict()
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.testing = testing
@@ -334,6 +338,8 @@ class Scheduler(object):
         if self.restart_dict is not None:
             self.output = self.restart_dict['output'] if 'output' in self.restart_dict else dict()
             self.output_multi_spc = self.restart_dict['output_multi_spc'] if 'output_multi_spc' in self.restart_dict else dict()
+            self.completed_job_records = self.restart_dict['completed_job_records'] \
+                if 'completed_job_records' in self.restart_dict else list()
             if 'running_jobs' in self.restart_dict:
                 self.restore_running_jobs()
         self.initialize_output_dict()
@@ -1210,6 +1216,7 @@ class Scheduler(object):
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
             self.timer = False
             job.write_completed_job_to_csv_file()
+            self._record_completed_job(job=job, label=label)
             logger.info(f'  Ending job {job_name} for {label} (run time: {job.run_time})')
             if job.job_status[0] != 'done':
                 return False
@@ -1237,6 +1244,28 @@ class Scheduler(object):
                 logger.warning(f'Could not remove remote files for job {job.job_name}: {e}')
             self.save_restart_dict()
             return True
+
+    def _record_completed_job(self, job: JobAdapter, label: str):
+        """
+        Record a lightweight per-job cost entry for a completed job.
+
+        The records are persisted in the restart file (so they survive restarts)
+        and are aggregated into the cost metrics section of output.yml.
+
+        Args:
+            job (JobAdapter): The completed job object.
+            label (str): The species label.
+        """
+        self.completed_job_records.append({
+            'job_name': job.job_name,
+            'label': label,
+            'job_type': job.job_type,
+            'job_adapter': job.job_adapter,
+            'server': job.server,
+            'cpu_cores': job.cpu_cores,
+            'run_time_sec': job.run_time.total_seconds() if job.run_time is not None else None,
+            'job_status': job.job_status[0],
+        })
 
     def _run_a_job(self,
                    job: JobAdapter,
@@ -3992,6 +4021,7 @@ class Scheduler(object):
             logger.debug('Creating a restart file...')
             self.restart_dict['output'] = self.output
             self.restart_dict['output_multi_spc'] = self.output_multi_spc
+            self.restart_dict['completed_job_records'] = self.completed_job_records
             self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
             self.restart_dict['running_jobs'] = dict()
             for spc in self.species_dict.values():

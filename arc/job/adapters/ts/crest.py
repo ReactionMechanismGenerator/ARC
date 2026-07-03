@@ -243,6 +243,7 @@ class CrestAdapter(JobAdapter):
                         unique = False
                         break
                 if unique:
+                    # CREST is run without an explicit method flag, i.e., at its GFN2-xTB default.
                     ts_guess = TSGuess(method='CREST',
                                        index=len(rxn.ts_species.ts_guesses),
                                        method_index=method_index,
@@ -251,6 +252,7 @@ class CrestAdapter(JobAdapter):
                                        success=True,
                                        family=rxn.family,
                                        xyz=xyz,
+                                       level={'method': 'gfn2-xtb', 'software': 'crest'},
                                        )
                     rxn.ts_species.ts_guesses.append(ts_guess)
                     save_geo(xyz=xyz,

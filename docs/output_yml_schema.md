@@ -19,6 +19,12 @@ output.yml
 ├── arkane_git_commit?
 ├── datetime_completed
 │
+├── cost_metrics
+│   ├── wall_time_hrs?
+│   ├── total_job_count, total_execution_time_hrs, total_core_hours
+│   ├── jobs_missing_time, jobs_missing_cores
+│   └── per_ess?: {<ess>: {job_count, execution_time_hrs, core_hours, jobs_missing_time}, ...}
+│
 ├── opt_level?
 ├── freq_level?
 ├── sp_level?
@@ -55,6 +61,9 @@ output.yml
 ├── transition_states: []
 │   └── (all species fields, plus:)
 │       ├── chosen_ts_method?, successful_ts_methods?
+│       ├── ts_guesses: []
+│       │   └── index?, method, method_sources?, method_index?, method_direction?,
+│       │       success?, energy_kj_mol?, execution_time_sec?, level?, log_path?, chosen
 │       ├── neb_log?, gsm_log?, irc_logs: [], irc_converged?
 │       └── rxn_label
 │
@@ -78,6 +87,28 @@ output.yml
 | `arc_git_commit` | `str?` | ARC repo HEAD commit hash |
 | `arkane_git_commit` | `str?` | RMG-Py (Arkane) repo HEAD commit hash |
 | `datetime_completed` | `str` | Completion timestamp (`YYYY-MM-DD HH:MM`) |
+
+## Cost Metrics
+
+`cost_metrics` records the computational cost of the run, aggregated from per-job
+records collected as jobs complete (persisted in the restart file, so restarted runs
+keep their history). Jobs with unavailable run time or core count are **counted**, not
+silently dropped, so analysis scripts know the coverage. Wall time is queue-confounded
+and should be treated as a secondary metric; ESS execution time and core-hours are the
+primary cost measures. Pipe-mode tasks are not individually tracked and are therefore
+not included in the per-job aggregates.
+
+| Field | Type | Description |
+|---|---|---|
+| `wall_time_hrs` | `float?` | Wall-clock duration of the run in hours (also derivable from the `datetime_*` pair, which only has minute resolution) |
+| `total_job_count` | `int` | Total number of completed jobs recorded |
+| `total_execution_time_hrs` | `float` | Summed ESS job execution time (hours), over jobs with a known run time |
+| `total_core_hours` | `float` | Summed execution time x CPU cores (hours), over jobs with known run time and core count |
+| `jobs_missing_time` | `int` | Jobs with no recorded run time (excluded from time/core-hour sums) |
+| `jobs_missing_cores` | `int` | Jobs with a run time but no recorded core count (excluded from core-hour sums only) |
+| `per_ess` | `dict?` | Per-ESS-software aggregates, keyed by the job adapter name (e.g. `gaussian`, `orca`, `xtb`); `null` when no jobs were recorded |
+
+Each `per_ess` entry: `{job_count: int, execution_time_hrs: float, core_hours: float, jobs_missing_time: int}`.
 
 ## Levels of Theory
 
@@ -221,12 +252,34 @@ All paths are relative to the project directory.
 | `imag_freq_cm1` | `float?` | Imaginary frequency (cm-1) |
 | `chosen_ts_method` | `str?` | The TS search method that was selected |
 | `successful_ts_methods` | `list[str]?` | All TS methods that succeeded |
+| `ts_guesses` | `list[dict]` | Per-guess provenance, one entry per TSGuess (see below) |
 | `neb_log` | `str?` | Run-relative path to NEB log (set when chosen TS method is `orca_neb`) |
 | `gsm_log` | `str?` | Run-relative path to GSM stringfile (set when chosen TS method is `xtb_gsm`) |
 | `irc_logs` | `list[str]` | Run-relative paths to IRC logs |
 | `irc_converged` | `bool?` | Whether IRC converged (`null` if IRC was not requested) |
 | `rxn_label` | `str` | Reaction label this TS belongs to |
 | `thermo` | `null` | Always `null` for transition states |
+
+### TS guesses
+
+Each `ts_guesses` entry records the provenance of one TS guess:
+
+| Field | Type | Description |
+|---|---|---|
+| `index` | `int?` | Running index of this guess within the TS species |
+| `method` | `str` | The guess method (e.g. `orca_neb`, `xtb-gsm`, `heuristics`, `gcn`, `autotst`, `kinbot`, `user guess`) |
+| `method_sources` | `list[str]?` | All methods that produced an equivalent guess (after clustering) |
+| `method_index` | `int?` | Sub-index for methods generating several guesses (per direction) |
+| `method_direction` | `str?` | Reaction direction used to generate the guess (`F` / `R`) |
+| `success` | `bool?` | Whether the method succeeded in generating an XYZ guess |
+| `energy_kj_mol` | `float?` | Energy **relative to the other guesses** of this TS (kJ/mol), from the guess-level opt |
+| `execution_time_sec` | `float?` | Execution time of the guess method in seconds |
+| `level` | `dict?` | Level of theory the guess-generating adapter ran its electronic structure at (e.g. the NEB level for `orca_neb`, GFN2-xTB for `xtb-gsm`); `null` for pure ML/template methods |
+| `log_path` | `str?` | Run-relative path to the log file produced by the guess method (e.g. NEB output) |
+| `chosen` | `bool` | Whether this guess was selected for the TS optimization |
+
+Note: `level` may differ from the run-level `opt_level`/`sp_level` — guess-generating
+adapters (NEB, GSM) run electronic structure at their own levels.
 
 ---
 

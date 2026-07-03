@@ -2,6 +2,7 @@
 Tests for the arc.output module (consolidated output.yml writer).
 """
 
+import datetime
 import os
 import shutil
 import tempfile
@@ -15,6 +16,7 @@ from arc.output import (
     _build_applied_corrections_for_species,
     _build_scan_calculations,
     _build_scan_result_for_rotor,
+    _compute_cost_metrics,
     _compute_point_groups,
     _compute_species_corrections,
     _get_arkane_git_commit,
@@ -32,9 +34,11 @@ from arc.output import (
     _spc_to_dict,
     _statmech_to_dict,
     _thermo_to_dict,
+    _timedelta_to_seconds,
+    _ts_guesses_to_list,
     write_output_yml,
 )
-from arc.species.species import ThermoData
+from arc.species.species import ThermoData, TSGuess
 
 
 class TestLevelToDict(unittest.TestCase):
@@ -1756,6 +1760,245 @@ class TestWriteOutputYml(unittest.TestCase):
         out_dir = os.path.join(self.tmp_dir, 'output')
         leftover = [f for f in os.listdir(out_dir) if f.endswith('.tmp')]
         self.assertEqual(leftover, [])
+
+    def _make_ts_mock(self, label='TS0'):
+        """Build a MagicMock TS species carrying real TSGuess objects."""
+        spc = MagicMock()
+        spc.label = label
+        spc.original_label = None
+        spc.charge = 0
+        spc.multiplicity = 2
+        spc.is_ts = True
+        spc.mol = None
+        spc.final_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
+        spc.initial_xyz = None
+        spc.is_monoatomic.return_value = False
+        spc.e_elect = -100.0
+        spc.e0 = -95.0
+        spc._is_linear = False
+        spc.optical_isomers = 1
+        spc.external_symmetry = 1
+        spc.freqs = [-1500.0, 100.0]
+        spc.rotors_dict = None
+        spc.thermo = None
+        spc.rxn_label = 'A <=> B'
+        spc.chosen_ts_method = 'orca_neb'
+        spc.successful_methods = ['orca_neb', 'xtb-gsm']
+        tsg_0 = TSGuess(method='heuristics', method_index=0, method_direction='F', success=False)
+        tsg_0.execution_time = datetime.timedelta(seconds=2)
+        tsg_1 = TSGuess(method='orca_neb', method_index=0, success=True, energy=0.0,
+                        level={'method': 'wb97x-d3', 'basis': 'def2-tzvp', 'software': 'orca'},
+                        log_path=os.path.join(self.tmp_dir, 'calcs', 'TSs', label, 'tsg1', 'output.out'))
+        tsg_1.index = 1
+        tsg_1.execution_time = datetime.timedelta(minutes=30)
+        tsg_0.index = 0
+        spc.ts_guesses = [tsg_0, tsg_1]
+        spc.chosen_ts = 1
+        return spc
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_ts_guesses_section(self, mock_arc_git, mock_arkane_git, mock_pg):
+        """The TS entry should carry a per-guess provenance table."""
+        from arc.common import read_yaml_file
+        spc = self._make_ts_mock()
+        write_output_yml(
+            project='test_tsg',
+            project_directory=self.tmp_dir,
+            species_dict={'TS0': spc},
+            reactions=[],
+            output_dict={'TS0': {'convergence': True, 'paths': {'irc': []},
+                                 'job_types': {'opt': True, 'irc': True}}},
+        )
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertEqual(len(doc['transition_states']), 1)
+        guesses = doc['transition_states'][0]['ts_guesses']
+        self.assertEqual(len(guesses), 2)
+        g0, g1 = guesses
+        self.assertEqual(g0['method'], 'heuristics')
+        self.assertIsNone(g0['level'])
+        self.assertFalse(g0['chosen'])
+        self.assertEqual(g0['execution_time_sec'], 2.0)
+        self.assertEqual(g1['method'], 'orca_neb')
+        self.assertEqual(g1['level'], {'method': 'wb97x-d3', 'basis': 'def2-tzvp', 'software': 'orca'})
+        self.assertTrue(g1['chosen'])
+        self.assertEqual(g1['execution_time_sec'], 1800.0)
+        self.assertEqual(g1['energy_kj_mol'], 0.0)
+        # log path must be run-relative
+        self.assertEqual(g1['log_path'], os.path.join('calcs', 'TSs', 'TS0', 'tsg1', 'output.out'))
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_cost_metrics_section(self, mock_arc_git, mock_arkane_git, mock_pg):
+        """Cost metrics should aggregate per-ESS execution time and core-hours."""
+        from arc.common import read_yaml_file
+        spc = self._make_spc_mock()
+        records = [
+            {'job_name': 'opt_a1', 'label': 'CH4', 'job_type': 'opt', 'job_adapter': 'gaussian',
+             'server': 'server1', 'cpu_cores': 8, 'run_time_sec': 3600.0, 'job_status': 'done'},
+            {'job_name': 'freq_a2', 'label': 'CH4', 'job_type': 'freq', 'job_adapter': 'gaussian',
+             'server': 'server1', 'cpu_cores': 8, 'run_time_sec': None, 'job_status': 'done'},
+            {'job_name': 'sp_a3', 'label': 'CH4', 'job_type': 'sp', 'job_adapter': 'orca',
+             'server': 'server2', 'cpu_cores': 16, 'run_time_sec': 900.0, 'job_status': 'done'},
+        ]
+        write_output_yml(
+            project='test_cost',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': spc},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+            t0=datetime.datetime.now().timestamp() - 7200.0,  # started 2 hrs ago
+            completed_job_records=records,
+        )
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        cm = doc['cost_metrics']
+        self.assertAlmostEqual(cm['wall_time_hrs'], 2.0, places=2)
+        self.assertEqual(cm['total_job_count'], 3)
+        self.assertEqual(cm['jobs_missing_time'], 1)
+        self.assertEqual(cm['jobs_missing_cores'], 0)
+        self.assertAlmostEqual(cm['total_execution_time_hrs'], 1.25)
+        self.assertAlmostEqual(cm['total_core_hours'], 12.0)
+        self.assertEqual(cm['per_ess']['gaussian']['job_count'], 2)
+        self.assertEqual(cm['per_ess']['gaussian']['jobs_missing_time'], 1)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['execution_time_hrs'], 1.0)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['core_hours'], 8.0)
+        self.assertEqual(cm['per_ess']['orca']['job_count'], 1)
+        self.assertAlmostEqual(cm['per_ess']['orca']['execution_time_hrs'], 0.25)
+        self.assertAlmostEqual(cm['per_ess']['orca']['core_hours'], 4.0)
+
+
+class TestTimedeltaToSeconds(unittest.TestCase):
+    """Tests for _timedelta_to_seconds."""
+
+    def test_none(self):
+        self.assertIsNone(_timedelta_to_seconds(None))
+
+    def test_timedelta(self):
+        self.assertEqual(_timedelta_to_seconds(datetime.timedelta(minutes=1, seconds=30)), 90.0)
+
+    def test_numeric(self):
+        self.assertEqual(_timedelta_to_seconds(42), 42.0)
+        self.assertEqual(_timedelta_to_seconds(12.345), 12.35)
+
+    def test_str_hms(self):
+        self.assertEqual(_timedelta_to_seconds('0:01:30'), 90.0)
+
+    def test_str_hms_with_micro(self):
+        self.assertEqual(_timedelta_to_seconds('1:00:00.500000'), 3600.5)
+
+    def test_str_with_days(self):
+        self.assertEqual(_timedelta_to_seconds('1 day, 2:00:00'), 93600.0)
+        self.assertEqual(_timedelta_to_seconds('2 days, 0:00:01'), 172801.0)
+
+    def test_unparseable_str(self):
+        self.assertIsNone(_timedelta_to_seconds('bogus'))
+        self.assertIsNone(_timedelta_to_seconds('12:30'))
+
+
+class TestComputeCostMetrics(unittest.TestCase):
+    """Tests for _compute_cost_metrics."""
+
+    def test_empty_records(self):
+        cm = _compute_cost_metrics(None, None)
+        self.assertIsNone(cm['wall_time_hrs'])
+        self.assertEqual(cm['total_job_count'], 0)
+        self.assertEqual(cm['jobs_missing_time'], 0)
+        self.assertEqual(cm['jobs_missing_cores'], 0)
+        self.assertEqual(cm['total_execution_time_hrs'], 0.0)
+        self.assertEqual(cm['total_core_hours'], 0.0)
+        self.assertIsNone(cm['per_ess'])
+
+    def test_two_ess_aggregation(self):
+        records = [
+            {'job_adapter': 'gaussian', 'cpu_cores': 8, 'run_time_sec': 7200.0},
+            {'job_adapter': 'gaussian', 'cpu_cores': 4, 'run_time_sec': 1800.0},
+            {'job_adapter': 'orca', 'cpu_cores': 16, 'run_time_sec': 3600.0},
+        ]
+        cm = _compute_cost_metrics(records, None)
+        self.assertEqual(cm['total_job_count'], 3)
+        self.assertEqual(cm['jobs_missing_time'], 0)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['execution_time_hrs'], 2.5)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['core_hours'], 18.0)  # 2*8 + 0.5*4
+        self.assertAlmostEqual(cm['per_ess']['orca']['execution_time_hrs'], 1.0)
+        self.assertAlmostEqual(cm['per_ess']['orca']['core_hours'], 16.0)
+        self.assertAlmostEqual(cm['total_execution_time_hrs'], 3.5)
+        self.assertAlmostEqual(cm['total_core_hours'], 34.0)
+
+    def test_missing_time_and_cores_counted(self):
+        records = [
+            {'job_adapter': 'gaussian', 'cpu_cores': 8, 'run_time_sec': None},
+            {'job_adapter': 'gaussian', 'cpu_cores': None, 'run_time_sec': 3600.0},
+        ]
+        cm = _compute_cost_metrics(records, None)
+        self.assertEqual(cm['jobs_missing_time'], 1)
+        self.assertEqual(cm['jobs_missing_cores'], 1)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['execution_time_hrs'], 1.0)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['core_hours'], 0.0)
+        self.assertEqual(cm['per_ess']['gaussian']['jobs_missing_time'], 1)
+
+    def test_run_time_as_timedelta_str(self):
+        """Records restored from a restart file may carry str run times."""
+        records = [{'job_adapter': 'xtb', 'cpu_cores': 1, 'run_time_sec': '0:30:00'}]
+        cm = _compute_cost_metrics(records, None)
+        self.assertAlmostEqual(cm['per_ess']['xtb']['execution_time_hrs'], 0.5)
+
+    def test_unknown_adapter_bucket(self):
+        records = [{'job_adapter': None, 'cpu_cores': 2, 'run_time_sec': 3600.0}]
+        cm = _compute_cost_metrics(records, None)
+        self.assertIn('unknown', cm['per_ess'])
+
+
+class TestTsGuessesToList(unittest.TestCase):
+    """Tests for _ts_guesses_to_list."""
+
+    def _make_spc(self):
+        spc = MagicMock()
+        spc.label = 'TS0'
+        tsg_0 = TSGuess(method='GCN', method_index=0, method_direction='F', success=True, energy=3.2)
+        tsg_0.index = 0
+        tsg_0.execution_time = '0:00:05'
+        tsg_1 = TSGuess(method='xTB-GSM', success=True, energy=0.0,
+                        level={'method': 'gfn2-xtb', 'software': 'xtb'},
+                        log_path='/proj/calcs/TSs/TS0/tsg1/stringfile.xyz0001')
+        tsg_1.index = 1
+        tsg_1.execution_time = datetime.timedelta(seconds=45)
+        tsg_1.method_sources = ['xtb-gsm', 'heuristics']
+        spc.ts_guesses = [tsg_0, tsg_1]
+        spc.chosen_ts = 1
+        return spc
+
+    def test_two_guesses(self):
+        entries = _ts_guesses_to_list(self._make_spc(), '/proj')
+        self.assertEqual(len(entries), 2)
+        g0, g1 = entries
+        self.assertEqual(g0['method'], 'gcn')
+        self.assertEqual(g0['method_sources'], ['gcn'])
+        self.assertEqual(g0['method_direction'], 'F')
+        self.assertEqual(g0['energy_kj_mol'], 3.2)
+        self.assertEqual(g0['execution_time_sec'], 5.0)
+        self.assertIsNone(g0['level'])
+        self.assertIsNone(g0['log_path'])
+        self.assertFalse(g0['chosen'])
+        self.assertEqual(g1['method'], 'xtb-gsm')
+        self.assertEqual(g1['method_sources'], ['xtb-gsm', 'heuristics'])
+        self.assertEqual(g1['level'], {'method': 'gfn2-xtb', 'software': 'xtb'})
+        self.assertEqual(g1['execution_time_sec'], 45.0)
+        self.assertEqual(g1['log_path'], os.path.join('calcs', 'TSs', 'TS0', 'tsg1', 'stringfile.xyz0001'))
+        self.assertTrue(g1['chosen'])
+
+    def test_no_guesses(self):
+        spc = MagicMock()
+        spc.ts_guesses = []
+        spc.chosen_ts = None
+        self.assertEqual(_ts_guesses_to_list(spc, '/proj'), [])
+
+    def test_chosen_out_of_range(self):
+        spc = self._make_spc()
+        spc.chosen_ts = 5
+        entries = _ts_guesses_to_list(spc, '/proj')
+        self.assertFalse(any(e['chosen'] for e in entries))
 
 
 class TestGetPointGroupsScript(unittest.TestCase):

@@ -60,6 +60,7 @@ def write_output_yml(
     arkane_level_of_theory=None,
     irc_requested: bool = True,
     t0: float | None = None,
+    completed_job_records: list | None = None,
 ) -> None:
     """
     Write the consolidated output.yml to <project_directory>/output/output.yml.
@@ -85,6 +86,8 @@ def write_output_yml(
             Recorded only when it differs from sp_level.
         irc_requested (bool): Whether IRC jobs were requested for this run.
         t0 (float, optional): The epoch timestamp when the ARC run started.
+        completed_job_records (list, optional): Lightweight per-job cost records accumulated by the Scheduler
+            (see Scheduler._record_completed_job), used for the run-level cost metrics.
     """
     doc: dict[str, Any] = {}
 
@@ -99,6 +102,9 @@ def write_output_yml(
         datetime.datetime.fromtimestamp(t0).strftime('%Y-%m-%d %H:%M') if t0 is not None else None
     )
     doc['datetime_completed'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+
+    # ---- run cost metrics -------------------------------------------------------
+    doc['cost_metrics'] = _compute_cost_metrics(completed_job_records, t0)
 
     # ---- levels of theory -------------------------------------------------------
     doc['composite_method'] = _level_to_dict(composite_method)
@@ -263,6 +269,140 @@ def _ts_guess_log_field_for_method(method: object) -> str | None:
     if not isinstance(method, str):
         return None
     return _TS_GUESS_METHOD_TO_LOG_FIELD.get(method.strip().lower())
+
+
+def _timedelta_to_seconds(value) -> float | None:
+    """
+    Convert a timedelta, a numeric value, or a str(timedelta) representation to float seconds.
+
+    Accepted string formats are those produced by ``str(datetime.timedelta)``:
+    ``'H:MM:SS'``, ``'H:MM:SS.ffffff'``, and ``'N day(s), H:MM:SS[.ffffff]'``.
+
+    Returns:
+        float | None: The total seconds (rounded to 2 decimals), or ``None`` if the value
+                      is ``None`` or cannot be interpreted.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime.timedelta):
+        return round(value.total_seconds(), 2)
+    if isinstance(value, (int, float)):
+        return round(float(value), 2)
+    if isinstance(value, str):
+        try:
+            days = 0.0
+            time_part = value
+            if 'day' in value:
+                day_str, time_part = value.split(',', 1)
+                days = float(day_str.split()[0])
+                time_part = time_part.strip()
+            parts = time_part.split(':')
+            if len(parts) != 3:
+                return None
+            hours, minutes, seconds = float(parts[0]), float(parts[1]), float(parts[2])
+            return round(days * 86400 + hours * 3600 + minutes * 60 + seconds, 2)
+        except (ValueError, IndexError):
+            return None
+    return None
+
+
+def _compute_cost_metrics(completed_job_records: list | None, t0: float | None) -> dict:
+    """
+    Aggregate per-job cost records into run-level cost metrics.
+
+    Per-job records come from ``Scheduler.completed_job_records`` (collected at job
+    completion and persisted in the restart file). Jobs missing run-time or core-count
+    data are counted (``jobs_missing_time`` / ``jobs_missing_cores``) rather than
+    silently dropped, so downstream analysis knows the coverage. Pipe-mode tasks are
+    not individually tracked and are therefore not included.
+
+    Args:
+        completed_job_records (list, optional): Entries are dicts with at least
+            'job_adapter' (the ESS/software name), 'run_time_sec', and 'cpu_cores'.
+        t0 (float, optional): The epoch timestamp when the ARC run started.
+
+    Returns:
+        dict: {'wall_time_hrs', 'total_job_count', 'total_execution_time_hrs',
+               'total_core_hours', 'jobs_missing_time', 'jobs_missing_cores', 'per_ess'}.
+    """
+    records = completed_job_records or []
+    per_ess: dict[str, dict] = {}
+    jobs_missing_time, jobs_missing_cores = 0, 0
+    for record in records:
+        ess = record.get('job_adapter') or 'unknown'
+        entry = per_ess.setdefault(ess, {'job_count': 0,
+                                         'execution_time_hrs': 0.0,
+                                         'core_hours': 0.0,
+                                         'jobs_missing_time': 0,
+                                         })
+        entry['job_count'] += 1
+        run_time_sec = _timedelta_to_seconds(record.get('run_time_sec'))
+        cpu_cores = record.get('cpu_cores')
+        if run_time_sec is None:
+            jobs_missing_time += 1
+            entry['jobs_missing_time'] += 1
+            continue
+        entry['execution_time_hrs'] += run_time_sec / 3600.0
+        if cpu_cores is None:
+            jobs_missing_cores += 1
+        else:
+            entry['core_hours'] += run_time_sec * cpu_cores / 3600.0
+    for entry in per_ess.values():
+        entry['execution_time_hrs'] = round(entry['execution_time_hrs'], 4)
+        entry['core_hours'] = round(entry['core_hours'], 4)
+    wall_time_hrs = round((datetime.datetime.now().timestamp() - t0) / 3600.0, 4) \
+        if t0 is not None else None
+    return {
+        'wall_time_hrs': wall_time_hrs,
+        'total_job_count': len(records),
+        'total_execution_time_hrs': round(sum(e['execution_time_hrs'] for e in per_ess.values()), 4),
+        'total_core_hours': round(sum(e['core_hours'] for e in per_ess.values()), 4),
+        'jobs_missing_time': jobs_missing_time,
+        'jobs_missing_cores': jobs_missing_cores,
+        'per_ess': per_ess or None,
+    }
+
+
+def _ts_guesses_to_list(spc, project_directory: str) -> list[dict]:
+    """
+    Build the per-TSGuess provenance list for a TS entry in output.yml.
+
+    One entry per TSGuess of the TS species, recording the guess method and its
+    provenance (method_sources after equivalent-guess clustering), success, relative
+    energy among the guesses, execution time (seconds), the level of theory the
+    guess-generating adapter ran its electronic structure at (``None`` for pure
+    ML/template methods), the guess log file (run-relative), and whether this guess
+    was the one chosen for the TS optimization.
+
+    Args:
+        spc (ARCSpecies): The TS species.
+        project_directory (str): Root directory of this ARC project.
+
+    Returns:
+        list[dict]: One provenance dict per TSGuess.
+    """
+    ts_guesses = getattr(spc, 'ts_guesses', None) or []
+    chosen_idx = getattr(spc, 'chosen_ts', None)
+    chosen_guess = None
+    if isinstance(chosen_idx, int) and 0 <= chosen_idx < len(ts_guesses):
+        chosen_guess = ts_guesses[chosen_idx]
+    entries = []
+    for tsg in ts_guesses:
+        method_sources = getattr(tsg, 'method_sources', None)
+        entries.append({
+            'index': tsg.index,
+            'method': tsg.method,
+            'method_sources': list(method_sources) if method_sources else None,
+            'method_index': tsg.method_index,
+            'method_direction': tsg.method_direction,
+            'success': tsg.success,
+            'energy_kj_mol': tsg.energy,  # relative energy among this TS's guesses
+            'execution_time_sec': _timedelta_to_seconds(getattr(tsg, 'execution_time', None)),
+            'level': getattr(tsg, 'level', None),
+            'log_path': _make_rel_path(getattr(tsg, 'log_path', None), project_directory),
+            'chosen': tsg is chosen_guess,
+        })
+    return entries
 
 
 def _parse_zpe(freq_path: str | None, project_directory: str) -> float | None:
@@ -1072,6 +1212,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     if spc.is_ts:
         d['chosen_ts_method'] = getattr(spc, 'chosen_ts_method', None)
         d['successful_ts_methods'] = getattr(spc, 'successful_methods', None) or None
+        d['ts_guesses'] = _ts_guesses_to_list(spc, project_directory)
         d['neb_log'] = _make_rel_path(paths.get('neb') or None, project_directory)
         # Path-search log slot for xtb_gsm-chosen TS guesses. Distinct
         # from ``neb_log`` so the TCKDB adapter can dispatch a method-
