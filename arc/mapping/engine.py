@@ -1401,6 +1401,7 @@ def pairing_reactants_and_products_for_mapping(r_cuts: list[ARCSpecies],
                                                )-> list[tuple[ARCSpecies,ARCSpecies]]:
     """
     A function for matching reactants and products in scissored products.
+    The matched species are removed from p_cuts.
 
     Args:
         r_cuts (list[ARCSpecies]): A list of the scissored species in the reactants
