@@ -12,19 +12,30 @@ Input (YAML file passed via ``--yml_in_path``), keys:
     charge (int): The well/reaction charge.
     multiplicity (int): The well/reaction multiplicity.
     families (list[str]): The KinBot reaction families to search.
-    step (int, optional): The constraint step passed to KinBot's get_constraints() (default: 20).
     wells (list[dict]): Entries are dicts with keys:
         direction (str): 'F' or 'R', the direction this well corresponds to.
         smiles (str): A SMILES representation of the well (resonance structure specific).
         structure (list): The cartesian coordinates in the KinBot flat list format,
                           [symbol_1, x_1, y_1, z_1, symbol_2, ...].
+    uma (dict, optional): UMA (FAIRChem) refinement options with keys:
+        refine (bool): Whether to refine successful TS guesses with a Sella
+                       saddle-point search on the UMA potential (default: False).
+        model_path (str): A path to a local UMA checkpoint file (e.g., uma-s-1p2.pt).
+        model_name (str): A pretrained UMA model name to fetch from HuggingFace
+                          (license-gated) if no model_path is given (default: uma-s-1p1).
+        task_name (str): The UMA task name (default: omol).
+        device (str): The torch device to use (default: cpu).
+        fmax (float): The Sella force convergence criterion (default: 0.005).
+        steps (int): The maximal number of Sella steps (default: 250).
     yml_out_path (str): The path to which the results are saved.
 
 Output (YAML file written to ``yml_out_path``): a list of TS guess dicts with keys:
     direction (str): 'F' or 'R' (copied from the corresponding well).
-    success (bool): Whether KinBot successfully modified the geometry.
+    success (bool): Whether KinBot successfully generated a template-modified geometry.
     coords (list[list[float]] or None): The TS guess cartesian coordinates (N x 3).
     execution_time (str): The time it took to generate this guess.
+    uma_refined (bool): Whether the coordinates were refined on the UMA potential.
+    uma_error (str, optional): Why UMA refinement fell back to the unrefined guess.
     error (str, optional): An error message if the well processing failed.
 """
 
@@ -119,11 +130,58 @@ def set_up_kinbot(smiles: str,
     return reaction_generator
 
 
+def apply_kinbot_template(kinbot_rxn) -> tuple:
+    """
+    Drive a KinBot reaction instance's constraint template over its full step sequence,
+    applying the geometry ``change`` constraints of every step to the evolving geometry.
+
+    This mirrors what KinBot's ``reac_family.carry_out_reaction()`` does between the
+    constrained-optimization jobs it submits (including the short-instance ``skip``
+    shortcut, the possible step bump returned by ``get_constraints``, and the ``'L'``
+    change-entry prefix), just without running any QC relaxation in between.
+    Steps ``0 .. max_step - 1`` are the template modification steps; at
+    ``step == max_step`` KinBot runs a saddle-point search that does not modify the
+    template geometry, so the loop stops there.
+
+    Args:
+        kinbot_rxn: The KinBot reaction instance (a GeneralReac subclass instance).
+
+    Returns:
+        tuple: (success (bool), geom (N x 3 array-like)).
+    """
+    geom = kinbot_rxn.species.geom
+    success = True
+    step = 0
+    if kinbot_rxn.skip and len(kinbot_rxn.instance) < 4:
+        step = 12
+    while step < kinbot_rxn.max_step:
+        step, fix, change, release = kinbot_rxn.get_constraints(step, geom)
+
+        change_starting_zero = list()
+        for c in change:
+            if c[0] == 'L':
+                c_new = ['L'] + [ci - 1 for ci in c[1:-1]]
+            else:
+                c_new = [ci - 1 for ci in c[:-1]]
+            c_new.append(c[-1])
+            change_starting_zero.append(c_new)
+
+        if change_starting_zero and 'frozen' not in kinbot_rxn.instance_name:
+            step_success, geom = modify_coordinates(species=kinbot_rxn.species,
+                                                    name=kinbot_rxn.instance_name,
+                                                    geom=geom,
+                                                    changes=change_starting_zero,
+                                                    bond=kinbot_rxn.species.bond,
+                                                    )
+            success = success and bool(step_success)
+        step += 1
+    return success, geom
+
+
 def get_ts_guesses_for_well(well: dict,
                             families: list,
                             multiplicity: int,
                             charge: int,
-                            step: int = 20,
                             ) -> list:
     """
     Generate TS guesses for a single well.
@@ -133,7 +191,6 @@ def get_ts_guesses_for_well(well: dict,
         families (list): The specific KinBot families to try.
         multiplicity (int): The well/reaction multiplicity.
         charge (int): The well/reaction charge.
-        step (int, optional): The constraint step passed to KinBot's get_constraints().
 
     Returns:
         list: TS guess dictionaries.
@@ -147,28 +204,103 @@ def get_ts_guesses_for_well(well: dict,
                                        )
     for kinbot_rxn in reaction_generator.species.reac_obj:
         t0 = datetime.datetime.now()
-        step_, fix, change, release = kinbot_rxn.get_constraints(step=step,
-                                                                 geom=kinbot_rxn.species.geom)
-
-        change_starting_zero = list()
-        for c in change:
-            c_new = [ci - 1 for ci in c[:-1]]
-            c_new.append(c[-1])
-            change_starting_zero.append(c_new)
-
-        success, coords = modify_coordinates(species=kinbot_rxn.species,
-                                             name=kinbot_rxn.instance_name,
-                                             geom=kinbot_rxn.species.geom,
-                                             changes=change_starting_zero,
-                                             bond=kinbot_rxn.species.bond,
-                                             )
-
+        success, coords = apply_kinbot_template(kinbot_rxn)
         results.append({'direction': well['direction'],
                         'success': bool(success),
                         'coords': [[float(ci) for ci in coord] for coord in coords] if success else None,
                         'execution_time': str(datetime.datetime.now() - t0),
+                        'uma_refined': False,
                         })
     return results
+
+
+_UMA_PREDICT_UNIT = None
+
+
+def _get_uma_calculator(uma: dict):
+    """
+    Lazily import fairchem and build a FAIRChemCalculator on the UMA potential.
+    The (expensive to load) predict unit is cached at the module level, so multiple
+    guesses within one worker run reuse it.
+
+    Args:
+        uma (dict): The UMA options (see the module docstring).
+
+    Returns:
+        FAIRChemCalculator: The ASE calculator.
+    """
+    global _UMA_PREDICT_UNIT
+    from fairchem.core import FAIRChemCalculator
+    if _UMA_PREDICT_UNIT is None:
+        device = uma.get('device') or 'cpu'
+        model_path = uma.get('model_path') or ''
+        if model_path:
+            from fairchem.core.units.mlip_unit import load_predict_unit
+            _UMA_PREDICT_UNIT = load_predict_unit(model_path, device=device)
+        else:
+            # Fetch a pretrained checkpoint from HuggingFace. UMA checkpoints are
+            # license-gated (require a HuggingFace login + accepting Meta's license),
+            # any failure here is caught by the caller and refinement is skipped.
+            from fairchem.core import pretrained_mlip
+            _UMA_PREDICT_UNIT = pretrained_mlip.get_predict_unit(uma.get('model_name') or 'uma-s-1p1',
+                                                                 device=device)
+    return FAIRChemCalculator(_UMA_PREDICT_UNIT, task_name=uma.get('task_name') or 'omol')
+
+
+def refine_ts_guess_with_uma(symbols: list,
+                             coords: list,
+                             charge: int,
+                             multiplicity: int,
+                             uma: dict,
+                             label: str,
+                             ) -> tuple:
+    """
+    Refine a TS guess with a Sella saddle-point search (order=1) on the UMA
+    (FAIRChem) machine-learned potential, mirroring KinBot 2.3.0's
+    ``tpl/ase_fc_ts_end.tpl.py`` template (without KinBot's frequency check —
+    ARC validates TS guesses downstream with its own frequency and IRC checks).
+
+    fairchem is imported lazily in here only: the worker must keep functioning in a
+    kinbot_env without the fairchem extra installed.
+
+    Args:
+        symbols (list): The chemical element symbols.
+        coords (list): The initial (template-modified) coordinates, N x 3.
+        charge (int): The species charge.
+        multiplicity (int): The species multiplicity.
+        uma (dict): The UMA options (see the module docstring).
+        label (str): A label used for the Sella log file name.
+
+    Returns:
+        tuple: (refined coords (N x 3 list) or None, error message (str) or None).
+    """
+    try:
+        from ase import Atoms
+        from sella import Sella
+        calc = _get_uma_calculator(uma)
+    except (ImportError, ModuleNotFoundError) as e:
+        return None, (f'UMA refinement was requested, but fairchem is not available in kinbot_env '
+                      f'({e}). Install it with "devtools/install_kinbot.sh --uma".')
+    except Exception as e:
+        traceback.print_exc(file=sys.stderr)
+        return None, f'Could not load the UMA model: {e.__class__.__name__}: {e}'
+    try:
+        mol = Atoms(symbols=symbols, positions=coords)
+        mol.info.update({'charge': charge, 'spin': multiplicity})
+        mol.calc = calc
+        opt = Sella(mol,
+                    order=1,
+                    internal=len(symbols) >= 5,  # mirrors KinBot's fc TS templates
+                    logfile=f'{label}_uma_sella.log',
+                    )
+        converged = opt.run(fmax=float(uma.get('fmax') or 0.005),
+                            steps=int(uma.get('steps') or 250))
+        if not converged:
+            return None, 'The Sella saddle-point search on the UMA potential did not converge.'
+        return [[float(ci) for ci in coord] for coord in mol.positions], None
+    except Exception as e:
+        traceback.print_exc(file=sys.stderr)
+        return None, f'UMA refinement failed: {e.__class__.__name__}: {e}'
 
 
 def run_kinbot(input_dict: dict) -> None:
@@ -179,22 +311,46 @@ def run_kinbot(input_dict: dict) -> None:
         input_dict (dict): The input dictionary.
     """
     results = list()
+    uma = input_dict.get('uma') or dict()
     for well in input_dict['wells']:
         try:
-            results.extend(get_ts_guesses_for_well(well=well,
+            well_results = get_ts_guesses_for_well(well=well,
                                                    families=input_dict['families'],
                                                    multiplicity=input_dict['multiplicity'],
                                                    charge=input_dict['charge'],
-                                                   step=input_dict.get('step', 20),
-                                                   ))
+                                                   )
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             results.append({'direction': well.get('direction'),
                             'success': False,
                             'coords': None,
                             'execution_time': None,
+                            'uma_refined': False,
                             'error': f'{e.__class__.__name__}: {e}',
                             })
+            continue
+        if uma.get('refine'):
+            symbols = well['structure'][0::4]
+            for i, entry in enumerate(well_results):
+                if not entry['success']:
+                    continue
+                refined_coords, uma_error = refine_ts_guess_with_uma(
+                    symbols=symbols,
+                    coords=entry['coords'],
+                    charge=input_dict['charge'],
+                    multiplicity=input_dict['multiplicity'],
+                    uma=uma,
+                    label=f"{well['direction']}_{i}",
+                )
+                if refined_coords is not None:
+                    entry['coords'] = refined_coords
+                    entry['uma_refined'] = True
+                else:
+                    # Fall back to the unrefined template guess, never fail the task.
+                    entry['uma_error'] = uma_error
+                    print(f"UMA refinement fell back to the unrefined guess for "
+                          f"{well['direction']} {i}: {uma_error}", file=sys.stderr)
+        results.extend(well_results)
     save_yaml_file(path=input_dict['yml_out_path'], content=results)
 
 

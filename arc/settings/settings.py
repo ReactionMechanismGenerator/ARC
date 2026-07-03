@@ -333,6 +333,23 @@ pipe_settings = {
 # An imaginary frequency is valid if it is between the following range (in cm-1):
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 
+# Optional UMA (FAIRChem) refinement of KinBot TS guesses, executed inside kinbot_env.
+# 'refine': If True, each KinBot template TS guess is refined with a Sella saddle-point
+#           search on Meta's UMA machine-learned potential before being returned to ARC.
+#           Requires installing kinbot_env with ``devtools/install_kinbot.sh --uma`` and
+#           either a local UMA checkpoint ('model_path') or a HuggingFace login with
+#           access to the (license-gated) UMA models for downloading 'model_name'.
+#           On any refinement failure ARC falls back to the unrefined template guess.
+kinbot_uma_settings = {
+    'refine': False,
+    'model_path': '',           # e.g., '/home/user/checkpoints/uma-s-1p2.pt'
+    'model_name': 'uma-s-1p1',  # used only if 'model_path' is empty
+    'task_name': 'omol',
+    'device': 'cpu',
+    'fmax': 0.005,              # Sella force convergence criterion
+    'steps': 250,               # maximal number of Sella steps
+}
+
 # ARC families folder path
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 

@@ -30,8 +30,8 @@ if TYPE_CHECKING:
 
 
 KINBOT_PYTHON = settings['KINBOT_PYTHON']
+KINBOT_UMA_SETTINGS = settings['kinbot_uma_settings']
 KINBOT_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'kinbot_script.py')
-KINBOT_CONSTRAINT_STEP = 20
 
 logger = get_logger()
 
@@ -314,8 +314,8 @@ class KinBotAdapter(JobAdapter):
         input_dict = {'charge': rxn.charge,
                       'multiplicity': rxn.multiplicity,
                       'families': self.family_map[rxn.family],
-                      'step': KINBOT_CONSTRAINT_STEP,
                       'wells': wells,
+                      'uma': dict(KINBOT_UMA_SETTINGS),
                       'yml_out_path': self.yml_out_path,
                       }
         save_yaml_file(path=self.yml_in_path, content=input_dict)
@@ -370,7 +370,11 @@ class KinBotAdapter(JobAdapter):
                 logger.warning(f'The KinBot worker script reported an error for {rxn} '
                                f'in the {method_direction} direction:\n{result["error"]}')
             symbols = species_to_explore[method_direction].get_xyz()['symbols']
-            ts_guess = TSGuess(method='KinBot',
+            # Record UMA refinement in the method name so downstream/benchmark analysis can
+            # distinguish refined from raw template guesses. Both variants contain 'kinbot',
+            # which keeps the existing dedup and success-count logic intact.
+            method = 'KinBot-UMA' if result.get('uma_refined') else 'KinBot'
+            ts_guess = TSGuess(method=method,
                                method_direction=method_direction,
                                method_index=method_index,
                                index=len(rxn.ts_species.ts_guesses),
