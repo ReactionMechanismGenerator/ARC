@@ -13,7 +13,6 @@ import logging
 import os
 import shutil
 import time
-from distutils.spawn import find_executable
 from IPython.display import display
 
 from arc.common import (VERSION,
@@ -788,25 +787,25 @@ class ARC(object):
         # first look for ESS locally (e.g., when running ARC itself on a server)
         if 'SSH_CONNECTION' in os.environ and diagnostics:
             logger.info('Found "SSH_CONNECTION" in the os.environ dictionary, '
-                        'using distutils.spawn.find_executable() to find ESS')
+                        'using shutil.which() to find ESS')
         if 'local' in servers:
-            g03 = find_executable('g03')
-            g09 = find_executable('g09')
-            g16 = find_executable('g16')
+            g03 = shutil.which('g03')
+            g09 = shutil.which('g09')
+            g16 = shutil.which('g16')
             if g03 or g09 or g16:
                 if diagnostics:
                     logger.info(f'Found Gaussian: g03={g03}, g09={g09}, g16={g16}')
                 self.ess_settings['gaussian'] = ['local']
-            qchem = find_executable('qchem')
+            qchem = shutil.which('qchem')
             if qchem:
                 self.ess_settings['qchem'] = ['local']
-            orca = find_executable('orca')
+            orca = shutil.which('orca')
             if orca:
                 self.ess_settings['orca'] = ['local']
-            molpro = find_executable('molpro')
+            molpro = shutil.which('molpro')
             if molpro:
                 self.ess_settings['molpro'] = ['local']
-            terachem = find_executable('terachem')
+            terachem = shutil.which('terachem')
             if terachem:
                 self.ess_settings['molpro'] = ['local']
             if any([val for val in self.ess_settings.values()]):
