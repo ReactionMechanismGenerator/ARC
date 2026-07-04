@@ -807,14 +807,14 @@ class ARC(object):
                 self.ess_settings['molpro'] = ['local']
             terachem = shutil.which('terachem')
             if terachem:
-                self.ess_settings['molpro'] = ['local']
+                self.ess_settings['terachem'] = ['local']
             if any([val for val in self.ess_settings.values()]):
                 if diagnostics:
                     logger.info('Found the following ESS on the local machine:')
                     logger.info([software for software, val in self.ess_settings.items() if val])
                     logger.info('\n')
-                else:
-                    logger.info('Did not find ESS on the local machine\n\n')
+            else:
+                logger.info('Did not find ESS on the local machine\n\n')
         else:
             logger.info("\nNot searching for ESS locally ('local' wasn't specified in the servers dictionary)\n")
 
