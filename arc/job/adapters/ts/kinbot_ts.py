@@ -334,9 +334,12 @@ class KinBotAdapter(JobAdapter):
             # Remove a stale output file, so a failed subprocess isn't mistaken for fresh results.
             os.remove(self.yml_out_path)
         # Routed via run_in_conda_env so arc_env's activation vars don't
-        # leak into the child (see arc/job/env_run.py).
+        # leak into the child (see arc/job/env_run.py). PYTHONPATH is stripped
+        # so a stale KinBot source checkout on the user's PYTHONPATH cannot
+        # shadow kinbot_env's installed KinBot.
         output = run_in_conda_env(KINBOT_PYTHON, KINBOT_SCRIPT_PATH,
                                   '--yml_in_path', self.yml_in_path,
+                                  strip_pythonpath=True,
                                   )
         if output.returncode:
             logger.warning(f'The KinBot subprocess did not give a successful return code for {rxn}.\n'
