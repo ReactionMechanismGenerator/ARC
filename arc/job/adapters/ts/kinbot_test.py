@@ -91,9 +91,11 @@ class TestKinBotAdapter(unittest.TestCase):
         adapter = self.get_adapter(dir_name='tst1')
         captured = dict()
 
-        def fake_run_in_conda_env(python_executable, script_path, *script_args, check=False):
+        def fake_run_in_conda_env(python_executable, script_path, *script_args, check=False,
+                                  strip_pythonpath=False):
             """Mimic the KinBot worker script: read the input file, write an output file."""
             captured['python_executable'] = python_executable
+            captured['strip_pythonpath'] = strip_pythonpath
             captured['script_path'] = script_path
             captured['script_args'] = script_args
             self.assertEqual(script_args[0], '--yml_in_path')
@@ -118,6 +120,8 @@ class TestKinBotAdapter(unittest.TestCase):
         # Assert the boundary was crossed correctly.
         self.assertEqual(run_mock.call_count, 1)
         self.assertEqual(captured['python_executable'], kinbot_ts.__file__)
+        # PYTHONPATH must be stripped so a stale KinBot checkout can't shadow kinbot_env.
+        self.assertTrue(captured['strip_pythonpath'])
         self.assertEqual(captured['script_path'], kinbot_ts.KINBOT_SCRIPT_PATH)
         self.assertTrue(captured['script_path'].endswith(os.path.join('scripts', 'kinbot_script.py')))
 
@@ -159,7 +163,8 @@ class TestKinBotAdapter(unittest.TestCase):
         """Test that a failed KinBot subprocess results in no TS guesses without raising."""
         adapter = self.get_adapter(dir_name='tst2')
 
-        def fake_failing_run(python_executable, script_path, *script_args, check=False):
+        def fake_failing_run(python_executable, script_path, *script_args, check=False,
+                             strip_pythonpath=False):
             # Simulate a crashed worker: non-zero return code, no output file written.
             return subprocess.CompletedProcess(args=[], returncode=1, stdout='', stderr='kinbot crashed')
 
@@ -196,7 +201,8 @@ class TestKinBotAdapter(unittest.TestCase):
         adapter = self.get_adapter(dir_name='tst4')
         captured = dict()
 
-        def fake_run_in_conda_env(python_executable, script_path, *script_args, check=False):
+        def fake_run_in_conda_env(python_executable, script_path, *script_args, check=False,
+                                  strip_pythonpath=False):
             input_dict = read_yaml_file(path=script_args[1])
             captured['input_dict'] = input_dict
             f_well = next(well for well in input_dict['wells'] if well['direction'] == 'F')

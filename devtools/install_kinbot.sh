@@ -60,6 +60,16 @@ else
     conda env remove -n "$ENV_NAME" -y 2>/dev/null || true
 fi
 
+# A stale KinBot/RMG source checkout on the caller's PYTHONPATH would shadow the
+# fresh install inside the env (PYTHONPATH outranks site-packages) and confuse
+# pip's resolver ("Found existing installation ... No files were found to
+# uninstall"). The installer never needs the caller's PYTHONPATH — drop it.
+if [ -n "${PYTHONPATH:-}" ]; then
+    echo "ℹ️  Ignoring your PYTHONPATH for this install (it would shadow '$ENV_NAME' packages):"
+    echo "    $PYTHONPATH"
+    unset PYTHONPATH
+fi
+
 echo ">>> Creating the '$ENV_NAME' environment (python=$PYTHON_VERSION)..."
 $COMMAND_PKG create -n "$ENV_NAME" -c conda-forge "python=$PYTHON_VERSION" pip -y
 
@@ -76,7 +86,9 @@ echo ">>> Installing $KINBOT_SPEC into '$ENV_NAME' via pip..."
 $COMMAND_PKG run -n "$ENV_NAME" python -m pip install "$KINBOT_SPEC" pyyaml
 
 echo ">>> Sanity-checking the KinBot installation..."
-$COMMAND_PKG run -n "$ENV_NAME" python -c "
+# python -I (isolated) additionally ignores user-site packages (~/.local), so the
+# check imports exactly what lives in the env — mirroring how ARC's worker runs.
+$COMMAND_PKG run -n "$ENV_NAME" python -I -c "
 from kinbot.modify_geom import modify_coordinates
 from kinbot.parameters import Parameters
 from kinbot.qc import QuantumChemistry
@@ -88,7 +100,7 @@ print('KinBot imports OK')
 
 if [ "$INSTALL_UMA" = "true" ]; then
     echo ">>> Sanity-checking the fairchem installation..."
-    $COMMAND_PKG run -n "$ENV_NAME" python -c "
+    $COMMAND_PKG run -n "$ENV_NAME" python -I -c "
 from fairchem.core import FAIRChemCalculator
 print('fairchem imports OK')
 "
