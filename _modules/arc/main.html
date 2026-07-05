@@ -97,7 +97,6 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">distutils.spawn</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_executable</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">IPython.display</span><span class="w"> </span><span class="kn">import</span> <span class="n">display</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">VERSION</span><span class="p">,</span>
@@ -891,34 +890,34 @@
         <span class="c1"># first look for ESS locally (e.g., when running ARC itself on a server)</span>
         <span class="k">if</span> <span class="s1">&#39;SSH_CONNECTION&#39;</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span> <span class="ow">and</span> <span class="n">diagnostics</span><span class="p">:</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Found &quot;SSH_CONNECTION&quot; in the os.environ dictionary, &#39;</span>
-                        <span class="s1">&#39;using distutils.spawn.find_executable() to find ESS&#39;</span><span class="p">)</span>
+                        <span class="s1">&#39;using shutil.which() to find ESS&#39;</span><span class="p">)</span>
         <span class="k">if</span> <span class="s1">&#39;local&#39;</span> <span class="ow">in</span> <span class="n">servers</span><span class="p">:</span>
-            <span class="n">g03</span> <span class="o">=</span> <span class="n">find_executable</span><span class="p">(</span><span class="s1">&#39;g03&#39;</span><span class="p">)</span>
-            <span class="n">g09</span> <span class="o">=</span> <span class="n">find_executable</span><span class="p">(</span><span class="s1">&#39;g09&#39;</span><span class="p">)</span>
-            <span class="n">g16</span> <span class="o">=</span> <span class="n">find_executable</span><span class="p">(</span><span class="s1">&#39;g16&#39;</span><span class="p">)</span>
+            <span class="n">g03</span> <span class="o">=</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s1">&#39;g03&#39;</span><span class="p">)</span>
+            <span class="n">g09</span> <span class="o">=</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s1">&#39;g09&#39;</span><span class="p">)</span>
+            <span class="n">g16</span> <span class="o">=</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s1">&#39;g16&#39;</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">g03</span> <span class="ow">or</span> <span class="n">g09</span> <span class="ow">or</span> <span class="n">g16</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">diagnostics</span><span class="p">:</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Found Gaussian: g03=</span><span class="si">{</span><span class="n">g03</span><span class="si">}</span><span class="s1">, g09=</span><span class="si">{</span><span class="n">g09</span><span class="si">}</span><span class="s1">, g16=</span><span class="si">{</span><span class="n">g16</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">ess_settings</span><span class="p">[</span><span class="s1">&#39;gaussian&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">]</span>
-            <span class="n">qchem</span> <span class="o">=</span> <span class="n">find_executable</span><span class="p">(</span><span class="s1">&#39;qchem&#39;</span><span class="p">)</span>
+            <span class="n">qchem</span> <span class="o">=</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s1">&#39;qchem&#39;</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">qchem</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">ess_settings</span><span class="p">[</span><span class="s1">&#39;qchem&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">]</span>
-            <span class="n">orca</span> <span class="o">=</span> <span class="n">find_executable</span><span class="p">(</span><span class="s1">&#39;orca&#39;</span><span class="p">)</span>
+            <span class="n">orca</span> <span class="o">=</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s1">&#39;orca&#39;</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">orca</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">ess_settings</span><span class="p">[</span><span class="s1">&#39;orca&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">]</span>
-            <span class="n">molpro</span> <span class="o">=</span> <span class="n">find_executable</span><span class="p">(</span><span class="s1">&#39;molpro&#39;</span><span class="p">)</span>
+            <span class="n">molpro</span> <span class="o">=</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s1">&#39;molpro&#39;</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">molpro</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">ess_settings</span><span class="p">[</span><span class="s1">&#39;molpro&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">]</span>
-            <span class="n">terachem</span> <span class="o">=</span> <span class="n">find_executable</span><span class="p">(</span><span class="s1">&#39;terachem&#39;</span><span class="p">)</span>
+            <span class="n">terachem</span> <span class="o">=</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s1">&#39;terachem&#39;</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">terachem</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">ess_settings</span><span class="p">[</span><span class="s1">&#39;molpro&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">ess_settings</span><span class="p">[</span><span class="s1">&#39;terachem&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">]</span>
             <span class="k">if</span> <span class="nb">any</span><span class="p">([</span><span class="n">val</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ess_settings</span><span class="o">.</span><span class="n">values</span><span class="p">()]):</span>
                 <span class="k">if</span> <span class="n">diagnostics</span><span class="p">:</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Found the following ESS on the local machine:&#39;</span><span class="p">)</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">([</span><span class="n">software</span> <span class="k">for</span> <span class="n">software</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ess_settings</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">val</span><span class="p">])</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Did not find ESS on the local machine</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Did not find ESS on the local machine</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Not searching for ESS locally (&#39;local&#39; wasn&#39;t specified in the servers dictionary)</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
 
