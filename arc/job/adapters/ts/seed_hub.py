@@ -66,6 +66,17 @@ def get_ts_seeds(reaction: 'ARCReaction',
             } for xyz, family, idx in zip(xyzs_raw, families, indices)]
         except ValueError:
             xyz_entries = list()
+    elif reaction.family == 'XY_Addition_MultipleBond':
+        # Lazily import to keep the family-specific builder decoupled from this hub.
+        from arc.job.adapters.ts.xy_addition import xy_addition
+        for entry in xy_addition(reaction=reaction):
+            xyz_entries.append({
+                'xyz': entry['xyz'],
+                'method': entry.get('method', 'Heuristics-XY'),
+                'family': reaction.family,
+                'source_adapter': 'heuristics',
+                'metadata': {},
+            })
     return xyz_entries
 
 
