@@ -205,6 +205,32 @@ class TestARCSpecies(unittest.TestCase):
         spc_5 = ARCSpecies(label='N2H2(T)', smiles='[NH][NH]', xyz=self.n2h2_t_xyz)
         self.assertEqual(len(spc_5.mol_list), 1)
 
+    def test_reconcile_mol_multiplicity(self):
+        """An explicit multiplicity conflicting with the SMILES/InChI-perceived spin state is honored."""
+        # [CH2] is perceived as triplet, but multiplicity=1 should give the singlet carbene.
+        carbene = ARCSpecies(label='carbene', smiles='[CH2]', multiplicity=1)
+        self.assertEqual(carbene.mol.multiplicity, 1)
+        self.assertEqual(carbene.multiplicity, 1)
+        self.assertEqual([atom.radical_electrons for atom in carbene.mol.atoms], [0, 0, 0])
+        self.assertEqual([atom.lone_pairs for atom in carbene.mol.atoms], [1, 0, 0])
+        self.assertTrue(carbene.mol.is_isomorphic(ARCSpecies(
+            label='ref', adjlist='1 C u0 p1 c0 {2,S} {3,S}\n2 H u0 p0 c0 {1,S}\n3 H u0 p0 c0 {1,S}').mol))
+
+        # Without an explicit multiplicity, the default (triplet) perception is preserved.
+        triplet = ARCSpecies(label='triplet', smiles='[CH2]')
+        self.assertEqual(triplet.mol.multiplicity, 3)
+
+        # An adjacency list remains authoritative and is never reconciled away.
+        singlet_adj = ARCSpecies(label='adj', adjlist='1 C u0 p1 c0 {2,S} {3,S}\n'
+                                                       '2 H u0 p0 c0 {1,S}\n3 H u0 p0 c0 {1,S}')
+        self.assertEqual(singlet_adj.mol.multiplicity, 1)
+
+        # An open-shell singlet biradical (number_of_radicals given) is NOT collapsed: the two
+        # radicals sit on different atoms and are spin-paired across space, not into a lone pair.
+        biradical = ARCSpecies(label='biradical', smiles='[CH2][CH2]',
+                               multiplicity=1, number_of_radicals=2)
+        self.assertEqual(sum(atom.radical_electrons for atom in biradical.mol.atoms), 2)
+
     def test_preserving_atom_order_in_mol_list(self):
         """Test preserving atom order in the .mol_list attribute"""
         bond_dict = dict()
