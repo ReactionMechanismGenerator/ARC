@@ -896,11 +896,14 @@ def h_abstraction(reaction: ARCReaction,
     """
     xyz_guesses = list()
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
-    reactants_reversed, products_reversed = are_h_abs_wells_reversed(rxn=reaction, product_dict=reaction.product_dicts[0])
     for product_dict in reaction.product_dicts:
         # Identify R1H and R2H in the "R1H + R2 <=> R1 + R2H" or "R2 + R1H <=> R2H + R1" reaction
         # The expected RMG atom labels are: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2).
         # They appear in each product_dict under the 'r_label_map' key.
+        # Determine reversal per product_dict: with symmetric reactants (e.g. OH + OH) different
+        # product_dicts place *2 (the transferring H) in different reactants, so a single reaction-
+        # level value would mis-index h1 into the wrong reactant.
+        reactants_reversed, products_reversed = are_h_abs_wells_reversed(rxn=reaction, product_dict=product_dict)
         reactants, products = reaction.get_reactants_and_products(return_copies=False)
         reactant = reactants[int(reactants_reversed)]  # Get R(*1)-H(*2).
         reactant_2 = reactants[int(not reactants_reversed)]  # Get R(*3)j.

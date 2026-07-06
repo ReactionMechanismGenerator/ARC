@@ -551,6 +551,26 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                    (2.063927797423041, -2.798718649055232e-07, -1.7157539600187732e-07))}
         self.assertTrue(almost_equal_coords(rxn4.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
 
+    def test_heuristics_for_h_abstraction_symmetric_reactants(self):
+        """Symmetric H-abstraction with identical reactants (OH + OH <=> H2O + O).
+
+        Regression: with identical reactants, different product_dicts place the transferring H (*2)
+        in different reactants, so a reaction-level reactants_reversed value mis-indexed h1 into the
+        wrong reactant and raised IndexError. reactants_reversed must be computed per product_dict.
+        """
+        o_triplet = ARCSpecies(label='O', smiles='[O]', xyz='O 0.0 0.0 0.0')
+        rxn = ARCReaction(r_species=[self.oh, self.oh], p_species=[self.h2o, o_triplet])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        heuristics = HeuristicsAdapter(job_type='tsg',
+                                       reactions=[rxn],
+                                       testing=True,
+                                       project='test',
+                                       project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                       dihedral_increment=30,
+                                       )
+        heuristics.execute_incore()  # Must not raise IndexError.
+        self.assertGreater(len(rxn.ts_species.ts_guesses), 0)
+
     def test_heuristics_for_h_abstraction_2(self):
         # C3H8 + HO2 <=> C3H7 + H2O2
         c3h8_xyz = """C	0.0000000 0.0000000 0.5949240
