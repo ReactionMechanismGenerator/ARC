@@ -1200,4 +1200,4 @@ def check_family_name(family: str
     """
     if not isinstance(family, str) and family is not None:
         raise TypeError("Family name must be a string or None.")
-    return family in get_all_families() or family is None
+    return family in get_all_families(rmg_family_set=settings['rmg_family_set']) or family is None

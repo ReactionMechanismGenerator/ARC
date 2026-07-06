@@ -5,6 +5,7 @@ A module for representing a reaction.
 from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
+from arc.imports import settings
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species.converter import (check_xyz_dict,
                                    sort_xyz_using_indices,
@@ -17,6 +18,9 @@ from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
 
 logger = get_logger()
+
+# The RMG family set used to determine/validate reaction families (configurable via settings.py).
+RMG_FAMILY_SET = settings['rmg_family_set']
 
 
 class ARCReaction(object):
@@ -526,7 +530,7 @@ class ARCReaction(object):
         return multiplicity
 
     def get_product_dicts(self,
-                          rmg_family_set: str = 'default',
+                          rmg_family_set: str = RMG_FAMILY_SET,
                           consider_rmg_families: bool = True,
                           consider_arc_families: bool = True,
                           discover_own_reverse_rxns_in_reverse: bool = False,
@@ -559,7 +563,7 @@ class ARCReaction(object):
         return product_dicts
 
     def determine_family(self,
-                         rmg_family_set: str = 'default',
+                         rmg_family_set: str = RMG_FAMILY_SET,
                          consider_rmg_families: bool = True,
                          consider_arc_families: bool = True,
                          discover_own_reverse_rxns_in_reverse: bool = False,
