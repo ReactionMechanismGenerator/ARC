@@ -156,6 +156,12 @@ def process_arc_project(thermo_adapter: str,
         for spc in species_dict.values():
             if spc.is_ts:
                 continue
+            if not (spc.compute_thermo or spc.e0_only):
+                # Thermo was never requested for this species (e.g. IRC endpoint species, which
+                # only run an opt to verify the reaction path). It is neither a converged thermo
+                # target nor an unconverged failure, so skip it rather than reporting it as
+                # "did not converge".
+                continue
             if (spc.compute_thermo or spc.e0_only) and output_dict[spc.label]['convergence']:
                 if spc.e0_only:
                     converged_e0_only_species.append(spc)
