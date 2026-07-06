@@ -722,6 +722,22 @@ H      -0.83821148   -0.26602407    0.00000000"""
         with self.assertRaises(ValueError):
             get_all_families(rmg_family_set='not_a_real_family_set', consider_arc_families=False)
 
+    def test_apply_recipe_coerces_string_bond_order(self):
+        """A CHANGE_BOND recipe whose bond-order is a string must still produce valid products.
+
+        Some RMG family recipes write the order change as a string (e.g. Intra_RH_Add_Endocyclic
+        has ['CHANGE_BOND', '*2', '-1', '*3']) while others use an int. Without coercion the string
+        corrupts the bond order to -1.0 and the family silently produces 0 products. Regression test.
+        """
+        family_dir = get_rmg_db_subpath('kinetics', 'families', 'Intra_RH_Add_Endocyclic', must_exist=False)
+        if not os.path.isdir(family_dir):
+            self.skipTest('Intra_RH_Add_Endocyclic is not available in this RMG database')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC', multiplicity=1)],
+                          p_species=[ARCSpecies(label='P', smiles='C1CCC1', multiplicity=1)])
+        product_dicts = rxn.get_product_dicts(rmg_family_set=['Intra_RH_Add_Endocyclic'])
+        self.assertTrue(len(product_dicts) > 0)
+        self.assertEqual(product_dicts[0]['family'], 'Intra_RH_Add_Endocyclic')
+
     def test_get_rmg_recommended_family_sets(self):
         """Test getting RMG recommended family sets"""
         recommended_families = get_rmg_recommended_family_sets()

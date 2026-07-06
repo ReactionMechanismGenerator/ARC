@@ -398,6 +398,11 @@ class ReactionFamily(object):
             if action[0] in ['CHANGE_BOND', 'FORM_BOND', 'BREAK_BOND']:
                 structure.reset_connectivity_values()
                 label_1, info, label_2 = action[1:]
+                # Bond-order info may be a string in some RMG family recipes (e.g.
+                # Intra_RH_Add_Endocyclic writes ['CHANGE_BOND', '*2', '-1', '*3'] while
+                # Intra_RH_Add_Exocyclic writes an int). Coerce to int so the bond-order
+                # arithmetic doesn't produce an invalid order (e.g. -1.0 from a '-1' string).
+                info = int(info)
                 labeled_1 = structure.get_labeled_atoms(label_1)
                 atom_1 = labeled_1[0] if labeled_1 else None
                 if label_1 == label_2 and len(labeled_1) >= 2:
