@@ -854,6 +854,40 @@ class TestTrsh(unittest.TestCase):
         self.assertTrue(couldnt_trsh)
         self.assertTrue(any('No applicable troubleshooting methods found' in out for out in output_errors))
 
+    def test_determine_ess_status_memory_overallocation(self):
+        """
+        Test that a Gaussian galloc/malloc failure (the node could not allocate the requested memory)
+        is classified as 'MemoryOverallocation', distinct from Gaussian needing more memory ('Memory').
+        """
+        path = os.path.join(self.base_path['gaussian'], 'galloc.out')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label='CH3CHO', job_type='opt', software='gaussian')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['MemoryOverallocation'])
+        self.assertIn('could not provide the requested memory', error)
+
+    def test_trsh_ess_job_memory_overallocation(self):
+        """
+        Test that a 'MemoryOverallocation' keyword reduces the memory request rather than escalating it,
+        and gives up with a clear message once at the minimum memory request.
+        """
+        label, level_of_theory, server = 'ethanol', {'method': 'wb97xd', 'basis': 'def2tzvp'}, 'server1'
+        job_type, software, fine, num_heavy_atoms, cpu_cores = 'opt', 'gaussian', False, 2, 8
+        job_status = {'keywords': ['MemoryOverallocation'],
+                      'error': 'Memory allocation failed at the OS level - the node could not provide the requested memory.'}
+        # Above the floor: the request is halved (32 -> 16), not increased.
+        *_, memory, shift, cpu_cores_out, couldnt_trsh = trsh.trsh_ess_job(
+            label, level_of_theory, server, job_status, job_type, software, fine, 32,
+            num_heavy_atoms, cpu_cores, [])
+        self.assertFalse(couldnt_trsh)
+        self.assertEqual(memory, 16)
+        # At the floor: cannot reduce further -> couldnt_trsh with a higher-memory-node hint.
+        result = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type, software, fine, 4,
+                                   num_heavy_atoms, cpu_cores, [])
+        output_errors, couldnt_trsh = result[0], result[-1]
+        self.assertTrue(couldnt_trsh)
+        self.assertTrue(any('higher-memory node' in out for out in output_errors))
+
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""
         job_log_path_1 = os.path.join(ARC_TESTING_PATH, 'job_log', 'no_issues.log')

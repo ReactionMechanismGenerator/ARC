@@ -201,8 +201,10 @@ def determine_ess_status(output_path: str,
                     error = 'An operation on the check file was specified, but a .chk was not found or is incomplete.'
                     line = ''
                 elif 'malloc failed' in line or 'galloc' in line:
-                    keywords = ['Memory']
-                    error = 'Memory allocation failed (did you ask for too much?)'
+                    # A system-level allocation failure: the node could not provide the requested
+                    # memory (we asked for too much), distinct from Gaussian internally needing more.
+                    keywords = ['MemoryOverallocation']
+                    error = 'Memory allocation failed at the OS level - the node could not provide the requested memory.'
                     line = ''
                 elif 'PGFIO/stdio: No such file or directory' in line:
                     keywords = ['Scratch']
@@ -974,6 +976,25 @@ def trsh_ess_job(label: str,
         if 'no_qc' in ess_trsh_methods:
             logger_info.append('removed QC')
         
+
+        # A system-level allocation failure (galloc/malloc): the node could not provide the requested
+        # memory, so we asked for too much. Reduce the request rather than escalating - increasing
+        # memory on an over-allocation only makes a node-capacity failure worse.
+        if 'MemoryOverallocation' in job_status['keywords'] and server is not None:
+            reduced_memory = max(memory_gb / 2.0, 4)
+            if reduced_memory < memory_gb:
+                couldnt_trsh = False
+                memory = reduced_memory
+                logger.info(f'Troubleshooting {job_type} job in {software} for {label} using less memory: {memory} GB '
+                            f'instead of {memory_gb} GB (the node could not allocate the requested amount)')
+                ess_trsh_methods.append('memory')
+            else:
+                couldnt_trsh = True
+                output_errors.append(
+                    f'Error: Could not troubleshoot {job_type} for {label}! The node could not allocate even '
+                    f'{memory_gb} GB, and ARC is already at its minimum memory request; use a higher-memory node.')
+                logger.error(f'Could not troubleshoot {job_type} job in {software} for {label}. The node could not '
+                             f'allocate {memory_gb} GB (already at the minimum memory request).')
 
         # Check if memory is in the keyword
         if 'Memory' in job_status['keywords'] and 'too high' not in job_status['error'] and server is not None:
