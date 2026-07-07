@@ -402,6 +402,21 @@ class TestArkaneAdapter(unittest.TestCase):
         for expected_line in expected_lines:
             self.assertIn(expected_line + '\n', lines, f"Expected line '{expected_line}' not found in {input_path}")
 
+    def test_lone_pair_species_uses_adjacency_list(self):
+        """A lone-pair singlet (singlet carbene [CH2], mult 1) whose SMILES round-trips to a different
+        multiplicity must be written to Arkane as an adjacency list, not SMILES + spinMultiplicity —
+        the latter re-perceives [CH2] as a u2 biradical, violating Hund's rule when Arkane saves the
+        thermo library. Normal species must still use SMILES."""
+        ch2 = ARCSpecies(label='R2', smiles='[CH2]', multiplicity=1)
+        h2o = ARCSpecies(label='P1', smiles='O', multiplicity=1)
+        adapter = ArkaneAdapter(output_directory=self.tmpdir, calcs_directory=self.tmpdir,
+                                output_dict={}, species=[ch2, h2o], sp_level=Level('gfn2'))
+        content = adapter.render_arkane_input_template(statmech_dir=self.tmpdir)
+        self.assertIn('adjacencyList(', content)
+        self.assertIn('1 C u0 p1', content)              # correct singlet-carbene adjlist
+        self.assertNotIn("SMILES('[CH2]')", content)     # must NOT use the lossy SMILES
+        self.assertIn("structure=SMILES('O')", content)  # normal species unchanged
+
     @classmethod
     def tearDownClass(cls):
         """

@@ -12,8 +12,9 @@ from mako.template import Template
 
 import arc.plotter as plotter
 from arc.common import ARC_PATH, get_logger, read_yaml_file
-from arc.exceptions import InputError
+from arc.exceptions import AtomTypeError, InputError
 from arc.imports import incore_commands, settings
+from arc.molecule.molecule import Molecule
 from arc.job.local import execute_command
 from arc.statmech.adapter import StatmechAdapter
 from arc.statmech.factory import register_statmech_adapter
@@ -64,7 +65,11 @@ bondCorrectionType = '${bac_type}'
 % endif
 
 % for spc in species_list:
-% if spc['smiles']:
+% if spc.get('adjlist'):
+species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''},
+        structure=adjacencyList(\"\"\"
+${spc['adjlist']}\"\"\"))
+% elif spc['smiles']:
 species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''},
         structure=SMILES('${spc['smiles']}'), spinMultiplicity=${spc['multiplicity']})
 % else:
@@ -373,9 +378,25 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         species_list = list()
         for spc in self.species:
             if e0_only or spc.compute_thermo:
+                smiles = spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else ''
+                adjlist = ''
+                if smiles:
+                    # SMILES cannot encode a lone-pair singlet (e.g. a singlet carbene [CH2]): re-perceiving
+                    # the SMILES yields unpaired radicals whose count clashes with the multiplicity (Hund's
+                    # rule) when Arkane saves the thermo library, crashing the whole thermo step. When the
+                    # SMILES does not round-trip to the same multiplicity, emit the lossless adjacency list.
+                    perceived_mult = None
+                    try:
+                        perceived_mult = Molecule(smiles=smiles).multiplicity
+                    except (ValueError, AtomTypeError):
+                        perceived_mult = None
+                    if perceived_mult != spc.mol.multiplicity:
+                        adjlist = spc.mol.copy(deep=True).to_adjacency_list()
+                        smiles = ''
                 species_list.append({'label': spc.label,
                                      'path': spc.yml_path or os.path.join(statmech_dir, 'species', f'{spc.label}.py'),
-                                     'smiles': spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else '',
+                                     'smiles': smiles,
+                                     'adjlist': adjlist,
                                      'multiplicity': spc.multiplicity,
                                      })
         ts_list = [{'label': rxn.ts_species.label,
