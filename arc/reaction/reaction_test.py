@@ -602,6 +602,22 @@ class TestARCReaction(unittest.TestCase):
         rxn2 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
         self.assertEqual(rxn2.get_species_count(label=n2h3.label, well=1), 2)
 
+    def test_get_reactants_xyz_repeated_species(self):
+        """Test that a reactant appearing twice (e.g. OH + OH) contributes all of its atoms."""
+        oh = ARCSpecies(label='R1', smiles='[OH]',
+                        xyz={'coords': ((0.0, 0.0, 0.109), (0.0, 0.0, -0.868)),
+                             'isotopes': (16, 1), 'symbols': ('O', 'H')})
+        h2o = ARCSpecies(label='P1', smiles='O')
+        o = ARCSpecies(label='P2', smiles='[O]')
+        rxn = ARCReaction(r_species=[oh, oh], p_species=[h2o, o])
+        # remove_dup_species collapses r_species to a single OH, but the combined reactant geometry
+        # must still contain both OH molecules (4 atoms), matching the atom map length.
+        self.assertEqual(len(rxn.r_species), 1)
+        self.assertEqual(rxn.get_species_count(species=oh, well=0), 2)
+        reactants_xyz = rxn.get_reactants_xyz(return_format='dict')
+        self.assertEqual(len(reactants_xyz['symbols']), 4)
+        self.assertEqual(sorted(reactants_xyz['symbols']), ['H', 'H', 'O', 'O'])
+
     def test_get_reactants_and_products(self):
         """Test getting reactants and products"""
         self.rxn1.remove_dup_species()
