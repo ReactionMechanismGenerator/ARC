@@ -230,10 +230,17 @@ class AutoTSTAdapter(JobAdapter):
                                                 multiplicity=rxn.multiplicity,
                                                 )
                 reaction_label_fwd = get_autotst_reaction_string(rxn)
+                # remove_dup_species dedups rxn.reactants/products, dropping the count of a repeated
+                # species (e.g. OH + OH). Rebuild count-preserving label lists so the reverse reaction
+                # is atom-balanced (P1 + P2 <=> R1 + R1, not P1 + P2 <=> R1).
+                rev_reactant_labels = [lbl for lbl in rxn.products
+                                       for _ in range(rxn.get_species_count(label=lbl, well=1))]
+                rev_product_labels = [lbl for lbl in rxn.reactants
+                                      for _ in range(rxn.get_species_count(label=lbl, well=0))]
                 reaction_label_rev = get_autotst_reaction_string(ARCReaction(r_species=rxn.p_species,
                                                                              p_species=rxn.r_species,
-                                                                             reactants=rxn.products,
-                                                                             products=rxn.reactants))
+                                                                             reactants=rev_reactant_labels,
+                                                                             products=rev_product_labels))
 
                 i = 0
                 for reaction_label, direction in zip([reaction_label_fwd, reaction_label_rev], ['F', 'R']):
