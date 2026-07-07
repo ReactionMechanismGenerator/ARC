@@ -256,21 +256,25 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors)
         self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=False)
         self.generate_ts_files(statmech_dir, skip_rotors)
-        success = run_arkane(statmech_dir)
+        if run_arkane(statmech_dir):
+            self.parse_arkane_kinetics_output(statmech_dir)
         tunneling_disabled = False
-        if not success:
-            # A submerged/negative barrier makes Eckart tunneling invalid and aborts the whole Arkane
-            # run. Retry once without a tunneling correction so a rate coefficient can still be produced
-            # (barrierless/submerged reactions cannot use an Eckart correction meaningfully anyway).
-            if arkane_failed_on_invalid_barrier(statmech_dir):
-                logger.warning('Arkane failed because a reaction barrier is invalid for Eckart tunneling '
-                               '(likely submerged/barrierless). Retrying without a tunneling correction.')
-                self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors, tunneling_method=None)
-                success = run_arkane(statmech_dir)
-                tunneling_disabled = success
-            if not success:
-                return
-        self.parse_arkane_kinetics_output(statmech_dir)
+        # A submerged/negative barrier makes Eckart tunneling invalid and aborts kinetics inside Arkane.
+        # We cannot rely on run_arkane's return value here: Arkane writes a partial output.py before it
+        # crashes and the error is easily missed in captured stderr, so run_arkane can wrongly report
+        # success. Key the retry off the actual outcome (no rate produced) plus the invalid-barrier
+        # signature, then retry once without a tunneling correction (a barrierless/submerged reaction
+        # cannot use an Eckart correction meaningfully anyway).
+        if not any(reaction.kinetics for reaction in self.reactions) \
+                and arkane_failed_on_invalid_barrier(statmech_dir):
+            logger.warning('Arkane produced no rate because a reaction barrier is invalid for Eckart '
+                           'tunneling (likely submerged/barrierless). Retrying without a tunneling correction.')
+            self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors, tunneling_method=None)
+            if run_arkane(statmech_dir):
+                self.parse_arkane_kinetics_output(statmech_dir)
+                tunneling_disabled = any(reaction.kinetics for reaction in self.reactions)
+        if not any(reaction.kinetics for reaction in self.reactions):
+            return
         for reaction in self.reactions:
             if tunneling_disabled and isinstance(reaction.kinetics, dict):
                 # Record that no tunneling correction was applied, so output.yml / TCKDB don't
@@ -575,15 +579,18 @@ def arkane_failed_on_invalid_barrier(statmech_dir: str) -> bool:
     this lets the caller retry the run without a tunneling correction.
 
     Args:
-        statmech_dir (str): The statmech directory containing Arkane's ``stderr.log``.
+        statmech_dir (str): The statmech directory containing Arkane's ``stderr.log``/``stdout.log``.
 
     Returns:
-        bool: ``True`` if the invalid-barrier failure signature is present in the Arkane stderr.
+        bool: ``True`` if the invalid-barrier failure signature is present in the Arkane output.
     """
-    stderr_path = os.path.join(statmech_dir, 'stderr.log')
-    if not os.path.isfile(stderr_path):
-        return False
-    content = open(stderr_path, encoding='utf-8', errors='ignore').read()
+    # Read both logs: run_arkane tees stderr/stdout asynchronously, so the traceback may land in
+    # either and either may lag slightly; checking both is robust to that.
+    content = ''
+    for name in ('stderr.log', 'stdout.log'):
+        path = os.path.join(statmech_dir, name)
+        if os.path.isfile(path):
+            content += open(path, encoding='utf-8', errors='ignore').read()
     return 'Eckart method are invalid' in content \
         or ('barrier heights' in content and 'Eckart' in content)
 
