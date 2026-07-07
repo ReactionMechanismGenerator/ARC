@@ -49,6 +49,12 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
     """
     if job is None:
         return None
+    if reaction.atom_map is None:
+        # Without an atom map the formed/broken/changed bonds cannot be determined; skip the NMD
+        # check for this reaction rather than crashing the whole run (e.g. reactions ARC cannot map).
+        logger.warning(f'Cannot analyze the TS normal mode displacement for reaction {reaction.label} '
+                       f'without an atom map; skipping the NMD check for this reaction.')
+        return None
     ts_xyz = reaction.ts_species.get_xyz()
     n_ts = len(ts_xyz['symbols'])
     n_expected = sum(spc.number_of_atoms for spc in reaction.r_species)
