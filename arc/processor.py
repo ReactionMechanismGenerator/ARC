@@ -30,6 +30,30 @@ def resolve_neb_level(ts_adapters: list) -> Level | None:
     return None
 
 
+def _thermo_lib_has_isomorph(spc: 'ARCSpecies', species_list: list) -> bool:
+    """
+    Whether ``species_list`` already contains a species with the same molecular identity as ``spc``.
+
+    Arkane keys thermo-library entries by adjacency list + multiplicity and rejects duplicates, so a
+    reaction with identical participants (e.g. OH + OH) must contribute each unique species only once.
+
+    Args:
+        spc (ARCSpecies): The candidate species.
+        species_list (list): Species already collected for the thermo library.
+
+    Returns:
+        bool: ``True`` if an isomorphic, same-multiplicity species is already present.
+    """
+    if spc.mol is None:
+        return False
+    for existing in species_list:
+        if existing.mol is not None \
+                and existing.multiplicity == spc.multiplicity \
+                and existing.mol.is_isomorphic(spc.mol):
+            return True
+    return False
+
+
 def process_arc_project(thermo_adapter: str,
                         kinetics_adapter: str,
                         project: str,
@@ -200,7 +224,10 @@ def process_arc_project(thermo_adapter: str,
                                             )
         statmech_adapter.compute_thermo(e0_only=True)
     for spc in converged_species:
-        if spc.thermo is not None:
+        if spc.thermo is not None and not _thermo_lib_has_isomorph(spc, species_for_thermo_lib):
+            # Skip a species whose molecular identity (structure + multiplicity) already appears in
+            # the library. Arkane rejects duplicate thermo entries (e.g. identical reactants such as
+            # OH + OH), which would otherwise abort the entire thermo library for the project.
             species_for_thermo_lib.append(spc)
         plotter.augment_arkane_yml_file_with_mol_repr(spc, output_directory)
     if species_for_thermo_lib:
