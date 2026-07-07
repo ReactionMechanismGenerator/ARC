@@ -618,6 +618,22 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(len(reactants_xyz['symbols']), 4)
         self.assertEqual(sorted(reactants_xyz['symbols']), ['H', 'H', 'O', 'O'])
 
+    def test_reverse_reaction_of_repeated_species(self):
+        """Test that the reverse of a reaction with a repeated species (OH + OH <=> H2O + O) stays
+        atom-balanced. remove_dup_species dedups rxn.reactants to ['R1'], so building the reverse
+        from it (as consumers like the AutoTST adapter do) must re-expand by get_species_count, else
+        the reverse becomes the imbalanced 'P1 + P2 <=> R1'."""
+        oh = ARCSpecies(label='R1', smiles='[OH]', multiplicity=2)
+        h2o = ARCSpecies(label='P1', smiles='O', multiplicity=1)
+        o = ARCSpecies(label='P2', smiles='[O]', multiplicity=3)
+        fwd = ARCReaction(label='R1 + R1 <=> P1 + P2', r_species=[oh, oh], p_species=[h2o, o])
+        rev_reactants = [lbl for lbl in fwd.products for _ in range(fwd.get_species_count(label=lbl, well=1))]
+        rev_products = [lbl for lbl in fwd.reactants for _ in range(fwd.get_species_count(label=lbl, well=0))]
+        self.assertEqual(rev_products, ['R1', 'R1'])
+        rev = ARCReaction(r_species=fwd.p_species, p_species=fwd.r_species,
+                          reactants=rev_reactants, products=rev_products)  # must not raise "not atom balanced"
+        self.assertEqual(rev.label, 'P1 + P2 <=> R1 + R1')
+
     def test_get_reactants_and_products(self):
         """Test getting reactants and products"""
         self.rxn1.remove_dup_species()
