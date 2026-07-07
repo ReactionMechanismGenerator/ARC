@@ -89,6 +89,7 @@ global_ess_settings = {
     'torchani': 'local',
     'openbabel': 'local',
     'orca_neb': 'local',
+    'qst2': 'local',
     'ase': 'local',
 }
 
@@ -96,7 +97,7 @@ global_ess_settings = {
 supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
-ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb', 'crest']
+ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb', 'qst2', 'crest']
 
 # List here job types to execute by default
 default_job_types = {'conf_opt': True,        # defaults to True if not specified
@@ -172,6 +173,7 @@ input_filenames = {'ase': 'input.yml',
                    'onedmin': 'input.in',
                    'orca': 'input.in',
                    'orca_neb': 'input.in',
+                   'qst2': 'input.gjf',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
                    'xtb': 'input.sh',
@@ -186,6 +188,7 @@ output_filenames = {'ase': 'output.yml',
                     'onedmin': 'output.out',
                     'orca': 'input.log',
                     'orca_neb': 'input.log',
+                    'qst2': 'input.log',
                     'qchem': 'output.out',
                     'terachem': 'output.out',
                     'torchani': 'output.yml',
@@ -266,6 +269,10 @@ orca_neb_settings = {'keyword': {
                     },
                     'level': 'wb97xd/def2tzvp',
                     }
+
+qst2_settings = {'maxcycle': 150,
+                 'level': 'wb97xd/def2tzvp',
+                 }
 
 ase_default_options_dict = {'optimizer': 'BFGS',
                             'fmax': 0.001,
