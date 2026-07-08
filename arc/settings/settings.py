@@ -271,7 +271,7 @@ orca_neb_settings = {'keyword': {
                     }
 
 qst2_settings = {'maxcycle': 150,
-                 'level': 'wb97xd/def2tzvp',
+                 'level': 'wb97xd/def2svp',  # match the TS-guess opt level; the guess is refined later
                  }
 
 ase_default_options_dict = {'optimizer': 'BFGS',
