@@ -740,7 +740,7 @@ class TestRunArkaneOutputPySignal(unittest.TestCase):
             ])
         self.assertTrue(result, "output.py exists → success regardless of stderr")
         self.assertTrue(
-            any('non-cosmetic lines' in m for m in logs.output),
+            any('still produced output.py' in m for m in logs.output),
             f"expected the advisory warning to fire; got {logs.output}",
         )
 
@@ -805,6 +805,32 @@ class TestClassifyArkaneStderr(unittest.TestCase):
             '*** Open Babel Warning in InChI code',
         ])
         self.assertEqual(result, ['KeyError: "level_of_theory"'])
+
+
+class TestSummarizeArkaneStderr(unittest.TestCase):
+    """The stderr summarizer condenses a traceback to the salient exception line for arc.log."""
+
+    def setUp(self):
+        from arc.statmech.arkane import _summarize_arkane_stderr
+        self._summarize = _summarize_arkane_stderr
+
+    def test_empty(self):
+        self.assertEqual(self._summarize([]), '')
+
+    def test_picks_exception_line_over_conda_wrapper(self):
+        lines = [
+            'Traceback (most recent call last):',
+            '  File ".../kinetics.py", line 183, in generate_kinetics',
+            'ValueError: One or both of the barrier heights of -20.7 and 28.2 kJ/mol are invalid.',
+            'ERROR conda.cli.main_run:execute(148): `conda run python -m arkane input.py` failed.',
+        ]
+        summary = self._summarize(lines)
+        self.assertTrue(summary.startswith('ValueError: One or both of the barrier heights'))
+        self.assertIn('[+3 more stderr line(s)]', summary)
+        self.assertNotIn('Traceback', summary)
+
+    def test_single_line_no_extra_suffix(self):
+        self.assertEqual(self._summarize(['RuntimeError: boom']), 'RuntimeError: boom')
 
 
 if __name__ == '__main__':
