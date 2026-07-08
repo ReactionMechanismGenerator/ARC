@@ -464,7 +464,8 @@ class TestGaussianAdapter(unittest.TestCase):
                                             )
         
         # Gaussian MaxOptCycles error - Part 2
-        # Intend to troubleshoot a MaxOptCycles error by adding opt=(RFO) to the input file
+        # Intend to troubleshoot a MaxOptCycles error by recomputing the Hessian (opt=(recalcfc=5),
+        # which supersedes the base calcfc) before any step-algorithm flip.
         job_status = {'keywords': ['MaxOptCycles']}
         ess_trsh_methods = ['opt=(maxcycle=200)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
@@ -487,7 +488,8 @@ class TestGaussianAdapter(unittest.TestCase):
                                             )
         
         # Gaussian MaxOptCycles error - Part 3
-        # Intend to troubleshoot a MaxOptCycles error by adding opt=(GDIIS) and removing opt=(RFO) to the input file
+        # With maxcycle+RFO already tried, the next remedy is the Hessian recompute opt=(recalcfc=5)
+        # (it precedes the DIIS accelerators); RFO is retained as the single step algorithm.
         job_status = {'keywords': ['MaxOptCycles']}
         ess_trsh_methods = ['opt=(maxcycle=200)', 'opt=(RFO)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
@@ -772,8 +774,8 @@ O       0.00000000    0.00000000    1.00000000
         20. Create an input file for a job with L502 error but had already been troubleshooted with L502 error and InaccurateQuadrature
         21. Create an input file for a job with L502 error but had already been troubleshooted with L502 error and InaccurateQuadrature
         22. Create an input file for a job with MaxOptCycles error - changes maxcycle to 200 from 100
-        23. Create an input file for a job with MaxOptCycles error - Add RFO to the input file
-        24. Create an input file for a job with MaxOptCycles error - Add GDIIS and remove RFO from the input file
+        23. Create an input file for a job with MaxOptCycles error - recompute the Hessian (recalcfc=5), superseding calcfc
+        24. Create an input file for a job with MaxOptCycles error - recalcfc=5 with RFO retained as the step algorithm
         """
         self.job_10.write_input_file()
         with open(os.path.join(self.job_10.local_path, input_filenames[self.job_10.job_adapter]), 'r') as f:
@@ -1117,7 +1119,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(RFO,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(maxcycle=200,maxstep=5,recalcfc=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
@@ -1144,7 +1146,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(RFO,maxcycle=200,maxstep=5,recalcfc=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
@@ -1233,6 +1235,98 @@ class TestGaussianAdapterNoXqc(unittest.TestCase):
         content = self.write_input(ess_trsh_methods=['no_xqc'])
         self.assertIn('scf=(qc)', content)
         self.assertNotIn('xqc', content)
+
+
+class TestGaussianAdapterAcc2E(unittest.TestCase):
+    """
+    P2: int=(Acc2E=14) must take effect on non-fine opt/IRC jobs (self-contained).
+    """
+
+    def render(self, fine, trsh_list, job_type='opt'):
+        project_directory = os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapterAcc2E')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        kwargs = dict(execution_type='incore', job_type=job_type,
+                      level=Level(method='wb97xd', basis='def2tzvp'), project='test',
+                      project_directory=project_directory,
+                      species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
+                      testing=True, fine=fine, args={'trsh': {'trsh': trsh_list}})
+        if job_type == 'irc':
+            kwargs['irc_direction'] = 'forward'
+        job = GaussianAdapter(**kwargs)
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return next(line for line in f if line.startswith('#'))
+
+    def test_non_fine_opt_emits_acc2e(self):
+        """A non-fine opt with int=(Acc2E=14) in trsh must actually emit the integral setting."""
+        route = self.render(fine=False, trsh_list=['int=(Acc2E=14)'])
+        self.assertIn('integral=(Acc2E=14)', route)
+        self.assertIn('Acc2E=14', route)
+
+    def test_non_fine_opt_without_acc2e_unchanged(self):
+        """A normal non-fine opt (no Acc2E trsh) must not gain any integral= setting."""
+        route = self.render(fine=False, trsh_list=[])
+        self.assertNotIn('integral=', route)
+        self.assertNotIn('Acc2E', route)
+
+    def test_fine_opt_still_folds_acc2e_into_ultrafine(self):
+        """A fine opt keeps folding Acc2E=14 into the ultrafine integral grid (unchanged)."""
+        route = self.render(fine=True, trsh_list=['int=(Acc2E=14)'])
+        self.assertIn('integral=(grid=ultrafine, Acc2E=14)', route)
+
+    def test_non_fine_irc_emits_acc2e(self):
+        """A non-fine IRC with int=(Acc2E=14) in trsh must emit the integral setting too."""
+        route = self.render(fine=False, trsh_list=['int=(Acc2E=14)'], job_type='irc')
+        self.assertIn('integral=(Acc2E=14)', route)
+
+
+class TestGaussianAdapterOptLadder(unittest.TestCase):
+    """
+    P3: the opt=() clause the adapter renders from the MaxOptCycles remedy ladder must carry a
+    single, non-conflicting force-constant directive, and a TS route must never receive GDIIS.
+    """
+
+    def render(self, trsh_list, is_ts):
+        project_directory = os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapterOptLadder')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        # GaussianAdapter derives self.is_ts from species[0].is_ts.
+        if is_ts:
+            spc = ARCSpecies(label='TS0', is_ts=True,
+                             xyz=['O 0.0 0.0 0.0', 'H 0.0 0.0 0.97', 'H 0.94 0.0 -0.24'])
+        else:
+            spc = ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)
+        job = GaussianAdapter(execution_type='incore', job_type='opt',
+                              level=Level(method='wb97xd', basis='def2tzvp'), project='test',
+                              project_directory=project_directory, species=[spc], testing=True,
+                              fine=False, args={'trsh': {'trsh': trsh_list}})
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return next(line for line in f if line.startswith('#'))
+
+    def test_recalcfc_supersedes_base_calcfc(self):
+        """When the ladder adds recalcfc, the base calcfc must be dropped (no conflicting FC opts)."""
+        route = self.render(['opt=(maxcycle=200)', 'opt=(recalcfc=5)'], is_ts=False)
+        self.assertIn('recalcfc=5', route)
+        self.assertNotIn('calcfc,', route.replace('recalcfc', ''))  # no standalone calcfc token
+
+    def test_calcall_supersedes_recalcfc_and_calcfc(self):
+        """calcall is most aggressive: it must drop both recalcfc and calcfc."""
+        route = self.render(['opt=(recalcfc=5)', 'opt=(calcall)'], is_ts=False)
+        self.assertIn('calcall', route)
+        self.assertNotIn('recalcfc', route)
+        self.assertNotIn('calcfc', route)
+
+    def test_ts_route_renders_rfo_ladder(self):
+        """
+        A TS opt route built from the (TS-aware) ladder renders with ts + RFO + Hessian recompute,
+        with the base calcfc superseded by recalcfc. (GDIIS is never produced for a TS - that guard
+        lives in arc.job.trsh.prioritize_opt_methods, covered by the trsh tests.)
+        """
+        route = self.render(['opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(RFO)'], is_ts=True)
+        self.assertIn('ts', route)
+        self.assertIn('RFO', route)
+        self.assertIn('recalcfc=5', route)
+        self.assertNotIn('GDIIS', route)
 
 
 if __name__ == '__main__':

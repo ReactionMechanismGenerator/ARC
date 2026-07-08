@@ -461,10 +461,13 @@ class TestTrsh(unittest.TestCase):
         self.assertTrue(all('trsh_attempt' not in e for e in output_errors))
 
         # Gaussian: test 7 - part 2
-        # verify troubleshoot attempts counting (consolidated)
+        # verify troubleshoot attempts counting (consolidated). Full minimization MaxOptCycles
+        # ladder (maxcycle -> recalcfc -> calcall -> RFO -> GDIIS -> GEDIIS) must be exhausted.
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
         ess_trsh_methods = ['trsh_attempt',
                             'int=(Acc2E=14)', 'opt=(maxcycle=200)',
+                            'trsh_attempt', 'opt=(recalcfc=5)',
+                            'trsh_attempt', 'opt=(calcall)',
                             'trsh_attempt', 'opt=(RFO)',
                             'trsh_attempt', 'opt=(GDIIS)',
                             'trsh_attempt', 'opt=(GEDIIS)',
@@ -475,9 +478,10 @@ class TestTrsh(unittest.TestCase):
                                                                     num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertTrue(couldnt_trsh)
         e = output_errors[-1]
-        self.assertIn('Tried troubleshooting 5 time(s)', e)
+        self.assertIn('Tried troubleshooting 7 time(s)', e)
         self.assertNotIn('trsh_attempt', e)
-        for opt in ("opt=(maxcycle=200)", "opt=(RFO)", "opt=(GDIIS)", "opt=(GEDIIS)"):
+        for opt in ("opt=(maxcycle=200)", "opt=(recalcfc=5)", "opt=(calcall)",
+                    "opt=(RFO)", "opt=(GDIIS)", "opt=(GEDIIS)"):
             self.assertIn(opt, e)
         self.assertIn('all_attempted', e)
 
@@ -542,9 +546,8 @@ class TestTrsh(unittest.TestCase):
         self.assertFalse(couldnt_trsh)
         self.assertIn('opt=(maxcycle=200)', ess_trsh_methods)
         
-        # Gaussian: test 10 - part 2
-        # 'MaxOptCycles', 'GL9999'
-        # Adding RFO to opt
+        # Gaussian: test 10 - part 2 (minimization ladder)
+        # 'MaxOptCycles', 'GL9999' - Hessian recompute (recalcfc) comes before any algorithm flip
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
         ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
@@ -552,49 +555,47 @@ class TestTrsh(unittest.TestCase):
                                                                     job_type, software, fine, memory_gb,
                                                                     num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertFalse(couldnt_trsh)
-        self.assertIn('opt=(maxcycle=200)', ess_trsh_methods)
-        self.assertIn('opt=(RFO)', ess_trsh_methods)
-        self.assertIn('opt=(maxcycle=200,RFO)', trsh_keyword)
-        
-        # Gaussian: test 10 - part 3
-        # 'MaxOptCycles', 'GL9999'
-        # Adding GDIIS to opt
-        # Removing RFO from opt
+        self.assertIn('opt=(recalcfc=5)', ess_trsh_methods)
+        self.assertNotIn('opt=(RFO)', ess_trsh_methods)  # algorithm flip must NOT precede Hessian recompute
+        self.assertIn('opt=(maxcycle=200,recalcfc=5)', trsh_keyword)
+
+        # Gaussian: test 10 - part 3 - calcall (most aggressive Hessian) supersedes recalcfc in the route
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
-        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(RFO)']
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(recalcfc=5)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                     job_type, software, fine, memory_gb,
                                                                     num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertFalse(couldnt_trsh)
-        self.assertIn('opt=(maxcycle=200)', ess_trsh_methods)
-        self.assertIn('opt=(RFO)', ess_trsh_methods)
-        self.assertIn('opt=(GDIIS)', ess_trsh_methods)
-        self.assertIn('opt=(maxcycle=200,GDIIS)', trsh_keyword)
-        
-        # Gaussian: test 10 - part 4
-        # 'MaxOptCycles', 'GL9999'
-        # Adding GEDIIS to opt
-        # Removing RFO from opt
-        # Removing GDIIS from opt
+        self.assertIn('opt=(calcall)', ess_trsh_methods)
+        self.assertIn('opt=(maxcycle=200,calcall)', trsh_keyword)  # recalcfc collapsed into calcall
+
+        # Gaussian: test 10 - part 4 - only now flip to RFO (eigenvector following)
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
-        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(RFO)', 'opt=(GDIIS)']
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(calcall)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                     job_type, software, fine, memory_gb,
                                                                     num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertFalse(couldnt_trsh)
-        self.assertIn('opt=(maxcycle=200)', ess_trsh_methods)
         self.assertIn('opt=(RFO)', ess_trsh_methods)
-        self.assertIn('opt=(GDIIS)', ess_trsh_methods)
-        self.assertIn('opt=(GEDIIS)', ess_trsh_methods)
-        self.assertIn('opt=(maxcycle=200,GEDIIS)', trsh_keyword)
-        
-        # Gaussian: test 10 - part 5
-        # 'MaxOptCycles', 'GL9999'
-        # Final test to ensure that it cannot troubleshoot the job further
+        self.assertIn('opt=(maxcycle=200,calcall,RFO)', trsh_keyword)
+
+        # Gaussian: test 10 - part 5 - GDIIS then GEDIIS (minimization only)
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
-        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(RFO)', 'opt=(GDIIS)', 'opt=(GEDIIS)']
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(calcall)', 'opt=(RFO)']
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                    job_type, software, fine, memory_gb,
+                                                                    num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('opt=(GDIIS)', ess_trsh_methods)
+        self.assertIn('opt=(maxcycle=200,calcall,GDIIS)', trsh_keyword)
+
+        # Gaussian: test 10 - part 6 - final step exhausts the minimization ladder
+        job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(calcall)',
+                            'opt=(RFO)', 'opt=(GDIIS)', 'opt=(GEDIIS)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                     job_type, software, fine, memory_gb,
@@ -942,6 +943,40 @@ class TestTrsh(unittest.TestCase):
                               num_heavy_atoms, cpu_cores, ess_trsh_methods,
                               is_h=True, is_monoatomic=True)
 
+    def test_trsh_ess_job_gaussian_non_retryable_refusal(self):
+        """
+        P1: Gaussian input/method errors that a resubmit cannot fix must refuse immediately
+        (couldnt_trsh=True) without appending int=(Acc2E=14) or any other remedy - previously
+        every Gaussian error picked up a spurious Acc2E=14 step and burned a resubmit.
+        """
+        def call(job_status):
+            return trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None, job_status,
+                                     'opt', 'gaussian', False, 16, 2, 8, [])
+        non_retryable_cases = [
+            (['Syntax'], 'There was a syntax error in the Gaussian input file.'),
+            (['InputError', 'GL101'], 'The blank line after the coordinate section is missing.'),
+            (['ZMat', 'GL716'], 'Angle in z-matrix outside the allowed range 0 < x < 180.'),
+            (['MP2', 'GL906'], 'The MP2 calculation has failed.'),
+            (['OptOrientation', 'GL202'], 'The point group of the molecule has changed.'),
+            (['Scratch'], 'Wrongly specified the scratch directory.'),
+            (['GL401', 'BasisSet'], 'The projection from the old to the new basis set has failed.'),
+        ]
+        for keywords, error in non_retryable_cases:
+            out = call({'keywords': keywords, 'error': error})
+            output_errors, ess_trsh_methods, couldnt_trsh = out[0], out[1], out[11]
+            self.assertTrue(couldnt_trsh, f'{keywords} should refuse (couldnt_trsh=True)')
+            self.assertEqual(ess_trsh_methods, [], f'{keywords} must not append any remedy')
+            self.assertTrue(any('non-retryable' in e for e in output_errors),
+                            f'{keywords} should report a non-retryable error: {output_errors}')
+
+        # Legitimate, retryable classes must be UNAFFECTED (still get their remedies):
+        scf = call({'keywords': ['SCF', 'GL502', 'NoSymm'], 'error': 'Unconverged SCF'})
+        self.assertFalse(scf[11])
+        self.assertIn('scf=(qc)', scf[1])
+        opt = call({'keywords': ['MaxOptCycles', 'GL9999'], 'error': 'steps exceeded'})
+        self.assertFalse(opt[11])
+        self.assertIn('opt=(maxcycle=200)', opt[1])
+
     def test_trsh_ess_job_terachem_trsh_attempt_only(self):
         """Isolate the terachem trsh_attempt-only case from Gaussian stateful flow."""
         label = 'ethanol'
@@ -1012,7 +1047,7 @@ class TestTrsh(unittest.TestCase):
             self.assertIn(method, ess_trsh_methods,
                           f'the SCF ladder never reached {method}: {ess_trsh_methods}')
 
-    def _run_gaussian_ladder(self, keywords, error, n=8):
+    def _run_gaussian_ladder(self, keywords, error, n=10, is_ts=False):
         """
         Drive trsh_ess_job() repeatedly for a Gaussian job that keeps failing with the same
         (keywords, error), feeding ess_trsh_methods back in as the scheduler does. Returns the
@@ -1023,12 +1058,22 @@ class TestTrsh(unittest.TestCase):
         ess_trsh_methods, fine, history = list(), False, list()
         for _ in range(n):
             out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None, job_status,
-                                    'opt', 'gaussian', fine, 16, 2, 8, ess_trsh_methods)
+                                    'opt', 'gaussian', fine, 16, 2, 8, ess_trsh_methods, is_ts=is_ts)
             ess_trsh_methods, fine, couldnt_trsh = out[1], out[6], out[11]
             history.append((list(ess_trsh_methods), couldnt_trsh))
             if couldnt_trsh or 'all_attempted' in ess_trsh_methods:
                 break
         return history
+
+    @staticmethod
+    def _distinct_opts(history):
+        """Distinct opt=(...) remedies in first-seen (escalation) order across a ladder history."""
+        distinct = []
+        for snap, _ in history:
+            for m in snap:
+                if m.startswith('opt=') and m not in distinct:
+                    distinct.append(m)
+        return distinct
 
     def test_trsh_ess_job_gaussian_inaccurate_quadrature_ladder(self):
         """
@@ -1047,23 +1092,49 @@ class TestTrsh(unittest.TestCase):
         ])
         self.assertTrue(history[-1][1])  # couldnt_trsh is True on the terminal retry
 
-    def test_trsh_ess_job_gaussian_maxoptcycles_ladder(self):
+    def test_trsh_ess_job_gaussian_maxoptcycles_ladder_minimization(self):
         """
-        Document the MaxOptCycles (opt not converged) remedy ladder:
-            opt=(maxcycle=200) -> opt=(RFO) -> opt=(GDIIS) -> opt=(GEDIIS) -> all_attempted.
-        (Guards ordering; note it does not currently recompute the Hessian - see review notes.)
+        P3: MaxOptCycles ladder for a minimization (is_ts=False). Recompute the Hessian before any
+        step-algorithm flip, and keep the DIIS accelerators (legitimate for minima):
+            maxcycle=200 -> recalcfc=5 -> calcall -> RFO -> GDIIS -> GEDIIS -> all_attempted.
         """
         history = self._run_gaussian_ladder(['MaxOptCycles', 'GL9999'], 'Maximum optimization cycles reached.')
-        ess_snapshots = [snap for snap, _ in history]
-        self.assertEqual(ess_snapshots[0], ['int=(Acc2E=14)', 'opt=(maxcycle=200)'])
-        # The distinct opt remedies must appear in this escalation order:
-        distinct_opts = []
-        for snap, _ in history:
-            for m in snap:
-                if m.startswith('opt=') and m not in distinct_opts:
-                    distinct_opts.append(m)
-        self.assertEqual(distinct_opts, ['opt=(maxcycle=200)', 'opt=(RFO)', 'opt=(GDIIS)', 'opt=(GEDIIS)'])
+        self.assertEqual([snap for snap, _ in history][0], ['int=(Acc2E=14)', 'opt=(maxcycle=200)'])
+        self.assertEqual(self._distinct_opts(history),
+                         ['opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(calcall)',
+                          'opt=(RFO)', 'opt=(GDIIS)', 'opt=(GEDIIS)'])
         self.assertIn('all_attempted', history[-1][0])
+
+    def test_trsh_ess_job_gaussian_maxoptcycles_ladder_ts(self):
+        """
+        P3: MaxOptCycles ladder for a TS (is_ts=True). Hessian recompute comes before the algorithm
+        flip, and GDIIS/GEDIIS (minimization DIIS accelerators that can fall off the saddle) are
+        NOT applied - the ladder stops at RFO:
+            maxcycle=200 -> recalcfc=5 -> calcall -> RFO -> all_attempted.
+        """
+        history = self._run_gaussian_ladder(['MaxOptCycles', 'GL9999'],
+                                            'Maximum optimization cycles reached.', is_ts=True)
+        distinct = self._distinct_opts(history)
+        self.assertEqual(distinct, ['opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(calcall)', 'opt=(RFO)'])
+        self.assertNotIn('opt=(GDIIS)', distinct)
+        self.assertNotIn('opt=(GEDIIS)', distinct)
+        # Hessian recompute must precede the RFO algorithm flip:
+        self.assertLess(distinct.index('opt=(recalcfc=5)'), distinct.index('opt=(RFO)'))
+        self.assertLess(distinct.index('opt=(calcall)'), distinct.index('opt=(RFO)'))
+        self.assertIn('all_attempted', history[-1][0])
+
+    def test_prioritize_opt_methods_ts_vs_min(self):
+        """P3 unit: TS keeps only RFO and the most aggressive Hessian directive; min keeps GEDIIS."""
+        acc = ['maxcycle=200', 'recalcfc=5', 'calcall', 'RFO', 'GDIIS', 'GEDIIS', 'calcfc']
+        ts = trsh.prioritize_opt_methods(list(acc), is_ts=True)
+        self.assertIn('RFO', ts)
+        self.assertNotIn('GDIIS', ts)
+        self.assertNotIn('GEDIIS', ts)
+        self.assertIn('calcall', ts)
+        self.assertNotIn('recalcfc=5', ts)  # calcall (more aggressive) wins
+        self.assertNotIn('calcfc', ts)
+        min_ = trsh.prioritize_opt_methods(list(acc), is_ts=False)
+        self.assertEqual([m for m in min_ if m in ('GEDIIS', 'GDIIS', 'RFO')], ['GEDIIS'])
 
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""

@@ -844,6 +844,15 @@ def trsh_special_rotor(special_rotor: list,
     return to_freeze
 
 
+# Gaussian error classes that resubmission cannot fix: input/template/method-basis problems.
+# When one of these is detected we refuse to troubleshoot instead of burning a resubmit on an
+# unrelated remedy (historically every Gaussian error picked up a spurious int=(Acc2E=14) step).
+# NOTE: this is deliberately conservative - it excludes classes that a resubmit *can* help
+# (SCF, opt cycles, internal-coordinate, negative eigenvalues, memory, checkfile, and the
+# generic 'Unknown' class, which the scheduler retries on a different node).
+GAUSSIAN_NON_RETRYABLE_KEYWORDS = ('Syntax', 'InputError', 'ZMat', 'MP2', 'OptOrientation', 'Scratch', 'BasisSet')
+
+
 def trsh_ess_job(label: str,
                  level_of_theory: Level | dict | str,
                  server: str,
@@ -857,6 +866,7 @@ def trsh_ess_job(label: str,
                  ess_trsh_methods: list,
                  is_h: bool = False,
                  is_monoatomic: bool = False,
+                 is_ts: bool = False,
                  ) -> tuple:
     """
     Troubleshoot issues related to the electronic structure software, such as convergence.
@@ -876,6 +886,8 @@ def trsh_ess_job(label: str,
         ess_trsh_methods (list): The troubleshooting methods tried for this job.
         is_h (bool): Whether the species is a hydrogen atom (or its isotope). e.g., H, D, T.
         is_monoatomic (bool): Whether the species is monoatomic (single atom).
+        is_ts (bool): Whether the species is a transition state. Makes the opt-cycle remedy
+                      ladder TS-aware (rely on RFO + Hessian recompute, avoid GDIIS/GEDIIS).
 
     Todo:
         - Change server to one that has the same ESS if running out of disk space.
@@ -919,6 +931,17 @@ def trsh_ess_job(label: str,
         couldnt_trsh = True
         logger.info(f'Troubleshooting {job_type} job in {software} for {label} that failed with '
                     '"Basis set data is not on the checkpoint file" by removing the checkfile.')
+
+    elif software == 'gaussian' \
+            and any(kw in job_status['keywords'] for kw in GAUSSIAN_NON_RETRYABLE_KEYWORDS):
+        # Non-retryable input/method error: refuse rather than waste a resubmit (see note above).
+        non_retryable = next(kw for kw in GAUSSIAN_NON_RETRYABLE_KEYWORDS if kw in job_status['keywords'])
+        output_errors.append(f'Error: Could not troubleshoot {job_type} for {label}! Gaussian reported a '
+                             f'non-retryable "{non_retryable}" error that resubmission cannot fix '
+                             f'({job_status.get("error", "").strip() or "no further detail"}); ')
+        logger.error(f'Could not troubleshoot {job_type} job in {software} for {label}: non-retryable '
+                     f'"{non_retryable}" error. {job_status.get("error", "").strip()}')
+        couldnt_trsh = True
 
     elif software == 'gaussian':
         trsh_keyword = [] # initialize as a list
@@ -976,7 +999,7 @@ def trsh_ess_job(label: str,
 
         # Troubleshoot by increasing opt max cycles
         #P opt=(calcfc,maxstep=5,tight,maxcycle=200) guess=mix wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight,maxcycle=512) iop(3/33=1)
-        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, is_ts)
         # print out any words that beging with 'opt='
         opt_list = [i for i in ess_trsh_methods if i.startswith('opt=')]
         if opt_list:
@@ -1939,39 +1962,61 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 
-def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
+def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, is_ts=False) -> tuple[list, list, bool]:
     """
-    Check if the job requires change of opt(maxcycle=200)
+    Escalate the remedy for an optimization that hit its cycle limit (MaxOptCycles), one step
+    per retry. The ladder recomputes the Hessian before flipping the step algorithm:
+
+        1. opt=(maxcycle=200)  - simply allow more cycles (cheapest).
+        2. opt=(recalcfc=5)    - recompute the exact Hessian every 5 steps. Recomputing force
+                                 constants is the first-line remedy for a stuck optimization, and
+                                 is essential for a TS opt where following the single negative
+                                 eigenvalue depends entirely on Hessian quality.
+        3. opt=(calcall)       - recompute the Hessian at every step (expensive last resort).
+        4. opt=(RFO)           - rational-function / eigenvector-following step. Correct for both
+                                 minima and TS.
+        5. opt=(GDIIS)         - minimization only. GDIIS is a DIIS step accelerator that can walk
+        6. opt=(GEDIIS)          a TS opt downhill into a nearby minimum and lose the saddle, so
+                                 these are skipped for TS optimizations (is_ts=True).
     """
     opt_pattern = r"opt=\((.*?)\)"
-    if 'MaxOptCycles' in job_status['keywords'] and 'opt=(maxcycle=200)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(maxcycle=200)')
-        trsh_keyword.append('opt=(maxcycle=200)')
-        couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords'] and 'opt=(RFO)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(RFO)')
-        trsh_keyword.append('opt=(RFO)')
-        couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords']  and 'opt=(RFO)' in ess_trsh_methods and 'opt=(GDIIS)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(GDIIS)')
-        trsh_keyword.append('opt=(GDIIS)')
-        couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords']  and 'opt=(RFO)' in ess_trsh_methods and 'opt=(GDIIS)' in ess_trsh_methods and 'opt=(GEDIIS)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(GEDIIS)')
-        trsh_keyword.append('opt=(GEDIIS)')
-        couldnt_trsh = False
-    
+    if 'MaxOptCycles' in job_status['keywords']:
+        if 'opt=(maxcycle=200)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(maxcycle=200)')
+            trsh_keyword.append('opt=(maxcycle=200)')
+            couldnt_trsh = False
+        elif 'opt=(recalcfc=5)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(recalcfc=5)')
+            trsh_keyword.append('opt=(recalcfc=5)')
+            couldnt_trsh = False
+        elif 'opt=(calcall)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(calcall)')
+            trsh_keyword.append('opt=(calcall)')
+            couldnt_trsh = False
+        elif 'opt=(RFO)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(RFO)')
+            trsh_keyword.append('opt=(RFO)')
+            couldnt_trsh = False
+        elif not is_ts and 'opt=(GDIIS)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(GDIIS)')
+            trsh_keyword.append('opt=(GDIIS)')
+            couldnt_trsh = False
+        elif not is_ts and 'opt=(GDIIS)' in ess_trsh_methods and 'opt=(GEDIIS)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(GEDIIS)')
+            trsh_keyword.append('opt=(GEDIIS)')
+            couldnt_trsh = False
+
     if any('opt' in keyword for keyword in ess_trsh_methods):
         opt_list = [match for element in ess_trsh_methods for match in re.findall(opt_pattern, element)] if any(re.search(opt_pattern, element) for element in ess_trsh_methods) else []
 
         if opt_list:
 
-            filtered_methods = prioritize_opt_methods(opt_list)
+            filtered_methods = prioritize_opt_methods(opt_list, is_ts=is_ts)
 
             new_opt_keyword = 'opt=(' + ','.join(filtered_methods) + ')'
 
             trsh_keyword = [kw if not kw.startswith('opt') else new_opt_keyword for kw in trsh_keyword]
-    
+
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 
@@ -2059,19 +2104,32 @@ def trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_t
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 
-def prioritize_opt_methods(opt_methods):
+def prioritize_opt_methods(opt_methods, is_ts=False):
+    """
+    Reduce an accumulated list of opt=(...) parameters to a self-consistent set:
 
-    preferred_order = ['GEDIIS', 'GDIIS', 'RFO']
-    selected_method = None
-    
-    for method in preferred_order:
-        if method in opt_methods:
-            selected_method = method
-            break
-    
-    filtered_methods = [method for method in opt_methods if method not in preferred_order or method == selected_method]
+    - Keep a single step algorithm. For minimizations prefer GEDIIS > GDIIS > RFO. For a TS
+      optimization keep only RFO (eigenvector following); GDIIS/GEDIIS are minimization-oriented
+      DIIS accelerators that can drift off the saddle, so they are dropped.
+    - Keep a single Hessian-recompute directive, most aggressive wins: calcall > recalcfc=* > calcfc.
+    """
+    all_algorithms = ['GEDIIS', 'GDIIS', 'RFO']
+    preferred_order = ['RFO'] if is_ts else all_algorithms
+    selected_method = next((method for method in preferred_order if method in opt_methods), None)
+    methods = [method for method in opt_methods if method not in all_algorithms or method == selected_method]
 
-    return filtered_methods
+    # Collapse conflicting force-constant recompute directives to the single most aggressive one.
+    has_calcall = 'calcall' in methods
+    has_recalcfc = any(method.startswith('recalcfc') for method in methods)
+
+    def _keep_fc(method: str) -> bool:
+        if method == 'calcfc':
+            return not (has_calcall or has_recalcfc)
+        if method.startswith('recalcfc'):
+            return not has_calcall
+        return True
+
+    return [method for method in methods if _keep_fc(method)]
 
 
 def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
