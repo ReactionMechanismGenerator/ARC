@@ -81,6 +81,7 @@ _TS_GUESS_METHOD_TO_PATHS_KEY: dict[str, str] = {
     'orca_neb': 'neb',
     'xtb_gsm': 'gsm',
     'xtb-gsm': 'gsm',
+    'qst2': 'qst2',
 }
 
 
