@@ -706,6 +706,10 @@ class ARC(object):
         txt += f'\nUsing the following ESS settings: {self.ess_settings}\n'
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.species:
+            if species.label not in self.output:
+                # A species deleted mid-run (e.g., an IRC endpoint species whose TS did not converge)
+                # can linger in self.species after being removed from self.output; don't report it.
+                continue
             descriptor = 'TS' if species.is_ts else 'Species'
             failed = '' if self.output[species.label]['convergence'] else ' (Failed!)'
             txt += f'{descriptor} {species.label}{failed} (run time: {species.run_time})\n'
