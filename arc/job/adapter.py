@@ -115,6 +115,7 @@ class JobEnum(str, Enum):
     user = 'user'  # user guesses
     xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
     orca_neb = 'orca_neb'
+    qst2 = 'qst2'  # Gaussian synchronous-transit-guided quasi-Newton TS search (opt=qst2)
 
 
 class JobTypeEnum(str, Enum):
