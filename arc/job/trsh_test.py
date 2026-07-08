@@ -832,6 +832,40 @@ class TestTrsh(unittest.TestCase):
                               num_heavy_atoms, cpu_cores, ess_trsh_methods,
                               is_h=True, is_monoatomic=True)
 
+    def test_trsh_ess_job_gaussian_non_retryable_refusal(self):
+        """
+        P1: Gaussian input/method errors that a resubmit cannot fix must refuse immediately
+        (couldnt_trsh=True) without appending int=(Acc2E=14) or any other remedy - previously
+        every Gaussian error picked up a spurious Acc2E=14 step and burned a resubmit.
+        """
+        def call(job_status):
+            return trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None, job_status,
+                                     'opt', 'gaussian', False, 16, 2, 8, [])
+        non_retryable_cases = [
+            (['Syntax'], 'There was a syntax error in the Gaussian input file.'),
+            (['InputError', 'GL101'], 'The blank line after the coordinate section is missing.'),
+            (['ZMat', 'GL716'], 'Angle in z-matrix outside the allowed range 0 < x < 180.'),
+            (['MP2', 'GL906'], 'The MP2 calculation has failed.'),
+            (['OptOrientation', 'GL202'], 'The point group of the molecule has changed.'),
+            (['Scratch'], 'Wrongly specified the scratch directory.'),
+            (['GL401', 'BasisSet'], 'The projection from the old to the new basis set has failed.'),
+        ]
+        for keywords, error in non_retryable_cases:
+            out = call({'keywords': keywords, 'error': error})
+            output_errors, ess_trsh_methods, couldnt_trsh = out[0], out[1], out[11]
+            self.assertTrue(couldnt_trsh, f'{keywords} should refuse (couldnt_trsh=True)')
+            self.assertEqual(ess_trsh_methods, [], f'{keywords} must not append any remedy')
+            self.assertTrue(any('non-retryable' in e for e in output_errors),
+                            f'{keywords} should report a non-retryable error: {output_errors}')
+
+        # Legitimate, retryable classes must be UNAFFECTED (still get their remedies):
+        scf = call({'keywords': ['SCF', 'GL502', 'NoSymm'], 'error': 'Unconverged SCF'})
+        self.assertFalse(scf[11])
+        self.assertIn('scf=(qc)', scf[1])
+        opt = call({'keywords': ['MaxOptCycles', 'GL9999'], 'error': 'steps exceeded'})
+        self.assertFalse(opt[11])
+        self.assertIn('opt=(maxcycle=200)', opt[1])
+
     def test_trsh_ess_job_terachem_trsh_attempt_only(self):
         """Isolate the terachem trsh_attempt-only case from Gaussian stateful flow."""
         label = 'ethanol'

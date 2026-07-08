@@ -826,6 +826,15 @@ def trsh_special_rotor(special_rotor: list,
     return to_freeze
 
 
+# Gaussian error classes that resubmission cannot fix: input/template/method-basis problems.
+# When one of these is detected we refuse to troubleshoot instead of burning a resubmit on an
+# unrelated remedy (historically every Gaussian error picked up a spurious int=(Acc2E=14) step).
+# NOTE: this is deliberately conservative - it excludes classes that a resubmit *can* help
+# (SCF, opt cycles, internal-coordinate, negative eigenvalues, memory, checkfile, and the
+# generic 'Unknown' class, which the scheduler retries on a different node).
+GAUSSIAN_NON_RETRYABLE_KEYWORDS = ('Syntax', 'InputError', 'ZMat', 'MP2', 'OptOrientation', 'Scratch', 'BasisSet')
+
+
 def trsh_ess_job(label: str,
                  level_of_theory: Level | dict | str,
                  server: str,
@@ -901,6 +910,17 @@ def trsh_ess_job(label: str,
         couldnt_trsh = True
         logger.info(f'Troubleshooting {job_type} job in {software} for {label} that failed with '
                     '"Basis set data is not on the checkpoint file" by removing the checkfile.')
+
+    elif software == 'gaussian' \
+            and any(kw in job_status['keywords'] for kw in GAUSSIAN_NON_RETRYABLE_KEYWORDS):
+        # Non-retryable input/method error: refuse rather than waste a resubmit (see note above).
+        non_retryable = next(kw for kw in GAUSSIAN_NON_RETRYABLE_KEYWORDS if kw in job_status['keywords'])
+        output_errors.append(f'Error: Could not troubleshoot {job_type} for {label}! Gaussian reported a '
+                             f'non-retryable "{non_retryable}" error that resubmission cannot fix '
+                             f'({job_status.get("error", "").strip() or "no further detail"}); ')
+        logger.error(f'Could not troubleshoot {job_type} job in {software} for {label}: non-retryable '
+                     f'"{non_retryable}" error. {job_status.get("error", "").strip()}')
+        couldnt_trsh = True
 
     elif software == 'gaussian':
         trsh_keyword = [] # initialize as a list
