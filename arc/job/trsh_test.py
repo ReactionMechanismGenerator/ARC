@@ -902,6 +902,59 @@ class TestTrsh(unittest.TestCase):
             self.assertIn(method, ess_trsh_methods,
                           f'the SCF ladder never reached {method}: {ess_trsh_methods}')
 
+    def _run_gaussian_ladder(self, keywords, error, n=8):
+        """
+        Drive trsh_ess_job() repeatedly for a Gaussian job that keeps failing with the same
+        (keywords, error), feeding ess_trsh_methods back in as the scheduler does. Returns the
+        list of (ess_trsh_methods snapshot, couldnt_trsh) tuples, one per retry, stopping once
+        the cycle gives up or emits 'all_attempted'.
+        """
+        job_status = {'keywords': keywords, 'error': error}
+        ess_trsh_methods, fine, history = list(), False, list()
+        for _ in range(n):
+            out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None, job_status,
+                                    'opt', 'gaussian', fine, 16, 2, 8, ess_trsh_methods)
+            ess_trsh_methods, fine, couldnt_trsh = out[1], out[6], out[11]
+            history.append((list(ess_trsh_methods), couldnt_trsh))
+            if couldnt_trsh or 'all_attempted' in ess_trsh_methods:
+                break
+        return history
+
+    def test_trsh_ess_job_gaussian_inaccurate_quadrature_ladder(self):
+        """
+        Pin the InaccurateQuadrature (Gaussian l502 CalDSu) remedy ladder so the removal of the
+        dead 'int=ultrafine' branch in trsh_keyword_inaccurate_quadrature is provably behavior
+        preserving. Expected escalation, one remedy per retry, then termination:
+            int=grid=300590 -> scf=(NoVarAcc) -> guess=INDO -> all_attempted.
+        """
+        history = self._run_gaussian_ladder(['InaccurateQuadrature', 'GL502'], 'Inaccurate quadrature in CalDSu')
+        ess_snapshots = [snap for snap, _ in history]
+        self.assertEqual(ess_snapshots, [
+            ['int=(Acc2E=14)', 'int=grid=300590'],
+            ['int=(Acc2E=14)', 'int=grid=300590', 'scf=(NoVarAcc)'],
+            ['int=(Acc2E=14)', 'int=grid=300590', 'scf=(NoVarAcc)', 'guess=INDO'],
+            ['int=(Acc2E=14)', 'int=grid=300590', 'scf=(NoVarAcc)', 'guess=INDO', 'all_attempted'],
+        ])
+        self.assertTrue(history[-1][1])  # couldnt_trsh is True on the terminal retry
+
+    def test_trsh_ess_job_gaussian_maxoptcycles_ladder(self):
+        """
+        Document the MaxOptCycles (opt not converged) remedy ladder:
+            opt=(maxcycle=200) -> opt=(RFO) -> opt=(GDIIS) -> opt=(GEDIIS) -> all_attempted.
+        (Guards ordering; note it does not currently recompute the Hessian - see review notes.)
+        """
+        history = self._run_gaussian_ladder(['MaxOptCycles', 'GL9999'], 'Maximum optimization cycles reached.')
+        ess_snapshots = [snap for snap, _ in history]
+        self.assertEqual(ess_snapshots[0], ['int=(Acc2E=14)', 'opt=(maxcycle=200)'])
+        # The distinct opt remedies must appear in this escalation order:
+        distinct_opts = []
+        for snap, _ in history:
+            for m in snap:
+                if m.startswith('opt=') and m not in distinct_opts:
+                    distinct_opts.append(m)
+        self.assertEqual(distinct_opts, ['opt=(maxcycle=200)', 'opt=(RFO)', 'opt=(GDIIS)', 'opt=(GEDIIS)'])
+        self.assertIn('all_attempted', history[-1][0])
+
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""
         job_log_path_1 = os.path.join(ARC_TESTING_PATH, 'job_log', 'no_issues.log')
