@@ -850,7 +850,10 @@ def trsh_special_rotor(special_rotor: list,
 # NOTE: this is deliberately conservative - it excludes classes that a resubmit *can* help
 # (SCF, opt cycles, internal-coordinate, negative eigenvalues, memory, checkfile, and the
 # generic 'Unknown' class, which the scheduler retries on a different node).
-GAUSSIAN_NON_RETRYABLE_KEYWORDS = ('Syntax', 'InputError', 'ZMat', 'MP2', 'OptOrientation', 'Scratch', 'BasisSet')
+# 'ZMat' (L716: z-matrix angle outside 0 < x < 180) is intentionally NOT here: ARC always
+# submits Cartesian geometries, so a ZMat error always means the optimizer drove atoms
+# collinear - the textbook opt=(cartesian) case, handled by trsh_keyword_cartesian.
+GAUSSIAN_NON_RETRYABLE_KEYWORDS = ('Syntax', 'InputError', 'MP2', 'OptOrientation', 'Scratch', 'BasisSet')
 
 
 def trsh_ess_job(label: str,
@@ -1870,9 +1873,16 @@ def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tu
 
 def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword: list, couldnt_trsh: bool) -> tuple[list, list, bool]:
     """
-    Check if the job requires change of cartesian coordinate
+    Switch the optimization to Cartesian coordinates (opt=(cartesian)).
+
+    Fires for both L103 ('InternalCoordinateError') and L716 ('ZMat', z-matrix angle driven
+    outside 0 < x < 180 during the optimization). Since ARC always submits Cartesian geometries,
+    a ZMat error is never a bad input - it is the collinear-angle degeneracy that Cartesian
+    optimization sidesteps. Tried once (guarded by 'cartesian' not in ess_trsh_methods); if the
+    error recurs after Cartesian was already attempted, ess_trsh_methods stops changing and
+    trsh_ess_job() terminates the retry loop via the 'all_attempted' marker.
     """
-    if 'InternalCoordinateError' in job_status['keywords'] \
+    if ('InternalCoordinateError' in job_status['keywords'] or 'ZMat' in job_status['keywords']) \
                 and 'cartesian' not in ess_trsh_methods:
         ess_trsh_methods.append('cartesian')
         trsh_keyword.append('opt=(cartesian)')

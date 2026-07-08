@@ -955,7 +955,6 @@ class TestTrsh(unittest.TestCase):
         non_retryable_cases = [
             (['Syntax'], 'There was a syntax error in the Gaussian input file.'),
             (['InputError', 'GL101'], 'The blank line after the coordinate section is missing.'),
-            (['ZMat', 'GL716'], 'Angle in z-matrix outside the allowed range 0 < x < 180.'),
             (['MP2', 'GL906'], 'The MP2 calculation has failed.'),
             (['OptOrientation', 'GL202'], 'The point group of the molecule has changed.'),
             (['Scratch'], 'Wrongly specified the scratch directory.'),
@@ -969,6 +968,12 @@ class TestTrsh(unittest.TestCase):
             self.assertTrue(any('non-retryable' in e for e in output_errors),
                             f'{keywords} should report a non-retryable error: {output_errors}')
 
+        # ZMat (L716) is NOT non-retryable: it must get the opt=(cartesian) remedy, not a refusal.
+        zmat = call({'keywords': ['ZMat', 'GL716'], 'error': 'Angle in z-matrix outside the allowed range 0 < x < 180.'})
+        self.assertFalse(zmat[11], 'ZMat must be troubleshot, not refused')
+        self.assertFalse(any('non-retryable' in e for e in zmat[0]), 'ZMat must not be reported non-retryable')
+        self.assertIn('cartesian', zmat[1])
+
         # Legitimate, retryable classes must be UNAFFECTED (still get their remedies):
         scf = call({'keywords': ['SCF', 'GL502', 'NoSymm'], 'error': 'Unconverged SCF'})
         self.assertFalse(scf[11])
@@ -976,6 +981,33 @@ class TestTrsh(unittest.TestCase):
         opt = call({'keywords': ['MaxOptCycles', 'GL9999'], 'error': 'steps exceeded'})
         self.assertFalse(opt[11])
         self.assertIn('opt=(maxcycle=200)', opt[1])
+
+    def test_trsh_ess_job_gaussian_zmat_cartesian_then_terminates(self):
+        """
+        A ZMat (L716) error - the optimizer drove atoms collinear - must be troubleshot with
+        opt=(cartesian) on the first retry (same remedy L103 uses) and must terminate (not loop)
+        if it recurs after Cartesian has already been tried. Verified for both opt and conf_opt.
+        """
+        for job_type in ('opt', 'conf_opt'):
+            ess_trsh_methods = list()
+            history = list()
+            for _ in range(5):
+                out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None,
+                                        {'keywords': ['ZMat', 'GL716'],
+                                         'error': 'Angle in z-matrix outside the allowed range 0 < x < 180.'},
+                                        job_type, 'gaussian', False, 16, 2, 8, ess_trsh_methods)
+                ess_trsh_methods, trsh_keyword, couldnt_trsh = out[1], out[7], out[11]
+                history.append((list(ess_trsh_methods), list(trsh_keyword), couldnt_trsh))
+                if couldnt_trsh or 'all_attempted' in ess_trsh_methods:
+                    break
+            # First retry: Cartesian recorded and emitted, job is resubmitted (couldnt_trsh False).
+            self.assertIn('cartesian', history[0][0], f'{job_type}: first ZMat retry must record cartesian')
+            self.assertIn('opt=(cartesian)', history[0][1], f'{job_type}: first ZMat retry must emit opt=(cartesian)')
+            self.assertFalse(history[0][2], f'{job_type}: first ZMat retry must resubmit, not give up')
+            # Second retry (ZMat recurs after cartesian): must terminate, no loop.
+            self.assertTrue(history[-1][2], f'{job_type}: recurring ZMat after cartesian must terminate')
+            self.assertIn('all_attempted', history[-1][0], f'{job_type}: must reach all_attempted')
+            self.assertLessEqual(len(history), 2, f'{job_type}: cartesian tried once then terminate: {history}')
 
     def test_trsh_ess_job_terachem_trsh_attempt_only(self):
         """Isolate the terachem trsh_attempt-only case from Gaussian stateful flow."""
