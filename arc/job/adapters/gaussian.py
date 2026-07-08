@@ -290,9 +290,12 @@ class GaussianAdapter(JobAdapter):
 
         if self.level.method[:2] == 'ro':
             self.add_to_args(val='use=L506')
-        elif not('no_xqc' in list(self.args['trsh'].values())) and 'qc' in input_dict['trsh']:
+        elif 'no_xqc' not in self.ess_trsh_methods \
+                and not('no_xqc' in list(self.args['trsh'].values())) and 'qc' in input_dict['trsh']:
             # xqc will do qc (quadratic convergence) if the job fails w/o it, so use it by default.
-            # replace qc with xqc if it's not already there
+            # replace qc with xqc if it's not already there.
+            # 'no_xqc' in ess_trsh_methods records that the xqc algorithm itself already failed
+            # (Gaussian l508), so don't upgrade qc to xqc in that case (see arc.job.trsh.trsh_keyword_no_qc).
             input_dict['trsh'] = input_dict['trsh'].replace('qc', 'xqc')
 
         if self.level.method == 'cbs-qb3-paraskevas':
