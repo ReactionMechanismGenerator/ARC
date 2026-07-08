@@ -2317,6 +2317,16 @@ H       1.11582953    0.94384729   -0.10134685"""
         ts_doublet.determine_multiplicity_from_xyz()
         self.assertEqual(ts_doublet.multiplicity, 2)
 
+    def test_process_completed_tsg_queue_jobs_attributes_method(self):
+        """A queue TS-guess job that emits a .log must attribute its guess to the adapter that ran it
+        (e.g. 'qst2'), not a hard-coded 'orca_neb' — several queue adapters (orca_neb, qst2) emit a
+        .log, so the method label must be passed through, not assumed."""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        log = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        ts.process_completed_tsg_queue_jobs(path=log, method='qst2')
+        self.assertTrue(any(tsg.method == 'qst2' for tsg in ts.ts_guesses))
+        self.assertFalse(any(tsg.method == 'orca_neb' for tsg in ts.ts_guesses))
+
     def test_cluster_tsgs(self):
         """Test the cluster_tsgs() method."""
         xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
