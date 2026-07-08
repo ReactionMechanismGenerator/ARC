@@ -729,7 +729,7 @@ class ARC(object):
         if os.path.exists(path):
             os.remove(path)
         for species in self.species:
-            if not species.is_ts:
+            if not species.is_ts and species.label in self.output:
                 spc_dict = dict()
                 spc_dict['label'] = species.label
                 spc_dict['success'] = self.output[species.label]['convergence']
