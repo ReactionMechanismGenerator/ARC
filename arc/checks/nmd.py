@@ -51,7 +51,8 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
         return None
     ts_xyz = reaction.ts_species.get_xyz()
     n_ts = len(ts_xyz['symbols'])
-    n_expected = sum(spc.number_of_atoms for spc in reaction.r_species)
+    n_expected = sum(spc.number_of_atoms * reaction.get_species_count(species=spc, well=0)
+                     for spc in reaction.r_species)
     if n_ts != n_expected:
         return False
     try:
@@ -477,6 +478,37 @@ def get_bond_length_in_reaction(bond: tuple[int, int] | list[int],
     return float(distance)
 
 
+def get_repeated_species_atom_equivalences(reaction: ARCReaction,
+                                           well: int = 0,
+                                           ) -> list[list[int]]:
+    """
+    Build atom-equivalence groups across repeated identical species in a reaction well.
+
+    When a species participates more than once (e.g. OH + OH), ``r_species`` is deduplicated, so the
+    atom map may assign a reactive atom to one copy while the located TS uses the equivalent atom of
+    another copy. For each atom position within such a species, the atoms at that position across all
+    copies are equivalent. Indices follow the expanded (per-occurrence) atom ordering used by the atom
+    map and by ``get_reactants_and_products``.
+
+    Args:
+        reaction (ARCReaction): The reaction.
+        well (int): ``0`` for the reactants well, ``1`` for the products well.
+
+    Returns:
+        list[list[int]]: Equivalence groups (each a list of global atom indices) for repeated species.
+    """
+    species = reaction.r_species if well == 0 else reaction.p_species
+    groups, offset = list(), 0
+    for spc in species:
+        count = reaction.get_species_count(species=spc, well=well)
+        n_atoms = spc.number_of_atoms
+        if count > 1:
+            for pos in range(n_atoms):
+                groups.append([offset + copy_i * n_atoms + pos for copy_i in range(count)])
+        offset += count * n_atoms
+    return groups
+
+
 def find_equivalent_atoms(reaction: ARCReaction,
                           reactant_only: bool = True,
                           ) -> tuple[list[list[int]], list[list[int]]]:
@@ -484,6 +516,8 @@ def find_equivalent_atoms(reaction: ARCReaction,
     Find equivalent atoms in the reactants and products of a reaction.
     This is a tentative function that should be replaced when atom mapping returns a list.
     It is meant to suggest additional atoms that can move instead of the ones selected by the atom map.
+    Reactant equivalences cover both atoms made equivalent within a molecule and atoms at the same
+    position across the copies of a species that participates more than once.
 
     Args:
         reaction (ARCReaction): The reaction for which equivalent atoms are searched.
@@ -501,6 +535,7 @@ def find_equivalent_atoms(reaction: ARCReaction,
                                                                 inc=sum([len(r.mol.atoms) for r in reactants[:i]]),
                                                                 atom_map=None,
                                                                 ))
+    r_eq_atoms.extend(get_repeated_species_atom_equivalences(reaction, well=0))
     if not reactant_only:
         for i, product in enumerate(products):
             p_eq_atoms.extend(identify_equivalent_atoms_in_molecule(molecule=product.mol,
