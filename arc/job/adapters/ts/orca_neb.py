@@ -235,7 +235,10 @@ class OrcaNEBAdapter(OrcaAdapter):
             raise ValueError('Cannot write Orca NEB input file without an atom map in the reaction.')
 
         reactant_xyz = self.reactions[0].get_reactants_xyz(return_format=dict)
-        product_xyz = self.reactions[0].get_products_xyz(return_format=dict) # This implicitly uses the atom map.
+        # Aligning the products to the reactants (Kabsch, per fragment, using the atom map) keeps the
+        # NEB interpolation short and physical, especially for fragmenting (multi-product) reactions.
+        product_xyz = self.reactions[0].get_products_xyz(return_format=dict,  # This implicitly uses the atom map.
+                                                         align_to_reactants=True)
 
         with open(os.path.join(self.local_path, 'reactant.xyz'), 'w') as f:
             f.write(xyz_to_xyz_file_format(reactant_xyz))

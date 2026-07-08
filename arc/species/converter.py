@@ -2570,6 +2570,45 @@ def kabsch(xyz1: dict, xyz2: dict) -> float:
     return score
 
 
+def align_xyz_to_ref_coords(xyz_dict: dict,
+                            ref_coords: list | tuple | np.ndarray,
+                            ) -> dict:
+    """
+    Rigid-body superimpose (Kabsch) Cartesian coordinates onto reference coordinates.
+
+    The atoms in ``xyz_dict`` and the rows of ``ref_coords`` must correspond one-to-one
+    (i.e., be in the same atom order). The returned coordinates are the input coordinates
+    rotated and translated as a rigid body (the internal geometry is not distorted)
+    such that the RMSD to ``ref_coords`` is minimized.
+
+    Args:
+        xyz_dict (dict): The Cartesian coordinates to align (ARC xyz dict format).
+        ref_coords (list | tuple | np.ndarray): The reference Cartesian coordinates,
+                                                an N x 3 array-like in the same atom order as ``xyz_dict``.
+
+    Raises:
+        ValueError: If the number of reference coordinates does not match the number of atoms.
+
+    Returns:
+        dict: The aligned Cartesian coordinates (ARC xyz dict format).
+    """
+    coords = np.array(xyz_dict['coords'], dtype=float)
+    ref = np.array(ref_coords, dtype=float)
+    if coords.shape != ref.shape:
+        raise ValueError(f'Cannot align coordinates of shape {coords.shape} '
+                         f'onto reference coordinates of shape {ref.shape}.')
+    if len(coords) == 1:
+        new_coords = ref.copy()
+    else:
+        centroid, ref_centroid = coords.mean(axis=0), ref.mean(axis=0)
+        rotation, _ = Rotation.align_vectors(ref - ref_centroid, coords - centroid)
+        new_coords = rotation.apply(coords - centroid) + ref_centroid
+    return xyz_from_data(coords=[tuple(coord) for coord in new_coords],
+                         symbols=xyz_dict['symbols'],
+                         isotopes=xyz_dict.get('isotopes'),
+                         )
+
+
 def order_xyz_by_atom_map(xyz: dict,
                           atom_map: list,
                           ) -> dict:
