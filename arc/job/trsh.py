@@ -1912,7 +1912,8 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
 
 def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine) -> tuple[list, list, bool, bool]:
     """
-    Check if the job requires change of scf
+    Remediate a generic 'Unconverged' (Gaussian l9999) failure by switching to a fine
+    integration grid for the SCF and the integrals (recorded as 'fine'). This is tried once.
     """
     if 'Unconverged' in job_status['keywords'] and 'fine' not in ess_trsh_methods and not fine:
         # try a fine grid for SCF and integral
@@ -2005,12 +2006,11 @@ def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keywor
         ess_trsh_methods.append('guess=INDO')
         trsh_keyword.append('guess=INDO')
         couldnt_trsh = False
-    elif 'InaccurateQuadrature' in job_status['keywords'] and 'int=grid=300590' in ess_trsh_methods and 'scf=(NoVarAcc)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods and 'int=ultrafine' not in ess_trsh_methods:
-        # Try all methods above
-        trsh_keyword.append('int=grid=300590')
-        trsh_keyword.append('guess=INDO')
-        # NoVarAcc is not included in trsh_keyword, because it will be in ess_trsh_methods
-        
+    # Once int=grid=300590, scf=(NoVarAcc) and guess=INDO have all been tried, the ladder is
+    # exhausted: ess_trsh_methods stops changing and trsh_ess_job() terminates the retry loop
+    # via the 'all_attempted' marker. (There is no separate int=ultrafine step - the fine-grid
+    # remedy is handled by trsh_keyword_unconverged, and ultrafine is the Gaussian 16 default.)
+
     scf_pattern = r"scf=\((.*?)\)" # e.g., scf=(xqc,MaxCycle=1000), will match xqc,MaxCycle=1000
     if any('scf' in keyword for keyword in ess_trsh_methods):
         scf_list = [match for element in ess_trsh_methods for match in re.findall(scf_pattern, element)] if any(re.search(scf_pattern, element) for element in ess_trsh_methods) else []
