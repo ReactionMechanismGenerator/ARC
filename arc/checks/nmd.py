@@ -63,26 +63,57 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
     amplitude_list = [amplitude] if isinstance(amplitude, (float, int)) else amplitude
     weights_array = get_weights_from_xyz(xyz=ts_xyz, weights=weights)
     r_eq_atoms, _ = find_equivalent_atoms(reaction=reaction, reactant_only=True)
-    formed_bonds, broken_bonds = reaction.get_formed_and_broken_bonds()
-    changed_bonds = reaction.get_changed_bonds()
+    bond_change_candidates = get_bond_change_candidates(reaction=reaction)
 
     for amp in amplitude_list:
         if not amp:
             continue
         xyzs = get_displaced_xyzs(xyz=ts_xyz, amplitude=amp, normal_mode_disp=normal_mode_disp[0], weights=weights_array)
 
-        nmd_correct = is_nmd_correct_for_any_mapping(
-            reaction=reaction,
-            xyzs=xyzs,
-            formed_bonds=formed_bonds,
-            broken_bonds=broken_bonds,
-            changed_bonds=changed_bonds,
-            r_eq_atoms=r_eq_atoms,
-            weights=weights_array,
-            amplitude=amp)
-        if nmd_correct:
-            return True
+        for formed_bonds, broken_bonds, changed_bonds in bond_change_candidates:
+            nmd_correct = is_nmd_correct_for_any_mapping(
+                reaction=reaction,
+                xyzs=xyzs,
+                formed_bonds=formed_bonds,
+                broken_bonds=broken_bonds,
+                changed_bonds=changed_bonds,
+                r_eq_atoms=r_eq_atoms,
+                weights=weights_array,
+                amplitude=amp)
+            if nmd_correct:
+                return True
     return False
+
+
+def get_bond_change_candidates(reaction: ARCReaction,
+                               ) -> list[tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]]]:
+    """
+    Get candidate (formed, broken, changed) bond-set derivations for validating a TS normal mode.
+
+    The reaction atom map is only determined up to permutations of chemically equivalent atoms.
+    A valid-but-permuted map (e.g., spectator H atoms crossed between the two equivalent carbons
+    of an ethylene product in an HO2 elimination) inflates the map-derived formed/broken bond sets
+    with spurious break/form pairs that no genuine reactive mode can satisfy. The RMG family recipe
+    defines the canonical reactive bonds independently of the atom map, so it is tried first when
+    available, with the map-derived sets kept as a fallback candidate.
+
+    Args:
+        reaction (ARCReaction): The reaction for which the TS is checked.
+
+    Returns:
+        list[tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]]]:
+            Candidate (formed_bonds, broken_bonds, changed_bonds) tuples, most reliable first.
+    """
+    candidates = list()
+    family_bonds = reaction.get_reactive_bonds_from_family()
+    if family_bonds is not None:
+        candidates.append(family_bonds)
+    formed_bonds, broken_bonds = reaction.get_formed_and_broken_bonds()
+    changed_bonds = reaction.get_changed_bonds()
+    map_bonds = (formed_bonds, broken_bonds, changed_bonds)
+    if not any(all(set(candidate[i]) == set(map_bonds[i]) for i in range(3)) for candidate in candidates):
+        candidates.append(map_bonds)
+    return candidates
 
 
 def check_bond_directionality(formed_bonds: list[tuple[int, int]],
