@@ -247,8 +247,9 @@ class GaussianAdapter(JobAdapter):
         input_dict['method'] = self.level.method
         input_dict['multiplicity'] = self.multiplicity
         input_dict['scan_trsh'] = self.args['keyword']['scan_trsh'] if 'scan_trsh' in self.args['keyword'] else ''
-        integral_algorithm = 'Acc2E=14' if 'Acc2E=14' in input_dict['trsh'] else 'Acc2E=12'
-        input_dict['trsh'] = input_dict['trsh'].replace('int=(Acc2E=14)', '') if 'Acc2E=14' in input_dict['trsh'] else input_dict['trsh']
+        acc2e_requested = 'Acc2E=14' in input_dict['trsh']  # troubleshooting asked to tighten integrals
+        integral_algorithm = 'Acc2E=14' if acc2e_requested else 'Acc2E=12'
+        input_dict['trsh'] = input_dict['trsh'].replace('int=(Acc2E=14)', '') if acc2e_requested else input_dict['trsh']
         input_dict['xyz'] = [xyz_to_str(xyz) for xyz in self.xyz] if self.run_multi_species else xyz_to_str(self.xyz)
 
         if self.level.basis is not None:
@@ -375,6 +376,14 @@ class GaussianAdapter(JobAdapter):
                         input_dict['trsh'] += 'scf=(direct)'
                 
             input_dict['job_type_1'] = f'irc=(CalcAll, {self.irc_direction}, maxpoints=50, stepsize=7)'
+
+        if acc2e_requested and not self.fine and not input_dict['fine'] \
+                and self.job_type in ['opt', 'conf_opt', 'optfreq', 'composite', 'irc']:
+            # Fine jobs fold Acc2E=14 into integral=(grid=ultrafine, ...). A non-fine opt/IRC job
+            # would otherwise silently drop the troubleshooting request (no integral= in the route),
+            # producing a byte-identical resubmit. Emit a bare integral=(Acc2E=14) so the tightened
+            # integral accuracy actually takes effect (the ultrafine grid remains a fine-only concern).
+            input_dict['fine'] = f'integral=({integral_algorithm})'
 
         for constraint_tuple in self.constraints:
             constraint_type = constraint_type_dict[len(constraint_tuple[0])]

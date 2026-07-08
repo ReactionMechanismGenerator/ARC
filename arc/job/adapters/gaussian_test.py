@@ -1213,5 +1213,48 @@ class TestGaussianAdapterNoXqc(unittest.TestCase):
         self.assertNotIn('xqc', content)
 
 
+class TestGaussianAdapterAcc2E(unittest.TestCase):
+    """
+    P2: int=(Acc2E=14) must take effect on non-fine opt/IRC jobs (self-contained).
+    """
+
+    def render(self, fine, trsh_list, job_type='opt'):
+        project_directory = os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapterAcc2E')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        kwargs = dict(execution_type='incore', job_type=job_type,
+                      level=Level(method='wb97xd', basis='def2tzvp'), project='test',
+                      project_directory=project_directory,
+                      species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
+                      testing=True, fine=fine, args={'trsh': {'trsh': trsh_list}})
+        if job_type == 'irc':
+            kwargs['irc_direction'] = 'forward'
+        job = GaussianAdapter(**kwargs)
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return next(line for line in f if line.startswith('#'))
+
+    def test_non_fine_opt_emits_acc2e(self):
+        """A non-fine opt with int=(Acc2E=14) in trsh must actually emit the integral setting."""
+        route = self.render(fine=False, trsh_list=['int=(Acc2E=14)'])
+        self.assertIn('integral=(Acc2E=14)', route)
+        self.assertIn('Acc2E=14', route)
+
+    def test_non_fine_opt_without_acc2e_unchanged(self):
+        """A normal non-fine opt (no Acc2E trsh) must not gain any integral= setting."""
+        route = self.render(fine=False, trsh_list=[])
+        self.assertNotIn('integral=', route)
+        self.assertNotIn('Acc2E', route)
+
+    def test_fine_opt_still_folds_acc2e_into_ultrafine(self):
+        """A fine opt keeps folding Acc2E=14 into the ultrafine integral grid (unchanged)."""
+        route = self.render(fine=True, trsh_list=['int=(Acc2E=14)'])
+        self.assertIn('integral=(grid=ultrafine, Acc2E=14)', route)
+
+    def test_non_fine_irc_emits_acc2e(self):
+        """A non-fine IRC with int=(Acc2E=14) in trsh must emit the integral setting too."""
+        route = self.render(fine=False, trsh_list=['int=(Acc2E=14)'], job_type='irc')
+        self.assertIn('integral=(Acc2E=14)', route)
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
