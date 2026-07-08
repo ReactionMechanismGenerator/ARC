@@ -1618,18 +1618,21 @@ class ARCSpecies(object):
             logger.info(f'Clustered {n_before} TS guesses for {self.label} '
                         f'into {len(cluster_tsgs)} unique conformers.')
 
-    def process_completed_tsg_queue_jobs(self, path: str):
+    def process_completed_tsg_queue_jobs(self, path: str, method: str = 'orca_neb'):
         """
         Process YAML files which are the output of running a TS guess job in the queue.
 
         Args:
             path (str): The path to the output file.
+            method (str): The TS-search adapter that produced the output (e.g. ``'orca_neb'``,
+                          ``'qst2'``). Used to correctly attribute the resulting TS guess; several
+                          queue adapters emit a ``.log`` so this must not be hard-coded.
         """
         if not isinstance(path, str) or not os.path.isfile(path):
             return None
         if path.endswith('.log'):
             xyz = parse_geometry(path)
-            tsg = TSGuess(method='orca_neb',
+            tsg = TSGuess(method=method,
                           success=True,
                           xyz=xyz,
                           log_path=path,

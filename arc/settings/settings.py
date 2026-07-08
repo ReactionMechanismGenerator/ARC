@@ -255,7 +255,7 @@ orca_neb_settings = {'keyword': {
                         'nnodes': 15,
                         'preopt': 'true',
                     },
-                    'level': 'wb97xd/def2tzvp',
+                    'level': 'wb97x-d3/def2tzvp',  # ORCA spelling; it does not accept Gaussian's 'wb97xd'
                     }
 
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
