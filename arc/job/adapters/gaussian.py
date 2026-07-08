@@ -406,14 +406,28 @@ class GaussianAdapter(JobAdapter):
             input_dict['job_type_1'] += f' SCRF=({self.level.solvation_method}, Solvent={self.level.solvent})'
 
         if self.species[0].number_of_atoms > 1:
-            if input_dict['job_type_1']:
-                input_dict['job_type_1'] += ' '
+            guess_keyword = ''
             if 'guess=INDO' in input_dict['trsh']:
-                input_dict['job_type_1'] += 'guess=INDO'
+                guess_keyword = 'guess=INDO'
                 input_dict['trsh'] = input_dict['trsh'].replace('guess=INDO', '')
-            else:
-                input_dict['job_type_1'] += ' guess=read' if self.checkfile is not None and os.path.isfile(self.checkfile) \
-                    else ' guess=mix'
+            elif self.checkfile is not None and os.path.isfile(self.checkfile):
+                guess_keyword = ' guess=read'
+            elif any(spc.is_ts or (spc.multiplicity == 1 and spc.number_of_radicals is not None
+                                   and spc.number_of_radicals > 1)
+                     for spc in self.species):
+                # guess=mix mixes the HOMO and LUMO to break alpha-beta (and spatial) symmetry in the initial
+                # guess, i.e., it seeds a broken-symmetry unrestricted wavefunction. This is desired for
+                # open-shell (biradical) singlets and for TSs (partial diradical character along the breaking
+                # bonds), but serves no purpose for restricted closed-shell species (the wavefunction cannot
+                # break spin symmetry, so the SCF merely starts from a deliberately perturbed guess) or for
+                # simple high-spin radicals (doublets/triplets converge to the correct state from the default
+                # guess). Benchmark data (arcbench, 2026-07): 426 doublet jobs show identical, clean <S**2>
+                # (~0.755) whether seeded with guess=mix or guess=read.
+                guess_keyword = ' guess=mix'
+            if guess_keyword:
+                if input_dict['job_type_1']:
+                    input_dict['job_type_1'] += ' '
+                input_dict['job_type_1'] += guess_keyword
 
         # Fix OPT
         terms_opt = [r'opt=\((.*?)\)', r'opt=(\w+)']
