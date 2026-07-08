@@ -225,6 +225,20 @@ class TestNMD(unittest.TestCase):
                                          H       -1.951439    0.465285   -1.158262""")
         cls.rxn_3.ts_species = ARCSpecies(label='TS3', is_ts=True, xyz=cls.ts_3_xyz)
 
+    def test_get_repeated_species_atom_equivalences(self):
+        """Repeated identical reactants (e.g. OH + OH) must yield cross-copy atom-equivalence groups
+        (the two O's, the two H's) so NMD can try the alternative mapping when the atom map picks one
+        copy's atom but the TS uses the other's. Non-repeated reactions must yield none."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='H2O', smiles='O'),
+                                     ARCSpecies(label='O', smiles='[O]', multiplicity=3)],
+                          reactants=['OH', 'OH'], products=['H2O', 'O'])
+        groups = nmd.get_repeated_species_atom_equivalences(rxn, well=0)
+        self.assertEqual(sorted(sorted(g) for g in groups), [[0, 2], [1, 3]])
+        # A reaction with no repeated species yields no cross-copy groups.
+        self.assertEqual(nmd.get_repeated_species_atom_equivalences(self.rxn_1, well=0), [])
+
     def test_analyze_ts_normal_mode_displacement_simple_rxns(self):
         """Test the analyze_ts_normal_mode_displacement() function with simple reactions."""
         # CH4 + OH <=> CH3 + H2O
