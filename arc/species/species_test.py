@@ -1263,6 +1263,21 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         spc = ARCSpecies(species_dict=species_dict)
         self.assertTrue(spc.is_ts)
 
+    def test_from_dict_reconciles_spin_ambiguous_multiplicity(self):
+        """from_dict() must reconcile a SMILES-perceived mol to the declared multiplicity, so a
+        singlet carbene [CH2] (multiplicity 1) becomes u0 p1 rather than the perceived triplet u2.
+        Without this, graph-based logic (RMG family determination) sees a triplet and fails to
+        classify the reaction (see BENCHMARK_ERRORS.md reaction_01)."""
+        singlet = ARCSpecies(species_dict={'label': 'R2', 'smiles': '[CH2]', 'multiplicity': 1})
+        self.assertEqual(singlet.multiplicity, 1)
+        self.assertEqual(singlet.mol.multiplicity, 1)
+        self.assertIn('C u0 p1', singlet.mol.to_adjacency_list())
+        # The triplet carbene and ordinary spin-ambiguous species must be untouched.
+        triplet = ARCSpecies(species_dict={'label': 'T', 'smiles': '[CH2]', 'multiplicity': 3})
+        self.assertEqual(triplet.mol.multiplicity, 3)
+        o2 = ARCSpecies(species_dict={'label': 'O2', 'smiles': '[O][O]', 'multiplicity': 3})
+        self.assertEqual(o2.mol.multiplicity, 3)
+
     def test_label_atoms(self):
         """Test the label_atoms method"""
         spc_copy = self.spc6.copy()
