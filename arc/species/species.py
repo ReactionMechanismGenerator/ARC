@@ -979,6 +979,16 @@ class ARCSpecies(object):
                                  f'{self.multiplicity} (ignored mol.multiplicity)')
                 else:
                     self.multiplicity = self.mol.multiplicity
+            elif self.number_of_radicals is None and not self.is_ts and adjlist is None \
+                    and 'mol' not in species_dict and (smiles is not None or inchi is not None) \
+                    and self.mol.multiplicity != self.multiplicity:
+                # SMILES/InChI don't encode electron spin, so the perceived .mol may disagree with the
+                # declared multiplicity (e.g. [CH2] is perceived as triplet u2, but multiplicity: 1 is the
+                # singlet carbene u0 p1). Reconcile the graph to the declared spin state so downstream
+                # graph-based logic (RMG family determination, isomorphism checks) sees the correct species.
+                # Mirrors the kwargs __init__ path; skipped for adjlist/mol input (spin already encoded) and
+                # for open-shell states declared via number_of_radicals.
+                self.reconcile_mol_multiplicity()
             if self.charge is None:
                 self.charge = self.mol.get_net_charge()
         if 'conformers' in species_dict:
