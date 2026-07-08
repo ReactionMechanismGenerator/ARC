@@ -632,7 +632,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxStep=5,modredundant,noeigentest) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000)    scf=(direct,tight)
+#P opt=(calcfc,maxStep=5,modredundant,noeigentest) integral=(grid=ultrafine, Acc2E=12) wb97xd/def2tzvp   IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -762,7 +762,7 @@ O       0.00000000    0.00000000    1.00000000
     def test_trsh_write_input_file(self):
         """Test writing a trsh input file
         10. Create an input file for a job with int=(Acc2E=14) included
-        11. Create an input file for a job with guess=mix included (removal of Checkfile via ess_trsh_methods)
+        11. Create an input file for a job after checkfile removal via ess_trsh_methods (no guess keyword: closed-shell)
         12. Create an input file for a job with nosymm included, and also the first pass of SCF error troubleshooting
         13. Create an input file for a job with NDamp=30 included, and also the previous pass of SCF error troubleshooting
         14. Create an input file for a job with NoDIIS included, and also previous passes of SCF error troubleshooting
@@ -802,7 +802,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -828,7 +828,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(direct,tight,xqc)
 
 ethanol
 
@@ -854,7 +854,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,direct,tight,xqc)
 
 ethanol
 
@@ -880,7 +880,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -906,7 +906,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,cartesian,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,cartesian,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -960,7 +960,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       scf=(direct,tight,xqc)
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       scf=(direct,tight,xqc)
 
 ethanol
 
@@ -986,7 +986,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
 
 ethanol
 
@@ -1012,7 +1012,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
 
 ethanol
 
@@ -1038,7 +1038,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
 
 ethanol
 
@@ -1092,7 +1092,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
@@ -1119,7 +1119,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(maxcycle=200,maxstep=5,recalcfc=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(maxcycle=200,maxstep=5,recalcfc=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
@@ -1146,7 +1146,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(RFO,maxcycle=200,maxstep=5,recalcfc=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(RFO,maxcycle=200,maxstep=5,recalcfc=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
@@ -1327,6 +1327,81 @@ class TestGaussianAdapterOptLadder(unittest.TestCase):
         self.assertIn('RFO', route)
         self.assertIn('recalcfc=5', route)
         self.assertNotIn('GDIIS', route)
+
+
+class TestGaussianAdapterGuessMixGating(unittest.TestCase):
+    """
+    guess=mix seeds a broken-symmetry initial guess and must only be rendered where such a guess
+    is wanted: open-shell (biradical) singlets and TSs. Restricted closed-shell singlets and simple
+    high-spin radicals (doublets/triplets) must not carry it. guess=read (checkfile present) and
+    guess=INDO (troubleshooting) take precedence.
+    """
+
+    OH_XYZ = ['O 0.0 0.0 0.0\nH 0.0 0.0 0.97']
+    C2H4_XYZ = ["""C -0.6 0.0 0.0
+                   C 0.6 0.0 0.0
+                   H -1.2 0.9 0.0
+                   H -1.2 -0.9 0.0
+                   H 1.2 0.9 0.0
+                   H 1.2 -0.9 0.0"""]
+    O2_XYZ = ['O 0.0 0.0 0.0\nO 0.0 0.0 1.2']
+    TS_XYZ = ['O 0.0 0.0 0.0\nH 0.0 0.0 0.97\nH 0.94 0.0 -0.24']
+
+    def render(self, species, checkfile=None, args=None):
+        project_directory = os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapterGuessMixGating')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job = GaussianAdapter(execution_type='incore', job_type='opt',
+                              level=Level(method='wb97xd', basis='def2tzvp'), project='test',
+                              project_directory=project_directory, species=[species], testing=True,
+                              checkfile=checkfile, args=args)
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return next(line for line in f if line.startswith('#'))
+
+    def test_closed_shell_singlet_has_no_guess_mix(self):
+        """A restricted closed-shell singlet must not carry guess=mix (it cannot break spin symmetry)."""
+        route = self.render(ARCSpecies(label='C2H4', xyz=self.C2H4_XYZ, multiplicity=1))
+        self.assertNotIn('guess=', route)
+        self.assertIn(' wb97xd', route)  # restricted
+
+    def test_doublet_radical_has_no_guess_mix(self):
+        """A simple doublet radical converges to a clean <S**2> from the default guess; no mix."""
+        route = self.render(ARCSpecies(label='OH', xyz=self.OH_XYZ, multiplicity=2))
+        self.assertNotIn('guess=', route)
+        self.assertIn('uwb97xd', route)  # unrestricted
+
+    def test_singlet_biradical_keeps_guess_mix(self):
+        """An open-shell singlet needs the broken-symmetry guess."""
+        route = self.render(ARCSpecies(label='O2_singlet', xyz=self.O2_XYZ,
+                                       multiplicity=1, number_of_radicals=2))
+        self.assertIn('guess=mix', route)
+        self.assertIn('uwb97xd', route)
+
+    def test_ts_keeps_guess_mix(self):
+        """A TS opt keeps guess=mix (partial diradical character along the breaking bonds)."""
+        route = self.render(ARCSpecies(label='TS0', is_ts=True, multiplicity=2, xyz=self.TS_XYZ))
+        self.assertIn('guess=mix', route)
+        self.assertIn('ts', route)
+
+    def test_checkfile_guess_read_takes_precedence(self):
+        """With a checkfile present, guess=read is rendered for any species, including a TS."""
+        project_directory = os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapterGuessMixGating')
+        os.makedirs(project_directory, exist_ok=True)
+        checkfile = os.path.join(project_directory, 'check.chk')
+        with open(checkfile, 'w') as f:
+            f.write('dummy')
+        for spc in [ARCSpecies(label='TS0', is_ts=True, multiplicity=2, xyz=self.TS_XYZ),
+                    ARCSpecies(label='OH', xyz=self.OH_XYZ, multiplicity=2)]:
+            route = self.render(spc, checkfile=checkfile)
+            self.assertIn('guess=read', route)
+            self.assertNotIn('guess=mix', route)
+
+    def test_trsh_guess_indo_takes_precedence(self):
+        """guess=INDO requested via troubleshooting overrides everything, even for a TS."""
+        route = self.render(ARCSpecies(label='TS0', is_ts=True, multiplicity=2, xyz=self.TS_XYZ),
+                            args={'trsh': {'trsh': ['guess=INDO']}})
+        self.assertIn('guess=INDO', route)
+        self.assertNotIn('guess=mix', route)
 
 
 if __name__ == '__main__':
