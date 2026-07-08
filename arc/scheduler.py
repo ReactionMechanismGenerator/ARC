@@ -4268,6 +4268,10 @@ class Scheduler(object):
         """
         Delete all jobs of a species/TS.
 
+        If the species is a TS, the IRC species it spawned are deleted as well. They are removed
+        from ``self.species_list`` in-place (slice assignment), so the removal is seen through
+        every reference to that list object, including ``ARC.species``, which is the same object.
+
         Args:
             label (str): The species label.
         """
@@ -4316,10 +4320,6 @@ class Scheduler(object):
                     if irc_label in self.output:
                         del self.output[irc_label]
                     if irc_label in self.species_dict:
-                        # In-place removal (slice assignment) so the deletion propagates through the
-                        # list reference shared with ARC.species; a plain reassignment would rebind
-                        # only this variable and leave the deleted IRC species dangling in ARC.species
-                        # (which then KeyErrors against the synced self.output in save_project_info_file).
                         self.species_list[:] = [spc for spc in self.species_list if spc.label != irc_label]
                         del self.species_dict[irc_label]
                     if irc_label in self.unique_species_labels:

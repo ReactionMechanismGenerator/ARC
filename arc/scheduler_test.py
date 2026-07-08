@@ -1107,7 +1107,8 @@ H      -1.82570782    0.42754384   -0.56130718"""
 
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
-        """Test that switch_ts resets job_types, convergence, cleans up IRC species, and clears pending pipes."""
+        """Test that switch_ts resets job_types, convergence, clears pending pipes, and cleans up IRC species
+        both from the Scheduler's own state and from the caller's species list object."""
         ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
         H       1.81402049    1.03819414    0.00000000
         H       0.00000000    0.00000000    0.00000000
@@ -1134,8 +1135,9 @@ H      -1.82570782    0.42754384   -0.56130718"""
         project_directory = os.path.join(ARC_PATH, 'Projects',
                                          'arc_project_for_testing_delete_after_usage4')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        caller_species_list = [ts_spc]
         sched = Scheduler(project='test_switch_ts', ess_settings=self.ess_settings,
-                          species_list=[ts_spc],
+                          species_list=caller_species_list,
                           opt_level=Level(repr=default_levels_of_theory['opt']),
                           freq_level=Level(repr=default_levels_of_theory['freq']),
                           sp_level=Level(repr=default_levels_of_theory['sp']),
@@ -1198,6 +1200,9 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertNotIn(irc_label_1, sched.unique_species_labels)
         self.assertNotIn(irc_label_2, sched.unique_species_labels)
         self.assertIsNone(sched.species_dict[ts_label].irc_label)
+
+        self.assertNotIn(irc_label_1, [spc.label for spc in caller_species_list])
+        self.assertNotIn(irc_label_2, [spc.label for spc in caller_species_list])
 
         # Verify job_types reset and convergence cleared.
         self.assertFalse(sched.output[ts_label]['job_types']['opt'])

@@ -8,16 +8,17 @@ This module contains unit tests for the arc.main module
 import inspect
 import os
 import shutil
-import time
 import unittest
-from types import SimpleNamespace
+from unittest.mock import patch
 
 from arc.common import ARC_PATH
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.level import Level
 from arc.main import ARC, process_adaptive_levels
-from arc.species.species import ARCSpecies
+from arc.scheduler import Scheduler
+from arc.species.converter import str_to_xyz
+from arc.species.species import ARCSpecies, TSGuess
 
 servers = settings['servers']
 
@@ -202,32 +203,86 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc1.job_types, job_type_expected)
 
     def test_save_project_info_file_skips_deleted_species(self):
-        """A species left in self.species but removed from self.output (e.g. a deleted IRC endpoint
-        species whose TS did not converge) must be skipped in the project info file, not crash it
-        with a KeyError. Exercises the summary writer directly with a bare ARC instance — the fix is
-        pure bookkeeping, so there is no need to construct a full ARC (which would drag in the Arkane
-        BAC tables and molecule perception this method never touches)."""
-        arc0 = ARC.__new__(ARC)  # bypass the heavy __init__; set only what save_project_info_file reads
-        arc0.t0 = time.time()
-        arc0.__version__ = 'test'
-        arc0.project = 'arc_info_test'
-        arc0.project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_info_test')
-        os.makedirs(arc0.project_directory, exist_ok=True)
+        """Test that a species present in self.species but absent from self.output (e.g., an IRC
+        endpoint species deleted mid-run) is omitted from the project info file and from the
+        accompanying YAML file, instead of raising a KeyError."""
+        arc0 = ARC(project='arc_info_test', species=[ARCSpecies(label='tst_spc', smiles='C')],
+                   level_of_theory='b3lyp/6-31g', bac_type=None, compute_thermo=False,
+                   freq_scale_factor=1.0, calc_freq_factor=False, job_types=self.job_types1,
+                   ess_settings={'gaussian': ['local']})
         self.addCleanup(shutil.rmtree, arc0.project_directory, ignore_errors=True)
-        arc0.job_types = {'fine': False, 'rotors': False}
-        arc0.composite_method, arc0.bac_type, arc0.ess_settings, arc0.reactions = None, None, {}, []
-        for attr in ('conformer_opt_level', 'conformer_sp_level', 'ts_guess_level',
-                     'opt_level', 'freq_level', 'sp_level', 'scan_level'):
-            setattr(arc0, attr, '')
-        # A deleted IRC species dangling in self.species while absent from self.output.
-        arc0.species = [SimpleNamespace(label='tst_spc', is_ts=False, run_time=None, mol=None),
-                        SimpleNamespace(label='IRC_TS0_1', is_ts=False, run_time=None, mol=None)]
-        arc0.output = {'tst_spc': {'convergence': True}}  # deliberately no 'IRC_TS0_1' entry
-        arc0.save_project_info_file()  # must not raise KeyError
-        with open(os.path.join(arc0.project_directory, 'arc_info_test.info'), 'r') as f:
+        arc0.species.append(ARCSpecies(label='IRC_TS0_1', smiles='O'))
+        arc0.output = {'tst_spc': {'convergence': True}}
+        arc0.save_project_info_file()
+        with open(os.path.join(arc0.project_directory, f'{arc0.project}.info'), 'r') as f:
             content = f.read()
         self.assertIn('tst_spc', content)
         self.assertNotIn('IRC_TS0_1', content)
+        with open(os.path.join(arc0.project_directory, f'{arc0.project}_info.yml'), 'r') as f:
+            yml_content = f.read()
+        self.assertIn('tst_spc', yml_content)
+        self.assertNotIn('IRC_TS0_1', yml_content)
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_save_project_info_file_after_a_scheduler_deleted_an_irc_species(self, mock_run_opt):
+        """Test that an ARC run whose Scheduler abandoned a TS guess, and thereby deleted the IRC
+        species spawned for it, can still write its project info files. Wires a real ARC to a real
+        Scheduler the way ARC.execute does, so it covers the shared species list rather than a
+        stand-in for it."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_spc = ARCSpecies(label='TS0', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.ts_guesses = [
+            TSGuess(index=0, method='heuristics', success=True, energy=100.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+            TSGuess(index=1, method='heuristics', success=True, energy=110.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+        ]
+        ts_spc.ts_guesses[0].opt_xyz = ts_xyz
+        ts_spc.ts_guesses[0].imaginary_freqs = [-500.0]
+        ts_spc.ts_guesses[1].opt_xyz = ts_xyz
+        ts_spc.ts_guesses[1].imaginary_freqs = [-400.0]
+        ts_spc.chosen_ts = 0
+        ts_spc.chosen_ts_list = [0]
+        ts_spc.ts_guesses_exhausted = False
+
+        arc0 = ARC(project='arc_info_e2e_test', species=[ts_spc], level_of_theory='b3lyp/6-31g',
+                   bac_type=None, compute_thermo=False, freq_scale_factor=1.0,
+                   calc_freq_factor=False, job_types=self.job_types1,
+                   ess_settings={'gaussian': ['local']})
+        self.addCleanup(shutil.rmtree, arc0.project_directory, ignore_errors=True)
+        sched = Scheduler(project=arc0.project, species_list=arc0.species,
+                          ess_settings=arc0.ess_settings, opt_level=arc0.opt_level,
+                          freq_level=arc0.freq_level, sp_level=arc0.sp_level,
+                          ts_guess_level=arc0.ts_guess_level,
+                          project_directory=arc0.project_directory, testing=True,
+                          job_types=arc0.job_types)
+        self.assertIs(arc0.species, sched.species_list)
+
+        irc_label = 'IRC_TS0_1'
+        sched.species_dict[irc_label] = ARCSpecies(label=irc_label, xyz=ts_xyz,
+                                                   compute_thermo=False, irc_label='TS0')
+        sched.species_list.append(sched.species_dict[irc_label])
+        sched.unique_species_labels.append(irc_label)
+        sched.initialize_output_dict(label=irc_label)
+        ts_spc.irc_label = irc_label
+        self.assertIn(irc_label, [spc.label for spc in arc0.species])
+
+        sched.switch_ts('TS0')
+        arc0.output = sched.output
+        arc0.save_project_info_file()
+
+        self.assertNotIn(irc_label, [spc.label for spc in arc0.species])
+        with open(os.path.join(arc0.project_directory, f'{arc0.project}.info'), 'r') as f:
+            content = f.read()
+        self.assertIn('TS0', content)
+        self.assertNotIn(irc_label, content)
+        with open(os.path.join(arc0.project_directory, f'{arc0.project}_info.yml'), 'r') as f:
+            yml_content = f.read()
+        self.assertNotIn('IRC_TS0_1', yml_content)
 
     def test_check_project_name(self):
         """Test project name invalidity"""
