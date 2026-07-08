@@ -969,9 +969,9 @@ def trsh_ess_job(label: str,
                 formatted_string += f', {i}'
             logger_info.append(formatted_string)
             
-        # Remove qc from ess_trsh_methods if 'no_qc' is in the keywords
+        # Drop the quadratic-convergence SCF remedy (record 'no_xqc') if Gaussian failed in l508
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
-        if 'no_qc' in ess_trsh_methods:
+        if 'no_xqc' in ess_trsh_methods:
             logger_info.append('removed QC')
         
 
@@ -1839,8 +1839,10 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
     Check if the job requires change of scf
     """
     scf_pattern = r"scf=\((.*?)\)" # e.g., scf=(xqc,MaxCycle=1000), will match xqc,MaxCycle=1000
-    if 'SCF' in job_status['keywords'] and 'scf=(qc)' not in ess_trsh_methods and 'no_qc' not in ess_trsh_methods:
+    if 'SCF' in job_status['keywords'] and 'scf=(qc)' not in ess_trsh_methods and 'no_xqc' not in ess_trsh_methods:
         # try both qc and nosymm
+        # ('no_xqc' records that the quadratic-convergence remedy already failed in l508
+        # and was dropped, so don't re-add it - see trsh_keyword_no_qc())
         ess_trsh_methods.append('scf=(qc)')
         couldnt_trsh = False
     elif 'SCF' in job_status['keywords'] and 'scf=(NDamp=30)' not in ess_trsh_methods:
@@ -1855,8 +1857,12 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
         ess_trsh_methods.append('guess=INDO')
         couldnt_trsh = False
         trsh_keyword.append('guess=INDO')
-    # If we have attempted all scf methods above, then we will try last resort methods
-    if 'SCF' in job_status['keywords'] and 'scf=(qc)' in ess_trsh_methods and 'scf=(NDamp=30)' in ess_trsh_methods and 'scf=(NoDIIS)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods \
+    # If we have attempted all scf methods above, then we will try last resort methods.
+    # 'scf=(qc)' counts as attempted either if it is still active or if it was tried and
+    # dropped after failing in l508 (recorded as 'no_xqc').
+    if 'SCF' in job_status['keywords'] \
+        and ('scf=(qc)' in ess_trsh_methods or 'no_xqc' in ess_trsh_methods) \
+        and 'scf=(NDamp=30)' in ess_trsh_methods and 'scf=(NoDIIS)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods \
         and 'scf=(Fermi)' not in ess_trsh_methods and 'scf=(Noincfock)' not in ess_trsh_methods and 'scf=(NoVarAcc)' not in ess_trsh_methods:
         # Uses Fermi broadening to help SCF convergence
         ess_trsh_methods.append('scf=(Fermi)')
@@ -1864,7 +1870,8 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
         ess_trsh_methods.append('scf=(Noincfock)')
         ess_trsh_methods.append('scf=(NoVarAcc)')
         couldnt_trsh = False
-    if 'no_qc' in ess_trsh_methods and 'scf=(qc)' in ess_trsh_methods:
+    if 'no_xqc' in ess_trsh_methods and 'scf=(qc)' in ess_trsh_methods:
+        # safety net: never keep the qc remedy active once it has been dropped via 'no_xqc'
         ess_trsh_methods.remove('scf=(qc)')
         couldnt_trsh = False
 
@@ -2041,13 +2048,18 @@ def prioritize_opt_methods(opt_methods):
 
 def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
-    When a job fails with no qc, there are two possible solutions based upon the error message:
-    1. If SCF fails, then try to change the algorithm to LQA.
-    2. If SCF fails, then try to change the algorithm to LQA.
+    Drop the quadratic-convergence SCF remedy after Gaussian failed in link 508.
+
+    A previous retry added 'scf=(qc)' (which the Gaussian adapter upgrades to scf=(xqc)).
+    If the job then died in l508, the QC/XQC algorithm itself failed to converge, so remove
+    'scf=(qc)' from the attempted methods and record 'no_xqc' instead. 'no_xqc' guards
+    trsh_keyword_scf() from re-adding 'scf=(qc)' (while still counting it as attempted for
+    the last-resort SCF methods) and tells the Gaussian adapter not to upgrade qc to xqc.
     """
     if 'no_xqc' in job_status['keywords'] and 'scf=(qc)' in ess_trsh_methods:
         ess_trsh_methods.remove('scf=(qc)')
-        ess_trsh_methods.append('no_xqc')
+        if 'no_xqc' not in ess_trsh_methods:
+            ess_trsh_methods.append('no_xqc')
         couldnt_trsh = False
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh

@@ -1174,5 +1174,44 @@ H       0.04768200    1.19305700   -0.88359100
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'), ignore_errors=True)
 
 
+class TestGaussianAdapterNoXqc(unittest.TestCase):
+    """
+    Contains unit tests for the GaussianAdapter qc -> xqc upgrade and its 'no_xqc' opt-out.
+
+    Self-contained (does not depend on the server settings used by TestGaussianAdapter's fixtures).
+    """
+
+    def write_input(self, ess_trsh_methods: list) -> str:
+        """Render a Gaussian input with scf=(qc) requested via trsh args and return its content."""
+        project_directory = os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapterNoXqc')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job = GaussianAdapter(execution_type='incore',
+                              job_type='opt',
+                              level=Level(method='wb97xd', basis='def2tzvp'),
+                              project='test',
+                              project_directory=project_directory,
+                              species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
+                              testing=True,
+                              ess_trsh_methods=ess_trsh_methods,
+                              # the scheduler passes the trsh keywords as a list under args['trsh']['trsh']
+                              args={'trsh': {'trsh': ['scf=(qc)']}},
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return f.read()
+
+    def test_write_input_file_upgrades_qc_to_xqc_by_default(self):
+        """By default, a requested scf=(qc) is upgraded to scf=(xqc)."""
+        content = self.write_input(ess_trsh_methods=['scf=(qc)'])
+        self.assertIn('scf=(xqc)', content)
+        self.assertNotIn('scf=(qc)', content)
+
+    def test_write_input_file_no_xqc_blocks_qc_upgrade(self):
+        """Once 'no_xqc' is recorded (Gaussian l508 failed), qc must not be upgraded to xqc."""
+        content = self.write_input(ess_trsh_methods=['no_xqc'])
+        self.assertIn('scf=(qc)', content)
+        self.assertNotIn('xqc', content)
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

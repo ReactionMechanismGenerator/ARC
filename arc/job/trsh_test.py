@@ -854,6 +854,54 @@ class TestTrsh(unittest.TestCase):
         self.assertTrue(couldnt_trsh)
         self.assertTrue(any('No applicable troubleshooting methods found' in out for out in output_errors))
 
+    def test_trsh_ess_job_gaussian_scf_qc_progression(self):
+        """
+        Simulate a Gaussian job that persistently fails SCF convergence, feeding the returned
+        ess_trsh_methods back into trsh_ess_job() as the scheduler does on each retry:
+        - the job fails in l508 (the scf=(qc)/(xqc) quadratic-convergence link) whenever
+          'scf=(qc)' is part of the attempted methods (the adapter upgrades qc to xqc), and
+        - fails in l502 (plain SCF convergence) otherwise.
+
+        The cycle must progress monotonically:
+        - 'no_xqc' is recorded exactly once,
+        - 'scf=(qc)' is never re-added after 'no_xqc' has been recorded (no qc/no_xqc oscillation),
+        - the rest of the SCF ladder (NDamp, NoDIIS, guess=INDO, and the Fermi/Noincfock/NoVarAcc
+          last resort) is actually reached before the cycle declares 'all_attempted'.
+        """
+        label = 'ethanol'
+        level_of_theory = {'method': 'wb97xd', 'basis': 'def2tzvp'}
+        server = None  # server-independent: the SCF cycle under test never consults server settings
+        job_type = 'opt'
+        software = 'gaussian'
+        fine = False
+        memory_gb = 16
+        num_heavy_atoms = 2
+        cpu_cores = 8
+        scf_status = {'keywords': ['SCF', 'GL502', 'NoSymm'], 'error': 'Unconverged SCF'}
+        xqc_status = {'keywords': ['no_xqc', 'GL508'], 'error': 'Unconverged'}
+        ess_trsh_methods = list()
+        for _ in range(30):
+            job_status = xqc_status if 'scf=(qc)' in ess_trsh_methods else scf_status
+            output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, \
+                trsh_keyword, memory, shift, cpu_cores, couldnt_trsh = \
+                trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                  job_type, software, fine, memory_gb,
+                                  num_heavy_atoms, cpu_cores, ess_trsh_methods)
+            self.assertLessEqual(ess_trsh_methods.count('no_xqc'), 1,
+                                 f'no_xqc was re-appended (oscillation): {ess_trsh_methods}')
+            if 'no_xqc' in ess_trsh_methods:
+                self.assertNotIn('scf=(qc)', ess_trsh_methods,
+                                 f'scf=(qc) was re-added after no_xqc: {ess_trsh_methods}')
+            if couldnt_trsh or 'all_attempted' in ess_trsh_methods:
+                break
+        else:
+            self.fail(f'Gaussian SCF troubleshooting cycle did not terminate: {ess_trsh_methods}')
+        self.assertIn('no_xqc', ess_trsh_methods)
+        for method in ('scf=(NDamp=30)', 'scf=(NoDIIS)', 'guess=INDO',
+                       'scf=(Fermi)', 'scf=(Noincfock)', 'scf=(NoVarAcc)'):
+            self.assertIn(method, ess_trsh_methods,
+                          f'the SCF ladder never reached {method}: {ess_trsh_methods}')
+
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""
         job_log_path_1 = os.path.join(ARC_TESTING_PATH, 'job_log', 'no_issues.log')
