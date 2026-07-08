@@ -1001,7 +1001,7 @@ class ARCReaction(object):
             len_atoms += spc.number_of_atoms
         return r_bonds, p_bonds
 
-    def _get_reactive_bonds_from_family(
+    def get_reactive_bonds_from_family(
         self,
     ) -> tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]] | None:
         """
@@ -1067,7 +1067,7 @@ class ARCReaction(object):
             tuple[list[tuple[int, int]], list[tuple[int, int]]]: The formed and broken bonds.
         """
         if self.atom_map is None and self.family and self.product_dicts:
-            family_bonds = self._get_reactive_bonds_from_family()
+            family_bonds = self.get_reactive_bonds_from_family()
             if family_bonds is not None:
                 formed, broken, _changed = family_bonds
                 logger.warning(
@@ -1087,7 +1087,7 @@ class ARCReaction(object):
             list[tuple[int, int]]: The bonds that change their bond order.
         """
         if self.atom_map is None and self.family and self.product_dicts:
-            family_bonds = self._get_reactive_bonds_from_family()
+            family_bonds = self.get_reactive_bonds_from_family()
             if family_bonds is not None:
                 _formed, _broken, changed = family_bonds
                 return changed

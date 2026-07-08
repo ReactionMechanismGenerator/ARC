@@ -239,6 +239,50 @@ class TestNMD(unittest.TestCase):
         # A reaction with no repeated species yields no cross-copy groups.
         self.assertEqual(nmd.get_repeated_species_atom_equivalences(self.rxn_1, well=0), [])
 
+    def test_get_bond_change_candidates(self):
+        """The family-recipe-derived reactive bonds must be the first candidate when a family is identified.
+        For HO2 elimination from ethylperoxy the atom map is valid but permutes the spectator H atoms among
+        the chemically equivalent H positions of the ethylene product, inflating the map-derived bond sets,
+        so the family recipe is the only reliable derivation."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5O2', smiles='CCO[O]', multiplicity=2)],
+                          p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                     ARCSpecies(label='HO2', smiles='[O]O', multiplicity=2)])
+        self.assertEqual(rxn.family, 'HO2_Elimination_from_PeroxyRadical')
+        candidates = nmd.get_bond_change_candidates(reaction=rxn)
+        self.assertGreaterEqual(len(candidates), 1)
+        formed, broken, changed = candidates[0]
+        self.assertEqual(sorted(formed), [(3, 4)])  # O-H (beta-H transferred to the terminal O)
+        self.assertEqual(sorted(broken), [(0, 4), (1, 2)])  # C-H (beta-H) and C-O (C_alpha-O)
+        self.assertEqual(sorted(changed), [(0, 1)])  # C-C -> C=C
+
+    def test_analyze_ts_normal_mode_displacement_ho2_elimination(self):
+        """
+        HO2 elimination from ethylperoxy: CCO[O] <=> C=C + [O]O (benchmark reaction 04 regression).
+
+        The atom map for this reaction maps the heavy atoms and the transferring beta-H correctly, but
+        crosses the four spectator H atoms between the two carbons (all four ethylene H positions are
+        chemically equivalent, so the map is valid-but-permuted). The map-derived bond changes are
+        therefore inflated to 5 formed + 6 broken bonds, which no genuine reactive mode can satisfy.
+        NMD must validate the real concerted elimination saddle (imag ~-1074 cm-1, dominated by the
+        beta-H transfer) via the family-recipe-derived bonds, and must still reject a wrong saddle
+        found on the same PES (imag ~-2144 cm-1).
+        """
+        good_saddle = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5O2_HO2_elimination.log')
+        wrong_saddle = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5O2_HO2_elimination_wrong_saddle.log')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5O2', smiles='CCO[O]', multiplicity=2)],
+                          p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                     ARCSpecies(label='HO2', smiles='[O]O', multiplicity=2)])
+
+        self.generic_job.local_path_to_output_file = good_saddle
+        rxn.ts_species = ARCSpecies(label='TS_HO2_elim', is_ts=True, xyz=good_saddle)
+        rxn.ts_species.populate_ts_checks()
+        self.assertTrue(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25))
+
+        self.generic_job.local_path_to_output_file = wrong_saddle
+        rxn.ts_species = ARCSpecies(label='TS_HO2_elim_wrong', is_ts=True, xyz=wrong_saddle)
+        rxn.ts_species.populate_ts_checks()
+        self.assertFalse(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25))
+
     def test_analyze_ts_normal_mode_displacement_simple_rxns(self):
         """Test the analyze_ts_normal_mode_displacement() function with simple reactions."""
         # CH4 + OH <=> CH3 + H2O
