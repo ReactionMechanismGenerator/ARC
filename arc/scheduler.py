@@ -3651,6 +3651,7 @@ class Scheduler(object):
                          job_status=job.job_status[1],
                          is_h=is_h,
                          is_monoatomic=self.species_dict[label].is_monoatomic(),
+                         is_ts=self.species_dict[label].is_ts,
                          job_type=job.job_type,
                          num_heavy_atoms=self.species_dict[label].number_of_heavy_atoms,
                          software=job.job_adapter,

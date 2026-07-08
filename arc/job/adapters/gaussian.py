@@ -410,7 +410,13 @@ class GaussianAdapter(JobAdapter):
         input_dict, parameters_opt = combine_parameters(input_dict, terms_opt)
         # If 'opt' parameters are found, concatenate and reinsert them
         if parameters_opt:
-            # Remove duplicate parameters
+            # Keep a single force-constant recompute directive (calcall > recalcfc=* > calcfc) so a
+            # troubleshot opt=() clause never carries conflicting Hessian options - the base route
+            # always contributes 'calcfc', while the MaxOptCycles ladder may add recalcfc/calcall.
+            if 'calcall' in parameters_opt:
+                parameters_opt = [p for p in parameters_opt if p != 'calcfc' and not p.startswith('recalcfc')]
+            elif any(p.startswith('recalcfc') for p in parameters_opt):
+                parameters_opt = [p for p in parameters_opt if p != 'calcfc']
             combined_opt_params = ','.join(parameters_opt)
             input_dict['job_type_1'] = f"opt=({combined_opt_params}) {input_dict['job_type_1']}"
 
