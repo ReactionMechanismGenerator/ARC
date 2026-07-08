@@ -667,15 +667,13 @@ fi' '''
 
     if real_errors and output_present:
         logger.warning(
-            "Arkane stderr contained non-cosmetic lines but output.py "
-            "was produced; proceeding. Lines:\n%s",
-            "\n".join(real_errors),
+            "Arkane emitted errors but still produced output.py (proceeding): %s",
+            _summarize_arkane_stderr(real_errors),
         )
     elif real_errors and not output_present:
-        # Genuine failure: stderr has real errors AND no output. The
-        # combination is the most diagnostic signal we can give; log
-        # both so the user sees cause + effect.
-        logger.error("Arkane run failed; stderr:\n%s", "\n".join(real_errors))
+        # Genuine failure: stderr has real errors AND no output. Log the salient error (the full
+        # traceback is preserved in the run directory's stderr.log if a deeper look is needed).
+        logger.error("Arkane run failed: %s", _summarize_arkane_stderr(real_errors))
 
     if not output_present:
         logger.error(
@@ -722,6 +720,25 @@ def _classify_arkane_stderr(std_err: list[str] | None) -> list[str]:
         if not any(phrase in stripped for phrase in _ARKANE_STDERR_IGNORABLE_PHRASES):
             real.append(stripped)
     return real
+
+
+def _summarize_arkane_stderr(real_errors: list[str]) -> str:
+    """Condense classified Arkane stderr to the salient error line for logging.
+
+    Arkane failures surface as a full Python traceback; dumping every line into arc.log is noise,
+    especially when Arkane still produced output.py (e.g. a first attempt that failed on the Eckart
+    barrier and was retried). Return the actual exception line — the informative part — plus a count
+    of the remaining lines, rather than the whole traceback.
+    """
+    if not real_errors:
+        return ''
+    # Prefer the Python exception line, e.g. "ValueError: ...". Skip the conda wrapper's own
+    # "ERROR conda.cli..." line, which only reports that the child process exited non-zero.
+    exception_lines = [ln for ln in real_errors
+                       if re.match(r'^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):', ln)]
+    salient = exception_lines[-1] if exception_lines else real_errors[-1]
+    extra = len(real_errors) - 1
+    return salient + (f' [+{extra} more stderr line(s)]' if extra > 0 else '')
 
 
 def clean_output_directory(species_path: str,  # todo
