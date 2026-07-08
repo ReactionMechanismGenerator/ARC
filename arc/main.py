@@ -13,7 +13,6 @@ import logging
 import os
 import shutil
 import time
-from distutils.spawn import find_executable
 from IPython.display import display
 
 from arc.common import (VERSION,
@@ -707,6 +706,10 @@ class ARC(object):
         txt += f'\nUsing the following ESS settings: {self.ess_settings}\n'
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.species:
+            if species.label not in self.output:
+                # A species deleted mid-run (e.g., an IRC endpoint species whose TS did not converge)
+                # can linger in self.species after being removed from self.output; don't report it.
+                continue
             descriptor = 'TS' if species.is_ts else 'Species'
             failed = '' if self.output[species.label]['convergence'] else ' (Failed!)'
             txt += f'{descriptor} {species.label}{failed} (run time: {species.run_time})\n'
@@ -789,34 +792,34 @@ class ARC(object):
         # first look for ESS locally (e.g., when running ARC itself on a server)
         if 'SSH_CONNECTION' in os.environ and diagnostics:
             logger.info('Found "SSH_CONNECTION" in the os.environ dictionary, '
-                        'using distutils.spawn.find_executable() to find ESS')
+                        'using shutil.which() to find ESS')
         if 'local' in servers:
-            g03 = find_executable('g03')
-            g09 = find_executable('g09')
-            g16 = find_executable('g16')
+            g03 = shutil.which('g03')
+            g09 = shutil.which('g09')
+            g16 = shutil.which('g16')
             if g03 or g09 or g16:
                 if diagnostics:
                     logger.info(f'Found Gaussian: g03={g03}, g09={g09}, g16={g16}')
                 self.ess_settings['gaussian'] = ['local']
-            qchem = find_executable('qchem')
+            qchem = shutil.which('qchem')
             if qchem:
                 self.ess_settings['qchem'] = ['local']
-            orca = find_executable('orca')
+            orca = shutil.which('orca')
             if orca:
                 self.ess_settings['orca'] = ['local']
-            molpro = find_executable('molpro')
+            molpro = shutil.which('molpro')
             if molpro:
                 self.ess_settings['molpro'] = ['local']
-            terachem = find_executable('terachem')
+            terachem = shutil.which('terachem')
             if terachem:
-                self.ess_settings['molpro'] = ['local']
+                self.ess_settings['terachem'] = ['local']
             if any([val for val in self.ess_settings.values()]):
                 if diagnostics:
                     logger.info('Found the following ESS on the local machine:')
                     logger.info([software for software, val in self.ess_settings.items() if val])
                     logger.info('\n')
-                else:
-                    logger.info('Did not find ESS on the local machine\n\n')
+            else:
+                logger.info('Did not find ESS on the local machine\n\n')
         else:
             logger.info("\nNot searching for ESS locally ('local' wasn't specified in the servers dictionary)\n")
 

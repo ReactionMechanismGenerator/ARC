@@ -197,6 +197,23 @@ class TestARC(unittest.TestCase):
                              'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False}
         self.assertEqual(arc1.job_types, job_type_expected)
 
+    def test_save_project_info_file_skips_deleted_species(self):
+        """A species left in self.species but removed from self.output (e.g. a deleted IRC endpoint
+        species whose TS did not converge) must be skipped in the project info file, not crash it
+        with a KeyError."""
+        spc1 = ARCSpecies(label='tst_spc', smiles='C')
+        arc0 = ARC(project='arc_info_test', species=[spc1], level_of_theory='b3lyp/6-31g',
+                   bac_type=None, compute_thermo=False, job_types=self.job_types1)
+        self.addCleanup(shutil.rmtree, arc0.project_directory, ignore_errors=True)
+        # A deleted IRC species can dangle in self.species while being absent from self.output.
+        arc0.species.append(ARCSpecies(label='IRC_TS0_1', smiles='O'))
+        arc0.output = {'tst_spc': {'convergence': True}}  # deliberately no 'IRC_TS0_1' entry
+        arc0.save_project_info_file()  # must not raise KeyError
+        with open(os.path.join(arc0.project_directory, f'{arc0.project}.info'), 'r') as f:
+            content = f.read()
+        self.assertIn('tst_spc', content)
+        self.assertNotIn('IRC_TS0_1', content)
+
     def test_check_project_name(self):
         """Test project name invalidity"""
         with self.assertRaises(InputError):
