@@ -91,13 +91,14 @@ class TestCompositeExamples(unittest.TestCase):
         self.assertTrue(form3, "Form 3 (fully explicit recipe) not demonstrated.")
         self.assertTrue(form4, "Form 4 (per-species override) not demonstrated.")
 
-    def test_explicit_recipe_example_includes_cbs_extrapolation(self):
+    def test_explicit_recipe_example_uses_cbs_as_base(self):
         path = os.path.join(EXAMPLES_DIR, "explicit_fpa", "input.yml")
         with open(path, "r") as fh:
             data = yaml.safe_load(fh)
-        corrections = data["sp_composite"]["corrections"]
-        term_types = {c["type"] for c in corrections}
-        self.assertIn("cbs_extrapolation", term_types)
+        sp = data["sp_composite"]
+        self.assertEqual(sp["base"]["type"], "cbs_extrapolation")
+        self.assertNotIn("cbs_extrapolation", {c["type"] for c in sp["corrections"]})
+        self.assertNotIn("f12", str(sp).lower())
 
 
 if __name__ == "__main__":
