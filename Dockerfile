@@ -47,12 +47,18 @@ RUN micromamba create -y -v -n rmg_env python=3.11 -f /home/mambauser/Code/RMG-P
 
 RUN micromamba run -n rmg_env make -C /home/mambauser/Code/RMG-Py -j"$(nproc)"
 
-RUN micromamba run -n rmg_env bash -c "\
+# `~/.juliaup/bin/julia` is the juliaup launcher, not the real Julia binary; pyjuliacall
+# derives sys.so relative to it and looks for a non-existent path, so install_rms.sh fails.
+# Prepend the real Julia BINDIR (resolved via the launcher) so `which julia` finds the actual
+# binary. Single quotes keep `$(...)` from being evaluated by the outer shell before micromamba
+# activates rmg_env, so `julia` resolves inside the environment.
+RUN micromamba run -n rmg_env bash -c '\
+      export PATH=$(julia -e "print(Sys.BINDIR)"):$PATH && \
       cd /home/mambauser/Code/RMG-Py && \
       export RMS_INSTALLER=continuous && \
       export RMS_BRANCH=for_rmg && \
       source install_rms.sh \
-    "
+    '
 
 WORKDIR /home/mambauser/Code/ARC
 RUN micromamba create -y -v -n arc_env python=3.14 -c conda-forge -c danagroup -f environment.yml && \
