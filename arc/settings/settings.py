@@ -140,6 +140,11 @@ delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel
                   'HTCondor': 'condor_rm',
                   }
 
+# Default grace period (in seconds) before a queue-RUNNING job with no output traffic is
+# treated as a zombie and resubmitted. Override per server by adding an optional
+# 'zombie_grace_seconds' key to the respective entry in the ``servers`` dict above.
+zombie_grace_seconds = 21600  # 6 h
+
 list_available_nodes_command = {
     'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
     'Slurm': 'sinfo -o "%n %t %O %E"',
