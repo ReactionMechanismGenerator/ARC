@@ -15,7 +15,7 @@ import unittest
 from arc.exceptions import InputError
 from arc.level import Level
 from arc.level.presets import PRESETS, REGISTERED_PRESET_NAMES, expand_preset
-from arc.level.protocol import CompositeProtocol
+from arc.level.protocol import CBSExtrapolationTerm, CompositeProtocol
 
 
 class TestPresetRegistry(unittest.TestCase):
@@ -55,12 +55,12 @@ class TestPresetRegistry(unittest.TestCase):
                 self.assertIn("CORE-VALENCE", ref.upper())
 
     def test_HEAT_protocols_delta_CV_legs_compare_unequal(self):
-        """Regression for sp_composite Bug B: HEAT-345Q's δ_CV high (all-electron
-        ``core,...``) and low (default frozen-core) Levels must not collapse to
-        a single sub-job at composite-spawn time. Extended in Phase 5+ to cover
-        every shipped preset that carries a δ_CV term — the Molpro-keyword
-        round-trip is the load-bearing piece, and silent dedup would defeat the
-        whole correction regardless of which protocol introduces it."""
+        """Regression: HEAT-345Q's δ_CV high (all-electron ``core,...``) and
+        low (default frozen-core) Levels must not collapse to a single sub-job
+        at composite-spawn time. Covers every shipped preset that carries a
+        δ_CV term — the Molpro-keyword round-trip is the load-bearing piece,
+        and silent dedup would defeat the whole correction regardless of which
+        protocol introduces it."""
         for name in (
             "HEAT-345", "HEAT-345Q", "HEAT-345QP", "HEAT-456Q",
             "W2", "W2-F12", "W3", "W3-F12", "W4", "W4-F12",
@@ -100,6 +100,36 @@ class TestPresetRegistry(unittest.TestCase):
                     [t.label for t in rebuilt.corrections],
                     [t.label for t in protocol.corrections],
                 )
+
+
+class TestFPAMinPreset(unittest.TestCase):
+    """FPA-min uses CBS-as-base: the absolute energy is a two-point CBS
+    extrapolation of CCSD(T)/cc-pVTZ + cc-pVQZ total energies."""
+
+    def test_recipe_base_is_cbs_extrapolation(self):
+        recipe = expand_preset("FPA-min")
+        self.assertEqual(recipe["base"]["type"], "cbs_extrapolation")
+        self.assertEqual(recipe["base"]["formula"], "helgaker_corr_2pt")
+        bases = [lvl["basis"] for lvl in recipe["base"]["levels"]]
+        self.assertEqual(sorted(b.lower() for b in bases), ["cc-pvqz", "cc-pvtz"])
+
+    def test_expands_to_protocol_with_cbs_base(self):
+        protocol = CompositeProtocol.from_user_input("FPA-min")
+        self.assertIsInstance(protocol.base, CBSExtrapolationTerm)
+        self.assertEqual(protocol.base_sub_labels, ["base__card_3", "base__card_4"])
+        self.assertEqual([t.label for t in protocol.corrections], ["delta_T"])
+
+    def test_no_f12_claims(self):
+        """The old FPA-min anchored on CCSD(T)-F12/cc-pVTZ-F12; the rewritten
+        preset must not mention F12 in either the recipe or the reference."""
+        recipe = expand_preset("FPA-min")
+        self.assertNotIn("f12", str(recipe).lower())
+        self.assertNotIn("f12", PRESETS["FPA-min"]["reference"].lower())
+
+    def test_reference_documents_totals_extrapolation(self):
+        """The X^-3 formula is applied to TOTAL energies (HF mis-treated) —
+        the reference string must say so honestly."""
+        self.assertIn("total", PRESETS["FPA-min"]["reference"].lower())
 
 
 class TestExpandPreset(unittest.TestCase):
@@ -172,7 +202,7 @@ class TestExpandPresetOverrides(unittest.TestCase):
         delta_t = next(c for c in protocol.corrections if c.label == "delta_T")
         self.assertEqual(delta_t.high.basis, "cc-pvtz")
 
-    # --- Phase 5.5 hardening --------------------------------------------- #
+    # --- override-field hardening ----------------------------------------- #
 
     def test_override_unknown_field_on_delta_rejected(self):
         """Typo guard: ``hihg`` is not a valid field of a delta term."""
@@ -191,10 +221,10 @@ class TestExpandPresetOverrides(unittest.TestCase):
         self.assertIn("methhod", str(ctx.exception))
 
     def test_override_unknown_field_on_cbs_rejected(self):
-        """Typo on a cbs_extrapolation term is caught (FPA-min has a CBS term)."""
+        """Typo on a cbs_extrapolation term is caught (FPA-min has a CBS base)."""
         with self.assertRaises(InputError) as ctx:
             expand_preset("FPA-min", overrides={
-                "cbs_corr": {"formla": "helgaker_corr_2pt"},
+                "base": {"formla": "helgaker_corr_2pt"},
             })
         self.assertIn("formla", str(ctx.exception))
 

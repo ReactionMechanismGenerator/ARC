@@ -12,12 +12,12 @@
 #
 # These presets are *adapted for ARC use* — the canonical Tajti-et-al HEAT
 # protocol was designed for atomization energies of small molecules, with the
-# HF energy itself CBS-extrapolated to the basis-set limit. ARC's
-# CompositeProtocol pins the absolute base to a single SinglePointTerm, so
-# the recipes below pick a sensible high-quality "anchor" SP (CCSD(T)-F12 in
-# the cc-pVTZ-F12 basis) and apply the post-(T) and other corrections on top.
-# This matches the typical focal-point workflow when refining TS barriers
-# (see e.g. Nguyen, Stanton, Barker for CHO2 PES).
+# HF energy itself CBS-extrapolated to the basis-set limit. The HEAT recipes
+# below deliberately pick a single high-quality "anchor" SP (CCSD(T)-F12 in
+# the cc-pVTZ-F12 basis) as the base and apply the post-(T) and other
+# corrections on top (a CBS extrapolation base is also supported by ARC —
+# see FPA-min). This matches the typical focal-point workflow when refining
+# TS barriers (see e.g. Nguyen, Stanton, Barker for CHO2 PES).
 #
 # ESS-specific syntax used below
 # ------------------------------
@@ -74,7 +74,7 @@ HEAT-345:
       low:  {method: ccsd(t),  basis: cc-pCVTZ}
     - label: delta_rel
       type: delta
-      # DKH2 scalar-relativistic CCSD(T)/cc-pVTZ-DK via Molpro's ``dkroll=2`` directive.
+      # DKH2 scalar-relativistic CCSD(T)/cc-pVTZ-DK via Molpro's ``SET,DKHO=2`` directive.
       high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
       # Non-relativistic CCSD(T)/cc-pVTZ.
       low:  {method: ccsd(t),  basis: cc-pVTZ}
@@ -181,10 +181,10 @@ HEAT-345QP:
       low:  {method: ccsd(t),   basis: cc-pVTZ}
 
 # HEAT-456Q has the same correction structure as HEAT-345Q but a tighter HF/
-# CCSD(T) CBS reference (cardinals {Q,5,6} rather than {T,Q,5}). ARC's
-# CompositeProtocol pins the absolute base to a single SinglePointTerm, so
-# this adaptation tightens the anchor by promoting the F12 base from
-# cc-pVTZ-F12 to cc-pVQZ-F12 (effectively near-CBS quality at QZ-5Z-6Z).
+# CCSD(T) CBS reference (cardinals {Q,5,6} rather than {T,Q,5}). This ARC
+# adaptation keeps the single-anchor design of the HEAT family and tightens
+# the anchor by promoting the F12 base from cc-pVTZ-F12 to cc-pVQZ-F12
+# (effectively near-CBS quality at QZ-5Z-6Z).
 HEAT-456Q:
   reference: "Inspired by HEAT-456Q (Bomble, Vázquez, Kállay, Michauk, Szalay, Császár, Gauss, Stanton, J. Chem. Phys. 125, 064108 (2006); DOI: 10.1063/1.2206789). Same correction structure as HEAT-345Q with a tighter base — ARC adaptation pins the anchor to CCSD(T)-F12/cc-pVQZ-F12 to mirror the {Q,5,6}-cardinal HF/CCSD(T) extrapolation. δ_CV and δ_rel assume a Molpro adapter."
   base:
@@ -208,22 +208,23 @@ HEAT-456Q:
       high: {method: ccsd(t),  basis: cc-pVTZ-DK, args: {keyword: {dkho: 'SET,DKHO=2;'}, block: {}}}
       low:  {method: ccsd(t),  basis: cc-pVTZ}
 
+# FPA-min uses CBS-as-base: the absolute energy is the two-point Helgaker
+# X^-3 extrapolation of CCSD(T)/cc-pVTZ + cc-pVQZ TOTAL energies (the only
+# energy component ARC's parsers currently surface). The X^-3 form was
+# derived for the correlation energy; applying it to totals mis-treats the
+# exponentially-converging HF component, but at {T,Q} the residual is small
+# and this is common practice — the reference string says so explicitly.
 FPA-min:
-  reference: "Minimal Allen / East / Császár focal-point analysis recipe; review: East, Allen, J. Chem. Phys. 99, 4638 (1993); DOI: 10.1063/1.466062."
+  reference: "Minimal Allen / East / Császár focal-point analysis recipe; review: East, Allen, J. Chem. Phys. 99, 4638 (1993); DOI: 10.1063/1.466062. Base: two-point X^-3 CBS extrapolation (Helgaker et al., J. Chem. Phys. 106, 9639 (1997); DOI: 10.1063/1.473863) applied to CCSD(T)/cc-pVTZ + cc-pVQZ TOTAL energies — the HF component converges exponentially and is technically mis-treated by the X^-3 form; at {T,Q} the residual is small and extrapolating totals is common practice."
   base:
-    method: ccsd(t)-f12
-    basis: cc-pVTZ-f12
+    label: base
+    type: cbs_extrapolation
+    formula: helgaker_corr_2pt
+    components: total
+    levels:
+      - {method: ccsd(t), basis: cc-pVTZ}
+      - {method: ccsd(t), basis: cc-pVQZ}
   corrections:
-    - label: cbs_corr
-      type: cbs_extrapolation
-      formula: helgaker_corr_2pt
-      # components currently must be "total"; adapter-level correlation-only
-      # parsing is a future addition. The formula name (`helgaker_corr_2pt`)
-      # still documents intent for the user.
-      components: total
-      levels:
-        - {method: ccsd(t), basis: cc-pVTZ}
-        - {method: ccsd(t), basis: cc-pVQZ}
     - label: delta_T
       type: delta
       high: {method: ccsdt,   basis: cc-pVDZ}
@@ -234,11 +235,10 @@ FPA-min:
 #
 # The canonical W*n* protocols build their absolute energy from a stack of
 # basis-set CBS extrapolations (HF, CCSD, (T) at progressively smaller
-# basis) plus δ-corrections. ARC's CompositeProtocol pins the absolute
-# base to a single SinglePointTerm, so the recipes below pick a high-
-# quality CCSD(T) or CCSD(T)-F12 anchor and apply the canonical post-(T)
-# / δ_CV / δ_rel corrections on top. The original W*n* basis-cardinal
-# extrapolations of the (T) component are absorbed into the anchor —
+# basis) plus δ-corrections. The recipes below deliberately pick a high-
+# quality CCSD(T) or CCSD(T)-F12 anchor as a single-SP base and apply the
+# canonical post-(T) / δ_CV / δ_rel corrections on top. The original W*n*
+# basis-cardinal extrapolations of the (T) component are absorbed into the anchor —
 # this is faithful to the W*n* spirit (stacked corrections beyond
 # CCSD(T)/CBS) but not byte-identical to the published prescription.
 # Cite as 'W2 (ARC adaptation)' etc. to acknowledge the difference.

@@ -21,6 +21,7 @@ import unittest
 
 from arc.exceptions import InputError
 from arc.level.cbs import (
+    BUILTIN_FORMULA_ARITY,
     BUILTIN_FORMULAS,
     cardinal_from_basis,
     helgaker_corr_2pt,
@@ -109,9 +110,13 @@ class TestHelgakerCorr2Pt(unittest.TestCase):
         with self.assertRaises(InputError):
             helgaker_corr_2pt({3: -1.0, 4: -1.05, 5: -1.06})
 
-    def test_rejects_equal_cardinals(self):
+    def test_duplicate_cardinals_collapse_to_too_few_points(self):
+        """Mapping keys are unique by construction, so repeated cardinals collapse
+        to a single entry, which then fails the pair-count check."""
+        collapsed = dict([(3, -1.0), (3, -1.05)])
+        self.assertEqual(len(collapsed), 1)
         with self.assertRaises(InputError):
-            helgaker_corr_2pt({3: -1.0, 3: -1.05})  # noqa: F601 — Python collapses; size=1 path
+            helgaker_corr_2pt(collapsed)
 
     def test_q5_pair_reproduces_formula(self):
         # X=4, Y=5; E_Q = -0.310, E_5 = -0.315
@@ -211,6 +216,12 @@ class TestBuiltinFormulasRegistry(unittest.TestCase):
             {"helgaker_corr_2pt", "helgaker_hf_2pt", "martin_3pt"},
         )
 
+    def test_arity_registered_for_every_formula(self):
+        self.assertEqual(
+            BUILTIN_FORMULA_ARITY,
+            {"helgaker_corr_2pt": 2, "helgaker_hf_2pt": 2, "martin_3pt": 3},
+        )
+
 
 class TestSafeEvalFormula(unittest.TestCase):
     """``safe_eval_formula`` accepts arithmetic + math whitelist; rejects everything else."""
@@ -283,6 +294,29 @@ class TestSafeEvalFormula(unittest.TestCase):
     def test_syntax_error_propagates_as_input_error(self):
         with self.assertRaises(InputError):
             safe_eval_formula("1 +", {})
+
+    def test_moderate_exponent_allowed(self):
+        self.assertEqual(safe_eval_formula("2**100", {}), 2 ** 100)
+
+    def test_huge_chained_power_rejected(self):
+        # 9**9**9 is right-associative: the outer exponent is 9**9 = 387420489,
+        # which would exhaust memory if evaluated. Must be rejected, not hang.
+        with self.assertRaises(InputError):
+            safe_eval_formula("9**9**9", {})
+
+    def test_large_negative_exponent_rejected(self):
+        with self.assertRaises(InputError):
+            safe_eval_formula("2**-101", {})
+
+    def test_oversized_expression_rejected(self):
+        with self.assertRaises(InputError):
+            safe_eval_formula("+".join(["1"] * 300), {})
+
+    def test_pathological_nesting_raises_input_error(self):
+        # Deep unary chains overflow the CPython parser (RecursionError /
+        # MemoryError depending on version); must surface as InputError.
+        with self.assertRaises(InputError):
+            safe_eval_formula("-" * 1_000_000 + "1", {})
 
 
 if __name__ == "__main__":
