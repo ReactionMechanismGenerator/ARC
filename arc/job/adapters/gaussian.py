@@ -276,6 +276,14 @@ class GaussianAdapter(JobAdapter):
         acc2e_requested = 'Acc2E=14' in input_dict['trsh']  # troubleshooting asked to tighten integrals
         integral_algorithm = 'Acc2E=14' if acc2e_requested else 'Acc2E=12'
         input_dict['trsh'] = input_dict['trsh'].replace('int=(Acc2E=14)', '') if acc2e_requested else input_dict['trsh']
+        # The InaccurateQuadrature remedy escalates to a finer DFT integration grid (recorded as
+        # 'int=grid=NNNMMM'). Fold that grid into the single integral=() keyword (replacing the
+        # default ultrafine) rather than emitting a second, conflicting Int keyword - ultrafine is
+        # (99,590), the remedy grid e.g. 300590 = (300,590) is finer. Sourced from ess_trsh_methods
+        # so the finer grid persists across retries, and the standalone int=grid= token is dropped.
+        grid_remedy = next((m for m in (self.ess_trsh_methods or []) if m.startswith('int=grid=')), None)
+        integration_grid = grid_remedy.split('int=grid=', 1)[1] if grid_remedy else 'ultrafine'
+        input_dict['trsh'] = re.sub(r'\s*int=grid=\S+', '', input_dict['trsh']) if grid_remedy else input_dict['trsh']
         input_dict['xyz'] = [xyz_to_str(xyz) for xyz in self.xyz] if self.run_multi_species else xyz_to_str(self.xyz)
 
         if self.level.basis is not None:
@@ -320,7 +328,7 @@ class GaussianAdapter(JobAdapter):
             if self.fine:
                 if self.level.method_type in ['dft', 'composite']:
                     # Note that the Acc2E argument is not available in Gaussian03
-                    input_dict['fine'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+                    input_dict['fine'] = f'integral=(grid={integration_grid}, {integral_algorithm})'
                     # input_dict['trsh'] may have scf=(...) in it, so we need to add the tight and direct keywords to it
                     scf_start = input_dict['trsh'].find('scf=(')
                     scf_end = input_dict['trsh'].find(')', scf_start)
@@ -349,13 +357,13 @@ class GaussianAdapter(JobAdapter):
                 else f"opt=({', '.join(key for key in keywords)})"
 
         elif self.job_type == 'freq':
-            input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
+            input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) integral=(grid={integration_grid}, {integral_algorithm})'
 
         elif self.job_type == 'optfreq':
             input_dict['job_type_2'] = 'freq IOp(7/33=1)'
 
         elif self.job_type in ['sp', 'conf_sp']:
-            input_dict['job_type_1'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+            input_dict['job_type_1'] = f'integral=(grid={integration_grid}, {integral_algorithm})'
             if input_dict['trsh']:
                 input_dict['trsh'] += ' '
             input_dict['trsh'] += 'scf=(tight, direct)'
@@ -376,7 +384,7 @@ class GaussianAdapter(JobAdapter):
 
             ts = 'ts, ' if self.is_ts else ''
             input_dict['job_type_1'] = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5)' \
-                                       f'integral=(grid=ultrafine, {integral_algorithm})'
+                                       f'integral=(grid={integration_grid}, {integral_algorithm})'
             if input_dict['trsh']:
                 input_dict['trsh'] += ' '
             input_dict['trsh'] += 'scf=(tight, direct)'
@@ -387,7 +395,7 @@ class GaussianAdapter(JobAdapter):
         elif self.job_type == 'irc':
             if self.fine:
                 # Note that the Acc2E argument is not available in Gaussian03
-                input_dict['fine'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+                input_dict['fine'] = f'integral=(grid={integration_grid}, {integral_algorithm})'
                 # We need to add scf=(direct) to the trsh argument
                 # But we to check if it's already there, and
                 if 'direct' not in input_dict['trsh']:
@@ -408,13 +416,15 @@ class GaussianAdapter(JobAdapter):
                 
             input_dict['job_type_1'] = f'irc=(CalcAll, {self.irc_direction}, maxpoints=50, stepsize=7)'
 
-        if acc2e_requested and not self.fine and not input_dict['fine'] \
+        if (acc2e_requested or grid_remedy) and not self.fine and not input_dict['fine'] \
                 and self.job_type in ['opt', 'conf_opt', 'optfreq', 'composite', 'irc']:
-            # Fine jobs fold Acc2E=14 into integral=(grid=ultrafine, ...). A non-fine opt/IRC job
-            # would otherwise silently drop the troubleshooting request (no integral= in the route),
-            # producing a byte-identical resubmit. Emit a bare integral=(Acc2E=14) so the tightened
-            # integral accuracy actually takes effect (the ultrafine grid remains a fine-only concern).
-            input_dict['fine'] = f'integral=({integral_algorithm})'
+            # Fine jobs fold Acc2E=14 (and any InaccurateQuadrature grid remedy) into integral=(...).
+            # A non-fine opt/IRC job would otherwise silently drop those troubleshooting requests
+            # (no integral= in the route), producing a byte-identical resubmit. Emit the integral=()
+            # keyword so the tightened accuracy and/or finer grid actually take effect (the default
+            # ultrafine grid stays a fine-only concern - only an explicit grid remedy is emitted here).
+            grid_part = f'grid={integration_grid}, ' if grid_remedy else ''
+            input_dict['fine'] = f'integral=({grid_part}{integral_algorithm})'
 
         for constraint_tuple in self.constraints:
             constraint_type = constraint_type_dict[len(constraint_tuple[0])]

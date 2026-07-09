@@ -986,7 +986,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=300590, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -1038,7 +1038,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=300590, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
 
 ethanol
 
@@ -1065,7 +1065,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight) guess=INDO wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     int=grid=300590   scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=300590, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
 
 ethanol
 
