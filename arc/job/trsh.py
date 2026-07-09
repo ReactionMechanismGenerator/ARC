@@ -399,17 +399,18 @@ def determine_ess_status(output_path: str,
             # because the underlying cause ("Use semicanonical orbitals!")
             # appears earlier in the file than the downstream "Fatal error in
             # mrcc." line — reverse iteration would otherwise classify the
-            # latter (generic) before the former (specific). Fix in the
-            # adapter prepends ``{uccsd}`` to generate semicanonical orbitals;
-            # this keyword surfaces the diagnostic for any legacy run that
-            # hits it.
-            joined = '\n'.join(lines) if isinstance(lines, list) else str(lines)
-            if 'standard ROHF orbitals' in joined or 'Use semicanonical orbitals' in joined:
-                rohf_line = next(
-                    (ln for ln in lines if 'standard ROHF orbitals' in ln
-                     or 'Use semicanonical orbitals' in ln),
-                    '',
-                )
+            # latter (generic) before the former (specific). The adapter
+            # avoids this on new runs by switching the SCF reference to UHF
+            # for open-shell species (UHF orbitals are semicanonical by
+            # construction); this keyword surfaces the diagnostic for any
+            # legacy run that hits it. Only classify as errored if the job
+            # did not terminate successfully, so a multi-step job that merely
+            # printed the note along the way is not misclassified.
+            rohf_line = next((ln for ln in lines if 'standard ROHF orbitals' in ln
+                              or 'Use semicanonical orbitals' in ln), None)
+            if rohf_line is not None \
+                    and not any('molpro calculation terminated' in ln.lower()
+                                or 'variable memory released' in ln.lower() for ln in reverse_lines):
                 return ('errored', ['MRCCRequiresSemicanonical'],
                         'MRCC requires semicanonical orbitals; ROHF orbitals '
                         'are not supported for approximate CC.',
@@ -419,16 +420,13 @@ def determine_ess_status(output_path: str,
                         or 'variable memory released' in line.lower():
                     return 'done', list(), '', ''
                 elif 'Fatal error in xmrcc' in line or 'Fatal error in mrcc' in line:
-                    # MRCC bailed for a tiny system where the requested CC
-                    # excitation rank exceeds the determinant space (e.g.
-                    # atomic H or H2 at CCSDT(Q)). The composite framework
-                    # should short-circuit a δ-term high leg with this
-                    # keyword to the corresponding low-leg energy (δ = 0,
-                    # which is correct for a degenerate-method case).
-                    keywords = ['MRCCDegenerateSystem']
-                    error = ('MRCC xmrcc fatal — the requested CC excitation '
-                             'rank exceeds the determinant space for this '
-                             'system (degenerate / too few electrons).')
+                    # MRCC's generic crash banner — printed alike for OOM,
+                    # disk-full, and internal errors, so it carries no
+                    # diagnostic specificity. Classify as a generic MRCC
+                    # failure and let the normal Molpro troubleshooting
+                    # ladder apply.
+                    keywords = ['MRCC']
+                    error = f'MRCC terminated with a fatal error: {line.strip()}'
                     break
                 elif 'No convergence' in line and '?No convergence in rhfpr' not in line:
                     keywords = ['Unconverged']

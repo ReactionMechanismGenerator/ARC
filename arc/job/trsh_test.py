@@ -171,24 +171,23 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(error, "Unrecognized basis set 6-311G**")
         self.assertIn(" ? Basis library exhausted", line)  # line includes '\n'
 
-        # Molpro + MRCC: degenerate small system (e.g. atomic H, H2 at CCSDT(Q)).
-        # MRCC's xmrcc bails because there's no determinant space at the
-        # requested excitation rank. Trsh must classify this so the framework
-        # knows to short-circuit the sub-job (delta = 0) instead of cycling
-        # the generic ladder (shift / vdz / memory).
+        # Molpro + MRCC: 'Fatal error in (x)mrcc' is MRCC's GENERIC crash
+        # banner — OOM, disk-full, and internal errors all print it. It must
+        # classify as a generic MRCC failure that routes to the normal
+        # troubleshooting ladder, never as a special-cased degenerate system.
         path = os.path.join(self.base_path["molpro"], "mrcc_xmrcc_fatal.out")
         status, keywords, error, line = trsh.determine_ess_status(
             output_path=path, species_label="H", job_type="sp"
         )
         self.assertEqual(status, "errored")
-        self.assertEqual(keywords, ["MRCCDegenerateSystem"])
-        self.assertIn("xmrcc", error.lower())
+        self.assertEqual(keywords, ["MRCC"])
+        self.assertIn("mrcc", error.lower())
         self.assertIn("Fatal error in xmrcc", line)
 
         # Molpro + MRCC: ROHF orbitals incompatible with approximate CC methods
-        # (open-shell radicals). Trsh classifies and the adapter's UCCSD
-        # prefix should prevent this from happening on new runs; the keyword
-        # is the diagnostic for any legacy runs that don't have the prefix.
+        # (open-shell radicals). Trsh classifies and the adapter's UHF SCF
+        # reference should prevent this from happening on new runs; the
+        # keyword is the diagnostic for any legacy runs without that fix.
         path = os.path.join(self.base_path["molpro"], "mrcc_rohf_unsupported.out")
         status, keywords, error, line = trsh.determine_ess_status(
             output_path=path, species_label="OH", job_type="sp"
@@ -196,6 +195,17 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(status, "errored")
         self.assertEqual(keywords, ["MRCCRequiresSemicanonical"])
         self.assertIn("semicanonical", error.lower())
+
+        # Molpro + MRCC: an early semicanonical-orbitals note must not
+        # override a successful termination of a multi-step job.
+        path = os.path.join(self.base_path["molpro"], "mrcc_semicanonical_note_success.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="OH", job_type="sp"
+        )
+        self.assertEqual(status, "done")
+        self.assertEqual(keywords, list())
+        self.assertEqual(error, "")
+        self.assertEqual(line, "")
 
         # Orca
 
