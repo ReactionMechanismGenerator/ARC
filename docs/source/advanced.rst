@@ -264,7 +264,10 @@ with ATcT, but TS barriers miss experiment by several kJ/mol. Adding small
 post-(T) corrections (``δ[CCSDT]``, ``δ[CCSDT(Q)]``), plus core-valence and
 scalar-relativistic terms, closes the gap without any empirical fitting.
 
-**Four YAML forms.**
+**YAML forms.**
+Forms 1–4 below are the core input shapes (preset by name, preset with partial
+override, fully explicit recipe, and per-species override); forms 5–8 are
+worked variants of these shapes for specific protocols.
 
 **Form 1 — preset by name.** The quickest path::
 
@@ -315,8 +318,14 @@ ARC ships the following presets in ``arc/level/presets.yml``:
 
 *Focal-point analysis:*
 
-* ``FPA-min`` — minimal focal-point recipe with a two-point Helgaker CBS
-  extrapolation term and a δ[CCSDT] correction.
+* ``FPA-min`` — minimal focal-point recipe using **CBS-as-base**: the absolute
+  energy is a two-point Helgaker ``X^-3`` extrapolation of the
+  ``CCSD(T)/cc-pVTZ`` + ``cc-pVQZ`` **total** energies, with a δ[CCSDT]
+  correction on top. Note the ``X^-3`` form was derived for the correlation
+  energy; applying it to total energies technically mis-treats the
+  exponentially-converging HF component. At {T,Q} cardinals the residual is
+  small and this is common practice — the preset's reference string states
+  this explicitly so users can cite it honestly.
 
 .. note::
 
@@ -360,26 +369,30 @@ terms in the preset::
 The override dict keys are term labels (``base``, ``delta_T``, ``delta_Q``,
 ``delta_CV``, ``delta_rel``, ...). Unknown target labels raise ``InputError``.
 
-**Form 3 — fully explicit recipe, including a CBS extrapolation term.** No
-preset, complete control::
+**Form 3 — fully explicit recipe, with a CBS extrapolation as the base.** No
+preset, complete control. This is the canonical focal-point shape: the
+absolute energy is the CBS-extrapolated value, and δ-corrections stack on
+top::
 
     sp_composite:
       reference: "My recipe; DOI: 10.1234/example"
       base:
-        method: ccsd(t)-f12
-        basis: cc-pVTZ-f12
+        label: base
+        type: cbs_extrapolation
+        formula: helgaker_corr_2pt
+        components: total      # only "total" is currently supported
+        levels:
+          - {method: ccsd(t), basis: cc-pVTZ}
+          - {method: ccsd(t), basis: cc-pVQZ}
       corrections:
         - label: delta_T
           type: delta
           high: {method: ccsdt,   basis: cc-pVDZ}
           low:  {method: ccsd(t), basis: cc-pVDZ}
-        - label: cbs_corr
-          type: cbs_extrapolation
-          formula: helgaker_corr_2pt
-          components: total      # only "total" is currently supported
-          levels:
-            - {method: ccsd(t), basis: cc-pVTZ}
-            - {method: ccsd(t), basis: cc-pVQZ}
+
+The ``base`` may equally be a plain level (``base: {method: ccsd(t)-f12,
+basis: cc-pVTZ-f12}`` or a ``"method/basis"`` string) when a single anchor SP
+is preferred over an extrapolation.
 
 Term types:
 
@@ -391,7 +404,22 @@ Term types:
   (Helgaker et al. 1997), ``martin_3pt`` (Martin 1996). Alternatively,
   supply a user formula string referencing ``X``, ``Y``, ``Z`` (cardinals)
   and ``E_X``, ``E_Y``, ``E_Z`` (energies); it is parsed through a
-  whitelisted AST evaluator — no ``eval()``.
+  whitelisted AST evaluator — no ``eval()``. **A** ``cbs_extrapolation``
+  **term is accepted only as the** ``base``: with ``components: total`` (the
+  only supported value) it evaluates to an absolute energy, so listing it
+  under ``corrections`` would double-count the base — ARC rejects this with
+  an ``InputError`` pointing at CBS-as-base usage or the HEAT / W\ :sub:`n`
+  presets. The CBS base's sub-jobs are tracked under the deterministic
+  sub_labels ``base__card_<X>`` (one per cardinal).
+
+.. note::
+
+   Applying a two-point ``X^-3`` formula to **total** energies technically
+   mis-treats the HF component, which converges exponentially with cardinal
+   number rather than as ``X^-3``. At {T,Q} cardinals the residual is small
+   and extrapolating totals is common practice. ARC currently parses only
+   total electronic energies; component-wise extrapolation
+   (``components: hf`` / ``corr``) awaits adapter-level component parsing.
 
 **Form 4 — per-species override.** Three states are distinguishable::
 
@@ -417,9 +445,10 @@ These three survive ``as_dict`` / ``from_dict`` and restart-dict round-trip.
 
    A per-species ``"explicit"`` protocol affects only that species' composite
    energy: Arkane's atom energy correction (AEC) lookup still uses the
-   project-global ``sp_composite.base.level``, not the species-level base.
-   If a species needs AEC at a different level, set ``arkane_level_of_theory``
-   explicitly for the project.
+   project-global protocol's primary base level (the single base level, or
+   the largest-cardinal CBS leg), not the species-level base. If a species
+   needs AEC at a different level, set ``arkane_level_of_theory`` explicitly
+   for the project.
 
 **Form 5 — W\ :sub:`n` family for high-accuracy anchor energies.** When
 δ-corrections beyond CCSD(T) are *not* the bottleneck and you mainly want a
@@ -491,9 +520,12 @@ template when you want to deviate from a shipped preset.
 **Interactions with other parameters.**
 
 * **``sp_level``** — coexists. If you omit ``sp_level`` while setting
-  ``sp_composite``, ARC derives ``sp_level`` from ``sp_composite.base.level``
-  so downstream code that reads ``sp_level`` (opt-out species, legacy paths)
-  keeps working. If you supply ``sp_level`` explicitly, it is preserved.
+  ``sp_composite``, ARC derives ``sp_level`` from the protocol's primary base
+  level so downstream code that reads ``sp_level`` (opt-out species, legacy
+  paths) keeps working. For a single-SP base this is simply the base level;
+  for a CBS base — which has no single level — it is the **largest-cardinal**
+  leg of the extrapolation (e.g. ``ccsd(t)/cc-pvqz`` for ``FPA-min``). If you
+  supply ``sp_level`` explicitly, it is preserved.
 * **``composite_method`` (legacy)** — mutually exclusive with ``sp_composite``.
   Project fails to start with ``InputError`` if both are set.
 * **``adaptive_levels``** — mutually exclusive in the current release. Raises
@@ -504,14 +536,15 @@ template when you want to deviate from a shipped preset.
 
 **AEC / BAC behavior.**
 When ``sp_composite`` is active, ARC automatically routes Arkane's AEC lookup
-through ``sp_composite.base.level``. The BAC lookup is **skipped entirely**
-with a single warning — BAC was derived for a single LoT and is not meaningful
-on top of a δ-corrected composite. If you need BAC, compute it externally
+through the protocol's primary base level (the single base level, or the
+largest-cardinal CBS leg). The BAC lookup is **skipped entirely** with a
+single warning — BAC was derived for a single LoT and is not meaningful on
+top of a δ-corrected composite. If you need BAC, compute it externally
 against the base level and add it as a literal term in the recipe.
 
 Known limitation: per-species AEC is *not* implemented. When species carry
 mixed per-species protocols, the global AEC lookup uses the *project-level*
-``sp_composite.base.level``. Users who need per-species AEC should set
+protocol's primary base level. Users who need per-species AEC should set
 ``arkane_level_of_theory`` explicitly per project.
 
 **Restart behavior.**

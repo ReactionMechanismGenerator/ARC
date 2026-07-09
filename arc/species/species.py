@@ -65,17 +65,26 @@ logger = get_logger()
 valid_chars, minimum_barrier = settings['valid_chars'], settings['minimum_barrier']
 
 
-def _resolve_sp_composite_input(value):
+def _resolve_sp_composite_input(value: str | dict | CompositeProtocol | None | object,
+                                ) -> tuple[str, CompositeProtocol | None]:
     """
     Convert a user-supplied ``sp_composite`` value into ``(state, protocol)``.
 
-    Phase 2 three-state model:
+    Three-state model:
 
     * ``INHERIT`` sentinel → ``("inherit", None)`` — user didn't set this field.
     * ``None``             → ``("opt_out", None)`` — user wrote ``null``.
     * str / dict / CompositeProtocol → ``("explicit", CompositeProtocol)``.
 
     Raised exceptions propagate from :meth:`CompositeProtocol.from_user_input`.
+
+    Args:
+        value (str | dict | CompositeProtocol | None | object): The raw ``sp_composite`` input,
+            possibly the ``INHERIT`` sentinel.
+
+    Returns:
+        tuple[str, CompositeProtocol | None]: The species ``sp_composite`` state
+        (one of ``"inherit"``, ``"opt_out"``, ``"explicit"``) and the resolved protocol (or ``None``).
     """
     if value is INHERIT:
         return "inherit", None
@@ -435,8 +444,8 @@ class ARCSpecies(object):
             self.ts_guesses_exhausted = False
             self.e_elect = None
             # Provenance of e_elect. None for legacy SP; 'sp_composite' when the
-            # Scheduler's composite finalize sets the value. Read by Phase 4
-            # Arkane plumbing to decide whether to render the explicit-energy template.
+            # Scheduler's composite finalize sets the value. Read by the Arkane
+            # plumbing to decide whether to render the explicit-energy template.
             self.e_elect_source = None
             self.e0 = None
             self.arkane_file = None
@@ -874,7 +883,7 @@ class ARCSpecies(object):
             species_dict['sp_composite'] = None
         elif self.sp_composite_state == "explicit":
             species_dict['sp_composite'] = self.sp_composite.as_dict()
-        # Provenance flag (Phase 3). Only emit when set; legacy output stays clean.
+        # Provenance flag. Only emit when set; legacy output stays clean.
         if getattr(self, "e_elect_source", None) is not None:
             species_dict['e_elect_source'] = self.e_elect_source
         return species_dict

@@ -4,7 +4,7 @@
 Two reporting layers are exposed:
 
 * :func:`format_log_event` — formats a single structured ``[sp_composite]`` log
-  line. The Phase 2 scheduler integration calls this at every state transition
+  line. The scheduler integration calls this at every state transition
   (queue, sub-job complete, term evaluated, protocol finalized) so the ARC log
   alone tells the full story end-to-end.
 
@@ -26,8 +26,7 @@ Dependencies are limited to ``nbformat`` (already pulled in by ARC's
 ``environment.yml`` via ``conda-forge::jupyter``). No pandas, no executed
 notebooks at write time.
 
-References
-----------
+References:
 
 * Allen, East, Császár — focal-point analysis review (cited in per-preset
   markdown content produced by this module when a preset supplies it).
@@ -57,14 +56,22 @@ from arc.parser.parser import parse_e_elect
 
 
 def format_log_event(species_label: str, event: str, payload: Any) -> str:
-    """Format a single ``[sp_composite]`` log line.
+    """
+    Format a single ``[sp_composite]`` log line.
 
-    Examples
-    --------
-    >>> format_log_event("H2O", "queued", "delta_T")
-    '[sp_composite] H2O — queued: delta_T'
-    >>> format_log_event("H2O", "complete", None)
-    '[sp_composite] H2O — complete'
+    Args:
+        species_label (str): Species or TS label.
+        event (str): Event name (e.g. ``'queued'``, ``'complete'``).
+        payload (Any): Event payload — ``None``, a dict, or any stringifiable value.
+
+    Returns:
+        str: The formatted log line.
+
+    Examples:
+        >>> format_log_event("H2O", "queued", "delta_T")
+        '[sp_composite] H2O — queued: delta_T'
+        >>> format_log_event("H2O", "complete", None)
+        '[sp_composite] H2O — complete'
     """
     prefix = f"[sp_composite] {species_label} — {event}"
     if payload is None:
@@ -86,39 +93,41 @@ _VALID_KINDS = ("species", "ts")
 
 @dataclass
 class SpeciesSection:
-    """One stationary point's contribution to the provenance notebook.
+    """
+    One stationary point's contribution to the provenance notebook.
 
-    Attributes
-    ----------
-    label : str
-        Species or TS label (matches the scheduler's ``label`` key).
-    kind : {'species', 'ts'}
-        Whether this stationary point is a well (``'species'``) or a transition
-        state (``'ts'``). Controls section ordering in the notebook (species
-        first, TS second).
-    preset_name : str or None
-        Name of the preset used (e.g. ``'HEAT-345Q'``), or ``None`` if the
-        user supplied an explicit recipe.
-    reference : str
-        Citation string, ideally including a DOI. Deduplicated across sections
-        in the notebook's References block.
-    recipe : dict
-        The literal explicit recipe dict (``{"base": ..., "corrections": [...]}``)
-        used to construct ``protocol``. Written into the notebook verbatim so
-        each section is reproducible in isolation.
-    protocol : CompositeProtocol
-        The composite protocol this section reports on. Used only to
-        enumerate sub-job sub-labels and term types at write time; the
-        notebook reconstructs its own protocol from ``recipe`` via
-        :meth:`CompositeProtocol.from_user_input` when executed.
-    sub_job_paths : dict[str, str]
-        Mapping ``sub_label`` → absolute path to the QM output file. Rendered
-        into the notebook as paths relative to the notebook directory when
-        possible, absolute when the path escapes the notebook's tree.
-    flags : list[str]
-        Human-readable warnings surfaced by the scheduler (e.g. "δT exceeds
-        10 kJ/mol, potential single-reference breakdown"). Rendered verbatim
-        in the section's interpretation markdown cell.
+    Attributes:
+        label (str): Species or TS label (matches the scheduler's ``label`` key).
+        kind (str): Whether this stationary point is a well (``'species'``) or a
+            transition state (``'ts'``). Controls section ordering in the
+            notebook (species first, TS second).
+        preset_name (str | None): Name of the preset used (e.g. ``'HEAT-345Q'``),
+            or ``None`` if the user supplied an explicit recipe.
+        reference (str): Citation string, ideally including a DOI. Deduplicated
+            across sections in the notebook's References block.
+        recipe (dict): The literal explicit recipe dict
+            (``{"base": ..., "corrections": [...]}``) used to construct
+            ``protocol``. Written into the notebook verbatim so each section is
+            reproducible in isolation.
+        protocol (CompositeProtocol): The composite protocol this section
+            reports on. Used only to enumerate sub-job sub-labels and term
+            types at write time; the notebook reconstructs its own protocol
+            from ``recipe`` via :meth:`CompositeProtocol.from_user_input`
+            when executed.
+        sub_job_paths (dict[str, str]): Mapping ``sub_label`` → absolute path to
+            the QM output file. Rendered into the notebook as absolute paths,
+            each wrapped in ``_resolve_path(...)`` so that
+            ``arc.common.globalize_path`` rebases project-tree paths at
+            notebook execution time if the project directory has moved.
+        flags (list[str]): Human-readable warnings surfaced by the scheduler
+            (e.g. "δT exceeds 10 kJ/mol, potential single-reference
+            breakdown"). Rendered verbatim in the section's interpretation
+            markdown cell.
+        skipped_terms (dict[str, str]): Mapping ``term_label`` → human-readable
+            reason for delta terms the scheduler skipped as trivially zero
+            (δ≡0 by the correlated-electron-count vs. excitation-rank test).
+            Skipped terms have no sub-job paths; they render with contribution
+            0.0 and the reason in both the notebook and the YAML report.
     """
 
     label: str
@@ -129,6 +138,7 @@ class SpeciesSection:
     protocol: CompositeProtocol
     sub_job_paths: dict[str, str]
     flags: list[str] = field(default_factory=list)
+    skipped_terms: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.kind not in _VALID_KINDS:
@@ -172,35 +182,32 @@ def write_composite_notebook(
     sections: list[SpeciesSection],
     notebook_dir: str,
 ) -> None:
-    """Write (or overwrite) the project-level composite-provenance notebook.
+    """
+    Write (or overwrite) the project-level composite-provenance notebook.
 
-    Parameters
-    ----------
-    path : str
-        Destination file path, typically ``<project>/output/sp_composite.ipynb``.
-        The parent directory must exist.
-    project_name : str
-        Project name, surfaced in the title banner.
-    arc_version : str
-        ARC version string, surfaced in the title banner.
-    timestamp : str
-        ISO-8601 generation timestamp. Accepted as a parameter (rather than
-        read from the clock) so reruns produce byte-identical output — useful
-        for snapshot testing and for idempotent regeneration across a run.
-    sections : list[SpeciesSection]
-        One section per species/TS that has finalized its composite. The
-        writer sorts species-first / TS-second with alphabetical ordering
-        within each group, independent of caller order.
-    notebook_dir : str
-        The directory that will host the notebook. Used to render absolute
-        ``sub_job_paths`` as relative paths when they fall under this
-        directory, so the notebook + outputs directory can be copied together.
+    Args:
+        path (str): Destination file path, typically
+            ``<project>/output/sp_composite.ipynb``. The parent directory must exist.
+        project_name (str): Project name, surfaced in the title banner.
+        arc_version (str): ARC version string, surfaced in the title banner.
+        timestamp (str): ISO-8601 generation timestamp. Accepted as a parameter
+            (rather than read from the clock) so reruns produce byte-identical
+            output — useful for snapshot testing and for idempotent
+            regeneration across a run.
+        sections (list[SpeciesSection]): One section per species/TS that has
+            finalized its composite. The writer sorts species-first / TS-second
+            with alphabetical ordering within each group, independent of caller
+            order.
+        notebook_dir (str): The directory that will host the notebook. Accepted
+            for caller compatibility but currently unused: ``sub_job_paths``
+            are rendered as absolute paths wrapped in ``_resolve_path(...)``,
+            which rebases them via ``arc.common.globalize_path`` at notebook
+            execution time — more robust than pre-rendered relative paths when
+            the project tree is moved or restructured.
 
-    Raises
-    ------
-    arc.exceptions.InputError
-        If any ``SpeciesSection.kind`` is not in ``{'species', 'ts'}``.
-        (The dataclass also validates, but we re-check defensively.)
+    Raises:
+        InputError: If any ``SpeciesSection.kind`` is not in ``{'species', 'ts'}``.
+            (The dataclass also validates, but we re-check defensively.)
     """
     for s in sections:
         if s.kind not in _VALID_KINDS:
@@ -225,7 +232,7 @@ def write_composite_notebook(
 
     # --- Per-section cells ------------------------------------------------ #
     for section in ordered:
-        cells.extend(_section_cells(section, notebook_dir))
+        cells.extend(_section_cells(section))
 
     # --- Project summary + references ------------------------------------- #
     cells.append(_project_summary_header_cell())
@@ -353,17 +360,36 @@ def _resolve_path(p):
     return arc_common.globalize_path(p, _NB_PROJECT_DIRECTORY)
 
 
-def _format_breakdown(protocol, energies_kJmol):
-    """Render a fixed-width per-term breakdown table as a string."""
+def _format_breakdown(protocol, energies_kJmol, skipped_terms=None):
+    """Render a fixed-width per-term breakdown table as a string.
+
+    Extrapolated terms get an extra footnote line spelling out which formula
+    was applied to which sub-job legs. Terms in ``skipped_terms`` (label →
+    reason) were skipped by the scheduler as trivially zero: they render with
+    contribution 0.0 and a footnote carrying the reason.
+    """
+    skipped_terms = skipped_terms or {}
     hdr = f"{'term':<20} {'type':<22} {'contribution (kJ/mol)':>24}"
     rule = "-" * len(hdr)
     lines = [hdr, rule]
     for term in protocol.terms:
-        contribution = term.evaluate(energies_kJmol)
+        contribution = (
+            0.0 if term.label in skipped_terms else term.evaluate(energies_kJmol)
+        )
         lines.append(
             f"{term.label:<20} {type(term).__name__:<22} {contribution:>24.6f}"
         )
     lines.append(rule)
+    for term in protocol.terms:
+        if term.label in skipped_terms:
+            lines.append(f"{term.label}: {skipped_terms[term.label]}")
+            continue
+        formula = getattr(term, "formula", None)
+        if formula is not None:
+            legs = [sub_label for sub_label, _level in term.required_levels()]
+            lines.append(
+                f"{term.label}: formula {formula!r} applied to legs {legs}"
+            )
     return "\\n".join(lines)
 '''
 
@@ -377,14 +403,14 @@ def _setup_cell():
 # --------------------------------------------------------------------------- #
 
 
-def _section_cells(section: SpeciesSection, notebook_dir: str) -> list[Any]:
+def _section_cells(section: SpeciesSection) -> list[Any]:
     key = f"{section.kind}:{section.label}"
     kind_label = "Species" if section.kind == "species" else "TS"
     return [
         _md(f"## {kind_label}: {section.label}\n", _cell_id(key, "header")),
         _md(_protocol_summary_markdown(section), _cell_id(key, "summary")),
         _code(_recipe_code(section), _cell_id(key, "recipe")),
-        _code(_paths_code(section, notebook_dir), _cell_id(key, "paths")),
+        _code(_paths_code(section), _cell_id(key, "paths")),
         _code(_parse_code(section), _cell_id(key, "parse")),
         _code(_breakdown_code(section), _cell_id(key, "breakdown")),
         _code(_final_code(section), _cell_id(key, "final")),
@@ -427,8 +453,9 @@ def _recipe_code(section: SpeciesSection) -> str:
     )
 
 
-def _paths_code(section: SpeciesSection, notebook_dir: str) -> str:
-    """Render the per-section ``paths`` dict as a code-cell source.
+def _paths_code(section: SpeciesSection) -> str:
+    """
+    Render the per-section ``paths`` dict as a code-cell source.
 
     Each value is wrapped in ``_resolve_path(...)`` (defined in the shared
     setup cell, which calls ``arc.common.globalize_path``) so absolute paths
@@ -436,18 +463,25 @@ def _paths_code(section: SpeciesSection, notebook_dir: str) -> str:
     project directory is moved or the notebook is opened on a different
     machine. Paths that don't match those prefixes flow through unchanged.
 
-    The ``notebook_dir`` parameter is kept on the signature for API stability
-    (callers in the writer pass it positionally) but is no longer used to
-    pre-render relative paths — runtime rebase via ``_resolve_path`` is more
-    robust because it handles moves the relative-path approach can't (e.g.,
-    paths outside the project tree, paths whose relative offset to the
-    notebook changes when the project tree is restructured).
+    The cell also declares the section's ``skipped_terms`` dict (term label →
+    reason) so the parse / breakdown / final cells can account for delta terms
+    the scheduler skipped as trivially zero (their legs were never run, so
+    there are no paths to parse).
+
+    Args:
+        section (SpeciesSection): The section whose ``sub_job_paths`` to render.
+
+    Returns:
+        str: Source for the section's paths-dict code cell.
     """
-    del notebook_dir  # no longer used; kept on the signature for API stability
     entries = []
     for sub_label, abs_path in sorted(section.sub_job_paths.items()):
         entries.append(f"    {sub_label!r}: _resolve_path({abs_path!r}),")
-    return "paths = {\n" + "\n".join(entries) + "\n}"
+    skipped = []
+    for term_label, reason in sorted(section.skipped_terms.items()):
+        skipped.append(f"    {term_label!r}: {reason!r},")
+    return ("paths = {\n" + "\n".join(entries) + "\n}\n"
+            "skipped_terms = {\n" + "\n".join(skipped) + "\n}")
 
 
 def _parse_code(section: SpeciesSection) -> str:
@@ -455,9 +489,11 @@ def _parse_code(section: SpeciesSection) -> str:
         "# Parse the electronic energy from each sub-job's QM output file.\n"
         "# arc_parser.parse_e_elect dispatches on ESS and returns kJ/mol.\n"
         "# Also verifies that `paths` covers every sub_label the protocol\n"
-        "# requires — a missing entry here would fail protocol.evaluate later\n"
-        "# with a less-helpful KeyError.\n"
-        "_required_sub_labels = {sl for _t, sl, _l in protocol.iter_required_jobs()}\n"
+        "# requires — a missing entry here would fail the term evaluation later\n"
+        "# with a less-helpful KeyError. Terms in `skipped_terms` contribute\n"
+        "# exactly 0.0 by construction (δ≡0); their legs were never run.\n"
+        "_required_sub_labels = {sl for t, sl, _l in protocol.iter_required_jobs()\n"
+        "                        if t not in skipped_terms}\n"
         "_missing_paths = sorted(_required_sub_labels - set(paths.keys()))\n"
         "assert not _missing_paths, "
         "f'paths is missing required sub_labels: {_missing_paths}'\n"
@@ -475,7 +511,7 @@ def _parse_code(section: SpeciesSection) -> str:
 def _breakdown_code(section: SpeciesSection) -> str:
     return (
         "# Per-term breakdown: what each term contributes to the composite total.\n"
-        "print(_format_breakdown(protocol, energies_kJmol))"
+        "print(_format_breakdown(protocol, energies_kJmol, skipped_terms))"
     )
 
 
@@ -486,7 +522,10 @@ def _final_code(section: SpeciesSection) -> str:
     # or backslashes cannot break the cell's syntax.
     label_repr = repr(section.label)
     return (
-        "e_total_kJmol = protocol.evaluate(energies_kJmol)\n"
+        "e_total_kJmol = sum(\n"
+        "    0.0 if term.label in skipped_terms else term.evaluate(energies_kJmol)\n"
+        "    for term in protocol.terms\n"
+        ")\n"
         f"_RESULTS[{label_repr}] = {{\n"
         f"    'kind': {section.kind!r},\n"
         f"    'protocol_name': {section.preset_name!r},\n"
@@ -593,7 +632,8 @@ def build_species_report_dict(
     arc_version: str,
     arc_commit: str,
 ) -> dict[str, Any]:
-    """Assemble the per-species sp_composite report as a plain dict.
+    """
+    Assemble the per-species sp_composite report as a plain dict.
 
     All energy values are computed by re-parsing the QM output files referenced
     in ``section.sub_job_paths`` via :func:`arc.parser.parser.parse_e_elect`
@@ -607,38 +647,37 @@ def build_species_report_dict(
     downstream tooling reading this report is consistent with the run's
     output.yml / restart.yml.
 
-    Parameters
-    ----------
-    section : SpeciesSection
-        The reporting handoff struct populated by the scheduler at
-        finalization. Carries protocol, recipe, sub-job paths, flags.
-    e_elect_kj_per_mol : float
-        The final electronic energy ARC recorded for this species (kJ/mol).
-    timestamp : str
-        ISO-8601 string. Caller supplies for determinism (tests pin it).
-    arc_version, arc_commit : str
-        Provenance identifiers.
+    Args:
+        section (SpeciesSection): The reporting handoff struct populated by the
+            scheduler at finalization. Carries protocol, recipe, sub-job paths, flags.
+        e_elect_kj_per_mol (float): The final electronic energy ARC recorded
+            for this species (kJ/mol).
+        timestamp (str): ISO-8601 string. Caller supplies for determinism
+            (tests pin it).
+        arc_version (str): Provenance identifier.
+        arc_commit (str): Provenance identifier.
 
-    Returns
-    -------
-    dict
-        A plain dict ready for ``yaml.safe_dump`` or
+    Returns:
+        dict: A plain dict ready for ``yaml.safe_dump`` or
         :func:`write_species_report_yaml`.
     """
     energies_kj = {sl: parse_e_elect(p) for sl, p in section.sub_job_paths.items()}
 
-    base_term = section.protocol.base
-    base_sub_label, base_level = base_term.required_levels()[0]
-    base_block = {
-        "sub_label": base_sub_label,
-        "level": base_level.simple(),
-        "energy_kj_per_mol": energies_kj[base_sub_label],
-        "energy_hartree": energies_kj[base_sub_label] / E_h_kJmol,
-        "path": section.sub_job_paths[base_sub_label],
-    }
-
-    terms_block: list[dict[str, Any]] = []
-    for term in section.protocol.corrections:
+    def _term_block(term: Any) -> dict[str, Any]:
+        """Render one term (base or correction) polymorphically: contribution,
+        per-leg sub-jobs, and — for extrapolated terms — which formula was
+        applied to those legs. Terms the scheduler skipped as trivially zero
+        render with contribution 0.0, the skip reason, and no sub-jobs."""
+        if term.label in section.skipped_terms:
+            return {
+                "label": term.label,
+                "type": type(term).__name__,
+                "contribution_kj_per_mol": 0.0,
+                "contribution_hartree": 0.0,
+                "skipped": True,
+                "skip_reason": section.skipped_terms[term.label],
+                "sub_jobs": [],
+            }
         contribution_kj = term.evaluate(energies_kj)
         sub_jobs: list[dict[str, Any]] = []
         for sub_label, level in term.required_levels():
@@ -649,13 +688,20 @@ def build_species_report_dict(
                 "energy_hartree": energies_kj[sub_label] / E_h_kJmol,
                 "path": section.sub_job_paths[sub_label],
             })
-        terms_block.append({
+        block: dict[str, Any] = {
             "label": term.label,
             "type": type(term).__name__,
             "contribution_kj_per_mol": contribution_kj,
             "contribution_hartree": contribution_kj / E_h_kJmol,
             "sub_jobs": sub_jobs,
-        })
+        }
+        formula = getattr(term, "formula", None)
+        if formula is not None:
+            block["formula"] = formula
+        return block
+
+    base_block = _term_block(section.protocol.base)
+    terms_block = [_term_block(term) for term in section.protocol.corrections]
 
     return {
         "species": section.label,
@@ -691,13 +737,24 @@ def write_species_report_yaml(
     arc_version: str,
     arc_commit: str,
 ) -> None:
-    """Build and write the per-species sp_composite YAML report.
+    """
+    Build and write the per-species sp_composite YAML report.
 
     Creates the parent directory if missing. Output is deterministic: keys are
     written in insertion order (Python 3.7+ dicts), flow style is block (the
     YAML default), and ``sort_keys=False`` preserves the schema's natural
     reading order (species → protocol → units → base → terms → final → flags).
     Two writes with the same inputs produce byte-identical files.
+
+    Args:
+        path (str): Destination file path.
+        section (SpeciesSection): The reporting handoff struct populated by the
+            scheduler at finalization.
+        e_elect_kj_per_mol (float): The final electronic energy ARC recorded
+            for this species (kJ/mol).
+        timestamp (str): ISO-8601 string. Caller supplies for determinism.
+        arc_version (str): Provenance identifier.
+        arc_commit (str): Provenance identifier.
     """
     report = build_species_report_dict(
         section=section,
@@ -707,5 +764,7 @@ def write_species_report_yaml(
         arc_commit=arc_commit,
     )
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    # Raw yaml.safe_dump (not arc.common.save_yaml_file) because the report
+    # schema requires sort_keys=False, which the common helper does not expose.
     with open(path, "w") as fh:
         yaml.safe_dump(report, fh, sort_keys=False, default_flow_style=False)

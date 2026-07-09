@@ -11,23 +11,23 @@ import datetime
 import logging
 import os
 import shutil
-import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import nbformat
+import yaml
 
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
+from arc.common import ARC_PATH, ARC_TESTING_PATH, VERSION, almost_equal_coords_lists, initialize_job_types, read_yaml_file
 from arc.job.adapters.common import default_incore_adapters, ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular
 from arc.job.factory import job_factory
 from arc.job.zombie import ZOMBIE_GRACE_SECONDS
 from arc.level import Level
 from arc.level.protocol import CompositeProtocol
 from arc.plotter import save_conformers_file
-from arc.scheduler import (Scheduler, SchedulerError, species_has_freq, species_has_geo, species_has_sp,
+from arc.scheduler import (Scheduler, SchedulerError, ZOMBIE_RECHECK_SECONDS, count_correlated_electrons,
+                           count_frozen_core_orbitals, species_has_freq, species_has_geo, species_has_sp,
                            species_has_sp_and_freq)
 from arc.imports import settings
 from arc.reaction import ARCReaction
@@ -1534,7 +1534,7 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             ],
         }
 
-    def _make_scheduler(self, species_list, sp_composite, output=None):
+    def _make_scheduler(self, species_list, sp_composite, output=None, job_types=None):
         """Build a Scheduler with run_job patched to a no-op.
 
         We patch at the *class* level because the Phase 3.5 restart kick-start
@@ -1546,6 +1546,7 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
                 project='sp_composite_orch',
                 ess_settings=self.ess_settings,
                 species_list=species_list,
+                job_types=job_types,
                 project_directory=self.project_directory,
                 opt_level=Level(repr=default_levels_of_theory['opt']),
                 freq_level=Level(repr=default_levels_of_theory['freq']),
@@ -1579,8 +1580,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -1607,8 +1608,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -1665,6 +1666,92 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
         active = sched._composite_for('H2')
         self.assertIsNotNone(active)
         self.assertEqual(active.base.level.method, "hf")
+
+    @staticmethod
+    def _fpa_like_recipe():
+        """CBS-as-base recipe: two-point CBS base + one delta correction."""
+        return {
+            "base": {"label": "base", "type": "cbs_extrapolation",
+                     "formula": "helgaker_corr_2pt",
+                     "levels": [{"method": "ccsd(t)", "basis": "cc-pVTZ"},
+                                {"method": "ccsd(t)", "basis": "cc-pVQZ"}]},
+            "corrections": [
+                {"label": "delta_T", "type": "delta",
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
+            ],
+        }
+
+    def test_cbs_base_seeds_deterministic_sub_labels(self):
+        """A CBS base seeds one pending sub_label per cardinal — stable keys
+        for restart rehydration."""
+        protocol = CompositeProtocol.from_user_input(self._fpa_like_recipe())
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'), 'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+        sched._seed_composite_pending('H2')
+        self.assertEqual(set(sched._sp_composite_pending['H2'].keys()),
+                         {"base__card_3", "base__card_4",
+                          "delta_T__high", "delta_T__low"})
+
+    def test_cbs_base_spawns_one_sp_job_per_cardinal(self):
+        protocol = CompositeProtocol.from_user_input(self._fpa_like_recipe())
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'), 'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+        spawned_levels = []
+        sched.run_job = lambda *args, **kwargs: spawned_levels.append(kwargs['level_of_theory'])
+        sched._seed_composite_pending('H2')
+        sched._spawn_composite_pending('H2')
+        spawned_bases = sorted(lvl.basis for lvl in spawned_levels
+                               if lvl.method == 'ccsd(t)' and lvl.basis != 'cc-pvdz')
+        self.assertEqual(spawned_bases, ['cc-pvqz', 'cc-pvtz'])
+        self.assertEqual(len(spawned_levels), 4)
+
+    def test_cbs_base_finalizes_with_extrapolated_energy(self):
+        tmp = os.path.join(self.project_directory, "fx_cbs_base")
+        os.makedirs(tmp, exist_ok=True)
+        protocol = CompositeProtocol.from_user_input(self._fpa_like_recipe())
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'), 'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+        energies_H = {"base__card_3": -1.170, "base__card_4": -1.172,
+                      "delta_T__high": -1.15, "delta_T__low": -1.12}
+        paths = self._seed_protocol_fixtures(tmp, protocol, energies_H)
+        sched.post_sp_actions('H2', paths["base__card_4"], protocol.base.levels[1])
+        self.assertFalse(sched.output['H2']['job_types']['sp_composite'])
+        sched.post_sp_actions('H2', paths["base__card_3"], protocol.base.levels[0])
+        sched.post_sp_actions('H2', paths["delta_T__high"], protocol.corrections[0].high)
+        sched.post_sp_actions('H2', paths["delta_T__low"], protocol.corrections[0].low)
+        self.assertTrue(sched.output['H2']['job_types']['sp_composite'])
+        self.assertEqual(spc.e_elect_source, "sp_composite")
+        recorded = sched.output['H2']['paths']['sp_composite']
+        self.assertEqual(set(recorded.keys()),
+                         {"base__card_3", "base__card_4",
+                          "delta_T__high", "delta_T__low"})
+        parsed = {sl: parser.parse_e_elect(p) for sl, p in paths.items()}
+        e_cbs = (27 * parsed["base__card_3"] - 64 * parsed["base__card_4"]) / (27 - 64)
+        expected = e_cbs + parsed["delta_T__high"] - parsed["delta_T__low"]
+        self.assertAlmostEqual(spc.e_elect, expected, places=6)
+        self.assertAlmostEqual(spc.e_elect, protocol.evaluate(parsed), places=10)
+
+    def test_run_sp_job_defaults_to_largest_cardinal_for_cbs_base(self):
+        """run_sp_job with no explicit level runs the protocol's primary base
+        level — the largest-cardinal CBS leg."""
+        protocol = CompositeProtocol.from_user_input(self._fpa_like_recipe())
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'), 'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+        spawned_levels = []
+        sched.run_job = lambda *args, **kwargs: spawned_levels.append(kwargs['level_of_theory'])
+        sched.run_sp_job('H2')
+        self.assertEqual(len(spawned_levels), 1)
+        self.assertEqual(spawned_levels[0].method, 'ccsd(t)')
+        self.assertEqual(spawned_levels[0].basis, 'cc-pvqz')
 
     def test_opt_out_species_uses_global_sp_level(self):
         recipe = {"base": {"method": "hf", "basis": "cc-pVTZ"}, "corrections": []}
@@ -1739,8 +1826,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -1775,8 +1862,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -1808,8 +1895,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -1835,8 +1922,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -1878,7 +1965,7 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
         # Kick-start must have spawned exactly the two missing unique Levels.
         self.assertEqual(len(spawned_levels), 2)
         spawned_methods = sorted(lvl.method for lvl in spawned_levels)
-        self.assertEqual(spawned_methods, ["ccsd(t)", "ccsdt"])
+        self.assertEqual(spawned_methods, ["ccsd(t)", "mp2"])
         # Pending dict reflects what's queued.
         self.assertEqual(set(sched2._sp_composite_pending['H2'].keys()),
                          {"delta_T__high", "delta_T__low"})
@@ -1937,8 +2024,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -1989,8 +2076,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -2039,7 +2126,7 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
                          {"delta_T__low"})
         self.assertEqual(sched2.output['H2']['job_types']['sp_composite'], False)
         self.assertEqual(len(spawned_levels), 1)
-        self.assertEqual(spawned_levels[0].method, "ccsd(t)")
+        self.assertEqual(spawned_levels[0].method, "mp2")
         # Replace the file and re-complete → protocol finalizes normally.
         sched2.run_job = lambda *args, **kwargs: None
         self._write_gaussian_fixture(paths["delta_T__low"], -1.12)
@@ -2108,8 +2195,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -2178,8 +2265,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -2224,8 +2311,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -2325,144 +2412,176 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
         self.assertEqual(sched.running_jobs['H2'], [])
         self.assertIsInstance(sched.output['H2']['paths']['sp_composite'], dict)
 
-    def test_mrcc_degenerate_high_leg_falls_back_to_low_leg_path(self):
-        """When a δ-term high-leg sub-job errors with ``MRCCDegenerateSystem``
-        (atomic H / H2 at CCSDT(Q): MRCC's xmrcc bails because the requested
-        excitation rank exceeds the determinant space), the trsh ladder
-        cannot help — the cause is intrinsic to the physics, not the
-        numerics. The composite framework must short-circuit by reusing the
-        sister low-leg's output path. The two energies are degenerate by
-        symmetry (all CC ranks reduce to HF for ≤2-electron systems), so
-        δ = 0, which is the correct physical answer."""
-        tmp = os.path.join(self.project_directory, "fx_mrcc_degenerate")
+    # --- proactive δ≡0 skip for trivially-zero delta corrections ------------ #
+
+    @staticmethod
+    def _mono_species(label, smiles, symbol, isotope):
+        """A monoatomic ARCSpecies with a final geometry."""
+        spc = ARCSpecies(label=label, smiles=smiles)
+        spc.final_xyz = {'symbols': (symbol,), 'coords': ((0., 0., 0.),),
+                         'isotopes': (isotope,)}
+        return spc
+
+    @staticmethod
+    def _ch4_species(label='CH4'):
+        """A CH4 ARCSpecies (10 electrons, 1 frozen-core orbital, n_corr=8)."""
+        spc = ARCSpecies(label=label, smiles='C')
+        spc.final_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                         'coords': ((0., 0., 0.), (0.63, 0.63, 0.63),
+                                    (-0.63, -0.63, 0.63), (-0.63, 0.63, -0.63),
+                                    (0.63, -0.63, -0.63)),
+                         'isotopes': (12, 1, 1, 1, 1)}
+        return spc
+
+    def test_h_atom_heat_deltas_skipped_finalizes_base_only(self):
+        """H atom (n_corr=1) through a HEAT-style recipe: both δ terms are
+        decided trivially zero at term-expansion time — neither leg is queued —
+        and the composite finalizes to the base energy alone, with the skip
+        reason surfaced in the log and the species report."""
+        tmp = os.path.join(self.project_directory, "fx_skip_h_atom")
         os.makedirs(tmp, exist_ok=True)
-        recipe = {
-            "base": {"method": "hf", "basis": "cc-pVTZ"},
-            "corrections": [
-                {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
-            ],
-        }
-        protocol = CompositeProtocol.from_user_input(recipe)
-        spc = ARCSpecies(label='H2', smiles='[H][H]')
-        spc.final_xyz = {'symbols': ('H', 'H'),
-                         'coords': ((0, 0, 0), (0, 0, 0.74)),
-                         'isotopes': (1, 1)}
-        sched = self._make_scheduler([spc], sp_composite=protocol)
-        # Base + low-leg complete normally.
+        protocol = CompositeProtocol.from_user_input(self._heat345q_like_recipe())
+        spc = self._mono_species('Hskip', '[H]', 'H', 1)
+        sched = self._make_scheduler([spc], sp_composite=protocol,
+                                     job_types=initialize_job_types())
+        self.assertEqual(set(sched._sp_composite_pending['Hskip'].keys()), {'base'})
+        self.assertEqual(set(sched._sp_composite_skipped['Hskip'].keys()),
+                         {'delta_T', 'delta_Q'})
+        spawned = []
+        sched.run_job = lambda *a, **kw: spawned.append(kw.get('level_of_theory'))
+        with self.assertLogs(logger='arc', level=logging.INFO) as cm:
+            sched._seed_composite_pending('Hskip')
+            sched._spawn_composite_pending('Hskip')
+        joined = '\n'.join(cm.output)
+        self.assertIn('δ≡0', joined)
+        self.assertIn('skipped', joined)
+        self.assertEqual(len(spawned), 1, 'Only the base SP may be queued.')
+        self.assertEqual(spawned[0], protocol.base.level)
         base_path = os.path.join(tmp, "base.out")
-        self._write_gaussian_fixture(base_path, -0.5)
-        sched.post_sp_actions('H2', base_path, protocol.base.level)
-        low_path = os.path.join(tmp, "delta_T__low.out")
-        self._write_gaussian_fixture(low_path, -0.5)  # HF for atomic H
-        sched.post_sp_actions('H2', low_path, protocol.corrections[0].low)
-        # High leg (CCSDT/cc-pVDZ) "fails" with the MRCC degenerate-system
-        # keyword. Build a JobAdapter stub that mimics what check_sp_job sees.
-
-        class _ErroredJobStub:
-            def __init__(self, level, output_path):
-                self.level = level
-                self.local_path_to_output_file = output_path
-                self.job_status = ['done', {
-                    'status': 'errored',
-                    'keywords': ['MRCCDegenerateSystem'],
-                    'error': 'MRCC xmrcc fatal',
-                    'line': 'Fatal error in xmrcc.',
-                }]
-                self.conformer = None
-                self.job_name = 'sp_a999'
-                self.execution_type = 'queue'
-                self.job_id = 'a999'
-
-        # Provide a placeholder output file (it would normally be the
-        # truncated MRCC log; the framework should not parse it).
-        high_failed_path = os.path.join(tmp, "delta_T__high_FAILED.out")
-        with open(high_failed_path, 'w') as fh:
-            fh.write("Fatal error in xmrcc.\n")
-        bad_job = _ErroredJobStub(
-            level=protocol.corrections[0].high,
-            output_path=high_failed_path,
-        )
-        sched.check_sp_job(label='H2', job=bad_job)
-        # The framework must have substituted the low-leg path for the high
-        # leg and finalized the composite (δ_T = 0, e_elect = base energy).
-        self.assertEqual(
-            sched.output['H2']['paths']['sp_composite']['delta_T__high'],
-            low_path,
-            'High-leg path must be substituted with low-leg path on '
-            'MRCCDegenerateSystem fallback.',
-        )
-        self.assertTrue(sched.output['H2']['job_types']['sp_composite'])
+        self._write_gaussian_fixture(base_path, -0.499)
+        sched.post_sp_actions('Hskip', base_path, protocol.base.level)
+        self.assertTrue(sched.output['Hskip']['job_types']['sp_composite'])
         self.assertEqual(spc.e_elect_source, 'sp_composite')
-        # Energy contributions: base = parsed from base.out, δ_T = 0 by
-        # construction. Final = base.
-        parsed_base = parser.parse_e_elect(base_path)
-        self.assertAlmostEqual(spc.e_elect, parsed_base, places=6)
+        self.assertAlmostEqual(spc.e_elect, parser.parse_e_elect(base_path), places=6)
+        self.assertEqual(len(spawned), 1, 'No δ legs may be queued after the base.')
+        # Provenance: the section and the YAML report carry the skip.
+        section = sched._sp_composite_sections['Hskip']
+        self.assertIn('delta_T', section.skipped_terms)
+        self.assertIn('δ≡0', section.skipped_terms['delta_Q'])
+        report_path = os.path.join(self.project_directory, "output", "Species",
+                                   "Hskip", "sp_composite_report.yml")
+        with open(report_path) as fh:
+            report = yaml.safe_load(fh)
+        for term in report['terms']:
+            self.assertTrue(term['skipped'])
+            self.assertEqual(term['contribution_kj_per_mol'], 0.0)
+            self.assertIn('δ≡0', term['skip_reason'])
 
-    def test_mrcc_degenerate_low_leg_failure_does_not_short_circuit(self):
-        """If the LOW leg fails with MRCCDegenerateSystem (no sister to fall
-        back on), the framework must NOT silently substitute. The species
-        should not finalize from this path; troubleshoot_ess gets called on
-        the assumption a higher level can sort it out."""
-        tmp = os.path.join(self.project_directory, "fx_mrcc_low_fail")
-        os.makedirs(tmp, exist_ok=True)
-        recipe = {
-            "base": {"method": "hf", "basis": "cc-pVTZ"},
-            "corrections": [
-                {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
-            ],
-        }
-        protocol = CompositeProtocol.from_user_input(recipe)
-        spc = ARCSpecies(label='H2', smiles='[H][H]')
-        spc.final_xyz = {'symbols': ('H', 'H'),
-                         'coords': ((0, 0, 0), (0, 0, 0.74)),
-                         'isotopes': (1, 1)}
+    def test_he_heat_deltas_skipped(self):
+        """He (n_corr=2): both HEAT δ terms are trivially zero and skipped."""
+        protocol = CompositeProtocol.from_user_input(self._heat345q_like_recipe())
+        spc = self._mono_species('He', '[He]', 'He', 4)
+        sched = self._make_scheduler([spc], sp_composite=protocol,
+                                     job_types=initialize_job_types())
+        self.assertEqual(set(sched._sp_composite_pending['He'].keys()), {'base'})
+        self.assertEqual(set(sched._sp_composite_skipped['He'].keys()),
+                         {'delta_T', 'delta_Q'})
+
+    def test_ch4_deltas_not_skipped_all_legs_queued(self):
+        """CH4 (n_corr=8): no δ term is trivially zero — every leg is queued."""
+        protocol = CompositeProtocol.from_user_input(self._heat345q_like_recipe())
+        spc = self._ch4_species()
         sched = self._make_scheduler([spc], sp_composite=protocol)
-        # Patch troubleshoot_ess to a recording stub so we can verify it
-        # gets called for low-leg failures.
+        self.assertEqual(sched._sp_composite_skipped['CH4'], {})
+        self.assertEqual(set(sched._sp_composite_pending['CH4'].keys()),
+                         {'base', 'delta_T__high', 'delta_T__low',
+                          'delta_Q__high', 'delta_Q__low'})
+        spawned = []
+        sched.run_job = lambda *a, **kw: spawned.append(kw.get('level_of_theory'))
+        sched._spawn_composite_pending('CH4')
+        # 5 sub_labels over 4 unique Levels (delta_T__high == delta_Q__low).
+        self.assertEqual(len(spawned), 4)
+
+    def test_restart_does_not_requeue_skipped_legs(self):
+        """Restart-safety: the skip decision is deterministic from species +
+        protocol, so rehydration re-derives it — skipped legs are not requeued
+        and the finalized species' report section is rebuilt without warnings."""
+        tmp = os.path.join(self.project_directory, "fx_skip_restart")
+        os.makedirs(tmp, exist_ok=True)
+        protocol = CompositeProtocol.from_user_input(self._heat345q_like_recipe())
+        spc = self._mono_species('Hrestart', '[H]', 'H', 1)
+        sched1 = self._make_scheduler([spc], sp_composite=protocol,
+                                      job_types=initialize_job_types())
+        base_path = os.path.join(tmp, "base.out")
+        self._write_gaussian_fixture(base_path, -0.499)
+        sched1.post_sp_actions('Hrestart', base_path, protocol.base.level)
+        self.assertTrue(sched1.output['Hrestart']['job_types']['sp_composite'])
+        output_snapshot = sched1.output
+        spc2 = self._mono_species('Hrestart', '[H]', 'H', 1)
+        sched2 = self._make_scheduler([spc2], sp_composite=protocol,
+                                      output=output_snapshot,
+                                      job_types=initialize_job_types())
+        self.assertEqual(sched2._sp_composite_pending['Hrestart'], {})
+        self.assertEqual(set(sched2._sp_composite_skipped['Hrestart'].keys()),
+                         {'delta_T', 'delta_Q'})
+        self.assertIn('Hrestart', sched2._sp_composite_sections)
+
+    @staticmethod
+    def _errored_mrcc_job_stub(level):
+        """Build a minimal errored-job stub carrying the generic MRCC keyword."""
+        return SimpleNamespace(
+            level=level,
+            local_path_to_output_file='/tmp/fake.out',
+            job_status=['done', {'status': 'errored',
+                                 'keywords': ['MRCC'],
+                                 'error': 'MRCC terminated with a fatal error',
+                                 'line': 'Fatal error in mrcc.'}],
+            conformer=None,
+            job_name='sp_a999',
+            execution_type='queue',
+            job_id='a999',
+        )
+
+    def test_mrcc_fatal_on_real_species_routes_to_trsh_not_zeroed(self):
+        """A 'Fatal error in mrcc' on a real polyatomic species' high leg is a
+        mundane crash (OOM, disk, internal error) — it must land in
+        troubleshoot_ess and the δ term must NOT be zeroed or substituted."""
+        tmp = os.path.join(self.project_directory, "fx_mrcc_trsh")
+        os.makedirs(tmp, exist_ok=True)
+        protocol = CompositeProtocol.from_user_input(self._heat345q_like_recipe())
+        spc = self._ch4_species('CH4trsh')
+        sched = self._make_scheduler([spc], sp_composite=protocol)
         called = []
         sched.troubleshoot_ess = lambda *args, **kwargs: called.append(
             kwargs.get('job').job_name if kwargs.get('job') else 'unknown')
-
-        class _ErroredJobStub:
-            def __init__(self, level):
-                self.level = level
-                self.local_path_to_output_file = '/tmp/fake.out'
-                self.job_status = ['done', {
-                    'status': 'errored',
-                    'keywords': ['MRCCDegenerateSystem'],
-                    'error': 'MRCC xmrcc fatal',
-                    'line': 'Fatal error in xmrcc.',
-                }]
-                self.conformer = None
-                self.job_name = 'sp_a999'
-                self.execution_type = 'queue'
-                self.job_id = 'a999'
-
-        bad_job = _ErroredJobStub(level=protocol.corrections[0].low)
-        sched.check_sp_job(label='H2', job=bad_job)
-        self.assertEqual(called, ['sp_a999'],
-                         'Low-leg MRCC failure must not be short-circuited.')
-        self.assertNotIn('delta_T__low',
-                         sched.output['H2']['paths']['sp_composite'])
+        base_path = os.path.join(tmp, "base.out")
+        self._write_gaussian_fixture(base_path, -40.5)
+        sched.post_sp_actions('CH4trsh', base_path, protocol.base.level)
+        low_path = os.path.join(tmp, "delta_T__low.out")
+        self._write_gaussian_fixture(low_path, -40.6)
+        sched.post_sp_actions('CH4trsh', low_path, protocol.corrections[0].low)
+        bad_job = self._errored_mrcc_job_stub(level=protocol.corrections[0].high)
+        sched.check_sp_job(label='CH4trsh', job=bad_job)
+        self.assertEqual(called, ['sp_a999'], 'MRCC fatals must route to trsh.')
+        recorded = sched.output['CH4trsh']['paths']['sp_composite']
+        self.assertNotIn('delta_T__high', recorded,
+                         'The failed high leg must not be substituted or zeroed.')
+        self.assertIn('delta_T__high', sched._sp_composite_pending['CH4trsh'])
+        self.assertFalse(sched.output['CH4trsh']['job_types']['sp_composite'])
 
     def test_species_report_yaml_written_on_finalize(self):
         """Per-species sp_composite YAML report lands at
         ``<project>/output/Species/<label>/sp_composite_report.yml`` when the
         composite finalizes, and the file parses to a dict whose ``final``
         block matches what ARC recorded on the species."""
-        import yaml
         tmp = os.path.join(self.project_directory, "fx_species_report")
         os.makedirs(tmp, exist_ok=True)
         recipe = {
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -2499,7 +2618,6 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
     def test_species_report_uses_TSs_subdir_for_transition_states(self):
         """Transition states land under ``output/TSs/<label>/...``, not
         ``output/Species/...``."""
-        import yaml
         tmp = os.path.join(self.project_directory, "fx_ts_report")
         os.makedirs(tmp, exist_ok=True)
         recipe = {"base": {"method": "hf", "basis": "cc-pVTZ"}, "corrections": []}
@@ -2596,48 +2714,32 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
     def test_term_evaluated_log_event_per_term(self):
         tmp = os.path.join(self.project_directory, "fx_term_log")
         os.makedirs(tmp, exist_ok=True)
-        recipe = {
-            "base": {"method": "hf", "basis": "cc-pVTZ"},
-            "corrections": [
-                {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
-                {"label": "cbs_corr", "type": "cbs_extrapolation",
-                 "formula": "helgaker_corr_2pt",
-                 "levels": [{"method": "ccsd(t)", "basis": "cc-pVTZ"},
-                            {"method": "ccsd(t)", "basis": "cc-pVQZ"}]},
-            ],
-        }
-        protocol = CompositeProtocol.from_user_input(recipe)
+        protocol = CompositeProtocol.from_user_input(self._fpa_like_recipe())
         spc = ARCSpecies(label='H2', smiles='[H][H]')
         spc.final_xyz = {'symbols': ('H', 'H'), 'coords': ((0, 0, 0), (0, 0, 0.74)),
                          'isotopes': (1, 1)}
         sched = self._make_scheduler([spc], sp_composite=protocol)
         energies = {
-            "base": -1.10,
+            "base__card_3": -1.14, "base__card_4": -1.145,
             "delta_T__high": -1.15, "delta_T__low": -1.12,
-            "cbs_corr__card_3": -1.14, "cbs_corr__card_4": -1.145,
         }
         paths = self._seed_protocol_fixtures(tmp, protocol, energies)
         with self.assertLogs(logger='arc', level=logging.INFO) as cm:
-            sched.post_sp_actions('H2', paths["base"], protocol.base.level)
+            sched.post_sp_actions('H2', paths["base__card_3"], protocol.base.levels[0])
+            sched.post_sp_actions('H2', paths["base__card_4"], protocol.base.levels[1])
             sched.post_sp_actions('H2', paths["delta_T__high"],
                                   protocol.corrections[0].high)
             sched.post_sp_actions('H2', paths["delta_T__low"],
                                   protocol.corrections[0].low)
-            sched.post_sp_actions('H2', paths["cbs_corr__card_3"],
-                                  protocol.corrections[1].levels[0])
-            sched.post_sp_actions('H2', paths["cbs_corr__card_4"],
-                                  protocol.corrections[1].levels[1])
         joined = "\n".join(cm.output)
         self.assertIn("term evaluated", joined)
-        # One "term evaluated" per term (base + delta_T + cbs_corr = 3).
+        # One "term evaluated" per term (base + delta_T = 2).
         count = joined.count("term evaluated")
-        self.assertEqual(count, 3)
+        self.assertEqual(count, 2)
         # Each term's label appears.
-        for term_label in ("base", "delta_T", "cbs_corr"):
+        for term_label in ("base", "delta_T"):
             self.assertIn(f"term={term_label}", joined)
-        # CBS term carries a formula field.
+        # The CBS base carries a formula field.
         self.assertIn("formula=helgaker_corr_2pt", joined)
 
 
@@ -2653,8 +2755,8 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
             "base": {"method": "hf", "basis": "cc-pVTZ"},
             "corrections": [
                 {"label": "delta_T", "type": "delta",
-                 "high": {"method": "ccsdt",   "basis": "cc-pVDZ"},
-                 "low":  {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
             ],
         }
         protocol = CompositeProtocol.from_user_input(recipe)
@@ -2699,6 +2801,378 @@ class TestSchedulerSpCompositeOrchestration(unittest.TestCase):
                   and "Project summary" not in c.source
                   and "References" not in c.source]
         self.assertTrue(any("Afinalized" in t for t in titles))
+
+    def test_restart_kick_start_survives_real_run_job_tail(self):
+        """Regression: the restart kick-start runs from __init__ and reaches
+        run_job, whose tail calls save_restart_dict — which reads attributes
+        (``save_restart`` among others) that used to be assigned only AFTER the
+        rehydration call. Patch only the job-construction layer and let
+        run_job's tail execute for real so the ordering bug would surface as
+        an AttributeError."""
+        tmp = os.path.join(self.project_directory, "fx_kickstart_tail")
+        os.makedirs(tmp, exist_ok=True)
+        recipe = {
+            "base": {"method": "hf", "basis": "cc-pVTZ"},
+            "corrections": [
+                {"label": "delta_T", "type": "delta",
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
+            ],
+        }
+        protocol = CompositeProtocol.from_user_input(recipe)
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'), 'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched1 = self._make_scheduler([spc], sp_composite=protocol)
+        paths = self._seed_protocol_fixtures(tmp, protocol,
+                                             {"base": -1.10, "delta_T__high": -1.15,
+                                              "delta_T__low": -1.12})
+        sched1.post_sp_actions('H2', paths["base"], protocol.base.level)
+        output_snapshot = sched1.output
+        spc2 = ARCSpecies(label='H2', smiles='[H][H]')
+        spc2.final_xyz = spc.final_xyz
+        spawned = []
+
+        def fake_job_factory(**kwargs):
+            job = SimpleNamespace(job_name=f'sp_a{len(spawned)}', server=None, job_id=None,
+                                  level=kwargs.get('level'), execute=lambda: None)
+            spawned.append(job)
+            return job
+
+        with patch('arc.scheduler.job_factory', side_effect=fake_job_factory):
+            sched2 = Scheduler(
+                project='sp_composite_orch',
+                ess_settings=self.ess_settings,
+                species_list=[spc2],
+                project_directory=self.project_directory,
+                opt_level=Level(repr=default_levels_of_theory['opt']),
+                freq_level=Level(repr=default_levels_of_theory['freq']),
+                sp_level=Level(repr=default_levels_of_theory['sp']),
+                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                scan_level=Level(repr=default_levels_of_theory['scan']),
+                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                orbitals_level=default_levels_of_theory['orbitals'],
+                sp_composite=protocol,
+                output=output_snapshot,
+                testing=True,
+            )
+        self.assertEqual(len(spawned), 2)
+        self.assertEqual(set(sched2.job_dict['H2']['sp'].keys()),
+                         {job.job_name for job in spawned})
+        self.assertTrue(hasattr(sched2, 'save_restart'))
+
+    def test_species_report_records_arc_version(self):
+        """The per-species report must carry the real ARC version, not a placeholder."""
+        tmp = os.path.join(self.project_directory, "fx_arc_version")
+        os.makedirs(tmp, exist_ok=True)
+        recipe = {"base": {"method": "hf", "basis": "cc-pVTZ"}, "corrections": []}
+        protocol = CompositeProtocol.from_user_input(recipe)
+        spc = ARCSpecies(label='H2', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'), 'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+        base_path = os.path.join(tmp, "base.out")
+        self._write_gaussian_fixture(base_path, -1.10)
+        sched.post_sp_actions('H2', base_path, protocol.base.level)
+        report_path = os.path.join(self.project_directory, "output", "Species", "H2",
+                                   "sp_composite_report.yml")
+        with open(report_path) as fh:
+            report = yaml.safe_load(fh)
+        self.assertEqual(report["arc_version"], VERSION)
+
+    def test_rehydrate_skips_report_rewrite_when_paths_stripped(self):
+        """Regression: a species recorded as finalized whose sub-job output was
+        invalidated during rehydration (file gone) must NOT crash __init__ with
+        a KeyError from the report writer — warn and skip the report re-write."""
+        tmp = os.path.join(self.project_directory, "fx_stripped_report")
+        os.makedirs(tmp, exist_ok=True)
+        recipe = {
+            "base": {"method": "hf", "basis": "cc-pVTZ"},
+            "corrections": [
+                {"label": "delta_T", "type": "delta",
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
+            ],
+        }
+        protocol = CompositeProtocol.from_user_input(recipe)
+        spc = ARCSpecies(label='H2stripped', smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'), 'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        sched1 = self._make_scheduler([spc], sp_composite=protocol)
+        paths = self._seed_protocol_fixtures(tmp, protocol,
+                                             {"base": -1.05, "delta_T__high": -1.07,
+                                              "delta_T__low": -1.06})
+        sched1.post_sp_actions('H2stripped', paths["base"], protocol.base.level)
+        sched1.post_sp_actions('H2stripped', paths["delta_T__high"], protocol.corrections[0].high)
+        sched1.post_sp_actions('H2stripped', paths["delta_T__low"], protocol.corrections[0].low)
+        self.assertTrue(sched1.output['H2stripped']['job_types']['sp_composite'])
+        output_snapshot = sched1.output
+        os.unlink(paths["delta_T__low"])
+        spc2 = ARCSpecies(label='H2stripped', smiles='[H][H]')
+        spc2.final_xyz = spc.final_xyz
+        with self.assertLogs(logger='arc', level=logging.WARNING) as cm:
+            sched2 = self._make_scheduler([spc2], sp_composite=protocol,
+                                          output=output_snapshot)
+        self.assertNotIn('H2stripped', sched2._sp_composite_sections)
+        self.assertIn('delta_T__low', sched2._sp_composite_pending['H2stripped'])
+        joined = '\n'.join(cm.output)
+        self.assertIn('skipping', joined)
+        self.assertIn('delta_T__low', joined)
+
+    # --- paths['sp'] source assignment for composite species ---------------- #
+
+    @staticmethod
+    def _one_delta_recipe():
+        """A single-Level base plus one delta correction."""
+        return {
+            "base": {"method": "hf", "basis": "cc-pVTZ"},
+            "corrections": [
+                {"label": "delta_T", "type": "delta",
+                 "high": {"method": "ccsd(t)", "basis": "cc-pVDZ"},
+                 "low":  {"method": "mp2",     "basis": "cc-pVDZ"}},
+            ],
+        }
+
+    @staticmethod
+    def _h2_species(label='H2'):
+        """An H2 ARCSpecies with a final geometry."""
+        spc = ARCSpecies(label=label, smiles='[H][H]')
+        spc.final_xyz = {'symbols': ('H', 'H'), 'coords': ((0, 0, 0), (0, 0, 0.74)),
+                         'isotopes': (1, 1)}
+        return spc
+
+    def test_base_completion_sets_paths_sp(self):
+        """Completing the composite base leg populates paths['sp'] with the base ESS
+        log; delta legs don't; finalization keeps the base log and the composite
+        energy stays protocol-derived."""
+        tmp = os.path.join(self.project_directory, "fx_paths_sp")
+        os.makedirs(tmp, exist_ok=True)
+        protocol = CompositeProtocol.from_user_input(self._one_delta_recipe())
+        spc = self._h2_species()
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+        paths = self._seed_protocol_fixtures(tmp, protocol,
+                                             {"base": -1.10, "delta_T__high": -1.15,
+                                              "delta_T__low": -1.12})
+        self.assertEqual(sched.output['H2']['paths']['sp'], '')
+        sched.post_sp_actions('H2', paths["delta_T__high"], protocol.corrections[0].high)
+        self.assertEqual(sched.output['H2']['paths']['sp'], '')
+        sched.post_sp_actions('H2', paths["base"], protocol.base.level)
+        self.assertEqual(sched.output['H2']['paths']['sp'], paths["base"])
+        self.assertFalse(sched.output['H2']['job_types']['sp_composite'])
+        sched.post_sp_actions('H2', paths["delta_T__low"], protocol.corrections[0].low)
+        self.assertTrue(sched.output['H2']['job_types']['sp_composite'])
+        self.assertEqual(sched.output['H2']['paths']['sp'], paths["base"])
+        self.assertEqual(spc.e_elect_source, 'sp_composite')
+
+    def test_cbs_base_sets_paths_sp_to_largest_cardinal_leg(self):
+        """With a CBS base, paths['sp'] is the primary (largest-cardinal) leg's log."""
+        tmp = os.path.join(self.project_directory, "fx_paths_sp_cbs")
+        os.makedirs(tmp, exist_ok=True)
+        protocol = CompositeProtocol.from_user_input(self._fpa_like_recipe())
+        spc = self._h2_species()
+        sched = self._make_scheduler([spc], sp_composite=protocol)
+        paths = self._seed_protocol_fixtures(tmp, protocol,
+                                             {"base__card_3": -1.170, "base__card_4": -1.172,
+                                              "delta_T__high": -1.15, "delta_T__low": -1.12})
+        sched.post_sp_actions('H2', paths["base__card_3"], protocol.base.levels[0])
+        self.assertEqual(sched.output['H2']['paths']['sp'], '')
+        sched.post_sp_actions('H2', paths["base__card_4"], protocol.base.levels[1])
+        self.assertEqual(sched.output['H2']['paths']['sp'], paths["base__card_4"])
+        sched.post_sp_actions('H2', paths["delta_T__high"], protocol.corrections[0].high)
+        sched.post_sp_actions('H2', paths["delta_T__low"], protocol.corrections[0].low)
+        self.assertEqual(sched.output['H2']['paths']['sp'], paths["base__card_4"])
+
+    def test_paths_sp_cleared_when_base_log_invalidated(self):
+        """If the recorded base log vanishes before a restart, rehydration must clear
+        paths['sp'] along with the invalidated sub-job entry."""
+        tmp = os.path.join(self.project_directory, "fx_paths_sp_inval")
+        os.makedirs(tmp, exist_ok=True)
+        protocol = CompositeProtocol.from_user_input(self._one_delta_recipe())
+        spc = self._h2_species(label='H2inval')
+        sched1 = self._make_scheduler([spc], sp_composite=protocol)
+        paths = self._seed_protocol_fixtures(tmp, protocol,
+                                             {"base": -1.10, "delta_T__high": -1.15,
+                                              "delta_T__low": -1.12})
+        sched1.post_sp_actions('H2inval', paths["base"], protocol.base.level)
+        self.assertEqual(sched1.output['H2inval']['paths']['sp'], paths["base"])
+        output_snapshot = sched1.output
+        os.unlink(paths["base"])
+        spc2 = self._h2_species(label='H2inval')
+        sched2 = self._make_scheduler([spc2], sp_composite=protocol, output=output_snapshot)
+        self.assertEqual(sched2.output['H2inval']['paths']['sp'], '')
+        self.assertIn('base', sched2._sp_composite_pending['H2inval'])
+
+    def test_restart_base_done_respawns_deltas_not_legacy_sp(self):
+        """Restart with the base completed (paths['sp'] set) but delta legs pending:
+        the composite kick-start must respawn the deltas, and the legacy single-sp
+        respawn guard must NOT trigger run_sp_job for the species."""
+        tmp = os.path.join(self.project_directory, "fx_restart_guard")
+        os.makedirs(tmp, exist_ok=True)
+        protocol = CompositeProtocol.from_user_input(self._one_delta_recipe())
+        spc = self._h2_species(label='H2resume')
+        sched1 = self._make_scheduler([spc], sp_composite=protocol)
+        paths = self._seed_protocol_fixtures(tmp, protocol,
+                                             {"base": -1.10, "delta_T__high": -1.15,
+                                              "delta_T__low": -1.12})
+        sched1.post_sp_actions('H2resume', paths["base"], protocol.base.level)
+        output_snapshot = sched1.output
+        output_snapshot['H2resume']['paths']['geo'] = paths["base"]  # opt phase done
+        spc2 = self._h2_species(label='H2resume')
+        spawned, sp_calls = [], []
+        with patch.object(Scheduler, 'schedule_jobs', lambda self_: None), \
+                patch.object(Scheduler, 'run_sp_job',
+                             lambda self_, label, **kwargs: sp_calls.append(label)), \
+                patch.object(Scheduler, 'run_job',
+                             lambda self_, **kwargs: spawned.append(
+                                 (kwargs.get('job_type'), kwargs.get('level_of_theory')))):
+            sched2 = Scheduler(
+                project='sp_composite_orch',
+                ess_settings=self.ess_settings,
+                species_list=[spc2],
+                project_directory=self.project_directory,
+                opt_level=Level(repr=default_levels_of_theory['opt']),
+                freq_level=Level(repr=default_levels_of_theory['freq']),
+                sp_level=Level(repr=default_levels_of_theory['sp']),
+                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                scan_level=Level(repr=default_levels_of_theory['scan']),
+                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                orbitals_level=default_levels_of_theory['orbitals'],
+                sp_composite=protocol,
+                job_types=initialize_job_types(),
+                output=output_snapshot,
+                testing=False,
+            )
+        self.assertEqual(sp_calls, [])
+        sp_levels = [lvl for job_type, lvl in spawned if job_type == 'sp']
+        self.assertIn(protocol.corrections[0].high, sp_levels)
+        self.assertIn(protocol.corrections[0].low, sp_levels)
+        self.assertNotIn(protocol.primary_base_level, sp_levels)
+        self.assertEqual(sched2.output['H2resume']['paths']['sp'], paths["base"])
+
+    def test_monoatomic_composite_restart_does_not_respawn_base(self):
+        """Restart of a monoatomic composite species with the base completed must not
+        re-submit the base SP via the monoatomic respawn guard; only the pending
+        delta legs respawn (via the composite kick-start)."""
+        tmp = os.path.join(self.project_directory, "fx_mono_guard")
+        os.makedirs(tmp, exist_ok=True)
+        protocol = CompositeProtocol.from_user_input(self._one_delta_recipe())
+        spc = ARCSpecies(label='Hmono', smiles='[H]')
+        spc.final_xyz = {'symbols': ('H',), 'coords': ((0., 0., 0.),), 'isotopes': (1,)}
+        sched1 = self._make_scheduler([spc], sp_composite=protocol,
+                                      job_types=initialize_job_types())
+        paths = self._seed_protocol_fixtures(tmp, protocol,
+                                             {"base": -0.49, "delta_T__high": -0.499,
+                                              "delta_T__low": -0.498})
+        sched1.post_sp_actions('Hmono', paths["base"], protocol.base.level)
+        output_snapshot = sched1.output
+        spc2 = ARCSpecies(label='Hmono', smiles='[H]')
+        spc2.final_xyz = spc.final_xyz
+        spawned = []
+        with patch.object(Scheduler, 'run_job',
+                          lambda self_, **kwargs: spawned.append(
+                              (kwargs.get('job_type'), kwargs.get('level_of_theory')))):
+            sched2 = Scheduler(
+                project='sp_composite_orch',
+                ess_settings=self.ess_settings,
+                species_list=[spc2],
+                project_directory=self.project_directory,
+                opt_level=Level(repr=default_levels_of_theory['opt']),
+                freq_level=Level(repr=default_levels_of_theory['freq']),
+                sp_level=Level(repr=default_levels_of_theory['sp']),
+                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                scan_level=Level(repr=default_levels_of_theory['scan']),
+                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                orbitals_level=default_levels_of_theory['orbitals'],
+                sp_composite=protocol,
+                job_types=initialize_job_types(),
+                output=output_snapshot,
+                testing=True,
+            )
+        sp_levels = [lvl for job_type, lvl in spawned if job_type == 'sp']
+        self.assertNotIn(protocol.primary_base_level, sp_levels)
+        self.assertIn(protocol.corrections[0].high, sp_levels)
+        self.assertIn(protocol.corrections[0].low, sp_levels)
+        self.assertEqual(sched2.output['Hmono']['paths']['sp'], paths["base"])
+
+    def test_species_has_sp_composite_semantics(self):
+        """paths['sp'] presence must NOT mark the composite sp phase complete; only
+        the finalize flag (all sub-jobs recorded + protocol evaluated) does."""
+        in_progress = {'paths': {'sp': '/x/base.out', 'composite': '',
+                                 'sp_composite': {'base': '/x/base.out'}},
+                       'job_types': {'sp_composite': False}}
+        self.assertFalse(species_has_sp(in_progress))
+        finalized = {'paths': {'sp': '/x/base.out', 'composite': '',
+                               'sp_composite': {'base': '/x/base.out',
+                                                'delta_T__high': '/x/h.out',
+                                                'delta_T__low': '/x/l.out'}},
+                     'job_types': {'sp_composite': True}}
+        self.assertTrue(species_has_sp(finalized))
+        legacy = {'paths': {'sp': '/x/sp.out', 'composite': '', 'sp_composite': {}}}
+        self.assertTrue(species_has_sp(legacy))
+        self.assertTrue(species_has_sp(in_progress, yml_path='/x/spc.yml'))
+
+    def test_check_rxn_e0_by_spc_runs_for_composite_finalized_reaction(self):
+        """A 3-species reaction (R/TS/P), all composite-finalized: the E0 sanity
+        check is no longer gated off by species_has_sp and writes ts_checks['E0']."""
+        tmp = os.path.join(self.project_directory, "fx_e0_check")
+        os.makedirs(tmp, exist_ok=True)
+        recipe = {"base": {"method": "hf", "basis": "cc-pVTZ"}, "corrections": []}
+        protocol = CompositeProtocol.from_user_input(recipe)
+        r_spc = ARCSpecies(label='HCN', smiles='C#N')
+        r_spc.final_xyz = {'symbols': ('C', 'N', 'H'), 'isotopes': (12, 14, 1),
+                           'coords': ((0, 0, 0), (0, 0, 1.16), (0, 0, -1.07))}
+        p_spc = ARCSpecies(label='HNC', smiles='[C-]#[NH+]')
+        p_spc.final_xyz = {'symbols': ('N', 'C', 'H'), 'isotopes': (14, 12, 1),
+                           'coords': ((0, 0, 0), (0, 0, 1.17), (0, 0, -1.00))}
+        ts_spc = ARCSpecies(label='TS_e0', is_ts=True)
+        ts_spc.final_xyz = {'symbols': ('C', 'N', 'H'), 'isotopes': (12, 14, 1),
+                            'coords': ((0, 0, 0), (0, 0, 1.18), (0.9, 0, 0.6))}
+        sched = self._make_scheduler([r_spc, p_spc, ts_spc], sp_composite=protocol)
+        for label, e_hartree in [('HCN', -93.0), ('HNC', -92.99), ('TS_e0', -92.9)]:
+            base_path = os.path.join(tmp, f"{label}_base.out")
+            self._write_gaussian_fixture(base_path, e_hartree)
+            sched.post_sp_actions(label, base_path, protocol.base.level)
+            self.assertTrue(sched.output[label]['job_types']['sp_composite'])
+            sched.output[label]['paths']['freq'] = os.path.join(ARC_TESTING_PATH, 'freq', 'nC3H7.out')
+        rxn = ARCReaction(r_species=[r_spc], p_species=[p_spc], ts_label='TS_e0')
+        rxn.ts_species = ts_spc
+        r_spc.e0, p_spc.e0, ts_spc.e0 = 10.0, 20.0, 150.0
+        sched.rxn_list = [rxn]
+        self.assertIsNone(ts_spc.ts_checks['E0'])
+        sched.check_rxn_e0_by_spc('TS_e0')
+        self.assertTrue(ts_spc.ts_checks['E0'])
+
+
+class TestCorrelatedElectronCounting(unittest.TestCase):
+    """Frozen-core orbital and correlated-electron counting helpers."""
+
+    def test_frozen_core_orbitals_first_rows(self):
+        self.assertEqual(count_frozen_core_orbitals(('H',)), 0)
+        self.assertEqual(count_frozen_core_orbitals(('He',)), 0)
+        self.assertEqual(count_frozen_core_orbitals(('C',)), 1)
+        self.assertEqual(count_frozen_core_orbitals(('Ne',)), 1)
+        self.assertEqual(count_frozen_core_orbitals(('S',)), 5)
+        self.assertEqual(count_frozen_core_orbitals(('Br',)), 9)
+        self.assertEqual(count_frozen_core_orbitals(('I',)), 18)
+
+    def test_frozen_core_orbitals_molecule_sums_atoms(self):
+        self.assertEqual(count_frozen_core_orbitals(('C', 'H', 'H', 'H', 'H')), 1)
+        self.assertEqual(count_frozen_core_orbitals(('C', 'S', 'H', 'H')), 6)
+
+    def test_correlated_electrons_atoms(self):
+        self.assertEqual(count_correlated_electrons(('H',)), 1)
+        self.assertEqual(count_correlated_electrons(('He',)), 2)
+        self.assertEqual(count_correlated_electrons(('Be',)), 2)
+        self.assertEqual(count_correlated_electrons(('C',)), 4)
+
+    def test_correlated_electrons_molecules(self):
+        self.assertEqual(count_correlated_electrons(('H', 'H')), 2)
+        self.assertEqual(count_correlated_electrons(('C', 'H', 'H', 'H', 'H')), 8)
+        self.assertEqual(count_correlated_electrons(('N', 'N')), 10)
+
+    def test_correlated_electrons_charge(self):
+        self.assertEqual(count_correlated_electrons(('O', 'H'), charge=-1), 8)
+        self.assertEqual(count_correlated_electrons(('H',), charge=1), 0)
 
 
 class TestSchedulerSpCompositePassthrough(unittest.TestCase):
@@ -2754,15 +3228,17 @@ class TestSchedulerSpCompositePassthrough(unittest.TestCase):
 
 
 class TestSchedulerZombieJobDetection(unittest.TestCase):
-    """A queue-running job that has produced no output traffic by the grace
-    period is treated as a zombie: killed, then resubmitted once. The cap of
-    one resubmit per (species, job_type) prevents loops on bad inputs."""
+    """A queue-RUNNING job that has produced no output traffic by the grace
+    period (measured from the first time it was observed running) is treated
+    as a zombie: killed, then resubmitted once. The cap of one resubmit per
+    (species, job_name) prevents loops on bad inputs."""
 
     @classmethod
     def setUpClass(cls):
         cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1']}
+        worker = os.environ.get('PYTEST_XDIST_WORKER', 'master')
         cls.project_directory = os.path.join(
-            ARC_PATH, 'Projects', 'arc_project_for_testing_zombie'
+            ARC_PATH, 'Projects', f'arc_project_for_testing_zombie_{worker}'
         )
         if os.path.isdir(cls.project_directory):
             shutil.rmtree(cls.project_directory, ignore_errors=True)
@@ -2773,7 +3249,7 @@ class TestSchedulerZombieJobDetection(unittest.TestCase):
         if os.path.isdir(cls.project_directory):
             shutil.rmtree(cls.project_directory, ignore_errors=True)
 
-    def _make_sched(self):
+    def _make_sched(self, restart_dict=None):
         spc = ARCSpecies(label='H2', smiles='[H][H]')
         spc.final_xyz = {'symbols': ('H', 'H'), 'coords': ((0, 0, 0), (0, 0, 0.74)),
                          'isotopes': (1, 1)}
@@ -2783,6 +3259,7 @@ class TestSchedulerZombieJobDetection(unittest.TestCase):
                 ess_settings=self.ess_settings,
                 species_list=[spc],
                 project_directory=self.project_directory,
+                restart_dict=restart_dict,
                 opt_level=Level(repr=default_levels_of_theory['opt']),
                 freq_level=Level(repr=default_levels_of_theory['freq']),
                 sp_level=Level(repr=default_levels_of_theory['sp']),
@@ -2811,10 +3288,12 @@ class TestSchedulerZombieJobDetection(unittest.TestCase):
         job.delete = _delete
         return job
 
-    def _install(self, sched, job, label='H2'):
+    def _install(self, sched, job, label='H2', seed_running_since=True):
         sched.job_dict.setdefault(label, {}).setdefault(job.job_type, {})[job.job_name] = job
         sched.running_jobs.setdefault(label, []).append(job.job_name)
         sched.server_job_ids = [job.job_id]
+        if seed_running_since:
+            sched._zombie_running_since[job.job_name] = job.initial_time
 
     def test_zombie_killed_and_resubmitted(self):
         sched = self._make_sched()
@@ -2827,7 +3306,7 @@ class TestSchedulerZombieJobDetection(unittest.TestCase):
         self.assertTrue(job.deleted, "Zombie job should have been deleted.")
         self.assertEqual(run_calls, [(job.job_name, 'H2')])
         self.assertNotIn(job.job_name, sched.running_jobs['H2'])
-        self.assertIn('sp', sched._zombie_kills['H2'])
+        self.assertIn(job.job_name, sched._zombie_kills['H2'])
 
     def test_healthy_job_not_killed(self):
         sched = self._make_sched()
@@ -2883,7 +3362,7 @@ class TestSchedulerZombieJobDetection(unittest.TestCase):
 
     def test_cap_prevents_double_resubmit(self):
         sched = self._make_sched()
-        sched._zombie_kills['H2'] = {'sp'}  # Already used the one chance.
+        sched._zombie_kills['H2'] = {'sp_a3177'}  # Already used the one chance.
         job = self._stub_job()
         self._install(sched, job)
         sched._run_a_job = lambda *a, **kw: self.fail("must not resubmit when cap is hit")
@@ -2893,7 +3372,7 @@ class TestSchedulerZombieJobDetection(unittest.TestCase):
         self.assertIn(job.job_name, sched.running_jobs['H2'])
 
     def test_second_zombie_pass_is_noop_after_one_kill(self):
-        """A second zombie detection for the same (species, job_type) after one
+        """A second zombie detection for the same (species, job_name) after one
         real kill-and-resubmit cycle must be a no-op: no second delete, no second
         resubmission, and the 'leaving for manual intervention' branch is taken."""
         sched = self._make_sched()
@@ -2905,7 +3384,7 @@ class TestSchedulerZombieJobDetection(unittest.TestCase):
             sched.check_for_zombie_jobs('H2')
             self.assertTrue(job.deleted)
             self.assertEqual(run_calls, [(job.job_name, 'H2')])
-            self.assertEqual(sched._zombie_kills['H2'], {'sp'})
+            self.assertEqual(sched._zombie_kills['H2'], {job.job_name})
             # The resubmitted job wedges too: the queue reports it running again.
             job.deleted = False
             sched.running_jobs['H2'].append(job.job_name)
@@ -2913,33 +3392,188 @@ class TestSchedulerZombieJobDetection(unittest.TestCase):
                 sched.check_for_zombie_jobs('H2')
         self.assertEqual(run_calls, [(job.job_name, 'H2')])
         self.assertFalse(job.deleted)
-        self.assertEqual(sched._zombie_kills['H2'], {'sp'})
+        self.assertEqual(sched._zombie_kills['H2'], {job.job_name})
         self.assertIn(job.job_name, sched.running_jobs['H2'])
         self.assertIn('manual intervention', '\n'.join(cm.output))
 
-    def test_cap_is_per_job_type(self):
+    def test_cap_is_per_job_name(self):
         sched = self._make_sched()
-        sched._zombie_kills['H2'] = {'sp'}  # sp already used.
+        sched._zombie_kills['H2'] = {'sp_a3177'}  # That job already used its credit.
         job = self._stub_job(job_type='freq', job_name='freq_a8888')
         self._install(sched, job)
         run_calls = []
         sched._run_a_job = lambda job, label: run_calls.append((job.job_name, label))
         with patch('arc.job.zombie.output_mtime', return_value=None):
             sched.check_for_zombie_jobs('H2')
-        self.assertTrue(job.deleted, "freq has its own cap budget independent of sp.")
+        self.assertTrue(job.deleted, "freq_a8888 has its own cap budget independent of sp_a3177.")
         self.assertEqual(run_calls, [(job.job_name, 'H2')])
-        self.assertEqual(sched._zombie_kills['H2'], {'sp', 'freq'})
+        self.assertEqual(sched._zombie_kills['H2'], {'sp_a3177', 'freq_a8888'})
 
     def test_zombie_kills_serialized_in_restart(self):
         sched = self._make_sched()
-        sched._zombie_kills = {'H2': {'sp', 'freq'}, 'OH': {'sp'}}
+        sched._zombie_kills = {'H2': {'sp_a3177', 'freq_a8888'}, 'OH': {'sp_a3199'}}
         sched.save_restart = True
         sched.restart_dict = {}
         sched.save_restart_dict()
         saved = sched.restart_dict['_zombie_kills']
         self.assertEqual(set(saved.keys()), {'H2', 'OH'})
-        self.assertEqual(set(saved['H2']), {'sp', 'freq'})
-        self.assertEqual(set(saved['OH']), {'sp'})
+        self.assertEqual(set(saved['H2']), {'sp_a3177', 'freq_a8888'})
+        self.assertEqual(set(saved['OH']), {'sp_a3199'})
+
+    def test_capped_pair_skips_zombie_stat(self):
+        """A (species, job_name) pair that already used its one resubmission
+        must skip the expensive zombie stat entirely."""
+        sched = self._make_sched()
+        sched._zombie_kills['H2'] = {'sp_a3177'}
+        job = self._stub_job()
+        self._install(sched, job)
+        stat_calls = []
+
+        def record_stat(*args, **kwargs):
+            stat_calls.append(args)
+            return True
+
+        with patch('arc.scheduler._is_zombie_job', side_effect=record_stat):
+            sched.check_for_zombie_jobs('H2')
+        self.assertEqual(stat_calls, [])
+        self.assertFalse(job.deleted)
+
+    def test_manual_intervention_warning_fires_once(self):
+        """The 'manual intervention' warning for a capped pair must fire once
+        per job_name, not on every scheduler loop pass."""
+        sched = self._make_sched()
+        sched._zombie_kills['H2'] = {'sp_a3177'}
+        job = self._stub_job()
+        self._install(sched, job)
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            with self.assertLogs(logger='arc', level=logging.WARNING) as cm:
+                sched.check_for_zombie_jobs('H2')
+            with self.assertNoLogs(logger='arc', level=logging.WARNING):
+                sched.check_for_zombie_jobs('H2')
+        self.assertEqual('\n'.join(cm.output).count('manual intervention'), 1)
+
+    def test_recheck_throttle_limits_zombie_stats(self):
+        """A job checked within ZOMBIE_RECHECK_SECONDS must not be re-stat'ed;
+        once the throttle window has passed, the check runs again."""
+        sched = self._make_sched()
+        job = self._stub_job()
+        self._install(sched, job)
+        stat_calls = []
+
+        def record_stat(*args, **kwargs):
+            stat_calls.append(args)
+            return False
+
+        with patch('arc.scheduler._is_zombie_job', side_effect=record_stat):
+            sched.check_for_zombie_jobs('H2')
+            sched.check_for_zombie_jobs('H2')
+            self.assertEqual(len(stat_calls), 1)
+            sched._zombie_last_check[job.job_name] -= ZOMBIE_RECHECK_SECONDS + 1
+            sched.check_for_zombie_jobs('H2')
+        self.assertEqual(len(stat_calls), 2)
+
+    def test_resolve_job_by_name_integer_keyed_subdict(self):
+        """resolve_job_by_name must find jobs stored under integer-keyed
+        sub-dicts (conf_opt/conf_sp/tsg) via the job_name attribute, and
+        return None for unknown names."""
+        sched = self._make_sched()
+        job = self._stub_job(job_type='conf_opt', job_name='conf_opt_a202')
+        sched.job_dict.setdefault('H2', {}).setdefault('conf_opt', {})[0] = job
+        self.assertIs(sched.resolve_job_by_name('H2', 'conf_opt_a202'), job)
+        self.assertIsNone(sched.resolve_job_by_name('H2', 'no_such_job'))
+        self.assertIsNone(sched.resolve_job_by_name('no_such_label', 'conf_opt_a202'))
+
+    def test_resolve_job_by_name_synthetic_conformer_names(self):
+        """resolve_job_by_name must resolve the synthetic running_jobs names
+        ('conf_opt_<n>', 'conf_sp_<n>', 'tsg<n>') via the trailing index."""
+        sched = self._make_sched()
+        job = self._stub_job(job_type='conf_opt', job_name='conformer_real_name')
+        sched.job_dict.setdefault('H2', {}).setdefault('conf_opt', {})[0] = job
+        self.assertIs(sched.resolve_job_by_name('H2', 'conf_opt_0'), job)
+        tsg_job = self._stub_job(job_type='tsg', job_name='some_tsg_adapter_name')
+        sched.job_dict['H2'].setdefault('tsg', {})[2] = tsg_job
+        self.assertIs(sched.resolve_job_by_name('H2', 'tsg2'), tsg_job)
+        self.assertIsNone(sched.resolve_job_by_name('H2', 'conf_sp_5'))
+
+    def test_pending_job_never_killed(self):
+        """A queued (PENDING) job is never killable regardless of age, and the
+        running clock does not start while it is pending."""
+        sched = self._make_sched()
+        job = self._stub_job(initial_offset_seconds=8 * 3600)
+        self._install(sched, job, seed_running_since=False)
+        sched.server_job_states = {str(job.job_id): 'pending'}
+        sched._run_a_job = lambda *a, **kw: self.fail("must not act on a pending job")
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+        self.assertFalse(job.deleted)
+        self.assertNotIn(job.job_name, sched._zombie_running_since)
+
+    def test_pending_then_running_clock_starts_at_running(self):
+        """PENDING for 8 h then RUNNING for a moment → the grace clock starts
+        at the first running observation, so the job is not flagged."""
+        sched = self._make_sched()
+        job = self._stub_job(initial_offset_seconds=8 * 3600)
+        self._install(sched, job, seed_running_since=False)
+        sched.server_job_states = {str(job.job_id): 'pending'}
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+            self.assertNotIn(job.job_name, sched._zombie_running_since)
+            sched.server_job_states = {str(job.job_id): 'running'}
+            sched.check_for_zombie_jobs('H2')
+        self.assertFalse(job.deleted)
+        self.assertIn(job.job_name, sched._zombie_running_since)
+        self.assertIn(job.job_name, sched.running_jobs['H2'])
+
+    def test_held_job_warns_once_never_killed(self):
+        """A HELD job warns at most once and is never killed."""
+        sched = self._make_sched()
+        job = self._stub_job()
+        self._install(sched, job, seed_running_since=False)
+        sched.server_job_states = {str(job.job_id): 'held'}
+        sched._run_a_job = lambda *a, **kw: self.fail("must not act on a held job")
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            with self.assertLogs(logger='arc', level=logging.WARNING) as cm:
+                sched.check_for_zombie_jobs('H2')
+            with self.assertNoLogs(logger='arc', level=logging.WARNING):
+                sched.check_for_zombie_jobs('H2')
+        self.assertFalse(job.deleted)
+        self.assertEqual('\n'.join(cm.output).count('held'), 1)
+
+    def test_two_composite_sp_subjobs_killed_independently(self):
+        """Two composite sp sub-jobs of one species flagged in the same pass
+        must both be killed and resubmitted, each consuming its own credit."""
+        sched = self._make_sched()
+        job_1 = self._stub_job(job_name='sp_a0001', job_id=111)
+        job_2 = self._stub_job(job_name='sp_a0002', job_id=222)
+        self._install(sched, job_1)
+        self._install(sched, job_2)
+        sched.server_job_ids = [111, 222]
+        run_calls = []
+        sched._run_a_job = lambda job, label: run_calls.append(job.job_name)
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+        self.assertTrue(job_1.deleted)
+        self.assertTrue(job_2.deleted)
+        self.assertEqual(sorted(run_calls), ['sp_a0001', 'sp_a0002'])
+        self.assertEqual(sched._zombie_kills['H2'], {'sp_a0001', 'sp_a0002'})
+
+    def test_old_format_restart_zombie_kills_is_inert(self):
+        """Old-format restart entries (job_type strings) load without crashing
+        and cap nothing: a zombie job of that type still gets its one credit."""
+        sched = self._make_sched(restart_dict={'_zombie_kills': {'H2': ['sp']}})
+        self.assertEqual(sched._zombie_kills, {'H2': {'sp'}})
+        job = self._stub_job()
+        self._install(sched, job)
+        run_calls = []
+        sched._run_a_job = lambda job, label: run_calls.append(job.job_name)
+        with patch('arc.job.zombie.output_mtime', return_value=None):
+            sched.check_for_zombie_jobs('H2')
+        self.assertTrue(job.deleted)
+        self.assertEqual(run_calls, [job.job_name])
+        self.assertEqual(sched._zombie_kills['H2'], {'sp', job.job_name})
+        sched.save_restart = True
+        sched.save_restart_dict()
+        self.assertEqual(sched.restart_dict['_zombie_kills'], {'H2': ['sp', 'sp_a3177']})
 
 
 if __name__ == '__main__':

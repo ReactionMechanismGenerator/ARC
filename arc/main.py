@@ -145,6 +145,8 @@ class ARC(object):
         output_multi_spc (dict, optional): Output dictionary with status and final QM file paths for the multi species. 
                                            Only used for restarting.
         running_jobs (dict, optional): A dictionary of jobs submitted in a precious ARC instance, used for restarting.
+        _zombie_kills (dict, optional): Restart-internal bookkeeping of zombie job kills per species
+                                        (written and consumed by the Scheduler via the restart file).
         ts_adapters (list, optional): Entries represent different TS adapters.
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
         skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
@@ -188,6 +190,8 @@ class ARC(object):
         execution_time (str): Overall execution time.
         lib_long_desc (str): A multiline description of levels of theory for the outputted RMG libraries.
         running_jobs (dict): A dictionary of jobs submitted in a precious ARC instance, used for restarting.
+        _zombie_kills (dict): Restart-internal bookkeeping of zombie job kills per species
+                              (written and consumed by the Scheduler via the restart file).
         T_min (tuple): The minimum temperature for kinetics computations, e.g., (500, 'K').
         T_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         T_count (int): The number of temperature points between ``T_min`` and ``T_max``.
@@ -271,6 +275,7 @@ class ARC(object):
                  verbose=logging.INFO,
                  report_e_elect: bool | None = False,
                  skip_nmd: bool | None = False,
+                 _zombie_kills: dict | None = None,
                  ):
 
         if project is None:
@@ -287,6 +292,7 @@ class ARC(object):
         self.output_multi_spc = output_multi_spc
         self.standardize_output_paths()  # depends on self.project_directory
         self.running_jobs = running_jobs or dict()
+        self._zombie_kills = _zombie_kills or dict()
         for jobs in self.running_jobs.values():
             for job in jobs:
                 if 'xyz' in job.keys():
@@ -512,6 +518,8 @@ class ARC(object):
             restart_dict['reactions'] = [rxn.as_dict() for rxn in self.reactions]
         if self.running_jobs:
             restart_dict['running_jobs'] = self.running_jobs
+        if self._zombie_kills:
+            restart_dict['_zombie_kills'] = self._zombie_kills
         if self.scan_level is not None and len(self.scan_level.method) \
                 and str(self.scan_level).split()[0] != default_levels_of_theory['scan']:
             restart_dict['scan_level'] = self.scan_level.as_dict() \
@@ -1014,8 +1022,15 @@ class ARC(object):
             self.ts_guess_level = Level(repr=self.ts_guess_level)
             logger.info(f'TS guesses:{default_flag} {self.ts_guess_level}')
 
+        if self.adaptive_levels is not None or self.composite_method is not None:
+            explicit_spc_labels = [spc.label for spc in self.species if spc.sp_composite_state == 'explicit']
+            if explicit_spc_labels:
+                conflicting_arg = 'adaptive_levels' if self.adaptive_levels is not None else 'composite_method'
+                raise InputError(f'Species {explicit_spc_labels} define an explicit sp_composite protocol, '
+                                 f'which is not supported together with {conflicting_arg}. Drop one of them.')
+
         if self.sp_composite is not None:
-            # Phase 2: parse the composite protocol, validate mutual exclusions,
+            # Parse the composite protocol, validate mutual exclusions,
             # and backfill sp_level from the protocol's base level when omitted.
             if self.composite_method is not None:
                 raise InputError(
@@ -1032,15 +1047,28 @@ class ARC(object):
             if not isinstance(self.sp_composite, CompositeProtocol):
                 self.sp_composite = CompositeProtocol.from_user_input(self.sp_composite)
             logger.info(
-                f'sp_composite protocol resolved: base={self.sp_composite.base.level.simple()}, '
+                f'sp_composite protocol resolved: base={self.sp_composite.primary_base_level.simple()}, '
                 f'{len(self.sp_composite.corrections)} correction(s).'
             )
+            if self.bac_type is not None:
+                logger.warning('Setting bac_type to None: BAC corrections were derived for a single level of theory '
+                               'and are not applied on top of an sp_composite protocol.')
+                self.bac_type = None
             if self.sp_level is None:
-                self.sp_level = self.sp_composite.base.level
+                # For a CBS base this is the largest-cardinal leg of the extrapolation.
+                self.sp_level = self.sp_composite.primary_base_level
                 logger.info(
-                    f'sp_level not set explicitly; derived from sp_composite.base.level: '
-                    f'{self.sp_level.simple()}'
+                    f'sp_level not set explicitly; derived from the sp_composite base '
+                    f'(primary leg): {self.sp_level.simple()}'
                 )
+            elif Level(repr=self.sp_level).simple() != self.sp_composite.primary_base_level.simple():
+                opt_out_labels = [spc.label for spc in self.species if spc.sp_composite_state == 'opt_out']
+                composite_labels = [spc.label for spc in self.species if spc.sp_composite_state != 'opt_out']
+                logger.warning(f'Both sp_level ({Level(repr=self.sp_level).simple()}) and sp_composite '
+                               f'(base: {self.sp_composite.primary_base_level.simple()}) were specified. '
+                               f'The explicit sp_level only applies to species that opt out of sp_composite '
+                               f'({opt_out_labels or "none"}); all other species ({composite_labels or "none"}) '
+                               f'use the composite protocol, and the stated sp_level is ignored for them.')
 
         if self.composite_method is not None:
             self.composite_method = Level(repr=self.composite_method)
@@ -1198,6 +1226,10 @@ class ARC(object):
                 raise InputError(f'Got both level_of_theory and composite_method arguments. Choose the correct one:\n'
                                  f'level_of_theory: {self.level_of_theory}\n'
                                  f'composite_method: {self.composite_method}')
+            if self.sp_composite is not None:
+                raise InputError(f'Got both level_of_theory and sp_composite arguments. Choose the correct one:\n'
+                                 f'level_of_theory: {self.level_of_theory}\n'
+                                 f'sp_composite: {self.sp_composite}')
             if not isinstance(self.level_of_theory, str):
                 raise InputError(f'level_of_theory must be a string.\n'
                                  f'Got {self.level_of_theory} which is a {type(self.level_of_theory)}.')
@@ -1240,7 +1272,8 @@ class ARC(object):
         Check that the level of theory has AEC in Arkane.
 
         When ``sp_composite`` is active, route the AEC lookup through the protocol's
-        ``base.level`` and skip the BAC lookup entirely with a single warning — BAC
+        primary base level (the single base level, or the largest-cardinal CBS leg)
+        and skip the BAC lookup entirely with a single warning — BAC
         corrections were derived for a single LoT and are not meaningful on top of
         a composite that already applies δ-corrections. Per-species AEC/BAC variants
         are not supported in this release; the lookup stays global.
@@ -1248,7 +1281,7 @@ class ARC(object):
         explicitly_set = self.arkane_level_of_theory is not None
         if self.arkane_level_of_theory is None:
             if self.sp_composite is not None:
-                self.arkane_level_of_theory = self.sp_composite.base.level
+                self.arkane_level_of_theory = self.sp_composite.primary_base_level
             elif self.composite_method is not None:
                 self.arkane_level_of_theory = self.composite_method
             elif self.sp_level is not None:
@@ -1259,7 +1292,7 @@ class ARC(object):
             if explicitly_set:
                 source = ''
             elif self.sp_composite is not None:
-                source = ' (from sp_composite.base.level)'
+                source = ' (from the sp_composite base, primary leg)'
             elif self.composite_method is not None:
                 source = ' (from composite method)'
             else:
@@ -1294,19 +1327,34 @@ class ARC(object):
                 if 'paths' in spc_output:
                     for key, val in spc_output['paths'].items():
                         if key in ['geo', 'freq', 'sp', 'composite']:
-                            if val and not os.path.isfile(val):
-                                # try correcting relative paths
-                                if os.path.isfile(os.path.join(ARC_PATH, val)):
-                                    self.output[label]['paths'][key] = os.path.join(ARC_PATH, val)
-                                elif os.path.isfile(os.path.join(ARC_PATH, 'Projects', val)):
-                                    self.output[label]['paths'][key] = os.path.join(ARC_PATH, 'Projects', val)
-                                elif os.path.isfile(os.path.join(globalize_path(
-                                        string=val, project_directory=self.project_directory))):
-                                    self.output[label]['paths'][key] = globalize_path(
-                                        string=val, project_directory=self.project_directory)
+                            self.output[label]['paths'][key] = self.standardize_path(val)
+                        elif key == 'sp_composite' and isinstance(val, dict):
+                            for sub_label, sub_path in val.items():
+                                val[sub_label] = self.standardize_path(sub_path)
             logger.debug(f'output dictionary successfully parsed:\n{self.output}')
         elif self.output is None:
             self.output = dict()
+
+    def standardize_path(self, path: str | None) -> str | None:
+        """
+        Rebase a single output file path on the current project directory if it does not exist as given.
+
+        Args:
+            path (str, optional): The file path to check and possibly rebase.
+
+        Returns:
+            str | None: A corrected existing path if one was found, else the original value.
+        """
+        if path and not os.path.isfile(path):
+            # try correcting relative paths
+            if os.path.isfile(os.path.join(ARC_PATH, path)):
+                return os.path.join(ARC_PATH, path)
+            if os.path.isfile(os.path.join(ARC_PATH, 'Projects', path)):
+                return os.path.join(ARC_PATH, 'Projects', path)
+            globalized = globalize_path(string=path, project_directory=self.project_directory)
+            if os.path.isfile(globalized):
+                return globalized
+        return path
 
 
 def process_adaptive_levels(adaptive_levels: list | None) -> dict | None:

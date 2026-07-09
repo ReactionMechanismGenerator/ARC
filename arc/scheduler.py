@@ -17,7 +17,9 @@ import arc.parser.parser as parser
 from arc import plotter
 from arc.checks.common import get_i_from_job_name, is_conformer_job, sum_time_delta
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
-from arc.common import (extremum_list,
+from arc.common import (NUMBER_BY_SYMBOL,
+                        VERSION,
+                        extremum_list,
                         get_angle_in_180_range,
                         get_logger,
                         get_number_with_ordinal_indicator,
@@ -52,7 +54,7 @@ from arc.job.trsh import (scan_quality_check,
                           )
 from arc.constants import E_h_kJmol
 from arc.level import Level, active_composite_for
-from arc.level.protocol import CompositeProtocol
+from arc.level.protocol import CompositeProtocol, DeltaTerm, excitation_rank
 from arc.level.reporting import (
     SpeciesSection,
     format_log_event,
@@ -84,6 +86,51 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
     settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], \
     settings['default_job_types'], settings['ts_adapters'], settings['max_ess_trsh'], settings['max_rotor_trsh'], \
     settings['rotor_scan_resolution'], settings['servers']
+
+ZOMBIE_RECHECK_SECONDS = 900
+
+# Frozen-core orbital count per atom by the standard chemical-core convention:
+# each atom freezes the doubly-occupied orbitals of the previous noble gas
+# (none for H/He, the He core for Li–Ne, the Ne core for Na–Ar, ...).
+# Entries are (max_atomic_number, n_core_orbitals), ascending.
+_FROZEN_CORE_ORBITALS_BY_MAX_Z = ((2, 0), (10, 1), (18, 5), (36, 9), (54, 18), (86, 27), (118, 43))
+
+
+def count_frozen_core_orbitals(symbols: tuple) -> int:
+    """
+    Count a species' frozen-core orbitals under the standard chemical-core convention.
+
+    Args:
+        symbols (tuple): Element symbols, e.g. ``('C', 'H', 'H', 'H', 'H')``.
+
+    Returns:
+        int: The total number of frozen-core orbitals across all atoms.
+    """
+    n_core = 0
+    for symbol in symbols:
+        z = NUMBER_BY_SYMBOL[symbol]
+        for max_z, core_orbitals in _FROZEN_CORE_ORBITALS_BY_MAX_Z:
+            if z <= max_z:
+                n_core += core_orbitals
+                break
+    return n_core
+
+
+def count_correlated_electrons(symbols: tuple, charge: int = 0) -> int:
+    """
+    Count a species' correlated electrons under the frozen-core convention.
+
+    ``n_corr = n_electrons − 2 × n_frozen_core_orbitals``.
+
+    Args:
+        symbols (tuple): Element symbols.
+        charge (int): The net molecular charge.
+
+    Returns:
+        int: The number of correlated electrons.
+    """
+    n_electrons = sum(NUMBER_BY_SYMBOL[symbol] for symbol in symbols) - charge
+    return n_electrons - 2 * count_frozen_core_orbitals(symbols)
 
 
 class Scheduler(object):
@@ -123,6 +170,7 @@ class Scheduler(object):
                                       'freq': <path to freq output file>,
                                       'sp': <path to sp output file>,
                                       'composite': <path to composite output file>,
+                                      'sp_composite': {sub_label: <path to sub-job output file>},
                                       'irc': [list of two IRC paths],
                                      },
                             'conformers': <comments>,
@@ -138,6 +186,10 @@ class Scheduler(object):
 
     Note:
         The rotor scan dicts are located under Species.rotors_dict
+
+    Note:
+        For species with an active sp_composite protocol, 'paths'->'sp' holds the protocol's
+        base ESS log and does NOT imply the sp phase is complete; see _sync_composite_sp_path.
 
     Args:
         project (str): The project's name. Used for naming the working directory.
@@ -196,6 +248,8 @@ class Scheduler(object):
         running_jobs (dict): A dictionary of currently running jobs (a subset of `job_dict`).
                              Keys are species/TS label, values are lists of job names (e.g. 'conformer3', 'opt_a123').
         server_job_ids (list): A list of relevant job IDs currently running on the server.
+        server_job_states (dict): Normalized queue states ('running'/'pending'/'held'/'exiting'/'unknown')
+                                  keyed by server job ID (str). Populated alongside ``server_job_ids``.
         output (dict): Output dictionary with status per job type and final QM file paths for all species.
         output_multi_spc (dict): Output dictionary with status per job type of multi-species clusters.
         ess_settings (dict): A dictionary of available ESS and a corresponding server list.
@@ -290,6 +344,7 @@ class Scheduler(object):
         self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
         self.job_dict = dict()
         self.server_job_ids = list()
+        self.server_job_states = dict()
         self.completed_incore_jobs = list()
         self.running_jobs = dict()
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
@@ -331,7 +386,7 @@ class Scheduler(object):
         self._last_status_payload: dict | None = None
         self.servers = list()
         self.composite_method = composite_method
-        # Phase 3 composite-orchestration state.
+        # Composite-orchestration state.
         # self.sp_composite holds the project-wide CompositeProtocol (or None). Per-species
         # protocols live on each ARCSpecies via sp_composite_state/sp_composite and are
         # resolved through arc.level.active_composite_for().
@@ -339,20 +394,32 @@ class Scheduler(object):
         # Per-species pending sub-jobs keyed by label → {sub_label: Level}. Transient;
         # rebuilt on restart from output[label]['paths']['sp_composite'].
         self._sp_composite_pending: dict[str, dict[str, Level]] = dict()
-        # Per-(species, job_type) cap on zombie-job kills (one resubmit per
-        # job_type per species). Persisted in the restart YAML.
+        # Per-species δ terms skipped as trivially zero, keyed by label →
+        # {term_label: reason}. Transient; deterministically re-derived from
+        # species + protocol on every seed (restart-safe by construction).
+        self._sp_composite_skipped: dict[str, dict[str, str]] = dict()
+        # Per-(species, job_name) cap on zombie-job kills (one resubmit credit
+        # per job). Persisted in the restart YAML. Old-format restart entries
+        # (job_type strings such as 'sp') are loaded as-is but are inert:
+        # membership is checked by job_name only, so they cap nothing.
         self._zombie_kills: dict[str, set[str]] = dict()
         if self.restart_dict is not None and '_zombie_kills' in self.restart_dict:
             self._zombie_kills = {
-                label: set(types) for label, types in self.restart_dict['_zombie_kills'].items()
+                label: set(names) for label, names in self.restart_dict['_zombie_kills'].items()
             }
+        # Job names whose one-shot zombie warnings ('manual intervention' for
+        # capped jobs, 'held' for held jobs) already fired. Not persisted.
+        self._zombie_warned: set[str] = set()
+        # Per-job zombie-check throttle: job_name → last-check monotonic
+        # timestamp. Not persisted across restarts.
+        self._zombie_last_check: dict[str, float] = dict()
+        # First time each job was observed in a RUNNING queue state, keyed by
+        # job_name; the zombie grace clock starts here. In-memory only: a
+        # restart re-observes and conservatively restarts the clock.
+        self._zombie_running_since: dict[str, datetime.datetime] = dict()
         # Cumulative finalized SpeciesSection objects (label → SpeciesSection). The
         # notebook writer consumes the full values list on every regeneration.
         self._sp_composite_sections: dict[str, SpeciesSection] = dict()
-        # Rehydrate composite state from the persistent output dict so restart
-        # re-queues only the missing sub-jobs. Safe to call even when no species
-        # has an active composite — it's a no-op in that case.
-        self._rehydrate_composite_state()
         self.conformer_opt_level = conformer_opt_level
         self.conformer_sp_level = conformer_sp_level
         self.ts_guess_level = ts_guess_level
@@ -364,6 +431,12 @@ class Scheduler(object):
         self.orbitals_level = orbitals_level
         self.unique_species_labels = list()
         self.save_restart = False
+        # Rehydrate composite state from the persistent output dict so restart
+        # re-queues only the missing sub-jobs. Safe to call even when no species
+        # has an active composite — it's a no-op in that case. Must run after
+        # every attribute that run_job and save_restart_dict read (notably
+        # self.save_restart) is assigned, since the kick-start path submits jobs.
+        self._rehydrate_composite_state()
 
         if len(self.rxn_list):
             if self.adaptive_levels is not None:
@@ -471,8 +544,11 @@ class Scheduler(object):
                 if self.output[species.label]['convergence']:
                     continue
                 if species.is_monoatomic():
+                    # paths['sp'] also blocks the respawn: for an sp_composite species it holds the
+                    # completed base log, and the pending sub-jobs respawn via _kickstart_composite_queues.
                     if not self.output[species.label]['job_types']['sp'] \
                             and not self.output[species.label]['job_types']['composite'] \
+                            and not self.output[species.label]['paths']['sp'] \
                             and 'sp' not in list(self.job_dict[species.label].keys()) \
                             and 'composite' not in list(self.job_dict[species.label].keys()):
                         # No need to run opt/freq jobs for a monoatomic species, only run sp (or composite if relevant)
@@ -1042,15 +1118,15 @@ class Scheduler(object):
         # a list-valued ``label`` arg only reaches this point when
         # ``run_multi_species`` was True (set iff every species in the list has
         # ``multi_species`` populated), in which case we just reassigned
-        # ``label`` to the (single) ``species[0].multi_species`` string. Stating
-        # the invariant explicitly satisfies static analyzers (``self.job_dict[label]``
-        # downstream would TypeError on an unhashable list) and catches a real
-        # bug if the multi-species dispatch ever leaks a list through.
-        assert isinstance(label, str), (
-            f"run_job: expected ``label`` to be str by this point, got "
-            f"{type(label).__name__} ({label!r}). This indicates the "
-            f"multi-species dispatch above didn't collapse a list label."
-        )
+        # ``label`` to the (single) ``species[0].multi_species`` string.
+        # Raising explicitly (rather than asserting, which is stripped under
+        # ``python -O``) catches a real bug if the multi-species dispatch ever
+        # leaks a list through (``self.job_dict[label]`` downstream would
+        # TypeError on an unhashable list).
+        if not isinstance(label, str):
+            raise TypeError(f"run_job: expected ``label`` to be str by this point, got "
+                            f"{type(label).__name__} ({label!r}). This indicates the "
+                            f"multi-species dispatch above didn't collapse a list label.")
         if label not in self.job_dict.keys():
             self.job_dict[label] = dict()
         if conformer is None and tsg is None:
@@ -1124,7 +1200,10 @@ class Scheduler(object):
 
         ``job_dict`` is keyed ``[label][job_type][job_name → JobAdapter]`` for most
         job_types, but ``conf_opt`` / ``conf_sp`` / ``tsg`` use integer keys whose
-        values carry the actual ``job_name`` on the ``JobAdapter`` object.
+        values carry the actual ``job_name`` on the ``JobAdapter`` object. The
+        synthetic ``running_jobs`` names of those jobs ('conf_opt_<n>',
+        'conf_sp_<n>', 'tsg<n>') are resolved via their trailing index after the
+        real-job_name match fails.
 
         Args:
             label (str): The species label.
@@ -1144,14 +1223,32 @@ class Scheduler(object):
             for j in jobs.values():
                 if getattr(j, 'job_name', None) == job_name:
                     return j
+        try:
+            i = get_i_from_job_name(job_name)
+        except ValueError:
+            i = None
+        if i is not None:
+            for job_type in ('conf_opt', 'conf_sp', 'tsg'):
+                if job_name.startswith(job_type):
+                    jobs = self.job_dict[label].get(job_type)
+                    if isinstance(jobs, dict) and i in jobs:
+                        return jobs[i]
         return None
 
     def check_for_zombie_jobs(self, label: str) -> None:
-        """Detect zombie jobs for a species (queue reports running but no
+        """Detect zombie jobs for a species (queue reports RUNNING but no
         output traffic after the grace period), kill and resubmit them.
 
-        The cap of one resubmission per (species, job_type) prevents loops
+        A job is killable only while its queue state is 'running' (or absent
+        from ``self.server_job_states``, e.g. local jobs without state info);
+        'pending' is never killable regardless of age, and 'held' logs a
+        warning at most once. The grace clock starts at the first time the job
+        was observed running (``self._zombie_running_since``).
+
+        The cap of one resubmission per (species, job_name) prevents loops
         when the underlying issue is in our submission, not the cluster.
+        Capped jobs skip the (potentially remote) zombie stat entirely, and
+        each job is re-checked at most once per ``ZOMBIE_RECHECK_SECONDS``.
 
         Args:
             label (str): The species label whose running jobs should be checked.
@@ -1159,27 +1256,47 @@ class Scheduler(object):
         Returns:
             None: Side-effects only. Mutates ``self.running_jobs[label]`` (drops
             zombie ``job_name``\\ s) and ``self._zombie_kills[label]`` (records the
-            killed ``job_type``), and resubmits via ``self._run_a_job``.
+            killed ``job_name``), and resubmits via ``self._run_a_job``.
         """
         if label not in self.running_jobs or label not in self.job_dict:
             return
         for job_name in list(self.running_jobs.get(label, [])):
             job = self.resolve_job_by_name(label, job_name)
-            if job is None or not _is_zombie_job(job, self.server_job_ids):
+            if job is None:
                 continue
-            job_type = job.job_type
-            if job_type in self._zombie_kills.get(label, set()):
-                logger.warning(
-                    f'Job {job_name} for {label} ({job_type}) appears to be a '
-                    f'zombie a second time after one resubmission — leaving '
-                    f'for manual intervention.'
-                )
+            if job_name in self._zombie_kills.get(label, set()):
+                if job_name not in self._zombie_warned:
+                    self._zombie_warned.add(job_name)
+                    logger.warning(
+                        f'Job {job_name} for {label} ({job.job_type}) was already '
+                        f'resubmitted once after a zombie kill — skipping further '
+                        f'zombie checks for it, leaving for manual intervention.'
+                    )
                 continue
-            elapsed_min = int((datetime.datetime.now() - job.initial_time).total_seconds() // 60)
+            state = self.server_job_states.get(str(job.job_id),
+                                               self.server_job_states.get(job.job_id, 'running'))
+            if state == 'held':
+                held_key = f'{job_name}_held'
+                if held_key not in self._zombie_warned:
+                    self._zombie_warned.add(held_key)
+                    logger.warning(f'Job {job_name} for {label} ({job.job_type}) is held on the '
+                                   f'queue; not treating as a zombie, leaving for manual intervention.')
+                continue
+            if state != 'running':
+                continue
+            running_since = self._zombie_running_since.setdefault(job_name, datetime.datetime.now())
+            now = time.monotonic()
+            last_checked = self._zombie_last_check.get(job_name)
+            if last_checked is not None and now - last_checked < ZOMBIE_RECHECK_SECONDS:
+                continue
+            self._zombie_last_check[job_name] = now
+            if not _is_zombie_job(job, self.server_job_ids, running_since=running_since):
+                continue
+            elapsed_min = int((datetime.datetime.now() - running_since).total_seconds() // 60)
             logger.warning(
-                f'Job {job_name} for {label} ({job_type}) shows no output '
-                f'activity after {elapsed_min} min and the queue still reports '
-                f'it as running. Treating as a zombie: killing and resubmitting.'
+                f'Job {job_name} for {label} ({job.job_type}) shows no output '
+                f'activity after {elapsed_min} min of running and the queue still '
+                f'reports it as running. Treating as a zombie: killing and resubmitting.'
             )
             try:
                 job.delete()
@@ -1188,7 +1305,8 @@ class Scheduler(object):
                     f'Failed to delete zombie job {job_name} for {label}: '
                     f'{type(exc).__name__}: {exc}. Continuing with resubmission.'
                 )
-            self._zombie_kills.setdefault(label, set()).add(job_type)
+            self._zombie_kills.setdefault(label, set()).add(job_name)
+            self._zombie_running_since.pop(job_name, None)
             if job_name in self.running_jobs[label]:
                 self.running_jobs[label].remove(job_name)
             self._run_a_job(job=job, label=label)
@@ -1529,7 +1647,7 @@ class Scheduler(object):
                          level_of_theory=self.freq_level, job_type='freq')
 
     # ------------------------------------------------------------------------ #
-    #  sp_composite orchestration (Phase 3)                                    #
+    #  sp_composite orchestration                                              #
     # ------------------------------------------------------------------------ #
     #
     # Design:
@@ -1550,6 +1668,8 @@ class Scheduler(object):
     #   calls ``protocol.evaluate`` (unit-agnostic sum), writes ``species.e_elect``,
     #   sets ``species.e_elect_source='sp_composite'``, flips the output flag, and
     #   regenerates the project notebook with the *cumulative* section list.
+    # * ``output[label]['paths']['sp']`` mirrors the recorded base leg's log via
+    #   ``_sync_composite_sp_path`` (see its docstring for the invariant).
 
     def _composite_for(self, label: str) -> CompositeProtocol | None:
         """Return the composite protocol to apply to this species, or ``None``.
@@ -1565,6 +1685,67 @@ class Scheduler(object):
             species_protocol=getattr(species, "sp_composite", None),
             global_protocol=self.sp_composite,
         )
+
+    def _species_n_correlated(self, label: str) -> int | None:
+        """
+        Determine a species' correlated electron count (frozen-core convention).
+
+        Element symbols are taken from the species' geometry when available,
+        falling back to its 2D graph. Returns ``None`` when neither is
+        available (or an element is unrecognized) — callers must then treat
+        every delta term as potentially non-zero.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            int | None: The correlated electron count, or ``None`` if unknown.
+        """
+        species = self.species_dict.get(label)
+        if species is None:
+            return None
+        xyz = species.get_xyz(generate=False)
+        symbols = tuple(xyz['symbols']) if xyz is not None and xyz.get('symbols') else None
+        if symbols is None and species.mol is not None:
+            symbols = tuple(atom.element.symbol for atom in species.mol.atoms)
+        if not symbols:
+            return None
+        try:
+            return count_correlated_electrons(symbols=symbols, charge=species.charge or 0)
+        except KeyError:
+            return None
+
+    def _composite_skipped_terms(self,
+                                 label: str,
+                                 protocol: CompositeProtocol,
+                                 ) -> dict[str, str]:
+        """
+        Decide, per delta term, whether its correction is trivially zero for this species.
+
+        A δ[high − low] correction is identically zero when the species'
+        correlated electron count is too small for the legs' coupled-cluster
+        excitation ranks to differ from full CI (see
+        :meth:`DeltaTerm.is_trivially_zero`) — e.g. atomic H or He through a
+        HEAT-style δ_T / δ_Q. Such terms are never queued; finalize counts
+        their contribution as exactly 0.0. The decision is deterministic from
+        species + protocol, so re-deriving it on restart is safe.
+
+        Args:
+            label (str): The species label.
+            protocol (CompositeProtocol): The species' active composite protocol.
+
+        Returns:
+            dict[str, str]: Mapping ``term_label`` → human-readable skip reason.
+        """
+        n_corr = self._species_n_correlated(label)
+        if n_corr is None:
+            return dict()
+        skipped: dict[str, str] = dict()
+        for term in protocol.corrections:
+            if isinstance(term, DeltaTerm) and term.is_trivially_zero(n_corr):
+                rank = excitation_rank(term.high.method)
+                skipped[term.label] = f'δ≡0 (n_corr={n_corr} < rank={rank}) — skipped'
+        return skipped
 
     def _validate_composite_completed(self, label: str) -> list[str]:
         """Drop sub_label entries whose recorded output file is missing or
@@ -1611,17 +1792,29 @@ class Scheduler(object):
 
         Runs :meth:`_validate_composite_completed` first so any corrupted
         previously-recorded output is pushed back into pending automatically.
+        Delta terms decided trivially zero for this species (δ≡0 by the
+        correlated-electron-count vs. excitation-rank test) are recorded in
+        ``_sp_composite_skipped[label]`` and neither of their legs is queued.
         """
         protocol = self._composite_for(label)
         if protocol is None:
             return
         self._validate_composite_completed(label)
+        skipped = self._composite_skipped_terms(label, protocol)
+        self._sp_composite_skipped[label] = skipped
+        for term_label, reason in skipped.items():
+            logger.info(format_log_event(
+                label, "term skipped", {"term": term_label, "reason": reason},
+            ))
         completed = self.output.get(label, {}).get('paths', {}).get('sp_composite', {}) or {}
         pending: dict[str, Level] = {}
-        for _term_label, sub_label, level in protocol.iter_required_jobs():
+        for term_label, sub_label, level in protocol.iter_required_jobs():
+            if term_label in skipped:
+                continue
             if sub_label not in completed:
                 pending[sub_label] = level
         self._sp_composite_pending[label] = pending
+        self._sync_composite_sp_path(label, protocol)
         logger.info(format_log_event(
             label,
             "protocol resolved",
@@ -1629,6 +1822,7 @@ class Scheduler(object):
                 "total_sub_jobs": sum(1 for _ in protocol.iter_required_jobs()),
                 "pending": len(pending),
                 "already_completed": len(completed),
+                "skipped_terms": sorted(skipped.keys()),
             },
         ))
 
@@ -1655,7 +1849,38 @@ class Scheduler(object):
                 "sub-job completed",
                 {"sub_label": sl, "level": level.simple(), "path": sp_path},
             ))
+        protocol = self._composite_for(label)
+        if protocol is not None:
+            self._sync_composite_sp_path(label, protocol)
         return matched
+
+    def _sync_composite_sp_path(self,
+                                label: str,
+                                protocol: CompositeProtocol,
+                                ) -> None:
+        """
+        Keep ``output[label]['paths']['sp']`` consistent with the recorded composite base leg.
+
+        Invariant: for a species with an active sp_composite protocol, ``paths['sp']`` is the
+        geometry-consistent base ESS log — the ``protocol.primary_base_sub_label`` leg (the
+        largest-cardinal leg for a CBS base) — or ``''`` if that leg has not been recorded
+        (or was invalidated). It exists for path-existence and freq-fallback consumers only
+        (Arkane species files, restart respawn guards); the AUTHORITATIVE energy is the
+        composite result stored in ``species.e_elect`` with ``e_elect_source='sp_composite'``.
+        ``paths['sp']`` being set does NOT mean the composite sp phase is complete — completion
+        is judged solely by all protocol sub-jobs being recorded and validated in
+        ``paths['sp_composite']`` (see ``_sp_composite_pending`` /
+        ``_validate_composite_completed``).
+
+        Args:
+            label (str): The species label.
+            protocol (CompositeProtocol): The species' active composite protocol.
+
+        Returns:
+            None
+        """
+        completed = self.output[label]['paths']['sp_composite']
+        self.output[label]['paths']['sp'] = completed.get(protocol.primary_base_sub_label, '')
 
     def _spawn_composite_pending(self, label: str) -> None:
         """Spawn one sp job per *unique* pending ``Level``.
@@ -1702,17 +1927,24 @@ class Scheduler(object):
 
     def _finalize_composite(self, label: str) -> None:
         """Parse every sub-job energy, evaluate the protocol, set species.e_elect,
-        emit logs, flip the output flag, and regenerate the project notebook."""
+        emit logs, flip the output flag, and regenerate the project notebook.
+        Delta terms recorded as skipped (δ≡0) contribute exactly 0.0."""
         protocol = self._composite_for(label)
         if protocol is None:
             return
+        skipped = self._sp_composite_skipped.get(label)
+        if skipped is None:
+            skipped = self._composite_skipped_terms(label, protocol)
+            self._sp_composite_skipped[label] = skipped
         completed = self.output[label]['paths']['sp_composite']
         energies_kJmol: dict[str, float] = {}
         # Each missing entry carries enough context (sub_label + reason +
         # optional path/exception) so the warning payload tells the operator
         # exactly which sub-job to re-run, without crashing the scheduler.
         missing: list[dict[str, str]] = []
-        for _term_label, sub_label, _level in protocol.iter_required_jobs():
+        for term_label, sub_label, _level in protocol.iter_required_jobs():
+            if term_label in skipped:
+                continue
             path = completed.get(sub_label)
             if not path:
                 missing.append({"sub_label": sub_label, "reason": "missing path"})
@@ -1735,7 +1967,8 @@ class Scheduler(object):
             logger.warning(format_log_event(label, "finalize aborted — missing or unparseable sub-jobs",
                 {"missing": missing}))
             return
-        e_total_kJmol = protocol.evaluate(energies_kJmol)
+        e_total_kJmol = sum(0.0 if term.label in skipped else term.evaluate(energies_kJmol)
+                            for term in protocol.terms)
         self.species_dict[label].e_elect = e_total_kJmol
         self.species_dict[label].e_elect_source = "sp_composite"
         self.output[label]['job_types']['sp_composite'] = True
@@ -1745,6 +1978,16 @@ class Scheduler(object):
         # in protocol order. Exposes the individual contribution that landed in
         # the final total — enough to reconstruct the math from the log alone.
         for term in protocol.terms:
+            if term.label in skipped:
+                logger.info(format_log_event(label, "term evaluated", {
+                    "term": term.label,
+                    "type": type(term).__name__,
+                    "sub_labels": [],
+                    "kJ_per_mol": "0.000",
+                    "Hartree": "0.000000000",
+                    "skipped": skipped[term.label],
+                }))
+                continue
             contribution = term.evaluate(energies_kJmol)
             term_sub_labels = [sl for sl, _lvl in term.required_levels()]
             payload = {"term": term.label,
@@ -1779,11 +2022,17 @@ class Scheduler(object):
         that the notebook can round-trip through
         :meth:`CompositeProtocol.from_user_input`. ``preset_name`` and
         ``reference`` come from the protocol itself when available; otherwise
-        they fall back to explicit-recipe defaults.
+        they fall back to explicit-recipe defaults. δ terms skipped as
+        trivially zero are forwarded so the notebook and the YAML report
+        render them with contribution 0.0 and the reason.
         """
         species = self.species_dict[label]
         preset_name = getattr(protocol, "preset_name", None)
         reference = getattr(protocol, "reference", None)
+        skipped = self._sp_composite_skipped.get(label)
+        if skipped is None:
+            skipped = self._composite_skipped_terms(label, protocol)
+            self._sp_composite_skipped[label] = skipped
         flags: list[str] = []
         if not reference:
             reference = ("Explicit sp_composite recipe — no formal reference supplied by "
@@ -1800,6 +2049,7 @@ class Scheduler(object):
             protocol=protocol,
             sub_job_paths=dict(self.output[label]['paths']['sp_composite']),
             flags=flags,
+            skipped_terms=dict(skipped),
         )
 
     def _regenerate_composite_notebook(self) -> None:
@@ -1813,7 +2063,7 @@ class Scheduler(object):
         write_composite_notebook(
             path=nb_path,
             project_name=self.project,
-            arc_version="",  # Phase 4 may surface this; not critical for provenance.
+            arc_version=VERSION,
             timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             sections=list(self._sp_composite_sections.values()),
             notebook_dir=output_dir,
@@ -1851,8 +2101,8 @@ class Scheduler(object):
             section=section,
             e_elect_kj_per_mol=e_elect,
             timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
-            arc_version="",  # surfaced via Phase 4 if needed
-            arc_commit="",   # surfaced via Phase 4 if needed
+            arc_version=VERSION,
+            arc_commit="",
         )
         logger.info(format_log_event(label, "species report written", {"path": report_path}))
 
@@ -1884,75 +2134,6 @@ class Scheduler(object):
         else:
             self._finalize_composite(label)
 
-    def _mrcc_degenerate_short_circuit(self, label: str, job) -> bool:
-        """If a composite δ-term high-leg sub-job errored with the
-        ``MRCCDegenerateSystem`` keyword, substitute the sister low-leg's
-        recorded path and advance the composite. Returns ``True`` when the
-        short-circuit was applied so the caller can skip ``troubleshoot_ess``.
-
-        Why this exists: for systems too small to accommodate the requested
-        CC excitation rank (atomic H, H2 at CCSDT(Q), etc.) MRCC's xmrcc
-        bails — there's no determinant space to iterate. The two legs of
-        the δ term are mathematically degenerate (all CC ranks reduce to
-        HF), so δ = 0 is the correct physical answer. The trsh ladder
-        cannot fix this; it must be handled at the protocol level.
-
-        Conservative on safety:
-        * Only fires when keywords contain ``'MRCCDegenerateSystem'``.
-        * Only fires when the species has an active composite.
-        * Only fires for ``__high`` sub-labels with a recorded ``__low``
-          sister in ``output[label]['paths']['sp_composite']``. Low-leg
-          failures and high-leg failures without a completed sister fall
-          through so the caller's normal trsh path runs.
-        """
-        keywords = (job.job_status[1] or {}).get('keywords') or []
-        if 'MRCCDegenerateSystem' not in keywords:
-            return False
-        protocol = self._composite_for(label)
-        if protocol is None:
-            return False
-        # Identify which pending sub_label this errored job corresponds to.
-        pending = self._sp_composite_pending.get(label, {})
-        failed_sub_label = next(
-            (sl for sl, lvl in pending.items() if lvl == job.level),
-            None,
-        )
-        if failed_sub_label is None or not failed_sub_label.endswith('__high'):
-            logger.warning(format_log_event(
-                label,
-                "MRCCDegenerateSystem on a non-high sub-job — falling through to trsh",
-                {"sub_label": failed_sub_label, "level": str(job.level)},
-            ))
-            return False
-        sister_low = failed_sub_label[: -len('__high')] + '__low'
-        completed = self.output.get(label, {}).get('paths', {}).get('sp_composite', {}) or {}
-        sister_path = completed.get(sister_low)
-        if not sister_path:
-            logger.warning(format_log_event(
-                label,
-                "MRCCDegenerateSystem high-leg failed but low-leg not yet recorded — deferring",
-                {"failed": failed_sub_label, "sister": sister_low},
-            ))
-            return False
-        logger.warning(format_log_event(
-            label,
-            "MRCC degenerate-system fallback: substituting low-leg energy for high-leg",
-            {"failed": failed_sub_label, "sister": sister_low,
-             "reason": "Method exceeds determinant space; δ = 0 by symmetry."},
-        ))
-        # Substitute by re-using the low-leg's path. _record_composite_completion
-        # writes the path into output and clears the pending entry — same as a
-        # normal completion, but pointing both legs at the same file so they
-        # parse to the same energy and the δ evaluates to zero.
-        completed_paths = self.output[label]['paths']['sp_composite']
-        completed_paths[failed_sub_label] = sister_path
-        del pending[failed_sub_label]
-        if pending:
-            self._spawn_composite_pending(label)
-        else:
-            self._finalize_composite(label)
-        return True
-
     def _rehydrate_composite_state(self) -> None:
         """On scheduler init/restart, seed pending for every species with an active
         composite, rebuild the SpeciesSection for species that already finalized,
@@ -1964,6 +2145,20 @@ class Scheduler(object):
                 continue
             self._seed_composite_pending(label)
             if self.output.get(label, {}).get('job_types', {}).get('sp_composite'):
+                # _seed_composite_pending may have stripped missing/unparseable
+                # paths via _validate_composite_completed; re-writing the report
+                # from a stripped dict would KeyError. Skip until the requeued
+                # sub-jobs complete and re-finalize the species.
+                completed = self.output.get(label, {}).get('paths', {}).get('sp_composite', {}) or {}
+                skipped = self._sp_composite_skipped.get(label, {})
+                missing = [sub_label for term_label, sub_label, _level in protocol.iter_required_jobs()
+                           if term_label not in skipped and sub_label not in completed]
+                if missing:
+                    logger.warning(format_log_event(
+                        label, "finalized species is missing sub-job paths — skipping report re-write",
+                        {"missing": missing},
+                    ))
+                    continue
                 self._sp_composite_sections[label] = self._build_species_section(label, protocol)
                 # Re-emit the per-species report so a restart fills in reports
                 # missing on disk (and refreshes any whose protocol metadata
@@ -2016,11 +2211,13 @@ class Scheduler(object):
             level (Level): An alternative level of theory to run at. If ``None``, self.sp_level will be used.
             conformer (int): The conformer number.
         """
-        # Phase 3: for species with an active sp_composite, the SP runs at the
-        # protocol's base.level (unless the caller passed an explicit ``level``).
+        # For species with an active sp_composite, the SP runs at the protocol's
+        # primary base level — the single base level, or the largest-cardinal
+        # CBS leg (unless the caller passed an explicit ``level``). The remaining
+        # base legs and corrections are spawned by _post_sp_actions_composite.
         if level is None:
             _active_protocol = self._composite_for(label)
-            level = _active_protocol.base.level if _active_protocol is not None else self.sp_level
+            level = _active_protocol.primary_base_level if _active_protocol is not None else self.sp_level
         if self.job_types['conf_sp'] and conformer is not None and self.conformer_sp_level != self.conformer_opt_level:
             self.run_job(label=label,
                          xyz=self.species_dict[label].conformers[conformer],
@@ -3447,13 +3644,6 @@ class Scheduler(object):
             if self.species_dict[label].number_of_atoms == 1:
                 # save the geometry from the sp job for monoatomic species for which no opt/freq jobs will be spawned
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file
-        elif self._mrcc_degenerate_short_circuit(label=label, job=job):
-            # MRCC bailed for a degenerate small-system δ-term high leg
-            # (atomic H, H2, etc., where the requested CC excitation rank
-            # exceeds the determinant space). The trsh ladder cannot help —
-            # cause is intrinsic. Helper substituted the low-leg energy and
-            # advanced the composite; nothing further to do here.
-            self.save_restart_dict()
         else:
             self.troubleshoot_ess(label=label,
                                   job=job,
@@ -3473,7 +3663,7 @@ class Scheduler(object):
             sp_path (str): The path to 'output.out' for the single point job.
             level (Level, optional): The level of theory used for the sp job.
         """
-        # Phase 3: when sp_composite is active for this species, route through
+        # When sp_composite is active for this species, route through
         # the composite branch. The legacy path below does not run for composite
         # species — e_elect is set by ``_finalize_composite`` after all sub-jobs
         # complete, not from any single intermediate SP.
@@ -3905,15 +4095,21 @@ class Scheduler(object):
         """
         Check job status on a specific server or on all active servers, get a list of relevant running job IDs.
 
+        Also retains a job_id → normalized queue state map in ``self.server_job_states``
+        (local jobs carry no state info and are absent from the map).
+
         Args:
             specific_server (str, optional): The server to check. If ``None``, check all active servers.
         """
         self.server_job_ids = list()
+        self.server_job_states = dict()
         for server in self.servers:
             if specific_server is None or server == specific_server:
                 if server != 'local':
                     with SSHClient(server) as ssh:
-                        self.server_job_ids.extend(ssh.check_running_jobs_ids())
+                        job_states = ssh.check_running_jobs_ids_and_states()
+                    self.server_job_ids.extend(job_states.keys())
+                    self.server_job_states.update({str(job_id): state for job_id, state in job_states.items()})
                 else:
                     self.server_job_ids.extend(check_running_jobs_ids())
 
@@ -4390,9 +4586,9 @@ class Scheduler(object):
             propagates a RuntimeError up through delete_all_species_jobs →
             troubleshoot_negative_freq → schedule_jobs → __init__ and the
             entire project dies."""
-            logger.info(f'Deleted job {display_name}')
             try:
                 job.delete()
+                logger.info(f'Deleted job {display_name}')
             except Exception as exc:
                 logger.warning(
                     f'Failed to delete job {display_name} for species '
@@ -4414,7 +4610,7 @@ class Scheduler(object):
         # Reset paths for this species. Most keys reset to ''; container-valued
         # keys keep their type so the rest of the pipeline (composite tracking,
         # IRC trajectory list) doesn't crash on a string where it expects a
-        # dict / list. Phase 3 added 'sp_composite' as a dict[sub_label → path];
+        # dict / list. 'sp_composite' is a dict[sub_label → path];
         # without the carve-out below it would collapse to '' here and the next
         # composite sub-job completion would TypeError on item assignment.
         _path_empty = {'irc': list, 'sp_composite': dict}
@@ -4436,6 +4632,7 @@ class Scheduler(object):
         self._pending_pipe_irc.discard((label, 'forward'))
         self._pending_pipe_irc.discard((label, 'reverse'))
         self._sp_composite_pending.pop(label, None)
+        self._sp_composite_skipped.pop(label, None)
         self._sp_composite_sections.pop(label, None)
         # Clean up any IRC species spawned from this TS.
         if label in self.species_dict and self.species_dict[label].is_ts:
@@ -4746,7 +4943,8 @@ class Scheduler(object):
     def _ensure_sp_composite_paths_invariant(self, label: str) -> None:
         """Coerce ``output[label]['paths']['sp_composite']`` to a dict.
 
-        Phase 3 stores sub-job results as ``{sub_label: path}`` here. A non-
+        The composite orchestration stores sub-job results as
+        ``{sub_label: path}`` here. A non-
         dict value (typically a leftover scalar string from an older ARC
         version's restart.yml) is reset to ``{}`` and a single-line warning
         is logged so the user can audit. Empty/absent values are reset
@@ -4901,6 +5099,11 @@ def species_has_sp(species_output_dict: dict,
     """
     Checks whether a species has a valid converged single-point energy using it's output dict.
 
+    For a species computed with an sp_composite protocol (non-empty ``paths['sp_composite']``),
+    the sp phase is complete only once all protocol sub-jobs were recorded and the protocol was
+    evaluated — flagged by ``job_types['sp_composite']``. ``paths['sp']`` (the geometry-consistent
+    base log) is deliberately ignored here, see Scheduler._sync_composite_sp_path.
+
     Args:
         species_output_dict (dict): The species output dict (i.e., Scheduler.output[label]).
         yml_path (str): THe species Arkane YAML file path.
@@ -4910,6 +5113,8 @@ def species_has_sp(species_output_dict: dict,
     """
     if yml_path is not None:
         return True
+    if species_output_dict['paths'].get('sp_composite'):
+        return bool(species_output_dict.get('job_types', {}).get('sp_composite'))
     if species_output_dict['paths']['sp'] or species_output_dict['paths']['composite']:
         return True
     return False

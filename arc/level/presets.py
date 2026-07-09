@@ -11,8 +11,7 @@ overrides) to a fresh, independent recipe dict suitable for handing to
 ``CompositeProtocol.from_user_input``. Returned dicts are deep copies so that
 caller-side mutation cannot pollute the cached registry.
 
-References
-----------
+References:
 
 * Tajti, Szalay, Császár, Kállay, Gauss, Valeev, Flowers, Vázquez, Stanton,
   *J. Chem. Phys.* **121**, 11599 (2004). DOI: 10.1063/1.1811608 — HEAT.
@@ -25,8 +24,7 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
-import yaml
-
+from arc.common import read_yaml_file
 from arc.exceptions import InputError
 
 
@@ -35,9 +33,19 @@ _PRESETS_PATH = os.path.join(_HERE, "presets.yml")
 
 
 def _load_presets(path: str) -> dict[str, dict[str, Any]]:
-    """Load ``presets.yml`` once; return the parsed mapping."""
-    with open(path, "r") as fh:
-        data = yaml.safe_load(fh) or {}
+    """
+    Load ``presets.yml`` once; return the parsed mapping.
+
+    Args:
+        path (str): Path to the presets YAML file.
+
+    Returns:
+        dict[str, dict[str, Any]]: Preset name → recipe dict.
+
+    Raises:
+        InputError: If the file is missing or does not parse to a mapping.
+    """
+    data = read_yaml_file(path) or {}
     if not isinstance(data, dict):
         raise InputError(f"Preset file {path} must parse to a mapping, got {type(data).__name__}.")
     return data
@@ -71,7 +79,8 @@ _ALLOWED_LEVEL_FIELDS = {
 
 
 def _deep_merge_level_dict(target: dict[str, Any], patch: dict[str, Any]) -> None:
-    """Shallow-merge ``patch`` into ``target`` with one level of nesting for
+    """
+    Shallow-merge ``patch`` into ``target`` with one level of nesting for
     ``high``/``low``/``level`` — replacing fields of the inner dict rather than
     the whole dict. Mutates ``target`` in place.
 
@@ -80,6 +89,10 @@ def _deep_merge_level_dict(target: dict[str, Any], patch: dict[str, Any]) -> Non
     ``{method: ccsdt, basis: cc-pVTZ}`` — not discard the method. Only the
     nested Level dicts (high/low/level) get this treatment; scalar or
     list-valued fields (formula, levels) still replace wholesale.
+
+    Args:
+        target (dict[str, Any]): The term or base dict to mutate.
+        patch (dict[str, Any]): Field patch to merge in.
     """
     for key, new_val in patch.items():
         existing = target.get(key)
@@ -98,13 +111,26 @@ def _deep_merge_level_dict(target: dict[str, Any], patch: dict[str, Any]) -> Non
 def _validate_override_fields(term_or_base: dict[str, Any],
                               patch: dict[str, Any],
                               target_name: str) -> None:
-    """Reject typos in override patch keys.
+    """
+    Reject typos in override patch keys.
 
     For a correction term, patch keys must match the term's ``type``-specific
     allowed fields. For ``base``, patch keys must be valid Level-dict keys
-    (plus the usual level-dict extensions).
+    (plus the usual level-dict extensions) — unless the base dict carries a
+    ``type`` discriminator (e.g. a CBS-as-base term), in which case the patch
+    is validated against that term type's allowed fields.
+
+    Args:
+        term_or_base (dict[str, Any]): The targeted term dict (or base dict).
+        patch (dict[str, Any]): The override patch being applied.
+        target_name (str): The override target label (term label or ``"base"``).
+
+    Raises:
+        InputError: If the patch carries unknown fields, or the term's type
+            cannot be validated.
     """
-    if target_name == "base":
+    is_typed_term = isinstance(term_or_base, dict) and "type" in term_or_base
+    if target_name == "base" and not is_typed_term:
         allowed = _ALLOWED_LEVEL_FIELDS
     else:
         term_type = term_or_base.get("type")
@@ -127,7 +153,8 @@ def _apply_overrides(
     recipe: dict[str, Any],
     overrides: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Merge per-term ``overrides`` into a recipe and return the result.
+    """
+    Merge per-term ``overrides`` into a recipe and return the result.
 
     ``overrides`` is a mapping ``{term_label: {field_name: new_value}}``. The
     special key ``"base"`` targets the protocol's base level rather than a
@@ -140,6 +167,16 @@ def _apply_overrides(
       **deep-merged** when both old and new values are dicts: overriding
       ``{high: {basis: cc-pVTZ}}`` preserves the existing ``method``. Other
       fields (``formula``, ``levels``, scalar values) replace wholesale.
+
+    Args:
+        recipe (dict[str, Any]): The recipe dict to merge into (mutated in place).
+        overrides (Mapping[str, Any]): Mapping of term label → field patch.
+
+    Returns:
+        dict[str, Any]: The merged recipe (same object as ``recipe``).
+
+    Raises:
+        InputError: On unknown targets, non-dict patches, or unknown fields.
     """
     if not overrides:
         return recipe
@@ -176,26 +213,22 @@ def expand_preset(
     name: str,
     overrides: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Resolve a preset name (with optional overrides) to an independent recipe dict.
+    """
+    Resolve a preset name (with optional overrides) to an independent recipe dict.
 
-    Parameters
-    ----------
-    name : str
-        One of the keys in :data:`PRESETS`. Lookup is case-sensitive.
-    overrides : Mapping[str, Any], optional
-        Mapping of term label → field patch. See :func:`_apply_overrides`.
+    Args:
+        name (str): One of the keys in :data:`PRESETS`. Lookup is case-sensitive.
+        overrides (Mapping[str, Any], optional): Mapping of term label → field
+            patch. See :func:`_apply_overrides`.
 
-    Returns
-    -------
-    dict
-        A deep-copied recipe dict in the explicit form
+    Returns:
+        dict: A deep-copied recipe dict in the explicit form
         (``{base: ..., corrections: [...]}``) ready to be handed to
         :meth:`arc.level.protocol.CompositeProtocol.from_user_input`.
 
-    Raises
-    ------
-    arc.exceptions.InputError
-        If ``name`` is unknown or the overrides target a non-existent term.
+    Raises:
+        InputError: If ``name`` is unknown or the overrides target a
+            non-existent term.
     """
     if name not in PRESETS:
         raise InputError(

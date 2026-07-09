@@ -7,7 +7,7 @@ calculation is performed:
 * The legacy :class:`~arc.level.level.Level` class, which represents a single QM level
   (method, basis, dispersion, solvation, ESS-specific options) and is unchanged from
   ``arc/level.py`` prior to its relocation into this package.
-* New composite single-point abstractions added in Phase 1 of the ``sp_composite`` work:
+* New composite single-point abstractions for the ``sp_composite`` feature:
   protocols, terms, presets, CBS extrapolation, and reporting helpers. These let a
   user define the final electronic energy of a stationary point as a sum of multiple
   SP corrections — a HEAT-style focal-point analysis (Tajti et al.,
