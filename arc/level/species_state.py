@@ -37,7 +37,8 @@ SP_COMPOSITE_STATES: tuple[str, ...] = ("inherit", "opt_out", "explicit")
 
 
 class _InheritSentinel:
-    """Singleton marker used as a ctor default for ``sp_composite``.
+    """
+    Singleton marker used as a ctor default for ``sp_composite``.
 
     Distinct from :data:`None` so the constructor can tell "user passed nothing"
     (→ inherit the project default) from "user passed ``None``" (→ opt out).
@@ -71,31 +72,25 @@ def active_composite_for(
     species_protocol: "CompositeProtocol | None",
     global_protocol: "CompositeProtocol | None",
 ) -> "CompositeProtocol | None":
-    """Return the composite protocol to apply to a single species, or ``None``.
+    """
+    Return the composite protocol to apply to a single species, or ``None``.
 
-    Parameters
-    ----------
-    species_state : str
-        One of :data:`SP_COMPOSITE_STATES`.
-    species_protocol : CompositeProtocol or None
-        The species-local protocol. Must be non-``None`` iff
-        ``species_state == "explicit"``.
-    global_protocol : CompositeProtocol or None
-        The project-wide default protocol (or ``None`` if the project didn't
-        set one).
+    Args:
+        species_state (str): One of :data:`SP_COMPOSITE_STATES`.
+        species_protocol (CompositeProtocol | None): The species-local protocol.
+            Must be non-``None`` iff ``species_state == "explicit"``.
+        global_protocol (CompositeProtocol | None): The project-wide default
+            protocol (or ``None`` if the project didn't set one).
 
-    Returns
-    -------
-    CompositeProtocol or None
-        * ``species_protocol`` if ``species_state == "explicit"``.
-        * ``None`` if ``species_state == "opt_out"``.
-        * ``global_protocol`` (possibly ``None``) if ``species_state == "inherit"``.
+    Returns:
+        CompositeProtocol | None:
+            * ``species_protocol`` if ``species_state == "explicit"``.
+            * ``None`` if ``species_state == "opt_out"``.
+            * ``global_protocol`` (possibly ``None``) if ``species_state == "inherit"``.
 
-    Raises
-    ------
-    arc.exceptions.InputError
-        If ``species_state`` is not a valid state, or if ``"explicit"`` is
-        paired with a ``None`` ``species_protocol``.
+    Raises:
+        InputError: If ``species_state`` is not a valid state, or if
+            ``"explicit"`` is paired with a ``None`` ``species_protocol``.
     """
     if species_state == "explicit":
         if species_protocol is None:

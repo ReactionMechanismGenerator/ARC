@@ -22,6 +22,7 @@ from arc.level.protocol import (
     SinglePointTerm,
     Term,
     build_protocol,
+    excitation_rank,
 )
 
 
@@ -93,6 +94,86 @@ class TestDeltaTerm(unittest.TestCase):
             DeltaTerm(label="bad", high=self.high, low=None)
         with self.assertRaises(InputError):
             DeltaTerm(label="bad", high=None, low=self.low)
+
+
+class TestExcitationRank(unittest.TestCase):
+    """``excitation_rank`` parses the CC excitation rank off a method string."""
+
+    def test_plain_cc_methods(self):
+        self.assertEqual(excitation_rank('ccsd'), 2)
+        self.assertEqual(excitation_rank('ccsdt'), 3)
+        self.assertEqual(excitation_rank('ccsdtq'), 4)
+
+    def test_perturbative_top_counts_like_iterative(self):
+        self.assertEqual(excitation_rank('ccsd(t)'), 3)
+        self.assertEqual(excitation_rank('ccsdt(q)'), 4)
+        self.assertEqual(excitation_rank('ccsdtq(p)'), 5)
+
+    def test_case_insensitive(self):
+        self.assertEqual(excitation_rank('CCSD'), 2)
+        self.assertEqual(excitation_rank('CCSDT(Q)'), 4)
+
+    def test_f12_suffix_stripped(self):
+        self.assertEqual(excitation_rank('ccsd(t)-f12'), 3)
+        self.assertEqual(excitation_rank('ccsd-f12a'), 2)
+        self.assertEqual(excitation_rank('CCSD(T)-F12b'), 3)
+
+    def test_spin_restriction_prefixes(self):
+        self.assertEqual(excitation_rank('uccsd(t)'), 3)
+        self.assertEqual(excitation_rank('rccsd(t)'), 3)
+
+    def test_non_cc_methods_return_none(self):
+        for method in ('hf', 'mp2', 'b3lyp', 'wb97xd', 'cisd', 'cbs-qb3', ''):
+            self.assertIsNone(excitation_rank(method), method)
+
+
+class TestDeltaTermIsTriviallyZero(unittest.TestCase):
+    """``DeltaTerm.is_trivially_zero`` — the proactive δ≡0 decision."""
+
+    def setUp(self):
+        self.delta_t = DeltaTerm(label='delta_T',
+                                 high=Level(method='ccsdt', basis='cc-pVDZ'),
+                                 low=Level(method='ccsd(t)', basis='cc-pVDZ'))
+        self.delta_q = DeltaTerm(label='delta_Q',
+                                 high=Level(method='ccsdt(q)', basis='cc-pVDZ'),
+                                 low=Level(method='ccsdt', basis='cc-pVDZ'))
+
+    def test_h_atom_skips_delta_t(self):
+        self.assertTrue(self.delta_t.is_trivially_zero(1))
+
+    def test_he_skips_delta_t_and_delta_q(self):
+        self.assertTrue(self.delta_t.is_trivially_zero(2))
+        self.assertTrue(self.delta_q.is_trivially_zero(2))
+
+    def test_three_correlated_electrons_keep_delta_t(self):
+        # CCSD(T)'s perturbative triples are inexact for 3 correlated electrons.
+        self.assertFalse(self.delta_t.is_trivially_zero(3))
+
+    def test_strict_boundary_rank_equals_n_corr_not_skipped(self):
+        # Be all-electron: n_corr=4 vs δ[(Q)] rank 4 — 4 < 4 is False.
+        self.assertFalse(self.delta_q.is_trivially_zero(4))
+
+    def test_three_correlated_electrons_skip_delta_q(self):
+        # CCSDT is FCI for 3 electrons and quadruples cannot exist, so (Q) = 0.
+        self.assertTrue(self.delta_q.is_trivially_zero(3))
+
+    def test_perturbative_low_leg_at_boundary_not_skipped(self):
+        # CCSDTQ is FCI for 3 electrons but CCSD(T) is not — δ ≠ 0.
+        term = DeltaTerm(label='d',
+                         high=Level(method='ccsdtq', basis='cc-pVDZ'),
+                         low=Level(method='ccsd(t)', basis='cc-pVDZ'))
+        self.assertFalse(term.is_trivially_zero(3))
+
+    def test_non_cc_low_leg_never_skipped(self):
+        term = DeltaTerm(label='d',
+                         high=Level(method='ccsd', basis='cc-pVDZ'),
+                         low=Level(method='mp2', basis='cc-pVDZ'))
+        self.assertFalse(term.is_trivially_zero(1))
+
+    def test_polyatomic_counts_keep_all_deltas(self):
+        for n_corr in (8, 10, 50):
+            self.assertFalse(self.delta_t.is_trivially_zero(n_corr))
+            self.assertFalse(self.delta_q.is_trivially_zero(n_corr))
 
 
 class TestCBSExtrapolationTerm(unittest.TestCase):
@@ -221,7 +302,7 @@ class TestCBSExtrapolationTerm(unittest.TestCase):
         )
 
     def test_components_corr_rejected_until_component_parsing_exists(self):
-        """Phase 5.5: reject components != 'total'. parse_e_elect returns total
+        """Reject components != 'total'. parse_e_elect returns total
         energies, so extrapolating them while claiming 'corr' or 'hf' would
         silently produce a wrong answer."""
         with self.assertRaises(InputError):
@@ -244,7 +325,7 @@ class TestCBSExtrapolationTerm(unittest.TestCase):
                 components="bogus",
             )
 
-    # --- Phase 5.5: formula arity at construction ---------------------------- #
+    # --- formula arity at construction --------------------------------------- #
 
     def test_martin_3pt_with_2_levels_rejected_at_construction(self):
         """martin_3pt needs exactly 3 levels — rejected eagerly."""
@@ -315,21 +396,21 @@ class TestCompositeProtocolBasics(unittest.TestCase):
         }
         self.assertAlmostEqual(protocol.evaluate(energies), -100.15, places=12)
 
-    def test_evaluate_with_cbs_term(self):
+    def test_cbs_term_in_corrections_rejected(self):
+        """A cbs_extrapolation correction with components='total' extrapolates
+        absolute energies and would double-count the base — rejected at
+        construction with a pointer to CBS-as-base usage."""
         cbs_term = CBSExtrapolationTerm(
             label="cbs_corr",
             formula="helgaker_corr_2pt",
             levels=[Level(method="ccsd(t)", basis="cc-pVTZ"),
                     Level(method="ccsd(t)", basis="cc-pVQZ")],
         )
-        protocol = CompositeProtocol(base=_hf_base(), corrections=[cbs_term])
-        energies = {
-            "base": -100.0,
-            "cbs_corr__card_3": -0.30,
-            "cbs_corr__card_4": -0.31,
-        }
-        cbs_value = (27 * -0.30 - 64 * -0.31) / (27 - 64)
-        self.assertAlmostEqual(protocol.evaluate(energies), -100.0 + cbs_value, places=12)
+        with self.assertRaises(InputError) as ctx:
+            CompositeProtocol(base=_hf_base(), corrections=[cbs_term])
+        message = str(ctx.exception)
+        self.assertIn("base", message)
+        self.assertIn("HEAT", message)
 
     def test_iter_required_jobs_yields_every_sub_job(self):
         protocol = CompositeProtocol(base=_hf_base(), corrections=[_delta_t(), _delta_q()])
@@ -345,9 +426,16 @@ class TestCompositeProtocolBasics(unittest.TestCase):
             self.assertIsInstance(level, Level)
             self.assertTrue(sub_label.startswith(term_label))
 
-    def test_base_is_a_single_point_term(self):
+    def test_delta_base_rejected(self):
+        """A DeltaTerm provides no absolute energy and cannot anchor a protocol."""
         with self.assertRaises(InputError):
             CompositeProtocol(base=_delta_t(), corrections=[])
+
+    def test_primary_base_accessors_for_single_point_base(self):
+        protocol = CompositeProtocol(base=_hf_base(), corrections=[_delta_t()])
+        self.assertEqual(protocol.base_sub_labels, ["base"])
+        self.assertEqual(protocol.primary_base_sub_label, "base")
+        self.assertEqual(protocol.primary_base_level, protocol.base.level)
 
     def test_duplicate_term_labels_rejected(self):
         with self.assertRaises(InputError):
@@ -359,9 +447,9 @@ class TestCompositeProtocolBasics(unittest.TestCase):
             CompositeProtocol(base=_hf_base(), corrections=[clash])
 
     def test_sub_label_collision_across_terms_rejected(self):
-        """Phase 5.5: a SinglePointTerm whose label matches a DeltaTerm's
-        generated sub_label must be rejected at construction time. Without this
-        check, the scheduler's pending/completed maps would get silent overwrites."""
+        """A SinglePointTerm whose label matches a DeltaTerm's generated
+        sub_label must be rejected at construction time. Without this check,
+        the scheduler's pending/completed maps would get silent overwrites."""
         with self.assertRaises(InputError) as ctx:
             CompositeProtocol(
                 base=_hf_base(),
@@ -374,6 +462,110 @@ class TestCompositeProtocolBasics(unittest.TestCase):
                 ],
             )
         self.assertIn("delta_T__high", str(ctx.exception))
+
+
+def _cbs_base():
+    return CBSExtrapolationTerm(
+        label="base",
+        formula="helgaker_corr_2pt",
+        levels=[Level(method="ccsd(t)", basis="cc-pVTZ"),
+                Level(method="ccsd(t)", basis="cc-pVQZ")],
+    )
+
+
+class TestCompositeProtocolCBSBase(unittest.TestCase):
+    """CBS-as-base: the canonical FPA shape — base is the absolute CBS energy."""
+
+    def test_cbs_base_accepted(self):
+        protocol = CompositeProtocol(base=_cbs_base(), corrections=[])
+        self.assertIsInstance(protocol.base, CBSExtrapolationTerm)
+
+    def test_evaluate_reproduces_hand_computed_fpa(self):
+        """E_final = E_CBS(T,Q) + δT, checked against a hand-computed value."""
+        protocol = CompositeProtocol(base=_cbs_base(), corrections=[_delta_t()])
+        e_3, e_4 = -100.30, -100.31
+        energies = {
+            "base__card_3": e_3,
+            "base__card_4": e_4,
+            "delta_T__high": -100.5,
+            "delta_T__low": -100.4,
+        }
+        e_cbs = (27 * e_3 - 64 * e_4) / (27 - 64)
+        expected = e_cbs + (-100.5 - -100.4)
+        self.assertAlmostEqual(protocol.evaluate(energies), expected, places=10)
+
+    def test_base_sub_labels_deterministic_from_cardinals(self):
+        protocol = CompositeProtocol(base=_cbs_base(), corrections=[])
+        self.assertEqual(protocol.base_sub_labels, ["base__card_3", "base__card_4"])
+
+    def test_primary_base_is_largest_cardinal_leg(self):
+        protocol = CompositeProtocol(base=_cbs_base(), corrections=[])
+        self.assertEqual(protocol.primary_base_sub_label, "base__card_4")
+        self.assertEqual(protocol.primary_base_level.basis, "cc-pvqz")
+
+    def test_iter_required_jobs_includes_one_job_per_cardinal(self):
+        protocol = CompositeProtocol(base=_cbs_base(), corrections=[_delta_t()])
+        sub_labels = sorted(sl for _t, sl, _l in protocol.iter_required_jobs())
+        self.assertEqual(sub_labels, ["base__card_3", "base__card_4",
+                                      "delta_T__high", "delta_T__low"])
+
+    def test_round_trip_dict_preserves_sub_labels(self):
+        """Restart rehydration keys off sub_labels — they must survive
+        ``as_dict`` → ``from_dict`` byte-identically."""
+        protocol = CompositeProtocol(base=_cbs_base(), corrections=[_delta_t()])
+        rebuilt = CompositeProtocol.from_dict(protocol.as_dict())
+        self.assertIsInstance(rebuilt.base, CBSExtrapolationTerm)
+        self.assertEqual(
+            [(t, sl) for t, sl, _l in rebuilt.iter_required_jobs()],
+            [(t, sl) for t, sl, _l in protocol.iter_required_jobs()],
+        )
+
+    def test_round_trip_evaluate_identical(self):
+        protocol = CompositeProtocol(base=_cbs_base(), corrections=[_delta_t()])
+        rebuilt = CompositeProtocol.from_dict(protocol.as_dict())
+        energies = {
+            "base__card_3": -100.30, "base__card_4": -100.31,
+            "delta_T__high": -100.5, "delta_T__low": -100.4,
+        }
+        self.assertAlmostEqual(rebuilt.evaluate(energies),
+                               protocol.evaluate(energies), places=12)
+
+    def test_from_user_input_cbs_base_dict(self):
+        """A typed cbs_extrapolation base dict (no label) defaults to label 'base'."""
+        raw = {
+            "base": {
+                "type": "cbs_extrapolation",
+                "formula": "helgaker_corr_2pt",
+                "levels": [{"method": "ccsd(t)", "basis": "cc-pVTZ"},
+                           {"method": "ccsd(t)", "basis": "cc-pVQZ"}],
+            },
+            "corrections": [],
+        }
+        protocol = CompositeProtocol.from_user_input(raw)
+        self.assertIsInstance(protocol.base, CBSExtrapolationTerm)
+        self.assertEqual(protocol.base_sub_labels, ["base__card_3", "base__card_4"])
+
+    def test_from_user_input_delta_base_rejected(self):
+        raw = {
+            "base": {"type": "delta", "label": "base",
+                     "high": "ccsdt/cc-pVDZ", "low": "ccsd(t)/cc-pVDZ"},
+            "corrections": [],
+        }
+        with self.assertRaises(InputError):
+            CompositeProtocol.from_user_input(raw)
+
+    def test_from_user_input_cbs_correction_rejected(self):
+        raw = {
+            "base": "ccsd(t)-f12/cc-pVTZ-f12",
+            "corrections": [
+                {"label": "cbs_corr", "type": "cbs_extrapolation",
+                 "formula": "helgaker_corr_2pt", "components": "total",
+                 "levels": [{"method": "ccsd(t)", "basis": "cc-pVTZ"},
+                            {"method": "ccsd(t)", "basis": "cc-pVQZ"}]},
+            ],
+        }
+        with self.assertRaises(InputError):
+            CompositeProtocol.from_user_input(raw)
 
 
 # --------------------------------------------------------------------------- #
@@ -457,9 +649,9 @@ class TestBuildProtocolHelper(unittest.TestCase):
 
 
 class TestFromUserInputNoMutation(unittest.TestCase):
-    """Phase 5.5: ``from_user_input`` must not mutate caller-owned dicts.
+    """``from_user_input`` must not mutate caller-owned dicts.
 
-    Pre-5.5 the base-dict branch popped the ``label`` key off the caller's
+    Previously the base-dict branch popped the ``label`` key off the caller's
     input, breaking idempotent re-parse and polluting restart state.
     """
 
@@ -500,7 +692,7 @@ class TestFromUserInputNoMutation(unittest.TestCase):
 
 
 class TestFromUserInputPresetMetadataPreservation(unittest.TestCase):
-    """Phase 5.5: serialised ``as_dict()`` output must round-trip preset_name
+    """Serialised ``as_dict()`` output must round-trip preset_name
     through ``from_user_input`` (in addition to ``from_dict``)."""
 
     def test_from_user_input_reads_preset_name_from_as_dict_output(self):

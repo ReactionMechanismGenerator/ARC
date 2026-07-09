@@ -1,14 +1,18 @@
-# Form 3 — fully explicit recipe, with a CBS extrapolation term.
+# Form 3 — fully explicit recipe, with a CBS extrapolation as the base.
 #
 # A minimal Allen-style focal-point analysis:
-#   E_final = E[CCSD(T)-F12/cc-pVTZ-F12]            (base)
-#           + E_CBS(CCSD(T) corr) − E[CCSD(T)/cc-pVTZ]   (CBS extrapolation)
-#           + δ[CCSDT]                              (post-(T) correction)
+#   E_final = E_CBS[CCSD(T)/cc-pV{T,Q}Z]   (base: two-point CBS extrapolation)
+#           + δ[CCSDT]                     (post-(T) correction)
 #
 # Does NOT require MRCC. CCSDT at cc-pVDZ runs in CFOUR (NCC) or Molpro.
-# CBS term uses Helgaker 2-point correlation-energy formula:
-#   (X^3·E_X − Y^3·E_Y) / (X^3 − Y^3)
+# The base uses the Helgaker 2-point X^-3 formula:
+#   E_CBS = (X^3·E_X − Y^3·E_Y) / (X^3 − Y^3)
 # See Helgaker, Klopper, Koch, Noga, J. Chem. Phys. 106, 9639 (1997).
+#
+# Honesty note: the X^-3 form was derived for the correlation energy, but it
+# is applied here to TOTAL energies (the only component ARC's parsers surface)
+# — the exponentially-converging HF component is technically mis-treated. At
+# {T,Q} cardinals the residual is small and this is common practice.
 #
 # The top-level ``reference`` key carries a user-supplied citation; it flows
 # into the generated provenance notebook's References block.
@@ -18,19 +22,18 @@ sp_composite:
   reference: >-
     Minimal focal-point analysis; cites Helgaker et al.
     J. Chem. Phys. 106, 9639 (1997); DOI: 10.1063/1.473863.
+    Two-point X^-3 extrapolation applied to total energies.
   base:
-    method: ccsd(t)-f12
-    basis: cc-pVTZ-f12
+    label: base
+    type: cbs_extrapolation
+    formula: helgaker_corr_2pt
+    # Only ``components: total`` is currently supported — adapter-level
+    # HF/correlation component parsing is a future addition.
+    components: total
+    levels:
+      - {method: ccsd(t), basis: cc-pVTZ}
+      - {method: ccsd(t), basis: cc-pVQZ}
   corrections:
-    - label: cbs_corr
-      type: cbs_extrapolation
-      formula: helgaker_corr_2pt
-      # Only ``components: total`` is currently supported — adapter-level
-      # correlation-only parsing is a future addition. Formula name documents intent.
-      components: total
-      levels:
-        - {method: ccsd(t), basis: cc-pVTZ}
-        - {method: ccsd(t), basis: cc-pVQZ}
     - label: delta_T
       type: delta
       high: {method: ccsdt,   basis: cc-pVDZ}

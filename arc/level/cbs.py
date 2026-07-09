@@ -11,8 +11,7 @@ The CBS step in a focal-point analysis takes ≥2 single-point energies computed
 cc-pVQZ → 4, ...) and combines them according to a closed-form expression that
 extrapolates to the (formally infinite) basis-set limit.
 
-Built-in formulas
------------------
+Built-in formulas:
 
 ``helgaker_corr_2pt``
     Two-point correlation-energy extrapolation
@@ -73,29 +72,25 @@ _DEF2_CARDINAL = {"S": 2, "TZ": 3, "QZ": 4}
 
 
 def cardinal_from_basis(basis: str) -> int:
-    """Return the cardinal number X for a correlation-consistent or def2 basis set.
+    """
+    Return the cardinal number X for a correlation-consistent or def2 basis set.
 
-    Parameters
-    ----------
-    basis : str
-        Basis-set name (case-insensitive). Supported families:
+    Args:
+        basis (str): Basis-set name (case-insensitive). Supported families:
 
-        * ``cc-pV{D,T,Q,5,6,7}Z`` — Dunning correlation-consistent.
-        * ``aug-cc-pV{D,T,Q,5,6,7}Z`` — diffuse-augmented variants.
-        * ``cc-pCV{D,T,Q,5,6}Z`` and ``aug-cc-pCV*`` — core-valence variants.
-        * ``def2-{SVP,TZVP,QZVP}`` and the ``...PP`` variants (Weigend & Ahlrichs).
+            * ``cc-pV{D,T,Q,5,6,7}Z`` — Dunning correlation-consistent.
+            * ``aug-cc-pV{D,T,Q,5,6,7}Z`` — diffuse-augmented variants.
+            * ``cc-pCV{D,T,Q,5,6}Z`` and ``aug-cc-pCV*`` — core-valence variants.
+            * ``def2-{SVP,TZVP,QZVP}`` and the ``...PP`` variants (Weigend & Ahlrichs).
 
-    Returns
-    -------
-    int
-        Cardinal X (2 for double-zeta, 3 for triple-zeta, etc.).
+    Returns:
+        int: Cardinal X (2 for double-zeta, 3 for triple-zeta, etc.).
 
-    Raises
-    ------
-    arc.exceptions.InputError
-        If ``basis`` does not match a known correlation-consistent or def2 pattern.
-        CBS extrapolation requires a known cardinal; non-systematic basis sets such
-        as ``6-31G*`` or ``STO-3G`` are rejected explicitly.
+    Raises:
+        InputError: If ``basis`` does not match a known correlation-consistent or
+            def2 pattern. CBS extrapolation requires a known cardinal;
+            non-systematic basis sets such as ``6-31G*`` or ``STO-3G`` are
+            rejected explicitly.
     """
     if not basis:
         raise InputError("Cannot deduce cardinal number from an empty basis-set name.")
@@ -124,42 +119,53 @@ def cardinal_from_basis(basis: str) -> int:
 
 
 def _sorted_pairs(energies: Mapping[int, float], expected: int) -> list:
-    """Return ``[(X, E_X), ...]`` sorted by cardinal, validating count & uniqueness."""
+    """
+    Return ``[(X, E_X), ...]`` sorted by ascending cardinal, validating the count.
+
+    Mapping keys are unique by construction, so distinct cardinals need no
+    separate check: repeated cardinals collapse and fail the count check.
+
+    Args:
+        energies (Mapping[int, float]): Mapping ``{cardinal: energy}``.
+        expected (int): The exact number of pairs the formula requires.
+
+    Returns:
+        list: ``(cardinal, energy)`` tuples sorted by ascending cardinal.
+
+    Raises:
+        InputError: If the number of pairs differs from ``expected``.
+    """
     pairs = sorted(energies.items())
     if len(pairs) != expected:
         raise InputError(
             f"Expected exactly {expected} (cardinal, energy) pairs, got {len(pairs)}."
         )
-    cardinals = [X for X, _ in pairs]
-    if len(set(cardinals)) != len(cardinals):
-        raise InputError(f"Cardinals must be distinct, got {cardinals}.")
     return pairs
 
 
 def helgaker_corr_2pt(energies: Mapping[int, float]) -> float:
-    """Two-point correlation-energy CBS extrapolation.
+    """
+    Two-point correlation-energy CBS extrapolation.
 
     Implements ``E_CBS = (X³·E_X − Y³·E_Y) / (X³ − Y³)`` per
     Helgaker, Klopper, Koch, Noga, *J. Chem. Phys.* **106**, 9639 (1997), Eq. 4.
     DOI: 10.1063/1.473863.
 
-    Parameters
-    ----------
-    energies : Mapping[int, float]
-        Mapping ``{cardinal: energy}`` with exactly two entries. Insertion order is
-        irrelevant: pairs are sorted by ascending cardinal internally.
+    Args:
+        energies (Mapping[int, float]): Mapping ``{cardinal: energy}`` with exactly
+            two entries. Insertion order is irrelevant: pairs are sorted by
+            ascending cardinal internally.
 
-    Returns
-    -------
-    float
-        Extrapolated energy in the same units as the inputs.
+    Returns:
+        float: Extrapolated energy in the same units as the inputs.
     """
     (X, E_X), (Y, E_Y) = _sorted_pairs(energies, expected=2)
     return (X ** 3 * E_X - Y ** 3 * E_Y) / (X ** 3 - Y ** 3)
 
 
 def helgaker_hf_2pt(energies: Mapping[int, float], alpha: float = 1.63) -> float:
-    """Two-point HF (or other exponentially-converging) CBS extrapolation.
+    """
+    Two-point HF (or other exponentially-converging) CBS extrapolation.
 
     Solves ``E(X) = E_CBS + A·exp(-α·X)`` for two cardinals analytically:
     ``E_CBS = (E_X·exp(-α·Y) − E_Y·exp(-α·X)) / (exp(-α·Y) − exp(-α·X))``.
@@ -169,17 +175,14 @@ def helgaker_hf_2pt(energies: Mapping[int, float], alpha: float = 1.63) -> float
     Hartree–Fock calculations" reports the fitted value ``α = 1.63`` averaged
     across small molecules. DOI: 10.1016/S0009-2614(99)00179-7.
 
-    Parameters
-    ----------
-    energies : Mapping[int, float]
-        Mapping ``{cardinal: energy}`` with exactly two entries.
-    alpha : float, optional
-        Exponential decay parameter. Defaults to 1.63 (Halkier et al. 1999).
+    Args:
+        energies (Mapping[int, float]): Mapping ``{cardinal: energy}`` with exactly
+            two entries.
+        alpha (float): Exponential decay parameter. Defaults to 1.63
+            (Halkier et al. 1999).
 
-    Returns
-    -------
-    float
-        Extrapolated energy.
+    Returns:
+        float: Extrapolated energy.
     """
     (X, E_X), (Y, E_Y) = _sorted_pairs(energies, expected=2)
     e_x = math.exp(-alpha * X)
@@ -188,7 +191,8 @@ def helgaker_hf_2pt(energies: Mapping[int, float], alpha: float = 1.63) -> float
 
 
 def martin_3pt(energies: Mapping[int, float]) -> float:
-    """Three-point Schwartz-style CBS extrapolation.
+    """
+    Three-point Schwartz-style CBS extrapolation.
 
     Solves the linear system
 
@@ -199,15 +203,12 @@ def martin_3pt(energies: Mapping[int, float]) -> float:
     Martin, *Chem. Phys. Lett.* **259**, 669-678 (1996), Eq. 5.
     DOI: 10.1016/0009-2614(96)00898-6.
 
-    Parameters
-    ----------
-    energies : Mapping[int, float]
-        Mapping ``{cardinal: energy}`` with exactly three entries.
+    Args:
+        energies (Mapping[int, float]): Mapping ``{cardinal: energy}`` with exactly
+            three entries.
 
-    Returns
-    -------
-    float
-        Extrapolated energy.
+    Returns:
+        float: Extrapolated energy.
     """
     pairs = _sorted_pairs(energies, expected=3)
     A = np.array(
@@ -219,18 +220,34 @@ def martin_3pt(energies: Mapping[int, float]) -> float:
     return float(e_cbs)
 
 
-# String → callable registry advertised to user input. New built-in formulas are
-# added by inserting an entry here (and a corresponding test).
+# Single source of truth for the built-in formulas advertised to user input:
+# name → (callable, required number of (cardinal, energy) pairs). New built-in
+# formulas are added by inserting an entry here (and a corresponding test).
+_BUILTIN_FORMULA_SPECS: dict[str, tuple[Callable[..., float], int]] = {
+    "helgaker_corr_2pt": (helgaker_corr_2pt, 2),
+    "helgaker_hf_2pt": (helgaker_hf_2pt, 2),
+    "martin_3pt": (martin_3pt, 3),
+}
+
+# Public views of the registry, derived so they can never fall out of sync.
 BUILTIN_FORMULAS: dict[str, Callable[..., float]] = {
-    "helgaker_corr_2pt": helgaker_corr_2pt,
-    "helgaker_hf_2pt": helgaker_hf_2pt,
-    "martin_3pt": martin_3pt,
+    name: func for name, (func, _arity) in _BUILTIN_FORMULA_SPECS.items()
+}
+BUILTIN_FORMULA_ARITY: dict[str, int] = {
+    name: arity for name, (_func, arity) in _BUILTIN_FORMULA_SPECS.items()
 }
 
 
 # ----------------------------------------------------------------------------- #
 #  Safe AST evaluator for user-supplied formula strings                         #
 # ----------------------------------------------------------------------------- #
+
+# Guardrails against resource-exhaustion through user formulas: an exponent
+# like ``9**9**9`` passes syntactic validation but creates an astronomically
+# large integer, and an oversized or deeply nested expression can exhaust the
+# parser or the recursive evaluator. Both are rejected with InputError.
+_MAX_POW_EXPONENT = 100
+_MAX_AST_NODES = 200
 
 # Functions a user formula may call. Restricted to a tiny math whitelist; no
 # I/O, no introspection, no attribute access whatsoever.
@@ -265,7 +282,23 @@ _ALLOWED_NODES = (
 
 
 def _validate_ast(node: ast.AST, env_names: set) -> None:
-    """Raise :class:`InputError` if any descendant of ``node`` is non-whitelisted."""
+    """
+    Raise :class:`InputError` if any descendant of ``node`` is non-whitelisted.
+
+    Args:
+        node (ast.AST): The root node to validate.
+        env_names (set): Variable names a formula may legally reference.
+
+    Raises:
+        InputError: If the tree is oversized or contains any non-whitelisted
+            node, constant type, name, or function call.
+    """
+    n_nodes = sum(1 for _ in ast.walk(node))
+    if n_nodes > _MAX_AST_NODES:
+        raise InputError(
+            f"User formula is too large: {n_nodes} AST nodes exceed the allowed "
+            f"maximum of {_MAX_AST_NODES}."
+        )
     for child in ast.walk(node):
         if not isinstance(child, _ALLOWED_NODES):
             raise InputError(
@@ -293,56 +326,76 @@ def _validate_ast(node: ast.AST, env_names: set) -> None:
                 )
 
 
+def _parse_formula(expression: str) -> ast.Expression:
+    """
+    Parse ``expression`` in eval mode, mapping parser failures to InputError.
+
+    Args:
+        expression (str): The user formula string.
+
+    Returns:
+        ast.Expression: The parsed AST.
+
+    Raises:
+        InputError: If parsing fails — including pathological inputs that
+            overflow the CPython parser with RecursionError or MemoryError
+            rather than the usual SyntaxError.
+    """
+    try:
+        return ast.parse(expression, mode="eval")
+    except (SyntaxError, RecursionError, MemoryError) as exc:
+        snippet = expression if len(expression) <= 100 else f"{expression[:100]}..."
+        raise InputError(
+            f"User formula failed to parse: {snippet!r} ({type(exc).__name__}: {exc})"
+        )
+
+
 def validate_formula(expression: str, allowed_names: set) -> None:
-    """Parse and whitelist-validate ``expression`` without evaluating it.
+    """
+    Parse and whitelist-validate ``expression`` without evaluating it.
 
     Useful at construction time to surface malformed user formulas eagerly,
     independent of any specific numeric inputs (which might cause spurious
     runtime errors like division by zero on a probe environment).
 
-    Raises :class:`InputError` on any non-whitelisted construct.
+    Args:
+        expression (str): The user formula string.
+        allowed_names (set): Variable names the formula may reference.
+
+    Raises:
+        InputError: On any parse failure or non-whitelisted construct.
     """
-    try:
-        tree = ast.parse(expression, mode="eval")
-    except SyntaxError as exc:
-        raise InputError(f"User formula failed to parse: {expression!r} ({exc})")
+    tree = _parse_formula(expression)
     _validate_ast(tree, set(allowed_names))
 
 
 def safe_eval_formula(expression: str, env: Mapping[str, float]) -> float:
-    """Evaluate an arithmetic expression against ``env`` without using :func:`eval`.
+    """
+    Evaluate an arithmetic expression against ``env`` without using :func:`eval`.
 
     Parses ``expression`` to an AST, validates every node against a strict whitelist
     (basic arithmetic, unary ±, numeric literals, named variables drawn from
     ``env``, and calls to :func:`math.exp`, :func:`math.log`, :func:`math.sqrt`,
     :func:`math.pow`), then walks the tree to compute the result.
 
-    Parameters
-    ----------
-    expression : str
-        Arithmetic expression. Examples:
-        ``"(X**3 * E_X - Y**3 * E_Y) / (X**3 - Y**3)"``,
-        ``"E_X - sqrt(E_Y)"``.
-    env : Mapping[str, float]
-        Variable bindings. Names referenced by ``expression`` must appear here
-        (or be one of the allowed function names).
+    Args:
+        expression (str): Arithmetic expression. Examples:
+            ``"(X**3 * E_X - Y**3 * E_Y) / (X**3 - Y**3)"``,
+            ``"E_X - sqrt(E_Y)"``.
+        env (Mapping[str, float]): Variable bindings. Names referenced by
+            ``expression`` must appear here (or be one of the allowed function names).
 
-    Returns
-    -------
-    float
-        Numerical value of the expression.
+    Returns:
+        float: Numerical value of the expression.
 
-    Raises
-    ------
-    arc.exceptions.InputError
-        If the expression is syntactically invalid, references unknown names, or
-        uses any AST construct outside the whitelist (attribute access,
-        subscript, lambdas, comprehensions, walrus, string literals, etc.).
+    Raises:
+        InputError: If the expression is syntactically invalid, oversized,
+            references unknown names, uses any AST construct outside the
+            whitelist (attribute access, subscript, lambdas, comprehensions,
+            walrus, string literals, etc.), or exponentiates with a magnitude
+            above the allowed maximum.
     """
-    try:
-        tree = ast.parse(expression, mode="eval")
-    except SyntaxError as exc:
-        raise InputError(f"User formula failed to parse: {expression!r} ({exc})")
+    tree = _parse_formula(expression)
     env_names = set(env.keys())
     _validate_ast(tree, env_names)
     return _eval_node(tree.body, env)
@@ -376,6 +429,13 @@ def _eval_node(node: ast.AST, env: Mapping[str, float]) -> float:
         if isinstance(node.op, ast.Div):
             return left / right
         if isinstance(node.op, ast.Pow):
+            # Cap the exponent magnitude: huge integer exponents (e.g. the
+            # outer step of 9**9**9) would hang or exhaust memory.
+            if abs(right) > _MAX_POW_EXPONENT:
+                raise InputError(
+                    f"Exponent {right} in user formula exceeds the allowed "
+                    f"magnitude of {_MAX_POW_EXPONENT}."
+                )
             return left ** right
         if isinstance(node.op, ast.Mod):
             return left % right

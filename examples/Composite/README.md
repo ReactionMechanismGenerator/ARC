@@ -8,7 +8,7 @@ feature — composite single-point protocols for refined electronic energies
 |---|---|
 | `heat345q_preset/input.yml` | **Form 1** — preset by name (`HEAT-345Q`). Smallest possible composite input. |
 | `heat345q_partial_override/input.yml` | **Form 2** — preset with partial override: swap one basis set on a single term. |
-| `explicit_fpa/input.yml` | **Form 3** — fully explicit recipe, including a `cbs_extrapolation` term (Helgaker 2-pt correlation). |
+| `explicit_fpa/input.yml` | **Form 3** — fully explicit recipe with a `cbs_extrapolation` *base* (Helgaker 2-pt, CBS-as-base) plus a δ[CCSDT] correction. |
 | `per_species_override/input.yml` | **Form 4** — per-species override: one species keeps the project default, one opts out via `null`, one uses a species-specific protocol. |
 | `w3f12_preset/input.yml` | **W\ :sub:`n` family** — `W3-F12` preset (CCSD(T)-F12/QZ anchor + δ[CCSDT] + δ_CV + δ_rel). Cheaper than HEAT-345Q when post-(T) effects beyond CCSDT are not the bottleneck. |
 | `heat456q_preset/input.yml` | **Tighter base** — `HEAT-456Q` preset: same correction stack as `HEAT-345Q` but with a `cc-pVQZ-F12` anchor for systems where CCSD(T) basis incompleteness drives residual barrier error. |
@@ -36,8 +36,8 @@ molecules (4–6 atoms, tight TSs) but become prohibitive quickly. The minimal
 level of theory (or drop expensive terms via overrides) for larger systems.
 
 For small methodological demos that do not require an expensive post-(T)
-reference calculation, see `explicit_fpa/input.yml`, which shows the CBS
-extrapolation form using only CCSD(T)/cc-pV{T,Q}Z.
+reference calculation, see `explicit_fpa/input.yml`, which shows the
+CBS-as-base form using only CCSD(T)/cc-pV{T,Q}Z.
 
 ## Units
 
