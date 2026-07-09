@@ -9,13 +9,23 @@ live here.
 
 import datetime
 import os
+from collections.abc import Collection
+from typing import TYPE_CHECKING
 
 from arc.common import get_logger
 from arc.imports import settings
 from arc.job.ssh import SSHClient
 
+if TYPE_CHECKING:
+    from arc.job.adapter import JobAdapter
+
 
 logger = get_logger()
+
+
+class RemoteStatError(RuntimeError):
+    """Raised when the remote stat of a job's output file failed (e.g., a transient
+    SSH error), as opposed to a successful stat that found no output file."""
 
 
 # NOTE: submit templates that redirect ESS output to a node scratch dir and only
@@ -23,7 +33,12 @@ logger = get_logger()
 # heuristic blind to live progress, so any job past the grace looks like a zombie.
 # Keep the grace well above the longest legitimate job (TS opt ~1 h, high-level
 # single points up to several hours) to avoid killing healthy long jobs.
-ZOMBIE_GRACE_SECONDS = 21600  # 6 h (was 3600 = 1 h, which killed slow TS opts)
+# Must exceed the longest legitimate quiet period; 1 h proved too short for
+# slow TS opts during development.
+# The effective grace is settings['zombie_grace_seconds'] with an optional
+# per-server 'zombie_grace_seconds' override in the servers dict (see
+# get_zombie_grace_seconds); this constant is the importable fallback.
+ZOMBIE_GRACE_SECONDS = 21600  # 6 h
 
 ZOMBIE_OUTPUT_FILENAME_FALLBACK = 'out.txt'
 
@@ -36,7 +51,27 @@ ESS_PERIODIC_WRITERS = frozenset({
 })
 
 
-def output_mtime(job) -> datetime.datetime | None:
+def get_zombie_grace_seconds(server: str | None = None) -> int:
+    """
+    Resolve the effective zombie grace period for a server.
+
+    The per-server 'zombie_grace_seconds' key in the servers settings dict takes
+    precedence, then the global 'zombie_grace_seconds' setting, then the
+    :data:`ZOMBIE_GRACE_SECONDS` fallback.
+
+    Args:
+        server (str, optional): The server name to resolve the override for.
+
+    Returns:
+        int: The grace period in seconds.
+    """
+    default = settings.get('zombie_grace_seconds', ZOMBIE_GRACE_SECONDS)
+    if server:
+        return settings.get('servers', {}).get(server, {}).get('zombie_grace_seconds', default)
+    return default
+
+
+def output_mtime(job: 'JobAdapter') -> datetime.datetime | None:
     """Return the latest mtime of the job's ESS output file.
 
     Tries the configured ESS output filename first and falls back to the
@@ -44,13 +79,18 @@ def output_mtime(job) -> datetime.datetime | None:
     ``SSHClient.get_last_modified_time`` against ``job.remote_path``.
 
     Args:
-        job: A ``JobAdapter`` (duck-typed). Required attributes: ``job_adapter``,
-            ``server``, ``local_path``, ``local_path_to_output_file``,
-            ``remote_path``, ``job_name``.
+        job (JobAdapter): The job whose output file should be stat'ed. Required
+            attributes: ``job_adapter``, ``server``, ``local_path``,
+            ``local_path_to_output_file``, ``remote_path``, ``job_name``.
 
     Returns:
-        datetime.datetime | None: The output file's mtime, or ``None`` if no
-        candidate output file exists or the remote stat failed.
+        datetime.datetime | None: The output file's mtime, or ``None`` if the
+        stat succeeded but no candidate output file exists.
+
+    Raises:
+        RemoteStatError: If the remote stat itself failed (e.g., a transient
+            SSH error), so callers can skip the check rather than treat the
+            job as having no output.
     """
     out_filename = settings.get('output_filenames', {}).get(job.job_adapter)
     if job.server is None or job.server in ('', 'local'):
@@ -72,10 +112,14 @@ def output_mtime(job) -> datetime.datetime | None:
             f'Could not stat remote output for job {job.job_name} on '
             f'{job.server} ({type(exc).__name__}: {exc}); skipping zombie check.'
         )
-        return None
+        raise RemoteStatError(f'Failed to stat remote output for job {job.job_name} on {job.server}') from exc
 
 
-def is_zombie(job, server_job_ids, now: datetime.datetime | None = None) -> bool:
+def is_zombie(job: 'JobAdapter',
+              server_job_ids: Collection[int | str],
+              now: datetime.datetime | None = None,
+              running_since: datetime.datetime | None = None,
+              ) -> bool:
     """Decide whether a job is a zombie.
 
     Pure decision: takes the queue's running set rather than reaching into a
@@ -84,19 +128,27 @@ def is_zombie(job, server_job_ids, now: datetime.datetime | None = None) -> bool
     * Its ``execution_type`` is not ``'incore'``.
     * Its ESS is in :data:`ESS_PERIODIC_WRITERS`.
     * The queue still reports it as running (``job.job_id in server_job_ids``).
-    * It has been past :data:`ZOMBIE_GRACE_SECONDS` since spawn
-      (``job.initial_time``).
-    * Its output file is missing, or its mtime is at-or-before spawn time.
+    * It has been past the grace period (:func:`get_zombie_grace_seconds`,
+      resolved for ``job.server``) since the clock start ``t0``, where ``t0``
+      is ``running_since`` if given, else ``job.initial_time``.
+    * Its output file is missing, or its mtime is at-or-before ``t0``.
+
+    If the remote stat itself failed (:class:`RemoteStatError`), the check is
+    skipped and ``False`` is returned: a transient SSH failure must not flag a
+    healthy job as a zombie.
 
     Args:
-        job: A ``JobAdapter`` (duck-typed). Required attributes: ``execution_type``,
-            ``job_adapter``, ``job_id``, ``initial_time``, plus everything
-            :func:`output_mtime` needs.
-        server_job_ids: A collection of queue job IDs the scheduler currently
-            considers running. Membership is tested with ``in``.
+        job (JobAdapter): The job to check. Required attributes:
+            ``execution_type``, ``job_adapter``, ``job_id``, ``initial_time``,
+            plus everything :func:`output_mtime` needs.
+        server_job_ids (Collection[int | str]): The queue job IDs the scheduler
+            currently considers running. Membership is tested with ``in``.
         now (datetime.datetime, optional): Reference "current time" for the
             grace-period check. Defaults to ``datetime.datetime.now()``;
             override in tests for determinism.
+        running_since (datetime.datetime, optional): The first time the job was
+            observed in a RUNNING queue state. Supersedes ``job.initial_time``
+            as the grace-clock start, so time spent queued does not count.
 
     Returns:
         bool: ``True`` if the job is a zombie, ``False`` otherwise.
@@ -108,12 +160,16 @@ def is_zombie(job, server_job_ids, now: datetime.datetime | None = None) -> bool
         return False
     if job.job_id is None or job.job_id not in server_job_ids:
         return False
-    if job.initial_time is None:
+    t0 = running_since or job.initial_time
+    if t0 is None:
         return False
     now = now or datetime.datetime.now()
-    if (now - job.initial_time).total_seconds() < ZOMBIE_GRACE_SECONDS:
+    if (now - t0).total_seconds() < get_zombie_grace_seconds(getattr(job, 'server', None)):
         return False
-    mtime = output_mtime(job)
+    try:
+        mtime = output_mtime(job)
+    except RemoteStatError:
+        return False
     if mtime is None:
         return True
-    return mtime <= job.initial_time
+    return mtime <= t0
