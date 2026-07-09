@@ -54,33 +54,42 @@ _STDERR_NOISE_SUBSTRINGS = (
 )
 
 
-def filter_real_stderr_lines(stderr):
-    """Drop harmless shell-init / library noise from a subprocess's stderr.
-
-    Accepts either a list of lines or a single multi-line string. Empty /
-    whitespace-only lines and bare quoted module names (e.g. ``"openmpi"``
-    on a Lmod-error line) are also dropped.
-
-    Returns a list of stripped lines that survived the filter — what's left
-    is genuine error output the caller should surface.
+def filter_real_stderr_lines(stderr: str | list[str]) -> list[str]:
     """
-    if isinstance(stderr, str):
-        lines = stderr.splitlines()
-    else:
-        lines = list(stderr)
-    real = []
+    Drop harmless shell-init / library noise from a subprocess's stderr.
+
+    The substring matching is intentionally broad, so real error content can be
+    suppressed (e.g., any separator banner matches the ``=====`` entry). When
+    triaging a failure that surfaces nowhere, enable debug logging: every line
+    dropped here is logged at debug level.
+
+    Args:
+        stderr (str | list[str]): The stderr stream as a list of lines or a single multi-line string.
+                                  Empty / whitespace-only lines and bare quoted module names
+                                  (e.g., ``"openmpi"`` on a Lmod-error line) are also dropped.
+
+    Returns:
+        list[str]: Stripped lines that survived the filter — genuine error output the caller should surface.
+    """
+    lines = stderr.splitlines() if isinstance(stderr, str) else list(stderr)
+    real, dropped = [], []
     for raw in lines:
         line = raw.strip()
         if not line:
             continue
         if any(s in line for s in _STDERR_NOISE_SUBSTRINGS):
+            dropped.append(line)
             continue
         # Lmod prints the offending module name on its own line as a bare
         # quoted token (e.g. `"openmpi"`). Drop those too.
         if (line.startswith('"') and line.endswith('"') and len(line) <= 64
                 and ' ' not in line[1:-1]):
+            dropped.append(line)
             continue
         real.append(line)
+    if dropped:
+        logger.debug('filter_real_stderr_lines dropped the following stderr lines as noise:\n'
+                     + '\n'.join(dropped))
     return real
 
 # Section boundary markers in the RMG quantum_corrections/data.py file.
@@ -658,7 +667,10 @@ fi' '''
     if std_err:
         real_errors = filter_real_stderr_lines(std_err)
         if real_errors:
-            logger.info(f'Arkane run failed with errors:\n{std_err}')
+            errors = '\n'.join(real_errors)
+            raw_std_err = std_err if isinstance(std_err, str) else '\n'.join(std_err)
+            logger.info(f'Arkane run failed with errors:\n{errors}')
+            logger.debug(f'Full raw Arkane stderr:\n{raw_std_err}')
             return False
 
     output_file = os.path.join(statmech_dir, 'output.py')
