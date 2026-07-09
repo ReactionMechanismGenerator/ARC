@@ -46,6 +46,7 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Installation instructions</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#clone-and-setup-path">Clone and setup path</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#install-dependencies">Install dependencies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#install-the-uma-engine-optional">Install the UMA engine (optional)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#create-a-arc-folder-optional-but-recommended">Create a <code class="docutils literal notranslate"><span class="pre">.arc</span></code> folder (optional but recommended)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#generating-rsa-ssh-keys-and-defining-servers">Generating RSA SSH keys and defining servers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#associating-software-with-servers">Associating software with servers</a></li>
@@ -189,6 +190,25 @@ For advanced users: ARC will look for the paths to these repos. If your path on 
 you can assist ARC discover your external repos in <code class="docutils literal notranslate"><span class="pre">settings.py</span></code>.</p></li>
 <li><p>Test ARC by typing <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">test</span></code> under the ARC folder after activating the anaconda <cite>arc_env</cite> environment.</p></li>
 </ul>
+</section>
+<section id="install-the-uma-engine-optional">
+<h2>Install the UMA engine (optional)<a class="headerlink" href="#install-the-uma-engine-optional" title="Link to this heading"></a></h2>
+<p>ARC can use <a class="reference external" href="https://github.com/facebookresearch/fairchem">UMA</a>, Meta FAIR’s <code class="docutils literal notranslate"><span class="pre">fairchem-core</span></code>
+foundation machine-learned interatomic potential, as a fast local engine for geometry
+optimization, frequencies, single points, hindered-rotor scans, IRCs, and transition-state
+searches. Use <code class="docutils literal notranslate"><span class="pre">method='uma'</span></code> in a level of theory to select it (it resolves to the latest UMA
+model implemented in ARC).</p>
+<p>UMA runs in its own <code class="docutils literal notranslate"><span class="pre">uma_env</span></code> conda environment and is <strong>not</strong> installed by <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">install-all</span></code>
+or in CI, because the model is gated behind a Meta license and a HuggingFace token and is heavy to
+download. To set it up, run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">make</span> <span class="n">install</span><span class="o">-</span><span class="n">uma</span>          <span class="c1"># or: bash devtools/install_uma.sh</span>
+</pre></div>
+</div>
+<p>This creates <code class="docutils literal notranslate"><span class="pre">uma_env</span></code> (<code class="docutils literal notranslate"><span class="pre">fairchem-core</span></code> + <code class="docutils literal notranslate"><span class="pre">sella</span></code> + <code class="docutils literal notranslate"><span class="pre">ase</span></code>), verifies the required imports,
+and walks you through the one-time HuggingFace login for the gated model. Before running it, accept
+the model license at <a class="reference external" href="https://huggingface.co/facebook/UMA">https://huggingface.co/facebook/UMA</a> (in a browser logged into HuggingFace) and
+create a token with read access to gated repositories. To also run the UMA model-dependent unit
+tests after installing, use <code class="docutils literal notranslate"><span class="pre">bash</span> <span class="pre">devtools/install_uma.sh</span> <span class="pre">--test</span></code>.</p>
 </section>
 <section id="create-a-arc-folder-optional-but-recommended">
 <h2>Create a <code class="docutils literal notranslate"><span class="pre">.arc</span></code> folder (optional but recommended)<a class="headerlink" href="#create-a-arc-folder-optional-but-recommended" title="Link to this heading"></a></h2>

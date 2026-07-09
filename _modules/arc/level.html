@@ -481,6 +481,11 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">job_type</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span>
 
+        <span class="c1"># UMA (run via the ASE adapter; &#39;uma&#39; resolves to the latest model)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;uma&#39;</span><span class="p">,</span> <span class="s1">&#39;uma-s-1&#39;</span><span class="p">,</span> <span class="s1">&#39;uma-s-1p1&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">&#39;ase&#39;</span>
+            <span class="k">return</span>
+
         <span class="c1"># OneDMin</span>
         <span class="k">if</span> <span class="n">job_type</span> <span class="o">==</span> <span class="s1">&#39;onedmin&#39;</span><span class="p">:</span>
             <span class="k">if</span> <span class="s1">&#39;onedmin&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_ess</span><span class="p">:</span>

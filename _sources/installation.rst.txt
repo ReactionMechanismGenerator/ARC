@@ -105,6 +105,28 @@ Install dependencies
 - Test ARC by typing ``make test`` under the ARC folder after activating the anaconda `arc_env` environment.
 
 
+Install the UMA engine (optional)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+ARC can use `UMA <https://github.com/facebookresearch/fairchem>`_, Meta FAIR's ``fairchem-core``
+foundation machine-learned interatomic potential, as a fast local engine for geometry
+optimization, frequencies, single points, hindered-rotor scans, IRCs, and transition-state
+searches. Use ``method='uma'`` in a level of theory to select it (it resolves to the latest UMA
+model implemented in ARC).
+
+UMA runs in its own ``uma_env`` conda environment and is **not** installed by ``make install-all``
+or in CI, because the model is gated behind a Meta license and a HuggingFace token and is heavy to
+download. To set it up, run::
+
+    make install-uma          # or: bash devtools/install_uma.sh
+
+This creates ``uma_env`` (``fairchem-core`` + ``sella`` + ``ase``), verifies the required imports,
+and walks you through the one-time HuggingFace login for the gated model. Before running it, accept
+the model license at https://huggingface.co/facebook/UMA (in a browser logged into HuggingFace) and
+create a token with read access to gated repositories. To also run the UMA model-dependent unit
+tests after installing, use ``bash devtools/install_uma.sh --test``.
+
+
 Create a ``.arc`` folder (optional but recommended)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
