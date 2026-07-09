@@ -5,6 +5,7 @@
 This module contains unit tests for ARC's statmech.arkane module
 """
 
+import logging
 import os
 import re
 import shutil
@@ -12,6 +13,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import arc.parser.parser as parser
 from arc.checks.common import TS_IRC_FAILED_MARKER
 from arc.common import ARC_TESTING_PATH, save_yaml_file
 from arc.constants import E_h_kJmol
@@ -1089,6 +1091,63 @@ class TestArkaneSpCompositeRendering(unittest.TestCase):
         rendered = float(match.group(1))
         self.assertAlmostEqual(rendered, species.e_elect / E_h_kJmol, places=9)
 
+    def test_composite_energy_precedence_over_base_sp_log(self):
+        """With paths['sp'] populated by the composite base log (scheduler invariant),
+        the rendered energy must be the explicit composite total — not a value
+        re-parsed from the base log."""
+        species = ARCSpecies(label='iC3H7prec', smiles='C[CH]C')
+        species.e_elect = -310000.0  # kJ/mol; deliberately differs from the base log
+        species.e_elect_source = 'sp_composite'
+        adapter = self._make_adapter(species)  # paths['sp'] = a real, parseable log
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        self.assertNotIn("energy = Log(", content)
+        match = re.search(r"^energy = ([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)$",
+                          content, re.MULTILINE)
+        self.assertIsNotNone(match, f"No bare numeric ``energy = …`` line:\n{content}")
+        rendered_kJmol = float(match.group(1)) * E_h_kJmol
+        self.assertAlmostEqual(rendered_kJmol, species.e_elect, places=6)
+        base_log_e_elect = parser.parse_e_elect(self.opt_path)  # kJ/mol
+        self.assertNotAlmostEqual(rendered_kJmol, base_log_e_elect, places=1)
+
+    def test_monoatomic_composite_falls_back_to_base_sp_log(self):
+        """A monoatomic composite species (no freq job, no legacy composite job):
+        geometry/frequencies must fall back to paths['sp'] — the composite base
+        log set by the scheduler — and never render Log('')."""
+        base_path = os.path.join(self.tmpdir, "Hmono_base_sp.out")
+        with open(base_path, 'w') as f:
+            f.write("placeholder")
+        species = ARCSpecies(label='Hmono', smiles='[H]')
+        species.e_elect = -1312.753
+        species.e_elect_source = 'sp_composite'
+        output_dir = os.path.join(self.tmpdir, "output", species.label)
+        calcs_dir = os.path.join(self.tmpdir, "calcs", species.label)
+        for d in (output_dir, calcs_dir):
+            os.makedirs(d, exist_ok=True)
+        adapter = ArkaneAdapter(
+            output_directory=output_dir,
+            calcs_directory=calcs_dir,
+            output_dict={species.label: {'paths': {
+                'freq': '', 'sp': base_path, 'opt': '', 'composite': '',
+            }}},
+            bac_type=None,
+            species=[species],
+            sp_level=Level('gfn2'),
+            freq_level=Level('gfn2'),
+            freq_scale_factor=1.0,
+        )
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        self.assertIn(f"geometry = Log('{base_path}')", content)
+        self.assertIn(f"frequencies = Log('{base_path}')", content)
+        self.assertNotIn("Log('')", content)
+
 
 class TestReactionDhRxnConsumesKJmol(unittest.TestCase):
     """
@@ -1233,6 +1292,28 @@ class TestFilterRealStderrLines(unittest.TestCase):
             'Genuine error: foo\n'
         )
         self.assertEqual(filter_real_stderr_lines(s), ["Genuine error: foo"])
+
+    def test_dropped_lines_are_logged_at_debug(self):
+        """Every line eaten by the filter must be recoverable from the debug log."""
+        lines = [
+            'Lmod has detected the following error: blah',
+            '"openmpi"',
+            'RuntimeError: real failure',
+        ]
+        with self.assertLogs('arc', level='DEBUG') as cm:
+            result = filter_real_stderr_lines(lines)
+        self.assertEqual(result, ['RuntimeError: real failure'])
+        # Filter by levelno: arc.common.initialize_log renames level names via
+        # logging.addLevelName, so levelname is '' once any ARC project ran.
+        debug_msgs = [r.getMessage() for r in cm.records if r.levelno == logging.DEBUG]
+        self.assertTrue(any('Lmod has detected the following error: blah' in msg
+                            and '"openmpi"' in msg for msg in debug_msgs))
+
+    def test_no_debug_log_when_nothing_dropped(self):
+        """The filter stays silent when no lines are dropped."""
+        with self.assertNoLogs('arc', level='DEBUG'):
+            result = filter_real_stderr_lines(['RuntimeError: real failure'])
+        self.assertEqual(result, ['RuntimeError: real failure'])
 
 
 if __name__ == '__main__':
