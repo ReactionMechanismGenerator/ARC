@@ -92,7 +92,18 @@ def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1):
         if multiplicity > 1:
             raise ValueError("ARC's integration with MOPAC vua the ASE calculator does not support multiplicity > 1.")
         return MOPAC(**kwargs)
-        
+
+    elif name in ('uma', 'fairchem'):
+        # UMA (Meta FAIR fairchem-core). Total charge and spin (= multiplicity) are conditioned on
+        # the ase.Atoms via atoms.info in main(); they are not calculator kwargs.
+        from fairchem.core import FAIRChemCalculator, pretrained_mlip
+        model = calc_config.get('model', 'uma-s-1p1')
+        device = calc_config.get('device', 'cpu')
+        task = calc_config.get('task', 'omol')
+        predictor = pretrained_mlip.get_predict_unit(model, device=device)
+        return FAIRChemCalculator(predictor, task_name=task)
+
+
     from ase.calculators.calculator import get_calculator_class
     try:
         calc_class = get_calculator_class(name)
@@ -313,8 +324,10 @@ def main():
     settings = input_dict.get('settings', {})
     charge = input_dict.get('charge', 0)
     multiplicity = input_dict.get('multiplicity', 1)
-    
+    is_ts = input_dict.get('is_ts', False)
+
     atoms = Atoms(symbols=xyz['symbols'], positions=xyz['coords'])
+    atoms.info.update({'charge': charge, 'spin': multiplicity})  # UMA (omol) conditions on these
     calc = get_calculator(settings, charge, multiplicity)
     atoms.calc = calc
     
@@ -342,13 +355,16 @@ def main():
             'scipyfminbfgs': SciPyFminBFGS, 'scipyfmincg': SciPyFminCG,
             'sella': None,
         }
-        if engine_name == 'sella':
+        logfile = os.path.join(os.path.dirname(input_path), 'opt.log')
+        if is_ts or engine_name == 'sella':
+            # A TS search needs a saddle-point optimizer; UMA ships none, so use Sella.
             from sella import Sella
             opt_class = Sella
+            opt = opt_class(atoms, order=1 if is_ts else 0, logfile=logfile)
         else:
             opt_class = engine_dict.get(engine_name, BFGS)
-        opt = opt_class(atoms, logfile=os.path.join(os.path.dirname(input_path), 'opt.log'))
-        
+            opt = opt_class(atoms, logfile=logfile)
+
         try:
             opt.run(fmax=fmax, steps=steps)
             save_current_geometry(output, atoms, xyz)
@@ -359,6 +375,26 @@ def main():
     else:
         # For non-optimization jobs, still save the geometry
         save_current_geometry(output, atoms, xyz)
+
+    if job_type == 'irc':
+        from sella import IRC
+        from ase.io import read
+        fmax = float(settings.get('fmax', 0.001))
+        steps = int(settings.get('steps', 1000))
+        direction = input_dict.get('irc_direction', 'forward')
+        traj_path = os.path.join(os.path.dirname(input_path), 'irc.traj')
+        try:
+            irc = IRC(atoms, logfile=os.path.join(os.path.dirname(input_path), 'irc.log'),
+                      trajectory=traj_path)
+            irc.run(fmax=fmax, steps=steps, direction=direction)
+            images = read(traj_path, index=':')
+            output['irc_traj'] = [
+                {'coords': tuple(map(tuple, image.get_positions().tolist())),
+                 'symbols': xyz['symbols'],
+                 'isotopes': xyz.get('isotopes') or tuple([None] * len(xyz['symbols']))}
+                for image in images]
+        except Exception as exc:
+            output['error'] = f"IRC failed: {exc}"
 
     if job_type in ['freq', 'optfreq']:
         try:

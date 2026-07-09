@@ -58,6 +58,11 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(Level(method='b3p86', basis='6-311g+(d,f)').software, 'terachem')
         self.assertEqual(Level(method='new', basis='new', args={'keywords': {'general': 'iop(99/33=1)'}}).software,
                          'gaussian')
+        self.assertEqual(Level(method='uma').software, 'ase')
+        self.assertEqual(Level(method='uma-s-1p1').software, 'ase')
+        level_uma = Level(method='uma')
+        level_uma.deduce_software(job_type='irc')  # UMA must stay on 'ase', not fall through to Gaussian
+        self.assertEqual(level_uma.software, 'ase')
 
     def test_lower(self):
         """Test the Level.lower() method"""
