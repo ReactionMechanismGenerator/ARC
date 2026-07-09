@@ -173,6 +173,19 @@ delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel
                   'HTCondor': 'condor_rm',
                   }
 
+# Whether a queue-RUNNING job with no output traffic may be killed and resubmitted automatically.
+# Off by default: a submit template that runs the ESS in node scratch and copies results back only
+# at job end (as the shipped Gaussian, Molpro and ORCA templates do) leaves no login-visible output
+# while a perfectly healthy job runs, so on such a server every job past the grace period looks
+# like a zombie. Enable it only where output is visible as the job runs - globally here, or per
+# server by adding a 'zombie_detection' key to the respective entry in the ``servers`` dict above.
+zombie_detection = False
+
+# Default grace period (in seconds) before a queue-RUNNING job with no output traffic is
+# treated as a zombie and resubmitted. Override per server by adding an optional
+# 'zombie_grace_seconds' key to the respective entry in the ``servers`` dict above.
+zombie_grace_seconds = 21600  # 6 h
+
 list_available_nodes_command = {
     'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
     'Slurm': 'sinfo -o "%n %t %O %E"',
