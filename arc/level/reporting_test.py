@@ -19,6 +19,7 @@ The notebook-emitter must deliver:
   final code cell matches the value computed outside the notebook.
 """
 
+import importlib.util
 import os
 import tempfile
 import unittest
@@ -399,20 +400,22 @@ class TestWriteCompositeNotebook(unittest.TestCase):
 
     # --- end-to-end executability -------------------------------------------- #
 
+    @unittest.skipUnless(importlib.util.find_spec("ipykernel") is not None,
+                         "ipykernel is required to execute the generated notebook")
     def test_notebook_executes_and_recomputes_expected_final_value(self):
         """The generated notebook, executed via nbclient, prints the expected final e_elect."""
         write_composite_notebook(**self.kwargs)
         nb = self._read()
-        # Ensure the kernel subprocess resolves `arc` from THIS worktree, not any
-        # other `arc` package that happens to be on the user's sys.path.
+        # Ensure the kernel subprocess resolves `arc` from THIS repository root,
+        # not any other `arc` package that happens to be on the user's sys.path.
         arc_root = os.path.dirname(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__)
-        )))  # .../ARC-wt3
+        )))
         prior_pp = os.environ.get("PYTHONPATH", "")
         os.environ["PYTHONPATH"] = arc_root + (os.pathsep + prior_pp if prior_pp else "")
         try:
             client = nbclient.NotebookClient(
-                nb, timeout=60, resources={"metadata": {"path": self.tmp}}
+                nb, timeout=180, resources={"metadata": {"path": self.tmp}}
             )
             client.execute()
         finally:
@@ -521,14 +524,19 @@ class TestSpeciesReportDict(unittest.TestCase):
             arc_commit="c",
         )
         base = d["base"]
-        self.assertEqual(base["sub_label"], "base")
-        self.assertEqual(base["path"], self.base_path)
+        self.assertEqual(base["label"], "base")
+        self.assertEqual(base["type"], "SinglePointTerm")
+        self.assertEqual(len(base["sub_jobs"]), 1)
+        sub_job = base["sub_jobs"][0]
+        self.assertEqual(sub_job["sub_label"], "base")
+        self.assertEqual(sub_job["path"], self.base_path)
         # Energy parsed via arc.parser; cross-check Hartree↔kJ/mol consistency.
         self.assertAlmostEqual(
-            base["energy_kj_per_mol"] / E_h_kJmol,
-            base["energy_hartree"],
+            sub_job["energy_kj_per_mol"] / E_h_kJmol,
+            sub_job["energy_hartree"],
             places=6,
         )
+        self.assertAlmostEqual(base["contribution_hartree"], -76.345678, places=6)
 
     def test_terms_block_has_one_entry_per_correction(self):
         d = build_species_report_dict(
@@ -627,6 +635,231 @@ class TestSpeciesReportDict(unittest.TestCase):
             )
         with open(out_a, "rb") as fa, open(out_b, "rb") as fb:
             self.assertEqual(fa.read(), fb.read())
+
+
+def _make_cbs_base_section(paths: dict) -> SpeciesSection:
+    """A section whose base is a two-point CBS extrapolation (FPA shape)."""
+    recipe = {
+        "base": {"label": "base", "type": "cbs_extrapolation",
+                 "formula": "helgaker_corr_2pt",
+                 "levels": [{"method": "ccsd(t)", "basis": "cc-pVTZ"},
+                            {"method": "ccsd(t)", "basis": "cc-pVQZ"}]},
+        "corrections": [
+            {"label": "delta_T", "type": "delta",
+             "high": {"method": "ccsdt", "basis": "cc-pVDZ"},
+             "low": {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+        ],
+    }
+    return SpeciesSection(
+        label="H2O",
+        kind="species",
+        preset_name=None,
+        reference="DOI: 10.0/test",
+        recipe=recipe,
+        protocol=CompositeProtocol.from_user_input(recipe),
+        sub_job_paths=paths,
+        flags=[],
+    )
+
+
+class TestSpeciesReportCBSBase(unittest.TestCase):
+    """The YAML report renders a multi-job CBS base polymorphically: which
+    formula was applied to which legs must be readable from the report."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.tz_path = os.path.join(self.tmp, "base__card_3.out")
+        self.qz_path = os.path.join(self.tmp, "base__card_4.out")
+        self.hi_path = os.path.join(self.tmp, "delta_T__high.out")
+        self.lo_path = os.path.join(self.tmp, "delta_T__low.out")
+        _write_gaussian_fixture(self.tz_path, -76.300000)
+        _write_gaussian_fixture(self.qz_path, -76.330000)
+        _write_gaussian_fixture(self.hi_path, -76.346500)
+        _write_gaussian_fixture(self.lo_path, -76.345600)
+        self.section = _make_cbs_base_section(
+            paths={"base__card_3": self.tz_path,
+                   "base__card_4": self.qz_path,
+                   "delta_T__high": self.hi_path,
+                   "delta_T__low": self.lo_path},
+        )
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _report(self):
+        return build_species_report_dict(
+            section=self.section,
+            e_elect_kj_per_mol=-200000.0,
+            timestamp="t",
+            arc_version="v",
+            arc_commit="c",
+        )
+
+    def test_base_block_lists_one_sub_job_per_cardinal(self):
+        base = self._report()["base"]
+        self.assertEqual(base["type"], "CBSExtrapolationTerm")
+        self.assertEqual({sj["sub_label"] for sj in base["sub_jobs"]},
+                         {"base__card_3", "base__card_4"})
+
+    def test_base_block_names_the_formula(self):
+        base = self._report()["base"]
+        self.assertEqual(base["formula"], "helgaker_corr_2pt")
+
+    def test_base_contribution_is_extrapolated_energy(self):
+        base = self._report()["base"]
+        e_cbs = (27 * -76.30 - 64 * -76.33) / (27 - 64)
+        self.assertAlmostEqual(base["contribution_hartree"], e_cbs, places=6)
+
+    def test_correction_terms_unchanged(self):
+        d = self._report()
+        self.assertEqual(len(d["terms"]), 1)
+        self.assertEqual(d["terms"][0]["label"], "delta_T")
+
+    def test_notebook_renders_formula_and_legs(self):
+        """The provenance notebook must let a reader see which formula was
+        applied to which CBS legs: the recipe cell carries the formula, and the
+        breakdown helper footnotes formula → legs."""
+        nb_path = os.path.join(self.tmp, "sp_composite.ipynb")
+        write_composite_notebook(
+            path=nb_path,
+            project_name="p",
+            arc_version="v",
+            timestamp="2026-06-11T00:00:00Z",
+            sections=[self.section],
+            notebook_dir=self.tmp,
+        )
+        nb = nbformat.read(nb_path, as_version=4)
+        sources = [c.source for c in nb.cells]
+        self.assertTrue(any("helgaker_corr_2pt" in s for s in sources))
+        self.assertTrue(any("applied to legs" in s for s in sources))
+
+
+def _make_skipped_delta_section(paths: dict) -> SpeciesSection:
+    """A section whose only delta correction was skipped as trivially zero."""
+    recipe = {
+        "base": {"method": "hf", "basis": "cc-pVTZ"},
+        "corrections": [
+            {"label": "delta_T", "type": "delta",
+             "high": {"method": "ccsdt", "basis": "cc-pVDZ"},
+             "low": {"method": "ccsd(t)", "basis": "cc-pVDZ"}},
+        ],
+    }
+    return SpeciesSection(
+        label="H",
+        kind="species",
+        preset_name=None,
+        reference="DOI: 10.0/test",
+        recipe=recipe,
+        protocol=CompositeProtocol.from_user_input(recipe),
+        sub_job_paths=paths,
+        flags=[],
+        skipped_terms={"delta_T": "δ≡0 (n_corr=1 < rank=3) — skipped"},
+    )
+
+
+class TestSkippedTermRendering(unittest.TestCase):
+    """Terms skipped as trivially zero (δ≡0) render with contribution 0.0 and a
+    reason — in both the YAML report and the provenance notebook — and the
+    notebook stays executable without the skipped legs' output files."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.base_path = os.path.join(self.tmp, "base.out")
+        _write_gaussian_fixture(self.base_path, -0.499)
+        self.section = _make_skipped_delta_section(paths={"base": self.base_path})
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _report(self):
+        return build_species_report_dict(
+            section=self.section,
+            e_elect_kj_per_mol=-0.499 * E_h_kJmol,
+            timestamp="t",
+            arc_version="v",
+            arc_commit="c",
+        )
+
+    def test_section_defaults_to_no_skipped_terms(self):
+        self.assertEqual(_make_two_term_section().skipped_terms, {})
+
+    def test_skipped_term_block_contribution_zero_with_reason(self):
+        term = self._report()["terms"][0]
+        self.assertEqual(term["label"], "delta_T")
+        self.assertEqual(term["contribution_kj_per_mol"], 0.0)
+        self.assertEqual(term["contribution_hartree"], 0.0)
+        self.assertTrue(term["skipped"])
+        self.assertIn("δ≡0", term["skip_reason"])
+        self.assertEqual(term["sub_jobs"], [])
+
+    def test_base_block_unaffected_by_skips(self):
+        base = self._report()["base"]
+        self.assertNotIn("skipped", base)
+        self.assertAlmostEqual(base["contribution_hartree"], -0.499, places=6)
+
+    def test_yaml_report_round_trips_skip_reason(self):
+        out = os.path.join(self.tmp, "report.yml")
+        write_species_report_yaml(
+            path=out,
+            section=self.section,
+            e_elect_kj_per_mol=-0.499 * E_h_kJmol,
+            timestamp="t",
+            arc_version="v",
+            arc_commit="c",
+        )
+        with open(out) as fh:
+            report = yaml.safe_load(fh)
+        self.assertIn("δ≡0", report["terms"][0]["skip_reason"])
+
+    def _write_notebook(self):
+        nb_path = os.path.join(self.tmp, "sp_composite.ipynb")
+        write_composite_notebook(
+            path=nb_path,
+            project_name="p",
+            arc_version="v",
+            timestamp="2026-06-11T00:00:00Z",
+            sections=[self.section],
+            notebook_dir=self.tmp,
+        )
+        return nbformat.read(nb_path, as_version=4)
+
+    def test_notebook_renders_skip_reason(self):
+        nb = self._write_notebook()
+        sources = [c.source for c in nb.cells]
+        self.assertTrue(any("skipped_terms" in s for s in sources))
+        self.assertTrue(any("δ≡0" in s for s in sources))
+
+    @unittest.skipUnless(importlib.util.find_spec("ipykernel") is not None,
+                         "ipykernel is required to execute the generated notebook")
+    def test_notebook_executes_with_skipped_term(self):
+        nb = self._write_notebook()
+        arc_root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)
+        )))
+        prior_pp = os.environ.get("PYTHONPATH", "")
+        os.environ["PYTHONPATH"] = arc_root + (os.pathsep + prior_pp if prior_pp else "")
+        try:
+            client = nbclient.NotebookClient(
+                nb, timeout=180, resources={"metadata": {"path": self.tmp}}
+            )
+            client.execute()
+        finally:
+            if prior_pp:
+                os.environ["PYTHONPATH"] = prior_pp
+            else:
+                os.environ.pop("PYTHONPATH", None)
+        expected_kjmol = -0.499 * E_h_kJmol
+        stdouts = [
+            out.get("text", "")
+            for cell in nb.cells
+            if cell.cell_type == "code"
+            for out in cell.get("outputs", [])
+            if out.get("output_type") == "stream" and out.get("name") == "stdout"
+        ]
+        all_text = "\n".join(stdouts)
+        self.assertIn(f"{expected_kjmol:,.3f}", all_text)
 
 
 # --------------------------------------------------------------------------- #

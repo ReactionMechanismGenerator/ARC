@@ -15,6 +15,7 @@ The ``INHERIT`` sentinel is the default argument value used to distinguish
 "user passed nothing" from "user passed ``None``" at constructor time.
 """
 
+import pickle
 import unittest
 
 from arc.exceptions import InputError
@@ -47,6 +48,9 @@ class TestInheritSentinel(unittest.TestCase):
     def test_sentinel_is_exported_from_package(self):
         from arc.level import INHERIT as via_package
         self.assertIs(via_package, INHERIT)
+
+    def test_sentinel_pickle_round_trip_preserves_identity(self):
+        self.assertIs(pickle.loads(pickle.dumps(INHERIT)), INHERIT)
 
 
 class TestStatesConstant(unittest.TestCase):

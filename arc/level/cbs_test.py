@@ -17,10 +17,12 @@ References whose values are checked here:
 """
 
 import math
+import time
 import unittest
 
 from arc.exceptions import InputError
 from arc.level.cbs import (
+    BUILTIN_FORMULA_ARITY,
     BUILTIN_FORMULAS,
     cardinal_from_basis,
     helgaker_corr_2pt,
@@ -109,9 +111,13 @@ class TestHelgakerCorr2Pt(unittest.TestCase):
         with self.assertRaises(InputError):
             helgaker_corr_2pt({3: -1.0, 4: -1.05, 5: -1.06})
 
-    def test_rejects_equal_cardinals(self):
+    def test_duplicate_cardinals_collapse_to_too_few_points(self):
+        """Mapping keys are unique by construction, so repeated cardinals collapse
+        to a single entry, which then fails the pair-count check."""
+        collapsed = dict([(3, -1.0), (3, -1.05)])
+        self.assertEqual(len(collapsed), 1)
         with self.assertRaises(InputError):
-            helgaker_corr_2pt({3: -1.0, 3: -1.05})  # noqa: F601 — Python collapses; size=1 path
+            helgaker_corr_2pt(collapsed)
 
     def test_q5_pair_reproduces_formula(self):
         # X=4, Y=5; E_Q = -0.310, E_5 = -0.315
@@ -211,6 +217,12 @@ class TestBuiltinFormulasRegistry(unittest.TestCase):
             {"helgaker_corr_2pt", "helgaker_hf_2pt", "martin_3pt"},
         )
 
+    def test_arity_registered_for_every_formula(self):
+        self.assertEqual(
+            BUILTIN_FORMULA_ARITY,
+            {"helgaker_corr_2pt": 2, "helgaker_hf_2pt": 2, "martin_3pt": 3},
+        )
+
 
 class TestSafeEvalFormula(unittest.TestCase):
     """``safe_eval_formula`` accepts arithmetic + math whitelist; rejects everything else."""
@@ -283,6 +295,73 @@ class TestSafeEvalFormula(unittest.TestCase):
     def test_syntax_error_propagates_as_input_error(self):
         with self.assertRaises(InputError):
             safe_eval_formula("1 +", {})
+
+    def test_moderate_exponent_allowed(self):
+        self.assertEqual(safe_eval_formula("2**100", {}), 2 ** 100)
+
+    def test_huge_chained_power_rejected(self):
+        # 9**9**9 is right-associative: the outer exponent is 9**9 = 387420489,
+        # which would exhaust memory if evaluated. Must be rejected, not hang.
+        with self.assertRaises(InputError):
+            safe_eval_formula("9**9**9", {})
+
+    def test_large_negative_exponent_rejected(self):
+        with self.assertRaises(InputError):
+            safe_eval_formula("2**-101", {})
+
+    def test_oversized_expression_rejected(self):
+        with self.assertRaises(InputError):
+            safe_eval_formula("+".join(["1"] * 300), {})
+
+    def test_pathological_nesting_raises_input_error(self):
+        # Deep unary chains overflow the CPython parser (RecursionError /
+        # MemoryError depending on version); must surface as InputError.
+        with self.assertRaises(InputError):
+            safe_eval_formula("-" * 1_000_000 + "1", {})
+
+    def test_nested_powers_cannot_grow_without_bound(self):
+        # Every exponent here is 100, so the per-exponent cap never fires; it is
+        # the nesting that blows up, each step multiplying the base's bit length
+        # by 100. Unbounded, this reaches a million bits.
+        with self.assertRaises(InputError):
+            safe_eval_formula("((2**100)**100)**100", {})
+
+    def test_nested_powers_rejected_promptly(self):
+        # One nesting level further took 37.6 s and 10**10 bits before the fix,
+        # which is the actual denial of service: the cost must not be paid at all.
+        start = time.time()
+        with self.assertRaises(InputError):
+            safe_eval_formula("((((2**100)**100)**100)**100)**100", {})
+        self.assertLess(time.time() - start, 1.0)
+
+    def test_overflow_raises_input_error(self):
+        for formula in ("exp(1000)", "pow(10, 400)", "1e308 * 10"):
+            with self.subTest(formula=formula), self.assertRaises(InputError):
+                safe_eval_formula(formula, {})
+
+    def test_math_domain_error_raises_input_error(self):
+        for formula in ("log(0)", "log(-1)", "sqrt(-1)"):
+            with self.subTest(formula=formula), self.assertRaises(InputError):
+                safe_eval_formula(formula, {})
+
+    def test_division_by_zero_raises_input_error(self):
+        for formula in ("1/0", "1%0", "1//0"):
+            with self.subTest(formula=formula), self.assertRaises(InputError):
+                safe_eval_formula(formula, {})
+
+    def test_complex_result_rejected(self):
+        # A negative base with a fractional exponent makes float.__pow__ return a
+        # complex number, which would leave this float-annotated function as an
+        # extrapolated "energy" no caller can use.
+        with self.assertRaises(InputError):
+            safe_eval_formula("(-8)**0.5", {})
+
+    def test_non_finite_result_rejected(self):
+        # inf/nan escape silently rather than raising, so a formula can poison an
+        # extrapolated energy instead of being reported as bad input.
+        for formula in ("1e308 + 1e308", "(1e308*10) - (1e308*10)"):
+            with self.subTest(formula=formula), self.assertRaises(InputError):
+                safe_eval_formula(formula, {})
 
 
 if __name__ == "__main__":
