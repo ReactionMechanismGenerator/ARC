@@ -202,8 +202,14 @@ def determine_ess_status(output_path: str,
                                         'specified correctly. Alternatively, a specified atom does not match any ' \
                                         'standard atomic symbol.'
                         elif 'GL401' in keywords:
-                            keywords.append('BasisSet')
-                            error = 'The projection from the old to the new basis set has failed.'
+                            # A guess=read from a checkpoint built with a different basis fails to
+                            # project onto the new basis. Removing the checkfile drops guess=read so
+                            # the job restarts from a fresh SCF guess with no projection step - this
+                            # is retryable, so classify it as CheckFile (mirroring the checkpoint-
+                            # data-missing cases above), not as a dead-end BasisSet error.
+                            keywords = ['CheckFile']
+                            error = 'The projection from the old to the new basis set has failed; ' \
+                                    'removing the checkfile to restart from a fresh SCF guess.'
                 elif 'Erroneous write' in line or 'Write error in NtrExt1' in line:
                     keywords = ['DiskSpace']
                     error = 'Ran out of disk space.'
@@ -853,7 +859,12 @@ def trsh_special_rotor(special_rotor: list,
 # 'ZMat' (L716: z-matrix angle outside 0 < x < 180) is intentionally NOT here: ARC always
 # submits Cartesian geometries, so a ZMat error always means the optimizer drove atoms
 # collinear - the textbook opt=(cartesian) case, handled by trsh_keyword_cartesian.
-GAUSSIAN_NON_RETRYABLE_KEYWORDS = ('Syntax', 'InputError', 'MP2', 'OptOrientation', 'Scratch', 'BasisSet')
+# 'BasisSet' is intentionally NOT here either: every genuine dead-end basis error (GL301
+# "atomic number out of range" / "Unrecognized basis set") is already refused by the dedicated
+# BasisSet branch in trsh_ess_job, and the one retryable BasisSet case - the GL401 guess=read
+# projection failure - is reclassified as 'CheckFile' (see determine_ess_status) and fixed by
+# dropping the checkfile. So no BasisSet error reaches this gate.
+GAUSSIAN_NON_RETRYABLE_KEYWORDS = ('Syntax', 'InputError', 'MP2', 'OptOrientation', 'Scratch')
 
 
 def trsh_ess_job(label: str,

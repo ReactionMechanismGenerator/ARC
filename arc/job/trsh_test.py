@@ -97,6 +97,20 @@ class TestTrsh(unittest.TestCase):
         self.assertIn("Error termination via Lnk1e", line)
         self.assertIn("g09/l401.exe", line)
 
+        # A GL401 "projection from the old to the new basis set has failed" error (guess=read from a
+        # checkpoint built with a different basis) is retryable by dropping the checkfile, so it is
+        # classified as CheckFile - NOT as a dead-end BasisSet error.
+        path = os.path.join(self.base_path["gaussian"], "l401_projection.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="Zr2O4H", job_type="opt"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["CheckFile"])
+        self.assertNotIn("BasisSet", keywords)
+        self.assertIn("projection from the old to the new basis set", error)
+        self.assertIn("removing the checkfile", error)
+        self.assertIn("g09/l401.exe", line)
+
         path = os.path.join(self.base_path["gaussian"], "l9999.out")
         status, keywords, error, line = trsh.determine_ess_status(
             output_path=path, species_label="Zr2O4H", job_type="opt"
@@ -958,7 +972,6 @@ class TestTrsh(unittest.TestCase):
             (['MP2', 'GL906'], 'The MP2 calculation has failed.'),
             (['OptOrientation', 'GL202'], 'The point group of the molecule has changed.'),
             (['Scratch'], 'Wrongly specified the scratch directory.'),
-            (['GL401', 'BasisSet'], 'The projection from the old to the new basis set has failed.'),
         ]
         for keywords, error in non_retryable_cases:
             out = call({'keywords': keywords, 'error': error})
@@ -973,6 +986,15 @@ class TestTrsh(unittest.TestCase):
         self.assertFalse(zmat[11], 'ZMat must be troubleshot, not refused')
         self.assertFalse(any('non-retryable' in e for e in zmat[0]), 'ZMat must not be reported non-retryable')
         self.assertIn('cartesian', zmat[1])
+
+        # A genuine dead-end BasisSet error (GL301 "atomic number out of range") is STILL refused -
+        # via the dedicated BasisSet branch, not the non-retryable gate (so 'BasisSet' no longer
+        # needs to be in GAUSSIAN_NON_RETRYABLE_KEYWORDS).
+        self.assertNotIn('BasisSet', trsh.GAUSSIAN_NON_RETRYABLE_KEYWORDS)
+        bad_basis = call({'keywords': ['GL301', 'BasisSet'],
+                          'error': 'The basis set 6-311G is not appropriate for the this chemistry.'})
+        self.assertTrue(bad_basis[11], 'genuine BasisSet dead-end must still be refused')
+        self.assertEqual(bad_basis[1], [], 'refused BasisSet must not append any remedy')
 
         # Legitimate, retryable classes must be UNAFFECTED (still get their remedies):
         scf = call({'keywords': ['SCF', 'GL502', 'NoSymm'], 'error': 'Unconverged SCF'})
@@ -1008,6 +1030,35 @@ class TestTrsh(unittest.TestCase):
             self.assertTrue(history[-1][2], f'{job_type}: recurring ZMat after cartesian must terminate')
             self.assertIn('all_attempted', history[-1][0], f'{job_type}: must reach all_attempted')
             self.assertLessEqual(len(history), 2, f'{job_type}: cartesian tried once then terminate: {history}')
+
+    def test_trsh_ess_job_gaussian_gl401_projection_checkfile_then_terminates(self):
+        """
+        A GL401 "projection from the old to the new basis set has failed" error is reclassified as
+        CheckFile (see determine_ess_status), so trsh_ess_job must remove the checkfile (drop
+        guess=read) and resubmit - NOT refuse it as a dead-end BasisSet error - and must terminate
+        (not loop) if it recurs after the checkfile was already removed.
+        """
+        error = ('The projection from the old to the new basis set has failed; '
+                 'removing the checkfile to restart from a fresh SCF guess.')
+        ess_trsh_methods, history = list(), list()
+        for _ in range(5):
+            out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None,
+                                    {'keywords': ['CheckFile'], 'error': error},
+                                    'opt', 'gaussian', False, 16, 2, 8, ess_trsh_methods)
+            output_errors, ess_trsh_methods, remove_checkfile, couldnt_trsh = out[0], out[1], out[2], out[11]
+            history.append((list(ess_trsh_methods), remove_checkfile, couldnt_trsh,
+                            any('non-retryable' in e for e in output_errors)))
+            if couldnt_trsh or 'all_attempted' in ess_trsh_methods:
+                break
+        # First pass: checkfile removed, job resubmitted, NOT refused.
+        self.assertTrue(history[0][1], 'first pass must remove the checkfile')
+        self.assertIn('checkfile=None', history[0][0])
+        self.assertFalse(history[0][2], 'first pass must resubmit, not give up')
+        self.assertFalse(history[0][3], 'GL401 projection must not be reported non-retryable')
+        # Recurrence after checkfile already removed: terminate, no loop.
+        self.assertTrue(history[-1][2], 'recurring GL401 after checkfile removal must terminate')
+        self.assertIn('all_attempted', history[-1][0])
+        self.assertLessEqual(len(history), 2, f'checkfile removed once then terminate: {history}')
 
     def test_trsh_ess_job_terachem_trsh_attempt_only(self):
         """Isolate the terachem trsh_attempt-only case from Gaussian stateful flow."""
