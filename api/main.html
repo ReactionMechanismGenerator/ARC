@@ -238,19 +238,21 @@ that is isomorphic to the 2D graph representation.</p></li>
 <li><p><strong>ess_settings</strong> (<em>dict</em><em>, </em><em>optional</em>) – A dictionary of available ESS (keys) and a corresponding server list (values).</p></li>
 <li><p><strong>bath_gas</strong> (<em>str</em><em>, </em><em>optional</em>) – A bath gas. Currently used in OneDMin to calc L-J parameters.
 Allowed values are He, Ne, Ar, Kr, H2, N2, O2.</p></li>
-<li><p><strong>adaptive_levels</strong> (<em>dict</em><em>, </em><em>optional</em>) – <p>A dictionary of levels of theory for ranges of the number of heavy atoms in
-the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are dictionaries. Keys of the
-sub-dictionaries are tuples of job types, values are levels of theory (str, dict or Level).
+<li><p><strong>adaptive_levels</strong> (<em>list</em><em>, </em><em>optional</em>) – <p>A list of levels of theory for ranges of the number of heavy atoms in the
+molecule. Each entry is a dictionary with an <code class="docutils literal notranslate"><span class="pre">atom_range</span></code> 2-list (min_num_atoms, max_num_atoms; the upper
+bound may be <code class="docutils literal notranslate"><span class="pre">'inf'</span></code>) and a <code class="docutils literal notranslate"><span class="pre">levels</span></code> mapping from job type to level of theory (str, dict or Level).
+Job types sharing a level may be given as a whitespace- or comma-separated key (e.g. <code class="docutils literal notranslate"><span class="pre">'opt</span> <span class="pre">freq'</span></code>).
 Job types not defined in adaptive levels will have non-adaptive (regular) levels.
 Example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">adaptive_levels</span> <span class="o">=</span> <span class="p">{(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">):</span>      <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">,</span>
-                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;ccsd(t)-f12/aug-cc-pvtz-f12&#39;</span><span class="p">},</span>
-                   <span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">15</span><span class="p">):</span>     <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;b3lyp/cbsb7&#39;</span><span class="p">,</span>
-                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;dlpno-ccsd(t)/def2-tzvp&#39;</span><span class="p">},</span>
-                   <span class="p">(</span><span class="mi">16</span><span class="p">,</span> <span class="mi">30</span><span class="p">):</span>    <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;b3lyp/6-31g(d,p)&#39;</span><span class="p">,</span>
-                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">},</span>
-                   <span class="p">(</span><span class="mi">31</span><span class="p">,</span> <span class="s1">&#39;inf&#39;</span><span class="p">):</span> <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;b3lyp/6-31g(d,p)&#39;</span><span class="p">,</span>
-                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp/6-311+g(d,p)&#39;</span><span class="p">}}</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">adaptive_levels</span> <span class="o">=</span> <span class="p">[{</span><span class="s1">&#39;atom_range&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span>
+                    <span class="s1">&#39;levels&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;opt freq&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">,</span>
+                               <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;ccsd(t)-f12/aug-cc-pvtz-f12&#39;</span><span class="p">}},</span>
+                   <span class="p">{</span><span class="s1">&#39;atom_range&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">15</span><span class="p">],</span>
+                    <span class="s1">&#39;levels&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;opt freq&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp/cbsb7&#39;</span><span class="p">,</span>
+                               <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;dlpno-ccsd(t)/def2-tzvp&#39;</span><span class="p">}},</span>
+                   <span class="p">{</span><span class="s1">&#39;atom_range&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">16</span><span class="p">,</span> <span class="s1">&#39;inf&#39;</span><span class="p">],</span>
+                    <span class="s1">&#39;levels&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;opt freq&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp/6-31g(d,p)&#39;</span><span class="p">,</span>
+                               <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">}}]</span>
 </pre></div>
 </div>
 </p></li>
@@ -458,9 +460,8 @@ Only used for restarting.</p></li>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="arc.main.ARC.adaptive_levels">
 <span class="sig-name descname"><span class="pre">adaptive_levels</span></span><a class="headerlink" href="#arc.main.ARC.adaptive_levels" title="Link to this definition"></a></dt>
-<dd><p>A dictionary of levels of theory for ranges of the number of heavy atoms in
-the molecule. Keys are tuples of (min_num_atoms, max_num_atoms), values are dictionaries. Keys of the
-sub-dictionaries are tuples of job types, values are levels of theory (str, dict or Level).
+<dd><p>The processed adaptive levels, keyed by (min_num_atoms, max_num_atoms) tuples, each
+mapping job-type tuples to <code class="docutils literal notranslate"><span class="pre">Level</span></code> objects (built from the user-facing <code class="docutils literal notranslate"><span class="pre">adaptive_levels</span></code> list).
 Job types not defined in adaptive levels will have non-adaptive (regular) levels.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
@@ -997,15 +998,29 @@ if <cite>diagnostics</cite> is True, this method will not raise errors, and will
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.main.process_adaptive_levels">
-<span class="sig-prename descclassname"><span class="pre">arc.main.</span></span><span class="sig-name descname"><span class="pre">process_adaptive_levels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">adaptive_levels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/main.html#process_adaptive_levels"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.main.process_adaptive_levels" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.main.</span></span><span class="sig-name descname"><span class="pre">process_adaptive_levels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">adaptive_levels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/main.html#process_adaptive_levels"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.main.process_adaptive_levels" title="Link to this definition"></a></dt>
 <dd><p>Process the <code class="docutils literal notranslate"><span class="pre">adaptive_levels</span></code> argument.</p>
+<p>The user-facing form is a YAML-friendly list of entries, each a dictionary with an
+<code class="docutils literal notranslate"><span class="pre">atom_range</span></code> 2-list (the heavy-atom count range, the upper bound may be the string
+<code class="docutils literal notranslate"><span class="pre">'inf'</span></code> or <code class="docutils literal notranslate"><span class="pre">float('inf')</span></code>) and a <code class="docutils literal notranslate"><span class="pre">levels</span></code> mapping of job types to levels of theory.
+Job types that share a level may be given as a single whitespace- or comma-separated key
+(e.g. <code class="docutils literal notranslate"><span class="pre">'opt</span> <span class="pre">freq'</span></code>). A level value may be a string or a <code class="docutils literal notranslate"><span class="pre">Level</span></code> dictionary. For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">adaptive_levels</span> <span class="o">=</span> <span class="p">[{</span><span class="s1">&#39;atom_range&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span>
+                    <span class="s1">&#39;levels&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;opt freq&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd/def2tzvp&#39;</span><span class="p">,</span>
+                               <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;ccsd(t)-f12/cc-pvtz-f12&#39;</span><span class="p">}},</span>
+                   <span class="p">{</span><span class="s1">&#39;atom_range&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="s1">&#39;inf&#39;</span><span class="p">],</span>
+                    <span class="s1">&#39;levels&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;opt freq&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp/6-31g(d,p)&#39;</span><span class="p">,</span>
+                               <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;dlpno-ccsd(t)/def2-tzvp&#39;</span><span class="p">}}]</span>
+</pre></div>
+</div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>adaptive_levels</strong> (<em>dict</em>) – The adaptive levels dictionary.</p>
+<dd class="field-odd"><p><strong>adaptive_levels</strong> (<em>list</em>) – The adaptive levels specification (a list of entries).</p>
 </dd>
 </dl>
 <dl class="simple">
-<dt>Returns: dict</dt><dd><p>The processed adaptive levels dictionary.</p>
+<dt>Returns: dict | None</dt><dd><p>The processed adaptive levels keyed by <code class="docutils literal notranslate"><span class="pre">(min_heavy_atoms,</span> <span class="pre">max_heavy_atoms)</span></code> tuples,
+each mapping job-type tuples to <code class="docutils literal notranslate"><span class="pre">Level</span></code> objects, or <code class="docutils literal notranslate"><span class="pre">None</span></code> if the input is <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
 </dd>
 </dl>
 </dd></dl>

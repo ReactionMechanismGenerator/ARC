@@ -251,25 +251,45 @@ The method returns a dictionary containing the ``'e_o'`` tuple (electrons, orbit
 Adaptive levels of theory
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 ARC allows users to adapt the level of theory to the size of the molecule.
-To do so, pass the ``adaptive_levels`` attribute, which is a dictionary of
-levels of theory for ranges of the number of heavy (non-hydrogen) atoms in the
-molecule. Keys are tuples of (``min_num_atoms``, ``max_num_atoms``), values are
-dictionaries with the a tuple of job type as the key (``opt``, ``freq``, ``sp``, ``scan``)
-and the respective level of theory as a string or a dictionary is the value.
-Don't forget to bound the entire range between 1 and ``inf``, also make sure
-there aren't any gaps in the heavy atom ranges. For example::
+To do so, pass the ``adaptive_levels`` attribute, which is a list of entries.
+Each entry is a dictionary with two keys: ``atom_range``, a two-element list ``[min, max]``
+giving the species' size as a range of heavy (non-hydrogen) atom counts (the upper bound of
+the last range must be ``inf``); and ``levels``, a mapping from job type(s) to the level of
+theory (a string or a dictionary) to use for that size range.
+Job types that share a level may be given as a single whitespace- or comma-separated
+key (e.g. ``opt freq``). Don't forget to bound the entire range between 1 and
+``inf``, and make sure there aren't any gaps in the heavy atom ranges. For example::
 
-    adaptive_levels = {(1, 5):      {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
-                                     'sp': 'ccsd(t)-f12/aug-cc-pvtz-f12'},
-                       (6, 15):     {('opt', 'freq'): 'b3lyp/cbsb7',
-                                     'sp': 'dlpno-ccsd(t)/def2-tzvp/c'},
-                       (16, 30):    {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
-                                     'sp': 'wb97xd/6-311+g(2d,2p)'},
-                       (31, 'inf'): {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
-                                     'sp': 'b3lyp/6-311+g(d,p)'}}
+    adaptive_levels:
+      - atom_range: [1, 5]
+        levels:
+          opt freq: wb97xd/6-311+g(2d,2p)
+          sp: ccsd(t)-f12/aug-cc-pvtz-f12
+      - atom_range: [6, 15]
+        levels:
+          opt freq: b3lyp/cbsb7
+          sp: dlpno-ccsd(t)/def2-tzvp/c
+      - atom_range: [16, 30]
+        levels:
+          opt freq: b3lyp/6-31g(d,p)
+          sp: wb97xd/6-311+g(2d,2p)
+      - atom_range: [31, inf]
+        levels:
+          opt freq: b3lyp/6-31g(d,p)
+          sp: b3lyp/6-311+g(d,p)
 
-Note that job types which are not specified in ``adaptive_levels`` will use no-adaptive
-(defined separately e.g., via ``opt_level``, or using ARC's defaults.
+Note that job types which are not specified in ``adaptive_levels`` will use non-adaptive
+levels (defined separately, e.g., via ``opt_level``, or using ARC's defaults).
+
+When a species participates in a reaction, all of the reaction's species (the TS and the
+reactant/product wells) are energy-evaluated at a single, reaction-consistent level keyed
+by the largest participant (the TS), so the barrier is computed at one consistent level.
+By default (the per-species ``thermo_at_own_level`` flag, ``False``) a well whose own size
+falls on a finer grain than its reaction's is evaluated directly at the reaction-wide
+(coarser) level, and its thermochemistry uses that same level. Set ``thermo_at_own_level=True`` on a species
+to instead compute its thermochemistry at its own size-appropriate (granular) adaptive level:
+an autonomous, relabeled copy of the species is then created and used by the reaction (at the
+reaction-wide level), while the original keeps its own level for thermochemistry.
 
 
 Control job memory allocation

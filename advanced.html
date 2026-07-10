@@ -345,25 +345,44 @@ will be executed in Orca, and “F12” and “CCSD” jobs will be executed in 
 <section id="adaptive-levels-of-theory">
 <h2>Adaptive levels of theory<a class="headerlink" href="#adaptive-levels-of-theory" title="Link to this heading"></a></h2>
 <p>ARC allows users to adapt the level of theory to the size of the molecule.
-To do so, pass the <code class="docutils literal notranslate"><span class="pre">adaptive_levels</span></code> attribute, which is a dictionary of
-levels of theory for ranges of the number of heavy (non-hydrogen) atoms in the
-molecule. Keys are tuples of (<code class="docutils literal notranslate"><span class="pre">min_num_atoms</span></code>, <code class="docutils literal notranslate"><span class="pre">max_num_atoms</span></code>), values are
-dictionaries with the a tuple of job type as the key (<code class="docutils literal notranslate"><span class="pre">opt</span></code>, <code class="docutils literal notranslate"><span class="pre">freq</span></code>, <code class="docutils literal notranslate"><span class="pre">sp</span></code>, <code class="docutils literal notranslate"><span class="pre">scan</span></code>)
-and the respective level of theory as a string or a dictionary is the value.
-Don’t forget to bound the entire range between 1 and <code class="docutils literal notranslate"><span class="pre">inf</span></code>, also make sure
-there aren’t any gaps in the heavy atom ranges. For example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">adaptive_levels</span> <span class="o">=</span> <span class="p">{(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">):</span>      <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">,</span>
-                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;ccsd(t)-f12/aug-cc-pvtz-f12&#39;</span><span class="p">},</span>
-                   <span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">15</span><span class="p">):</span>     <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;b3lyp/cbsb7&#39;</span><span class="p">,</span>
-                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;dlpno-ccsd(t)/def2-tzvp/c&#39;</span><span class="p">},</span>
-                   <span class="p">(</span><span class="mi">16</span><span class="p">,</span> <span class="mi">30</span><span class="p">):</span>    <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;b3lyp/6-31g(d,p)&#39;</span><span class="p">,</span>
-                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">},</span>
-                   <span class="p">(</span><span class="mi">31</span><span class="p">,</span> <span class="s1">&#39;inf&#39;</span><span class="p">):</span> <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;b3lyp/6-31g(d,p)&#39;</span><span class="p">,</span>
-                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp/6-311+g(d,p)&#39;</span><span class="p">}}</span>
+To do so, pass the <code class="docutils literal notranslate"><span class="pre">adaptive_levels</span></code> attribute, which is a list of entries.
+Each entry is a dictionary with two keys: <code class="docutils literal notranslate"><span class="pre">atom_range</span></code>, a two-element list <code class="docutils literal notranslate"><span class="pre">[min,</span> <span class="pre">max]</span></code>
+giving the species’ size as a range of heavy (non-hydrogen) atom counts (the upper bound of
+the last range must be <code class="docutils literal notranslate"><span class="pre">inf</span></code>); and <code class="docutils literal notranslate"><span class="pre">levels</span></code>, a mapping from job type(s) to the level of
+theory (a string or a dictionary) to use for that size range.
+Job types that share a level may be given as a single whitespace- or comma-separated
+key (e.g. <code class="docutils literal notranslate"><span class="pre">opt</span> <span class="pre">freq</span></code>). Don’t forget to bound the entire range between 1 and
+<code class="docutils literal notranslate"><span class="pre">inf</span></code>, and make sure there aren’t any gaps in the heavy atom ranges. For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">adaptive_levels</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">atom_range</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+    <span class="n">levels</span><span class="p">:</span>
+      <span class="n">opt</span> <span class="n">freq</span><span class="p">:</span> <span class="n">wb97xd</span><span class="o">/</span><span class="mi">6</span><span class="o">-</span><span class="mi">311</span><span class="o">+</span><span class="n">g</span><span class="p">(</span><span class="mi">2</span><span class="n">d</span><span class="p">,</span><span class="mi">2</span><span class="n">p</span><span class="p">)</span>
+      <span class="n">sp</span><span class="p">:</span> <span class="n">ccsd</span><span class="p">(</span><span class="n">t</span><span class="p">)</span><span class="o">-</span><span class="n">f12</span><span class="o">/</span><span class="n">aug</span><span class="o">-</span><span class="n">cc</span><span class="o">-</span><span class="n">pvtz</span><span class="o">-</span><span class="n">f12</span>
+  <span class="o">-</span> <span class="n">atom_range</span><span class="p">:</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">15</span><span class="p">]</span>
+    <span class="n">levels</span><span class="p">:</span>
+      <span class="n">opt</span> <span class="n">freq</span><span class="p">:</span> <span class="n">b3lyp</span><span class="o">/</span><span class="n">cbsb7</span>
+      <span class="n">sp</span><span class="p">:</span> <span class="n">dlpno</span><span class="o">-</span><span class="n">ccsd</span><span class="p">(</span><span class="n">t</span><span class="p">)</span><span class="o">/</span><span class="n">def2</span><span class="o">-</span><span class="n">tzvp</span><span class="o">/</span><span class="n">c</span>
+  <span class="o">-</span> <span class="n">atom_range</span><span class="p">:</span> <span class="p">[</span><span class="mi">16</span><span class="p">,</span> <span class="mi">30</span><span class="p">]</span>
+    <span class="n">levels</span><span class="p">:</span>
+      <span class="n">opt</span> <span class="n">freq</span><span class="p">:</span> <span class="n">b3lyp</span><span class="o">/</span><span class="mi">6</span><span class="o">-</span><span class="mi">31</span><span class="n">g</span><span class="p">(</span><span class="n">d</span><span class="p">,</span><span class="n">p</span><span class="p">)</span>
+      <span class="n">sp</span><span class="p">:</span> <span class="n">wb97xd</span><span class="o">/</span><span class="mi">6</span><span class="o">-</span><span class="mi">311</span><span class="o">+</span><span class="n">g</span><span class="p">(</span><span class="mi">2</span><span class="n">d</span><span class="p">,</span><span class="mi">2</span><span class="n">p</span><span class="p">)</span>
+  <span class="o">-</span> <span class="n">atom_range</span><span class="p">:</span> <span class="p">[</span><span class="mi">31</span><span class="p">,</span> <span class="n">inf</span><span class="p">]</span>
+    <span class="n">levels</span><span class="p">:</span>
+      <span class="n">opt</span> <span class="n">freq</span><span class="p">:</span> <span class="n">b3lyp</span><span class="o">/</span><span class="mi">6</span><span class="o">-</span><span class="mi">31</span><span class="n">g</span><span class="p">(</span><span class="n">d</span><span class="p">,</span><span class="n">p</span><span class="p">)</span>
+      <span class="n">sp</span><span class="p">:</span> <span class="n">b3lyp</span><span class="o">/</span><span class="mi">6</span><span class="o">-</span><span class="mi">311</span><span class="o">+</span><span class="n">g</span><span class="p">(</span><span class="n">d</span><span class="p">,</span><span class="n">p</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>Note that job types which are not specified in <code class="docutils literal notranslate"><span class="pre">adaptive_levels</span></code> will use no-adaptive
-(defined separately e.g., via <code class="docutils literal notranslate"><span class="pre">opt_level</span></code>, or using ARC’s defaults.</p>
+<p>Note that job types which are not specified in <code class="docutils literal notranslate"><span class="pre">adaptive_levels</span></code> will use non-adaptive
+levels (defined separately, e.g., via <code class="docutils literal notranslate"><span class="pre">opt_level</span></code>, or using ARC’s defaults).</p>
+<p>When a species participates in a reaction, all of the reaction’s species (the TS and the
+reactant/product wells) are energy-evaluated at a single, reaction-consistent level keyed
+by the largest participant (the TS), so the barrier is computed at one consistent level.
+By default (the per-species <code class="docutils literal notranslate"><span class="pre">thermo_at_own_level</span></code> flag, <code class="docutils literal notranslate"><span class="pre">False</span></code>) a well whose own size
+falls on a finer grain than its reaction’s is evaluated directly at the reaction-wide
+(coarser) level, and its thermochemistry uses that same level. Set <code class="docutils literal notranslate"><span class="pre">thermo_at_own_level=True</span></code> on a species
+to instead compute its thermochemistry at its own size-appropriate (granular) adaptive level:
+an autonomous, relabeled copy of the species is then created and used by the reaction (at the
+reaction-wide level), while the original keeps its own level for thermochemistry.</p>
 </section>
 <section id="control-job-memory-allocation">
 <h2>Control job memory allocation<a class="headerlink" href="#control-job-memory-allocation" title="Link to this heading"></a></h2>
