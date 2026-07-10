@@ -388,46 +388,76 @@ class TestARC(unittest.TestCase):
         self.assertIn('H', [spc.label for spc in arc1.species])
 
     def test_process_adaptive_levels(self):
-        """Test processing the adaptive levels"""
-        adaptive_levels_1 = {(1, 5): {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
-                                      ('sp',): 'ccsd(t)-f12/aug-cc-pvtz-f12'},
-                             (6, 15): {('opt', 'freq'): 'b3lyp/cbsb7',
-                                       'sp': 'dlpno-ccsd(t)/def2-tzvp'},
-                             (16, 30): {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
-                                        'sp': {'method': 'wb97xd', 'basis': '6-311+g(2d,2p)'}},
-                             (31, 'inf'): {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
-                                           'sp': 'b3lyp/6-311+g(d,p)'}}
+        """Test processing the adaptive levels (YAML-friendly list-of-entries schema)"""
+        # None passes through.
+        self.assertIsNone(process_adaptive_levels(None))
 
+        # A normal, multi-range specification. Job types sharing a level are given as a
+        # whitespace- or comma-separated key; a level may be a string or a Level dict.
+        adaptive_levels_1 = [{'atom_range': [1, 5],
+                              'levels': {'opt freq': 'wb97xd/6-311+g(2d,2p)',
+                                         'sp': 'ccsd(t)-f12/aug-cc-pvtz-f12'}},
+                             {'atom_range': [6, 15],
+                              'levels': {'opt, freq': 'b3lyp/cbsb7',
+                                         'sp': 'dlpno-ccsd(t)/def2-tzvp'}},
+                             {'atom_range': [16, 30],
+                              'levels': {'opt freq': 'b3lyp/6-31g(d,p)',
+                                         'sp': {'method': 'wb97xd', 'basis': '6-311+g(2d,2p)'}}},
+                             {'atom_range': [31, 'inf'],
+                              'levels': {'opt freq': 'b3lyp/6-31g(d,p)',
+                                         'sp': 'b3lyp/6-311+g(d,p)'}}]
         processed_1 = process_adaptive_levels(adaptive_levels_1)
         self.assertEqual(processed_1[(6, 15)][('sp',)].simple(), 'dlpno-ccsd(t)/def2-tzvp')
         self.assertEqual(processed_1[(16, 30)][('sp',)].simple(), 'wb97xd/6-311+g(2d,2p)')
+        self.assertEqual(processed_1[(1, 5)][('opt', 'freq')].simple(), 'wb97xd/6-311+g(2d,2p)')
 
-        # test non dict
+        # A single range covering everything, and a float 'inf' is accepted as the upper bound.
+        processed_2 = process_adaptive_levels([{'atom_range': [1, float('inf')],
+                                                'levels': {'opt freq': 'b3lyp/6-31g(d,p)',
+                                                           'sp': 'b3lyp/6-311+g(d,p)'}}])
+        self.assertEqual(processed_2[(1, 'inf')][('sp',)].simple(), 'b3lyp/6-311+g(d,p)')
+
+        # Restart round-trip: as_dict() must emit the list form and reproduce the same structure.
+        arc0 = ARC(project='adaptive_levels_test', adaptive_levels=adaptive_levels_1)
+        restart_levels = arc0.as_dict()['adaptive_levels']
+        self.assertIsInstance(restart_levels, list)
+        reprocessed = process_adaptive_levels(restart_levels)
+        self.assertEqual(reprocessed[(6, 15)][('sp',)].simple(), 'dlpno-ccsd(t)/def2-tzvp')
+        self.assertEqual(set(reprocessed.keys()), set(processed_1.keys()))
+
+        # Not a list (the legacy tuple-dict form is no longer accepted).
         with self.assertRaises(InputError):
             process_adaptive_levels(4)
-        # wrong atom range
         with self.assertRaises(InputError):
-            process_adaptive_levels({5: {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
-                                         ('sp',): 'ccsd(t)-f12/aug-cc-pvtz-f12'},
-                                     (6, 'inf'): {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
-                                                  'sp': 'b3lyp/6-311+g(d,p)'}})
-        # no 'inf
+            process_adaptive_levels({(1, 5): {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)'},
+                                     (6, 'inf'): {'sp': 'b3lyp/6-311+g(d,p)'}})
+        # atom_range is not a 2-length list.
         with self.assertRaises(InputError):
-            process_adaptive_levels({(1, 5): {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
-                                              ('sp',): 'ccsd(t)-f12/aug-cc-pvtz-f12'},
-                                     (6, 75): {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
-                                               'sp': 'b3lyp/6-311+g(d,p)'}})
-        # adaptive level not a dict
+            process_adaptive_levels([{'atom_range': [5], 'levels': {'sp': 'b3lyp/6-311+g(d,p)'}}])
+        # 'inf' is only allowed as the upper bound.
         with self.assertRaises(InputError):
-            process_adaptive_levels({(1, 5): {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
-                                              ('sp',): 'ccsd(t)-f12/aug-cc-pvtz-f12'},
-                                     (6, 'inf'): 'b3lyp/6-31g(d,p)'})
-        # non-consecutive atom ranges
+            process_adaptive_levels([{'atom_range': [float('inf'), 'inf'], 'levels': {'sp': 'b3lyp/6-311+g(d,p)'}}])
         with self.assertRaises(InputError):
-            process_adaptive_levels({(1, 5): {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
-                                              ('sp',): 'ccsd(t)-f12/aug-cc-pvtz-f12'},
-                                     (15, 'inf'): {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
-                                                   'sp': 'b3lyp/6-311+g(d,p)'}})
+            process_adaptive_levels([{'atom_range': ['inf', 10], 'levels': {'sp': 'b3lyp/6-311+g(d,p)'}}])
+        # The last range does not end with 'inf'.
+        with self.assertRaises(InputError):
+            process_adaptive_levels([{'atom_range': [1, 5], 'levels': {'sp': 'wb97xd/def2tzvp'}},
+                                     {'atom_range': [6, 75], 'levels': {'sp': 'b3lyp/6-311+g(d,p)'}}])
+        # The first range does not start at 1.
+        with self.assertRaises(InputError):
+            process_adaptive_levels([{'atom_range': [2, 5], 'levels': {'sp': 'wb97xd/def2tzvp'}},
+                                     {'atom_range': [6, 'inf'], 'levels': {'sp': 'b3lyp/6-311+g(d,p)'}}])
+        # 'levels' is not a dict.
+        with self.assertRaises(InputError):
+            process_adaptive_levels([{'atom_range': [1, 5], 'levels': {'sp': 'wb97xd/def2tzvp'}},
+                                     {'atom_range': [6, 'inf'], 'levels': 'b3lyp/6-31g(d,p)'}])
+        # Non-consecutive atom ranges.
+        with self.assertRaises(InputError):
+            process_adaptive_levels([{'atom_range': [1, 5], 'levels': {'sp': 'wb97xd/def2tzvp'}},
+                                     {'atom_range': [15, 'inf'], 'levels': {'sp': 'b3lyp/6-311+g(d,p)'}}])
+        # An entry missing required keys.
+        with self.assertRaises(InputError):
+            process_adaptive_levels([{'levels': {'sp': 'wb97xd/def2tzvp'}}])
 
     def test_process_level_of_theory(self):
         """
