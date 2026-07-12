@@ -226,7 +226,10 @@ class QST2Adapter(GaussianAdapter):
             raise ValueError('Cannot write a QST2 input file without an atom map in the reaction.')
 
         reactant_xyz = self.reactions[0].get_reactants_xyz(return_format=dict)
-        product_xyz = self.reactions[0].get_products_xyz(return_format=dict)  # This implicitly uses the atom map.
+        # Aligning the products to the reactants (Kabsch, per fragment, using the atom map) keeps the
+        # QST2 interpolation short and physical, especially for fragmenting (multi-product) reactions.
+        product_xyz = self.reactions[0].get_products_xyz(return_format=dict,  # This implicitly uses the atom map.
+                                                         align_to_reactants=True)
 
         input_dict = {'memory': self.input_file_memory,
                       'cpus': self.cpu_cores,

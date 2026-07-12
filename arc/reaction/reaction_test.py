@@ -11,7 +11,10 @@ import shutil
 import time
 import unittest
 
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, read_yaml_file
+import numpy as np
+from scipy.spatial.transform import Rotation
+
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, calc_rmsd, read_yaml_file
 from arc.exceptions import ReactionError
 from arc.main import ARC
 from arc.reaction.reaction import ARCReaction, remove_dup_species
@@ -617,6 +620,131 @@ class TestARCReaction(unittest.TestCase):
         reactants_xyz = rxn.get_reactants_xyz(return_format='dict')
         self.assertEqual(len(reactants_xyz['symbols']), 4)
         self.assertEqual(sorted(reactants_xyz['symbols']), ['H', 'H', 'O', 'O'])
+
+    def test_get_products_xyz_align_to_reactants(self):
+        """Test superimposing (Kabsch) each product fragment onto the reactant atoms it maps to.
+
+        Uses a Retroene reaction, 1-nonene <=> propene + 1-hexene, with geometries optimized at
+        b3lyp/def2tzvp (benchmark reaction 15, where the unaligned side-by-side product placement
+        made the NEB TS search fail).
+        """
+        r1_xyz = """C      -3.83139100    1.58621200    0.02329400
+                    C      -3.43540600    0.41614000   -0.46259900
+                    C      -2.93481400   -0.74415900    0.34478600
+                    C      -1.52816700   -1.22052800   -0.05645000
+                    C      -0.41588500   -0.21779800    0.24986900
+                    C       0.97390000   -0.71215800   -0.15234900
+                    C       2.09258900    0.28184200    0.16032500
+                    C       3.48292800   -0.20952200   -0.24386500
+                    C       4.59394000    0.78979900    0.07307100
+                    H      -4.19058800    2.37805600   -0.62203000
+                    H      -3.81427900    1.79422800    1.08767700
+                    H      -3.47002700    0.25827600   -1.53921100
+                    H      -2.94968700   -0.48608600    1.40816900
+                    H      -3.62866600   -1.58322100    0.21677300
+                    H      -1.31819900   -2.16138000    0.46232100
+                    H      -1.52205200   -1.45660300   -1.12673500
+                    H      -0.42318700    0.00802100    1.32278000
+                    H      -0.62642100    0.72857300   -0.25799900
+                    H       0.98055200   -0.93637100   -1.22542800
+                    H       1.18263100   -1.66132200    0.35509100
+                    H       1.88474900    1.23142400   -0.34645000
+                    H       2.08801000    0.50583500    1.23351600
+                    H       3.69078500   -1.15820200    0.26261000
+                    H       3.48816900   -0.43218700   -1.31627900
+                    H       4.63714600    1.00580500    1.14363500
+                    H       4.43288500    1.73740200   -0.44722900
+                    H       5.57201700    0.40878200   -0.22770000"""
+        p1_xyz = """C      -1.27817900    0.21971600    0.00000000
+                    C      -0.13370800   -0.45221200    0.00000000
+                    C       1.23091500    0.16223300   -0.00000000
+                    H      -1.30042200    1.30417000   -0.00000000
+                    H      -2.23454000   -0.28763900    0.00000000
+                    H      -0.16601400   -1.53908400    0.00000000
+                    H       1.80352500   -0.15394700    0.87705300
+                    H       1.80352500   -0.15394800   -0.87705300
+                    H       1.17975600    1.25202200   -0.00000000"""
+        p2_xyz = """C      -2.28281200   -0.96753000   -0.08325200
+                    C      -1.68350800    0.20738700   -0.23396200
+                    C      -0.62778500    0.77443700    0.66729800
+                    C       0.67283300    1.14948200   -0.06668000
+                    C       1.43771100   -0.02576000   -0.68551200
+                    C       2.01501300   -1.00793000    0.33384800
+                    H      -3.04564500   -1.30958000   -0.77140800
+                    H      -2.03565900   -1.63020700    0.73913100
+                    H      -1.96704100    0.83397800   -1.07787300
+                    H      -1.02048300    1.68349000    1.13763000
+                    H      -0.42171600    0.07318200    1.47994900
+                    H       1.32888900    1.67513800    0.63503000
+                    H       0.43103400    1.87025800   -0.85483600
+                    H       2.25455500    0.37723600   -1.29174700
+                    H       0.78168900   -0.56283200   -1.37689900
+                    H       1.23248100   -1.50203400    0.91261600
+                    H       2.59491900   -1.78939300   -0.16121100
+                    H       2.67826400   -0.49975800    1.03917900"""
+        r_1 = ARCSpecies(label='C9H18', smiles='C=CCCCCCCC', xyz=r1_xyz)
+        p_1 = ARCSpecies(label='C3H6', smiles='C=CC', xyz=p1_xyz)
+        p_2 = ARCSpecies(label='C6H12', smiles='C=CCCCC', xyz=p2_xyz)
+        rxn = ARCReaction(r_species=[r_1], p_species=[p_1, p_2])
+        # Pin the atom map (as computed by ARC's mapping driver for these geometries) so this test
+        # does not depend on the mapping backend.
+        atom_map = [2, 1, 0, 9, 10, 11, 12, 13, 14, 8, 6, 5, 4, 3, 15, 16, 7, 17, 19, 18, 20, 21,
+                    22, 23, 25, 24, 26]
+        rxn.atom_map = atom_map
+        reactants_xyz = rxn.get_reactants_xyz(return_format='dict')
+        default_xyz = rxn.get_products_xyz(return_format='dict')
+        aligned_xyz = rxn.get_products_xyz(return_format='dict', align_to_reactants=True)
+        # Both placements are ordered as the reactants via the atom map.
+        self.assertEqual(default_xyz['symbols'], reactants_xyz['symbols'])
+        self.assertEqual(aligned_xyz['symbols'], reactants_xyz['symbols'])
+        # The aligned placement is substantially closer to the reactant geometry
+        # (2.47 vs. 1.86 Angstrom for these geometries).
+        r_coords = np.array(reactants_xyz['coords'])
+        default_rmsd = calc_rmsd(np.array(default_xyz['coords']), r_coords)
+        aligned_rmsd = calc_rmsd(np.array(aligned_xyz['coords']), r_coords)
+        self.assertGreater(default_rmsd, 2.3)
+        self.assertLess(aligned_rmsd, 2.0)
+        self.assertLess(aligned_rmsd, default_rmsd - 0.4)
+
+        # The aligned placement has no inter-fragment atomic clash, while the default side-by-side
+        # placement puts two atoms of different fragments 0.26 Angstrom apart for this reaction.
+        p1_indices = [r_i for r_i in range(27) if atom_map[r_i] < 9]
+        p2_indices = [r_i for r_i in range(27) if atom_map[r_i] >= 9]
+
+        def min_inter_fragment_distance(xyz_dict):
+            coords = np.array(xyz_dict['coords'])
+            diffs = coords[p1_indices][:, None, :] - coords[p2_indices][None, :, :]
+            return float(np.linalg.norm(diffs, axis=2).min())
+
+        self.assertLess(min_inter_fragment_distance(default_xyz), 0.5)
+        self.assertGreater(min_inter_fragment_distance(aligned_xyz), 1.5)
+
+        # Identity sanity check: product fragments cut out of the reactant geometry itself
+        # (then arbitrarily rotated and translated) must be placed back exactly onto the reactant.
+        inverse_map = [0] * len(atom_map)
+        for r_i, p_i in enumerate(atom_map):
+            inverse_map[p_i] = r_i
+        rotation = Rotation.from_euler('zyx', [113, -40, 62], degrees=True)
+        cut_species = list()
+        for label, smiles, start, size in [('C3H6_cut', 'C=CC', 0, 9), ('C6H12_cut', 'C=CCCCC', 9, 18)]:
+            coords = np.array([reactants_xyz['coords'][inverse_map[p_i]] for p_i in range(start, start + size)])
+            coords = rotation.apply(coords) + np.array([5.0, -3.0, 1.0])
+            spc = ARCSpecies(label=label, smiles=smiles)
+            spc.final_xyz = {'symbols': tuple(reactants_xyz['symbols'][inverse_map[p_i]]
+                                              for p_i in range(start, start + size)),
+                             'isotopes': tuple(reactants_xyz['isotopes'][inverse_map[p_i]]
+                                               for p_i in range(start, start + size)),
+                             'coords': tuple(tuple(coord) for coord in coords)}
+            cut_species.append(spc)
+        rxn_identity = ARCReaction(r_species=[r_1], p_species=cut_species)
+        rxn_identity.atom_map = atom_map
+        identity_xyz = rxn_identity.get_products_xyz(return_format='dict', align_to_reactants=True)
+        identity_rmsd = calc_rmsd(np.array(identity_xyz['coords']), r_coords)
+        self.assertAlmostEqual(identity_rmsd, 0.0, places=5)
+
+        # An invalid atom map cannot be used for alignment (the helper falls back to ``None``).
+        rxn.atom_map = list(range(26))
+        self.assertIsNone(rxn._get_products_xyz_aligned_to_reactants(products=[p_1, p_2]))
 
     def test_reverse_reaction_of_repeated_species(self):
         """Test that the reverse of a reaction with a repeated species (OH + OH <=> H2O + O) stays

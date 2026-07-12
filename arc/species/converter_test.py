@@ -5167,6 +5167,35 @@ H      -1.88123946   -2.00923795    0.23313156"""
         score = converter.kabsch(aspirin_xyz, aspirin_perturbed_xyz)
         self.assertGreater(score, 0.01)
 
+    def test_align_xyz_to_ref_coords(self):
+        """Test rigid-body superimposing coordinates onto reference coordinates"""
+        xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+               'coords': ((0.0, 0.0, 0.0),
+                          (0.0, 0.757, 0.586),
+                          (0.0, -0.757, 0.586))}
+        # Rotate and translate the coordinates, then align back onto the originals.
+        r = Rotation.from_euler('zyx', [73, -25, 112], degrees=True)
+        moved_coords = r.apply(np.array(xyz['coords'])) + np.array([3.5, -2.0, 7.1])
+        moved_xyz = converter.xyz_from_data(coords=moved_coords, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
+        aligned_xyz = converter.align_xyz_to_ref_coords(xyz_dict=moved_xyz, ref_coords=xyz['coords'])
+        self.assertEqual(aligned_xyz['symbols'], xyz['symbols'])
+        self.assertEqual(aligned_xyz['isotopes'], xyz['isotopes'])
+        self.assertTrue(almost_equal_coords(aligned_xyz, xyz))
+        # The internal geometry must not be distorted.
+        d_orig = np.linalg.norm(np.array(moved_xyz['coords'][1]) - np.array(moved_xyz['coords'][2]))
+        d_aligned = np.linalg.norm(np.array(aligned_xyz['coords'][1]) - np.array(aligned_xyz['coords'][2]))
+        self.assertAlmostEqual(d_orig, d_aligned, places=8)
+
+        # A single atom is placed exactly at the reference position.
+        h_xyz = {'symbols': ('H',), 'isotopes': (1,), 'coords': ((5.0, 5.0, 5.0),)}
+        aligned_h = converter.align_xyz_to_ref_coords(xyz_dict=h_xyz, ref_coords=[(1.0, 2.0, 3.0)])
+        self.assertTrue(almost_equal_coords(aligned_h, {'symbols': ('H',), 'isotopes': (1,),
+                                                        'coords': ((1.0, 2.0, 3.0),)}))
+
+        # A shape mismatch raises a ValueError.
+        with self.assertRaises(ValueError):
+            converter.align_xyz_to_ref_coords(xyz_dict=xyz, ref_coords=[(0.0, 0.0, 0.0), (1.0, 1.0, 1.0)])
+
     def test_order_mol_by_atom_map_identity(self):
         """Identity map: result matches the element ordering of a plain deep copy."""
         mol = ARCSpecies(label='ethanol', smiles='CCO').mol

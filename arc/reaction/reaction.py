@@ -7,7 +7,8 @@ from arc.exceptions import ReactionError, InputError
 from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
 from arc.imports import settings
 from arc.molecule.resonance import generate_resonance_structures_safely
-from arc.species.converter import (check_xyz_dict,
+from arc.species.converter import (align_xyz_to_ref_coords,
+                                   check_xyz_dict,
                                    sort_xyz_using_indices,
                                    translate_to_center_of_mass,
                                    translate_xyz,
@@ -912,7 +913,10 @@ class ARCReaction(object):
             xyz_dict = xyz_to_str(xyz_dict)
         return xyz_dict
 
-    def get_products_xyz(self, return_format='str') -> dict | str:
+    def get_products_xyz(self,
+                         return_format='str',
+                         align_to_reactants: bool = False,
+                         ) -> dict | str:
         """
         Get a combined string/dict representation of the cartesian coordinates of all product species.
         The resulting coordinates are ordered as the reactants using an atom map.
@@ -920,33 +924,99 @@ class ARCReaction(object):
         Args:
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
                                  Default: ``'str'``.
+            align_to_reactants (bool, optional): Whether to rigidly superimpose (Kabsch) each product fragment
+                                                 onto the reactant atoms it maps to, so that each product atom
+                                                 starts near the reactant atom it corresponds to. This gives
+                                                 double-ended TS search methods (e.g., NEB, QST2) a short and
+                                                 physical interpolation path. If the alignment cannot be
+                                                 performed (e.g., no atom map), the default (unaligned)
+                                                 placement is returned instead. Default: ``False``.
 
         Returns: dict | str
             The combined cartesian coordinates.
-
-        Todo:
-            Orient the fragments according to the reactive site.
         """
         # Expand each species by its count in the product well (see get_reactants_xyz) so that a
         # repeated product contributes all of its atoms and the combined geometry matches the atom map.
         products = [spc for spc in self.p_species
                     for _ in range(self.get_species_count(species=spc, well=1))]
-        if len(products) == 1:
-            xyz_dict = products[0].get_xyz()
-        else:
-            xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-            for i, product in enumerate(products):
-                xyz = translate_to_center_of_mass(product.get_xyz())
-                if i:
-                    xyz = translate_xyz(xyz_dict=xyz,
-                                        translation=(sum(spc.radius for spc in products[:i]) * 1.1 * i, 0, 0))
-                xyz_dict['symbols'] += xyz['symbols']
-                xyz_dict['isotopes'] += xyz['isotopes']
-                xyz_dict['coords'] += xyz['coords']
-        xyz_dict = translate_to_center_of_mass(check_xyz_dict(xyz_dict))
-        xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
+        xyz_dict = self._get_products_xyz_aligned_to_reactants(products) if align_to_reactants else None
+        if xyz_dict is None:
+            if len(products) == 1:
+                xyz_dict = products[0].get_xyz()
+            else:
+                xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+                for i, product in enumerate(products):
+                    xyz = translate_to_center_of_mass(product.get_xyz())
+                    if i:
+                        xyz = translate_xyz(xyz_dict=xyz,
+                                            translation=(sum(spc.radius for spc in products[:i]) * 1.1 * i, 0, 0))
+                    xyz_dict['symbols'] += xyz['symbols']
+                    xyz_dict['isotopes'] += xyz['isotopes']
+                    xyz_dict['coords'] += xyz['coords']
+            xyz_dict = translate_to_center_of_mass(check_xyz_dict(xyz_dict))
+            xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
         if return_format == 'str':
             xyz_dict = xyz_to_str(xyz_dict)
+        return xyz_dict
+
+    def _get_products_xyz_aligned_to_reactants(self, products: list) -> dict | None:
+        """
+        Build the combined product coordinates with each product fragment rigidly superimposed (Kabsch)
+        onto the reactant atoms it maps to via the reaction's atom map.
+
+        Each fragment keeps its own (e.g., optimized) internal geometry, but is rotated and translated
+        so that its atoms overlay the corresponding reactant atoms. The combined coordinates are returned
+        in the reactant frame (as returned by :meth:`get_reactants_xyz`) and ordered as the reactants
+        (i.e., already sorted using the atom map).
+
+        Args:
+            products (list): The product ARCSpecies, expanded by their respective counts in the product well
+                             (a species formed more than once, e.g. 'A <=> B + B', appears once per occurrence).
+
+        Returns: dict | None
+            The combined, aligned, reactant-ordered cartesian coordinates,
+            or ``None`` if the alignment cannot be performed.
+        """
+        if self.atom_map is None:
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants '
+                           f'without an atom map. Using the unaligned product placement instead.')
+            return None
+        product_xyzs = [product.get_xyz() for product in products]
+        reactant_xyzs = [reactant.get_xyz() for reactant in self.r_species]
+        if any(xyz is None for xyz in product_xyzs + reactant_xyzs):
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants, '
+                           f'since not all species have coordinates. '
+                           f'Using the unaligned product placement instead.')
+            return None
+        num_atoms = sum(len(xyz['symbols']) for xyz in product_xyzs)
+        if len(self.atom_map) != num_atoms or sorted(self.atom_map) != list(range(num_atoms)):
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants: '
+                           f'the atom map is not a valid permutation of the {num_atoms} product atoms. '
+                           f'Using the unaligned product placement instead.')
+            return None
+        reactants_xyz = self.get_reactants_xyz(return_format='dict')
+        if len(reactants_xyz['symbols']) != num_atoms:
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants: '
+                           f'the reactants have {len(reactants_xyz["symbols"])} atoms, '
+                           f'while the products have {num_atoms} atoms. '
+                           f'Using the unaligned product placement instead.')
+            return None
+        # self.atom_map[reactant_index] = product_index; invert it to look up reactant atoms by product index.
+        inverse_map = [0] * num_atoms
+        for r_index, p_index in enumerate(self.atom_map):
+            inverse_map[p_index] = r_index
+        combined_xyz = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+        offset = 0
+        for product_xyz in product_xyzs:
+            fragment_size = len(product_xyz['symbols'])
+            ref_coords = [reactants_xyz['coords'][inverse_map[offset + j]] for j in range(fragment_size)]
+            aligned_xyz = align_xyz_to_ref_coords(xyz_dict=product_xyz, ref_coords=ref_coords)
+            combined_xyz['symbols'] += aligned_xyz['symbols']
+            combined_xyz['isotopes'] += aligned_xyz['isotopes']
+            combined_xyz['coords'] += aligned_xyz['coords']
+            offset += fragment_size
+        xyz_dict = check_xyz_dict(combined_xyz)
+        xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
         return xyz_dict
 
     def get_element_mass(self) -> list[float]:
