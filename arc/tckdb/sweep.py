@@ -9,7 +9,11 @@ Reads ``<project>/output/output.yml`` and dispatches per
   species, with artifacts inlined under each calc.
 - ``computed_reaction``: one ``/uploads/computed-reaction`` bundle per
   reaction. Species + TS + kinetics all ship in the reaction bundle;
-  the per-species sweep is *not* run.
+  the per-species sweep is *not* run. Exception: for a *partial* reaction
+  (TS missing/non-converged) whose bundle never live-POSTs, each
+  individually-converged reactant/product species is still salvaged via
+  the computed-species path so converged minima are not lost with a
+  failed TS.
 
 Lives in its own module so both the post-``execute()`` hook in
 ``ARC.py`` and the standalone CLI (``arc/tckdb/cli.py``) can call the
@@ -159,6 +163,13 @@ def _run_reaction_sweep(*, adapter, output_doc, tckdb_config):
           ``kinetics`` are stripped from a deepcopy of the record and
           submitted with ``is_partial=true``. The adapter writes a
           ``.partial`` sidecar and never live-POSTs in phase-1.
+
+    For *either* partial case (regardless of ``allow_partial_uploads``),
+    each reactant/product species that individually converged is
+    salvaged via the computed-species path — the reaction bundle never
+    live-POSTs when partial, so those converged minima would otherwise be
+    dropped. This is independent of the reaction/kinetics provenance the
+    flag governs; see ``_upload_partial_reaction_species``.
     """
     reaction_records = list(output_doc.get('reactions') or [])
     n_attempted = len(reaction_records)
@@ -169,8 +180,20 @@ def _run_reaction_sweep(*, adapter, output_doc, tckdb_config):
         for r in (output_doc.get('transition_states') or [])
         if isinstance(r, dict) and (r.get('label') or r.get('original_label'))
     }
+    species_index = {
+        str(r.get('label') or r.get('original_label')): r
+        for r in (output_doc.get('species') or [])
+        if isinstance(r, dict) and (r.get('label') or r.get('original_label'))
+    }
     n_partial_written = 0
     n_partial_disabled_skip = 0
+    # Converged reactant/product species salvaged from partial reactions
+    # (their reaction bundle never live-POSTs). Deduped by label across
+    # the whole sweep so a species shared by several failed reactions is
+    # uploaded at most once.
+    species_seen: set[str] = set()
+    species_counts = {'uploaded': 0, 'skipped': 0, 'failed': 0}
+    species_failures: list[tuple[str, str]] = []
 
     for record in reaction_records:
         label = record.get('label') or '<unlabeled-reaction>'
@@ -183,6 +206,25 @@ def _run_reaction_sweep(*, adapter, output_doc, tckdb_config):
         # reaction record with reactants/products and no TS is exactly
         # the partial-shape we want to allow under the flag.
         is_partial = not ts_converged
+
+        if is_partial:
+            # The reaction bundle for a partial reaction never live-POSTs
+            # (it is either skipped outright below or written sidecar-only
+            # with is_partial=true). Its converged reactant/product species
+            # would then never reach TCKDB. Upload each species that
+            # *individually* converged via the computed-species path,
+            # gated solely on that species' own convergence — independent
+            # of allow_partial_uploads, which governs only the
+            # reaction/kinetics provenance record, not the species minima.
+            _upload_partial_reaction_species(
+                adapter=adapter,
+                output_doc=output_doc,
+                reaction_record=record,
+                species_index=species_index,
+                seen=species_seen,
+                counts=species_counts,
+                failures=species_failures,
+            )
 
         if is_partial and not tckdb_config.allow_partial_uploads:
             n_partial_disabled_skip += 1
@@ -239,6 +281,15 @@ def _run_reaction_sweep(*, adapter, output_doc, tckdb_config):
             f'  partial reactions skipped (allow_partial_uploads=false): '
             f'{n_partial_disabled_skip}'
         )
+    if any(species_counts.values()) or species_failures:
+        print(
+            f'  species salvaged from partial reactions: '
+            f'uploaded {species_counts["uploaded"]}  '
+            f'skipped {species_counts["skipped"]}  '
+            f'failed {species_counts["failed"]}'
+        )
+    for slabel, serr in species_failures:
+        print(f'  failed species: {slabel} — {serr}')
     if not reaction_records:
         # Common cause: ARC ran species jobs but kinetics fitting
         # didn't produce any reactions in output.yml. Surface this so
@@ -246,6 +297,73 @@ def _run_reaction_sweep(*, adapter, output_doc, tckdb_config):
         print('  (no reactions in output.yml — kinetics fit may not have run)')
     for label, err in failures:
         print(f'  failed: {label} — {err}')
+
+
+def _upload_partial_reaction_species(
+    *,
+    adapter,
+    output_doc,
+    reaction_record,
+    species_index,
+    seen,
+    counts,
+    failures,
+):
+    """Upload the individually-converged species of a partial reaction.
+
+    A reaction whose TS is missing/non-converged is uploaded (if at all)
+    only as a phase-1 ``.partial`` sidecar that never live-POSTs, so its
+    reactant/product species — which may each have converged and met all
+    requirements on their own — would otherwise be dropped. This salvages
+    them through the existing computed-species path (SPECIES payload
+    shape, ``/uploads/computed-species``), gated purely on each species'
+    own ``converged`` flag, exactly as the standalone species sweep gates
+    (see ``_run_species_sweep``).
+
+    Kinetics and the TS are deliberately not touched here — only the
+    minima are salvaged. Idempotency: ``submit_computed_species_from_output``
+    builds a content-hashed idempotency key, so a re-POST replays
+    server-side; the ``seen`` label set additionally suppresses redundant
+    network calls for a species referenced by more than one failed
+    reaction (or already handled earlier in this sweep). Updates
+    ``counts`` and ``failures`` in place.
+    """
+    labels = list(reaction_record.get('reactant_labels') or [])
+    labels += list(reaction_record.get('product_labels') or [])
+    for label in labels:
+        if not label:
+            continue
+        key = str(label)
+        if key in seen:
+            continue
+        record = species_index.get(key)
+        if record is None:
+            # Reaction referenced a species absent from output_doc.species.
+            # The reaction builder itself raises on this, so nothing to do
+            # here — leave it for that path to report.
+            continue
+        if not record.get('converged'):
+            # Same eligibility gate as the standalone species sweep: only
+            # converged minima are uploadable. Non-converged species are
+            # skipped, never uploaded.
+            continue
+        # Mark as handled before attempting: a build/upload failure for
+        # this species should be reported once, not retried for every
+        # other reaction that references it.
+        seen.add(key)
+        try:
+            outcome = adapter.submit_computed_species_from_output(
+                output_doc=output_doc, species_record=record,
+            )
+        except Exception as exc:
+            counts['failed'] = counts.get('failed', 0) + 1
+            failures.append((key, f'{type(exc).__name__}: {exc}'))
+            continue
+        if outcome is None:
+            continue
+        counts[outcome.status] = counts.get(outcome.status, 0) + 1
+        if outcome.status == 'failed':
+            failures.append((key, outcome.error or 'unknown error'))
 
 
 _CALC_TYPE_TO_LOG_KEY = {
