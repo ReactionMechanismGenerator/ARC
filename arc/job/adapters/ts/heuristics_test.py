@@ -7,9 +7,12 @@ This module contains unit tests of the arc.job.adapters.ts.heuristics module
 
 import copy
 import itertools
+import json
 import os
 import shutil
+import subprocess
 import unittest
+from unittest import mock
 
 from arc.common import ARC_TESTING_PATH, almost_equal_coords
 from arc.family import get_reaction_family_products
@@ -33,6 +36,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             load_family_parameters,
                                             check_sn2_ts_bonds,
                                             has_nitrile_group,
+                                            filter_ts_guesses_with_uma_sp,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
@@ -2406,6 +2410,121 @@ H      -0.30139889    0.23142254    3.12085495"""
         self.assertFalse(has_nitrile_group(ARCSpecies(label='acetylene', smiles='C#C')))
         # False: methylamine — has N, single bonds only
         self.assertFalse(has_nitrile_group(ARCSpecies(label='methylamine', smiles='CN')))
+
+    @staticmethod
+    def _uma_proc(returncode=0, stdout='', stderr=''):
+        """Build a stand-in for the ``subprocess.run`` CompletedProcess result."""
+        m = mock.Mock()
+        m.returncode = returncode
+        m.stdout = stdout
+        m.stderr = stderr
+        return m
+
+    def _uma_guesses(self, n):
+        """``n`` distinct (by identity) TS-guess xyz dicts + their family labels."""
+        xyzs = [copy.deepcopy(self.h2o_xyz) for _ in range(n)]
+        families = [f'qa_sn2_{i}' for i in range(n)]
+        return xyzs, families
+
+    def test_uma_sp_no_cut_when_at_or_below_top_k(self):
+        """<= top_k guesses: return unchanged and never touch the subprocess/UMA."""
+        xyzs, families = self._uma_guesses(4)
+        with mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.UMA_PYTHON', '/fake/uma/python'), \
+                mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.subprocess.run') as run:
+            out_xyzs, out_families = filter_ts_guesses_with_uma_sp(xyzs, families)
+        run.assert_not_called()
+        self.assertEqual(out_xyzs, xyzs)
+        self.assertEqual(out_families, families)
+
+    def test_uma_sp_no_cut_exactly_top_k(self):
+        """Exactly top_k guesses is still a no-op (boundary)."""
+        xyzs, families = self._uma_guesses(5)
+        with mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.UMA_PYTHON', '/fake/uma/python'), \
+                mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.subprocess.run') as run:
+            out_xyzs, out_families = filter_ts_guesses_with_uma_sp(xyzs, families)
+        run.assert_not_called()
+        self.assertEqual(out_xyzs, xyzs)
+        self.assertEqual(out_families, families)
+
+    def test_uma_sp_fail_safe_when_uma_absent(self):
+        """No uma_env (UMA_PYTHON is None): forward all guesses, never shell out."""
+        xyzs, families = self._uma_guesses(8)
+        with mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.UMA_PYTHON', None), \
+                mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.subprocess.run') as run:
+            out_xyzs, out_families = filter_ts_guesses_with_uma_sp(xyzs, families)
+        run.assert_not_called()
+        self.assertEqual(out_xyzs, xyzs)
+        self.assertEqual(out_families, families)
+
+    def test_uma_sp_fail_safe_on_nonzero_exit(self):
+        """Worker exits non-zero: forward all guesses."""
+        xyzs, families = self._uma_guesses(8)
+        with mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.UMA_PYTHON', '/fake/uma/python'), \
+                mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.subprocess.run',
+                           return_value=self._uma_proc(returncode=1, stderr='boom')):
+            out_xyzs, out_families = filter_ts_guesses_with_uma_sp(xyzs, families)
+        self.assertEqual(out_xyzs, xyzs)
+        self.assertEqual(out_families, families)
+
+    def test_uma_sp_fail_safe_on_partial_scoring(self):
+        """Worker scores only some guesses: refuse to cut, forward all."""
+        xyzs, families = self._uma_guesses(8)
+        partial = json.dumps({f'guess_{i}': float(i) for i in range(5)})  # missing 5,6,7
+        with mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.UMA_PYTHON', '/fake/uma/python'), \
+                mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.subprocess.run',
+                           return_value=self._uma_proc(stdout=partial)):
+            out_xyzs, out_families = filter_ts_guesses_with_uma_sp(xyzs, families)
+        self.assertEqual(out_xyzs, xyzs)
+        self.assertEqual(out_families, families)
+
+    def test_uma_sp_fail_safe_on_bad_json(self):
+        """Worker prints non-JSON: exception is caught, forward all."""
+        xyzs, families = self._uma_guesses(8)
+        with mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.UMA_PYTHON', '/fake/uma/python'), \
+                mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.subprocess.run',
+                           return_value=self._uma_proc(stdout='not json at all')):
+            out_xyzs, out_families = filter_ts_guesses_with_uma_sp(xyzs, families)
+        self.assertEqual(out_xyzs, xyzs)
+        self.assertEqual(out_families, families)
+
+    def test_uma_sp_fail_safe_on_subprocess_exception(self):
+        """subprocess.run itself raises (e.g. TimeoutExpired): caught, forward all."""
+        xyzs, families = self._uma_guesses(8)
+        with mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.UMA_PYTHON', '/fake/uma/python'), \
+                mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.subprocess.run',
+                           side_effect=subprocess.TimeoutExpired(cmd='uma', timeout=1)):
+            out_xyzs, out_families = filter_ts_guesses_with_uma_sp(xyzs, families)
+        self.assertEqual(out_xyzs, xyzs)
+        self.assertEqual(out_families, families)
+
+    def test_uma_sp_keeps_top_k_lowest_energy_in_original_order(self):
+        """Happy path: keep the top_k lowest-energy guesses, in original index order."""
+        xyzs, families = self._uma_guesses(8)
+        # Lowest 5 energies are indices 0,2,3,5,6; indices 1, 4, and 7 are the three highest.
+        energies = {'guess_0': 0.0, 'guess_1': 9.0, 'guess_2': 1.0, 'guess_3': 2.0,
+                    'guess_4': 8.0, 'guess_5': 3.0, 'guess_6': 4.0, 'guess_7': 5.0}
+        with mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.UMA_PYTHON', '/fake/uma/python'), \
+                mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.subprocess.run',
+                           return_value=self._uma_proc(stdout=json.dumps(energies))) as run:
+            out_xyzs, out_families = filter_ts_guesses_with_uma_sp(
+                xyzs, families, charge=0, multiplicity=1)
+        run.assert_called_once()
+        kept = [0, 2, 3, 5, 6]
+        self.assertEqual(out_xyzs, [xyzs[i] for i in kept])
+        self.assertEqual(out_families, [families[i] for i in kept])
+
+    def test_uma_sp_worker_invoked_with_charge_and_multiplicity(self):
+        """Charge/multiplicity are passed through to the worker argv (UMA omol conditioning)."""
+        xyzs, families = self._uma_guesses(8)
+        energies = json.dumps({f'guess_{i}': float(i) for i in range(8)})
+        with mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.UMA_PYTHON', '/fake/uma/python'), \
+                mock.patch(f'{filter_ts_guesses_with_uma_sp.__module__}.subprocess.run',
+                           return_value=self._uma_proc(stdout=energies)) as run:
+            filter_ts_guesses_with_uma_sp(xyzs, families, charge=1, multiplicity=2)
+        argv = run.call_args[0][0]
+        self.assertEqual(argv[0], '/fake/uma/python')
+        self.assertIn('1', argv)  # charge
+        self.assertIn('2', argv)  # multiplicity
 
     @classmethod
     def tearDownClass(cls):
