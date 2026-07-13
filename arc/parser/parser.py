@@ -554,6 +554,66 @@ def parse_trajectory(path: str) -> list[dict[str, tuple]] | None:
     return traj
 
 
+def parse_gsm_stringfile_energies(path: str) -> list[float] | None:
+    """
+    Parse the per-frame energy values from the comment lines of a GSM
+    (Growing String Method) ``stringfile.xyzNNNN`` trajectory.
+
+    ``molecularGSM`` writes each node as a standard XYZ block whose second
+    (comment) line holds that node's energy **relative to the first node**,
+    conventionally in kcal/mol (so the first node is ``0.000000``). This
+    helper returns one float per frame, in frame order.
+
+    This is intentionally separate from :func:`parse_trajectory` (which
+    only returns coordinates and is shared by scan / IRC / ESS callers) so
+    that adding energy extraction here cannot change the behavior of any
+    existing ``parse_trajectory`` caller.
+
+    Note:
+        Some ``molecularGSM`` builds/configurations write ``0.000000`` for
+        every comment line (no energy emitted — this is the case for ARC's
+        current xtb_gsm build). This function faithfully returns those
+        zeros; the caller must decide whether an all-zero column is a real
+        (degenerate) profile or the "no energy written" sentinel.
+
+    Args:
+        path (str): The stringfile path.
+
+    Returns: list[float] | None
+        Per-frame comment-line energies (frame order), or ``None`` if the
+        file is absent or any frame's comment line is not a leading float
+        (i.e. the file does not carry a per-frame energy column at all).
+    """
+    if not os.path.isfile(path):
+        return None
+    lines = _get_lines_from_file(path)
+    energies: list[float] = []
+    i, n = 0, len(lines)
+    while i < n:
+        header = lines[i].strip().split()
+        # An XYZ atom-count header is a single all-digit token; anything
+        # else (blank/partial trailing lines) is skipped.
+        if len(header) == 1 and header[0].isdigit():
+            num_atoms = int(header[0])
+            comment_idx = i + 1
+            if comment_idx >= n:
+                break
+            comment_tokens = lines[comment_idx].strip().split()
+            if not comment_tokens:
+                return None
+            try:
+                energies.append(float(comment_tokens[0]))
+            except ValueError:
+                # No numeric energy in the comment column — this file is a
+                # plain geometry trajectory, not an energy-bearing GSM
+                # stringfile. Report ``None`` rather than a partial list.
+                return None
+            i = comment_idx + 1 + num_atoms
+        else:
+            i += 1
+    return energies or None
+
+
 def _get_lines_from_file(path: str) -> list[str]:
     """
     A helper function for getting a list of lines from a file.

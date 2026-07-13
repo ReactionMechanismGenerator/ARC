@@ -276,6 +276,20 @@ _PATH_SEARCH_METHOD_PROPERTIES: dict[str, dict[str, Any]] = {
     "gsm": {"is_double_ended": True, "source_endpoint_count": 2},
 }
 
+# Thermochemical kcal → kJ. ``molecularGSM`` stringfile comment-line
+# energies are relative energies in kcal/mol (first node = 0.0), so the
+# stringfile fallback below converts with this factor. (Node-output
+# energies, when preserved, are absolute Hartrees and use ``E_h_kJmol``
+# instead — see the primary energy path in
+# ``_build_path_search_result_payload``.)
+_KCAL_MOL_TO_KJ_MOL = 4.184
+# A GSM stringfile whose relative-energy column spans less than this
+# (kcal/mol) is treated as the molecularGSM "no energy emitted" sentinel
+# (the entire column is ``0.000000`` in ARC's current xtb_gsm build)
+# rather than a real, physically-flat profile — so we leave relative
+# energies null instead of uploading a fabricated all-zero profile.
+_GSM_STRINGFILE_ENERGY_EPS = 1e-6
+
 
 def _resolve_ts_guess_path_search(method: object) -> str | None:
     """Return the TCKDB ``path_search_result.method`` enum value for an
@@ -5895,8 +5909,8 @@ def _build_path_search_result_payload(
     # Late-imported to keep the adapter's import surface lean when
     # path-search emission isn't exercised.
     from arc.constants import E_h_kJmol
-    from arc.parser.parser import parse_trajectory
-    from arc.species.converter import xyz_to_str
+    from arc.parser.parser import parse_gsm_stringfile_energies, parse_trajectory
+    from arc.species.converter import kabsch, xyz_to_str
 
     # Per-node parsed metadata from preserved xtb outputs, when the
     # producer wrote them. Empty dict for older runs (wrapper predates
@@ -5926,6 +5940,29 @@ def _build_path_search_result_payload(
             # here so the selected point matches the geometry that
             # actually became ``ts_opt``'s input.
             selected_index = int((len(traj) - 1) / 2) + 1
+            # path_coordinate holds the physical cumulative arc length in
+            # Angstrom along the string — the analog of ORCA NEB's "Dist.(Ang.)"
+            # the backend's ``path_coordinate`` column stores (a monotonically
+            # increasing distance, not a normalized 0-1 fraction). Each node is
+            # Kabsch-aligned onto its predecessor before the displacement is
+            # summed: GSM does NOT keep every node in a common frame (the
+            # reactant endpoint is frequently translated/rotated relative to the
+            # interior nodes), so the raw inter-node displacement would be
+            # inflated by that pure frame shift. ``kabsch`` returns the aligned
+            # root-sum-square displacement; node 0 = 0.0. If alignment fails for
+            # any pair, path_coordinate is left null on every point (an honest
+            # null beats a mislabeled proxy that would clash with ORCA's Angstrom
+            # rows).
+            arc_lengths: list[float] | None = None
+            if len(traj) >= 2:
+                try:
+                    arc_lengths = [0.0]
+                    for idx in range(1, len(traj)):
+                        arc_lengths.append(float(
+                            arc_lengths[-1] + kabsch(traj[idx], traj[idx - 1])
+                        ))
+                except (ValueError, KeyError, TypeError, IndexError):
+                    arc_lengths = None
             for i, frame in enumerate(traj):
                 try:
                     atom_only = xyz_to_str(frame)
@@ -5941,14 +5978,12 @@ def _build_path_search_result_payload(
                 )
                 if not xyz_text:
                     continue
-                # path_coordinate intentionally left null: GSM node
-                # ordering is represented by point_index; ARC does not
-                # currently preserve GSM's internal reaction-coordinate
-                # metric.
                 point: dict[str, Any] = {
                     "point_index": i,
                     "geometry": {"xyz_text": xyz_text},
                 }
+                if arc_lengths is not None:
+                    point["path_coordinate"] = arc_lengths[i]
                 if i == selected_index:
                     point["is_ts_guess"] = True
                 # Per-node energy / gradient (when preserved by the
@@ -6000,6 +6035,40 @@ def _build_path_search_result_payload(
         for p in points:
             e_h = p["electronic_energy_hartree"]
             p["relative_energy_kj_mol"] = (e_h - zero_e_h) * E_h_kJmol
+
+    # Fallback relative-energy source: the GSM stringfile's per-node
+    # comment column (relative energies in kcal/mol, first node = 0).
+    # Only used when absolute per-node Hartrees weren't preserved (no
+    # ``zero_e_h`` above) — the stringfile carries *relative* energies
+    # only, so ``electronic_energy_hartree`` and
+    # ``zero_energy_reference_hartree`` legitimately stay null here.
+    #
+    # Guard: ARC's current molecularGSM build writes ``0.000000`` for
+    # every comment line (verified benchmark-wide), so a column that
+    # spans < ``_GSM_STRINGFILE_ENERGY_EPS`` is the "no energy emitted"
+    # sentinel — we leave relative energies null rather than upload a
+    # fabricated flat-zero profile. When a build *does* emit energies,
+    # this populates ``relative_energy_kj_mol`` for every node and marks
+    # the peak node ``is_climbing_image``.
+    if zero_e_h is None and not any(e is not None for e in energies) \
+            and method == "gsm" and log_path is not None:
+        rel_kcal = parse_gsm_stringfile_energies(str(log_path))
+        if rel_kcal is not None:
+            point_indices = [p["point_index"] for p in points]
+            if point_indices and all(
+                0 <= ix < len(rel_kcal) for ix in point_indices
+            ):
+                vals = [rel_kcal[ix] for ix in point_indices]
+                if max(vals) - min(vals) > _GSM_STRINGFILE_ENERGY_EPS:
+                    base_kcal = min(vals)
+                    for p, v in zip(points, vals):
+                        p["relative_energy_kj_mol"] = (
+                            (v - base_kcal) * _KCAL_MOL_TO_KJ_MOL
+                        )
+                    peak_pos = max(
+                        range(len(vals)), key=lambda k: vals[k],
+                    )
+                    points[peak_pos]["is_climbing_image"] = True
 
     payload: dict[str, Any] = {
         "method": method,

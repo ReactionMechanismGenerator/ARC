@@ -7,6 +7,7 @@ This module contains unit tests for the parser functions
 
 import numpy as np
 import os
+import shutil
 import unittest
 
 import arc.parser.parser as parser
@@ -581,6 +582,42 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertEqual(len(trajectory), 9)
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 3)
+
+    def test_parse_gsm_stringfile_energies(self):
+        """Test parsing the per-frame comment-line energies of a GSM stringfile."""
+        import tempfile
+
+        # 1. The real fixture: ARC's molecularGSM build writes 0.000000 for
+        #    every comment line (the "no energy emitted" case). The parser
+        #    faithfully returns those zeros; the caller applies the sentinel.
+        path = os.path.join(ARC_TESTING_PATH, 'stringfile.xyz0000')
+        energies = parser.parse_gsm_stringfile_energies(path)
+        self.assertEqual(energies, [0.0] * 9)
+
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+
+        # 2. An energy-bearing stringfile (relative kcal/mol, first node 0):
+        #    the parser returns the per-frame floats in frame order.
+        expected = [0.0, 3.5, 12.4, 8.1, 1.2]
+        energetic = os.path.join(tmp_dir, 'stringfile.xyz0000')
+        with open(energetic, 'w') as f:
+            for e in expected:
+                f.write(f' 1\n {e:.6f}\n C 0.0 0.0 0.0\n')
+        parsed = parser.parse_gsm_stringfile_energies(energetic)
+        self.assertEqual(len(parsed), len(expected))
+        for got, exp in zip(parsed, expected):
+            self.assertAlmostEqual(got, exp)
+
+        # 3. A geometry-only trajectory (non-numeric comment line) is not an
+        #    energy-bearing stringfile → None (never a partial list).
+        geom_only = os.path.join(tmp_dir, 'geom.xyz')
+        with open(geom_only, 'w') as f:
+            f.write(' 1\n frame 0\n C 0.0 0.0 0.0\n 1\n frame 1\n C 0.0 0.0 0.1\n')
+        self.assertIsNone(parser.parse_gsm_stringfile_energies(geom_only))
+
+        # 4. A missing file → None.
+        self.assertIsNone(parser.parse_gsm_stringfile_energies('/no/such/stringfile.xyz0000'))
 
     def test_parse_irc_path_gaussian_forward(self):
         """parse_irc_path emits per-point energy, RC, grads, direction, and xyz."""
