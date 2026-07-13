@@ -7788,20 +7788,26 @@ class TestPathSearchResultBuilder(unittest.TestCase):
         self.assertTrue(result['is_double_ended'])
         self.assertEqual(result['source_endpoint_count'], 2)
 
-    def test_gsm_points_have_no_path_coordinate(self):
-        # Policy: GSM node ordering rides on point_index; we don't
-        # synthesize a normalized path_coordinate from the index
-        # because the schema's path_coordinate is meant for the
-        # method's actual reaction-coordinate metric, which ARC
-        # doesn't preserve. Honest-null beats label-mismatched proxy.
+    def test_gsm_points_have_cumulative_arc_length_path_coordinate(self):
+        # path_coordinate is the physical cumulative Cartesian arc length
+        # (Angstrom) along the string — the analog of ORCA NEB's Dist.(Ang.)
+        # that the backend's path_coordinate column stores. It starts at 0.0
+        # at node 0 and increases monotonically (NOT a normalized 0-1 fraction),
+        # so its total is a real distance rather than always 1.0.
         path = _GSM_STRINGFILE_FIXTURE
         if not path or not os.path.isfile(path):
             self.skipTest(_GSM_FIXTURE_SKIP_MSG)
         result = self.build(method='gsm', log_path=path,
                             fallback_xyz_text=None)
-        for p in result['points']:
-            self.assertNotIn('path_coordinate', p,
-                             msg=f'unexpected path_coordinate on {p}')
+        n = len(result['points'])
+        self.assertGreaterEqual(n, 2)
+        coords = [p['path_coordinate'] for p in result['points']]
+        for c in coords:
+            self.assertIsInstance(c, float)
+        self.assertAlmostEqual(coords[0], 0.0)
+        for prev, cur in zip(coords, coords[1:]):
+            self.assertGreaterEqual(cur, prev)  # monotonically non-decreasing
+        self.assertGreater(coords[-1], 0.0)  # non-trivial total arc length
 
     def test_gsm_points_omit_energy_and_force_fields(self):
         # No on-disk source for per-node energies/forces in xtb_gsm
@@ -8004,9 +8010,13 @@ class TestPathSearchPointsWithNodeMetadata(unittest.TestCase):
         # be a bare digit — parse_trajectory uses single-digit detection
         # to identify atom-count headers, so a numeric comment is
         # misread as the start of a new frame.
+        # Two atoms with a stretching C-H bond (0.1 A / frame): a real internal
+        # geometry change so the Kabsch-aligned inter-node distance (the arc
+        # length) is non-zero — a single atom would be pure translation, which
+        # alignment collapses to 0.
         body = ''
         for i in range(n_frames):
-            body += f'1\nframe {i}\nC 0.0 0.0 {i*0.1}\n'
+            body += f'2\nframe {i}\nC 0.0 0.0 0.0\nH 0.0 0.0 {1.0 + i*0.1}\n'
         p = os.path.join(self.tmp, 'stringfile.xyz0000')
         with open(p, 'w') as f:
             f.write(body)
@@ -8073,6 +8083,87 @@ class TestPathSearchPointsWithNodeMetadata(unittest.TestCase):
             self.assertNotIn('electronic_energy_hartree', p)
             self.assertNotIn('relative_energy_kj_mol', p)
             self.assertNotIn('max_gradient', p)
+
+    def _energetic_stringfile(self, rel_energies_kcal):
+        # A molecularGSM-style stringfile whose comment line holds each
+        # node's relative energy (kcal/mol, first node 0).
+        p = os.path.join(self.tmp, 'stringfile.xyz0000')
+        with open(p, 'w') as f:
+            for e in rel_energies_kcal:
+                f.write(f' 1\n {e:.6f}\n C 0.0 0.0 0.0\n')
+        return p
+
+    def test_points_carry_cumulative_arc_length_path_coordinate(self):
+        # path_coordinate is the Kabsch-aligned cumulative arc length (Angstrom),
+        # independent of any energy source. The synthetic frames stretch a C-H
+        # bond 0.1 A/frame (a real internal change alignment can't remove), so
+        # the aligned inter-node distance is a constant positive step and
+        # path_coordinate increases monotonically from 0.0.
+        sf = self._stringfile_for(n_frames=5)
+        result = self.build(method='gsm', log_path=sf,
+                            fallback_xyz_text=None)
+        coords = [p['path_coordinate'] for p in result['points']]
+        self.assertAlmostEqual(coords[0], 0.0)
+        for prev, cur in zip(coords, coords[1:]):
+            self.assertGreater(cur, prev)  # strictly increasing arc length
+        steps = [b - a for a, b in zip(coords, coords[1:])]
+        self.assertTrue(all(abs(s - steps[0]) < 1e-6 for s in steps))  # even spacing
+
+    def test_stringfile_relative_energies_populate_when_node_outputs_absent(self):
+        # No node outputs → fall back to the stringfile comment column
+        # (relative kcal/mol). Every node gets relative_energy_kj_mol
+        # (converted, first node 0), the peak is flagged
+        # is_climbing_image, and absolute-Hartree fields stay null.
+        rel_kcal = [0.0, 3.0, 12.5, 7.0, 1.0]
+        sf = self._energetic_stringfile(rel_kcal)
+        result = self.build(method='gsm', log_path=sf,
+                            fallback_xyz_text=None,
+                            node_outputs_dir=None)
+        self.assertNotIn('zero_energy_reference_hartree', result)
+        base = min(rel_kcal)
+        for p, e in zip(result['points'], rel_kcal):
+            self.assertAlmostEqual(p['relative_energy_kj_mol'],
+                                   (e - base) * 4.184)
+            self.assertNotIn('electronic_energy_hartree', p)
+        # First node is the relative-zero.
+        self.assertAlmostEqual(result['points'][0]['relative_energy_kj_mol'], 0.0)
+        # Exactly one climbing image, at the energy peak (index 2 here).
+        climbing = [p for p in result['points'] if p.get('is_climbing_image')]
+        self.assertEqual(len(climbing), 1)
+        self.assertEqual(climbing[0]['point_index'], 2)
+
+    def test_all_zero_stringfile_is_sentinel_no_relative_energies(self):
+        # ARC's molecularGSM build writes 0.000000 for every comment
+        # line; that all-zero column is the "no energy emitted" sentinel,
+        # not a real flat profile — relative energies stay null.
+        sf = self._energetic_stringfile([0.0, 0.0, 0.0, 0.0])
+        result = self.build(method='gsm', log_path=sf,
+                            fallback_xyz_text=None,
+                            node_outputs_dir=None)
+        for p in result['points']:
+            self.assertNotIn('relative_energy_kj_mol', p)
+            self.assertNotIn('is_climbing_image', p)
+
+    def test_node_output_hartrees_take_precedence_over_stringfile(self):
+        # When absolute per-node Hartrees are preserved, they win: the
+        # relative energies come from them (with a Hartree zero ref), not
+        # from the stringfile comment column.
+        rel_kcal = [0.0, 5.0, 20.0, 2.0]
+        sf = self._energetic_stringfile(rel_kcal)
+        from arc.parser.parser import parse_trajectory
+        n_frames = len(parse_trajectory(sf))
+        energies = {i: -28.0 - 0.01 * (i if i != 2 else 9) for i in range(n_frames)}
+        outputs_dir = self._seed_node_outputs(energies)
+        result = self.build(method='gsm', log_path=sf,
+                            fallback_xyz_text=None,
+                            node_outputs_dir=outputs_dir)
+        self.assertIn('zero_energy_reference_hartree', result)
+        for p in result['points']:
+            self.assertIn('electronic_energy_hartree', p)
+        # No climbing-image flag: that is only set by the stringfile
+        # fallback branch, which is skipped when Hartrees are present.
+        self.assertFalse(any(p.get('is_climbing_image')
+                             for p in result['points']))
 
 
 class TestArtifactFilenameCoercion(unittest.TestCase):
