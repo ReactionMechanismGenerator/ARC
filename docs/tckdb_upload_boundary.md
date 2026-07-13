@@ -105,7 +105,14 @@ Decisions that were close enough to deserve a written rationale:
   minimal anchor calculation that is *not* an independent ESS job. The
   marker exists so consumers do not mistake that anchor for a real job.
   This is the narrow exception, not a precedent for stashing workflow
-  state under `tckdb_origin`.
+  state under `tckdb_origin`. Note: the backend **validates**
+  `tckdb_origin.origin_kind` against the `CalculationWithResultsPayload`
+  enum `{executed, reused_result, imported, derived}` (it hoists the
+  nested value to the top-level field). So the anchor row's `origin_kind`
+  is `derived` (the geometry is derived from ARC's conformer screen), and
+  the ARC-specific `screened_conformer` distinction rides on the opaque
+  `origin_detail` key. Emitting `origin_kind="screened_conformer"`
+  directly returns HTTP 422.
 
 - **`final_settings.optimization_stage`** — *Keep.* Records the final
   effective calculation stage the result corresponds to (e.g. fine-grid
@@ -137,8 +144,10 @@ in TCKDB payloads, and *only* these:
 - `tckdb_origin.reused_result` — flags a calculation row that re-points at
   a previously uploaded result rather than re-running. Preserves
   idempotency without re-uploading the underlying ESS job.
-- `tckdb_origin.screened_conformer` — flags the minimal anchor calculation
-  attached to a screened-only conformer (see Borderline cases).
+- `tckdb_origin` with `origin_kind="derived"` + `origin_detail="screened_conformer"`
+  — flags the minimal anchor calculation attached to a screened-only
+  conformer (see Borderline cases). `origin_kind` must stay an enum member;
+  the ARC-specific marker lives on `origin_detail`.
 - `final_settings.optimization_stage` — final effective optimization stage
   for the calculation chain (see Borderline cases).
 
