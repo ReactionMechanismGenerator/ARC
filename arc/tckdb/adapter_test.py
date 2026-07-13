@@ -170,6 +170,47 @@ class _StubClient:
         self.closed = True
 
 
+class _SequencedReadyzClient(_StubClient):
+    """Stub whose ``/readyz`` responses are consumed from a sequence.
+
+    Each ``/readyz`` call pops the next item in ``readyz_sequence``; when
+    the sequence is exhausted the last item repeats (steady state). An
+    item that is a ``BaseException`` is raised (simulating a request
+    exception); otherwise it is returned. Non-readyz calls behave like
+    the base ``_StubClient``. Lets a test drive "K transient failures then
+    ready" without real sleeps.
+    """
+
+    def __init__(self, *, readyz_sequence, response=None, raise_exc=None):
+        super().__init__(response=response, raise_exc=raise_exc)
+        self._readyz_sequence = list(readyz_sequence)
+        self._readyz_idx = 0
+
+    def request_json(
+        self,
+        method,
+        path,
+        *,
+        json=None,
+        authenticated=True,
+        idempotency_key=None,
+    ):
+        if path == "/readyz":
+            self.calls.append(dict(method=method, path=path, json=json,
+                                   authenticated=authenticated,
+                                   idempotency_key=idempotency_key))
+            idx = min(self._readyz_idx, len(self._readyz_sequence) - 1)
+            self._readyz_idx += 1
+            item = self._readyz_sequence[idx]
+            if isinstance(item, BaseException):
+                raise item
+            return item
+        return super().request_json(
+            method, path, json=json, authenticated=authenticated,
+            idempotency_key=idempotency_key,
+        )
+
+
 def _fake_record(label="ethanol", smiles="CCO", charge=0, multiplicity=1, is_ts=False):
     """Mimics one entry from output.yml's `species:` (or `transition_states:`) list.
 
@@ -338,7 +379,8 @@ class TestAdapterPayloadAndUpload(unittest.TestCase):
             readyz_response=readyz,
         )
         adapter = self._adapter(client)
-        with mock.patch.dict(os.environ, {"X_TCKDB_API_KEY": "tck_x"}):
+        with mock.patch.dict(os.environ, {"X_TCKDB_API_KEY": "tck_x"}), \
+                mock.patch("arc.tckdb.adapter._preflight_sleep"):
             outcome = adapter.submit_from_output(
                 output_doc=_fake_output_doc(),
                 species_record=_fake_record(),
@@ -349,7 +391,14 @@ class TestAdapterPayloadAndUpload(unittest.TestCase):
             )
         self.assertEqual(outcome.status, "failed")
         self.assertEqual(outcome2.status, "failed")
-        self.assertEqual([call["path"] for call in client.calls], ["/readyz"])
+        # A persistently not-ready server is probed PREFLIGHT_MAX_ATTEMPTS
+        # times on the first submit; the second submit re-raises the cached
+        # preflight error without probing again (single-check semantics).
+        from arc.tckdb.adapter import PREFLIGHT_MAX_ATTEMPTS
+        self.assertEqual(
+            [call["path"] for call in client.calls],
+            ["/readyz"] * PREFLIGHT_MAX_ATTEMPTS,
+        )
         sc = json.loads(outcome.sidecar_path.read_text())
         self.assertIn("schema_not_initialized", sc["last_error"])
         self.assertEqual(sc["preflight"]["ready"], False)
@@ -382,6 +431,103 @@ class TestAdapterPayloadAndUpload(unittest.TestCase):
             adapter.submit_from_output(output_doc=_fake_output_doc(), species_record=_fake_record(label="methanol", smiles="CO"))
         readyz_calls = [call for call in client.calls if call.get("path") == "/readyz"]
         self.assertEqual(len(readyz_calls), 1)
+
+    def test_readyz_recovers_after_transient_failures(self):
+        # The server is not-ready / unreachable for K attempts, then ready.
+        # The retry loop must ride through the blip and upload succeeds
+        # without any error surfacing. K=3 transient failures < the 5-attempt
+        # budget, so the 4th probe reports ready.
+        from tckdb_client.errors import TCKDBConnectionError
+        not_ready = _StubResponse(
+            {"status": "not_ready", "code": "schema_not_initialized"},
+            status_code=200,
+        )
+        ready = _StubResponse(
+            {"status": "ready", "alembic_revision": "test-rev"},
+            status_code=200,
+            headers={"X-Request-ID": "req-readyz"},
+        )
+        # Mix both failure modes: a request exception, then not-ready
+        # bodies, then ready.
+        readyz_seq = [
+            TCKDBConnectionError("server unreachable"),
+            not_ready,
+            not_ready,
+            ready,
+        ]
+        client = _SequencedReadyzClient(
+            readyz_sequence=readyz_seq,
+            response=_StubResponse({"conformer_observation_id": 42}),
+        )
+        adapter = TCKDBAdapter(self.cfg, client_factory=lambda c, k: client)
+        with mock.patch.dict(os.environ, {"X_TCKDB_API_KEY": "tck_x"}), \
+                mock.patch("arc.tckdb.adapter._preflight_sleep") as sleep:
+            outcome = adapter.submit_from_output(
+                output_doc=_fake_output_doc(), species_record=_fake_record(),
+            )
+        self.assertEqual(outcome.status, "uploaded")
+        # 4 readyz probes (3 failures + 1 ready), then the upload POST.
+        readyz_calls = [c for c in client.calls if c["path"] == "/readyz"]
+        self.assertEqual(len(readyz_calls), 4)
+        self.assertEqual(sleep.call_count, 3)  # one backoff between each retry
+
+    def test_readyz_raises_after_all_attempts_exhausted(self):
+        # Every probe fails → after PREFLIGHT_MAX_ATTEMPTS the adapter gives
+        # up with a TCKDBReadinessError (surfaced as a failed outcome under
+        # strict=False, and the payload is still on disk).
+        from arc.tckdb.adapter import (
+            PREFLIGHT_MAX_ATTEMPTS,
+            TCKDBReadinessError,
+        )
+        from tckdb_client.errors import TCKDBConnectionError
+        client = _SequencedReadyzClient(
+            readyz_sequence=[TCKDBConnectionError("down")],  # last repeats
+            response=_StubResponse({"conformer_observation_id": 42}),
+        )
+        adapter = TCKDBAdapter(self.cfg, client_factory=lambda c, k: client)
+        with mock.patch.dict(os.environ, {"X_TCKDB_API_KEY": "tck_x"}), \
+                mock.patch("arc.tckdb.adapter._preflight_sleep"):
+            outcome = adapter.submit_from_output(
+                output_doc=_fake_output_doc(), species_record=_fake_record(),
+            )
+        self.assertEqual(outcome.status, "failed")
+        readyz_calls = [c for c in client.calls if c["path"] == "/readyz"]
+        self.assertEqual(len(readyz_calls), PREFLIGHT_MAX_ATTEMPTS)
+        # No upload POST ever happened.
+        self.assertFalse(any(c["path"] != "/readyz" for c in client.calls))
+        self.assertIsInstance(adapter._preflight_error, TCKDBReadinessError)
+
+    def test_readiness_exhaustion_logs_recovery_command(self):
+        # On genuine exhaustion the user must get a copy-pasteable recovery
+        # command telling them the payloads are on disk and how to re-run.
+        from arc.tckdb.adapter import PREFLIGHT_MAX_ATTEMPTS
+        from tckdb_client.errors import TCKDBConnectionError
+        client = _SequencedReadyzClient(
+            readyz_sequence=[TCKDBConnectionError("down")],
+            response=_StubResponse({"conformer_observation_id": 42}),
+        )
+        adapter = TCKDBAdapter(
+            self.cfg,
+            project_directory="/proj/run7",
+            client_factory=lambda c, k: client,
+        )
+        with mock.patch.dict(os.environ, {"X_TCKDB_API_KEY": "tck_x"}), \
+                mock.patch("arc.tckdb.adapter._preflight_sleep"), \
+                self.assertLogs("arc", level="WARNING") as logs:
+            adapter.submit_from_output(
+                output_doc=_fake_output_doc(), species_record=_fake_record(),
+            )
+        blob = "\n".join(logs.output)
+        self.assertIn(
+            f"TCKDB server was not ready after {PREFLIGHT_MAX_ATTEMPTS} attempts",
+            blob,
+        )
+        # The exact CLI command, with the real project dir + upload mode.
+        self.assertIn(
+            "python -m arc.tckdb.cli /proj/run7/input.yml "
+            f"-p /proj/run7 --upload-mode {self.cfg.upload_mode}",
+            blob,
+        )
 
     def test_upload_records_idempotency_replay(self):
         client = _StubClient(
