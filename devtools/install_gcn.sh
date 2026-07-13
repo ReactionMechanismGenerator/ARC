@@ -102,6 +102,9 @@ case ":\${PYTHONPATH:-}:" in
   *":\$TSGCN_ROOT:"*) ;;
   *) export PYTHONPATH="\$TSGCN_ROOT\${PYTHONPATH:+:\$PYTHONPATH}" ;;
 esac
+# Ensure the conda env's libstdc++ (with GLIBCXX_3.4.29, required by scipy) is
+# found before the system /lib64 one, which is older on some hosts (zeus).
+export LD_LIBRARY_PATH="\$CONDA_PREFIX/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
 ACTHOOK
 
   # --- deactivation hook ---------------------------------------------------
@@ -218,8 +221,11 @@ WHEEL_URL="https://pytorch-geometric.com/whl/torch-${TORCH_VER}+${CUDA_VERSION}.
 "${PIP_RUN[@]}" pip install torch-cluster     -f "$WHEEL_URL" --only-binary torch-cluster
 "${PIP_RUN[@]}" pip install torch-spline-conv -f "$WHEEL_URL" --only-binary torch-spline-conv
 
-# finally the meta‐package (this one can install from PyPI)
-"${PIP_RUN[@]}" pip install torch-geometric
+# finally the meta-package (this one can install from PyPI).
+# Pin to the torch-1.7.1-compatible 1.x line: torch-geometric 2.x requires
+# torch>=2.0 (it imports torch.utils._pytree, absent in 1.7.1), so an unpinned
+# install pulls the latest (2.6.x) and breaks TS-GCN with ModuleNotFoundError.
+"${PIP_RUN[@]}" pip install "torch-geometric==1.7.2"
 echo "✅ ts_gcn environment ready"
 
 # ── write hooks into conda envs if required -------------------------------
