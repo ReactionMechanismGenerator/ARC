@@ -2118,15 +2118,20 @@ class TestComputedSpeciesBundle(unittest.TestCase):
     def test_alt_conformer_opt_carries_screened_conformer_origin(self):
         # The schema forces a primary_calculation on every conformer, so
         # alt conformers ship a bare opt. That row must carry an explicit
-        # ``screened_conformer`` origin marker under parameters_json so
+        # screened-conformer origin marker under parameters_json so
         # consumers cannot mistake it for an independently executed opt
-        # job that just happened to lack result data.
+        # job that just happened to lack result data. The validated
+        # ``origin_kind`` enum member is ``derived`` (the backend hoists
+        # it to CalculationWithResultsPayload.origin_kind); the
+        # ARC-specific ``screened_conformer`` distinction rides on the
+        # opaque ``origin_detail`` key.
         record = self._record_with_alt_conformers()
         _, _, payload = self._submit(record=record)
         alt_opt = payload["conformers"][1]["primary_calculation"]
         origin = alt_opt.get("parameters_json", {}).get("tckdb_origin")
         self.assertIsNotNone(origin, "alt opt must carry tckdb_origin")
-        self.assertEqual(origin["origin_kind"], "screened_conformer")
+        self.assertEqual(origin["origin_kind"], "derived")
+        self.assertEqual(origin["origin_detail"], "screened_conformer")
         self.assertFalse(origin["independent_ess_job"])
         # The selected conformer's opt is a real ESS run and must NOT
         # carry the screened-conformer marker.
@@ -2136,8 +2141,45 @@ class TestComputedSpeciesBundle(unittest.TestCase):
             if selected_opt.get("parameters_json") else None
         )
         if selected_origin is not None:
-            self.assertNotEqual(selected_origin.get("origin_kind"),
+            self.assertNotEqual(selected_origin.get("origin_detail"),
                                 "screened_conformer")
+
+    def test_every_emitted_origin_kind_is_a_valid_enum_member(self):
+        # Schema-conformance guard. The backend hoists
+        # ``parameters_json.tckdb_origin.origin_kind`` into the validated
+        # ``CalculationWithResultsPayload.origin_kind`` enum, so ANY
+        # origin_kind ARC emits — anywhere in the bundle, at any depth —
+        # must be one of {executed, reused_result, imported, derived}.
+        # This bundle exercises both markers ARC produces today: the
+        # reused-result SP row and the screened-conformer (derived) alt
+        # opt row. A regression that reintroduces a non-enum value (e.g.
+        # the historical "screened_conformer") is what triggered the 422.
+        from arc.tckdb.adapter import VALID_TCKDB_ORIGIN_KINDS
+        record = self._record_with_alt_conformers()
+        _, _, payload = self._submit(record=record)
+        found = []
+
+        def _walk(obj):
+            if isinstance(obj, dict):
+                if "origin_kind" in obj:
+                    found.append(obj["origin_kind"])
+                for v in obj.values():
+                    _walk(v)
+            elif isinstance(obj, list):
+                for item in obj:
+                    _walk(item)
+
+        _walk(payload)
+        # Both markers present (reused_result + derived), and nothing
+        # outside the enum leaked through.
+        self.assertTrue(found, "expected at least one origin_kind in payload")
+        for kind in found:
+            self.assertIn(
+                kind, VALID_TCKDB_ORIGIN_KINDS,
+                f"origin_kind {kind!r} is not a valid backend enum member",
+            )
+        self.assertIn("reused_result", found)
+        self.assertIn("derived", found)
 
     def test_alt_conformer_relative_energy_is_not_uploaded(self):
         # ARC's ``conformer_energies`` are workflow-local relative E0
@@ -2327,13 +2369,15 @@ class TestComputedSpeciesBundle(unittest.TestCase):
         # ``parameters_json`` — neither shadowing the other.
         from arc.tckdb.adapter import _merge_parameters_json
         merged = _merge_parameters_json(
-            tckdb_origin={"origin_kind": "screened_conformer",
+            tckdb_origin={"origin_kind": "derived",
+                          "origin_detail": "screened_conformer",
                           "independent_ess_job": False},
             final_settings={"optimization_stage": "fine"},
         )
         self.assertEqual(set(merged.keys()),
                          {"tckdb_origin", "final_settings"})
-        self.assertEqual(merged["tckdb_origin"]["origin_kind"],
+        self.assertEqual(merged["tckdb_origin"]["origin_kind"], "derived")
+        self.assertEqual(merged["tckdb_origin"]["origin_detail"],
                          "screened_conformer")
         self.assertEqual(merged["final_settings"],
                          {"optimization_stage": "fine"})
@@ -2394,7 +2438,8 @@ class TestComputedSpeciesBundle(unittest.TestCase):
         alt_opt = payload["conformers"][1]["primary_calculation"]
         pj = alt_opt["parameters_json"]
         self.assertEqual(set(pj.keys()), {"tckdb_origin"})
-        self.assertEqual(pj["tckdb_origin"]["origin_kind"],
+        self.assertEqual(pj["tckdb_origin"]["origin_kind"], "derived")
+        self.assertEqual(pj["tckdb_origin"]["origin_detail"],
                          "screened_conformer")
 
     # ---------------- 3: freq+sp included when fields exist
@@ -4260,6 +4305,32 @@ class TestComputedReactionBundle(unittest.TestCase):
                 reaction_record=reaction or _reaction_record(),
             )
         return outcome, client, json.loads(outcome.payload_path.read_text())
+
+    def test_every_emitted_origin_kind_is_a_valid_enum_member(self):
+        # Same schema-conformance guard as the species bundle, on the
+        # reaction path: any origin_kind on any species/TS calc row must
+        # be a valid backend enum member. The reaction bundle carries the
+        # reused-result SP marker on its species blocks.
+        from arc.tckdb.adapter import VALID_TCKDB_ORIGIN_KINDS
+        _, _, payload = self._submit()
+        found = []
+
+        def _walk(obj):
+            if isinstance(obj, dict):
+                if "origin_kind" in obj:
+                    found.append(obj["origin_kind"])
+                for v in obj.values():
+                    _walk(v)
+            elif isinstance(obj, list):
+                for item in obj:
+                    _walk(item)
+
+        _walk(payload)
+        for kind in found:
+            self.assertIn(
+                kind, VALID_TCKDB_ORIGIN_KINDS,
+                f"origin_kind {kind!r} is not a valid backend enum member",
+            )
 
     # ---------------- 1: payload top-level shape
     def test_payload_top_level_keys(self):

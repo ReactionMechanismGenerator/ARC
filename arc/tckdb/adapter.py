@@ -3330,6 +3330,19 @@ def _sp_is_reused_from_opt(output_doc: Mapping[str, Any]) -> bool:
     return dict(sp_level) == dict(opt_level)
 
 
+# TCKDB's ``CalculationWithResultsPayload.origin_kind`` is a *validated*
+# enum. The backend hoists ``parameters_json.tckdb_origin.origin_kind``
+# into that top-level field (that is why the ``reused_result`` marker,
+# which happens to be a valid member, round-trips cleanly), so any value
+# ARC emits for ``origin_kind`` — even nested under the "free-form"
+# parameters_json — MUST be one of these. ARC-specific provenance detail
+# that is NOT an enum member (e.g. "screened_conformer") is carried on a
+# separate ``origin_detail`` key, which the backend leaves opaque.
+VALID_TCKDB_ORIGIN_KINDS: frozenset[str] = frozenset(
+    {"executed", "reused_result", "imported", "derived"}
+)
+
+
 def _reused_origin(reused_from_calc_type: str) -> dict[str, Any]:
     """Build the ``tckdb_origin`` payload for a reused-result calculation.
 
@@ -3442,9 +3455,21 @@ def _screened_conformer_origin() -> dict[str, Any]:
     energy from the conformer screen. This marker makes that explicit
     on the wire so downstream consumers can tell screened-conformer
     anchor rows apart from independently executed opt jobs.
+
+    ``origin_kind`` maps to ``derived``: the backend hoists this value
+    into the validated ``CalculationWithResultsPayload.origin_kind`` enum
+    (``{executed, reused_result, imported, derived}``), and a screened
+    conformer's geometry is *derived* from ARC's conformer screen rather
+    than produced by an independently executed ESS opt job. The
+    ARC-specific ``screened_conformer`` distinction is preserved verbatim
+    under ``origin_detail`` (opaque to the backend enum) so downstream
+    consumers can still single these rows out. Emitting
+    ``origin_kind="screened_conformer"`` here previously caused a 422 —
+    it is not an enum member.
     """
     return {
-        "origin_kind": "screened_conformer",
+        "origin_kind": "derived",
+        "origin_detail": "screened_conformer",
         "reason": (
             "alt conformer geometry anchored to the bundle; ARC did "
             "not parse an independent opt job for this conformer"
