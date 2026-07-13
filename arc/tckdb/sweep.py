@@ -14,6 +14,10 @@ Reads ``<project>/output/output.yml`` and dispatches per
   individually-converged reactant/product species is still salvaged via
   the computed-species path so converged minima are not lost with a
   failed TS.
+- ``computed_ts``: one ``/uploads/transition-states`` POST per converged
+  transition state, with the reaction (reactants/products, family,
+  reversibility) embedded from the TS's reaction record. Non-converged
+  TSs are skipped, mirroring the species-sweep eligibility gate.
 
 Lives in its own module so both the post-``execute()`` hook in
 ``ARC.py`` and the standalone CLI (``arc/tckdb/cli.py``) can call the
@@ -29,10 +33,16 @@ from arc.tckdb.config import (
     IMPLEMENTED_ARTIFACT_KINDS,
     UPLOAD_MODE_COMPUTED_REACTION,
     UPLOAD_MODE_COMPUTED_SPECIES,
+    UPLOAD_MODE_COMPUTED_TS,
 )
 
 
 logger = get_logger()
+
+# Canonical display handle for a transition state with no label (rare —
+# ARC normally labels every TS). Kept as a single constant so log lines
+# and the sweep summary never drift apart.
+_UNLABELED_TS = '<unlabeled-ts>'
 
 
 def run_upload_sweep(*, adapter, project_directory, tckdb_config):
@@ -64,6 +74,18 @@ def run_upload_sweep(*, adapter, project_directory, tckdb_config):
         )
         return
 
+    if tckdb_config.upload_mode == UPLOAD_MODE_COMPUTED_TS:
+        # TS mode is per-transition-state: one POST per converged TS to
+        # /uploads/transition-states, reaction embedded from the TS's
+        # reaction record. Species minima are out of scope here — use a
+        # species mode (or computed_reaction) to upload those.
+        _run_ts_sweep(
+            adapter=adapter,
+            output_doc=output_doc,
+            tckdb_config=tckdb_config,
+        )
+        return
+
     _run_species_sweep(
         adapter=adapter, output_doc=output_doc, tckdb_config=tckdb_config,
     )
@@ -72,13 +94,10 @@ def run_upload_sweep(*, adapter, project_directory, tckdb_config):
 def _run_species_sweep(*, adapter, output_doc, tckdb_config):
     """Per-species iteration shared by ``conformer`` and ``computed_species`` modes."""
     species_records = list(output_doc.get('species') or [])
-    ts_records = list(output_doc.get('transition_states') or [])
-    # The species-only modes cover minima only; TS records are deferred
-    # to a future TS-specific adapter method targeting
-    # /uploads/transition-states (different schema, no SMILES
-    # requirement). Reaction mode handles TSes inline elsewhere.
-    n_ts_deferred = sum(1 for r in ts_records if r.get('converged'))
-
+    # The species-only modes cover minima only. Converged transition
+    # states are uploaded by the ``computed_ts`` mode
+    # (``_run_ts_sweep`` -> /uploads/transition-states); computed_reaction
+    # mode handles TSes inline. Neither is this sweep's concern.
     is_bundle_mode = tckdb_config.upload_mode == UPLOAD_MODE_COMPUTED_SPECIES
 
     counts = {'uploaded': 0, 'skipped': 0, 'failed': 0}
@@ -138,8 +157,6 @@ def _run_species_sweep(*, adapter, output_doc, tckdb_config):
             f'  artifacts: uploaded {artifact_counts["uploaded"]}  '
             f'skipped {artifact_counts["skipped"]}  failed {artifact_counts["failed"]}'
         )
-    if n_ts_deferred:
-        print(f'  ({n_ts_deferred} converged TS deferred — TS-specific adapter not yet implemented)')
     for label, err in failures:
         print(f'  failed: {label} — {err}')
     for label, kind, err in artifact_failures:
@@ -295,6 +312,100 @@ def _run_reaction_sweep(*, adapter, output_doc, tckdb_config):
         # didn't produce any reactions in output.yml. Surface this so
         # the user knows why nothing was uploaded.
         print('  (no reactions in output.yml — kinetics fit may not have run)')
+    for label, err in failures:
+        print(f'  failed: {label} — {err}')
+
+
+def _run_ts_sweep(*, adapter, output_doc, tckdb_config):
+    """One ``/uploads/transition-states`` POST per converged transition state.
+
+    Iterates ``output_doc['transition_states']`` and uploads each TS whose
+    own ``converged`` flag is true — the same eligibility gate
+    ``_run_species_sweep`` uses for minima. Non-converged TSs are skipped.
+
+    Each TS needs its reaction (reactants/products, family, reversibility)
+    to fill the embedded ``reaction`` of the standalone payload; that comes
+    from the ``output_doc['reactions']`` entry whose ``ts_label`` points at
+    this TS. A converged TS with no such reaction can't produce a valid
+    request (the schema requires at least one reactant and one product), so
+    it is skipped with a logged reason rather than failed. Those semantic
+    skips are counted separately from the adapter's own ``skipped``
+    outcomes (a dry run with ``upload=false``) so the summary is honest
+    about *why* nothing was sent.
+
+    Routes through ``adapter.submit_computed_ts_from_output``, so
+    readiness/retry, strict-mode, idempotency replay, and the recovery-log
+    behavior apply automatically — same submit/_record_failure path as the
+    other modes.
+    """
+    ts_records = list(output_doc.get('transition_states') or [])
+    reaction_records = list(output_doc.get('reactions') or [])
+    # ts_label -> reaction record. First reaction wins if two reference the
+    # same TS (rare; ARC emits one reaction per TS in practice).
+    reaction_by_ts_label: dict[str, dict] = {}
+    for rxn in reaction_records:
+        if not isinstance(rxn, dict):
+            continue
+        ts_label = rxn.get('ts_label')
+        if ts_label:
+            reaction_by_ts_label.setdefault(str(ts_label), rxn)
+
+    # ``counts`` holds adapter outcomes only (uploaded / dry-run-skipped /
+    # failed). Semantic skips before the adapter is even called are tracked
+    # apart so the summary can name them distinctly.
+    counts = {'uploaded': 0, 'skipped': 0, 'failed': 0}
+    failures = []
+    n_converged = 0
+    n_no_reaction = 0
+    for record in ts_records:
+        raw_label = record.get('label') or record.get('original_label')
+        label = raw_label or _UNLABELED_TS
+        if not record.get('converged'):
+            # Same gate as the species sweep: only converged stationary
+            # points are uploadable. Non-converged TSs are skipped, never
+            # uploaded.
+            continue
+        n_converged += 1
+        reaction_record = (
+            reaction_by_ts_label.get(str(raw_label)) if raw_label else None
+        )
+        if reaction_record is None:
+            # No reaction references this TS (or the TS is unlabeled and
+            # can't be keyed), so we can't build the embedded
+            # reactants/products the endpoint requires. Skip loudly — kept
+            # out of the adapter ``skipped`` bucket so a dry run and a
+            # no-reaction skip are never conflated.
+            n_no_reaction += 1
+            logger.info(
+                'TCKDB TS %r skipped: no reaction in output.yml references it '
+                '(need reactants/products for the embedded reaction).',
+                label,
+            )
+            continue
+        try:
+            outcome = adapter.submit_computed_ts_from_output(
+                output_doc=output_doc,
+                ts_record=record,
+                reaction_record=reaction_record,
+            )
+        except Exception as exc:
+            counts['failed'] += 1
+            failures.append((label, f'{type(exc).__name__}: {exc}'))
+            continue
+        if outcome is None:
+            continue
+        counts[outcome.status] = counts.get(outcome.status, 0) + 1
+        if outcome.status == 'failed':
+            failures.append((label, outcome.error or 'unknown error'))
+
+    print(f'TCKDB v0 (transition-state, {n_converged} converged TS):')
+    print(f'  uploaded: {counts["uploaded"]}  skipped: {counts["skipped"]}  failed: {counts["failed"]}')
+    if n_no_reaction:
+        print(
+            f'  skipped (no reaction references the TS): {n_no_reaction}'
+        )
+    if not ts_records:
+        print('  (no transition states in output.yml)')
     for label, err in failures:
         print(f'  failed: {label} — {err}')
 
