@@ -18,7 +18,10 @@ Todo:
 import copy
 import datetime
 import itertools
+import json
 import os
+import subprocess
+import tempfile
 from typing import TYPE_CHECKING, Any
 
 from arc.common import (ARC_PATH, almost_equal_coords, get_angle_in_180_range, get_logger, is_angle_linear,
@@ -28,8 +31,10 @@ from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
+from arc.settings.settings import UMA_LATEST_MODEL, UMA_PYTHON
 from arc.species.converter import (compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz,
-                                   add_atom_to_xyz_using_internal_coords, sorted_distances_of_atom)
+                                   add_atom_to_xyz_using_internal_coords, sorted_distances_of_atom,
+                                   xyz_to_xyz_file_format)
 from arc.mapping.engine import map_two_species
 from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies, TSGuess, SpeciesError, colliding_atoms
@@ -1697,6 +1702,49 @@ def check_ts_bonds(transition_state_xyz: dict, tested_atom_indices: list) -> boo
     return oxygen_has_valid_bonds and h1_has_valid_bonds and h2_has_valid_bonds
 
 
+def qa_sn2(reaction: 'ARCReaction') -> tuple[list[dict], list[str]]:
+    """
+    Generate TS guesses for reactions of the ARC "qa_sn2" family.
+
+    Args:
+        reaction (ARCReaction): The reaction to process.
+
+    Returns:
+        Tuple containing:
+            - list[dict]: Cartesian coordinates of TS guesses.
+            - list[str]: Reaction family label for each guess.
+    """
+    xyz_guesses_total, zmats_total, reaction_families = [], [], []
+    product_dicts = get_reaction_family_products(
+        rxn=reaction,
+        rmg_family_set="default",
+        consider_rmg_families=False,
+        consider_arc_families=True,
+    )
+    product_dicts = [pd for pd in product_dicts if pd.get('family') == 'qa_sn2']
+    if not product_dicts:
+        raise ValueError("No qa_sn2 family products found for this reaction.")
+
+    sn2_parameters = load_family_parameters("qa_sn2_parameters.yml")
+
+    for product_dict in product_dicts:
+        main_reactant, oh_d1, initial_xyz, xyz_indices = extract_sn2_reactant_and_indices(reaction, product_dict)
+        threshold = 0.6 if has_nitrile_group(main_reactant) else 0.8
+        _, xyz_guesses, zmats_total = process_sn2_chosen_d_indices(
+            initial_xyz, xyz_indices, sn2_parameters, oh_d1, zmats_total, threshold=threshold
+        )
+        if xyz_guesses:
+            xyz_guesses_total.extend(xyz_guesses)
+            reaction_families.extend(['qa_sn2'] * len(xyz_guesses))
+
+    xyz_guesses_total, reaction_families = filter_ts_guesses_with_uma_sp(
+        xyz_guesses_total, reaction_families,
+        charge=reaction.charge, multiplicity=reaction.multiplicity,
+    )
+
+    return xyz_guesses_total, reaction_families
+
+
 def get_main_reactant_and_oh_d1_from_sn2_reaction(reaction: 'ARCReaction') -> tuple['ARCSpecies', 'ARCSpecies']:
     """
     Get the QA reactant and OH_d1 species from a SN2 reaction.
@@ -2082,42 +2130,65 @@ def has_nitrile_group(spc: 'ARCSpecies') -> bool:
     return False
 
 
-def qa_sn2(reaction: 'ARCReaction') -> tuple[list[dict], list[str]]:
+def filter_ts_guesses_with_uma_sp(xyzs: list[dict],
+                                  families: list[str],
+                                  charge: int = 0,
+                                  multiplicity: int = 1,
+                                  top_k: int = 5,
+                                  device: str = 'cpu',
+                                  timeout: int = 1800,
+                                  ) -> tuple[list[dict], list[str]]:
     """
-    Generate TS guesses for reactions of the ARC "qa_sn2" family.
+    Rank TS guesses by a UMA (fairchem-core) gas-phase single point and keep the top ``top_k``.
 
     Args:
-        reaction (ARCReaction): The reaction to process.
+        xyzs (list[dict]): The candidate TS-guess geometries.
+        families (list[str]): The reaction-family label per guess (kept aligned with ``xyzs``).
+        charge (int, optional): Total charge, conditioned on the UMA (omol) calculation.
+        multiplicity (int, optional): Spin multiplicity, conditioned on the UMA calculation.
+        top_k (int, optional): The number of best-ranked guesses to keep.
+        device (str, optional): The device the UMA worker runs on ('cpu' or 'cuda').
+        timeout (int, optional): Seconds to wait for the UMA worker before forwarding all guesses.
 
     Returns:
-        Tuple containing:
-            - list[dict]: Cartesian coordinates of TS guesses.
-            - list[str]: Reaction family label for each guess.
+        tuple[list[dict], list[str]]: The kept ``(xyzs, families)``, in their original order.
     """
-    xyz_guesses_total, zmats_total, reaction_families = [], [], []
-    product_dicts = get_reaction_family_products(
-        rxn=reaction,
-        rmg_family_set="default",
-        consider_rmg_families=False,
-        consider_arc_families=True,
-    )
-    product_dicts = [pd for pd in product_dicts if pd.get('family') == 'qa_sn2']
-    if not product_dicts:
-        raise ValueError("No qa_sn2 family products found for this reaction.")
+    if len(xyzs) <= top_k:
+        return xyzs, families  # nothing to cut
+    if UMA_PYTHON is None:
+        logger.info("UMA SP pre-filter skipped: 'uma_env' not found. Forwarding all TS guesses.")
+        return xyzs, families
 
-    sn2_parameters = load_family_parameters("qa_sn2_parameters.yml")
+    worker = os.path.join(os.path.dirname(__file__), 'uma_sp_worker.py')
+    try:
+        with tempfile.TemporaryDirectory(prefix='uma_sp_filter_') as tmp_dir:
+            for i, xyz in enumerate(xyzs):
+                with open(os.path.join(tmp_dir, f'guess_{i}.xyz'), 'w') as fh:
+                    fh.write(xyz_to_xyz_file_format(xyz))
+            proc = subprocess.run(
+                [UMA_PYTHON, worker, tmp_dir, str(charge), str(multiplicity),
+                 UMA_LATEST_MODEL, device],
+                capture_output=True, text=True, timeout=timeout,
+            )
+        if proc.returncode != 0:
+            logger.warning(f'UMA SP pre-filter failed (exit {proc.returncode}); forwarding all '
+                           f'TS guesses.\n{proc.stderr.strip()}')
+            return xyzs, families
+        energies = json.loads(proc.stdout.strip().splitlines()[-1])
+        # energies maps 'guess_<i>' -> eV; require an energy for every guess before cutting.
+        idx_energy = {i: energies[f'guess_{i}'] for i in range(len(xyzs)) if f'guess_{i}' in energies}
+        if len(idx_energy) != len(xyzs):
+            logger.warning('UMA SP pre-filter did not score every TS guess; forwarding all.')
+            return xyzs, families
+    except Exception as e:
+        logger.warning(f'UMA SP pre-filter errored ({e.__class__.__name__}: {e}); forwarding all '
+                       f'TS guesses.')
+        return xyzs, families
 
-    for product_dict in product_dicts:
-        main_reactant, oh_d1, initial_xyz, xyz_indices = extract_sn2_reactant_and_indices(reaction, product_dict)
-        threshold = 0.6 if has_nitrile_group(main_reactant) else 0.8
-        _, xyz_guesses, zmats_total = process_sn2_chosen_d_indices(
-            initial_xyz, xyz_indices, sn2_parameters, oh_d1, zmats_total, threshold=threshold
-        )
-        if xyz_guesses:
-            xyz_guesses_total.extend(xyz_guesses)
-            reaction_families.extend(['qa_sn2'] * len(xyz_guesses))
-
-    return xyz_guesses_total, reaction_families
+    keep = sorted(sorted(idx_energy, key=idx_energy.get)[:top_k])
+    logger.info(f'UMA SP pre-filter: kept {len(keep)}/{len(xyzs)} TS guesses '
+                f'(indices {keep}) for the DFT pipeline.')
+    return [xyzs[i] for i in keep], [families[i] for i in keep]
 
 
 register_job_adapter('heuristics', HeuristicsAdapter)
