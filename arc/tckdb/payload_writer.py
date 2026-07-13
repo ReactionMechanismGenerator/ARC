@@ -146,6 +146,7 @@ class PayloadWriter:
     ARTIFACT_SUBDIR = "calculation_artifacts"
     COMPUTED_SPECIES_SUBDIR = "computed_species"
     COMPUTED_REACTION_SUBDIR = "computed_reaction"
+    TRANSITION_STATE_SUBDIR = "transition_state"
     PAYLOAD_SUFFIX = ".payload.json"
     SIDECAR_SUFFIX = ".meta.json"
     ARTIFACT_SIDECAR_SUFFIX = ".artifact.meta.json"

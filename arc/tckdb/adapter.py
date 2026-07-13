@@ -112,6 +112,24 @@ COMPUTED_SPECIES_KIND = "computed_species"
 COMPUTED_REACTION_ENDPOINT = "/uploads/computed-reaction"
 COMPUTED_REACTION_KIND = "computed_reaction"
 
+# Standalone transition-state endpoint. One payload per converged TS,
+# carrying the embedded reaction (reactants/products by identity, family,
+# reversibility), the saddle-point geometry, a required primary opt, and
+# optional freq/sp/irc/path_search calculations. Unlike the computed-
+# reaction bundle, no species minima or kinetics travel with it — the TS
+# is the record. See ``submit_computed_ts_from_output``.
+TRANSITION_STATE_ENDPOINT = "/uploads/transition-states"
+TRANSITION_STATE_KIND = "transition_state"
+
+# Bundle-only calculation keys that ``_build_ts_block`` layers onto each
+# calc dict for the computed-reaction wire shape (local cross-reference
+# identity + dependency edges). The standalone TS endpoint consumes a
+# plain ``CalculationWithResultsPayload`` (``extra="forbid"``) for
+# primary_opt / additional_calculations, so these must be stripped before
+# upload. Dependency wiring (e.g. path_search -> primary_opt) is
+# re-derived server-side for the standalone endpoint.
+_TS_STANDALONE_STRIP_CALC_KEYS = ("key", "depends_on", "geometry_key", "artifacts")
+
 # Readiness-probe (/readyz) retry policy. During a long ARC run the TCKDB
 # server can be briefly not-ready (restart, rolling deploy, momentary
 # load). Rather than fail the in-run upload on the first blip, the
@@ -504,6 +522,10 @@ class TCKDBAdapter:
         self._preflight_checked = False
         self._preflight_metadata: dict[str, Any] | None = None
         self._preflight_error: TCKDBReadinessError | None = None
+        # Emit the "artifacts unsupported for standalone TS uploads"
+        # warning at most once per adapter instance rather than once per
+        # TS (or per calc) — a sweep of many TSs would otherwise spam it.
+        self._warned_ts_artifacts_unsupported = False
 
     # ------------------------------------------------------------------
     # Public entry points
@@ -1130,6 +1152,7 @@ class TCKDBAdapter:
         conformer_xyz_text: str | None = None,
         calc_role: str | None = None,
         source_constraints: list | None = None,
+        include_artifacts: bool = True,
     ) -> dict[str, Any]:
         """Build one CalculationInBundle dict.
 
@@ -1202,12 +1225,20 @@ class TCKDBAdapter:
             )
             if hessian is not None:
                 calc["hessian"] = hessian
-        artifacts = self._inline_artifacts_for_calc(species_record, calc_role=role)
-        # Schema defaults `artifacts: []`. Emit explicitly only when we have
-        # bytes to send (or when artifact upload is enabled and we want to
-        # signal "no log available" with an empty list); omit otherwise.
-        if artifacts:
-            calc["artifacts"] = artifacts
+        # ``include_artifacts=False`` short-circuits the read+base64 of
+        # potentially multi-MB logs. The standalone transition-state
+        # endpoint has no artifact slot, so building them here would waste
+        # I/O and then be stripped downstream anyway (see
+        # ``_ts_calc_to_standalone``). We skip the work entirely rather
+        # than build-then-drop.
+        if include_artifacts:
+            artifacts = self._inline_artifacts_for_calc(species_record, calc_role=role)
+            # Schema defaults `artifacts: []`. Emit explicitly only when we
+            # have bytes to send (or when artifact upload is enabled and we
+            # want to signal "no log available" with an empty list); omit
+            # otherwise.
+            if artifacts:
+                calc["artifacts"] = artifacts
 
         # Held-fixed coordinate constraints. ``source_constraints`` wins
         # when caller supplies it explicitly (scan calcs pull from the
@@ -2178,6 +2209,7 @@ class TCKDBAdapter:
         ts_label: str,
         reaction_multiplicity: int | None,
         unmapped_smiles: str | None = None,
+        include_artifacts: bool = True,
     ) -> tuple[dict[str, Any], dict[str, str]]:
         """Build one ``BundleTransitionStateIn`` dict + a calc-role → key map.
 
@@ -2284,6 +2316,7 @@ class TCKDBAdapter:
                         depends_on=None,
                         tckdb_origin=None,
                         conformer_xyz_text=None,
+                        include_artifacts=include_artifacts,
                     )
                 except ValueError as exc:
                     logger.warning(
@@ -2323,6 +2356,7 @@ class TCKDBAdapter:
             depends_on=ts_opt_depends_on,
             tckdb_origin=None,
             conformer_xyz_text=conformer_xyz_text,
+            include_artifacts=include_artifacts,
         )
 
         calc_keys: dict[str, str] = {_CALC_KEY_OPT: ts_opt_key}
@@ -2351,6 +2385,7 @@ class TCKDBAdapter:
                     depends_on=[{"parent_calculation_key": ts_opt_key, "role": "freq_on"}],
                     tckdb_origin=None,
                     conformer_xyz_text=conformer_xyz_text,
+                    include_artifacts=include_artifacts,
                 ))
                 calc_keys[_CALC_KEY_FREQ] = ts_freq_key
             except ValueError as exc:
@@ -2374,6 +2409,7 @@ class TCKDBAdapter:
                         _reused_origin("opt") if _sp_is_reused_from_opt(output_doc) else None
                     ),
                     conformer_xyz_text=conformer_xyz_text,
+                    include_artifacts=include_artifacts,
                 ))
                 calc_keys[_CALC_KEY_SP] = ts_sp_key
             except ValueError as exc:
@@ -2403,6 +2439,7 @@ class TCKDBAdapter:
                     depends_on=[{"parent_calculation_key": ts_opt_key, "role": "irc_start"}],
                     tckdb_origin=None,
                     conformer_xyz_text=conformer_xyz_text,
+                    include_artifacts=include_artifacts,
                 )
                 # IRC output geometries are derived by the server from
                 # ``irc_result.points``: ``_persist_irc_result`` writes a
@@ -2482,6 +2519,282 @@ class TCKDBAdapter:
             ts_block["applied_energy_corrections"] = applied_corrections
 
         return ts_block, calc_keys
+
+    # ------------------------------------------------------------------
+    # Standalone transition-state path (POST /uploads/transition-states)
+    # ------------------------------------------------------------------
+
+    def submit_computed_ts_from_output(
+        self,
+        *,
+        output_doc: Mapping[str, Any],
+        ts_record: Mapping[str, Any],
+        reaction_record: Mapping[str, Any],
+    ) -> UploadOutcome | None:
+        """Build, write, and (if configured) upload one standalone TS payload.
+
+        Composes a ``TransitionStateUploadRequest`` for a single converged
+        transition state and POSTs it to ``/uploads/transition-states``.
+        The embedded reaction (reactants/products by identity, family,
+        reversibility) is drawn from ``reaction_record`` — the TS's
+        reaction entry in ``output_doc['reactions']`` — while the saddle
+        geometry and opt/freq/sp/irc/path_search calculations come from
+        ``ts_record`` (one entry of ``output_doc['transition_states']``).
+
+        Returns ``None`` if the adapter is disabled, mirroring the other
+        ``submit_*`` entry points. Build failures (missing xyz, missing
+        opt level, a reactant/product absent from ``output_doc.species``)
+        raise; the caller (``_run_ts_sweep``) wraps the per-TS call in a
+        try/except so one bad TS doesn't take down the rest of the sweep.
+        """
+        if not self._config.enabled:
+            return None
+
+        ts_label = (
+            ts_record.get("label") or ts_record.get("original_label") or "unlabeled-ts"
+        )
+        project_label = self._config.project_label or output_doc.get("project")
+
+        payload = self._compose_transition_state_request(
+            output_doc=output_doc,
+            ts_record=ts_record,
+            reaction_record=reaction_record,
+        )
+
+        idempotency_inputs = IdempotencyInputs.from_payload(
+            project_label=project_label,
+            species_label=str(ts_label),
+            # A TS has no conformer concept at this endpoint — one saddle
+            # per upload. The conformer slot carries the reaction label so
+            # the same TS geometry reused across two reaction channels
+            # keeps distinct keys; the payload hash tail still makes any
+            # content change replay as a new upload.
+            conformer_label=str(reaction_record.get("label") or "ts"),
+            payload_kind=TRANSITION_STATE_KIND,
+            payload=payload,
+        )
+        idempotency_key = build_idempotency_key(idempotency_inputs)
+
+        written = self._writer.write(
+            label=str(ts_label),
+            payload=payload,
+            endpoint=TRANSITION_STATE_ENDPOINT,
+            idempotency_key=idempotency_key,
+            payload_kind=TRANSITION_STATE_KIND,
+            base_url=self._config.base_url,
+            subdir=PayloadWriter.TRANSITION_STATE_SUBDIR,
+        )
+        logger.info(
+            "TCKDB transition-state payload written: %s (key=%s)",
+            written.payload_path,
+            idempotency_key,
+        )
+
+        if not self._config.upload:
+            return self._finalize_skipped(written)
+
+        return self._upload(written, payload, endpoint=TRANSITION_STATE_ENDPOINT)
+
+    def _compose_transition_state_request(
+        self,
+        *,
+        output_doc: Mapping[str, Any],
+        ts_record: Mapping[str, Any],
+        reaction_record: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Compose one ``TransitionStateUploadRequest`` dict.
+
+        Reuses :meth:`_build_ts_block` — the same TS composer the
+        computed-reaction bundle uses — for the saddle geometry and the
+        opt/freq/sp/irc/path_search calculations (with their wrapped
+        ``opt_result``/``freq_result``/… shape, which is exactly what the
+        standalone endpoint's ``CalculationWithResultsPayload`` fragment
+        expects). The bundle-local calc keys (``key``, ``depends_on``,
+        ``geometry_key``, ``artifacts``) are stripped via
+        :meth:`_ts_calc_to_standalone` because the standalone fragment
+        forbids extra fields; the backend re-derives the
+        path_search -> primary_opt dependency for this endpoint.
+
+        The embedded ``reaction`` is built from ``reaction_record``:
+        each reactant/product label is resolved through
+        ``output_doc['species']`` into a ``SpeciesEntryIdentityPayload``
+        (the same ``_species_entry_payload`` shape the species path uses).
+
+        Two pieces of computed-reaction provenance are intentionally NOT
+        carried here because the ``/uploads/transition-states`` schema has
+        no slot for them:
+
+        * **Inline artifacts** (ESS logs / input decks). The bundle path
+          base64-inlines these under each calc when
+          ``config.artifacts.upload`` is set; the standalone endpoint has
+          no artifact field, so ``_build_ts_block`` is called with
+          ``include_artifacts=False`` to skip the read+encode entirely
+          (rather than build-then-drop), and a one-time WARNING tells the
+          user their request can't be honored on this path.
+        * **Applied energy corrections** (AEC/BAC). ``_build_ts_block``
+          attaches ``applied_energy_corrections`` to the TS block for the
+          reaction bundle, but the standalone request carries no such
+          field. We drop them deliberately (a debug log records when a TS
+          actually had them) — the raw SP energy still ships on the ``sp``
+          calc, so no scientific data the endpoint can store is lost.
+        """
+        species_index = _index_species(output_doc)
+
+        ts_label = (
+            ts_record.get("label") or ts_record.get("original_label") or "unlabeled-ts"
+        )
+
+        if self._config.artifacts.upload and not self._warned_ts_artifacts_unsupported:
+            logger.warning(
+                "TCKDB: artifact upload (config.artifacts.upload=true) is not "
+                "supported for standalone transition-state uploads "
+                "(/uploads/transition-states has no artifact slot); ESS logs / "
+                "input decks will NOT be uploaded for TS records in this run. "
+                "Use computed_species/conformer mode for artifact uploads."
+            )
+            self._warned_ts_artifacts_unsupported = True
+
+        ts_block, _ = self._build_ts_block(
+            output_doc=output_doc,
+            ts_record=ts_record,
+            ts_label=str(ts_label),
+            reaction_multiplicity=reaction_record.get("multiplicity"),
+            unmapped_smiles=_ts_unmapped_smiles_handle(
+                ts_record=ts_record,
+                reaction_record=reaction_record,
+                species_index=species_index,
+            ),
+            # The standalone TS endpoint has no artifact slot — skip the
+            # (potentially multi-MB) read+base64 rather than build+strip.
+            include_artifacts=False,
+        )
+
+        # Applied energy corrections travel on the TS block for the
+        # reaction bundle but have no home in the standalone request. Log
+        # (debug) when we drop a non-empty set so the omission is visible
+        # and clearly intentional, not a silent data loss.
+        if ts_block.get("applied_energy_corrections"):
+            logger.debug(
+                "TCKDB transition-state %r: %d applied energy correction(s) "
+                "dropped — /uploads/transition-states has no slot for them.",
+                str(ts_label),
+                len(ts_block["applied_energy_corrections"]),
+            )
+
+        # primary_opt is required and must be type=opt; _build_ts_block
+        # always emits ts_block["calculation"] as the type=opt primary.
+        primary_opt = self._ts_calc_to_standalone(ts_block["calculation"])
+        additional_calculations = [
+            self._ts_calc_to_standalone(calc)
+            for calc in ts_block.get("calculations", [])
+        ]
+
+        request: dict[str, Any] = {
+            "reaction": self._build_ts_reaction_upload(
+                reaction_record=reaction_record,
+                species_index=species_index,
+            ),
+            "charge": ts_block["charge"],
+            "multiplicity": ts_block["multiplicity"],
+            "geometry": {"xyz_text": ts_block["geometry"]["xyz_text"]},
+            "primary_opt": primary_opt,
+        }
+        if additional_calculations:
+            request["additional_calculations"] = additional_calculations
+        unmapped_smiles = ts_block.get("unmapped_smiles")
+        if unmapped_smiles:
+            request["unmapped_smiles"] = str(unmapped_smiles)
+        label = ts_block.get("label")
+        if label:
+            request["label"] = str(label)[:64]
+        return request
+
+    @staticmethod
+    def _ts_calc_to_standalone(calc: Mapping[str, Any]) -> dict[str, Any]:
+        """Strip bundle-only keys, yielding a plain CalculationWithResultsPayload.
+
+        ``_build_ts_block`` produces calc dicts carrying the computed-
+        reaction bundle's cross-reference fields (``key``, ``depends_on``)
+        and, for freq, an inline ``artifacts`` list. The standalone TS
+        endpoint validates each calc against ``CalculationWithResultsPayload``
+        (``extra="forbid"``), which accepts none of those. Everything else
+        — ``type``, ``software_release``, ``level_of_theory``, the wrapped
+        result block, ``parameters_json`` (origin metadata), input/output
+        geometries, ``hessian``, and ``constraints`` — is preserved.
+        """
+        return {
+            key: value
+            for key, value in calc.items()
+            if key not in _TS_STANDALONE_STRIP_CALC_KEYS
+        }
+
+    def _build_ts_reaction_upload(
+        self,
+        *,
+        reaction_record: Mapping[str, Any],
+        species_index: Mapping[str, Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Build the embedded ``TSReactionUpload`` for a standalone TS upload.
+
+        Ordered reactant/product participants resolve each label through
+        ``species_index`` into a ``SpeciesEntryIdentityPayload`` via
+        :meth:`_species_entry_payload`. A missing label raises — the same
+        loud failure the computed-reaction path uses — so a TS is never
+        uploaded with an incomplete reaction description.
+
+        ``reversible`` is required by the schema (no default): ARC has no
+        first-class per-reaction ``reversible`` attribute yet, so this
+        falls back to True (the same default the computed-reaction schema
+        applies) unless the record carries an explicit value.
+        """
+        reactant_labels = list(reaction_record.get("reactant_labels") or [])
+        product_labels = list(reaction_record.get("product_labels") or [])
+        if not reactant_labels:
+            raise ValueError(
+                f"reaction label={reaction_record.get('label')!r} has no "
+                "reactant_labels; cannot build the embedded TS reaction."
+            )
+        if not product_labels:
+            raise ValueError(
+                f"reaction label={reaction_record.get('label')!r} has no "
+                "product_labels; cannot build the embedded TS reaction."
+            )
+
+        def _participants(labels: list[str], side: str) -> list[dict[str, Any]]:
+            participants: list[dict[str, Any]] = []
+            for label in labels:
+                record = species_index.get(label)
+                if record is None:
+                    raise ValueError(
+                        f"reaction {reaction_record.get('label')!r}: {side} "
+                        f"label {label!r} not found in output_doc.species."
+                    )
+                participants.append(
+                    {"species_entry": self._species_entry_payload(record)}
+                )
+            return participants
+
+        reversible = reaction_record.get("reversible")
+        reaction: dict[str, Any] = {
+            "reversible": bool(reversible) if reversible is not None else True,
+            "reactants": _participants(reactant_labels, "reactant"),
+            "products": _participants(product_labels, "product"),
+        }
+        family = reaction_record.get("family")
+        # Mirror the backend's ``normalize_optional_text``: a
+        # whitespace-only family would pass a plain truthy gate, ship with
+        # the source note, then normalize to None server-side and 422
+        # (source_note without a family). Gate on the stripped value so a
+        # blank family is omitted entirely, like the backend treats it.
+        if family is not None and str(family).strip():
+            reaction["reaction_family"] = str(family).strip()
+            # The server validates the family against its canonical list
+            # and demands a source_note for non-canonical names. We don't
+            # have that list at the producer, so always tag the source —
+            # a no-op for canonical names, a safety net otherwise. Mirrors
+            # the computed-reaction path.
+            reaction["reaction_family_source_note"] = "ARC-reported family"
+        return reaction
 
     # ------------------------------------------------------------------
     # Payload construction
@@ -5947,6 +6260,8 @@ __all__ = [
     "CONFORMER_UPLOAD_ENDPOINT",
     "PAYLOAD_KIND",
     "TCKDBAdapter",
+    "TRANSITION_STATE_ENDPOINT",
+    "TRANSITION_STATE_KIND",
     "UploadOutcome",
     "arc_to_tckdb_a_units",
     "arc_to_tckdb_ea_units",

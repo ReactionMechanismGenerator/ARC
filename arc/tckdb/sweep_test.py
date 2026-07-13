@@ -15,7 +15,7 @@ from contextlib import redirect_stdout
 from dataclasses import dataclass
 
 from arc.tckdb.adapter_test import _reaction_output_doc
-from arc.tckdb.sweep import _run_reaction_sweep
+from arc.tckdb.sweep import _run_reaction_sweep, _run_ts_sweep
 
 
 @dataclass
@@ -136,6 +136,83 @@ class TestPartialReactionSpeciesSalvage(unittest.TestCase):
         adapter, _ = self._run(doc, _StubConfig(allow_partial_uploads=True))
         # Only reaction (partial) + species calls happened.
         self.assertTrue(all(is_partial for _, is_partial in adapter.reaction_calls))
+
+
+class _StubTSAdapter:
+    """Records submit_computed_ts_from_output calls for the TS sweep."""
+
+    def __init__(self, *, status='uploaded'):
+        self.ts_calls = []  # list[(ts_label, reaction_label)]
+        self._status = status
+
+    def submit_computed_ts_from_output(self, *, output_doc, ts_record, reaction_record):
+        self.ts_calls.append(
+            (ts_record.get('label'), reaction_record.get('label'))
+        )
+        return _Outcome(status=self._status)
+
+
+class _TSStubConfig:
+    """The TS sweep reads no config fields today, but pass one for parity."""
+
+    def __init__(self):
+        self.upload_mode = 'computed_ts'
+
+
+def _ts_doc(*, ts_converged, drop_reaction=False):
+    """Reaction output doc with the TS ``converged`` flag set.
+
+    ``drop_reaction`` removes the reactions list so the converged TS has
+    no reaction referencing it (the no-reaction skip path).
+    """
+    doc = copy.deepcopy(_reaction_output_doc())
+    for ts in doc['transition_states']:
+        ts['converged'] = ts_converged
+    if drop_reaction:
+        doc['reactions'] = []
+    return doc
+
+
+class TestTSSweep(unittest.TestCase):
+    def _run(self, doc):
+        adapter = _StubTSAdapter()
+        with redirect_stdout(io.StringIO()) as out:
+            _run_ts_sweep(adapter=adapter, output_doc=doc, tckdb_config=_TSStubConfig())
+        return adapter, out.getvalue()
+
+    def test_converged_ts_uploaded_with_its_reaction(self):
+        # A converged TS is uploaded once, paired with the reaction that
+        # references it (so the embedded reactants/products resolve).
+        doc = _ts_doc(ts_converged=True)
+        adapter, _ = self._run(doc)
+        self.assertEqual(
+            adapter.ts_calls, [('TS0', 'CHO + CH4 <=> CH2O + CH3')],
+        )
+
+    def test_non_converged_ts_skipped(self):
+        # Same eligibility gate as the species sweep: a non-converged TS
+        # is never uploaded.
+        doc = _ts_doc(ts_converged=False)
+        adapter, out = self._run(doc)
+        self.assertEqual(adapter.ts_calls, [])
+        self.assertIn('0 converged TS', out)
+
+    def test_converged_ts_without_reaction_skipped(self):
+        # A converged TS with no reaction referencing it can't fill the
+        # required embedded reaction; it is skipped (not uploaded), and
+        # the reason is surfaced.
+        doc = _ts_doc(ts_converged=True, drop_reaction=True)
+        adapter, out = self._run(doc)
+        self.assertEqual(adapter.ts_calls, [])
+        self.assertIn('no reaction references the TS', out)
+
+    def test_failed_upload_reported(self):
+        doc = _ts_doc(ts_converged=True)
+        adapter = _StubTSAdapter(status='failed')
+        with redirect_stdout(io.StringIO()) as out:
+            _run_ts_sweep(adapter=adapter, output_doc=doc, tckdb_config=_TSStubConfig())
+        self.assertEqual(len(adapter.ts_calls), 1)
+        self.assertIn('failed', out.getvalue())
 
 
 if __name__ == '__main__':

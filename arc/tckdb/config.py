@@ -47,10 +47,17 @@ DEFAULT_API_KEY_ENV = "TCKDB_API_KEY"
 UPLOAD_MODE_CONFORMER = "conformer"
 UPLOAD_MODE_COMPUTED_SPECIES = "computed_species"
 UPLOAD_MODE_COMPUTED_REACTION = "computed_reaction"
+# ``computed_ts`` uploads each converged transition state on its own to
+# ``/uploads/transition-states`` (the standalone TS endpoint), with the
+# reaction (reactants/products, family, reversibility) embedded from the
+# TS's reaction record. Distinct from ``computed_reaction``, which carries
+# the TS inline in a full reaction bundle alongside species + kinetics.
+UPLOAD_MODE_COMPUTED_TS = "computed_ts"
 VALID_UPLOAD_MODES = frozenset({
     UPLOAD_MODE_CONFORMER,
     UPLOAD_MODE_COMPUTED_SPECIES,
     UPLOAD_MODE_COMPUTED_REACTION,
+    UPLOAD_MODE_COMPUTED_TS,
 })
 
 # Mirrors the server-side ArtifactKind enum
