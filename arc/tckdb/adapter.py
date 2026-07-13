@@ -27,12 +27,14 @@ import hashlib
 import json
 import os
 import re
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from tckdb_client import TCKDBClient
+from tckdb_client.errors import TCKDBError
 
 from arc.common import get_logger
 from arc.tckdb.config import (
@@ -109,6 +111,20 @@ COMPUTED_SPECIES_KIND = "computed_species"
 # source_calculations.
 COMPUTED_REACTION_ENDPOINT = "/uploads/computed-reaction"
 COMPUTED_REACTION_KIND = "computed_reaction"
+
+# Readiness-probe (/readyz) retry policy. During a long ARC run the TCKDB
+# server can be briefly not-ready (restart, rolling deploy, momentary
+# load). Rather than fail the in-run upload on the first blip, the
+# preflight probe retries with exponential backoff before giving up.
+#
+# PREFLIGHT_MAX_ATTEMPTS counts the initial probe plus retries (5 → 1
+# initial + 4 retries). Delays follow PREFLIGHT_BASE_DELAY_SECONDS * 2**i
+# (1s, 2s, 4s, 8s) capped at PREFLIGHT_MAX_DELAY_SECONDS, so the worst
+# case waits ~1+2+4+8 = 15s across the four gaps — well under a minute so
+# a genuinely-down server doesn't stall the whole run. Tunable here.
+PREFLIGHT_MAX_ATTEMPTS = 5
+PREFLIGHT_BASE_DELAY_SECONDS = 1.0
+PREFLIGHT_MAX_DELAY_SECONDS = 8.0
 
 # Local calculation-key namespace within a computed-species bundle.
 # These keys are referenced from `depends_on.parent_calculation_key` and
@@ -2845,6 +2861,8 @@ class TCKDBAdapter:
             sc.idempotency_key,
             sc.last_error,
         )
+        if isinstance(raised, TCKDBReadinessError):
+            self._log_readiness_recovery()
         if self._config.strict:
             raise raised
         return UploadOutcome(
@@ -2853,6 +2871,38 @@ class TCKDBAdapter:
             sidecar_path=written.sidecar_path,
             idempotency_key=sc.idempotency_key,
             error=sc.last_error,
+        )
+
+    def _log_readiness_recovery(self) -> None:
+        """Tell the user the payloads are on disk and how to re-run manually.
+
+        A readiness failure means the science is done and the payload was
+        written — only the network POST didn't happen. The upload is fully
+        replayable via the standalone CLI once the server is back, so emit
+        the exact command on its own line for copy-paste. The input.yml
+        path isn't in scope at this layer, so we give the invariant form
+        (``<project_dir>/input.yml``, the CLI's default location) with the
+        real project directory and upload mode we do have.
+        """
+        payload_dir = self._writer.root
+        project_dir = self._project_directory
+        mode = self._config.upload_mode
+        if project_dir is not None:
+            input_ref = f"{project_dir}/input.yml"
+            recovery_cmd = (
+                f"python -m arc.tckdb.cli {input_ref} "
+                f"-p {project_dir} --upload-mode {mode}"
+            )
+        else:
+            # No project directory in scope — give the invariant shape with
+            # a clear placeholder rather than a wrong absolute path.
+            recovery_cmd = (
+                f"python -m arc.tckdb.cli <input.yml> --upload-mode {mode}"
+            )
+        logger.warning(
+            "TCKDB server was not ready after %d attempts; payloads were "
+            "written to %s. Re-run the upload once it is up:\n%s",
+            PREFLIGHT_MAX_ATTEMPTS, payload_dir, recovery_cmd,
         )
 
     def _make_client(self, api_key: str):
@@ -2865,7 +2915,18 @@ class TCKDBAdapter:
         )
 
     def _ensure_ready(self, client: Any) -> None:
-        """Run the optional TCKDB readyz preflight once per adapter instance."""
+        """Run the optional TCKDB readyz preflight once per adapter instance.
+
+        The probe is retried up to :data:`PREFLIGHT_MAX_ATTEMPTS` times
+        with exponential backoff (see the module constants) so a transient
+        not-ready blip mid-run doesn't drop an upload. Both failure modes
+        are retried: a request exception (server unreachable / 5xx) and a
+        200 body that reports not-ready. The first attempt that reports
+        ready wins; only after all attempts are exhausted is
+        ``self._preflight_error`` set and raised. The single-check-per-
+        instance semantics are preserved — the whole retry loop runs once,
+        and the final error is cached so later calls re-raise it cheaply.
+        """
         if not self._config.preflight:
             return
         if self._preflight_error is not None:
@@ -2873,37 +2934,60 @@ class TCKDBAdapter:
         if self._preflight_checked:
             return
         self._preflight_checked = True
-        try:
-            response = client.request_json("GET", "/readyz", authenticated=False)
-        except Exception as exc:
-            self._preflight_error = _build_readiness_error(exc)
-            raise self._preflight_error from exc
 
-        data = getattr(response, "data", None)
-        ready = _readyz_body_is_ready(data)
-        metadata = {
-            "ready": ready,
-            "status_code": getattr(response, "status_code", None),
-            "request_id": _request_id_from(response),
-        }
-        if isinstance(data, Mapping):
-            for key in ("status", "code", "alembic_revision"):
-                if data.get(key) is not None:
-                    metadata[key] = data.get(key)
-        self._preflight_metadata = metadata
-        if not ready:
-            self._preflight_error = TCKDBReadinessError(
-                _format_readiness_message(
+        last_error: TCKDBReadinessError | None = None
+        for attempt in range(PREFLIGHT_MAX_ATTEMPTS):
+            try:
+                response = client.request_json("GET", "/readyz", authenticated=False)
+            except TCKDBError as exc:
+                # Server unreachable / timeout / 5xx during a blip. Build
+                # the readiness error now so, if this is the last attempt,
+                # we raise a message consistent with the not-ready path.
+                last_error = _build_readiness_error(exc)
+            else:
+                data = getattr(response, "data", None)
+                ready = _readyz_body_is_ready(data)
+                metadata = {
+                    "ready": ready,
+                    "status_code": getattr(response, "status_code", None),
+                    "request_id": _request_id_from(response),
+                }
+                if isinstance(data, Mapping):
+                    for key in ("status", "code", "alembic_revision"):
+                        if data.get(key) is not None:
+                            metadata[key] = data.get(key)
+                self._preflight_metadata = metadata
+                if ready:
+                    return
+                last_error = TCKDBReadinessError(
+                    _format_readiness_message(
+                        status_code=metadata.get("status_code"),
+                        body=data,
+                        request_id=metadata.get("request_id"),
+                    ),
                     status_code=metadata.get("status_code"),
-                    body=data,
-                    request_id=metadata.get("request_id"),
-                ),
-                status_code=metadata.get("status_code"),
-                response_json=data if isinstance(data, Mapping) else None,
-                response_text=None if isinstance(data, Mapping) else str(data),
-                headers=getattr(response, "headers", None),
-            )
-            raise self._preflight_error
+                    response_json=data if isinstance(data, Mapping) else None,
+                    response_text=None if isinstance(data, Mapping) else str(data),
+                    headers=getattr(response, "headers", None),
+                )
+
+            # Not ready (error or not-ready body). Back off before the
+            # next attempt unless this was the final one.
+            if attempt < PREFLIGHT_MAX_ATTEMPTS - 1:
+                delay = min(
+                    PREFLIGHT_BASE_DELAY_SECONDS * (2 ** attempt),
+                    PREFLIGHT_MAX_DELAY_SECONDS,
+                )
+                logger.info(
+                    "TCKDB /readyz not ready (attempt %d/%d); retrying in %.1fs.",
+                    attempt + 1, PREFLIGHT_MAX_ATTEMPTS, delay,
+                )
+                _preflight_sleep(delay)
+
+        # All attempts exhausted. ``last_error`` is always set here because
+        # every loop iteration that reaches this point set it.
+        self._preflight_error = last_error
+        raise self._preflight_error
 
     def _prepare_artifact_upload(
         self,
@@ -3249,6 +3333,16 @@ def _attach_preflight(sidecar: Any, metadata: dict[str, Any] | None) -> None:
             "request_id": request_id,
             "status_code": metadata.get("status_code"),
         })
+
+
+def _preflight_sleep(seconds: float) -> None:
+    """Sleep between readiness-probe retries.
+
+    Thin indirection over :func:`time.sleep` so tests can patch out the
+    real backoff wait (``mock.patch('arc.tckdb.adapter._preflight_sleep')``)
+    and run instantly without changing the retry logic.
+    """
+    time.sleep(seconds)
 
 
 def _readyz_body_is_ready(body: Any) -> bool:
