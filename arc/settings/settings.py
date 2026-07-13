@@ -325,6 +325,10 @@ ASE_CALCULATORS_ENV = {'torchani': 'TANI_PYTHON',
 # the newest checkpoint -- though here it also happens to be the latest small).
 UMA_LATEST_MODEL = 'uma-s-1p2'
 
+# Whether to rank the QA heuristics TS guesses by a UMA single point and forward only the best-ranked ones
+# (requires 'uma_env'). Off by default; set it to True in ~/.arc/settings.py to use it.
+UMA_TS_GUESS_PREFILTER = False
+
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 
 # A scan with better resolution (lower number here) takes more time to compute,
