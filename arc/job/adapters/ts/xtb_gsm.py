@@ -235,6 +235,7 @@ class xTBGSMAdapter(JobAdapter):
             safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'ograd'), destination=self.ograd_path)
             safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'tm2orca.py'), destination=self.tm2orca_path)
             change_mode(mode='+x', file_name=self.gsm_orca_path)
+            change_mode(mode='+x', file_name=self.ograd_path)
             change_mode(mode='+x', file_name=self.tm2orca_path)
 
     def set_files(self) -> None:
@@ -274,6 +275,7 @@ class xTBGSMAdapter(JobAdapter):
                                                                           local=os.path.join(self.xtb_gsm_scripts_path, 'inpfileq')))
             # 1.4 ograd
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='ograd',
+                                                                          make_x=True,
                                                                           local=os.path.join(self.xtb_gsm_scripts_path, 'ograd')))
             # 1.5 tm2orca.py
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='tm2orca.py',
