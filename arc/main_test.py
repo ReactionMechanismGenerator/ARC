@@ -90,6 +90,7 @@ class TestARC(unittest.TestCase):
                                           'orca': ['local'],
                                           'orca_neb': ['local'],
                                           'qchem': ['server1'],
+                                          'qst2': ['local'],
                                           'terachem': ['server1'],
                                           'torchani': ['local'],
                                           'xtb': ['local'],

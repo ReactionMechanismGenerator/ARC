@@ -924,7 +924,7 @@ class TestRunArkaneOutputPySignal(unittest.TestCase):
             ])
         self.assertTrue(result, "output.py exists → success regardless of stderr")
         self.assertTrue(
-            any('non-cosmetic lines' in m for m in logs.output),
+            any('still produced output.py' in m for m in logs.output),
             f"expected the advisory warning to fire; got {logs.output}",
         )
 
