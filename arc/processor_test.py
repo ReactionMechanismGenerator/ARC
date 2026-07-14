@@ -8,6 +8,7 @@ This module contains unit tests for the arc.processor module
 import os
 import shutil
 import unittest
+from unittest import mock
 
 import arc.processor as processor
 from arc.common import ARC_TESTING_PATH
@@ -64,12 +65,58 @@ class TestProcessor(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(output_directory, 'RMG_kinetics.yml')))
 
 
+    def test_compare_thermo_ignores_benign_rmg_stderr(self):
+        """Benign RMG INFO/WARNING stderr chatter must not be logged as an error when thermo was computed."""
+        benign_stderr = ['INFO:root:Loading thermodynamics library from primaryThermoLibrary.py ...',
+                         'WARNING:root:Setting a default value for tolerance.',
+                         '']
+        computed_species = [{'label': 'CH4', 'adjlist': 'x', 'h298': -17.9, 's298': 44.5, 'comment': 'GAV'}]
+        with mock.patch.object(processor, 'execute_command', return_value=([], benign_stderr)), \
+                mock.patch.object(processor, 'save_yaml_file'), \
+                mock.patch.object(processor, 'read_yaml_file', return_value=computed_species), \
+                mock.patch.object(processor.plotter, 'draw_thermo_parity_plots'):
+            with self.assertLogs(processor.logger, level='DEBUG') as cm:
+                processor.compare_thermo(species_for_thermo_lib=[ARCSpecies(label='CH4', smiles='C')],
+                                         output_directory=os.path.join(ARC_TESTING_PATH, 'process_thermo'))
+        self.assertFalse(any('Error while running RMG thermo script' in msg for msg in cm.output))
+
+    def test_compare_thermo_reports_real_error(self):
+        """A genuine traceback on stderr (or a missing deliverable) must still be logged as an error."""
+        real_stderr = ['INFO:root:Loading thermodynamics library ...',
+                       'Traceback (most recent call last):',
+                       'RuntimeError: RMG database failed to load']
+        # deliverable was seeded but never populated with h298/s298 -> genuine failure
+        seeded_species = [{'label': 'CH4', 'adjlist': 'x'}]
+        with mock.patch.object(processor, 'execute_command', return_value=([], real_stderr)), \
+                mock.patch.object(processor, 'save_yaml_file'), \
+                mock.patch.object(processor, 'read_yaml_file', return_value=seeded_species), \
+                mock.patch.object(processor.plotter, 'draw_thermo_parity_plots'):
+            with self.assertLogs(processor.logger, level='ERROR') as cm:
+                processor.compare_thermo(species_for_thermo_lib=[ARCSpecies(label='CH4', smiles='C')],
+                                         output_directory=os.path.join(ARC_TESTING_PATH, 'process_thermo'))
+        self.assertTrue(any('Error while running RMG thermo script' in msg for msg in cm.output))
+
+    def test_compare_thermo_reports_missing_deliverable(self):
+        """Benign-only stderr but an unpopulated deliverable (no h298/s298) must still log an error."""
+        benign_stderr = ['INFO:root:Loading thermodynamics library ...',
+                         'WARNING:root:Setting a default value for tolerance.']
+        seeded_species = [{'label': 'CH4', 'adjlist': 'x'}]  # pre-seeded, never populated -> script failed
+        with mock.patch.object(processor, 'execute_command', return_value=([], benign_stderr)), \
+                mock.patch.object(processor, 'save_yaml_file'), \
+                mock.patch.object(processor, 'read_yaml_file', return_value=seeded_species), \
+                mock.patch.object(processor.plotter, 'draw_thermo_parity_plots'):
+            with self.assertLogs(processor.logger, level='ERROR') as cm:
+                processor.compare_thermo(species_for_thermo_lib=[ARCSpecies(label='CH4', smiles='C')],
+                                         output_directory=os.path.join(ARC_TESTING_PATH, 'process_thermo'))
+        self.assertTrue(any('Error while running RMG thermo script' in msg for msg in cm.output))
+
     @classmethod
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
         """
         directories = [os.path.join(ARC_TESTING_PATH, 'process_kinetics'),
+                       os.path.join(ARC_TESTING_PATH, 'process_thermo'),
                       ]
         for dir_path in directories:
             if os.path.isdir(dir_path):
