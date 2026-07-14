@@ -369,6 +369,13 @@ class Level(object):
         Args:
             job_type (str, optional): An ARC job type, assists in determining the software.
         """
+        if self.software is not None and job_type is None:
+            return
+
+        # UMA (run via the ASE adapter; 'uma' resolves to the latest model)
+        if self.method in ('uma', 'uma-s-1', 'uma-s-1p1'):
+            self.software = 'ase'
+            return
 
         # OneDMin
         if job_type == 'onedmin':

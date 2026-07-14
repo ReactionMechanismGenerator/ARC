@@ -82,3 +82,10 @@ AGENTS.md
 .vexb/*
 
 ARC.egg-info/*
+spec.md
+
+# Other AI things
+.agents
+ARC.egg*
+uv*
+*graphify*

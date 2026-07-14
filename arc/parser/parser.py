@@ -4,7 +4,7 @@ A module for parsing information from various files.
 
 import os
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from collections.abc import Callable
 
 import numpy as np
@@ -15,6 +15,8 @@ from arc.exceptions import InputError, ParserError
 from arc.parser.factory import ess_factory
 from arc.species.converter import str_to_xyz
 
+if TYPE_CHECKING:
+    from arc.species.species import ARCSpecies
 
 logger = get_logger()
 
@@ -117,6 +119,9 @@ def parse_xyz_from_file(log_file_path: str) -> dict[str, tuple] | None:
                 splits = line.split()
                 if len(splits) == 2 and all([s.isdigit() for s in splits]):
                     start_parsing = True
+    elif file_extension in ['.yml', '.yaml']:
+        ess_adapter = ess_factory(log_file_path=log_file_path, ess_adapter='yaml')
+        xyz = ess_adapter.parse_geometry()
     else:
         record = False
         for line in lines:
@@ -708,7 +713,7 @@ def process_conformers_file(conformers_path: str) -> tuple[list[dict[str, tuple]
     return xyzs, energies
 
 
-def parse_active_space(sp_path: str, species: ARCSpecies) -> dict[str, list[int] | tuple[int, int]] | None:
+def parse_active_space(sp_path: str, species: 'ARCSpecies') -> dict[str, list[int] | tuple[int, int]] | None:
     """
     Parse the active space (electrons and orbitals) from a Molpro CCSD output file.
 

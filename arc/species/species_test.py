@@ -637,6 +637,26 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc_dict['mol']['atoms'][0]['element']['isotope'], -1)
         self.assertEqual(spc_dict['mol']['atoms'][0]['atomtype'], 'Cs')
 
+    def test_thermo_at_own_level_round_trip(self):
+        """Test that thermo_at_own_level and adaptive_lot_n_heavy round-trip through as_dict/from_dict"""
+        # Defaults: not serialized, restored to False / None.
+        default_spc = ARCSpecies(label='ethane', smiles='CC')
+        default_dict = default_spc.as_dict()
+        self.assertNotIn('thermo_at_own_level', default_dict)
+        self.assertNotIn('adaptive_lot_n_heavy', default_dict)
+        restored_default = ARCSpecies(species_dict=default_dict)
+        self.assertFalse(restored_default.thermo_at_own_level)
+        self.assertIsNone(restored_default.adaptive_lot_n_heavy)
+
+        # Non-default values: serialized and restored.
+        spc = ARCSpecies(label='ethane', smiles='CC', thermo_at_own_level=True, adaptive_lot_n_heavy=8)
+        spc_dict = spc.as_dict()
+        self.assertTrue(spc_dict['thermo_at_own_level'])
+        self.assertEqual(spc_dict['adaptive_lot_n_heavy'], 8)
+        restored = ARCSpecies(species_dict=spc_dict)
+        self.assertTrue(restored.thermo_at_own_level)
+        self.assertEqual(restored.adaptive_lot_n_heavy, 8)
+
     def test_from_dict(self):
         """Test Species.from_dict()"""
         species_dict = self.spc2.as_dict()
@@ -2168,7 +2188,7 @@ H       1.11582953    0.94384729   -0.10134685"""
         cycle.final_xyz = cycle.get_xyz()
         cycle_scissors = cycle.scissors()
         cycle_scissors[0].mol.update(sort_atoms=False)
-        self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2+]C[CH2+]").mol))
+        self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2]C[CH2]").mol))
         self.assertEqual(len(cycle_scissors), 1)
 
         benzyl_alcohol = ARCSpecies(label='benzyl_alcohol', smiles='c1ccccc1CO',
@@ -3061,6 +3081,49 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         # Test incorrect map_ length
         with self.assertRaises(SpeciesError):
             self.spc1.kabsch(self.spc1, [0, 1, 2])
+
+
+    def test_assign_radicals_after_scission_cyclic(self):
+        """
+        Test radical assignment for a cyclic scission (single molecule result).
+        Using Cyclopropane to represent a true ring opening.
+        """
+        mol = Molecule().from_smiles('C1CC1')
+        
+        # Find a C-C bond to remove to simulate a ring opening
+        for bond in mol.get_all_edges():
+            if bond.atom1.is_carbon() and bond.atom2.is_carbon():
+                c1, c2 = bond.atom1, bond.atom2
+                mol.remove_bond(bond)
+                break
+        
+        self.assertEqual(c1.radical_electrons, 0)
+        self.assertEqual(c2.radical_electrons, 0)
+        
+        spc = ARCSpecies(label='cyclopropane', mol=Molecule().from_smiles('C1CC1'))
+        spc._assign_radicals_after_scission(mol=mol)
+        
+        self.assertEqual(c1.radical_electrons, 1)
+        self.assertEqual(c2.radical_electrons, 1)
+
+    def test_assign_radicals_after_scission_with_added_radical_list(self):
+        """
+        Test radical assignment using the added_radical tracking list (non-cyclic scission).
+        """
+        mol1 = Molecule().from_smiles('[CH3]')
+        mol1.atoms[0].radical_electrons = 0
+        
+        spc = ARCSpecies(label='parent', mol=Molecule().from_smiles('CC'))
+        added_radical = []
+        
+        spc._assign_radicals_after_scission(mol=mol1, label='fragment_A', added_radical=added_radical)
+        self.assertEqual(mol1.atoms[0].radical_electrons, 1)
+        self.assertEqual(added_radical, ['fragment_A'])
+        
+        # Reset the radical electron to simulate another atom in the same fragment needing one
+        mol1.atoms[0].radical_electrons = 0
+        with self.assertRaises(SpeciesError):
+            spc._assign_radicals_after_scission(mol=mol1, label='fragment_A', added_radical=added_radical)
 
 
 class TestTSGuess(unittest.TestCase):

@@ -109,10 +109,13 @@ class ARCReaction(object):
         self.kinetics = kinetics
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
-        if check_family_name(family):
-            self.family = family
-        else:
-            raise ValueError(f"Invalid family name: {family}")
+        self._family = None
+        self._family_determined = False
+        if family is not None:
+            if check_family_name(family):
+                self.family = family
+            else:
+                raise ValueError(f"Invalid family name: {family}")
         self._family_own_reverse = False
         self.ts_label = ts_label
         self.dh_rxn298 = None
@@ -201,7 +204,7 @@ class ARCReaction(object):
             if self._multiplicity is not None:
                 logger.info(f'Setting multiplicity of reaction {self.label} to {self._multiplicity}')
             else:
-                logger.Error(f'Could not determine multiplicity for the reaction: {self.label}')
+                logger.error(f'Could not determine multiplicity for the reaction: {self.label}')
         return self._multiplicity
 
     @multiplicity.setter
@@ -214,14 +217,16 @@ class ARCReaction(object):
     @property
     def family(self):
         """The RMG reaction family"""
-        if self._family is None:
+        if not self._family_determined:
             self._family, self._family_own_reverse = self.determine_family()
+            self._family_determined = True
         return self._family
 
     @family.setter
     def family(self, value):
         """Allow setting family"""
         self._family = value
+        self._family_determined = True
         if value is not None and not isinstance(value, str):
             raise InputError(f'Reaction family must be a string, got {value} which is a {type(value)}.')
 
@@ -561,13 +566,16 @@ class ARCReaction(object):
                          ):
         """
         Determine the RMG reaction family.
-        Populates the .family, and .family_own_reverse attributes.
 
         Args:
             rmg_family_set (str, optional): The RMG family set to use.
             consider_rmg_families (bool, optional): Whether to consider RMG's families in addition to ARC's.
             consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
+
+        Returns:
+            tuple[str | None, bool | None]: The reaction family label,
+                and whether the family's template also represents its own reverse.
         """
         if rmg_family_set == 'default' and consider_rmg_families and consider_arc_families and not discover_own_reverse_rxns_in_reverse:
             # these are the default values, don't bother generating a new product_dicts list, use the property

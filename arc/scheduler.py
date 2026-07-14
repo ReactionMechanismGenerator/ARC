@@ -53,6 +53,7 @@ from arc.job.trsh import (scan_quality_check,
 from arc.level import Level
 from arc.species.species import (ARCSpecies,
                                  are_coords_compliant_with_graph,
+                                 check_label,
                                  determine_rotor_symmetry,
                                  TSGuess)
 from arc.species.converter import (check_isomorphism,
@@ -383,6 +384,8 @@ class Scheduler(object):
         self.save_restart = False
 
         if len(self.rxn_list):
+            if self.adaptive_levels is not None:
+                self._apply_adaptive_reaction_levels()
             rxn_info_path = self.make_reaction_labels_info_file()
             for rxn in self.rxn_list:
                 logger.info('\n\n')
@@ -1026,8 +1029,10 @@ class Scheduler(object):
             torsions = species.rotors_dict[rotor_index]['torsion']
             torsions = [torsions] if not isinstance(torsions[0], list) else torsions
         if self.adaptive_levels is not None and label is not None:
+            spc = self.species_dict[label]
+            heavy_atoms = spc.adaptive_lot_n_heavy if spc.adaptive_lot_n_heavy is not None else spc.number_of_heavy_atoms
             level_of_theory = self.determine_adaptive_level(original_level_of_theory=level_of_theory, job_type=job_type,
-                                                            heavy_atoms=self.species_dict[label].number_of_heavy_atoms)
+                                                            heavy_atoms=heavy_atoms)
         job_adapter = job_adapter.lower() if job_adapter is not None else \
             self.deduce_job_adapter(level=Level(repr=level_of_theory), job_type=job_type)
         args = {'keyword': {}, 'block': {}}
@@ -4064,6 +4069,85 @@ class Scheduler(object):
                 return level
         # for any other job type use the original level of theory regardless of the number of heavy atoms
         return original_level_of_theory
+
+    def _adaptive_atom_range(self, heavy_atoms: int) -> tuple | None:
+        """
+        Determine the adaptive levels atom range (the LOT grain) that a heavy-atom count falls into.
+
+        Args:
+            heavy_atoms (int): The number of heavy atoms.
+
+        Returns:
+            tuple | None: The ``(min, max)`` atom range key from ``self.adaptive_levels``, or ``None`` if not found.
+        """
+        for atom_range in self.adaptive_levels.keys():
+            if (atom_range[1] == 'inf' and heavy_atoms >= atom_range[0]) \
+                    or (atom_range[1] != 'inf' and atom_range[0] <= heavy_atoms <= atom_range[1]):
+                return atom_range
+        return None
+
+    def _apply_adaptive_reaction_levels(self):
+        """
+        Make every reaction's energetics internally consistent under adaptive levels of theory.
+
+        Heavy atoms are conserved across a reaction, so the reaction-wide heavy-atom count (the sum over the reactants,
+        equal to the TS supermolecule count) keys a single adaptive level for the whole reaction. A reaction
+        participant whose own heavy-atom count lands it on a *different* (finer) adaptive grain than the reaction
+        would otherwise be evaluated at an inconsistent level, mixing levels of theory across the barrier. To avoid
+        this, each such participant whose ``thermo_at_own_level`` is ``False`` (the default) is itself evaluated at
+        the reaction-wide level (no copy). If ``thermo_at_own_level`` is ``True``, an autonomous relabeled copy of
+        the species is created from the outset and used by the reaction (evaluated at the reaction-wide level),
+        while the original species is left to compute its own thermochemistry at its own granular level. A copy is
+        also created for a no-copy participant that is shared across reactions landing on different grains, since a
+        single per-species override cannot keep both reactions internally consistent.
+
+        This runs once during setup, before the reactions are processed, so each reaction is defined with its copies
+        from the start (its label, reactants, and products are kept mutually consistent for ``check_attributes`` and
+        restart).
+        """
+        for rxn_i, rxn in enumerate(self.rxn_list):
+            rxn_index = rxn.index if rxn.index is not None else rxn_i
+            reactant_species = [self.species_dict[label] for label in rxn.reactants if label in self.species_dict]
+            if len(reactant_species) != len(rxn.reactants) \
+                    or any(spc.number_of_heavy_atoms is None for spc in reactant_species):
+                logger.warning(f'Could not determine reaction-wide adaptive levels for {rxn.label}, '
+                               f'using per-species levels.')
+                continue
+            reaction_n_heavy = sum(spc.number_of_heavy_atoms for spc in reactant_species)
+            reaction_range = self._adaptive_atom_range(reaction_n_heavy)
+            for participants in (rxn.reactants, rxn.products):
+                for pos, label in enumerate(participants):
+                    spc = self.species_dict.get(label)
+                    if spc is None or spc.number_of_heavy_atoms is None \
+                            or self._adaptive_atom_range(spc.number_of_heavy_atoms) == reaction_range:
+                        continue
+                    if not spc.thermo_at_own_level:
+                        if spc.adaptive_lot_n_heavy is None \
+                                or self._adaptive_atom_range(spc.adaptive_lot_n_heavy) == reaction_range:
+                            spc.adaptive_lot_n_heavy = reaction_n_heavy
+                            continue
+                        logger.warning(f'Species {label} participates in reactions on different adaptive level '
+                                       f'grains, creating a dedicated copy of it for reaction {rxn.label} to keep '
+                                       f'the reaction internally consistent.')
+                    copy_label = check_label(f'{label}_TS{rxn_index}')[0]
+                    existing_copy = self.species_dict.get(copy_label)
+                    if existing_copy is not None:
+                        if existing_copy.adaptive_lot_n_heavy != reaction_n_heavy:
+                            raise SchedulerError(f'Cannot create an adaptive-level copy labeled {copy_label} for '
+                                                 f'reaction {rxn.label}: a different species with this label already '
+                                                 f'exists.')
+                    else:
+                        copy_spc = spc.copy()
+                        copy_spc.label = copy_label
+                        copy_spc.adaptive_lot_n_heavy = reaction_n_heavy
+                        copy_spc.thermo_at_own_level = False
+                        copy_spc.compute_thermo = False
+                        copy_spc.include_in_thermo_lib = False
+                        self.species_list.append(copy_spc)
+                        self.species_dict[copy_label] = copy_spc
+                        self.initialize_output_dict(copy_label)
+                    participants[pos] = copy_label
+            rxn.label = rxn.arrow.join([rxn.plus.join(rxn.reactants), rxn.plus.join(rxn.products)])
 
     def initialize_output_dict(self, label: str | None = None):
         """
