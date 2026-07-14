@@ -26,8 +26,10 @@ from arc.parser.parser import (
     parse_ess_version,
     parse_geometry,
     parse_opt_steps,
+    parse_s_squared,
     parse_scan_args,
     parse_zpe_correction,
+    s_squared_expected_from_multiplicity,
 )
 from arc.species.converter import xyz_to_str
 from arc.species.vectors import calculate_dihedral_angle
@@ -425,6 +427,61 @@ def _parse_zpe(freq_path: str | None, project_directory: str) -> float | None:
         return zpe_kj / E_h_kJmol if zpe_kj is not None else None
     except Exception:
         return None
+
+
+def _parse_spin_diagnostic(sp_path: str | None,
+                           freq_path: str | None,
+                           opt_path: str | None,
+                           multiplicity: int | None,
+                           project_directory: str,
+                           ) -> dict | None:
+    """
+    Parse the S**2 spin-contamination diagnostic for a species' single-point calc.
+
+    The diagnostic is a property of the (unrestricted) wavefunction, so it is
+    parsed from the sp job's log; when the benchmark reuses the optimization
+    output for the sp energy the sp log may be absent, so this falls back to the
+    freq log and then the opt/geo log (all run at comparable open-shell
+    references). Only emitted for unrestricted/open-shell calcs — restricted /
+    closed-shell logs print no ``<S**2>`` and this returns ``None`` (so the
+    caller omits the block entirely rather than fabricating an all-null one).
+
+    ``s_squared_expected`` is authoritatively recomputed from ARC's own
+    ``multiplicity`` (the source of truth) when available, falling back to the
+    value the ESS log reported.
+
+    Returns: dict | None
+        ``{'s_squared': float, 's_squared_expected': float | None (omitted if
+        None), 's_squared_annihilated': float | None (omitted if None)}`` or
+        ``None`` when no ``<S**2>`` could be parsed.
+    """
+    parsed = None
+    for candidate in (sp_path, freq_path, opt_path):
+        if not candidate:
+            continue
+        path = candidate if os.path.isabs(candidate) else os.path.join(project_directory, candidate)
+        if not os.path.isfile(path):
+            continue
+        try:
+            parsed = parse_s_squared(path)
+        except Exception:
+            logger.debug(f'Failed to parse S**2 spin diagnostic from {path!r}', exc_info=True)
+            parsed = None
+        if parsed is not None and parsed.get('s_squared') is not None:
+            break
+        parsed = None
+    if parsed is None or parsed.get('s_squared') is None:
+        return None
+    result: dict = {'s_squared': float(parsed['s_squared'])}
+    expected = s_squared_expected_from_multiplicity(multiplicity)
+    if expected is None:
+        expected = parsed.get('s_squared_expected')
+    if expected is not None:
+        result['s_squared_expected'] = float(expected)
+    annihilated = parsed.get('s_squared_annihilated')
+    if annihilated is not None:
+        result['s_squared_annihilated'] = float(annihilated)
+    return result
 
 
 def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
@@ -1206,6 +1263,20 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         d.get('sp_input'), paths.get('sp') or None,
         software_by_job.get('sp'), project_directory,
     )
+
+    # ── S**2 spin-contamination diagnostic (for TCKDB, sp calc) ─────────────
+    # A property of the (unrestricted) wavefunction, parsed from the sp job's
+    # log (falling back to freq/opt when the sp energy reused the opt output).
+    # Only populated for open-shell/unrestricted calcs where the ESS reported
+    # ``<S**2>``; ``None`` (key present, null value) for restricted /
+    # closed-shell species — the TCKDB adapter omits the block in that case.
+    d['sp_spin_diagnostic'] = _parse_spin_diagnostic(
+        paths.get('sp') or None,
+        paths.get('freq') or None,
+        paths.get('geo') or None,
+        spc.multiplicity,
+        project_directory,
+    ) if converged else None
 
     # ── ESS software version (from SP log, or fall back to geo/freq log) ──
     d['ess_versions'] = _get_ess_versions(paths, project_directory) if converged else None
