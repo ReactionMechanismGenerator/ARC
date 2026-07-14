@@ -4794,6 +4794,10 @@ def _build_statmech_block_for_species(
         if isinstance(external_symmetry, int) and external_symmetry >= 1:
             block["external_symmetry"] = external_symmetry
 
+        optical_isomers = statmech_input.get("optical_isomers")
+        if isinstance(optical_isomers, int) and optical_isomers >= 1:
+            block["optical_isomers"] = optical_isomers
+
         is_linear = statmech_input.get("is_linear")
         if isinstance(is_linear, bool):
             block["is_linear"] = is_linear

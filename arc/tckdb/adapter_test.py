@@ -3670,10 +3670,10 @@ class TestComputedSpeciesStatmechBaseFields(unittest.TestCase):
         record = _full_record()
         # Mirrors what arc/output.py::_statmech_to_dict writes for a
         # converged non-monoatomic species. ARC's emitted fields that
-        # don't map onto TCKDB statmech (e0_kj_mol, optical_isomers,
-        # spin_multiplicity, harmonic_frequencies_cm1) are kept here so
-        # the test fixture matches output.yml shape; the producer is
-        # expected to ignore them.
+        # don't map onto TCKDB statmech (e0_kj_mol, spin_multiplicity,
+        # harmonic_frequencies_cm1) are kept here so the test fixture
+        # matches output.yml shape; the producer is expected to ignore
+        # them. optical_isomers now maps onto the bundle statmech block.
         record["statmech"] = {
             "e0_kj_mol": 12.5,
             "spin_multiplicity": 1,
@@ -3986,10 +3986,33 @@ class TestComputedSpeciesStatmechBaseFields(unittest.TestCase):
         _, payload = self._submit(doc=self._doc(), record=record)
         self.assertNotIn("external_symmetry", payload["statmech"])
 
-    def test_optical_isomers_not_routed_to_statmech(self):
-        # Spec: TCKDB has no statmech column for optical_isomers; ARC
-        # must not invent one or route it elsewhere within statmech.
-        _, payload = self._submit(doc=self._doc(), record=self._record_with_statmech())
+    def test_optical_isomers_emitted(self):
+        # Schema expansion: StatmechInBundle now accepts optical_isomers
+        # (1 = no chiral center, 2 = chiral). ARC must emit the value it
+        # already carries in output.yml so the R*ln(optical_isomers)
+        # Arkane thermo term can be replicated server-side.
+        record = self._record_with_statmech()
+        record["statmech"]["optical_isomers"] = 2
+        _, payload = self._submit(doc=self._doc(), record=record)
+        self.assertEqual(payload["statmech"]["optical_isomers"], 2)
+
+    def test_optical_isomers_absent_omitted(self):
+        record = self._record_with_statmech()
+        del record["statmech"]["optical_isomers"]
+        _, payload = self._submit(doc=self._doc(), record=record)
+        self.assertNotIn("optical_isomers", payload["statmech"])
+
+    def test_optical_isomers_non_int_omitted(self):
+        record = self._record_with_statmech()
+        record["statmech"]["optical_isomers"] = "2"
+        _, payload = self._submit(doc=self._doc(), record=record)
+        self.assertNotIn("optical_isomers", payload["statmech"])
+
+    def test_optical_isomers_zero_omitted(self):
+        # Backend enforces ge=1; a spurious 0 must be dropped, not sent.
+        record = self._record_with_statmech()
+        record["statmech"]["optical_isomers"] = 0
+        _, payload = self._submit(doc=self._doc(), record=record)
         self.assertNotIn("optical_isomers", payload["statmech"])
 
     def test_uses_projected_frequencies_omitted(self):
@@ -4315,6 +4338,25 @@ class TestComputedReactionStatmechBaseFields(unittest.TestCase):
     def test_external_symmetry_emitted(self):
         _, payload = self._submit(doc=self._doc_with_statmech_and_fsf())
         self.assertEqual(self._r0_statmech(payload)["external_symmetry"], 2)
+
+    def test_optical_isomers_emitted(self):
+        # Same shared builder as computed-species: BundleStatmechIn now
+        # accepts optical_isomers, and the producer surfaces it per
+        # per-species statmech block.
+        doc = self._doc_with_statmech_and_fsf()
+        for s in doc["species"]:
+            if s["label"] == "CHO":
+                s["statmech"]["optical_isomers"] = 2
+        _, payload = self._submit(doc=doc)
+        self.assertEqual(self._r0_statmech(payload)["optical_isomers"], 2)
+
+    def test_optical_isomers_zero_omitted(self):
+        doc = self._doc_with_statmech_and_fsf()
+        for s in doc["species"]:
+            if s["label"] == "CHO":
+                s["statmech"]["optical_isomers"] = 0
+        _, payload = self._submit(doc=doc)
+        self.assertNotIn("optical_isomers", self._r0_statmech(payload))
 
     def test_is_linear_emitted(self):
         _, payload = self._submit(doc=self._doc_with_statmech_and_fsf())
