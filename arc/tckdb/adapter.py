@@ -3054,6 +3054,18 @@ class TCKDBAdapter:
         if result_field and result_payload:
             calc[result_field] = dict(result_payload)
 
+        # Optional S**2 spin-contamination diagnostic for the sp calc. Every
+        # sp-calc construction site funnels through here, so attaching it once
+        # covers computed-species / computed-reaction / TS / species-entry
+        # paths uniformly. Emitted only for open-shell/unrestricted single
+        # points where ARC parsed ``<S**2>`` (``sp_spin_diagnostic`` on the
+        # record); restricted / closed-shell records yield None and the block
+        # is omitted entirely (never an all-null / fabricated block).
+        if calc_type == _CALC_KEY_SP:
+            spin_diagnostic = _spin_diagnostic_payload(record)
+            if spin_diagnostic is not None:
+                calc["spin_diagnostic"] = spin_diagnostic
+
         # ``parameters_json`` is the single per-calc slot for free-form
         # qualifier metadata. Two writers feed it: ``tckdb_origin``
         # (provenance qualifier — reused-result / screened-conformer)
@@ -4096,6 +4108,52 @@ def _sp_result_payload(record: Mapping[str, Any]) -> dict[str, Any] | None:
             record.get("label"), record_key, energy, exc,
         )
         return None
+
+
+def _spin_diagnostic_payload(record: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Build the TCKDB ``SpinDiagnosticPayload`` dict for a species/TS sp calc.
+
+    Reads the ``sp_spin_diagnostic`` block that ``arc/output.py`` writes into
+    ``output.yml`` for open-shell/unrestricted single points (parsed ``<S**2>``).
+    Emits the block ONLY when a finite ``s_squared`` is present; restricted /
+    closed-shell records carry ``sp_spin_diagnostic=None`` (or omit the key),
+    for which this returns ``None`` and the caller leaves ``spin_diagnostic``
+    unset — never an all-null or fabricated block.
+
+    The ``s_squared`` field is required by the backend schema; the two
+    companion fields (``s_squared_expected`` / ``s_squared_annihilated``) are
+    optional and are only included when present and finite. All values are
+    clamped to ``ge=0`` by construction of the source parser (S(S+1) and
+    ``<S**2>`` are non-negative); a defensively-negative value is dropped.
+    """
+    block = record.get("sp_spin_diagnostic")
+    if not isinstance(block, Mapping):
+        return None
+    s_squared = block.get("s_squared")
+    if s_squared is None:
+        return None
+    try:
+        s_squared = float(s_squared)
+    except (TypeError, ValueError):
+        return None
+    if s_squared < 0:
+        return None
+    payload: dict[str, Any] = {"s_squared": s_squared}
+    for optional in ("s_squared_expected", "s_squared_annihilated"):
+        value = block.get(optional)
+        if value is None:
+            continue
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            continue
+        if value < 0:
+            continue
+        payload[optional] = value
+    note = block.get("note")
+    if isinstance(note, str) and note:
+        payload["note"] = note
+    return payload
 
 
 _APPLIED_CORRECTION_COMPONENT_FIELDS = (

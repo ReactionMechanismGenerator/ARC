@@ -1221,6 +1221,58 @@ class TestAdditionalCalculations(unittest.TestCase):
         self.assertEqual(sp["type"], "sp")
         self.assertAlmostEqual(sp["sp_result"]["electronic_energy_hartree"], -154.987)
 
+    def test_sp_carries_spin_diagnostic_when_open_shell(self):
+        """Open-shell sp: spin_diagnostic block attached with s_squared + companions."""
+        record = _fake_record(multiplicity=3)
+        record["sp_energy_hartree"] = -154.987
+        record["sp_spin_diagnostic"] = {
+            "s_squared": 2.0153,
+            "s_squared_expected": 2.0,
+            "s_squared_annihilated": 2.0001,
+        }
+        _, _, payload = self._submit(output_doc=_fake_output_doc(), record=record)
+        sp = next(c for c in payload["additional_calculations"] if c["type"] == "sp")
+        self.assertIn("spin_diagnostic", sp)
+        self.assertAlmostEqual(sp["spin_diagnostic"]["s_squared"], 2.0153)
+        self.assertAlmostEqual(sp["spin_diagnostic"]["s_squared_expected"], 2.0)
+        self.assertAlmostEqual(sp["spin_diagnostic"]["s_squared_annihilated"], 2.0001)
+        # Full-payload validation against the installed tckdb-schemas.
+        from tckdb_schemas.fragments.calculation import CalculationWithResultsPayload
+        model = CalculationWithResultsPayload.model_validate(sp)
+        self.assertAlmostEqual(model.spin_diagnostic.s_squared, 2.0153)
+
+    def test_sp_spin_diagnostic_minimal_only_s_squared(self):
+        """Only s_squared present (ORCA/QChem, no annihilation): companions omitted."""
+        record = _fake_record(multiplicity=2)
+        record["sp_energy_hartree"] = -154.987
+        record["sp_spin_diagnostic"] = {
+            "s_squared": 0.7572,
+            "s_squared_expected": 0.75,
+            "s_squared_annihilated": None,
+        }
+        _, _, payload = self._submit(output_doc=_fake_output_doc(), record=record)
+        sp = next(c for c in payload["additional_calculations"] if c["type"] == "sp")
+        self.assertIn("spin_diagnostic", sp)
+        self.assertNotIn("s_squared_annihilated", sp["spin_diagnostic"])
+        self.assertAlmostEqual(sp["spin_diagnostic"]["s_squared_expected"], 0.75)
+
+    def test_sp_omits_spin_diagnostic_when_closed_shell(self):
+        """Closed-shell/restricted sp (no S**2): spin_diagnostic omitted entirely."""
+        record = _fake_record(multiplicity=1)
+        record["sp_energy_hartree"] = -154.987
+        record["sp_spin_diagnostic"] = None
+        _, _, payload = self._submit(output_doc=_fake_output_doc(), record=record)
+        sp = next(c for c in payload["additional_calculations"] if c["type"] == "sp")
+        self.assertNotIn("spin_diagnostic", sp)
+
+    def test_sp_omits_spin_diagnostic_when_field_absent(self):
+        """No sp_spin_diagnostic key at all: spin_diagnostic omitted (back-compat)."""
+        record = _fake_record()
+        record["sp_energy_hartree"] = -154.987
+        _, _, payload = self._submit(output_doc=_fake_output_doc(), record=record)
+        sp = next(c for c in payload["additional_calculations"] if c["type"] == "sp")
+        self.assertNotIn("spin_diagnostic", sp)
+
     def test_opt_freq_sp_record_yields_two_additional_calculations(self):
         """4. opt+freq+sp record produces two additional calculations."""
         record = _fake_record()

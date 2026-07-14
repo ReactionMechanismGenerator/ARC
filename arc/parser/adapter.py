@@ -223,6 +223,23 @@ class ESSAdapter(ABC):
         """
         return None
 
+    def parse_s_squared(self) -> dict[str, float | None] | None:
+        """
+        Parse the S**2 spin-contamination diagnostic from an unrestricted-reference ESS output.
+
+        Only meaningful for unrestricted/open-shell calculations (restricted/closed-shell
+        references do not print an ``<S**2>`` value). Adapters that don't implement this
+        (or restricted/closed-shell logs) return ``None`` — the caller treats ``None`` as
+        "no spin diagnostic available for this calc" and omits the block entirely.
+
+        Returns: dict[str, float | None] | None
+            ``{'s_squared': float, 's_squared_expected': float | None,
+               's_squared_annihilated': float | None}`` when an ``<S**2>`` value was parsed,
+            else ``None``. ``s_squared`` is always present (and finite) when the dict is
+            returned; the other two are ``None`` when the ESS doesn't report them.
+        """
+        return None
+
     def parse_ess_version(self) -> str | None:
         """
         Parse the ESS software version string from the log file header.
