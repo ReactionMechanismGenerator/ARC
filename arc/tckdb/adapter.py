@@ -5845,6 +5845,62 @@ def _parse_xtb_turbomole_gradient_file(
         return None, None
 
 
+# Matches xTB's final total-energy print. xTB emits it twice near the end
+# of a ``--grad`` run, in two visually different frames but with the same
+# value::
+#
+#     :: total energy              -9.441927748544 Eh    ::
+#     ...
+#     | TOTAL ENERGY               -9.441927748544 Eh   |
+#
+# We accept either (case-insensitive) and take the *last* match so a
+# partially written/streamed file still yields the converged value. The
+# unit is always Hartree (``Eh``); we assert the ``Eh`` tag is present so a
+# stray ``total energy`` line in some other unit can't be misread.
+_XTBOUT_TOTAL_ENERGY_RE = re.compile(
+    r"total\s+energy\s+(-?\d+\.\d+(?:[eEdD][+-]?\d+)?)\s*Eh",
+    re.IGNORECASE,
+)
+
+
+def _parse_xtb_xtbout_energy(path: str | Path) -> float | None:
+    """Parse the total electronic energy (Hartree) from an xTB stdout
+    (``.xtbout``) file.
+
+    This is the load-bearing per-node energy source for xTB-GSM runs: the
+    patched ``ograd`` wrapper copies ``<node>.xtbout`` into
+    ``gsm_node_outputs/`` unconditionally, whereas the cleaner Turbomole
+    ``.energy`` file depends on a ``tm2orca.py`` rename that frequently
+    does not land, so ``.xtbout`` is often the only surviving record of
+    the node's energy. The GSM stringfile itself carries no usable
+    per-node energy (ARC's molecularGSM build writes ``0.000000`` for
+    every node), so this is the sole absolute-energy source.
+
+    Returns ``None`` for a missing/garbled file (no ``total energy ... Eh``
+    line) — the caller treats that as "no energy known for this node".
+    """
+    try:
+        # xTB banners carry non-ASCII glyphs (e.g. ``Eh/α``), so decode
+        # explicitly as UTF-8 with replacement rather than relying on the
+        # locale encoding — on a non-UTF-8 locale a bare ``open()`` would
+        # raise ``UnicodeDecodeError`` and, uncaught, abort the whole
+        # bundle build. ``ValueError`` (the ``UnicodeDecodeError`` base) is
+        # also caught defensively, mirroring the sibling ``.energy`` parser.
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except (OSError, ValueError):
+        return None
+    matches = _XTBOUT_TOTAL_ENERGY_RE.findall(text)
+    if not matches:
+        return None
+    try:
+        # xTB writes fixed-decimal Hartrees; the ``D`` FORTRAN exponent
+        # marker is tolerated defensively for atypical builds.
+        return float(matches[-1].replace("D", "E").replace("d", "e"))
+    except ValueError:
+        return None
+
+
 def _read_gsm_node_outputs(
     outputs_dir: str | Path,
 ) -> dict[int, dict[str, float]]:
@@ -5854,41 +5910,60 @@ def _read_gsm_node_outputs(
     The patched ``ograd`` wrapper writes files named like::
 
         gsm_node_outputs/
-          0000.01.energy        ← xTB-generated, Turbomole-format
-          0000.01.gradient      ← xTB-generated, Turbomole-format
-          0000.01.xtbout        ← xTB stdout (preserved for inspection)
-          0000.02.energy
+          0000.01.energy        ← xTB-generated, Turbomole-format (optional)
+          0000.01.gradient      ← xTB-generated, Turbomole-format (optional)
+          0000.01.xtbout        ← xTB stdout (always preserved)
+          0000.02.xtbout
           ...
 
     where the ``0000`` prefix is GSM's iteration-round id and the
     ``.NN`` suffix is the per-round node label (1-based). This helper
-    returns ``{label_int: {electronic_energy_hartree, max_gradient,
-    rms_gradient}}`` for every label whose ``.energy`` file parses
-    cleanly. Nodes missing both files (or whose files don't parse) are
-    omitted; the caller decides whether to leave the corresponding
-    point's metadata null.
+    returns ``{label_int: {electronic_energy_hartree[, max_gradient,
+    rms_gradient]}}`` for every label whose energy could be recovered.
+
+    Two on-disk sources are consulted, in priority order:
+
+    1. The Turbomole-format ``.energy`` / ``.gradient`` pair (cleaner,
+       carries gradient metrics) — *preferred* when present.
+    2. The xTB stdout ``.xtbout`` (energy only) — the *reliable
+       fallback*. ``ograd`` copies ``.xtbout`` unconditionally, but the
+       ``.energy``/``.gradient`` copies depend on a ``tm2orca.py`` rename
+       that frequently does not land, so on most real runs ``.xtbout`` is
+       the only surviving per-node record. Without this fallback the
+       energies exist on disk but never reach the TCKDB payload.
+
+    Nodes whose energy cannot be recovered from either source are omitted;
+    the caller decides whether to leave the corresponding point's metadata
+    null.
 
     The ESS provenance for the resulting calculation remains xTB /
-    xTB-GSM; ``Turbomole`` names only the on-disk text shape these
-    files use.
+    xTB-GSM; ``Turbomole`` names only the on-disk text shape the
+    ``.energy``/``.gradient`` files use.
     """
     outputs_dir = Path(outputs_dir)
     if not outputs_dir.is_dir():
         return {}
-    by_label: dict[int, dict[str, float]] = {}
-    for energy_file in sorted(outputs_dir.glob("*.energy")):
-        # Filename is ``<round>.<NN>.energy`` — pull the trailing
-        # ``NN`` integer (the per-round node label).
-        stem = energy_file.stem  # e.g. "0000.01"
+
+    def _label_of(path: Path) -> int | None:
+        # Filename is ``<round>.<NN>.<ext>`` — pull the trailing ``NN``
+        # integer (the per-round node label). ``Path.stem`` drops only the
+        # final extension, so ``0000.01.xtbout`` -> stem ``0000.01``.
         try:
-            label_int = int(stem.split(".")[-1])
+            return int(path.stem.split(".")[-1])
         except (ValueError, IndexError):
+            return None
+
+    by_label: dict[int, dict[str, float]] = {}
+    # Source 1 (preferred): Turbomole-format .energy/.gradient pair.
+    for energy_file in sorted(outputs_dir.glob("*.energy")):
+        label_int = _label_of(energy_file)
+        if label_int is None:
             continue
         e_h = _parse_xtb_turbomole_energy_file(energy_file)
         if e_h is None:
             continue
         node_data: dict[str, float] = {"electronic_energy_hartree": e_h}
-        gradient_file = outputs_dir / f"{stem}.gradient"
+        gradient_file = energy_file.with_suffix(".gradient")
         if gradient_file.is_file():
             max_g, rms_g = _parse_xtb_turbomole_gradient_file(gradient_file)
             if max_g is not None:
@@ -5896,6 +5971,16 @@ def _read_gsm_node_outputs(
             if rms_g is not None:
                 node_data["rms_gradient"] = rms_g
         by_label[label_int] = node_data
+    # Source 2 (fallback): xTB stdout .xtbout — energy only, and only for
+    # labels not already recovered from a cleaner .energy file above.
+    for xtb_file in sorted(outputs_dir.glob("*.xtbout")):
+        label_int = _label_of(xtb_file)
+        if label_int is None or label_int in by_label:
+            continue
+        e_h = _parse_xtb_xtbout_energy(xtb_file)
+        if e_h is None:
+            continue
+        by_label[label_int] = {"electronic_energy_hartree": e_h}
     return by_label
 
 
@@ -6020,9 +6105,13 @@ def _build_path_search_result_payload(
                 # Per-node energy / gradient (when preserved by the
                 # patched ograd wrapper). The producer-side label
                 # convention is that the on-disk node label NN maps
-                # directly to the stringfile frame index — verified
-                # against the smoke-test fixture; if a future GSM
-                # version shifts this mapping, only mismatched indices
+                # directly to the stringfile frame index i — confirmed on
+                # real reaction_06 data: the peak node (label 8) lands
+                # exactly on the selected TS-guess frame (index 8). The
+                # fixed reactant-endpoint frame 0 carries no ograd energy
+                # (``node_metadata.get(0)`` is ``None``), so it stays
+                # energy-less; every other frame is matched. If a future
+                # GSM version shifts this mapping, only mismatched indices
                 # are silently skipped here, never invented.
                 meta = node_metadata.get(i)
                 if meta:
@@ -6052,20 +6141,33 @@ def _build_path_search_result_payload(
         }]
         selected_index = 0
 
-    # Relative-energy convention: all-or-none. Compute relative
-    # energies for every point only when *every* point has an
-    # electronic energy parsed; partial profiles are misleading
-    # ("the dip at point 5 is real or just missing data?") so we
-    # leave them all null in that case.
+    # Relative-energy convention. Reference every point that carries an
+    # absolute electronic energy to the minimum absolute energy present,
+    # and leave points without one with no ``relative_energy_kj_mol`` (an
+    # explicit gap — never a fabricated value; a null is not a "misleading
+    # dip" the way a made-up number would be).
+    #
+    # This is deliberately NOT all-or-none: a real xTB-GSM run writes one
+    # more stringfile frame than it runs per-node gradients on. GSM does
+    # not re-evaluate the fixed reactant-endpoint anchor each round, so
+    # ``gsm_node_outputs/`` holds N energies (node labels 1..N mapping
+    # directly onto frame indices 1..N) for an N+1-frame stringfile,
+    # leaving exactly frame 0 without an energy. Requiring *every* point
+    # to have an energy would therefore suppress the entire profile on
+    # essentially all real data. ``min(known)`` is the reactant well here,
+    # so relative energies read as barrier heights measured from the
+    # reactant — the natural reference.
     energies = [
         p.get("electronic_energy_hartree") for p in points
     ]
+    known = [e for e in energies if e is not None]
     zero_e_h: float | None = None
-    if energies and all(e is not None for e in energies):
-        zero_e_h = min(energies)
+    if known:
+        zero_e_h = min(known)
         for p in points:
-            e_h = p["electronic_energy_hartree"]
-            p["relative_energy_kj_mol"] = (e_h - zero_e_h) * E_h_kJmol
+            e_h = p.get("electronic_energy_hartree")
+            if e_h is not None:
+                p["relative_energy_kj_mol"] = (e_h - zero_e_h) * E_h_kJmol
 
     # Fallback relative-energy source: the GSM stringfile's per-node
     # comment column (relative energies in kcal/mol, first node = 0).

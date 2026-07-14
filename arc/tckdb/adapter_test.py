@@ -7978,6 +7978,91 @@ class TestXtbTurbomoleFileParsers(unittest.TestCase):
                          (None, None))
 
 
+class TestParseXtbOutEnergy(unittest.TestCase):
+    """``_parse_xtb_xtbout_energy`` recovers the total energy (Hartree)
+    from an xTB stdout (``.xtbout``) file. This is the reliable per-node
+    energy source for xTB-GSM: the patched ``ograd`` copies ``.xtbout``
+    unconditionally, whereas the cleaner Turbomole ``.energy`` file depends
+    on a ``tm2orca.py`` rename that frequently does not land, so
+    ``.xtbout`` is often the only surviving record of a node's energy.
+    """
+
+    def setUp(self):
+        from arc.tckdb.adapter import _parse_xtb_xtbout_energy
+        self.parse = _parse_xtb_xtbout_energy
+        self.tmp = tempfile.mkdtemp(prefix='xtbout-')
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _write(self, name, body):
+        p = os.path.join(self.tmp, name)
+        with open(p, 'w') as f:
+            f.write(body)
+        return p
+
+    # A trimmed-but-faithful xTB ``--grad`` tail: xTB prints the total
+    # energy twice, in two differently-framed summary blocks, with the
+    # same value (matching real reaction_06 ``.xtbout`` files).
+    _REAL_TAIL = (
+        " :::::::::::::::::::::::::::::::::::::::::::::::::::::::\n"
+        " ::                     SUMMARY                     ::\n"
+        " :::::::::::::::::::::::::::::::::::::::::::::::::::::::\n"
+        " :: total energy              -9.441927748544 Eh    ::\n"
+        " :: gradient norm              0.012597676605 Eh/a0 ::\n"
+        " :: HOMO-LUMO gap              4.123456789012 eV     ::\n"
+        " :::::::::::::::::::::::::::::::::::::::::::::::::::::::\n"
+        "           ------------------------------------------------- \n"
+        "          | TOTAL ENERGY               -9.441927748544 Eh   |\n"
+        "          | GRADIENT NORM               0.012597676605 Eh/α |\n"
+        "           ------------------------------------------------- \n"
+    )
+
+    def test_parses_total_energy_hartree(self):
+        path = self._write('0000.01.xtbout', self._REAL_TAIL)
+        self.assertAlmostEqual(self.parse(path), -9.441927748544)
+
+    def test_missing_file_returns_none(self):
+        self.assertIsNone(self.parse(os.path.join(self.tmp, 'nope.xtbout')))
+
+    def test_garbled_file_returns_none(self):
+        path = self._write('bad.xtbout',
+                           'xtb aborted: SCF did not converge\nno energy here\n')
+        self.assertIsNone(self.parse(path))
+
+    def test_case_insensitive_lowercase_only_block(self):
+        # Some xTB builds/verbosities emit only the ':: total energy'
+        # block, not the boxed 'TOTAL ENERGY' banner.
+        body = " :: total energy              -12.500000000000 Eh    ::\n"
+        path = self._write('c.xtbout', body)
+        self.assertAlmostEqual(self.parse(path), -12.5)
+
+    def test_takes_last_match(self):
+        # A stray earlier 'total energy ... Eh' line must not shadow the
+        # converged value in the final summary.
+        body = (" :: total energy              -1.000000000000 Eh    ::\n"
+                " ... more iterations ...\n"
+                " :: total energy              -9.999999999999 Eh    ::\n")
+        path = self._write('m.xtbout', body)
+        self.assertAlmostEqual(self.parse(path), -9.999999999999)
+
+    def test_ignores_total_energy_without_eh_unit(self):
+        # A 'total energy' figure not tagged 'Eh' is not a Hartree and
+        # must not be misread.
+        body = " total energy reported as 5.0 kcal/mol elsewhere\n"
+        path = self._write('u.xtbout', body)
+        self.assertIsNone(self.parse(path))
+
+    def test_non_utf8_bytes_do_not_crash(self):
+        # Real xTB banners carry non-ASCII glyphs (e.g. 'Eh/α'); a file
+        # with bytes that aren't valid UTF-8 must degrade to a parsed
+        # value (via errors='replace'), never raise UnicodeDecodeError
+        # and abort the bundle build.
+        p = os.path.join(self.tmp, 'latin.xtbout')
+        with open(p, 'wb') as f:
+            f.write(b' :: total energy              -7.250000000000 Eh    ::\n')
+            f.write(b'          | GRADIENT NORM   0.01 Eh/\xe1 |\n')  # stray byte
+        self.assertAlmostEqual(self.parse(p), -7.25)
+
+
 class TestReadGsmNodeOutputs(unittest.TestCase):
     """Walks ``gsm_node_outputs/`` and returns parsed per-node dicts."""
 
@@ -8038,6 +8123,48 @@ class TestReadGsmNodeOutputs(unittest.TestCase):
         self._write('0000.07.gradient', self._gradient_body([0.3, 0, 0]))
         out = self.read(self.tmp)
         self.assertNotIn(7, out)
+
+    def _xtbout_body(self, e_h):
+        return (
+            f' :: total energy              {e_h:.12f} Eh    ::\n'
+            f'          | TOTAL ENERGY               {e_h:.12f} Eh   |\n'
+        )
+
+    def test_reads_energy_from_xtbout_when_no_energy_file(self):
+        # The real xTB-GSM shape: ograd copied only ``.xtbout`` (the
+        # ``.energy`` rename didn't land). Energies must still be
+        # recovered from the xTB stdout.
+        self._write('0000.01.xtbout', self._xtbout_body(-9.44))
+        self._write('0000.02.xtbout', self._xtbout_body(-9.02))
+        out = self.read(self.tmp)
+        self.assertEqual(set(out.keys()), {1, 2})
+        self.assertAlmostEqual(out[1]['electronic_energy_hartree'], -9.44)
+        self.assertAlmostEqual(out[2]['electronic_energy_hartree'], -9.02)
+        # xtbout branch carries energy only, no gradient metrics.
+        self.assertNotIn('max_gradient', out[1])
+
+    def test_energy_file_preferred_over_xtbout(self):
+        # When both exist for a node, the cleaner ``.energy`` wins (it can
+        # also carry gradient metrics the ``.xtbout`` branch does not).
+        self._write('0000.03.energy', self._energy_body(-28.05))
+        self._write('0000.03.xtbout', self._xtbout_body(-99.9))
+        out = self.read(self.tmp)
+        self.assertAlmostEqual(out[3]['electronic_energy_hartree'], -28.05)
+
+    def test_mixed_energy_and_xtbout_nodes(self):
+        # A node with only ``.energy`` and a node with only ``.xtbout``
+        # are both recovered.
+        self._write('0000.01.energy', self._energy_body(-28.1))
+        self._write('0000.02.xtbout', self._xtbout_body(-28.2))
+        out = self.read(self.tmp)
+        self.assertEqual(set(out.keys()), {1, 2})
+        self.assertAlmostEqual(out[1]['electronic_energy_hartree'], -28.1)
+        self.assertAlmostEqual(out[2]['electronic_energy_hartree'], -28.2)
+
+    def test_garbled_xtbout_omitted(self):
+        self._write('0000.09.xtbout', 'no energy printed here\n')
+        out = self.read(self.tmp)
+        self.assertNotIn(9, out)
 
 
 class TestPathSearchPointsWithNodeMetadata(unittest.TestCase):
@@ -8110,25 +8237,83 @@ class TestPathSearchPointsWithNodeMetadata(unittest.TestCase):
         # Exactly one point sits at relative-zero (the minimum).
         self.assertEqual(rel_zero_count, 1)
 
-    def test_partial_energies_omit_relative(self):
-        # All-or-none: any missing energy → no relative energies anywhere.
+    def test_partial_energies_reference_available_points(self):
+        # NOT all-or-none: points that carry an absolute energy are
+        # referenced to the minimum available, and points without one
+        # stay null (an explicit gap, never a fabricated value). This is
+        # the real xTB-GSM shape — the fixed reactant-anchor frame carries
+        # no ograd energy, so requiring every point to have one would
+        # suppress the whole profile.
         sf = self._stringfile_for(n_frames=4)
-        from arc.parser.parser import parse_trajectory
-        n_frames = len(parse_trajectory(sf))
-        # Provide energy for only the first index.
-        outputs_dir = self._seed_node_outputs({0: -28.5})
+        # Provide energies for two of four frames; leave a min at index 2.
+        outputs_dir = self._seed_node_outputs({0: -28.5, 2: -28.9})
 
         result = self.build(method='gsm', log_path=sf,
                             fallback_xyz_text=None,
                             node_outputs_dir=outputs_dir)
-        self.assertNotIn('zero_energy_reference_hartree', result)
-        # The one node with parsed energy still gets electronic_energy
-        # but no relative_energy (partial profile would mislead).
-        with_e = [p for p in result['points']
-                  if 'electronic_energy_hartree' in p]
-        self.assertEqual(len(with_e), 1)
-        for p in result['points']:
-            self.assertNotIn('relative_energy_kj_mol', p)
+        # Reference is the minimum absolute energy present (index 2).
+        self.assertIn('zero_energy_reference_hartree', result)
+        self.assertAlmostEqual(result['zero_energy_reference_hartree'], -28.9)
+        by_idx = {p['point_index']: p for p in result['points']}
+        # Points with an energy get a relative referenced to that min.
+        self.assertAlmostEqual(by_idx[2]['relative_energy_kj_mol'], 0.0)
+        self.assertIn('electronic_energy_hartree', by_idx[0])
+        self.assertIn('relative_energy_kj_mol', by_idx[0])
+        # Points without an energy carry neither field (honest null gap).
+        for ix in (1, 3):
+            self.assertNotIn('electronic_energy_hartree', by_idx[ix])
+            self.assertNotIn('relative_energy_kj_mol', by_idx[ix])
+
+    def _seed_xtbout_node_outputs(self, energies_by_label):
+        """Create ``.xtbout`` (xTB-stdout) files for each (label, e_h)
+        pair under ``self.tmp/gsm_node_outputs/`` — the real xTB-GSM
+        on-disk shape where only ``.xtbout`` survived. Returns the dir."""
+        d = os.path.join(self.tmp, 'gsm_node_outputs')
+        os.makedirs(d, exist_ok=True)
+        for label, e_h in energies_by_label.items():
+            with open(os.path.join(d, f'0000.{label:02d}.xtbout'), 'w') as f:
+                f.write(
+                    f' :: total energy              {e_h:.12f} Eh    ::\n'
+                    f'          | TOTAL ENERGY               {e_h:.12f} Eh   |\n'
+                )
+        return d
+
+    def test_real_shape_xtbout_only_orphan_endpoint_frame(self):
+        # Mirrors real reaction_06: an (N+1)-frame stringfile with only
+        # ``.xtbout`` node files labelled 1..N. The fixed reactant-anchor
+        # frame 0 has no ograd energy; every other frame maps label NN ->
+        # frame index NN and gets an energy + a relative referenced to the
+        # minimum. The peak lands on the selected TS-guess frame.
+        n_nodes = 6
+        sf = self._stringfile_for(n_frames=n_nodes + 1)
+        from arc.parser.parser import parse_trajectory
+        self.assertEqual(len(parse_trajectory(sf)), n_nodes + 1)
+        # A barrier whose peak sits on the frame GSM selects as the TS
+        # guess: int((7-1)/2)+1 == 4.
+        energies = {1: -9.44, 2: -9.30, 3: -9.15,
+                    4: -9.02, 5: -9.19, 6: -9.40}
+        outputs_dir = self._seed_xtbout_node_outputs(energies)
+        result = self.build(method='gsm', log_path=sf,
+                            fallback_xyz_text=None,
+                            node_outputs_dir=outputs_dir)
+        by_idx = {p['point_index']: p for p in result['points']}
+        # Frame 0 (reactant anchor) carries no energy — explicit null.
+        self.assertNotIn('electronic_energy_hartree', by_idx[0])
+        self.assertNotIn('relative_energy_kj_mol', by_idx[0])
+        # Every node frame maps label NN -> frame NN with its energy+rel.
+        for label, e_h in energies.items():
+            self.assertAlmostEqual(
+                by_idx[label]['electronic_energy_hartree'], e_h)
+            self.assertIn('relative_energy_kj_mol', by_idx[label])
+        # Reference is the minimum absolute energy (node 1, -9.44).
+        self.assertAlmostEqual(result['zero_energy_reference_hartree'], -9.44)
+        self.assertAlmostEqual(by_idx[1]['relative_energy_kj_mol'], 0.0)
+        # The selected TS-guess frame (index 4) is the energy peak.
+        self.assertEqual(result['selected_ts_point_index'], 4)
+        self.assertTrue(by_idx[4].get('is_ts_guess'))
+        rels = {ix: p['relative_energy_kj_mol'] for ix, p in by_idx.items()
+                if 'relative_energy_kj_mol' in p}
+        self.assertEqual(max(rels, key=rels.get), 4)
 
     def test_no_node_outputs_dir_keeps_geometry_only_behavior(self):
         # Backwards compat: existing geometry-only fixtures (no
