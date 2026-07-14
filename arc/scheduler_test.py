@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import os
 import shutil
+from types import SimpleNamespace
 
 
 import arc.parser.parser as parser
@@ -1195,11 +1196,12 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.sched1.running_jobs = {'spcA': ['opt_a1234']}
         self.sched1.active_pipes = {}
 
-        # First call: file doesn't exist, snapshot must be written.
+        # First call: file doesn't exist, snapshot must be written. An unresolvable job
+        # (no matching Job object in job_dict) falls back to just its name.
         self.sched1.report_running_jobs_snapshot()
         snapshot = read_yaml_file(path)
         self.assertIn('timestamp', snapshot)
-        self.assertEqual(snapshot['running_jobs'], {'spcA': ['opt_a1234']})
+        self.assertEqual(snapshot['running_jobs'], {'spcA': [{'name': 'opt_a1234'}]})
 
         # Second call with identical payload: file must be left untouched.
         first_mtime = os.path.getmtime(path)
@@ -1213,7 +1215,21 @@ H      -1.82570782    0.42754384   -0.56130718"""
         # Third call after a change: the file must be overwritten with the new snapshot only.
         self.sched1.report_running_jobs_snapshot()
         snapshot = read_yaml_file(path)
-        self.assertEqual(snapshot['running_jobs'], {'spcA': ['opt_a1234', 'sp_b5678']})
+        self.assertEqual(snapshot['running_jobs'],
+                         {'spcA': [{'name': 'opt_a1234'}, {'name': 'sp_b5678'}]})
+
+        # A resolvable job carries its server identifiers (server_name/job_id/adapter/server)
+        # into the snapshot, so the file alone tells you what to look for in qstat.
+        job = SimpleNamespace(job_name='tsg3', job_server_name='a3129', job_id='4438988',
+                              job_adapter='orca_neb', server='server1')
+        self.sched1.job_dict['TS0'] = {'tsg': {3: job}}
+        self.sched1.running_jobs = {'TS0': ['tsg3']}
+        self.sched1._last_status_payload = None
+        self.sched1.report_running_jobs_snapshot()
+        snapshot = read_yaml_file(path)
+        self.assertEqual(snapshot['running_jobs']['TS0'][0],
+                         {'name': 'tsg3', 'server_name': 'a3129', 'job_id': '4438988',
+                          'adapter': 'orca_neb', 'server': 'server1'})
 
         os.remove(path)
 
