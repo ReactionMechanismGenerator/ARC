@@ -135,6 +135,200 @@ class TestPayloadWriter(unittest.TestCase):
         self.assertEqual(sc["status"], "pending")
 
 
+class TestPayloadWriterArchive(unittest.TestCase):
+    """Re-run archiving: prior payload+sidecar preserved under archive/."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="arc-tckdb-writer-arch-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.writer = PayloadWriter(self.tmp)
+
+    def _archive_dir(self, result):
+        return result.payload_path.parent / PayloadWriter.ARCHIVE_SUBDIR
+
+    def test_first_write_creates_no_archive(self):
+        result = self.writer.write(
+            label="ethanol",
+            payload={"x": 1},
+            endpoint="/uploads/conformers",
+            idempotency_key="key-first-run",
+        )
+        self.assertFalse(self._archive_dir(result).exists())
+
+    def test_second_write_archives_prior_pair_keyed_on_uploaded_at(self):
+        first = self.writer.write(
+            label="ethanol",
+            payload={"run": 1},
+            endpoint="/uploads/conformers",
+            idempotency_key="key-run-1",
+        )
+        # Resolve the first upload so the sidecar carries an uploaded_at
+        # timestamp — the preferred archive key.
+        sc = first.sidecar
+        sc.status = "uploaded"
+        sc.uploaded_at = "2026-07-14T09:15:30Z"
+        self.writer.update_sidecar(first.sidecar_path, sc)
+
+        second = self.writer.write(
+            label="ethanol",
+            payload={"run": 2},
+            endpoint="/uploads/conformers",
+            idempotency_key="key-run-2",
+        )
+        # Canonical path is unchanged and holds the NEW content.
+        self.assertEqual(second.payload_path, first.payload_path)
+        with open(second.payload_path) as fh:
+            self.assertEqual(json.load(fh)["run"], 2)
+
+        archive_dir = self._archive_dir(second)
+        self.assertTrue(archive_dir.exists())
+        # Self-describing name keyed off the prior uploaded_at (colons
+        # stripped for filesystem safety).
+        archived_payloads = sorted(archive_dir.glob("*.payload.json"))
+        archived_sidecars = sorted(archive_dir.glob("*.meta.json"))
+        self.assertEqual(len(archived_payloads), 1)
+        self.assertEqual(len(archived_sidecars), 1)
+        name = archived_payloads[0].name
+        self.assertIn("2026-07-14T09-15-30Z", name)
+        self.assertNotIn(":", name)
+        # Archived pair holds the PRIOR content + sidecar.
+        with open(archived_payloads[0]) as fh:
+            self.assertEqual(json.load(fh)["run"], 1)
+        with open(archived_sidecars[0]) as fh:
+            self.assertEqual(json.load(fh)["idempotency_key"], "key-run-1")
+
+    def test_second_write_keys_on_idempotency_when_no_uploaded_at(self):
+        self.writer.write(
+            label="ethanol",
+            payload={"run": 1},
+            endpoint="/uploads/conformers",
+            idempotency_key="idem-key-abc123",
+        )
+        # No update_sidecar call -> sidecar has no uploaded_at; archive
+        # name must fall back to the idempotency key.
+        second = self.writer.write(
+            label="ethanol",
+            payload={"run": 2},
+            endpoint="/uploads/conformers",
+            idempotency_key="idem-key-def456",
+        )
+        archived = sorted(self._archive_dir(second).glob("*.payload.json"))
+        self.assertEqual(len(archived), 1)
+        self.assertIn("idem-key-abc123", archived[0].name)
+
+    def test_corrupt_prior_sidecar_falls_back_gracefully(self):
+        first = self.writer.write(
+            label="ethanol",
+            payload={"run": 1},
+            endpoint="/uploads/conformers",
+            idempotency_key="key-run-1",
+        )
+        # Corrupt the sidecar so no key can be extracted.
+        first.sidecar_path.write_text("{ this is not valid json", encoding="utf-8")
+
+        second = self.writer.write(
+            label="ethanol",
+            payload={"run": 2},
+            endpoint="/uploads/conformers",
+            idempotency_key="key-run-2",
+        )
+        archive_dir = self._archive_dir(second)
+        # No crash; both prior files preserved (corrupt sidecar moved too).
+        archived_payloads = sorted(archive_dir.glob("*.payload.json"))
+        archived_sidecars = sorted(archive_dir.glob("*.meta.json"))
+        self.assertEqual(len(archived_payloads), 1)
+        self.assertEqual(len(archived_sidecars), 1)
+        with open(archived_payloads[0]) as fh:
+            self.assertEqual(json.load(fh)["run"], 1)
+        # New canonical payload intact.
+        with open(second.payload_path) as fh:
+            self.assertEqual(json.load(fh)["run"], 2)
+
+    def test_missing_prior_sidecar_does_not_crash(self):
+        first = self.writer.write(
+            label="ethanol",
+            payload={"run": 1},
+            endpoint="/uploads/conformers",
+            idempotency_key="key-run-1",
+        )
+        first.sidecar_path.unlink()  # only the payload survives
+        second = self.writer.write(
+            label="ethanol",
+            payload={"run": 2},
+            endpoint="/uploads/conformers",
+            idempotency_key="key-run-2",
+        )
+        archived_payloads = sorted(self._archive_dir(second).glob("*.payload.json"))
+        self.assertEqual(len(archived_payloads), 1)
+        with open(archived_payloads[0]) as fh:
+            self.assertEqual(json.load(fh)["run"], 1)
+
+    def test_archive_name_collision_is_disambiguated(self):
+        # Three runs all sharing the same idempotency key (so the same
+        # archive key) must not clobber each other in archive/.
+        for run in (1, 2, 3):
+            self.writer.write(
+                label="ethanol",
+                payload={"run": run},
+                endpoint="/uploads/conformers",
+                idempotency_key="same-key",
+            )
+        archive_dir = self.tmp_archive()
+        archived_payloads = sorted(archive_dir.glob("*.payload.json"))
+        # Runs 1 and 2 were archived (run 3 is the live canonical file);
+        # both survive under distinct names.
+        self.assertEqual(len(archived_payloads), 2)
+        names = {p.name for p in archived_payloads}
+        self.assertEqual(len(names), 2)
+        runs = set()
+        for p in archived_payloads:
+            with open(p) as fh:
+                runs.add(json.load(fh)["run"])
+        self.assertEqual(runs, {1, 2})
+
+    def tmp_archive(self):
+        from pathlib import Path
+        return Path(self.tmp) / PayloadWriter.SUBDIR / PayloadWriter.ARCHIVE_SUBDIR
+
+    def test_archive_previous_disabled_overwrites_in_place(self):
+        writer = PayloadWriter(self.tmp, archive_previous=False)
+        first = writer.write(
+            label="ethanol",
+            payload={"run": 1},
+            endpoint="/uploads/conformers",
+            idempotency_key="key-run-1",
+        )
+        writer.write(
+            label="ethanol",
+            payload={"run": 2},
+            endpoint="/uploads/conformers",
+            idempotency_key="key-run-2",
+        )
+        self.assertFalse(self._archive_dir(first).exists())
+
+    def test_partial_infix_preserved_in_archive_name(self):
+        self.writer.write(
+            label="r0_p0",
+            payload={"run": 1},
+            endpoint="/uploads/computed-reaction",
+            idempotency_key="idem-partial-1",
+            payload_kind="computed_reaction",
+            is_partial=True,
+        )
+        second = self.writer.write(
+            label="r0_p0",
+            payload={"run": 2},
+            endpoint="/uploads/computed-reaction",
+            idempotency_key="idem-partial-2",
+            payload_kind="computed_reaction",
+            is_partial=True,
+        )
+        archived = sorted(self._archive_dir(second).glob("*.payload.json"))
+        self.assertEqual(len(archived), 1)
+        # The .partial infix survives into the archived name.
+        self.assertIn(".partial.", archived[0].name)
+
+
 class TestArtifactSidecar(unittest.TestCase):
 
     def setUp(self):
