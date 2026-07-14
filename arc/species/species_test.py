@@ -7,6 +7,7 @@ This module contains unit tests of the arc.species.species module
 
 import os
 import shutil
+import tempfile
 import unittest
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, check_that_all_entries_are_in_list
@@ -2551,6 +2552,59 @@ H       1.11582953    0.94384729   -0.10134685"""
         # Round-trips through as_dict/from_dict (restart persistence).
         restored = TSGuess(ts_dict=winner.as_dict())
         self.assertEqual(restored.method_source_paths.get('xtb-gsm'), gsm_log)
+
+    def test_cluster_tsgs_with_coordinate_less_guesses(self):
+        """Clustering must tolerate coordinate-less TS guesses (e.g. failed kinbot/queue guesses
+        whose job produced no parseable geometry). Reaction_08 benchmark crash: two such guesses
+        reached almost_equal_coords(None, None) -> TypeError, aborting the whole scheduler."""
+        xyz = """N       0.9177905887     0.5194617797     0.0000000000
+                 H       1.8140204898     1.0381941417     0.0000000000
+                 H      -0.4763167868     0.7509348722     0.0000000000
+                 N       0.9992350860    -0.7048575683     0.0000000000
+                 N      -1.4430010939     0.0274543367     0.0000000000
+                 H      -0.6371484821    -0.7497769134     0.0000000000
+                 H      -2.0093636431     0.0331190314    -0.8327683174
+                 H      -2.0093636431     0.0331190314     0.8327683174"""
+        failed_1 = TSGuess(index=0, method='kinbot', success=False)
+        failed_2 = TSGuess(index=1, method='kinbot', success=False)
+        good = TSGuess(index=2, method='gcn', success=True, xyz=xyz)
+        # A coordinate-less "successful" guess: same success as ``good`` so the first (success) filter
+        # passes and the None-xyz guard is the sole reason the comparison returns False.
+        xyz_less_success = TSGuess(index=3, method='gcn', success=True)
+        # A coordinate-less guess yields no xyz.
+        self.assertIsNone(failed_1.get_xyz())
+        self.assertIsNone(xyz_less_success.get_xyz())
+        # almost_equal_tsgs must not raise and must never treat a coordinate-less guess as a duplicate.
+        self.assertFalse(failed_1.almost_equal_tsgs(failed_2))  # both None (the reaction_08 crash)
+        self.assertFalse(good.almost_equal_tsgs(xyz_less_success))  # one None, equal success -> guard only
+        self.assertFalse(xyz_less_success.almost_equal_tsgs(good))
+        self.assertFalse(failed_1.almost_equal_tsgs(good))
+        self.assertFalse(good.almost_equal_tsgs(failed_1))
+        # cluster_tsgs over a mix of coordinate-less and real guesses must not raise and must keep them distinct.
+        spc = ARCSpecies(label='TS_none_xyz', is_ts=True)
+        spc.ts_guesses = [failed_1, failed_2, good]
+        for tsg in spc.ts_guesses:
+            tsg.execution_time = '00:00:01'
+        spc.cluster_tsgs()  # must not raise
+        self.assertEqual(len(spc.ts_guesses), 3)
+
+    def test_process_completed_tsg_queue_jobs_no_geometry(self):
+        """A queue TS-guess job whose .log has no parseable geometry must not be added as a
+        clusterable 'successful' guess, must be marked failed, and must not crash the subsequent
+        cluster_tsgs() call (reaction_08: an orca_neb queue job whose NEB geometry was cleaned
+        from scratch)."""
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        empty_log = os.path.join(tmp_dir, 'input.log')
+        with open(empty_log, 'w') as f:
+            f.write('ORCA TERMINATED NORMALLY\nno coordinates were retrieved from scratch\n')
+        spc = ARCSpecies(label='TS_no_geo', is_ts=True)
+        # Pre-seed with a coordinate-less failed guess so cluster_tsgs would exercise the None path.
+        spc.ts_guesses = [TSGuess(index=0, method='kinbot', success=False)]
+        spc.process_completed_tsg_queue_jobs(path=empty_log)  # must not raise
+        # No coordinate-less guess was added as a successful clusterable guess.
+        self.assertTrue(all(tsg.get_xyz() is not None or not tsg.success for tsg in spc.ts_guesses))
+        self.assertFalse(any(tsg.success and tsg.get_xyz() is None for tsg in spc.ts_guesses))
 
     def test_are_coords_compliant_with_graph(self):
         """Test coordinates compliant with 2D graph connectivity"""
