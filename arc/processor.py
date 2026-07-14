@@ -3,6 +3,7 @@ Processor module for computing thermodynamic properties and rate coefficients us
 """
 
 import os
+import re
 import shutil
 
 import arc.plotter as plotter
@@ -252,6 +253,8 @@ def compare_thermo(species_for_thermo_lib: list,
         species_for_thermo_lib (list): Species for which thermochemical properties were computed.
         output_directory (str): The path to the project's output folder.
     """
+    if not species_for_thermo_lib:
+        return  # nothing to compare; avoid a pointless RMG database load and a spurious error report.
     species_to_compare = list()  # species for which thermo was both calculated and estimated.
     species_thermo_path = os.path.join(output_directory, 'RMG_thermo.yml')
     save_yaml_file(path=species_thermo_path,
@@ -270,9 +273,20 @@ def compare_thermo(species_for_thermo_lib: list,
                 'fi"',
                 ]
     stdout, stderr = execute_command(command=commands, no_fail=True)
-    if len(stderr):
-        logger.error(f'Error while running RMG thermo script: {stderr}')
-    species_list = read_yaml_file(path=species_thermo_path)
+    species_list = read_yaml_file(path=species_thermo_path) or list()
+    # RMG/Arkane route their normal startup logging (e.g. "INFO:root:Loading thermodynamics library ...",
+    # "WARNING:root:...") to stderr, so a non-empty stderr does NOT imply the script failed. Demote that
+    # benign log chatter to debug, and only report an error if genuine (non-log) content remains on stderr,
+    # or the deliverable wasn't actually produced (execute_command doesn't surface the return code here).
+    stderr_lines = stderr or list()
+    benign_log_regex = re.compile(r'^(INFO|WARNING|DEBUG):root')
+    error_lines = [line for line in stderr_lines if line.strip() and not benign_log_regex.match(line.strip())]
+    thermo_computed = any(isinstance(spc, dict) and spc.get('h298') is not None and spc.get('s298') is not None
+                          for spc in species_list)
+    if error_lines or not thermo_computed:
+        logger.error(f"Error while running RMG thermo script: {error_lines or stderr_lines}")
+    elif stderr_lines:
+        logger.debug('RMG thermo script log output (stderr):\n' + '\n'.join(stderr_lines))
     for original_spc, rmg_spc in zip(species_for_thermo_lib, species_list):
         h298, s298, comment = rmg_spc.get('h298', None), rmg_spc.get('s298', None), rmg_spc.get('comment', None)
         if h298 is not None and s298 is not None:
