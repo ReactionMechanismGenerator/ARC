@@ -306,6 +306,39 @@ def _resolve_ts_guess_path_search(method: object) -> str | None:
     return _TS_GUESS_PATH_SEARCH_METHODS.get(method.strip().lower())
 
 
+def _resolve_ts_guess_path_search_for_record(record: Mapping[str, Any]) -> str | None:
+    """Return the TCKDB ``path_search_result.method`` enum for a TS record.
+
+    First tries the chosen guess's primary method (``chosen_ts_method``) — unchanged behaviour.
+    When that is geometry-only (e.g. ``gcn``) but a path-search method (``xtb_gsm`` / ``orca_neb``)
+    was merged into the chosen guess during ARC's equivalent-guess clustering, recover it from the
+    chosen ``ts_guesses`` entry's ``method_sources``. This gates emission of the ``path_search``
+    parent calc off the merged provenance rather than the single primary method — it does NOT
+    change ARC's TS selection (``chosen_ts_method`` is untouched).
+
+    When several path-search methods merged into the chosen guess, prefer the one whose log field
+    (``neb_log`` / ``gsm_log``) is actually populated on the record — the scheduler preserves exactly
+    one path source's log — so this gate and the subsequent log lookup agree. Returns ``None`` for
+    geometry-only / unknown methods.
+    """
+    method = _resolve_ts_guess_path_search(record.get("chosen_ts_method"))
+    if method is not None:
+        return method
+    candidates: list[str] = []
+    for tsg in (record.get("ts_guesses") or []):
+        if isinstance(tsg, Mapping) and tsg.get("chosen"):
+            for source in (tsg.get("method_sources") or []):
+                resolved = _resolve_ts_guess_path_search(source)
+                if resolved is not None and resolved not in candidates:
+                    candidates.append(resolved)
+            break
+    for candidate in candidates:
+        log_field = _TS_GUESS_LOG_FIELD_BY_METHOD.get(candidate)
+        if log_field and record.get(log_field):
+            return candidate
+    return candidates[0] if candidates else None
+
+
 def _resolve_log_field(role: str, record: Mapping[str, Any]) -> str | None:
     """Resolve the species-record field carrying the output-log path for ``role``.
 
@@ -316,7 +349,7 @@ def _resolve_log_field(role: str, record: Mapping[str, Any]) -> str | None:
     has no log mapping or the TS-guess method is geometry-only.
     """
     if role == _CALC_KEY_TS_GUESS:
-        method_enum = _resolve_ts_guess_path_search(record.get("chosen_ts_method"))
+        method_enum = _resolve_ts_guess_path_search_for_record(record)
         if method_enum is None:
             return None
         # Some path-search methods (notably GSM) produce log artifacts
@@ -2272,9 +2305,7 @@ class TCKDBAdapter:
         # the log via ``_resolve_log_field`` when artifact upload is
         # enabled.
         ts_guess_calc: dict[str, Any] | None = None
-        ts_guess_method = _resolve_ts_guess_path_search(
-            ts_record.get("chosen_ts_method"),
-        )
+        ts_guess_method = _resolve_ts_guess_path_search_for_record(ts_record)
         ts_guess_log_field = (
             _TS_GUESS_LOG_FIELD_BY_METHOD.get(ts_guess_method)
             if ts_guess_method else None

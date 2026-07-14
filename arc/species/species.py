@@ -1678,6 +1678,21 @@ class ARCSpecies(object):
                     cluster_tsg.method_sources = TSGuess._normalize_method_sources(
                         (cluster_tsg.method_sources or []) + (tsg.method_sources or [])
                     )
+                    # Preserve per-source log paths on the winner so path-search provenance
+                    # (per-node energies / points) survives dedup even when a geometry-only
+                    # method is the winning (primary) source. Seed from each guess's live
+                    # method/log_path (the xtb_gsm / orca_neb / qst2 adapters assign
+                    # ``log_path`` *after* construction, so ``method_source_paths`` may still
+                    # be empty at clustering time), then merge any already-preserved entries.
+                    if getattr(cluster_tsg, 'method_source_paths', None) is None:
+                        cluster_tsg.method_source_paths = dict()
+                    for source_tsg in (cluster_tsg, tsg):
+                        for source, source_log in (getattr(source_tsg, 'method_source_paths', None) or dict()).items():
+                            cluster_tsg.method_source_paths.setdefault(source, source_log)
+                        source_method = getattr(source_tsg, 'method', None)
+                        source_log = getattr(source_tsg, 'log_path', None)
+                        if source_method and source_log:
+                            cluster_tsg.method_source_paths.setdefault(source_method, source_log)
                     break
             else:
                 tsg.cluster = [tsg.index]
@@ -2394,6 +2409,10 @@ class TSGuess(object):
         errors (str): Problems experienced with this TSGuess. Used for logging.
         cluster (list[int]): Indices of TSGuess object instances clustered together.
         log_path (str): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
+        method_source_paths (dict[str, str]): Maps each method in ``method_sources`` to the ESS log path it produced,
+                                              preserved across equivalent-guess clustering. Lets path-search provenance
+                                              (per-node energies / points) survive dedup even when a geometry-only
+                                              method is the primary (winning) source of the merged guess.
         level (dict): The level of theory the guess-generating adapter ran its electronic structure calculations at,
                       as a plain dictionary. ``None`` for pure ML/template based guess methods.
     """
@@ -2439,6 +2458,9 @@ class TSGuess(object):
             self.cluster = cluster
             self.log_path = log_path
             self.level = level
+            self.method_source_paths = dict()
+            if self.log_path is not None:
+                self.method_source_paths[self.method] = self.log_path
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
@@ -2548,6 +2570,8 @@ class TSGuess(object):
                 ts_dict['errors'] = self.errors
             if self.log_path is not None:
                 ts_dict['log_path'] = self.log_path
+            if getattr(self, 'method_source_paths', None):
+                ts_dict['method_source_paths'] = dict(self.method_source_paths)
         return ts_dict
 
     def from_dict(self, ts_dict: dict):
@@ -2584,6 +2608,12 @@ class TSGuess(object):
             self.execution_time = datetime.timedelta(seconds=0)
         self.family = ts_dict['family'] if 'family' in ts_dict else None
         self.log_path = ts_dict['log_path'] if 'log_path' in ts_dict else None
+        if 'method_source_paths' in ts_dict and isinstance(ts_dict['method_source_paths'], dict):
+            self.method_source_paths = {str(k).lower(): v for k, v in ts_dict['method_source_paths'].items()}
+        else:
+            self.method_source_paths = dict()
+            if self.log_path is not None:
+                self.method_source_paths[self.method] = self.log_path
         self.level = ts_dict['level'] if 'level' in ts_dict else None
         self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
 
