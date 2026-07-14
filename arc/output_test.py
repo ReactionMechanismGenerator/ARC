@@ -909,6 +909,47 @@ class TestTsWithSmiles(unittest.TestCase):
             self.assertIsNone(result['gsm_log'],
                               msg=f'gsm_log leaked for {chosen_method}')
 
+    def test_restart_merged_geometry_primary_recovers_gsm_source(self):
+        # Dedup-merged (benchmark reaction_06): the chosen guess's primary
+        # method is geometry-only (gcn) but xtb-gsm merged into it during
+        # clustering, carrying a preserved log in ``method_source_paths``.
+        # On restart (paths empty), output must recover ``gsm_log`` from
+        # the merged source, not from the geometry-only primary method.
+        spc = self._minimal_ts_mock(label='TS_merged', chosen='gcn')
+        gcn = TSGuess(index=0, method='gcn', success=True, xyz='C 0.0 0.0 0.0')
+        gcn.method_sources = ['gcn', 'xtb-gsm']
+        gcn.method_source_paths = {'xtb-gsm': '/abs/calcs/TS/tsg/stringfile.xyz0000'}
+        spc.ts_guesses = [gcn]
+        spc.chosen_ts = 0
+        output_dict = {'TS_merged': {
+            'convergence': True,
+            'paths': {'irc': [], 'neb': '', 'gsm': ''},
+            'job_types': {},
+        }}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertEqual(result['gsm_log'], 'calcs/TS/tsg/stringfile.xyz0000')
+        self.assertIsNone(result['neb_log'])
+
+    def test_restart_merged_sets_exactly_one_path_log_field(self):
+        # A guess merging BOTH xtb-gsm and orca_neb must not populate two
+        # path-log fields — mirror the scheduler's single-slot invariant
+        # (first path source in method_sources order wins).
+        spc = self._minimal_ts_mock(label='TS_merged2', chosen='gcn')
+        gcn = TSGuess(index=0, method='gcn', success=True, xyz='C 0.0 0.0 0.0')
+        gcn.method_sources = ['gcn', 'xtb-gsm', 'orca_neb']
+        gcn.method_source_paths = {'xtb-gsm': '/abs/calcs/TS/tsg/stringfile.xyz0000',
+                                   'orca_neb': '/abs/calcs/TS/tsg/input.log'}
+        spc.ts_guesses = [gcn]
+        spc.chosen_ts = 0
+        output_dict = {'TS_merged2': {
+            'convergence': True,
+            'paths': {'irc': [], 'neb': '', 'gsm': ''},
+            'job_types': {},
+        }}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertEqual(result['gsm_log'], 'calcs/TS/tsg/stringfile.xyz0000')
+        self.assertIsNone(result['neb_log'])
+
     def test_paths_slot_wins_over_tsguess_log_path(self):
         # When both are populated (live-scheduler scenario), the
         # ``paths`` slot is the source of truth (it's what the
