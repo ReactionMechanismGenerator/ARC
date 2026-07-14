@@ -920,6 +920,37 @@ class Scheduler(object):
         # Generate a TS report:
         self.generate_final_ts_guess_report()
 
+    def _running_job_snapshot_entry(self, label: str, job_name: str) -> dict:
+        """
+        Resolve a running ``job_name`` (as stored in ``self.running_jobs``, e.g. ``'tsg3'``)
+        back to its Job object and build a snapshot entry that carries the identifiers needed
+        to find the job on the server: ``server_name`` (the queue job name shown by ``qstat``,
+        e.g. ``a3129``), ``job_id`` (the queue's numeric id), the ``adapter`` (software), and the
+        ``server``. Falls back to just ``{'name': job_name}`` if the Job object can't be located
+        (e.g. the job was already popped, or a restart-loaded entry whose stored name doesn't
+        match any live ``job.job_name``). Resolved incore/local jobs still get an entry, just with
+        ``server``/``job_id`` possibly ``None``.
+
+        Args:
+            label (str): The species/TS label the job belongs to.
+            job_name (str): The job name as stored in ``self.running_jobs``.
+
+        Returns:
+            dict: A self-describing snapshot entry for the running job.
+        """
+        entry = {'name': job_name}
+        for jobs in self.job_dict.get(label, dict()).values():
+            if not isinstance(jobs, dict):
+                continue
+            for job in jobs.values():
+                if getattr(job, 'job_name', None) == job_name:
+                    entry['server_name'] = job.job_server_name
+                    entry['job_id'] = job.job_id
+                    entry['adapter'] = job.job_adapter
+                    entry['server'] = job.server
+                    return entry
+        return entry
+
     def report_running_jobs_snapshot(self) -> None:
         """
         Overwrite ``<project>/running_jobs.yml`` with a timestamped snapshot of
@@ -927,7 +958,9 @@ class Scheduler(object):
         to the previous snapshot, the file is left untouched and only a one-line
         heartbeat is logged to ARC.log.
         """
-        payload = {'running_jobs': {label: list(job_names) for label, job_names in self.running_jobs.items()},
+        payload = {'running_jobs': {label: [self._running_job_snapshot_entry(label, job_name)
+                                            for job_name in job_names]
+                                    for label, job_names in self.running_jobs.items()},
                    'active_pipes': list(self.active_pipes.keys())}
         n_species = len(self.running_jobs)
         n_jobs = sum(len(v) for v in self.running_jobs.values())
