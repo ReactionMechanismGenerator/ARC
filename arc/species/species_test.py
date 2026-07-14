@@ -2448,6 +2448,50 @@ H       1.11582953    0.94384729   -0.10134685"""
         spc_3.cluster_tsgs()
         self.assertEqual(len(spc_3.ts_guesses), 6)
 
+    def test_cluster_tsgs_preserves_path_search_source_log(self):
+        """A geometry-only guess (GCN) that wins dedup must retain a merged
+        path-search source's log path in ``method_source_paths`` so
+        path-search provenance survives clustering (benchmark reaction_06).
+        Selection is unchanged: the winner is still GCN."""
+        xyz_a = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_b = """N       0.9177905899     0.5194617794     0.0000000010
+                   H       1.8140204898     1.0381941417     0.0000000055
+                   H      -0.4763167868     0.7509348792     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000010
+                   N      -1.4430010939     0.0274543357     0.0000000055
+                   H      -0.6371484821    -0.7497769124     0.0000000020
+                   H      -2.0093636433     0.0331190312    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # ~equal to xyz_a
+        gsm_log = '/tmp/arc_test/TS0/xtb_gsm/stringfile.xyz0000'
+        # Use the exact string the xtb_gsm adapter sets (method='xTB-GSM').
+        gsm_guess = TSGuess(index=1, method='xTB-GSM', success=True, xyz=xyz_b)
+        # Production shape: the xtb_gsm/orca_neb/qst2 adapters assign log_path
+        # *after* construction, so method_source_paths is empty until cluster_tsgs
+        # seeds it from the live attributes.
+        gsm_guess.log_path = gsm_log
+        self.assertEqual(gsm_guess.method_source_paths, {})
+        spc = ARCSpecies(label='TS_ms', is_ts=True)
+        spc.ts_guesses = [TSGuess(index=0, method='GCN', success=True, xyz=xyz_a),
+                          gsm_guess]
+        for tsg in spc.ts_guesses:
+            tsg.execution_time = '00:00:02'
+        spc.cluster_tsgs()
+        self.assertEqual(len(spc.ts_guesses), 1)
+        winner = spc.ts_guesses[0]
+        self.assertEqual(winner.method, 'gcn')  # selection unchanged
+        self.assertIn('xtb-gsm', winner.method_sources)
+        self.assertEqual(winner.method_source_paths.get('xtb-gsm'), gsm_log)
+        # Round-trips through as_dict/from_dict (restart persistence).
+        restored = TSGuess(ts_dict=winner.as_dict())
+        self.assertEqual(restored.method_source_paths.get('xtb-gsm'), gsm_log)
+
     def test_are_coords_compliant_with_graph(self):
         """Test coordinates compliant with 2D graph connectivity"""
         self.assertTrue(are_coords_compliant_with_graph(xyz=self.spc6.get_xyz(), mol=self.spc6.mol))

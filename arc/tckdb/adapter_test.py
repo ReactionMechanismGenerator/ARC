@@ -7343,6 +7343,65 @@ class TestComputedReactionDependencyEdges(unittest.TestCase):
         keys = [c["key"] for c in payload["transition_state"]["calculations"]]
         self.assertNotIn("ts_guess", keys)
 
+    def test_dedup_merged_gsm_source_emits_path_search_ts_guess_calc(self):
+        # Benchmark reaction_06: GCN won equivalent-guess dedup
+        # (chosen_ts_method='gcn', a geometry-only method) but xtb-gsm
+        # merged into the chosen guess. The path_search calc must still
+        # emit, gated off the chosen guess's method_sources plus the
+        # populated gsm_log — not off the single primary method.
+        doc = _reaction_output_doc()
+        ts = doc["transition_states"][0]
+        ts["chosen_ts_method"] = "gcn"
+        ts["gsm_log"] = "calcs/.../TS0/gsm/stringfile.xyz0000"
+        ts["opt_input_xyz"] = "C 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.5 0.5 0.0"
+        ts["ts_guesses"] = [
+            {"index": 0, "method": "gcn",
+             "method_sources": ["gcn", "xtb-gsm"], "chosen": True},
+        ]
+        _, _, payload = self._submit(output_doc=doc)
+        ts_out = payload["transition_state"]
+        keys = [c["key"] for c in ts_out["calculations"]]
+        self.assertIn("ts_guess", keys)
+        ts_guess = next(c for c in ts_out["calculations"] if c["key"] == "ts_guess")
+        self.assertEqual(ts_guess["type"], "path_search")
+        self.assertEqual(ts_guess["path_search_result"].get("method"), "gsm")
+
+    def test_dedup_merged_prefers_populated_log_field(self):
+        # Chosen guess merged BOTH orca_neb and xtb-gsm, but the producer
+        # preserved only the NEB log (neb_log populated, gsm_log absent).
+        # The gate must select the method whose log field is populated so
+        # the gate and the subsequent log lookup agree.
+        doc = _reaction_output_doc()
+        ts = doc["transition_states"][0]
+        ts["chosen_ts_method"] = "gcn"
+        ts["neb_log"] = "calcs/.../TS0/neb/input.log"
+        ts["gsm_log"] = None
+        ts["opt_input_xyz"] = "C 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.5 0.5 0.0"
+        ts["ts_guesses"] = [
+            {"index": 0, "method": "gcn",
+             "method_sources": ["gcn", "xtb-gsm", "orca_neb"], "chosen": True},
+        ]
+        _, _, payload = self._submit(output_doc=doc)
+        ts_guess = next(c for c in payload["transition_state"]["calculations"]
+                        if c["key"] == "ts_guess")
+        self.assertEqual(ts_guess["path_search_result"].get("method"), "neb")
+
+    def test_dedup_merged_geometry_only_sources_no_parent_calc(self):
+        # GCN won and only geometry-only methods merged in — a stray
+        # gsm_log must NOT trigger a path_search calc without a
+        # path-search source in method_sources.
+        doc = _reaction_output_doc()
+        ts = doc["transition_states"][0]
+        ts["chosen_ts_method"] = "gcn"
+        ts["gsm_log"] = "calcs/.../TS0/gsm/stringfile.xyz0000"
+        ts["ts_guesses"] = [
+            {"index": 0, "method": "gcn",
+             "method_sources": ["gcn", "heuristics"], "chosen": True},
+        ]
+        _, _, payload = self._submit(output_doc=doc)
+        keys = [c["key"] for c in payload["transition_state"]["calculations"]]
+        self.assertNotIn("ts_guess", keys)
+
     def test_no_payload_carries_legacy_neb_type(self):
         # Regression guard: nothing in the bundle may emit the old
         # NEB-specific calculation type or wrapped result key.

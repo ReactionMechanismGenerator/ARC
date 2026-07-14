@@ -1270,6 +1270,60 @@ class TestTsGuessPathsKey(unittest.TestCase):
         self.assertIsNone(self.resolve({'method': 'xtb_gsm'}))
 
 
+class TestTsGuessPathProvenance(unittest.TestCase):
+    """``_ts_guess_path_provenance`` recovers a merged path-search source's
+    log path when a geometry-only method wins equivalent-guess dedup
+    (benchmark reaction_06: ``method=gcn``, ``method_sources`` also carrying
+    ``xtb-gsm``), without disturbing the primary-method behaviour or TS
+    selection.
+    """
+
+    class _StubTSG:
+        def __init__(self, method, log_path=None,
+                     method_sources=None, method_source_paths=None):
+            self.method = method
+            self.log_path = log_path
+            self.method_sources = method_sources if method_sources is not None else [method]
+            self.method_source_paths = method_source_paths or dict()
+
+    def setUp(self):
+        from arc.scheduler import _ts_guess_path_provenance
+        self.resolve = _ts_guess_path_provenance
+
+    def test_primary_path_method_wins(self):
+        # Unchanged behaviour: a guess whose own method is a path method.
+        tsg = self._StubTSG('xtb_gsm', log_path='/p/string.xyz0000',
+                            method_source_paths={'xtb_gsm': '/p/string.xyz0000'})
+        self.assertEqual(self.resolve(tsg), ('gsm', '/p/string.xyz0000'))
+
+    def test_geometry_primary_recovers_merged_gsm_source(self):
+        # Production spelling: the xtb_gsm adapter yields method 'xTB-GSM'
+        # -> lowercased 'xtb-gsm' in method_sources / method_source_paths.
+        tsg = self._StubTSG('gcn', log_path=None,
+                            method_sources=['gcn', 'xtb-gsm'],
+                            method_source_paths={'xtb-gsm': '/p/string.xyz0000'})
+        self.assertEqual(self.resolve(tsg), ('gsm', '/p/string.xyz0000'))
+
+    def test_geometry_primary_no_path_source_returns_none(self):
+        tsg = self._StubTSG('gcn', method_sources=['gcn', 'heuristics'])
+        self.assertEqual(self.resolve(tsg), (None, None))
+
+    def test_multiple_path_sources_first_in_order_wins(self):
+        # Deterministic: first path source in method_sources order with a
+        # preserved log wins.
+        tsg = self._StubTSG('gcn', method_sources=['gcn', 'xtb-gsm', 'orca_neb'],
+                            method_source_paths={'xtb-gsm': '/p/gsm',
+                                                 'orca_neb': '/p/neb.log'})
+        self.assertEqual(self.resolve(tsg), ('gsm', '/p/gsm'))
+
+    def test_path_source_without_preserved_log_falls_through(self):
+        # xtb_gsm listed but its log wasn't preserved → fall through to the
+        # next path source that has one.
+        tsg = self._StubTSG('gcn', method_sources=['gcn', 'xtb-gsm', 'orca_neb'],
+                            method_source_paths={'orca_neb': '/p/neb.log'})
+        self.assertEqual(self.resolve(tsg), ('neb', '/p/neb.log'))
+
+
 class TestPathsTemplateInitialization(unittest.TestCase):
     """``initialize_output_dict`` must seed both ``neb`` and ``gsm``
     slots on TS species so the per-method routing in

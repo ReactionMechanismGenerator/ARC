@@ -92,6 +92,32 @@ def _ts_guess_paths_key(method: object) -> str | None:
     return _TS_GUESS_METHOD_TO_PATHS_KEY.get(method.strip().lower())
 
 
+def _ts_guess_path_provenance(tsg: object) -> tuple[str | None, str | None]:
+    """Resolve the ``(paths-slot, log-path)`` a TS guess contributes to ``output[label]['paths']``.
+
+    The guess's own (primary) ``method`` takes precedence — unchanged behaviour for guesses whose
+    winning method is itself a path-search adapter. When the primary method is geometry-only
+    (e.g. ``gcn``) but a path-search method (``xtb-gsm`` / ``orca_neb`` / ``qst2``) was merged into
+    this guess during equivalent-guess clustering (``ARCSpecies.cluster_tsgs``), recover that
+    source's preserved log path from ``method_source_paths`` so the path-search provenance
+    (per-node energies / points) survives dedup. This does NOT change which guess/method won
+    selection — only which log path is routed into the ``paths`` slot. ``method_sources`` are
+    scanned in order; the first path-search source with a preserved log wins (deterministic).
+
+    Returns ``(None, None)`` when the guess contributes no path-search log.
+    """
+    key = _ts_guess_paths_key(getattr(tsg, 'method', None))
+    log_path = getattr(tsg, 'log_path', None)
+    if key and log_path:
+        return key, log_path
+    source_paths = getattr(tsg, 'method_source_paths', None) or dict()
+    for source in (getattr(tsg, 'method_sources', None) or []):
+        source_key = _ts_guess_paths_key(source)
+        if source_key and source_paths.get(source):
+            return source_key, source_paths[source]
+    return None, None
+
+
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
     default_job_types, default_ts_adapters, max_ess_trsh, max_rotor_trsh, rotor_scan_resolution, servers_dict = \
     settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], \
@@ -1388,9 +1414,9 @@ class Scheduler(object):
                 self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
                 self.species_dict[label].successful_methods = [self.species_dict[label].ts_guesses[0].method]
                 tsg0 = self.species_dict[label].ts_guesses[0]
-                paths_key = _ts_guess_paths_key(tsg0.method)
-                if paths_key and getattr(tsg0, 'log_path', None):
-                    self.output[label]['paths'][paths_key] = tsg0.log_path
+                paths_key, tsg0_log_path = _ts_guess_path_provenance(tsg0)
+                if paths_key and tsg0_log_path:
+                    self.output[label]['paths'][paths_key] = tsg0_log_path
 
     def run_opt_job(self, label: str, fine: bool = False):
         """
@@ -2435,9 +2461,9 @@ class Scheduler(object):
                     self.species_dict[label].initial_xyz = tsg.opt_xyz
                     self.species_dict[label].final_xyz = None
                     self.species_dict[label].ts_guesses_exhausted = False
-                    paths_key = _ts_guess_paths_key(tsg.method)
-                    if paths_key and getattr(tsg, 'log_path', None):
-                        self.output[label]['paths'][paths_key] = tsg.log_path
+                    paths_key, tsg_log_path = _ts_guess_path_provenance(tsg)
+                    if paths_key and tsg_log_path:
+                        self.output[label]['paths'][paths_key] = tsg_log_path
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''

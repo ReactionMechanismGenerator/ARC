@@ -1103,6 +1103,28 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
             log_field = _ts_guess_log_field_for_method(chosen_method)
             if chosen_log and log_field and not d.get(log_field):
                 d[log_field] = _make_rel_path(chosen_log, project_directory)
+            # Additive fallback for dedup-merged guesses: when the chosen
+            # guess's own (primary) method is geometry-only but a
+            # path-search method (xtb_gsm / orca_neb) merged into it during
+            # equivalent-guess clustering, route that source's preserved log
+            # (``method_source_paths``) into the matching field. Mirrors
+            # ``scheduler._ts_guess_path_provenance`` so restart-restored
+            # runs — where the scheduler's TS-selection write sites don't
+            # re-fire — still surface the path-search log. Does not change
+            # which method won selection. Only fires when neither path-log
+            # field was populated above (i.e. the scheduler's ``paths`` write
+            # didn't run), and sets exactly one field — first path source in
+            # ``method_sources`` order — so output.yml keeps the scheduler's
+            # single-slot, first-source-wins invariant and never claims two
+            # path logs for one guess.
+            if not d.get('neb_log') and not d.get('gsm_log'):
+                source_paths = getattr(chosen_guess, 'method_source_paths', None) or {}
+                for source in (getattr(chosen_guess, 'method_sources', None) or []):
+                    source_field = _ts_guess_log_field_for_method(source)
+                    source_log = source_paths.get(source)
+                    if source_field and source_log:
+                        d[source_field] = _make_rel_path(source_log, project_directory)
+                        break
         irc_paths = list(paths.get('irc') or [])
         d['irc_logs'] = [_make_rel_path(p, project_directory) for p in irc_paths]
         # Per-log direction in lockstep with ``irc_logs``: 'forward' /
