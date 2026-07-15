@@ -9,7 +9,8 @@ import os
 from math import isclose
 
 import arc.molecule.element as elements
-from arc.common import (SYMBOL_BY_NUMBER,
+from arc.common import (NUMBER_BY_SYMBOL,
+                        SYMBOL_BY_NUMBER,
                         almost_equal_coords,
                         convert_list_index_0_to_1,
                         dfs,
@@ -516,6 +517,7 @@ class ARCSpecies(object):
         if not isinstance(self.charge, int):
             raise SpeciesError(f'Charge for species {self.label} is not an integer. '
                                f'Got {self.charge} which is a {type(self.charge)}.')
+        self.check_multiplicity_parity()
         if not self.is_ts and self.initial_xyz is None and self.final_xyz is None and self.mol is None \
                 and not self.conformers:
             raise SpeciesError(f'No structure (xyz, SMILES, adjList, or Molecule) '
@@ -1592,6 +1594,66 @@ class ARCSpecies(object):
             else:
                 self.multiplicity = 1
                 logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 1')
+
+    def get_number_of_electrons(self) -> int | None:
+        """
+        Count the total number of electrons of the species, ignoring the net charge
+        (i.e., the sum of the atomic numbers of all atoms, as for the neutral species).
+
+        Returns:
+            Optional[int]: The total number of electrons, or ``None`` if the composition
+                           is not yet known (no Molecule and no xyz at this point).
+        """
+        if self.mol is not None:
+            return sum(atom.element.number for atom in self.mol.atoms)
+        xyz = self.get_xyz()
+        if xyz is None and len(self.conformers):
+            xyz = self.conformers[0]
+        if xyz and xyz.get('symbols'):
+            electrons = 0
+            for symbol in xyz['symbols']:
+                if symbol not in NUMBER_BY_SYMBOL:
+                    # Unknown/dummy atom symbol; cannot count electrons reliably.
+                    return None
+                electrons += NUMBER_BY_SYMBOL[symbol]
+            return electrons
+        return None
+
+    def check_multiplicity_parity(self):
+        """
+        Verify that the requested spin multiplicity is consistent with the electron count.
+
+        For any species the parity relation
+        ``(total_electrons - net_charge) % 2 == (multiplicity - 1) % 2``
+        must hold (an even electron count requires an odd multiplicity and vice versa).
+        This is an inviolable parity relation, so this guard can only ever fire on a
+        genuinely impossible specification (zero false positives). It is skipped
+        gracefully when either the multiplicity or the electron count is not yet known
+        (e.g. a TS or an xyz-less species defined only by descriptors that failed to
+        perceive a Molecule).
+
+        Raises:
+            SpeciesError: If the requested multiplicity has the wrong parity for the
+                          species' electron count and net charge.
+        """
+        if self.multiplicity is None or self.charge is None:
+            return
+        total_electrons = self.get_number_of_electrons()
+        if total_electrons is None:
+            return
+        n_electrons = total_electrons - self.charge
+        if n_electrons % 2 != (self.multiplicity - 1) % 2:
+            # The requested multiplicity has the wrong parity. Suggest the nearest valid ones.
+            lower = self.multiplicity - 1
+            valid = [m for m in (lower, self.multiplicity + 1) if m >= 1]
+            parity_word = 'odd' if n_electrons % 2 == 0 else 'even'
+            raise SpeciesError(
+                f'Impossible multiplicity for species {self.label}: a species with '
+                f'{total_electrons} electrons and a net charge of {self.charge} has '
+                f'{n_electrons} electrons, which requires an {parity_word} multiplicity, '
+                f'but a multiplicity of {self.multiplicity} was requested. '
+                f'Valid nearby multiplicities would be {valid}. '
+                f'Check the multiplicity (2S+1), charge, and composition of this species.')
 
     def make_ts_report(self):
         """A helper function to write content into the .ts_report attribute"""

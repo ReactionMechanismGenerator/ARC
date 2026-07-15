@@ -616,6 +616,38 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc7.multiplicity, 2)
         self.assertEqual(spc8.multiplicity, 1)
 
+    def test_check_multiplicity_parity(self):
+        """Test that an impossible electron-count/multiplicity parity raises a SpeciesError."""
+        # Valid pairings must NOT raise.
+        spc_even = ARCSpecies(label='ethylene', smiles='C=C', multiplicity=1, compute_thermo=False)
+        self.assertEqual(spc_even.get_number_of_electrons(), 16)
+        self.assertEqual(spc_even.multiplicity, 1)
+        spc_odd = ARCSpecies(label='HO2', smiles='[O]O', multiplicity=2, compute_thermo=False)
+        self.assertEqual(spc_odd.get_number_of_electrons(), 17)
+        self.assertEqual(spc_odd.multiplicity, 2)
+
+        # Even electrons + even multiplicity is impossible.
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='ethylene_bad', smiles='C=C', multiplicity=2, compute_thermo=False)
+        # Odd electrons + odd multiplicity is impossible.
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='HO2_bad', smiles='[O]O', multiplicity=1, compute_thermo=False)
+
+        # A charged species: even electron count with charge +1 gives an odd electron
+        # count, so an even multiplicity is required; an odd multiplicity must raise.
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='CH4_cation_bad', smiles='C', charge=1, multiplicity=1,
+                       xyz="""C  0.0 0.0 0.0
+                              H  0.6 0.6 0.6
+                              H -0.6 -0.6 0.6
+                              H -0.6 0.6 -0.6
+                              H  0.6 -0.6 -0.6""", compute_thermo=False)
+
+        # A TS with neither Molecule nor xyz has an unknown electron count; the guard
+        # must skip gracefully rather than raise.
+        ts = ARCSpecies(label='TS0', is_ts=True, multiplicity=2)
+        self.assertIsNone(ts.get_number_of_electrons())
+
     def test_as_dict(self):
         """Test Species.as_dict()"""
         spc_dict = self.spc3.as_dict()
