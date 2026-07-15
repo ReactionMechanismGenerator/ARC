@@ -75,9 +75,7 @@ reaction(
     reactants=${rxn.reactants},
     products=${rxn.products},
     transitionState='${rxn.ts_species.label}',
-% if tunneling:
-    tunneling='${tunneling}',
-% endif
+    tunneling='Eckart',
 )
 % endfor
 
@@ -247,16 +245,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.generate_ts_files(statmech_dir, skip_rotors)
         success = run_arkane(statmech_dir)
         if not success:
-            # A submerged/negative barrier makes Eckart tunneling invalid and aborts the whole Arkane
-            # run. Retry once without a tunneling correction so a rate coefficient can still be produced
-            # (barrierless/submerged reactions cannot use an Eckart correction meaningfully anyway).
-            if arkane_failed_on_invalid_barrier(statmech_dir):
-                logger.warning('Arkane failed because a reaction barrier is invalid for Eckart tunneling '
-                               '(likely submerged/barrierless). Retrying without a tunneling correction.')
-                self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors, tunneling=None)
-                success = run_arkane(statmech_dir)
-            if not success:
-                return
+            return
         self.parse_arkane_kinetics_output(statmech_dir)
         for reaction in self.reactions:
             plotter.log_kinetics(reaction.ts_species.label, path=statmech_dir)
@@ -314,7 +303,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                               statmech_dir: str,
                               skip_rotors: bool = False,
                               e0_only: bool = False,
-                              tunneling: str | None = 'Eckart',
                               ) -> None:
         """
         Generate the Arkane main input file.
@@ -322,15 +310,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         Args:
             statmech_dir (str): The path to the statmech directory.
             skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
-            tunneling (str | None, optional): The tunneling correction to request for reactions.
-                                              ``None`` disables tunneling (used to retry a reaction whose
-                                              submerged/negative barrier makes Eckart invalid).
         """
         input_path = os.path.join(statmech_dir, 'input.py')
         input_content = self.render_arkane_input_template(statmech_dir=statmech_dir,
                                                           skip_rotors=skip_rotors,
-                                                          e0_only=e0_only,
-                                                          tunneling=tunneling)
+                                                          e0_only=e0_only)
         with open(input_path, 'w', encoding='utf-8') as f:
             f.write(input_content)
 
@@ -338,7 +322,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                                      statmech_dir: str,
                                      skip_rotors: bool = False,
                                      e0_only: bool = False,
-                                     tunneling: str | None = 'Eckart',
                                      ) -> str:
         """
         Render the Arkane main input template.
@@ -347,7 +330,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             statmech_dir (str): The path to the statmech directory.
             skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
             e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0. Default: ``False``.
-            tunneling (str | None, optional): The tunneling correction to request (``None`` disables it).
         """
         species_list = list()
         for spc in self.species:
@@ -400,7 +382,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             t_min=self.T_min,
             t_max=self.T_max,
             t_count=self.T_count,
-            tunneling=tunneling,
         )
 
     def generate_species_files(self,
@@ -547,28 +528,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             _parse_conformer_statmech(species, output_content)
         for rxn in self.reactions:
             _parse_conformer_statmech(rxn.ts_species, output_content)
-
-
-def arkane_failed_on_invalid_barrier(statmech_dir: str) -> bool:
-    """
-    Whether the most recent Arkane run failed because a barrier is invalid for Eckart tunneling.
-
-    A submerged or negative barrier raises a ValueError in Arkane's Eckart method, e.g.
-    "One or both of the barrier heights of ... encountered in Eckart method are invalid". Detecting
-    this lets the caller retry the run without a tunneling correction.
-
-    Args:
-        statmech_dir (str): The statmech directory containing Arkane's ``stderr.log``.
-
-    Returns:
-        bool: ``True`` if the invalid-barrier failure signature is present in the Arkane stderr.
-    """
-    stderr_path = os.path.join(statmech_dir, 'stderr.log')
-    if not os.path.isfile(stderr_path):
-        return False
-    content = open(stderr_path, encoding='utf-8', errors='ignore').read()
-    return 'Eckart method are invalid' in content \
-        or ('barrier heights' in content and 'Eckart' in content)
 
 
 def run_arkane(statmech_dir: str) -> bool:
