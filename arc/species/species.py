@@ -109,6 +109,11 @@ class ARCSpecies(object):
         bond_corrections (dict, optional): The bond additivity corrections (BAC) to be used. Determined from the
                                            structure if not directly given.
         compute_thermo (bool, optional): Whether to calculate thermodynamic properties for this species.
+        thermo_at_own_level (bool, optional): Relevant only when ``adaptive_levels`` are used. If ``True``, the
+            species' thermochemistry is computed at its own size-appropriate (granular) adaptive level even when it
+            participates in a reaction; the reaction's energetics then use a separate relabeled copy of the species
+            evaluated at the reaction-consistent level. If ``False`` (default), the species itself is evaluated at the
+            reaction-consistent (coarser) level and no copy is made.
         include_in_thermo_lib (bool, optional): Whether to include in the output RMG library.
         e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0.
         species_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
@@ -231,6 +236,11 @@ class ARCSpecies(object):
         t1 (float): The T1 diagnostic parameter from Molpro.
         neg_freqs_trshed (list): A list of negative frequencies this species was troubleshooted for.
         compute_thermo (bool): Whether to calculate thermodynamic properties for this species.
+        thermo_at_own_level (bool): Whether to compute this species' thermochemistry at its own granular adaptive
+            level even when it participates in a reaction (see the constructor argument; relevant for ``adaptive_levels``).
+        adaptive_lot_n_heavy (int): An internal override for adaptive-levels selection - the heavy-atom count to key the
+            level by instead of this species' own count (set to the reaction-wide count for reaction participants).
+            ``None`` means use the species' own heavy-atom count.
         include_in_thermo_lib (bool): Whether to include in the output RMG library.
         e0_only (bool): Whether to only run statmech (w/o thermo) to compute E0.
         thermo (ThermoData): The thermo data calculated by ARC with 'H298' in kJ/mol and 'S298' in J/mol*K.
@@ -307,6 +317,8 @@ class ARCSpecies(object):
                  charge: int | None = None,
                  checkfile: str | None = None,
                  compute_thermo: bool | None = None,
+                 thermo_at_own_level: bool = False,
+                 adaptive_lot_n_heavy: int | None = None,
                  include_in_thermo_lib: bool | None = True,
                  consider_all_diastereomers: bool = True,
                  directed_rotors: dict | None = None,
@@ -409,6 +421,8 @@ class ARCSpecies(object):
             self.chosen_ts_method = None
             self.chosen_ts_list = list()
             self.compute_thermo = compute_thermo if compute_thermo is not None else not self.is_ts
+            self.thermo_at_own_level = thermo_at_own_level
+            self.adaptive_lot_n_heavy = adaptive_lot_n_heavy
             self.include_in_thermo_lib = include_in_thermo_lib
             self.e0_only = e0_only
             self.long_thermo_description = ''
@@ -463,7 +477,7 @@ class ARCSpecies(object):
                         self.multiplicity = self.mol.multiplicity
                     if self.charge is None:
                         self.charge = self.mol.get_net_charge()
-            if regen_mol:
+            if regen_mol and not (self.mol is not None and self.keep_mol):
                 # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
                 # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
                 if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
@@ -688,6 +702,10 @@ class ARCSpecies(object):
             species_dict['charge'] = self.charge
         if not self.compute_thermo and not self.is_ts:
             species_dict['compute_thermo'] = self.compute_thermo
+        if self.thermo_at_own_level:
+            species_dict['thermo_at_own_level'] = self.thermo_at_own_level
+        if self.adaptive_lot_n_heavy is not None:
+            species_dict['adaptive_lot_n_heavy'] = self.adaptive_lot_n_heavy
         if not self.include_in_thermo_lib:
             species_dict['include_in_thermo_lib'] = self.include_in_thermo_lib
         species_dict['number_of_rotors'] = self.number_of_rotors
@@ -884,6 +902,8 @@ class ARCSpecies(object):
         self.multi_species = species_dict['multi_species'] if 'multi_species' in species_dict else None
         self.charge = species_dict['charge'] if 'charge' in species_dict else 0
         self.compute_thermo = species_dict['compute_thermo'] if 'compute_thermo' in species_dict else not self.is_ts
+        self.thermo_at_own_level = species_dict['thermo_at_own_level'] if 'thermo_at_own_level' in species_dict else False
+        self.adaptive_lot_n_heavy = species_dict['adaptive_lot_n_heavy'] if 'adaptive_lot_n_heavy' in species_dict else None
         self.include_in_thermo_lib = species_dict['include_in_thermo_lib'] if 'include_in_thermo_lib' in species_dict else True
         self.e0_only = species_dict['e0_only'] if 'e0_only' in species_dict else False
         self.number_of_radicals = species_dict['number_of_radicals'] if 'number_of_radicals' in species_dict else None
@@ -1131,6 +1151,7 @@ class ARCSpecies(object):
                             n_confs: int = 10,
                             e_confs: float = 5,
                             plot_path: str = None,
+                            economic_generation: bool = False,
                             ) -> None:
         """
         Generate conformers.
@@ -1142,6 +1163,10 @@ class ARCSpecies(object):
                                        (unique) generated conformers will be stored in the .conformers attribute.
             plot_path (str, optional): A folder path in which the plot will be saved.
                                        If None, the plot will not be shown (nor saved).
+            economic_generation (bool, optional): Use a scaled-down (but still n_rotors / n_heavy-dependent)
+                                                  conformer count. Intended for cheap use-cases such as BDE
+                                                  scissors fragments and atom-mapping fingerprints, where
+                                                  full auto-scaling is wasteful.
         """
         if self.is_ts:
             return
@@ -1162,6 +1187,7 @@ class ARCSpecies(object):
                                                       return_all_conformers=False,
                                                       plot_path=plot_path,
                                                       diastereomers=diastereomers,
+                                                      economic_generation=economic_generation,
                                                       )
         if len(lowest_confs):
             self.conformers.extend([conf['xyz'] for conf in lowest_confs])
@@ -1638,10 +1664,19 @@ class ARCSpecies(object):
             if len(self.mol.atoms) != len(xyz['symbols']):
                 raise SpeciesError(f'The number of atoms in the molecule and in the coordinates of {self.label} is different.'
                                    f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
+            # Use the mol's radical count as a perception hint only when
+            # the user didn't specify n_radicals AND the mol's multiplicity
+            # matches the species multiplicity (avoids e.g., forcing triplet
+            # perception on a user-specified singlet O atom).
+            _n_rad_for_perception = self.number_of_radicals
+            if _n_rad_for_perception is None and self.multiplicity is not None:
+                _mol_n_rad = sum(a.radical_electrons for a in self.mol.atoms)
+                if _mol_n_rad and self.mol.multiplicity == self.multiplicity:
+                    _n_rad_for_perception = _mol_n_rad
             perceived_mol = perceive_molecule_from_xyz(xyz,
                                                        charge=self.charge,
                                                        multiplicity=self.multiplicity,
-                                                       n_radicals=self.number_of_radicals,
+                                                       n_radicals=_n_rad_for_perception,
                                                        n_fragments=self.get_n_fragments(),
                                                        )
             if perceived_mol is not None:
@@ -1992,13 +2027,18 @@ class ARCSpecies(object):
                 sort_atoms_in_descending_label_order(split)
 
         if len(mol_splits) == 1:  # If cutting leads to only one split, then the split is cyclic.
+            mol1 = mol_splits[0]
+            self._assign_radicals_after_scission(mol=mol1)
+            mol1.update_multiplicity()
             spc1 = ARCSpecies(label=self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_cyclic',
-                              mol=mol_splits[0],
-                              multiplicity=mol_splits[0].multiplicity,
-                              charge=mol_splits[0].get_net_charge(),
+                              mol=mol1,
+                              xyz=self.final_xyz,
+                              multiplicity=mol1.multiplicity,
+                              charge=mol1.get_net_charge(),
                               compute_thermo=False,
-                              e0_only=True)
-            spc1.generate_conformers()
+                              e0_only=True,
+                              keep_mol=True)
+            spc1.generate_conformers(economic_generation=True)
             return [spc1]
         elif len(mol_splits) == 2:
             mol1, mol2 = mol_splits
@@ -2020,19 +2060,7 @@ class ARCSpecies(object):
 
         added_radical = list()
         for mol, label in zip([mol1, mol2], [label1, label2]):
-            for atom in mol.atoms:
-                theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
-                                     - atom.get_total_bond_order() \
-                                     - atom.radical_electrons - \
-                                     2 * atom.lone_pairs
-                if theoretical_charge == atom.charge + 1:
-                    # we're missing a radical electron on this atom
-                    if label not in added_radical or label == 'H':
-                        atom.radical_electrons += 1
-                        added_radical.append(label)
-                    else:
-                        raise SpeciesError(f'Could not figure out which atom should gain a radical '
-                                           f'due to scission in {self.label}')
+            self._assign_radicals_after_scission(mol=mol, label=label, added_radical=added_radical)
         mol1.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
         mol2.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
 
@@ -2053,7 +2081,7 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc1.generate_conformers()
+        spc1.generate_conformers(economic_generation=True)
         spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
                           mol=mol2,
@@ -2063,10 +2091,38 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc2.generate_conformers()
+        spc2.generate_conformers(economic_generation=True)
         spc2.rotors_dict = None
 
         return [spc1, spc2]
+
+    def _assign_radicals_after_scission(self,
+                                        mol: Molecule,
+                                        label: str = None,
+                                        added_radical: list = None):
+        """
+        A helper function to assign radical electrons to atoms after scission.
+
+        Args:
+            mol (Molecule): The molecule to update.
+            label (str, optional): The label of the species.
+            added_radical (list, optional): A list of labels for which a radical was already added.
+        """
+        for atom in mol.atoms:
+            theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
+                                 - atom.get_total_bond_order() \
+                                 - atom.radical_electrons - \
+                                 2 * atom.lone_pairs
+            if theoretical_charge == atom.charge + 1:
+                # we're missing a radical electron on this atom
+                if added_radical is None:
+                    atom.radical_electrons += 1
+                elif label not in added_radical or label == 'H':
+                    atom.radical_electrons += 1
+                    added_radical.append(label)
+                else:
+                    raise SpeciesError(f'Could not figure out which atom should gain a radical '
+                                       f'due to scission in {self.label}')
 
     def populate_ts_checks(self):
         """Populate (or restart) the .ts_checks attribute with default (``None``) values."""
@@ -2467,7 +2523,7 @@ class TSGuess(object):
             xyz = xyz_to_str(xyz)
         return xyz
 
-    def almost_equal_tsgs(self, other: 'TSGuess') -> bool:
+    def almost_equal_tsgs(self, other: TSGuess) -> bool:
         """
         Determine whether two TSGuess object instances represent the same geometry.
 

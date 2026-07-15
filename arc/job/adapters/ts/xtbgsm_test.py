@@ -28,6 +28,9 @@ class TestxTBGSMAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        for i in range(10):
+            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, f'test_xTBAGSMdapter_{i}'),
+                                ignore_errors=True)
         cls.job_1 = xTBGSMAdapter(project='test_1',
                                   job_type='tsg',
                                   project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAGSMdapter_1'),
@@ -132,17 +135,6 @@ H      -1.24880926   -0.46263779    0.00000000
         self.job_2.execute()
         traj = parse_trajectory(self.job_2.stringfile_path)
         self.assertEqual(len(traj), 9)
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests.
-        """
-        for i in range(10):
-            path = os.path.join(ARC_TESTING_PATH, f'test_xTBAGSMdapter_{i}')
-            shutil.rmtree(path, ignore_errors=True)
-
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

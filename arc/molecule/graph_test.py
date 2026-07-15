@@ -340,9 +340,9 @@ class TestGraph(unittest.TestCase):
         """
         Tests the vertex connectivity values as introduced by Morgan (1965).
         
-        First CV1 is the number of neighbours
-        CV2 is the sum of neighbouring CV1 values
-        CV3 is the sum of neighbouring CV2 values
+        First CV1 is the number of neighbors
+        CV2 is the sum of neighboring CV1 values
+        CV3 is the sum of neighboring CV2 values
         
         Graph:     Expected (and tested) values:
         

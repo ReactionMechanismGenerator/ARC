@@ -1,5 +1,5 @@
 """
-An adapter for executing Orca 5 jobs
+An adapter for executing Orca 5/6 jobs
 
 https://orcaforum.kofo.mpg.de/app.php/portal
 """
@@ -291,9 +291,10 @@ class OrcaAdapter(JobAdapter):
         # Orca requires different blocks for wavefunction methods and DFT methods
         if self.level.method_type == 'dft':
             input_dict['method_class'] = 'KS'
-            # DFT grid must be the same for both opt and freq.
+            # Use a consistent DFT grid for fine_opt jobs and for any job with a frequency calculation
+            # (`freq` and `optfreq`), so `optfreq` is treated like `freq` here and defaults to `defgrid3`.
             # Users can override by setting `dft_grid` in args.keyword (e.g. dft_grid: DEFGRID1).
-            self.args['keyword'].setdefault('dft_grid', 'defgrid3' if self.fine else 'defgrid2')
+            self.args['keyword'].setdefault('dft_grid', 'defgrid3' if self.fine or self.job_type in ['freq', 'optfreq'] else 'defgrid2')
         elif self.level.method_type == 'wavefunction':
             input_dict['method_class'] = 'HF'
             if 'dlpno' in self.level.method:

@@ -109,6 +109,8 @@ class TestOpenbabelAdapter(unittest.TestCase):
 
     def test_write_input_file(self):
         """Test the write_input_file function"""
+        if self.job_3.opt_xyz is None:
+            self.job_3.execute()
         self.job_3.write_input_file(settings = ob_default_settings)
         self.assertTrue(os.path.isfile(os.path.join(self.job_3.local_path, "input.yml")))
         content = read_yaml_file(os.path.join(self.job_3.local_path, "input.yml"))
@@ -139,6 +141,8 @@ H       1.16141000   -2.05836000   -0.46415000
             else:
                 self.assertEqual(expected[key], content[key])
 
+        if self.job_4.opt_xyz is None:
+            self.job_4.execute()
         self.job_4.write_input_file(settings = ob_default_settings)
         self.assertTrue(os.path.isfile(os.path.join(self.job_4.local_path, "input.yml")))
         content = read_yaml_file(os.path.join(self.job_4.local_path, "input.yml"))

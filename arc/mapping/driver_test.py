@@ -12,7 +12,7 @@ from arc.common import ARC_PATH
 from arc.family import get_reaction_family_products
 from arc.mapping.driver import *
 from arc.reaction import ARCReaction
-from arc.mapping.engine import check_atom_map
+from arc.mapping.engine import check_atom_map, label_species_atoms, map_pairs
 from arc.species.species import ARCSpecies
 
 from itertools import permutations
@@ -875,6 +875,20 @@ class TestMappingDriver(unittest.TestCase):
         self.assertIn(atom_map[7], [6, 7])
         self.assertIn(atom_map[8], [7, 8])
 
+    def test_map_pairs_failure_condition_guarded_in_map_rxn(self):
+        """
+        Test the condition guarded by map_rxn(): a fragment pair that cannot be mapped
+        makes map_pairs() return a list containing None, in which case map_rxn() returns None
+        instead of passing the maps to glue_maps().
+        """
+        ethanol = ARCSpecies(label='ethanol', smiles='CCO')
+        dms = ARCSpecies(label='dimethyl_ether', smiles='COC')
+        label_species_atoms([ethanol])
+        label_species_atoms([dms])
+        fragment_maps = map_pairs([(ethanol, dms)])
+        self.assertEqual(fragment_maps, [None])
+        self.assertTrue(any(fragment_map is None for fragment_map in fragment_maps))
+
     def test_convert_label_dict(self):
         """Test the convert_label_dict() function."""
         rxn_1 = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='O2', smiles='[O][O]')],
@@ -1120,7 +1134,7 @@ class TestMappingDriver(unittest.TestCase):
                                                                     11 H u0 p0 c0 {4,S}
                                                                     12 H u0 p0 c0 {5,S}""")
         rxn = ARCReaction(reactants=['C6H6_a'], products=['C6H6_b'], r_species=[r_1], p_species=[p_1])
-        self.assertEqual(rxn.atom_map, [3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11])
+        self.assertIn(rxn.atom_map, [[3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11], [3, 2, 1, 0, 5, 4, 10, 9, 8, 6, 7, 11]])
         self.assertTrue(check_atom_map(rxn))
 
         # Disproportionation: HO2 + NHOH <=> NH2OH + O2
@@ -1373,7 +1387,7 @@ class TestMappingDriver(unittest.TestCase):
                                                                     11 H u0 p0 c0 {4,S}
                                                                     12 H u0 p0 c0 {5,S}""")
         rxn = ARCReaction(reactants=['C6H6_1'], products=['C6H6_b'], r_species=[r_1], p_species=[p_1])
-        self.assertEqual(rxn.atom_map, [3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11])
+        self.assertIn(rxn.atom_map, [[3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11], [3, 2, 1, 0, 5, 4, 10, 9, 8, 6, 7, 11]])
         self.assertTrue(check_atom_map(rxn))
 
     def test_get_atom_map_7(self):
@@ -1420,10 +1434,12 @@ class TestMappingDriver(unittest.TestCase):
         rxn = ARCReaction(r_species=[ARCSpecies(label="r1", smiles="F[C]F", xyz=r1_xyz),
                                      ARCSpecies(label="r2", smiles="[CH3]", xyz=r2_xyz)],
                           p_species=[ARCSpecies(label="p1", smiles="F[C](F)C", xyz=p1_xyz)])
-        self.assertIn(rxn.atom_map[:2], [[0, 1], [1, 0]])
-        self.assertEqual(rxn.atom_map[2], 2)
-        self.assertEqual(rxn.atom_map[3], 3)
-        self.assertIn(tuple(rxn.atom_map[4:]), list(permutations([4, 5, 6])))
+        if rxn.atom_map[0] == 0:
+            self.assertEqual(rxn.atom_map[:4], [0, 1, 2, 3])
+        else: # Only other F can be in position 0.
+            self.assertEqual(rxn.atom_map[:4], [2, 1, 0, 3])
+        self.assertIn(tuple(rxn.atom_map[4:]), tuple(permutations([4, 5, 6])))
+        
         self.assertTrue(check_atom_map(rxn))
 
     def test_get_atom_map_9(self):
@@ -1542,22 +1558,42 @@ class TestMappingDriver(unittest.TestCase):
         rxn = ARCReaction(reactants=['C4H10', 'CO'], products=['C5H10O'],
                           r_species=[r_1, r_2], p_species=[p_1])
         atom_map = rxn.atom_map
-        self.assertEqual(atom_map[:4], [0, 1, 2, 3])
-        self.assertIn(tuple(rxn.atom_map[4:7]), permutations([6, 7, 8]))
-        self.assertEqual(atom_map[7], 15)
-        self.assertIn(tuple(rxn.atom_map[8:11]), permutations([9, 10, 11]))
-        self.assertIn(tuple(rxn.atom_map[11:14]), permutations([12, 13, 14]))
-        self.assertEqual(atom_map[14:], [4, 5])
         self.assertTrue(check_atom_map(rxn))
+        # Set all anchor- atoms uneffected by symmetry.
+        self.assertEqual(atom_map[1], 1) # Middle Carbon
+        self.assertEqual(atom_map[7], 15) # Middel Hydrogen
+        self.assertEqual(atom_map[-2:], [4, 5]) # CO (In that order!)
+        # Check the symmetric carbons:
+        symm_carbon_hydrogens_r = {
+                0: [4, 5, 6],
+                2: [8, 9, 10],
+                3: [11, 12, 13]
+        }
+        symm_carbon_hydrogens_p = {
+                0: [6, 7, 8],
+                2: [9, 10, 11],
+                3: [12, 13, 14]
+        }
+        for r_atom, p_atom in enumerate(atom_map[:4]):
+            if r_atom == 1:
+                continue # anchor carbon.
+            self.assertIn(p_atom, [0, 2, 3])
+            for r_h in symm_carbon_hydrogens_r[r_atom]:
+                self.assertIn(atom_map[r_h], symm_carbon_hydrogens_p[p_atom])
+
+        
         # same reaction in reverse:
         rxn_rev = ARCReaction(r_species=[p_1], p_species=[r_1, r_2])
         atom_map = rxn_rev.atom_map
-        for index in [0, 2, 3]:
-            self.assertIn(atom_map[index], [0, 2, 3])
-        self.assertEqual(atom_map[1], 1)
-        self.assertEqual(atom_map[4], 14)
-        self.assertEqual(atom_map[5], 15)
-        self.assertEqual(atom_map[15], 7)
+        self.assertEqual(atom_map[1], 1) # Middle Carbon
+        self.assertEqual(atom_map[15], 7) # Middel Hydrogen
+        self.assertEqual(atom_map[4:6], [14, 15]) # CO (In that order!)
+        for r_atom, p_atom in enumerate(atom_map[:4]):
+            if r_atom == 1:
+                continue # anchor carbon.
+            self.assertIn(p_atom, [0, 2, 3])
+            for p_h in symm_carbon_hydrogens_p[r_atom]:
+                self.assertIn(atom_map[p_h], symm_carbon_hydrogens_r[p_atom])
         self.assertTrue(check_atom_map(rxn_rev))
 
     def test_get_atom_map_12(self):
