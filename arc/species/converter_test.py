@@ -18,6 +18,7 @@ from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 
 import arc.species.converter as converter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
+from arc.constants import angstrom_to_bohr
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
 from arc.species.perceive import perceive_molecule_from_xyz
@@ -699,6 +700,37 @@ H      3.654100    0.340300    0.057100"""
                                    (3.6541, 0.3403, 0.0571))}
         xyz = converter.str_to_xyz(xyz_format)
         self.assertEqual(xyz, expected_xyz)
+
+    def test_reorder_xyz_string_atom_first(self):
+        """Test reordering atom-first XYZ strings with unit conversion"""
+        xyz_format = "C 0.0 1.0 2.0\nH -1.0 0.5 0.0"
+        converted = converter.reorder_xyz_string(xyz_str=xyz_format, reverse_atoms=True, convert_to="bohr")
+        converted_lines = converted.splitlines()
+        self.assertEqual(len(converted_lines), 2)
+
+        x1, y1, z1, s1 = converted_lines[0].split()
+        self.assertEqual(s1, "C")
+        self.assertAlmostEqual(float(x1), 0.0)
+        self.assertAlmostEqual(float(y1), 1.0 * angstrom_to_bohr)
+        self.assertAlmostEqual(float(z1), 2.0 * angstrom_to_bohr)
+
+        x2, y2, z2, s2 = converted_lines[1].split()
+        self.assertEqual(s2, "H")
+        self.assertAlmostEqual(float(x2), -1.0 * angstrom_to_bohr)
+        self.assertAlmostEqual(float(y2), 0.5 * angstrom_to_bohr)
+        self.assertAlmostEqual(float(z2), 0.0)
+
+    def test_reorder_xyz_string_coordinate_first(self):
+        """Test reordering coordinate-first XYZ strings back to atom-last order with conversion"""
+        xyz_format = "0.0 0.0 0.0 N\n1.0 0.0 0.0 H"
+        converted = converter.reorder_xyz_string(
+            xyz_str=xyz_format,
+            reverse_atoms=False,
+            units="bohr",
+            convert_to="angstrom",
+        )
+        expected = "0.0 0.0 0.0 N\n0.529177 0.0 0.0 H"
+        self.assertEqual(converted, expected)
 
     def test_xyz_to_str(self):
         """Test converting an ARC xyz format to a string xyz format"""
