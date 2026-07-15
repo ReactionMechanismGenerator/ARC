@@ -7,6 +7,7 @@ Unit tests for arc.job.adapters.ts.crest
 
 import os
 import tempfile
+import types
 import unittest
 
 from arc.species.converter import str_to_xyz, xyz_to_str
@@ -94,6 +95,89 @@ class TestCrestAdapter(unittest.TestCase):
             crest_mod.CREST_PATH = backups["CREST_PATH"]
             crest_mod.CREST_ENV_PATH = backups["CREST_ENV_PATH"]
             crest_mod.SERVERS = backups["SERVERS"]
+
+    def test_h_abstraction_constrains_heavy_heavy_distance_and_bridge_angle(self):
+        """The H-abstraction $constrain block pins A--B distance and the A--H--B angle."""
+        from arc.job.adapters.ts import crest as crest_mod
+
+        # O(0)--H(1)--O(2)--H(3), an OH + OH -> H2O + O style seed. A=0, H=1, B=2.
+        xyz = str_to_xyz("""O 0.00000000 -0.02752832 -1.20590500
+                            H 0.00000000 -0.02752832 -0.03383145
+                            O 0.00000000 -0.02752832  1.12142787
+                            H 0.00000000  0.90131726  1.37454478""")
+        constraints = {
+            'atoms': (0, 1, 2),
+            'distance_pairs': ((0, 1), (1, 2)),
+            'angle_atoms': (0, 1, 2),
+        }
+
+        backups = {
+            'settings': crest_mod.settings,
+            'submit_scripts': crest_mod.submit_scripts,
+            'CREST_PATH': crest_mod.CREST_PATH,
+            'CREST_ENV_PATH': crest_mod.CREST_ENV_PATH,
+            'SERVERS': crest_mod.SERVERS,
+        }
+        try:
+            crest_mod.settings = {'submit_filenames': {'PBS': 'submit.sh'}}
+            crest_mod.submit_scripts = {'local': {}}
+            crest_mod.CREST_PATH = '/usr/bin/crest'
+            crest_mod.CREST_ENV_PATH = ''
+            crest_mod.SERVERS = {
+                'local': {'cluster_soft': 'pbs', 'cpus': 4, 'memory': 8, 'queue': 'testq'},
+            }
+            crest_path = crest_mod.crest_ts_conformer_search(
+                xyz_guess=xyz,
+                constraints=constraints,
+                path=self.tmpdir.name,
+                xyz_crest_int=3,
+            )
+            with open(os.path.join(crest_path, 'constraints.inp')) as f:
+                constraints_text = f.read()
+            # The two original A--H and H--B distances remain.
+            self.assertIn('distance: 1, 2, auto', constraints_text)
+            self.assertIn('distance: 2, 3, auto', constraints_text)
+            # The heavy--heavy A--B distance (1-based 1, 3) is now also pinned.
+            self.assertIn('distance: 1, 3, auto', constraints_text)
+            # The A--H--B bridge angle (1-based 1, 2, 3) is now constrained.
+            self.assertIn('angle: 1, 2, 3, auto', constraints_text)
+        finally:
+            crest_mod.settings = backups['settings']
+            crest_mod.submit_scripts = backups['submit_scripts']
+            crest_mod.CREST_PATH = backups['CREST_PATH']
+            crest_mod.CREST_ENV_PATH = backups['CREST_ENV_PATH']
+            crest_mod.SERVERS = backups['SERVERS']
+
+    def test_tiny_system_gate_skips_crest_only_for_whole_molecule_core(self):
+        """CREST is gated off for a 4-atom H-abs case but not for one with real spectators."""
+        from arc.job.adapters.ts import crest as crest_mod
+
+        def make_rxn(family, reactant_atom_counts):
+            return types.SimpleNamespace(
+                family=family,
+                r_species=[types.SimpleNamespace(number_of_atoms=n) for n in reactant_atom_counts],
+            )
+
+        # OH + OH -> H2O + O: 4 atoms, only 1 spectator -> skip CREST.
+        self.assertTrue(
+            crest_mod._crest_reactive_core_covers_molecule(make_rxn('H_Abstraction', [2, 2]))
+        )
+        # H + H2: 3 atoms, no spectators -> skip CREST.
+        self.assertTrue(
+            crest_mod._crest_reactive_core_covers_molecule(make_rxn('H_Abstraction', [1, 2]))
+        )
+        # CH4 + OH -> CH3 + H2O: 7 atoms, 4 spectators -> CREST runs.
+        self.assertFalse(
+            crest_mod._crest_reactive_core_covers_molecule(make_rxn('H_Abstraction', [5, 2]))
+        )
+        # A different family is never gated by this predicate.
+        self.assertFalse(
+            crest_mod._crest_reactive_core_covers_molecule(make_rxn('XY_Addition_MultipleBond', [2, 2]))
+        )
+        # Missing atom counts -> do not skip (fail safe toward running CREST).
+        self.assertFalse(
+            crest_mod._crest_reactive_core_covers_molecule(make_rxn('H_Abstraction', [None, 2]))
+        )
 
     def test_creates_submit_file_without_crest_templates(self):
         """

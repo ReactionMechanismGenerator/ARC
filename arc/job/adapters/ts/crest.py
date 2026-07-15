@@ -172,6 +172,14 @@ class CrestAdapter(JobAdapter):
                 logger.warning('CREST is not available. Skipping CREST TS search.')
                 break
 
+            if _crest_reactive_core_covers_molecule(rxn):
+                logger.info(
+                    f'Skipping CREST TS search for {rxn.label}: the reactive core spans essentially '
+                    f'the entire molecule (<=1 spectator atom), so CREST has no conformational degrees '
+                    f'of freedom to sample. Deferring to the other TS-search methods.'
+                )
+                continue
+
             if rxn.ts_species is None:
                 rxn.ts_species = ARCSpecies(label='TS',
                                             is_ts=True,
@@ -277,6 +285,29 @@ class CrestAdapter(JobAdapter):
         self.execute_incore()
 
 
+def _crest_reactive_core_covers_molecule(rxn: 'ARCReaction') -> bool:
+    """
+    Return whether the CREST reactive core spans essentially the whole molecule.
+
+    For H_Abstraction the reactive core is the three-center A--H--B triad. When the TS has
+    at most one atom outside that triad there are no meaningful spectator conformational
+    degrees of freedom for CREST metadynamics to sample, so CREST cannot improve on the
+    heuristic seed and should be skipped (the other TS-search methods still cover the case).
+
+    This is intentionally conservative: it only returns ``True`` for H_Abstraction systems
+    with <=1 spectator atom (i.e. total atom count <= 4), never for systems that retain
+    real spectator degrees of freedom.
+    """
+    if getattr(rxn, 'family', None) != 'H_Abstraction':
+        return False
+    reactant_species = getattr(rxn, 'r_species', None) or []
+    atom_counts = [getattr(spc, 'number_of_atoms', None) for spc in reactant_species]
+    if not atom_counts or any(count is None for count in atom_counts):
+        return False
+    reactive_core_size = 3  # the A--H--B triad
+    return (sum(atom_counts) - reactive_core_size) <= 1
+
+
 def crest_ts_conformer_search(
     xyz_guess: dict,
     a_atom: Optional[int] = None,
@@ -323,6 +354,19 @@ def crest_ts_conformer_search(
     distance_pairs = tuple((atom_1 + 1, atom_2 + 1)
                            for atom_1, atom_2 in constraints['distance_pairs'])
 
+    # The three-center H-abstraction path additionally pins the heavy--heavy (A--B)
+    # separation and the A--H--B bridge angle. Without them GFN2-xTB metadynamics can
+    # collapse a linear A...H...B seed into a bent A--B minimum on small double-radical
+    # PESs, and the post-CREST angle guard then rejects the result. ``angle_atoms`` is
+    # present only for the H-abstraction (three-center) case; the XY four-center path
+    # does not set it and is intentionally left unchanged.
+    angle_atoms = constraints.get('angle_atoms')
+    heavy_heavy_pair = None
+    angle_triad = None
+    if angle_atoms is not None:
+        angle_triad = tuple(atom + 1 for atom in angle_atoms)  # (A, H, B), 1-based
+        heavy_heavy_pair = (angle_triad[0], angle_triad[2])    # (A, B), 1-based
+
     # All atoms outside the reactive zone go into the metadynamics atom list.
     list_of_atoms_numbers_not_participating_in_reaction = [
         i for i in range(1, num_atoms + 1) if i not in participating_atoms
@@ -336,6 +380,10 @@ def crest_ts_conformer_search(
         f.write("  reference=coords.ref\n")
         for atom_1, atom_2 in distance_pairs:
             f.write(f"  distance: {atom_1}, {atom_2}, auto\n")
+        if heavy_heavy_pair is not None:
+            f.write(f"  distance: {heavy_heavy_pair[0]}, {heavy_heavy_pair[1]}, auto\n")
+        if angle_triad is not None:
+            f.write(f"  angle: {angle_triad[0]}, {angle_triad[1]}, {angle_triad[2]}, auto\n")
         f.write("$metadyn\n")
         if list_of_atoms_numbers_not_participating_in_reaction:
             f.write(
