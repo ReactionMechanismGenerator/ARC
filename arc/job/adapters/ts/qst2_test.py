@@ -164,6 +164,66 @@ class TestQST2Adapter(unittest.TestCase):
         self.assertEqual(guesses[0].method, 'qst2')
         self.assertFalse(guesses[0].success)
 
+    def test_gaussian_gl101_endpoint_interpolation_failure_is_classified(self):
+        """QST2 preserves its adapter identity while using Gaussian ESS error classification."""
+        job = QST2Adapter(project='test_3',
+                          job_type='tsg',
+                          project_directory=os.path.join(ARC_TESTING_PATH, 'test_QST2Adapter_3'),
+                          reactions=[self._make_reaction()],
+                          level=self.level,
+                          server='local',
+                          )
+        with open(job.local_path_to_output_file, 'w') as f:
+            f.write('\n'.join([
+                ' Entering Gaussian System',
+                ' QST2 interpolation',
+                ' New curvilinear step not converged',
+                ' RedCar/ORedCr failed for GTrans.',
+                ' Leave Link  101',
+                ' Error termination via Lnk1e in /usr/local/g16/l101.exe',
+            ]))
+        job.initial_time = datetime.datetime.now() - datetime.timedelta(minutes=2)
+        job.final_time = datetime.datetime.now() - datetime.timedelta(minutes=1)
+
+        job._check_job_ess_status()
+
+        self.assertEqual(job.job_adapter, 'qst2')
+        self.assertEqual(job.ess_software, 'gaussian')
+        self.assertEqual(job.job_status[1]['status'], 'errored')
+        self.assertEqual(job.job_status[1]['keywords'], ['InternalCoordinateError', 'GL101', 'NoSymm'])
+        self.assertEqual(job.job_status[1]['error'],
+                         'Endpoint interpolation failed in curvilinear coordinates.')
+
+    def test_gaussian_ordinary_gl101_retains_input_error_classification(self):
+        """A GL101 failure without interpolation markers retains the legacy diagnosis."""
+        job = QST2Adapter(project='test_4',
+                          job_type='tsg',
+                          project_directory=os.path.join(ARC_TESTING_PATH, 'test_QST2Adapter_4'),
+                          reactions=[self._make_reaction()],
+                          level=self.level,
+                          server='local',
+                          )
+        with open(job.local_path_to_output_file, 'w') as f:
+            f.write('\n'.join([
+                ' Entering Gaussian System',
+                ' QST2 input processing',
+                ' Charge = 0 Multiplicity = 1',
+                ' Coordinates follow',
+                ' Leave Link  101',
+                ' Error termination via Lnk1e in /usr/local/g16/l101.exe',
+            ]))
+        job.initial_time = datetime.datetime.now() - datetime.timedelta(minutes=2)
+        job.final_time = datetime.datetime.now() - datetime.timedelta(minutes=1)
+
+        job._check_job_ess_status()
+
+        self.assertEqual(job.job_adapter, 'qst2')
+        self.assertEqual(job.job_status[1]['status'], 'errored')
+        self.assertEqual(job.job_status[1]['keywords'], ['InputError', 'GL101'])
+        self.assertEqual(job.job_status[1]['error'],
+                         'The blank line after the coordinate section is missing, '
+                         'or charge/multiplicity was not specified correctly.')
+
     @classmethod
     def tearDownClass(cls):
         """

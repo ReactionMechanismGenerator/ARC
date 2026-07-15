@@ -206,6 +206,11 @@ class JobAdapter(ABC):
         """
         pass
 
+    @property
+    def ess_software(self) -> str:
+        """The electronic-structure software used to interpret this adapter's output."""
+        return self.job_adapter
+
     def execute(self):
         """
         Execute a job.
@@ -843,7 +848,7 @@ class JobAdapter(ABC):
                                                                  species_label=self.species_label,
                                                                  job_type=self.job_type,
                                                                  job_log=self.additional_job_info,
-                                                                 software=self.job_adapter,
+                                                                 software=self.ess_software,
                                                                  )
             if status != 'done' and self.final_time is not None \
                     and datetime.datetime.now() - self.final_time < datetime.timedelta(seconds=30):
@@ -853,7 +858,7 @@ class JobAdapter(ABC):
                                                                      species_label=self.species_label,
                                                                      job_type=self.job_type,
                                                                      job_log=self.additional_job_info,
-                                                                     software=self.job_adapter,
+                                                                     software=self.ess_software,
                                                                      )
         else:
             status, keywords, error, line = '', '', '', ''

@@ -111,9 +111,18 @@ def determine_ess_status(output_path: str,
                             keywords = ['Unconverged', 'GL9999']  # GL stand for Gaussian Link
                             error = 'Unconverged'
                     elif 'l101.exe' in line:
-                        keywords = ['InputError', 'GL101']
-                        error = 'The blank line after the coordinate section is missing, ' \
-                                'or charge/multiplicity was not specified correctly.'
+                        interpolation_failed = any(
+                            'RedCar/ORedCr failed for GTrans' in reverse_lines[j]
+                            or 'New curvilinear step not converged' in reverse_lines[j]
+                            for j in range(i + 1, min(i + 50, len_reversed_lines))
+                        )
+                        if interpolation_failed:
+                            keywords = ['InternalCoordinateError', 'GL101', 'NoSymm']
+                            error = 'Endpoint interpolation failed in curvilinear coordinates.'
+                        else:
+                            keywords = ['InputError', 'GL101']
+                            error = 'The blank line after the coordinate section is missing, ' \
+                                    'or charge/multiplicity was not specified correctly.'
                     elif 'l103.exe' in line:
                         keywords = ['InternalCoordinateError', 'GL103','NoSymm']
                         error = 'Internal coordinate error'
