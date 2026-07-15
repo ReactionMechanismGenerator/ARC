@@ -897,6 +897,11 @@ def h_abstraction(reaction: ARCReaction,
     xyz_guesses = list()
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
     for product_dict in reaction.product_dicts:
+        reactive_atoms = {
+            'A': product_dict['r_label_map']['*1'],
+            'H': product_dict['r_label_map']['*2'],
+            'B': product_dict['r_label_map']['*3'],
+        }
         # Identify R1H and R2H in the "R1H + R2 <=> R1 + R2H" or "R2 + R1H <=> R2H + R1" reaction
         # The expected RMG atom labels are: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2).
         # They appear in each product_dict under the 'r_label_map' key.
@@ -974,7 +979,11 @@ def h_abstraction(reaction: ARCReaction,
                 else:
                     # This TS is unique, and has no atom collisions.
                     zmats.append(zmat_guess)
-                    xyz_guesses.append({"xyz": xyz_guess, "method": "Heuristics"})
+                    xyz_guesses.append({
+                        "xyz": xyz_guess,
+                        "method": "Heuristics",
+                        "metadata": {"reactive_atoms": reactive_atoms},
+                    })
 
     return xyz_guesses
 

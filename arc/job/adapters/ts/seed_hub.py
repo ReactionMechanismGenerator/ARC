@@ -47,12 +47,18 @@ def get_ts_seeds(reaction: 'ARCReaction',
             xyz = entry.get('xyz') if isinstance(entry, dict) else entry
             method = entry.get('method', 'Heuristics') if isinstance(entry, dict) else 'Heuristics'
             if xyz is not None:
+                entry_metadata = entry.get('metadata') if isinstance(entry, dict) else None
+                metadata = entry_metadata.copy() if isinstance(entry_metadata, dict) else {}
+                if 'reactive_atoms' not in metadata:
+                    reactive_atoms = _get_h_abs_atoms_from_xyz(xyz)
+                    if reactive_atoms is not None:
+                        metadata['reactive_atoms'] = reactive_atoms
                 xyz_entries.append({
                     'xyz': xyz,
                     'method': method,
                     'family': reaction.family,
                     'source_adapter': 'heuristics',
-                    'metadata': {},
+                    'metadata': metadata,
                 })
     elif reaction.family in FAMILY_SETS['hydrolysis_set_1'] or reaction.family in FAMILY_SETS['hydrolysis_set_2']:
         try:
@@ -108,7 +114,27 @@ def _get_crest_constraints(reaction: 'ARCReaction', seed: dict) -> Optional[Dict
     xyz = seed.get('xyz')
     if family != 'H_Abstraction' or xyz is None:
         return None
+    metadata = seed.get('metadata')
+    if isinstance(metadata, dict) and 'reactive_atoms' in metadata:
+        reactive_atoms = metadata['reactive_atoms']
+        if _is_valid_h_abs_atom_assignment(xyz=xyz, atoms=reactive_atoms):
+            return reactive_atoms
+        logger.warning(f'Invalid explicit CREST H-abstraction atom assignment: {reactive_atoms}')
+        return None
     return _get_h_abs_atoms_from_xyz(xyz)
+
+
+def _is_valid_h_abs_atom_assignment(xyz: dict, atoms: Optional[Dict[str, int]]) -> bool:
+    """Return whether ``atoms`` identifies a heavy-atom--H--heavy-atom triad in ``xyz``."""
+    symbols = xyz.get('symbols') if isinstance(xyz, dict) else None
+    if not symbols or not isinstance(atoms, dict) or set(atoms) != {'A', 'H', 'B'}:
+        return False
+    if any(not isinstance(atoms[key], int) or not 0 <= atoms[key] < len(symbols) for key in atoms):
+        return False
+    return (symbols[atoms['H']].startswith('H')
+            and not symbols[atoms['A']].startswith('H')
+            and not symbols[atoms['B']].startswith('H')
+            and atoms['A'] != atoms['B'])
 
 
 def _get_h_abs_atoms_from_xyz(xyz: dict) -> Optional[Dict[str, int]]:
@@ -125,44 +151,16 @@ def _get_h_abs_atoms_from_xyz(xyz: dict) -> Optional[Dict[str, int]]:
     if dmat is None:
         return None
 
-    closest_atoms = dict()
-    for i in range(len(symbols)):
-        nearest = sorted(
-            ((dmat[i][j], j) for j in range(len(symbols)) if j != i),
-            key=lambda x: x[0],
-        )[:2]
-        closest_atoms[i] = [idx for _, idx in nearest]
-
     hydrogen_indices = [i for i, symbol in enumerate(symbols) if symbol.startswith('H')]
-    condition_occurrences = list()
-
-    for hydrogen_index in hydrogen_indices:
-        atom_neighbors = closest_atoms[hydrogen_index]
-        is_heavy_present = any(not symbols[atom].startswith('H') for atom in atom_neighbors)
-        if_hydrogen_present = any(symbols[atom].startswith('H') and atom != hydrogen_index for atom in atom_neighbors)
-
-        if is_heavy_present and if_hydrogen_present:
-            condition_occurrences.append({'H': hydrogen_index, 'A': atom_neighbors[0], 'B': atom_neighbors[1]})
-
-    if condition_occurrences:
-        if len(condition_occurrences) > 1:
-            occurrence_distances = list()
-            for occurrence in condition_occurrences:
-                h_atom = occurrence['H']
-                a_atom = occurrence['A']
-                b_atom = occurrence['B']
-                occurrence_distances.append((occurrence, dmat[h_atom][a_atom] + dmat[h_atom][b_atom]))
-            best_occurrence = min(occurrence_distances, key=lambda x: x[1])[0]
-            return {'H': best_occurrence['H'], 'A': best_occurrence['A'], 'B': best_occurrence['B']}
-        single_occurrence = condition_occurrences[0]
-        return {'H': single_occurrence['H'], 'A': single_occurrence['A'], 'B': single_occurrence['B']}
-
     min_distance = float('inf')
     selected_hydrogen = None
     selected_heavy_atoms = None
     for hydrogen_index in hydrogen_indices:
-        atom_neighbors = closest_atoms[hydrogen_index]
-        heavy_atoms = [atom for atom in atom_neighbors if not symbols[atom].startswith('H')]
+        heavy_atoms = sorted(
+            (atom for atom, symbol in enumerate(symbols)
+             if atom != hydrogen_index and not symbol.startswith('H')),
+            key=lambda atom: dmat[hydrogen_index][atom],
+        )[:2]
         if len(heavy_atoms) < 2:
             continue
         distances = dmat[hydrogen_index][heavy_atoms[0]] + dmat[hydrogen_index][heavy_atoms[1]]
@@ -176,4 +174,3 @@ def _get_h_abs_atoms_from_xyz(xyz: dict) -> Optional[Dict[str, int]]:
 
     logger.warning('No valid hydrogen atom found for CREST H-abstraction atoms.')
     return None
-
