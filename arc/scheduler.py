@@ -2762,7 +2762,7 @@ class Scheduler(object):
     def check_rxn_e0_by_spc(self, label: str):
         """
         Check the E0 (electronic energy + ZPE) of reactions related to a specific species.
-        Requires all opt + freq computations to be converged for all species (and TS) participating in each reaction.
+        Requires SP energies for all participants and frequencies for all non-monoatomic participants.
 
         Args:
             label (str): A label representing a species.
@@ -2770,8 +2770,8 @@ class Scheduler(object):
         for rxn in self.rxn_list:
             labels = rxn.reactants + rxn.products + [rxn.ts_label]
             if label in labels and rxn.ts_species.ts_checks['E0'] is None \
-                    and all([species_has_sp_and_freq(output_dict, self.species_dict[spc_label].yml_path)
-                             for spc_label, output_dict in self.output.items() if spc_label in labels]):
+                    and all([species_is_ready_for_e0(self.output[spc_label], self.species_dict[spc_label])
+                             for spc_label in set(labels)]):
                 check_ts(reaction=rxn,
                          checks=['energy'],
                          species_dict=self.species_dict,
@@ -2900,7 +2900,7 @@ class Scheduler(object):
                     self.output[label]['paths']['sp_no_sol'] = sp_path
                 self.output[label]['paths']['sp'] = original_sp_path  # restore the original path
 
-        if species_has_freq(self.output[label], self.species_dict[label].yml_path):
+        if species_is_ready_for_e0(self.output[label], self.species_dict[label]):
             self.check_rxn_e0_by_spc(label)
 
         if self.report_e_elect:
@@ -4246,3 +4246,12 @@ def species_has_sp_and_freq(species_output_dict: dict,
         Whether a species has a valid converged single-point energy and frequencies.
     """
     return species_has_sp(species_output_dict, yml_path) and species_has_freq(species_output_dict, yml_path)
+
+
+def species_is_ready_for_e0(species_output_dict: dict,
+                            species: ARCSpecies,
+                            ) -> bool:
+    """Check whether a species has the SP energy and, when applicable, frequencies needed to compute its E0."""
+    if species.is_monoatomic():
+        return species_has_sp(species_output_dict, species.yml_path)
+    return species_has_sp_and_freq(species_output_dict, species.yml_path)
