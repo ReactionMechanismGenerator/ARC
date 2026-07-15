@@ -5,6 +5,7 @@ Separated from heuristics so CREST can be conditionally imported and reused.
 """
 
 import datetime
+import math
 import os
 import time
 from typing import TYPE_CHECKING, List, Optional, Union
@@ -18,7 +19,7 @@ from arc.job.adapters.ts.seed_hub import get_ts_seeds, get_wrapper_constraints
 from arc.job.factory import register_job_adapter
 from arc.job.local import check_job_status, submit_job
 from arc.plotter import save_geo
-from arc.species.converter import reorder_xyz_string, str_to_xyz, xyz_to_str
+from arc.species.converter import reorder_xyz_string, xyz_file_format_to_xyz, xyz_to_str
 from arc.species.species import ARCSpecies, TSGuess
 
 if TYPE_CHECKING:
@@ -182,6 +183,7 @@ class CrestAdapter(JobAdapter):
             tsg.tic()
 
             crest_job_dirs = []
+            crest_references = {}
             xyz_guesses = get_ts_seeds(
                 reaction=rxn,
                 base_adapter='heuristics',
@@ -219,6 +221,10 @@ class CrestAdapter(JobAdapter):
                     xyz_crest_int=iteration,
                 )
                 crest_job_dirs.append(crest_job_dir)
+                crest_references[crest_job_dir] = {
+                    'xyz': xyz_guess,
+                    'reactive_atoms': crest_constraint_atoms,
+                }
 
             if not crest_job_dirs:
                 logger.warning(f'CREST TS search failed to prepare any jobs for {rxn.label}.')
@@ -227,7 +233,7 @@ class CrestAdapter(JobAdapter):
 
             crest_jobs = submit_crest_jobs(crest_job_dirs)
             monitor_crest_jobs(crest_jobs)
-            xyz_guesses_crest = process_completed_jobs(crest_jobs)
+            xyz_guesses_crest = process_completed_jobs(crest_jobs, crest_references=crest_references)
             tsg.tok()
 
             for method_index, xyz in enumerate(xyz_guesses_crest):
@@ -493,12 +499,13 @@ def monitor_crest_jobs(crest_jobs: dict, check_interval: int = 300) -> None:
         time.sleep(min(check_interval, MAX_CHECK_INTERVAL_SECONDS))
 
 
-def process_completed_jobs(crest_jobs: dict) -> list:
+def process_completed_jobs(crest_jobs: dict, crest_references: dict) -> list:
     """
     Process the completed CREST jobs and update XYZ guesses.
 
     Args:
         crest_jobs (dict): Dictionary containing job information.
+        crest_references (dict): Reference seed geometry and reactive atom indices, keyed by CREST path.
     """
     xyz_guesses = []
     for job_id, job_info in crest_jobs.items():
@@ -508,7 +515,20 @@ def process_completed_jobs(crest_jobs: dict) -> list:
             if os.path.exists(crest_best_path):
                 with open(crest_best_path, "r") as f:
                     content = f.read()
-                xyz_guess = str_to_xyz(content)
+                xyz_guess = xyz_file_format_to_xyz(content)
+                reference = crest_references.get(crest_path)
+                if reference is None:
+                    logger.warning(f"Rejecting unvalidated CREST geometry from {crest_path}: reference data is missing.")
+                    continue
+                if not _preserves_reactive_triad(
+                    xyz=xyz_guess,
+                    reference_xyz=reference['xyz'],
+                    reactive_atoms=reference['reactive_atoms'],
+                ):
+                    logger.warning(
+                        f"Rejecting CREST geometry from {crest_path}: it does not preserve the reactive A-H-B triad."
+                    )
+                    continue
                 xyz_guesses.append(xyz_guess)
             else:
                 logger.error(f"crest_best.xyz not found in {crest_path}")
@@ -516,5 +536,46 @@ def process_completed_jobs(crest_jobs: dict) -> list:
             logger.error(f"CREST job failed for {crest_path}")
 
     return xyz_guesses
+
+
+def _preserves_reactive_triad(xyz: dict, reference_xyz: dict, reactive_atoms: dict) -> bool:
+    """Return whether a CREST geometry preserves the seed's heavy-atom--H--heavy-atom reactive zone."""
+    symbols = xyz.get('symbols') if isinstance(xyz, dict) else None
+    reference_symbols = reference_xyz.get('symbols') if isinstance(reference_xyz, dict) else None
+    if not symbols or symbols != reference_symbols or set(reactive_atoms or {}) != {'A', 'H', 'B'}:
+        return False
+    try:
+        a_atom, h_atom, b_atom = (reactive_atoms[key] for key in ('A', 'H', 'B'))
+        if (not symbols[h_atom].startswith('H')
+                or symbols[a_atom].startswith('H')
+                or symbols[b_atom].startswith('H')):
+            return False
+        for heavy_atom in (a_atom, b_atom):
+            distance = math.dist(xyz['coords'][h_atom], xyz['coords'][heavy_atom])
+            reference_distance = math.dist(reference_xyz['coords'][h_atom], reference_xyz['coords'][heavy_atom])
+            if abs(distance - reference_distance) > max(0.5, reference_distance * 0.5):
+                return False
+        angle = _get_angle(xyz['coords'][a_atom], xyz['coords'][h_atom], xyz['coords'][b_atom])
+        reference_angle = _get_angle(
+            reference_xyz['coords'][a_atom],
+            reference_xyz['coords'][h_atom],
+            reference_xyz['coords'][b_atom],
+        )
+        if abs(angle - reference_angle) > 30.0:
+            return False
+    except (IndexError, KeyError, TypeError, ValueError):
+        return False
+    return True
+
+
+def _get_angle(point_1: tuple, vertex: tuple, point_2: tuple) -> float:
+    """Return the angle in degrees for ``point_1``--``vertex``--``point_2``."""
+    vector_1 = tuple(coord - center for coord, center in zip(point_1, vertex))
+    vector_2 = tuple(coord - center for coord, center in zip(point_2, vertex))
+    norm_product = math.sqrt(sum(coord ** 2 for coord in vector_1) * sum(coord ** 2 for coord in vector_2))
+    if not norm_product:
+        raise ValueError('Cannot determine an angle from a zero-length vector.')
+    cosine = sum(coord_1 * coord_2 for coord_1, coord_2 in zip(vector_1, vector_2)) / norm_product
+    return math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
 
 register_job_adapter('crest', CrestAdapter)

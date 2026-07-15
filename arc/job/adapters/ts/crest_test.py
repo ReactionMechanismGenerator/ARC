@@ -9,7 +9,7 @@ import os
 import tempfile
 import unittest
 
-from arc.species.converter import str_to_xyz
+from arc.species.converter import str_to_xyz, xyz_to_str
 
 
 class TestCrestAdapter(unittest.TestCase):
@@ -140,6 +140,49 @@ class TestCrestAdapter(unittest.TestCase):
             crest_mod.CREST_PATH = backups["CREST_PATH"]
             crest_mod.CREST_ENV_PATH = backups["CREST_ENV_PATH"]
             crest_mod.SERVERS = backups["SERVERS"]
+
+    def test_process_completed_jobs_rejects_dissociated_reactive_triad(self):
+        """Do not accept a crest_best.xyz whose acceptor has separated from the transferring H."""
+        from arc.job.adapters.ts import crest as crest_mod
+
+        reference_xyz = str_to_xyz("""O 0.00000000 -0.02752832 -1.20590500
+                                      H 0.00000000 -0.02752832 -0.03383145
+                                      O 0.00000000 -0.02752832  1.12142787
+                                      H 0.00000000  0.90131726  1.37454478""")
+        dissociated_xyz = str_to_xyz("""O -1.1644 0.0000 0.0000
+                                        H  0.0000 0.0000 0.0000
+                                        O  4.9000 0.0000 0.0000
+                                        H  5.8703 0.0000 0.0000""")
+        zeus_bad_xyz = str_to_xyz("""O -0.71236464  0.03765902 -0.02937463
+                                      H -0.60136223 -0.77534746  0.43444583
+                                      O  0.69301187  0.05895500  0.02917997
+                                      H  0.90856791 -0.75830305 -0.43135588""")
+        crest_path = os.path.join(self.tmpdir.name, 'crest_0')
+        os.makedirs(crest_path)
+        crest_best_path = os.path.join(crest_path, 'crest_best.xyz')
+        with open(crest_best_path, 'w') as f:
+            f.write(f"4\nCREST geometry\n{xyz_to_str(dissociated_xyz)}\n")
+
+        jobs = {'123': {'path': crest_path, 'status': 'done'}}
+        references = {
+            crest_path: {
+                'xyz': reference_xyz,
+                'reactive_atoms': {'A': 0, 'H': 1, 'B': 2},
+            },
+        }
+        self.assertEqual(crest_mod.process_completed_jobs(jobs, crest_references={}), [])
+        self.assertEqual(crest_mod.process_completed_jobs(jobs, crest_references=references), [])
+
+        with open(crest_best_path, 'w') as f:
+            f.write(f"4\nCREST geometry\n{xyz_to_str(zeus_bad_xyz)}\n")
+        self.assertEqual(crest_mod.process_completed_jobs(jobs, crest_references=references), [])
+
+        with open(crest_best_path, 'w') as f:
+            f.write(f"4\nCREST geometry\n{xyz_to_str(reference_xyz)}\n")
+        self.assertEqual(
+            crest_mod.process_completed_jobs(jobs, crest_references=references),
+            [reference_xyz],
+        )
 
 
 if __name__ == "__main__":
