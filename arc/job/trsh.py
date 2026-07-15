@@ -988,7 +988,7 @@ def trsh_ess_job(label: str,
 
         # Troubleshoot by increasing opt max cycles
         #P opt=(calcfc,maxstep=5,tight,maxcycle=200) guess=mix wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight,maxcycle=512) iop(3/33=1)
-        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, is_ts)
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, is_ts, fine)
         # print out any words that beging with 'opt='
         opt_list = [i for i in ess_trsh_methods if i.startswith('opt=')]
         if opt_list:
@@ -1955,12 +1955,22 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 
-def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, is_ts=False) -> tuple[list, list, bool]:
+def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, is_ts=False, fine=False) -> tuple[list, list, bool]:
     """
     Escalate the remedy for an optimization that hit its cycle limit (MaxOptCycles), one step
     per retry. The ladder recomputes the Hessian before flipping the step algorithm:
 
         1. opt=(maxcycle=200)  - simply allow more cycles (cheapest).
+        1b. opt=(cartesian)    - fine TS opt ONLY (is_ts and fine): a fine TS opt that dead-ends on
+                                 the l9999 "Optimization stopped" redundant-internal-coordinate
+                                 oscillation is far more likely to be a coordinate-system pathology
+                                 than a step/Hessian-quality problem, so switch to Cartesian
+                                 coordinates (which sidestep the collinear/redundant-coordinate
+                                 degeneracy) BEFORE spending expensive recalcfc/calcall/RFO cycles.
+                                 Tried once (guarded by 'cartesian' not in ess_trsh_methods) and
+                                 carried through the rest of the ladder via the opt-route merge.
+                                 Gated tightly to the fine TS opt so ground-state (is_ts=False) and
+                                 coarse TS opt (fine=False) ladders are unchanged.
         2. opt=(recalcfc=5)    - recompute the exact Hessian every 5 steps. Recomputing force
                                  constants is the first-line remedy for a stuck optimization, and
                                  is essential for a TS opt where following the single negative
@@ -1977,6 +1987,14 @@ def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, could
         if 'opt=(maxcycle=200)' not in ess_trsh_methods:
             ess_trsh_methods.append('opt=(maxcycle=200)')
             trsh_keyword.append('opt=(maxcycle=200)')
+            couldnt_trsh = False
+        elif is_ts and fine and 'cartesian' not in ess_trsh_methods:
+            # Fine TS opt oscillation (l9999 "Optimization stopped"): try Cartesian coordinates
+            # early, before escalating the Hessian ladder. Stored as the bare 'cartesian' marker
+            # (consistent with trsh_keyword_cartesian) and folded into the opt route by the merge
+            # block below.
+            ess_trsh_methods.append('cartesian')
+            trsh_keyword.append('opt=(cartesian)')
             couldnt_trsh = False
         elif 'opt=(recalcfc=5)' not in ess_trsh_methods:
             ess_trsh_methods.append('opt=(recalcfc=5)')
@@ -2001,6 +2019,12 @@ def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, could
 
     if any('opt' in keyword for keyword in ess_trsh_methods):
         opt_list = [match for element in ess_trsh_methods for match in re.findall(opt_pattern, element)] if any(re.search(opt_pattern, element) for element in ess_trsh_methods) else []
+
+        # Fold the bare 'cartesian' marker (see the is_ts+fine branch above) into the merged opt
+        # route as a leading parameter so it survives alongside the maxcycle/Hessian/algorithm
+        # keywords rather than being clobbered by the route rewrite below.
+        if 'cartesian' in ess_trsh_methods and 'cartesian' not in opt_list:
+            opt_list.insert(0, 'cartesian')
 
         if opt_list:
 

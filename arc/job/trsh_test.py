@@ -1020,7 +1020,7 @@ class TestTrsh(unittest.TestCase):
             self.assertIn(method, ess_trsh_methods,
                           f'the SCF ladder never reached {method}: {ess_trsh_methods}')
 
-    def _run_gaussian_ladder(self, keywords, error, n=10, is_ts=False):
+    def _run_gaussian_ladder(self, keywords, error, n=10, is_ts=False, fine=False):
         """
         Drive trsh_ess_job() repeatedly for a Gaussian job that keeps failing with the same
         (keywords, error), feeding ess_trsh_methods back in as the scheduler does. Returns the
@@ -1028,7 +1028,7 @@ class TestTrsh(unittest.TestCase):
         the cycle gives up or emits 'all_attempted'.
         """
         job_status = {'keywords': keywords, 'error': error}
-        ess_trsh_methods, fine, history = list(), False, list()
+        ess_trsh_methods, history = list(), list()
         for _ in range(n):
             out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None, job_status,
                                     'opt', 'gaussian', fine, 16, 2, 8, ess_trsh_methods, is_ts=is_ts)
@@ -1095,6 +1095,63 @@ class TestTrsh(unittest.TestCase):
         self.assertLess(distinct.index('opt=(recalcfc=5)'), distinct.index('opt=(RFO)'))
         self.assertLess(distinct.index('opt=(calcall)'), distinct.index('opt=(RFO)'))
         self.assertIn('all_attempted', history[-1][0])
+
+    @staticmethod
+    def _maxoptcycles_trsh(ess_trsh_methods, is_ts, fine):
+        """One trsh_ess_job() retry for a MaxOptCycles (l9999) Gaussian opt; returns
+        (ess_trsh_methods, trsh_keyword, couldnt_trsh)."""
+        job_status = {'keywords': ['MaxOptCycles', 'GL9999'],
+                      'error': 'Maximum optimization cycles reached.'}
+        out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None, job_status,
+                                'opt', 'gaussian', fine, 16, 2, 8, ess_trsh_methods, is_ts=is_ts)
+        return out[1], out[7], out[11]
+
+    def test_trsh_ess_job_gaussian_maxoptcycles_ladder_ts_fine_cartesian(self):
+        """
+        A FINE TS opt (is_ts=True, fine=True) that dead-ends on the l9999 "Optimization stopped"
+        MaxOptCycles oscillation must switch to Cartesian coordinates EARLY - after the cheap
+        maxcycle bump but before the expensive Hessian/algorithm escalation:
+            maxcycle=200 -> cartesian -> recalcfc=5 -> calcall -> RFO -> all_attempted.
+        Cartesian is tried exactly once and is carried through (merged into) the rest of the route.
+        """
+        history = self._run_gaussian_ladder(['MaxOptCycles', 'GL9999'],
+                                            'Maximum optimization cycles reached.',
+                                            is_ts=True, fine=True)
+        snapshots = [snap for snap, _ in history]
+        final_methods = snapshots[-1]
+        # Cartesian is recorded (bare marker), exactly once, and after the maxcycle bump.
+        self.assertIn('cartesian', final_methods,
+                      f'cartesian was never tried for the fine TS opt oscillation: {final_methods}')
+        self.assertEqual(final_methods.count('cartesian'), 1,
+                         f'cartesian must be recorded exactly once: {final_methods}')
+        self.assertLess(final_methods.index('opt=(maxcycle=200)'), final_methods.index('cartesian'))
+        self.assertLess(final_methods.index('cartesian'), final_methods.index('opt=(recalcfc=5)'))
+        # The route keyword emitted on the retry that introduces cartesian merges it with maxcycle.
+        ess, trsh_keyword, couldnt = self._maxoptcycles_trsh(
+            ['int=(Acc2E=14)', 'opt=(maxcycle=200)'], is_ts=True, fine=True)
+        self.assertIn('cartesian', ess)
+        self.assertFalse(couldnt)
+        self.assertIn('opt=(cartesian,maxcycle=200)', trsh_keyword)
+        # The ladder still terminates and GDIIS/GEDIIS stay excluded for a TS.
+        self.assertIn('all_attempted', final_methods)
+        self.assertTrue(history[-1][1])
+        self.assertFalse(any('GDIIS' in m for m in final_methods))
+
+    def test_trsh_ess_job_gaussian_maxoptcycles_cartesian_gated(self):
+        """
+        The fine-TS-opt Cartesian remedy must NOT leak into the ground-state opt ladder
+        (is_ts=False) nor the coarse TS opt ladder (fine=False) - both are unchanged. The
+        recalcfc Hessian recompute (not cartesian) must be the second rung in those cases.
+        """
+        for is_ts, fine, tag in [(False, True, 'ground-state fine opt'),
+                                 (True, False, 'coarse TS opt'),
+                                 (False, False, 'ground-state coarse opt')]:
+            ess, trsh_keyword, couldnt = self._maxoptcycles_trsh(
+                ['int=(Acc2E=14)', 'opt=(maxcycle=200)'], is_ts=is_ts, fine=fine)
+            self.assertNotIn('cartesian', ess, f'cartesian must not fire for a {tag}: {ess}')
+            self.assertNotIn('opt=(cartesian)', trsh_keyword,
+                             f'cartesian route must not appear for a {tag}: {trsh_keyword}')
+            self.assertIn('opt=(recalcfc=5)', ess, f'{tag} must escalate to recalcfc: {ess}')
 
     def test_prioritize_opt_methods_ts_vs_min(self):
         """P3 unit: TS keeps only RFO and the most aggressive Hessian directive; min keeps GEDIIS."""
