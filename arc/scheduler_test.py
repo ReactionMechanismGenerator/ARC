@@ -18,7 +18,8 @@ from arc.job.adapters.common import default_incore_adapters, ts_adapters_by_rmg_
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.plotter import save_conformers_file
-from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_has_sp, species_has_sp_and_freq
+from arc.scheduler import (Scheduler, species_has_freq, species_has_geo, species_has_sp, species_has_sp_and_freq,
+                           species_is_ready_for_e0)
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
@@ -746,6 +747,105 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertTrue(species_has_geo(species_output_dict=species_output_dict, yml_path=yml_path))
         self.assertTrue(species_has_sp(species_output_dict=species_output_dict, yml_path=yml_path))
         self.assertTrue(species_has_sp_and_freq(species_output_dict=species_output_dict, yml_path=yml_path))
+
+    def test_species_is_ready_for_e0(self):
+        """Monoatomic species require an SP energy but legitimately have no frequencies."""
+        output = {'paths': {'sp': 'sp.out', 'freq': '', 'composite': ''}}
+        monoatomic = ARCSpecies(label='O', smiles='[O]')
+        molecular = ARCSpecies(label='OH', smiles='[OH]')
+        self.assertTrue(species_is_ready_for_e0(output, monoatomic))
+        self.assertFalse(species_is_ready_for_e0(output, molecular))
+        output['paths']['sp'] = ''
+        self.assertFalse(species_is_ready_for_e0(output, monoatomic))
+
+    @patch('arc.scheduler.check_ts')
+    def test_monoatomic_participant_reaches_e0_check_and_switches_ts(self, mock_check_ts):
+        """A failed E0 check switches guesses even when one reaction participant is monoatomic."""
+        scheduler = object.__new__(Scheduler)
+        species = {
+            'R': ARCSpecies(label='R', smiles='OO'),
+            'O': ARCSpecies(label='O', smiles='[O]'),
+            'P': ARCSpecies(label='P', smiles='O=O'),
+            'TS0': ARCSpecies(label='TS0', is_ts=True),
+        }
+        species['TS0'].ts_guesses_exhausted = False
+        species['TS0'].chosen_ts = 1
+        rxn = MagicMock()
+        rxn.reactants = ['R', 'O']
+        rxn.products = ['P']
+        rxn.ts_label = 'TS0'
+        rxn.ts_species = species['TS0']
+        rxn.label = 'R + O <=> P'
+        scheduler.rxn_list = [rxn]
+        scheduler.species_dict = species
+        scheduler.output = {
+            label: {'paths': {'sp': 'sp.out', 'freq': '' if label == 'O' else 'freq.out', 'composite': ''},
+                    'convergence': True}
+            for label in species
+        }
+        scheduler.project_directory = '/tmp'
+        scheduler.kinetics_adapter = 'arkane'
+        scheduler.sp_level = Level('gfn2')
+        scheduler.composite_method = None
+        scheduler.freq_scale_factor = 1.0
+        scheduler.switch_ts = MagicMock()
+
+        def fail_e0(**kwargs):
+            kwargs['reaction'].ts_species.ts_checks['E0'] = False
+
+        mock_check_ts.side_effect = fail_e0
+        scheduler.check_rxn_e0_by_spc('O')
+
+        mock_check_ts.assert_called_once()
+        scheduler.switch_ts.assert_called_once_with('TS0')
+
+    @patch('arc.scheduler.check_ts')
+    @patch('arc.scheduler.parser.parse_e_elect', return_value=-75.0)
+    def test_atomic_sp_completion_triggers_e0_check_and_switches_ts(self, mock_parse_e_elect, mock_check_ts):
+        """Completing the last atomic SP triggers the E0 check and switches a failed TS."""
+        scheduler = object.__new__(Scheduler)
+        species = {
+            'R': ARCSpecies(label='R', smiles='OO'),
+            'O': ARCSpecies(label='O', smiles='[O]'),
+            'P': ARCSpecies(label='P', smiles='O=O'),
+            'TS0': ARCSpecies(label='TS0', is_ts=True),
+        }
+        species['TS0'].ts_guesses_exhausted = False
+        species['TS0'].chosen_ts = 1
+        rxn = MagicMock()
+        rxn.reactants = ['R', 'O']
+        rxn.products = ['P']
+        rxn.ts_label = 'TS0'
+        rxn.ts_species = species['TS0']
+        rxn.label = 'R + O <=> P'
+        scheduler.rxn_list = [rxn]
+        scheduler.species_dict = species
+        scheduler.output = {
+            label: {'paths': {'sp': '' if label == 'O' else 'sp.out',
+                              'freq': '' if label == 'O' else 'freq.out',
+                              'composite': ''},
+                    'job_types': {'sp': False},
+                    'info': '',
+                    'convergence': True}
+            for label in species
+        }
+        scheduler.project_directory = '/tmp'
+        scheduler.kinetics_adapter = 'arkane'
+        scheduler.sp_level = Level('gfn2')
+        scheduler.composite_method = None
+        scheduler.freq_scale_factor = 1.0
+        scheduler.report_e_elect = False
+        scheduler.switch_ts = MagicMock()
+
+        def fail_e0(**kwargs):
+            kwargs['reaction'].ts_species.ts_checks['E0'] = False
+
+        mock_check_ts.side_effect = fail_e0
+        scheduler.post_sp_actions('O', 'atomic-sp.out')
+
+        mock_parse_e_elect.assert_called_once_with('atomic-sp.out')
+        mock_check_ts.assert_called_once()
+        scheduler.switch_ts.assert_called_once_with('TS0')
 
     def test_add_label_to_unique_species_labels(self):
         """Test the add_label_to_unique_species_labels() method."""
