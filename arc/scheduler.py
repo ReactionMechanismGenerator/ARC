@@ -768,21 +768,7 @@ class Scheduler(object):
                     if 'tsg' in job_name:
                         job = self.job_dict[label]['tsg'][get_i_from_job_name(job_name)]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
-                            # This is a successfully completed tsg job. It may have resulted in several TSGuesses.
-                            self.end_job(job=job, label=label, job_name=job_name)
-                            if job.local_path_to_output_file.endswith('.yml') or job.local_path_to_output_file.endswith('.log'):
-                                for rxn in job.reactions:
-                                    rxn.ts_species.process_completed_tsg_queue_jobs(
-                                        path=job.local_path_to_output_file, method=job.job_adapter)
-                            # Just terminated a tsg job.
-                            # Are there additional tsg jobs currently running for this species?
-                            for spec_jobs in job_list:
-                                if 'tsg' in spec_jobs:
-                                    break
-                            else:
-                                # All tsg jobs terminated. Spawn confs.
-                                logger.info(f'\nTS guess jobs for {label} successfully terminated.\n')
-                                self.run_conformer_jobs(labels=[label])
+                            self.process_completed_tsg_job(job=job, label=label, job_name=job_name)
                             self.timer = False
                             break
                     elif 'opt' in job_name and 'conf_opt' not in job_name:
@@ -1200,6 +1186,39 @@ class Scheduler(object):
                 level.software = 'terachem'
             job_adapter = level.software
         return job_adapter.lower()
+
+    def process_completed_tsg_job(self,
+                                  job: JobAdapter,
+                                  label: str,
+                                  job_name: str,
+                                  ) -> None:
+        """Finalize one queue TS-guess job and ingest output only after a successful ESS run."""
+        if job_name not in self.running_jobs.get(label, []):
+            return
+
+        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+        ess_succeeded = job.job_status[1]['status'] == 'done'
+        is_log_output = job.local_path_to_output_file.endswith('.log')
+        is_yaml_output = job.local_path_to_output_file.endswith(('.yml', '.yaml'))
+        should_ingest = successful_server_termination \
+            and (is_yaml_output or (is_log_output and ess_succeeded))
+        if should_ingest:
+            for rxn in job.reactions:
+                rxn.ts_species.process_completed_tsg_queue_jobs(
+                    path=job.local_path_to_output_file, method=job.job_adapter)
+        elif is_log_output and job.job_status[0] == 'done' and not ess_succeeded:
+            ess_status = job.job_status[1]
+            warning = (f'TS guess job {job.job_name} using {job.job_adapter} failed with ESS status '
+                       f'"{ess_status["status"]}" and keywords {ess_status["keywords"]}.')
+            if ess_status['error']:
+                warning += f' {ess_status["error"]}'
+            if ess_status['line']:
+                warning += f' Error line: "{ess_status["line"]}".'
+            logger.warning(warning)
+
+        if not any('tsg' in running_job for running_job in self.running_jobs.get(label, [])):
+            logger.info(f'\nTS guess jobs for {label} terminated.\n')
+            self.run_conformer_jobs(labels=[label])
 
     def end_job(self, job: JobAdapter,
                 label: str,

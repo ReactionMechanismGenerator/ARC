@@ -246,6 +246,11 @@ class QST2Adapter(GaussianAdapter):
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             f.write(Template(input_template).render(**input_dict))
 
+    @property
+    def ess_software(self) -> str:
+        """QST2 is a TS-search adapter, but its output is a Gaussian log."""
+        return 'gaussian'
+
     def set_input_file_memory(self) -> None:
         """
         Set the input_file_memory attribute.
