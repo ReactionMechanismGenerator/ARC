@@ -417,6 +417,22 @@ class TestArkaneAdapter(unittest.TestCase):
         self.assertNotIn("SMILES('[CH2]')", content)     # must NOT use the lossy SMILES
         self.assertIn("structure=SMILES('O')", content)  # normal species unchanged
 
+    def test_failed_kinetics_run_is_not_retried_without_tunneling(self):
+        """An invalid Eckart barrier must not be accepted through an untunneled retry."""
+        with tempfile.TemporaryDirectory() as statmech_dir:
+            with open(os.path.join(statmech_dir, 'stderr.log'), 'w') as f:
+                f.write('One or both of the barrier heights encountered in Eckart method are invalid')
+            with patch('arc.statmech.arkane.create_statmech_dir', return_value=statmech_dir), \
+                    patch.object(self.arkane_1, 'generate_arkane_input'), \
+                    patch.object(self.arkane_1, 'generate_species_files'), \
+                    patch.object(self.arkane_1, 'generate_ts_files'), \
+                    patch('arc.statmech.arkane.run_arkane', return_value=True) as mock_run, \
+                    patch.object(self.arkane_1, 'parse_arkane_kinetics_output') as mock_parse:
+                self.arkane_1.compute_high_p_rate_coefficient(require_ts_convergence=False)
+
+        mock_run.assert_called_once_with(statmech_dir)
+        mock_parse.assert_called_once_with(statmech_dir)
+
     @classmethod
     def tearDownClass(cls):
         """
