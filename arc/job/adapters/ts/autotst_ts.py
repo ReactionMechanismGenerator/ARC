@@ -124,9 +124,13 @@ class AutoTSTAdapter(JobAdapter):
         self.execution_type = execution_type or 'incore'
         self.command = None  # AutoTST does not have an executable file, just an API.
         self.url = 'https://github.com/ReactionMechanismGenerator/AutoTST'
+        # Note: 'Disproportionation' requires the AutoTST env to be on a branch whose
+        # SUPPORTED_FAMILIES includes 'Disproportionation' (e.g. fix/disproportionation-support),
+        # not on AutoTST main.
         self.supported_families = ['intra_H_migration',
                                    'H_Abstraction',
-                                   'R_Addition_MultipleBond']
+                                   'R_Addition_MultipleBond',
+                                   'Disproportionation']
 
         if reactions is None:
             raise ValueError('Cannot execute AutoTST without ARCReaction object(s).')

@@ -50,6 +50,7 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'xtb_gsm', 'orca_ne
                              'Cyclopentadiene_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
                              'Diels_alder_addition': ['kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
                              'Diels_alder_addition_Aromatic': ['linear'],
+                             'Disproportionation': ['autotst'],
                              'HO2_Elimination_from_PeroxyRadical': ['kinbot', 'linear'],
                              'H_Abstraction': ['heuristics', 'autotst', 'crest'],
                              'Intra_2+2_cycloaddition_Cd': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
