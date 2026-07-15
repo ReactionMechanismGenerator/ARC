@@ -70,6 +70,9 @@ def map_reaction(rxn: ARCReaction,
         if general_map is not None:
             return check_atom_map_and_return(general_map)
         return map_reaction(rxn, backend=backend, flip=True)
+    if rxn.product_dicts and all(product_dict.get('discovered_in_reverse', False)
+                                 for product_dict in rxn.product_dicts):
+        return map_reaction(rxn, backend=backend, flip=True)
     raw_map = try_mapping(rxn)
     if raw_map is None:
         return map_reaction(rxn, backend=backend, flip=True)
