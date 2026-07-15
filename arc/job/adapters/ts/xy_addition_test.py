@@ -9,6 +9,7 @@ import math
 import unittest
 
 from arc.job.adapters.ts.xy_addition import xy_addition
+from arc.job.adapters.ts.seed_hub import get_ts_seeds, get_wrapper_constraints
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 
@@ -28,12 +29,36 @@ class TestXYAdditionSeed(unittest.TestCase):
                                       'H 2.57 0.16 0\nH 0.53 1.30 0.88\nH 0.53 1.30 -0.88\nH -0.34 -0.5 0')
         rxn = ARCReaction(r_species=[ethylene, hcl], p_species=[chloroethane])
         # Reactants are [ethylene(0-5), HCl(6=Cl, 7=H)]; *1,*2 are the carbons, *3=X=H, *4=Y=Cl.
-        rxn.product_dicts = [{'r_label_map': {'*2': 0, '*1': 1, '*3': 7, '*4': 6}}]
+        label_maps = [
+            {'*2': 0, '*1': 1, '*3': 7, '*4': 6},
+            {'*2': 1, '*1': 0, '*3': 7, '*4': 6},
+        ]
+        rxn.product_dicts = [{'r_label_map': label_map} for label_map in label_maps]
         rxn.family = 'XY_Addition_MultipleBond'
 
         seeds = xy_addition(reaction=rxn)
-        self.assertEqual(len(seeds), 1)
+        self.assertEqual(len(seeds), 2)
         self.assertEqual(seeds[0]['method'], 'Heuristics-XY')
+        self.assertEqual(
+            [seed['metadata']['reactive_atoms'] for seed in seeds],
+            label_maps,
+        )
+        hub_seeds = get_ts_seeds(reaction=rxn)
+        self.assertEqual([seed['metadata']['reactive_atoms'] for seed in hub_seeds], label_maps)
+        self.assertEqual(
+            [get_wrapper_constraints('crest', reaction=rxn, seed=seed) for seed in hub_seeds],
+            [
+                {
+                    'atoms': tuple(label_map[label] for label in ('*1', '*2', '*3', '*4')),
+                    'distance_pairs': (
+                        (label_map['*1'], label_map['*3']),
+                        (label_map['*2'], label_map['*4']),
+                        (label_map['*3'], label_map['*4']),
+                    ),
+                }
+                for label_map in label_maps
+            ],
+        )
         xyz = seeds[0]['xyz']
         self.assertEqual(len(xyz['symbols']), 8)  # atom count preserved
 

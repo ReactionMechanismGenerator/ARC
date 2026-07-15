@@ -2323,10 +2323,15 @@ class TestHeuristicsHub(unittest.TestCase):
                             H 0.0000 0.0000 0.9600
                             O 0.9000 0.0000 0.0000""")
         seed = {'xyz': xyz, 'family': rxn.family}
-        atoms = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
-        self.assertIsInstance(atoms, dict)
-        self.assertSetEqual(set(atoms.keys()), {'A', 'H', 'B'})
-        self.assertTrue(all(isinstance(v, int) for v in atoms.values()))
+        constraints = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+        self.assertIsInstance(constraints, dict)
+        self.assertTrue({'A', 'H', 'B', 'atoms', 'distance_pairs', 'angle_atoms'} <= set(constraints))
+        self.assertEqual(
+            (constraints['A'], constraints['H'], constraints['B']),
+            constraints['angle_atoms'],
+        )
+        self.assertEqual(len(constraints['atoms']), 3)
+        self.assertEqual(len(constraints['distance_pairs']), 2)
 
     def test_get_wrapper_constraints_crest_symmetric_oh_oh(self):
         """The transferring H must be bracketed by the two O atoms in either atom ordering."""
@@ -2348,11 +2353,11 @@ class TestHeuristicsHub(unittest.TestCase):
                     'family': rxn.family,
                     'metadata': {'reactive_atoms': {'A': 0, 'H': expected_h_atom, 'B': 2}},
                 }
-                atoms = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
-                self.assertEqual(atoms['H'], expected_h_atom)
-                self.assertSetEqual({atoms['A'], atoms['B']}, {0, 2})
-                self.assertFalse(xyz['symbols'][atoms['A']].startswith('H'))
-                self.assertFalse(xyz['symbols'][atoms['B']].startswith('H'))
+                constraints = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+                self.assertEqual(constraints['angle_atoms'][1], expected_h_atom)
+                self.assertSetEqual({constraints['angle_atoms'][0], constraints['angle_atoms'][2]}, {0, 2})
+                self.assertFalse(xyz['symbols'][constraints['angle_atoms'][0]].startswith('H'))
+                self.assertFalse(xyz['symbols'][constraints['angle_atoms'][2]].startswith('H'))
 
     def test_get_wrapper_constraints_crest_rejects_hydrogen_as_heavy_atom(self):
         rxn = SimpleNamespace(family='H_Abstraction')
@@ -2398,8 +2403,61 @@ class TestHeuristicsHub(unittest.TestCase):
         }
         self.assertEqual(
             get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed),
-            {'A': 0, 'H': 3, 'B': 2},
+            {
+                'A': 0,
+                'H': 3,
+                'B': 2,
+                'atoms': (0, 3, 2),
+                'distance_pairs': ((0, 3), (3, 2)),
+                'angle_atoms': (0, 3, 2),
+            },
         )
+
+    def test_get_wrapper_constraints_crest_xy_addition(self):
+        """XY constraints follow the exact family-label mapping for both seed orderings."""
+        rxn = SimpleNamespace(family='XY_Addition_MultipleBond')
+        xyz = str_to_xyz("""C 0.0 0.0  0.667
+                            C 0.0 0.0 -0.667
+                            H 0.0 1.6  0.667
+                            Cl 0.0 2.1 -0.667""")
+        for reactive_atoms in (
+            {'*1': 1, '*2': 0, '*3': 2, '*4': 3},
+            {'*1': 0, '*2': 1, '*3': 2, '*4': 3},
+        ):
+            with self.subTest(reactive_atoms=reactive_atoms):
+                seed = {
+                    'xyz': xyz,
+                    'family': rxn.family,
+                    'metadata': {'reactive_atoms': reactive_atoms},
+                }
+                self.assertEqual(
+                    get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed),
+                    {
+                        'atoms': tuple(reactive_atoms[label] for label in ('*1', '*2', '*3', '*4')),
+                        'distance_pairs': (
+                            (reactive_atoms['*1'], reactive_atoms['*3']),
+                            (reactive_atoms['*2'], reactive_atoms['*4']),
+                            (reactive_atoms['*3'], reactive_atoms['*4']),
+                        ),
+                    },
+                )
+
+    def test_get_wrapper_constraints_crest_rejects_invalid_explicit_xy_atoms(self):
+        """Do not infer an XY mapping when explicit generator metadata is invalid."""
+        rxn = SimpleNamespace(family='XY_Addition_MultipleBond')
+        xyz = str_to_xyz("""C 0.0 0.0  0.667
+                            C 0.0 0.0 -0.667
+                            H 0.0 1.6  0.667
+                            Cl 0.0 2.1 -0.667""")
+        invalid_atoms = {'*1': 0, '*2': 1, '*3': 2, '*4': 2}
+        with patch('arc.job.adapters.ts.xy_addition.xy_addition', return_value=[{
+            'xyz': xyz,
+            'method': 'Heuristics-XY',
+            'metadata': {'reactive_atoms': invalid_atoms},
+        }]):
+            seed = get_ts_seeds(reaction=rxn)[0]
+        self.assertEqual(seed['metadata']['reactive_atoms'], invalid_atoms)
+        self.assertIsNone(get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed))
 
     def test_get_wrapper_constraints_crest_unsupported_family(self):
         rxn = SimpleNamespace(family='carbonyl_based_hydrolysis')

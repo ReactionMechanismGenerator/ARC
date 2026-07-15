@@ -200,12 +200,12 @@ class CrestAdapter(JobAdapter):
                 if xyz_guess is None:
                     continue
 
-                crest_constraint_atoms = get_wrapper_constraints(
+                crest_constraints = get_wrapper_constraints(
                     wrapper='crest',
                     reaction=rxn,
                     seed=xyz_entry,
                 )
-                if not crest_constraint_atoms:
+                if not crest_constraints:
                     logger.warning(
                         f"Could not determine CREST constraint atoms for {rxn.label} crest seed {iteration} "
                         f"(family: {family}). Skipping this CREST seed."
@@ -214,16 +214,14 @@ class CrestAdapter(JobAdapter):
 
                 crest_job_dir = crest_ts_conformer_search(
                     xyz_guess,
-                    crest_constraint_atoms["A"],
-                    crest_constraint_atoms["H"],
-                    crest_constraint_atoms["B"],
+                    constraints=crest_constraints,
                     path=self.local_path,
                     xyz_crest_int=iteration,
                 )
                 crest_job_dirs.append(crest_job_dir)
                 crest_references[crest_job_dir] = {
                     'xyz': xyz_guess,
-                    'reactive_atoms': crest_constraint_atoms,
+                    'constraints': crest_constraints,
                 }
 
             if not crest_job_dirs:
@@ -283,11 +281,12 @@ class CrestAdapter(JobAdapter):
 
 def crest_ts_conformer_search(
     xyz_guess: dict,
-    a_atom: int,
-    h_atom: int,
-    b_atom: int,
+    a_atom: Optional[int] = None,
+    h_atom: Optional[int] = None,
+    b_atom: Optional[int] = None,
     path: str = "",
     xyz_crest_int: int = 0,
+    constraints: Optional[dict] = None,
 ) -> str:
     """
     Prepare a CREST TS conformer search job:
@@ -295,6 +294,15 @@ def crest_ts_conformer_search(
     - Write a PBS/HTCondor submit script using submit_scripts["local"]["crest"]
     - Return the CREST job directory path
     """
+    if constraints is None:
+        if not all(isinstance(atom, int) for atom in (a_atom, h_atom, b_atom)):
+            raise ValueError('CREST requires either a constraint specification or legacy A, H, and B atom indices.')
+        constraints = {
+            'atoms': (a_atom, h_atom, b_atom),
+            'distance_pairs': ((a_atom, h_atom), (h_atom, b_atom)),
+            'angle_atoms': (a_atom, h_atom, b_atom),
+        }
+
     path = os.path.join(path, f"crest_{xyz_crest_int}")
     os.makedirs(path, exist_ok=True)
 
@@ -312,24 +320,24 @@ def crest_ts_conformer_search(
 
     # --- constraints.inp ---
     num_atoms = len(symbols)
-    # CREST uses 1-based indices
-    a_atom += 1
-    h_atom += 1
-    b_atom += 1
+    # CREST uses 1-based indices.
+    participating_atoms = tuple(atom + 1 for atom in constraints['atoms'])
+    distance_pairs = tuple((atom_1 + 1, atom_2 + 1)
+                           for atom_1, atom_2 in constraints['distance_pairs'])
 
-    # All atoms not directly involved in A–H–B go into the metadynamics atom list
+    # All atoms outside the reactive zone go into the metadynamics atom list.
     list_of_atoms_numbers_not_participating_in_reaction = [
-        i for i in range(1, num_atoms + 1) if i not in [a_atom, h_atom, b_atom]
+        i for i in range(1, num_atoms + 1) if i not in participating_atoms
     ]
 
     constraints_path = os.path.join(path, "constraints.inp")
     with open(constraints_path, "w") as f:
         f.write("$constrain\n")
-        f.write(f"  atoms: {a_atom}, {h_atom}, {b_atom}\n")
+        f.write(f"  atoms: {', '.join(map(str, participating_atoms))}\n")
         f.write("  force constant: 0.5\n")
         f.write("  reference=coords.ref\n")
-        f.write(f"  distance: {a_atom}, {h_atom}, auto\n")
-        f.write(f"  distance: {h_atom}, {b_atom}, auto\n")
+        for atom_1, atom_2 in distance_pairs:
+            f.write(f"  distance: {atom_1}, {atom_2}, auto\n")
         f.write("$metadyn\n")
         if list_of_atoms_numbers_not_participating_in_reaction:
             f.write(
@@ -507,7 +515,7 @@ def process_completed_jobs(crest_jobs: dict, crest_references: dict) -> list:
 
     Args:
         crest_jobs (dict): Dictionary containing job information.
-        crest_references (dict): Reference seed geometry and reactive atom indices, keyed by CREST path.
+        crest_references (dict): Reference seed geometry and constraint specification, keyed by CREST path.
     """
     xyz_guesses = []
     for job_id, job_info in crest_jobs.items():
@@ -522,13 +530,13 @@ def process_completed_jobs(crest_jobs: dict, crest_references: dict) -> list:
                 if reference is None:
                     logger.warning(f"Rejecting unvalidated CREST geometry from {crest_path}: reference data is missing.")
                     continue
-                if not _preserves_reactive_triad(
+                if not _preserves_reactive_constraints(
                     xyz=xyz_guess,
                     reference_xyz=reference['xyz'],
-                    reactive_atoms=reference['reactive_atoms'],
+                    constraints=reference['constraints'],
                 ):
                     logger.warning(
-                        f"Rejecting CREST geometry from {crest_path}: it does not preserve the reactive A-H-B triad."
+                        f"Rejecting CREST geometry from {crest_path}: it does not preserve the reactive constraints."
                     )
                     continue
                 xyz_guesses.append(xyz_guess)
@@ -540,31 +548,36 @@ def process_completed_jobs(crest_jobs: dict, crest_references: dict) -> list:
     return xyz_guesses
 
 
-def _preserves_reactive_triad(xyz: dict, reference_xyz: dict, reactive_atoms: dict) -> bool:
-    """Return whether a CREST geometry preserves the seed's heavy-atom--H--heavy-atom reactive zone."""
+def _preserves_reactive_constraints(xyz: dict, reference_xyz: dict, constraints: dict) -> bool:
+    """Return whether a CREST geometry preserves the seed's constrained reactive zone."""
     symbols = xyz.get('symbols') if isinstance(xyz, dict) else None
     reference_symbols = reference_xyz.get('symbols') if isinstance(reference_xyz, dict) else None
-    if not symbols or symbols != reference_symbols or set(reactive_atoms or {}) != {'A', 'H', 'B'}:
+    if not symbols or symbols != reference_symbols or not isinstance(constraints, dict):
         return False
     try:
-        a_atom, h_atom, b_atom = (reactive_atoms[key] for key in ('A', 'H', 'B'))
-        if (not symbols[h_atom].startswith('H')
-                or symbols[a_atom].startswith('H')
-                or symbols[b_atom].startswith('H')):
+        atoms = tuple(constraints['atoms'])
+        distance_pairs = tuple(tuple(pair) for pair in constraints['distance_pairs'])
+        if (not atoms or len(set(atoms)) != len(atoms)
+                or any(not isinstance(atom, int) or not 0 <= atom < len(symbols) for atom in atoms)
+                or any(len(pair) != 2 or pair[0] not in atoms or pair[1] not in atoms
+                       for pair in distance_pairs)):
             return False
-        for heavy_atom in (a_atom, b_atom):
-            distance = math.dist(xyz['coords'][h_atom], xyz['coords'][heavy_atom])
-            reference_distance = math.dist(reference_xyz['coords'][h_atom], reference_xyz['coords'][heavy_atom])
+        for atom_1, atom_2 in distance_pairs:
+            distance = math.dist(xyz['coords'][atom_1], xyz['coords'][atom_2])
+            reference_distance = math.dist(reference_xyz['coords'][atom_1], reference_xyz['coords'][atom_2])
             if abs(distance - reference_distance) > max(0.5, reference_distance * 0.5):
                 return False
-        angle = _get_angle(xyz['coords'][a_atom], xyz['coords'][h_atom], xyz['coords'][b_atom])
-        reference_angle = _get_angle(
-            reference_xyz['coords'][a_atom],
-            reference_xyz['coords'][h_atom],
-            reference_xyz['coords'][b_atom],
-        )
-        if abs(angle - reference_angle) > 30.0:
-            return False
+        angle_atoms = constraints.get('angle_atoms')
+        if angle_atoms is not None:
+            atom_1, vertex, atom_2 = angle_atoms
+            angle = _get_angle(xyz['coords'][atom_1], xyz['coords'][vertex], xyz['coords'][atom_2])
+            reference_angle = _get_angle(
+                reference_xyz['coords'][atom_1],
+                reference_xyz['coords'][vertex],
+                reference_xyz['coords'][atom_2],
+            )
+            if abs(angle - reference_angle) > 30.0:
+                return False
     except (IndexError, KeyError, TypeError, ValueError):
         return False
     return True

@@ -62,7 +62,7 @@ class TestCrestAdapter(unittest.TestCase):
             }
 
             crest_dir = crest_mod.crest_ts_conformer_search(
-                xyz_guess=xyz, a_atom=0, h_atom=1, b_atom=2, path=self.tmpdir.name, xyz_crest_int=0
+                xyz, 0, 1, 2, self.tmpdir.name, 0,
             )
 
             coords_path = os.path.join(crest_dir, "coords.ref")
@@ -125,7 +125,14 @@ class TestCrestAdapter(unittest.TestCase):
             }
 
             crest_dir = crest_mod.crest_ts_conformer_search(
-                xyz_guess=xyz, a_atom=0, h_atom=1, b_atom=2, path=self.tmpdir.name, xyz_crest_int=1
+                xyz_guess=xyz,
+                constraints={
+                    'atoms': (0, 1, 2),
+                    'distance_pairs': ((0, 1), (1, 2)),
+                    'angle_atoms': (0, 1, 2),
+                },
+                path=self.tmpdir.name,
+                xyz_crest_int=1,
             )
 
             submit_path = os.path.join(crest_dir, "submit.sh")
@@ -167,7 +174,11 @@ class TestCrestAdapter(unittest.TestCase):
         references = {
             crest_path: {
                 'xyz': reference_xyz,
-                'reactive_atoms': {'A': 0, 'H': 1, 'B': 2},
+                'constraints': {
+                    'atoms': (0, 1, 2),
+                    'distance_pairs': ((0, 1), (1, 2)),
+                    'angle_atoms': (0, 1, 2),
+                },
             },
         }
         self.assertEqual(crest_mod.process_completed_jobs(jobs, crest_references={}), [])
@@ -183,6 +194,73 @@ class TestCrestAdapter(unittest.TestCase):
             crest_mod.process_completed_jobs(jobs, crest_references=references),
             [reference_xyz],
         )
+
+    def test_creates_xy_distance_constraints_and_validates_completed_geometry(self):
+        """Write all three XY recipe distances and reject a geometry that loses one."""
+        from arc.job.adapters.ts import crest as crest_mod
+
+        reference_xyz = str_to_xyz("""C  0.0000 0.0000  0.6670
+                                      C  0.0000 0.0000 -0.6670
+                                      H  0.0000 0.9210  1.2320
+                                      H  0.0000 -0.9210 1.2320
+                                      H  0.0000 0.9210 -1.2320
+                                      H  0.0000 -0.9210 -1.2320
+                                      Cl 0.0000 2.1000 -0.6670
+                                      H  0.0000 1.6000  0.6670""")
+        constraints = {
+            'atoms': (1, 0, 7, 6),
+            'distance_pairs': ((1, 7), (0, 6), (7, 6)),
+        }
+
+        backups = {
+            'settings': crest_mod.settings,
+            'submit_scripts': crest_mod.submit_scripts,
+            'CREST_PATH': crest_mod.CREST_PATH,
+            'CREST_ENV_PATH': crest_mod.CREST_ENV_PATH,
+            'SERVERS': crest_mod.SERVERS,
+        }
+        try:
+            crest_mod.settings = {'submit_filenames': {'PBS': 'submit.sh'}}
+            crest_mod.submit_scripts = {'local': {}}
+            crest_mod.CREST_PATH = '/usr/bin/crest'
+            crest_mod.CREST_ENV_PATH = ''
+            crest_mod.SERVERS = {
+                'local': {'cluster_soft': 'pbs', 'cpus': 4, 'memory': 8, 'queue': 'testq'},
+            }
+            crest_path = crest_mod.crest_ts_conformer_search(
+                xyz_guess=reference_xyz,
+                constraints=constraints,
+                path=self.tmpdir.name,
+                xyz_crest_int=2,
+            )
+            with open(os.path.join(crest_path, 'constraints.inp')) as f:
+                constraints_text = f.read()
+            self.assertIn('atoms: 2, 1, 8, 7', constraints_text)
+            self.assertIn('distance: 2, 8, auto', constraints_text)
+            self.assertIn('distance: 1, 7, auto', constraints_text)
+            self.assertIn('distance: 8, 7, auto', constraints_text)
+            self.assertIn('atoms: 3, 4, 5, 6', constraints_text)
+
+            crest_best_path = os.path.join(crest_path, 'crest_best.xyz')
+            jobs = {'123': {'path': crest_path, 'status': 'done'}}
+            references = {crest_path: {'xyz': reference_xyz, 'constraints': constraints}}
+            with open(crest_best_path, 'w') as f:
+                f.write(f"8\nCREST geometry\n{xyz_to_str(reference_xyz)}\n")
+            self.assertEqual(crest_mod.process_completed_jobs(jobs, references), [reference_xyz])
+
+            dissociated_xyz = dict(reference_xyz)
+            dissociated_coords = list(reference_xyz['coords'])
+            dissociated_coords[6] = (0.0, 8.0, -0.6670)
+            dissociated_xyz['coords'] = tuple(dissociated_coords)
+            with open(crest_best_path, 'w') as f:
+                f.write(f"8\nCREST geometry\n{xyz_to_str(dissociated_xyz)}\n")
+            self.assertEqual(crest_mod.process_completed_jobs(jobs, references), [])
+        finally:
+            crest_mod.settings = backups['settings']
+            crest_mod.submit_scripts = backups['submit_scripts']
+            crest_mod.CREST_PATH = backups['CREST_PATH']
+            crest_mod.CREST_ENV_PATH = backups['CREST_ENV_PATH']
+            crest_mod.SERVERS = backups['SERVERS']
 
 
 if __name__ == "__main__":

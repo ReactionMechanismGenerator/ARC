@@ -81,7 +81,7 @@ def get_ts_seeds(reaction: 'ARCReaction',
                 'method': entry.get('method', 'Heuristics-XY'),
                 'family': reaction.family,
                 'source_adapter': 'heuristics',
-                'metadata': {},
+                'metadata': entry.get('metadata', {}).copy(),
             })
     return xyz_entries
 
@@ -104,24 +104,59 @@ def get_wrapper_constraints(wrapper: str,
     return _get_crest_constraints(reaction=reaction, seed=seed)
 
 
-def _get_crest_constraints(reaction: 'ARCReaction', seed: dict) -> Optional[Dict[str, int]]:
+def _get_crest_constraints(reaction: 'ARCReaction', seed: dict) -> Optional[dict]:
     """
-    Return CREST constraints for a seed.
+    Return a generic CREST constraint specification for a seed.
 
-    Currently, only H_Abstraction is supported.
+    The specification contains zero-based participating ``atoms`` and ``distance_pairs``.
+    H-abstraction additionally supplies ``angle_atoms`` so completed geometries retain
+    the seed's heavy-atom--H--heavy-atom orientation.
     """
     family = seed.get('family') or reaction.family
     xyz = seed.get('xyz')
-    if family != 'H_Abstraction' or xyz is None:
+    if xyz is None:
         return None
     metadata = seed.get('metadata')
-    if isinstance(metadata, dict) and 'reactive_atoms' in metadata:
-        reactive_atoms = metadata['reactive_atoms']
+    explicit_atoms = metadata.get('reactive_atoms') if isinstance(metadata, dict) else None
+    if family == 'H_Abstraction':
+        reactive_atoms = explicit_atoms if explicit_atoms is not None else _get_h_abs_atoms_from_xyz(xyz)
         if _is_valid_h_abs_atom_assignment(xyz=xyz, atoms=reactive_atoms):
-            return reactive_atoms
-        logger.warning(f'Invalid explicit CREST H-abstraction atom assignment: {reactive_atoms}')
+            return {
+                'A': reactive_atoms['A'],
+                'H': reactive_atoms['H'],
+                'B': reactive_atoms['B'],
+                'atoms': tuple(reactive_atoms[key] for key in ('A', 'H', 'B')),
+                'distance_pairs': (
+                    (reactive_atoms['A'], reactive_atoms['H']),
+                    (reactive_atoms['H'], reactive_atoms['B']),
+                ),
+                'angle_atoms': tuple(reactive_atoms[key] for key in ('A', 'H', 'B')),
+            }
+        if explicit_atoms is not None:
+            logger.warning(f'Invalid explicit CREST H-abstraction atom assignment: {explicit_atoms}')
         return None
-    return _get_h_abs_atoms_from_xyz(xyz)
+    if family == 'XY_Addition_MultipleBond':
+        if _is_valid_xy_atom_assignment(xyz=xyz, atoms=explicit_atoms):
+            return {
+                'atoms': tuple(explicit_atoms[label] for label in ('*1', '*2', '*3', '*4')),
+                'distance_pairs': (
+                    (explicit_atoms['*1'], explicit_atoms['*3']),
+                    (explicit_atoms['*2'], explicit_atoms['*4']),
+                    (explicit_atoms['*3'], explicit_atoms['*4']),
+                ),
+            }
+        logger.warning(f'Invalid explicit CREST XY-addition atom assignment: {explicit_atoms}')
+    return None
+
+
+def _is_valid_xy_atom_assignment(xyz: dict, atoms: Optional[Dict[str, int]]) -> bool:
+    """Return whether ``atoms`` identifies four distinct, in-range XY recipe atoms."""
+    symbols = xyz.get('symbols') if isinstance(xyz, dict) else None
+    if not symbols or not isinstance(atoms, dict) or set(atoms) != {'*1', '*2', '*3', '*4'}:
+        return False
+    indices = tuple(atoms[label] for label in ('*1', '*2', '*3', '*4'))
+    return (all(isinstance(index, int) and 0 <= index < len(symbols) for index in indices)
+            and len(set(indices)) == 4)
 
 
 def _is_valid_h_abs_atom_assignment(xyz: dict, atoms: Optional[Dict[str, int]]) -> bool:

@@ -48,7 +48,8 @@ def xy_addition(reaction: 'ARCReaction') -> list[dict]:
                                 (each with an ``r_label_map``) and reactant geometries.
 
     Returns:
-        list[dict]: Seed entries, each ``{'xyz': <xyz dict>, 'method': 'Heuristics-XY'}``.
+        list[dict]: Seed entries with Cartesian coordinates and the explicit family-label
+                    atom mapping used to build each geometry.
     """
     seeds: list[dict] = list()
     reactants, _ = reaction.get_reactants_and_products(return_copies=True)
@@ -91,7 +92,12 @@ def xy_addition(reaction: 'ARCReaction') -> list[dict]:
         seeds.append({'xyz': {'symbols': tuple(symbols),
                               'isotopes': tuple(isotopes),
                               'coords': tuple(coords)},
-                      'method': 'Heuristics-XY'})
+                      'method': 'Heuristics-XY',
+                      'metadata': {
+                          'reactive_atoms': {
+                              label: r_label_map[label] for label in ('*1', '*2', '*3', '*4')
+                          },
+                      }})
     return seeds
 
 
