@@ -860,7 +860,6 @@ class TestTrsh(unittest.TestCase):
             (['Syntax'], 'There was a syntax error in the Gaussian input file.'),
             (['InputError', 'GL101'], 'The blank line after the coordinate section is missing.'),
             (['MP2', 'GL906'], 'The MP2 calculation has failed.'),
-            (['OptOrientation', 'GL202'], 'The point group of the molecule has changed.'),
             (['Scratch'], 'Wrongly specified the scratch directory.'),
         ]
         for keywords, error in non_retryable_cases:
@@ -920,6 +919,37 @@ class TestTrsh(unittest.TestCase):
             self.assertTrue(history[-1][2], f'{job_type}: recurring ZMat after cartesian must terminate')
             self.assertIn('all_attempted', history[-1][0], f'{job_type}: must reach all_attempted')
             self.assertLessEqual(len(history), 2, f'{job_type}: cartesian tried once then terminate: {history}')
+
+    def test_trsh_ess_job_gaussian_optorientation_nosymm_then_terminates(self):
+        """
+        An l202 "OptOrientation" error (the standard orientation / point group changed mid-opt) is a
+        symmetry glitch that nosymm cures - the same remedy l101/l103 use - so it must be troubleshot
+        with nosymm on the first retry, NOT refused as a non-retryable dead-end, and must terminate
+        (not loop) if it recurs after nosymm has already been applied.
+        """
+        # OptOrientation must no longer be gated as a non-retryable dead-end.
+        self.assertNotIn('OptOrientation', trsh.GAUSSIAN_NON_RETRYABLE_KEYWORDS)
+        ess_trsh_methods, history = list(), list()
+        for _ in range(5):
+            out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None,
+                                    {'keywords': ['OptOrientation', 'GL202', 'NoSymm'],
+                                     'error': 'During the optimization process, either the standard '
+                                              'orientation or the point group of the molecule has changed.'},
+                                    'opt', 'gaussian', False, 16, 2, 8, ess_trsh_methods)
+            output_errors, ess_trsh_methods, trsh_keyword, couldnt_trsh = out[0], out[1], out[7], out[11]
+            history.append((list(ess_trsh_methods), list(trsh_keyword), couldnt_trsh,
+                            any('non-retryable' in e for e in output_errors)))
+            if couldnt_trsh or 'all_attempted' in ess_trsh_methods:
+                break
+        # First retry: nosymm recorded and emitted exactly once, job resubmitted, NOT refused.
+        self.assertIn('NoSymm', history[0][0], 'first OptOrientation retry must record NoSymm')
+        self.assertEqual(history[0][1].count('nosymm'), 1, 'nosymm must be emitted exactly once')
+        self.assertFalse(history[0][2], 'first OptOrientation retry must resubmit, not give up')
+        self.assertFalse(history[0][3], 'OptOrientation must not be reported non-retryable')
+        # Recurrence after nosymm already applied: terminate, no loop.
+        self.assertTrue(history[-1][2], 'recurring OptOrientation after nosymm must terminate')
+        self.assertIn('all_attempted', history[-1][0])
+        self.assertLessEqual(len(history), 2, f'nosymm tried once then terminate: {history}')
 
     def test_trsh_ess_job_gaussian_gl401_projection_checkfile_then_terminates(self):
         """

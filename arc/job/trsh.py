@@ -122,7 +122,7 @@ def determine_ess_status(output_path: str,
                         error = 'There are two blank lines between z-matrix and ' \
                                 'the variables, expected only one.'
                     elif 'l202.exe' in line:
-                        keywords = ['OptOrientation', 'GL202']
+                        keywords = ['OptOrientation', 'GL202', 'NoSymm']
                         error = 'During the optimization process, either the standard ' \
                                 'orientation or the point group of the molecule has changed.'
                     elif 'l301.exe' in line:
@@ -846,7 +846,7 @@ def trsh_special_rotor(special_rotor: list,
 # BasisSet branch in trsh_ess_job, and the one retryable BasisSet case - the GL401 guess=read
 # projection failure - is reclassified as 'CheckFile' (see determine_ess_status) and fixed by
 # dropping the checkfile. So no BasisSet error reaches this gate.
-GAUSSIAN_NON_RETRYABLE_KEYWORDS = ('Syntax', 'InputError', 'MP2', 'OptOrientation', 'Scratch')
+GAUSSIAN_NON_RETRYABLE_KEYWORDS = ('Syntax', 'InputError', 'MP2', 'Scratch')
 
 
 def trsh_ess_job(label: str,
