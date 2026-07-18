@@ -97,6 +97,24 @@ class TestMolproAdapter(unittest.TestCase):
                                                               'closed': [1, 0, 0, 0, 0, 0, 0, 0]})],
                                   testing=True,
                                   )
+        cls.job_mrcc_ccsdt = MolproAdapter(execution_type='queue',
+                                           job_type='sp',
+                                           level=Level(method='CCSDT', basis='cc-pVDZ'),
+                                           project='test',
+                                           project_directory=os.path.join(ARC_TESTING_PATH,
+                                                                          'test_MolproAdapter_mrcc_ccsdt'),
+                                           species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
+                                           testing=True,
+                                           )
+        cls.job_mrcc_ccsdtq = MolproAdapter(execution_type='queue',
+                                            job_type='sp',
+                                            level=Level(method='CCSDT(Q)', basis='cc-pVDZ'),
+                                            project='test',
+                                            project_directory=os.path.join(ARC_TESTING_PATH,
+                                                                           'test_MolproAdapter_mrcc_ccsdtq'),
+                                            species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1)],
+                                            testing=True,
+                                            )
 
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
@@ -440,6 +458,107 @@ int;
 
 """
         self.assertEqual(content_7, job_7_expected_input_file)
+
+    def test_write_input_file_mrcc_routing(self):
+        """Methods unsupported by native Molpro but supported by MRCC are routed through the MRCC plugin.
+
+        For an open-shell wavefunction, the SCF reference is switched from
+        ``{hf;...}`` (which gives Molpro's ROHF for open-shell) to
+        ``{uhf;...}``. MRCC's approximate-CC family (``CCSDT(Q)``,
+        ``CCSDTQ(P)``, and the perturbative-``(T)`` variants) refuses
+        standard ROHF orbitals with the error::
+
+            Approximate CC methods are not implemented for standard ROHF orbitals!
+            Use semicanonical orbitals!
+
+        UHF orbitals are semicanonical by construction (alpha and beta Fock
+        matrices are separately diagonal), saved to the default record 2100.2
+        which MRCC reads — MRCC then reports ``Type=UHF/CANONICAL`` and runs
+        the requested approximate-CC method.
+        """
+        self.job_mrcc_ccsdt.cpu_cores = 48
+        self.job_mrcc_ccsdt.set_input_file_memory()
+        self.job_mrcc_ccsdt.write_input_file()
+        with open(os.path.join(self.job_mrcc_ccsdt.local_path,
+                               input_filenames[self.job_mrcc_ccsdt.job_adapter]), 'r') as f:
+            content_ccsdt = f.read()
+        # spc1 has multiplicity=3 (open-shell triplet) — UHF reference expected.
+        expected_ccsdt = """***,spc1
+memory,Total=438,m;
+
+geometry={angstrom;
+O       0.00000000    0.00000000    1.00000000}
+
+gprint,orbitals;
+
+basis=cc-pvdz
+
+
+
+int;
+
+{uhf;
+ maxit,999;
+ wf,spin=2,charge=0;
+}
+
+{mrcc,method=CCSDT}
+
+
+
+---;
+
+"""
+        self.assertEqual(content_ccsdt, expected_ccsdt)
+        # Sanity: the bare directive Molpro rejects must NOT appear on its own line.
+        self.assertNotIn('\nccsdt;\n', content_ccsdt)
+        self.assertNotIn('\nuccsdt;\n', content_ccsdt)
+        # An earlier (insufficient) fix used `{uccsd}` between HF and MRCC —
+        # this contract has been replaced with UHF, so {uccsd} must NOT appear.
+        self.assertNotIn('{uccsd}', content_ccsdt)
+        # UHF must replace HF as the only SCF reference (no {hf;...} block).
+        self.assertNotIn('{hf;', content_ccsdt)
+        self.assertIn('{uhf;', content_ccsdt)
+
+        self.job_mrcc_ccsdtq.cpu_cores = 48
+        self.job_mrcc_ccsdtq.set_input_file_memory()
+        self.job_mrcc_ccsdtq.write_input_file()
+        with open(os.path.join(self.job_mrcc_ccsdtq.local_path,
+                               input_filenames[self.job_mrcc_ccsdtq.job_adapter]), 'r') as f:
+            content_ccsdtq = f.read()
+        expected_ccsdtq = """***,spc1
+memory,Total=438,m;
+
+geometry={angstrom;
+O       0.00000000    0.00000000    1.00000000}
+
+gprint,orbitals;
+
+basis=cc-pvdz
+
+
+
+int;
+
+{hf;
+ maxit,999;
+ wf,spin=0,charge=0;
+}
+
+{mrcc,method=CCSDT(Q)}
+
+
+
+---;
+
+"""
+        self.assertEqual(content_ccsdtq, expected_ccsdtq)
+        self.assertNotIn('\nccsdt(q);\n', content_ccsdtq)
+        # spc1 here has multiplicity=1 (closed-shell) — RHF gives canonical
+        # orbitals MRCC accepts directly. No UHF/UCCSD pre-step needed.
+        self.assertNotIn('{uccsd}', content_ccsdtq)
+        self.assertNotIn('{uhf;', content_ccsdtq)
+        self.assertIn('{hf;', content_ccsdtq)
 
     def test_set_files(self):
         """Test setting files"""

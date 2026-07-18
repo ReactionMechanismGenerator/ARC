@@ -5,12 +5,16 @@
 This module contains unit tests for ARC's statmech.arkane module
 """
 
+import logging
 import os
+import re
 import shutil
 import tempfile
 import unittest
 
+import arc.parser.parser as parser
 from arc.common import ARC_PATH, ARC_TESTING_PATH
+from arc.constants import E_h_kJmol
 from arc.exceptions import InputError
 from arc.level import Level
 from arc.reaction import ARCReaction
@@ -31,7 +35,9 @@ from arc.statmech.arkane import (
     _warn_no_match,
     check_arkane_aec,
     check_arkane_bacs,
+    filter_real_stderr_lines,
     get_arkane_model_chemistry,
+    run_arkane,
 )
 from unittest.mock import patch
 
@@ -679,6 +685,409 @@ class TestCheckArkaneCorrections(unittest.TestCase):
             with self.assertLogs('arc', level='INFO') as cm:
                 result = check_arkane_bacs(sp_level=level, bac_type='p')
         self.assertTrue(result)
+
+
+class TestArkaneSpCompositeRendering(unittest.TestCase):
+    """
+    Phase 4: verify the Arkane species-file rendering branch for species whose
+    ``e_elect_source == 'sp_composite'``. The composite total (kJ/mol) must be
+    converted to Hartree and written as a bare ``energy = <float>`` assignment
+    so Arkane consumes it directly (not via ``Log(...)``).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.mkdtemp(prefix="arkane_composite_")
+        cls.opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        cls.freq_path = os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out')
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def _make_adapter(self, species):
+        output_dir = os.path.join(self.tmpdir, "output", species.label)
+        calcs_dir = os.path.join(self.tmpdir, "calcs", species.label)
+        for d in (output_dir, calcs_dir):
+            os.makedirs(d, exist_ok=True)
+        return ArkaneAdapter(
+            output_directory=output_dir,
+            calcs_directory=calcs_dir,
+            output_dict={species.label: {'paths': {
+                'freq': self.freq_path, 'sp': self.opt_path, 'opt': self.opt_path,
+                'composite': '',
+            }}},
+            bac_type=None,
+            species=[species],
+            sp_level=Level('gfn2'),
+            freq_level=Level('gfn2'),
+            freq_scale_factor=1.0,
+        )
+
+    def test_composite_species_renders_explicit_numeric_energy(self):
+        """``energy = <hartree_float>``, NOT ``energy = Log('...')``."""
+        species = ARCSpecies(label='H2comp', smiles='[H][H]')
+        species.e_elect = -200512.34  # kJ/mol (arbitrary realistic value)
+        species.e_elect_source = 'sp_composite'
+        adapter = self._make_adapter(species)
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        # Must NOT use Log() for energy; must contain a bare numeric assignment.
+        self.assertNotIn("energy = Log(", content)
+        expected_hartree = species.e_elect / E_h_kJmol
+        # Arkane's file-format expects Hartree. Avoid an exact-string match
+        # against ``str(expected_hartree)`` — Python's float repr and Mako's
+        # formatting can differ in trailing digits / scientific-notation choice.
+        # Extract the rendered value and compare numerically.
+        match = re.search(r"^energy = ([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)$",
+                          content, re.MULTILINE)
+        self.assertIsNotNone(match, f"No bare numeric ``energy = …`` line:\n{content}")
+        self.assertAlmostEqual(float(match.group(1)), expected_hartree, places=9)
+        # Geometry / frequencies still use Log().
+        self.assertIn("geometry = Log(", content)
+        self.assertIn("frequencies = Log(", content)
+        # The template's provenance comment mentions sp_composite.
+        self.assertIn("sp_composite", content)
+        self.assertIn("kJ/mol", content)
+
+    def test_noncomposite_species_unchanged_energy_log_path(self):
+        """Species without sp_composite must render the legacy ``energy = Log('sp_path')``."""
+        species = ARCSpecies(label='iC3H7_legacy', smiles='C[CH]C')
+        # e_elect_source stays None; e_elect is not set/relevant to legacy rendering.
+        adapter = self._make_adapter(species)
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        self.assertIn(f"energy = Log('{self.opt_path}')", content)
+        self.assertNotIn("sp_composite", content)
+
+    def test_composite_species_with_missing_e_elect_raises(self):
+        """e_elect_source='sp_composite' but no e_elect → clear error, not a silently broken file."""
+        species = ARCSpecies(label='H2broken', smiles='[H][H]')
+        species.e_elect = None
+        species.e_elect_source = 'sp_composite'
+        adapter = self._make_adapter(species)
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        with self.assertRaises(ValueError) as ctx:
+            adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        self.assertIn("sp_composite", str(ctx.exception))
+        self.assertIn("e_elect is None", str(ctx.exception))
+
+    def test_composite_atom_geometry_falls_back_to_composite_path(self):
+        """Atoms under sp_composite have no freq job; geometry/frequencies Log() must
+        fall back to paths['composite'], not render Log('')."""
+        composite_path = os.path.join(self.tmpdir, "H_base_sp.out")
+        # The file does not need to be parseable here; the test checks rendering only.
+        with open(composite_path, 'w') as f:
+            f.write("placeholder")
+        species = ARCSpecies(label='Hatom', smiles='[H]')
+        species.e_elect = -1312.753
+        species.e_elect_source = 'sp_composite'
+        output_dir = os.path.join(self.tmpdir, "output", species.label)
+        calcs_dir = os.path.join(self.tmpdir, "calcs", species.label)
+        for d in (output_dir, calcs_dir):
+            os.makedirs(d, exist_ok=True)
+        adapter = ArkaneAdapter(
+            output_directory=output_dir,
+            calcs_directory=calcs_dir,
+            output_dict={species.label: {'paths': {
+                'freq': '', 'sp': '', 'opt': '', 'composite': composite_path,
+            }}},
+            bac_type=None,
+            species=[species],
+            sp_level=Level('gfn2'),
+            freq_level=Level('gfn2'),
+            freq_scale_factor=1.0,
+        )
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        self.assertIn(f"geometry = Log('{composite_path}')", content)
+        self.assertIn(f"frequencies = Log('{composite_path}')", content)
+        self.assertNotIn("Log('')", content)
+
+    def test_composite_rendered_energy_equals_kJmol_over_E_h_kJmol(self):
+        """Round-trip: hartree written = (kJ/mol stored) / E_h_kJmol, to within fp precision."""
+        species = ARCSpecies(label='H2precise', smiles='[H][H]')
+        species.e_elect = -123456.789012
+        species.e_elect_source = 'sp_composite'
+        adapter = self._make_adapter(species)
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        match = re.search(r"^energy = (-?\d+\.\d+(?:e[+-]?\d+)?)$", content, re.MULTILINE)
+        self.assertIsNotNone(match, f"No ``energy = <float>`` line in:\n{content}")
+        rendered = float(match.group(1))
+        self.assertAlmostEqual(rendered, species.e_elect / E_h_kJmol, places=9)
+
+    def test_composite_energy_precedence_over_base_sp_log(self):
+        """With paths['sp'] populated by the composite base log (scheduler invariant),
+        the rendered energy must be the explicit composite total — not a value
+        re-parsed from the base log."""
+        species = ARCSpecies(label='iC3H7prec', smiles='C[CH]C')
+        species.e_elect = -310000.0  # kJ/mol; deliberately differs from the base log
+        species.e_elect_source = 'sp_composite'
+        adapter = self._make_adapter(species)  # paths['sp'] = a real, parseable log
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        self.assertNotIn("energy = Log(", content)
+        match = re.search(r"^energy = ([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)$",
+                          content, re.MULTILINE)
+        self.assertIsNotNone(match, f"No bare numeric ``energy = …`` line:\n{content}")
+        rendered_kJmol = float(match.group(1)) * E_h_kJmol
+        self.assertAlmostEqual(rendered_kJmol, species.e_elect, places=6)
+        base_log_e_elect = parser.parse_e_elect(self.opt_path)  # kJ/mol
+        self.assertNotAlmostEqual(rendered_kJmol, base_log_e_elect, places=1)
+
+    def test_monoatomic_composite_falls_back_to_base_sp_log(self):
+        """A monoatomic composite species (no freq job, no legacy composite job):
+        geometry/frequencies must fall back to paths['sp'] — the composite base
+        log set by the scheduler — and never render Log('')."""
+        base_path = os.path.join(self.tmpdir, "Hmono_base_sp.out")
+        with open(base_path, 'w') as f:
+            f.write("placeholder")
+        species = ARCSpecies(label='Hmono', smiles='[H]')
+        species.e_elect = -1312.753
+        species.e_elect_source = 'sp_composite'
+        output_dir = os.path.join(self.tmpdir, "output", species.label)
+        calcs_dir = os.path.join(self.tmpdir, "calcs", species.label)
+        for d in (output_dir, calcs_dir):
+            os.makedirs(d, exist_ok=True)
+        adapter = ArkaneAdapter(
+            output_directory=output_dir,
+            calcs_directory=calcs_dir,
+            output_dict={species.label: {'paths': {
+                'freq': '', 'sp': base_path, 'opt': '', 'composite': '',
+            }}},
+            bac_type=None,
+            species=[species],
+            sp_level=Level('gfn2'),
+            freq_level=Level('gfn2'),
+            freq_scale_factor=1.0,
+        )
+        species_dir = os.path.join(self.tmpdir, "species_" + species.label)
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(species, species_dir, skip_rotors=True)
+        with open(species.arkane_file) as fh:
+            content = fh.read()
+        self.assertIn(f"geometry = Log('{base_path}')", content)
+        self.assertIn(f"frequencies = Log('{base_path}')", content)
+        self.assertNotIn("Log('')", content)
+
+
+class TestReactionDhRxnConsumesKJmol(unittest.TestCase):
+    """
+    Phase 5: lock the invariant that ``set_reaction_dh_rxn`` consumes
+    ``spc.e_elect`` in kJ/mol after an sp_composite finalization. The Hartree
+    conversion happens *only* at the Arkane species-file rendering boundary
+    (``generate_species_file``); everywhere else — including reaction ΔH and
+    reaction energetics — ``spc.e_elect`` stays in kJ/mol.
+    """
+
+    def test_dh_rxn_uses_kJmol_e_elect_for_composite_species(self):
+        tmpdir = tempfile.mkdtemp(prefix="arkane_dhrxn_")
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        # Two composite-finalized "species" standing in as reactant + product.
+        reactant = ARCSpecies(label='R', smiles='[H][H]')
+        reactant.e_elect = -200000.0            # kJ/mol
+        reactant.e_elect_source = 'sp_composite'
+        reactant.thermo = None                  # force the e_elect branch
+        product = ARCSpecies(label='P', smiles='[H][H]')
+        product.e_elect = -200100.0             # kJ/mol
+        product.e_elect_source = 'sp_composite'
+        product.thermo = None
+        rxn = ARCReaction(r_species=[reactant], p_species=[product])
+        rxn.thermo = None
+        adapter = ArkaneAdapter(
+            output_directory=tmpdir,
+            calcs_directory=tmpdir,
+            output_dict={},
+            bac_type=None,
+            species=[reactant, product],
+            reactions=[rxn],
+            sp_level=Level('gfn2'),
+            freq_level=Level('gfn2'),
+            freq_scale_factor=1.0,
+        )
+        adapter.set_reaction_dh_rxn(estimate_dh_rxn=True)
+        # dh_rxn298 = (product.e_elect - reactant.e_elect) * 1e3 (J/mol conversion).
+        expected_J = (product.e_elect - reactant.e_elect) * 1e3
+        self.assertAlmostEqual(rxn.dh_rxn298, expected_J, places=6)
+        # Sanity: the raw kJ/mol difference is -100; dh_rxn298 should be -1e5 J/mol.
+        self.assertAlmostEqual(rxn.dh_rxn298, -1e5, places=6)
+
+
+class TestFilterRealStderrLines(unittest.TestCase):
+    """``filter_real_stderr_lines`` strips harmless shell-init / library noise
+    from a subprocess's stderr so ARC doesn't classify a successful Arkane run
+    as a failure."""
+
+    def test_open_babel_unusual_valence_warning_is_noise(self):
+        """Existing carve-out: Open Babel's InChI-code warnings are harmless."""
+        lines = [
+            "==============================",
+            "*** Open Babel Warning  in InChI code",
+            "  #1 :Accepted unusual valence(s): C(2)",
+            "==============================",
+        ]
+        self.assertEqual(filter_real_stderr_lines(lines), [])
+
+    def test_lmod_unknown_module_warning_is_noise(self):
+        """Regression: a stale ``module load openmpi`` in shell init prints a
+        Lmod block to stderr. ARC was treating it as a fatal Arkane failure
+        even though Arkane completed successfully."""
+        lines = [
+            'Lmod has detected the following error: The following module(s) are unknown:',
+            '"openmpi"',
+            '',
+            'Please check the spelling or version number. Also try "module spider ..."',
+            'It is also possible your cache file is out-of-date; it may help to try:',
+            '  $ module --ignore_cache load "openmpi"',
+            '',
+            'Also make sure that all modulefiles written in TCL start with the string',
+            '#%Module',
+        ]
+        self.assertEqual(filter_real_stderr_lines(lines), [])
+
+    def test_conda_libmamba_solver_load_failure_is_noise(self):
+        """A broken `_sqlite3` in the base conda (missing `sqlite3_deserialize`)
+        causes conda-libmamba-solver to fail loading and emit a stderr line on
+        every `conda run` invocation. The subprocess itself succeeds — conda
+        falls back to the classic solver — so this line is benign noise."""
+        lines = [
+            ('Error while loading conda entry point: conda-libmamba-solver '
+             '(/home/alon/miniconda3/lib/python3.11/lib-dynload/'
+             '_sqlite3.cpython-311-x86_64-linux-gnu.so: undefined symbol: '
+             'sqlite3_deserialize)'),
+        ] * 4
+        self.assertEqual(filter_real_stderr_lines(lines), [])
+
+    def test_conda_entry_point_noise_does_not_mask_real_error(self):
+        """Conda-entry-point noise is filtered, but a real traceback emitted by
+        the same script must still survive."""
+        lines = [
+            'Error while loading conda entry point: conda-libmamba-solver (...)',
+            'Traceback (most recent call last):',
+            'RuntimeError: thermo failed',
+        ]
+        result = filter_real_stderr_lines(lines)
+        self.assertEqual(
+            result,
+            ['Traceback (most recent call last):', 'RuntimeError: thermo failed'],
+        )
+
+    def test_real_error_is_preserved(self):
+        """A genuine traceback line passes through."""
+        lines = [
+            "==============================",
+            "*** Open Babel Warning",
+            "Traceback (most recent call last):",
+            '  File "arkane/main.py", line 123, in run',
+            "RuntimeError: Could not parse output",
+        ]
+        result = filter_real_stderr_lines(lines)
+        self.assertIn("Traceback (most recent call last):", result)
+        self.assertIn("RuntimeError: Could not parse output", result)
+        self.assertNotIn("==============================", result)
+
+    def test_mixed_lmod_and_real_error_keeps_only_real(self):
+        """When Lmod noise and a real error coexist, only the real error
+        survives. (The user's H/H2/OH composite SP failures should still
+        surface even if the shell init is noisy.)"""
+        lines = [
+            'Lmod has detected the following error: ...',
+            '"openmpi"',
+            '#%Module',
+            "AttributeError: 'NoneType' object has no attribute 'thermo'",
+        ]
+        result = filter_real_stderr_lines(lines)
+        self.assertEqual(
+            result,
+            ["AttributeError: 'NoneType' object has no attribute 'thermo'"],
+        )
+
+    def test_empty_and_whitespace_only_lines_dropped(self):
+        self.assertEqual(filter_real_stderr_lines(["", "   ", "\t"]), [])
+
+    def test_accepts_string_as_well_as_list(self):
+        """Some call sites pass a multiline string; the helper splits it."""
+        s = (
+            'Lmod has detected the following error: blah\n'
+            '"openmpi"\n'
+            '\n'
+            'Genuine error: foo\n'
+        )
+        self.assertEqual(filter_real_stderr_lines(s), ["Genuine error: foo"])
+
+    def test_dropped_lines_are_logged_at_debug(self):
+        """Every line eaten by the filter must be recoverable from the debug log."""
+        lines = [
+            'Lmod has detected the following error: blah',
+            '"openmpi"',
+            'RuntimeError: real failure',
+        ]
+        with self.assertLogs('arc', level='DEBUG') as cm:
+            result = filter_real_stderr_lines(lines)
+        self.assertEqual(result, ['RuntimeError: real failure'])
+        # Filter by levelno: arc.common.initialize_log renames level names via
+        # logging.addLevelName, so levelname is '' once any ARC project ran.
+        debug_msgs = [r.getMessage() for r in cm.records if r.levelno == logging.DEBUG]
+        self.assertTrue(any('Lmod has detected the following error: blah' in msg
+                            and '"openmpi"' in msg for msg in debug_msgs))
+
+    def test_no_debug_log_when_nothing_dropped(self):
+        """The filter stays silent when no lines are dropped."""
+        with self.assertNoLogs('arc', level='DEBUG'):
+            result = filter_real_stderr_lines(['RuntimeError: real failure'])
+        self.assertEqual(result, ['RuntimeError: real failure'])
+
+
+class TestRunArkaneStderrLogging(unittest.TestCase):
+    """``run_arkane`` must log only the filtered (real) stderr lines at info
+    level, while keeping the full raw stderr recoverable at debug level."""
+
+    def setUp(self):
+        self.statmech_dir = tempfile.mkdtemp(prefix='arkane_run_')
+        with open(os.path.join(self.statmech_dir, 'input.py'), 'w') as f:
+            f.write('# dummy Arkane input\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.statmech_dir, ignore_errors=True)
+
+    def test_info_logs_filtered_errors_and_debug_logs_raw_stderr(self):
+        """The info message must exclude noise; the raw stderr (noise included)
+        must appear in a debug message alongside the real error."""
+        std_err = [
+            'Lmod has detected the following error: The following module(s) are unknown:',
+            '"openmpi"',
+            'RuntimeError: Arkane exploded',
+        ]
+        with patch('arc.statmech.arkane.execute_command', return_value=([], std_err)):
+            with self.assertLogs('arc', level='DEBUG') as cm:
+                result = run_arkane(self.statmech_dir)
+        self.assertFalse(result)
+        info_msgs = [r.getMessage() for r in cm.records if r.levelno == logging.INFO]
+        failure_msgs = [msg for msg in info_msgs if 'Arkane run failed' in msg]
+        self.assertEqual(len(failure_msgs), 1)
+        self.assertIn('RuntimeError: Arkane exploded', failure_msgs[0])
+        self.assertNotIn('Lmod', failure_msgs[0])
+        self.assertNotIn('openmpi', failure_msgs[0])
+        debug_msgs = [r.getMessage() for r in cm.records if r.levelno == logging.DEBUG]
+        self.assertTrue(any('Lmod has detected' in msg and 'RuntimeError: Arkane exploded' in msg
+                            for msg in debug_msgs))
 
 
 if __name__ == '__main__':

@@ -171,6 +171,42 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(error, "Unrecognized basis set 6-311G**")
         self.assertIn(" ? Basis library exhausted", line)  # line includes '\n'
 
+        # Molpro + MRCC: 'Fatal error in (x)mrcc' is MRCC's GENERIC crash
+        # banner — OOM, disk-full, and internal errors all print it. It must
+        # classify as a generic MRCC failure that routes to the normal
+        # troubleshooting ladder, never as a special-cased degenerate system.
+        path = os.path.join(self.base_path["molpro"], "mrcc_xmrcc_fatal.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="H", job_type="sp"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["MRCC"])
+        self.assertIn("mrcc", error.lower())
+        self.assertIn("Fatal error in xmrcc", line)
+
+        # Molpro + MRCC: ROHF orbitals incompatible with approximate CC methods
+        # (open-shell radicals). Trsh classifies and the adapter's UHF SCF
+        # reference should prevent this from happening on new runs; the
+        # keyword is the diagnostic for any legacy runs without that fix.
+        path = os.path.join(self.base_path["molpro"], "mrcc_rohf_unsupported.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="OH", job_type="sp"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["MRCCRequiresSemicanonical"])
+        self.assertIn("semicanonical", error.lower())
+
+        # Molpro + MRCC: an early semicanonical-orbitals note must not
+        # override a successful termination of a multi-step job.
+        path = os.path.join(self.base_path["molpro"], "mrcc_semicanonical_note_success.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="OH", job_type="sp"
+        )
+        self.assertEqual(status, "done")
+        self.assertEqual(keywords, list())
+        self.assertEqual(error, "")
+        self.assertEqual(line, "")
+
         # Orca
 
         # test detection of a successful job
@@ -712,8 +748,11 @@ class TestTrsh(unittest.TestCase):
 
         # Test Orca
         # Orca: test 1
-        # Test troubleshooting insufficient memory issue
-        # Automatically increase memory provided not exceeding maximum available memory
+        # Test troubleshooting insufficient memory issue.
+        # When merely increasing total memory has already been attempted ('memory' is already in
+        # ess_trsh_methods), simply requesting more total memory keeps failing (and previously caused
+        # ARC to resubmit near-identical jobs in an endless loop). Instead, ARC reduces the number of
+        # cpu cores to raise the memory per core (Orca's MaxCore).
         label = 'test'
         level_of_theory = {'method': 'dlpno-ccsd(T)'}
         server = 'server1'
@@ -733,8 +772,9 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(cpu_cores, 32)
-        self.assertAlmostEqual(memory, 327)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertEqual(cpu_cores, 22)
+        self.assertAlmostEqual(memory, 227)
 
         # Orca: test 2
         # Test troubleshooting insufficient memory issue
@@ -787,6 +827,36 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('memory', ess_trsh_methods)
         self.assertEqual(couldnt_trsh, True)
         self.assertLess(cpu_cores, 1)  # can't really run job with less than 1 cpu ^o^
+
+        # Orca: test 3b
+        # Regression test for the Orca 5.x DLPNO-CCSD(T) "out of memory in the triples" loop.
+        # In Orca 5.x the message is "Please increase MaxCore - Skipping calculation" with no explicit
+        # per-core requirement, so determine_ess_status returns 'Insufficient job memory.'. Increasing
+        # total memory was already attempted (ess_trsh_methods=['memory']) and the node is NOT at its
+        # memory ceiling (no 'max_total_job_memory' keyword). Previously ARC kept resubmitting a nearly
+        # identical job forever; instead it must reduce the number of cpu cores so that the memory per
+        # core (Orca's MaxCore) actually increases.
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server2'
+        job_type = 'sp'
+        software = 'orca'
+        fine = False
+        memory_gb = 37
+        cpu_cores = 16
+        num_heavy_atoms = 16
+        ess_trsh_methods = ['memory']
+        job_status = {'keywords': ['MDCI', 'Memory'], 'error': 'Insufficient job memory.'}
+        mem_per_core_before = memory_gb / cpu_cores
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertFalse(couldnt_trsh)
+        self.assertEqual(cpu_cores, 5)  # cpu cores reduced (this breaks the endless retry loop)
+        self.assertAlmostEqual(memory, 29)
+        self.assertGreater(memory / cpu_cores, mem_per_core_before)  # memory per core increased
 
         # Orca: test 4
         # Test troubleshooting too many cpu cores

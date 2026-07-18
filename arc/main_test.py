@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.main module
 """
 
+import logging
 import os
 import shutil
 import unittest
@@ -13,6 +14,7 @@ from arc.common import ARC_PATH
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.level import Level
+from arc.level.protocol import CompositeProtocol
 from arc.main import ARC, process_adaptive_levels
 from arc.species.species import ARCSpecies
 
@@ -93,7 +95,9 @@ class TestARC(unittest.TestCase):
                                           'xtb': ['local'],
                                           'xtb_gsm': ['local'],
                                           },
-                         'freq_level': {'basis': '6-311+g(3df,2p)',
+                         'freq_level': {'args': {'block': {},
+                                                 'keyword': {'general': 'scf=(NDamp=30)'}},
+                                        'basis': '6-311+g(3df,2p)',
                                         'method': 'b3lyp',
                                         'method_type': 'dft',
                                         'software': 'gaussian'},
@@ -516,11 +520,258 @@ class TestARC(unittest.TestCase):
         Delete all project directories created during these unit tests
         """
         projects = ['arc_project_for_testing_delete_after_usage_test_from_dict',
-                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
+                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong',
+                    'test_sp_composite']
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestARCSpComposite(unittest.TestCase):
+    """
+    Tests for project-level ``sp_composite`` YAML plumbing.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.worker = os.environ.get('PYTEST_XDIST_WORKER', 'master')
+
+    @classmethod
+    def tearDownClass(cls):
+        for project in ['test_sp_composite_preset',
+                        'test_sp_composite_explicit',
+                        'test_sp_composite_preset_override',
+                        'test_sp_composite_mutex_composite',
+                        'test_sp_composite_mutex_adaptive',
+                        'test_sp_composite_mutex_lot',
+                        'test_sp_composite_fallback',
+                        'test_sp_composite_fallback_cbs',
+                        'test_sp_composite_preserves_sp_level',
+                        'test_sp_composite_sp_level_warn',
+                        'test_sp_composite_per_species_aec_limit',
+                        'test_sp_composite_aec_bac',
+                        'test_sp_composite_bac_none',
+                        'test_sp_composite_spc_mutex_adaptive',
+                        'test_sp_composite_spc_mutex_composite',
+                        'test_sp_composite_zombie',
+                        'test_sp_composite_paths',
+                        'test_sp_composite_roundtrip']:
+            project_directory = os.path.join(ARC_PATH, 'Projects', f'{project}_{cls.worker}')
+            if os.path.isdir(project_directory):
+                shutil.rmtree(project_directory, ignore_errors=True)
+
+    def test_preset_string_parsed(self):
+        arc = ARC(project=f'test_sp_composite_preset_{self.worker}', sp_composite='HEAT-345Q',
+                  freq_scale_factor=1)
+        arc.process_level_of_theory()
+        self.assertIsInstance(arc.sp_composite, CompositeProtocol)
+
+    def test_explicit_dict_parsed(self):
+        # compute_thermo=False avoids the Arkane AEC lookup that would otherwise
+        # reject hf/cc-pVTZ for lacking a database entry — we're testing parsing.
+        recipe = {
+            'base': {'method': 'hf', 'basis': 'cc-pVTZ'},
+            'corrections': [],
+        }
+        arc = ARC(project=f'test_sp_composite_explicit_{self.worker}', sp_composite=recipe,
+                  compute_thermo=False, freq_scale_factor=1)
+        arc.process_level_of_theory()
+        self.assertIsInstance(arc.sp_composite, CompositeProtocol)
+        self.assertEqual(arc.sp_composite.base.level.method, 'hf')
+
+    def test_preset_with_overrides_parsed(self):
+        arc = ARC(project=f'test_sp_composite_preset_override_{self.worker}',
+                  sp_composite={'preset': 'HEAT-345Q',
+                                'overrides': {'delta_T': {'high': {'method': 'ccsdt',
+                                                                   'basis': 'cc-pVTZ'}}}},
+                  freq_scale_factor=1)
+        arc.process_level_of_theory()
+        delta_t = next(t for t in arc.sp_composite.corrections if t.label == 'delta_T')
+        self.assertEqual(delta_t.high.basis, 'cc-pvtz')
+
+    def test_mutex_with_composite_method(self):
+        # Mutual-exclusion check fires during ARC.__init__ → process_level_of_theory.
+        with self.assertRaises(InputError):
+            ARC(project=f'test_sp_composite_mutex_composite_{self.worker}',
+                sp_composite='HEAT-345Q', composite_method='CBS-QB3',
+                freq_scale_factor=1)
+
+    def test_mutex_with_adaptive_levels(self):
+        adaptive = {(1, 5): {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
+                             'sp': 'ccsd(t)-f12/cc-pvdz-f12'},
+                    (6, 'inf'): {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
+                                 'sp': 'wb97xd/6-311+g(2d,2p)'}}
+        with self.assertRaises(InputError):
+            ARC(project=f'test_sp_composite_mutex_adaptive_{self.worker}',
+                sp_composite='HEAT-345Q', adaptive_levels=adaptive,
+                freq_scale_factor=1)
+
+    def test_mutex_with_level_of_theory(self):
+        """level_of_theory and sp_composite are mutually exclusive."""
+        with self.assertRaises(InputError):
+            ARC(project=f'test_sp_composite_mutex_lot_{self.worker}',
+                sp_composite='HEAT-345Q',
+                level_of_theory='ccsd(t)/cc-pvtz//b3lyp/6-31g(d,p)',
+                freq_scale_factor=1)
+
+    def test_species_explicit_protocol_mutex_with_adaptive_levels(self):
+        """A per-species explicit sp_composite protocol is rejected when adaptive_levels is set."""
+        spc = ARCSpecies(label='H2', smiles='[H][H]',
+                         sp_composite={'base': {'method': 'mp2', 'basis': 'cc-pVTZ'}, 'corrections': []})
+        adaptive = {(1, 5): {('opt', 'freq'): 'wb97xd/6-311+g(2d,2p)',
+                             'sp': 'ccsd(t)-f12/cc-pvdz-f12'},
+                    (6, 'inf'): {('opt', 'freq'): 'b3lyp/6-31g(d,p)',
+                                 'sp': 'wb97xd/6-311+g(2d,2p)'}}
+        with self.assertRaises(InputError):
+            ARC(project=f'test_sp_composite_spc_mutex_adaptive_{self.worker}',
+                species=[spc], adaptive_levels=adaptive, freq_scale_factor=1)
+
+    def test_species_explicit_protocol_mutex_with_composite_method(self):
+        """A per-species explicit sp_composite protocol is rejected when composite_method is set."""
+        spc = ARCSpecies(label='H2', smiles='[H][H]',
+                         sp_composite={'base': {'method': 'mp2', 'basis': 'cc-pVTZ'}, 'corrections': []})
+        with self.assertRaises(InputError):
+            ARC(project=f'test_sp_composite_spc_mutex_composite_{self.worker}',
+                species=[spc], composite_method='CBS-QB3', freq_scale_factor=1)
+
+    def test_fallback_sp_level_from_base(self):
+        """When sp_composite is set and sp_level is omitted, sp_level is derived from base.level."""
+        arc = ARC(project=f'test_sp_composite_fallback_{self.worker}', sp_composite='HEAT-345Q',
+                  freq_scale_factor=1)
+        arc.process_level_of_theory()
+        self.assertIsInstance(arc.sp_level, Level)
+        self.assertEqual(arc.sp_level.method, arc.sp_composite.base.level.method)
+        self.assertEqual(arc.sp_level.basis, arc.sp_composite.base.level.basis)
+
+    def test_fallback_sp_level_from_cbs_base(self):
+        """A CBS base has no single level; sp_level defaults to the
+        largest-cardinal leg of the extrapolation."""
+        arc = ARC(project=f'test_sp_composite_fallback_cbs_{self.worker}', sp_composite='FPA-min',
+                  compute_thermo=False, freq_scale_factor=1)
+        arc.process_level_of_theory()
+        self.assertIsInstance(arc.sp_level, Level)
+        self.assertEqual(arc.sp_level.method, 'ccsd(t)')
+        self.assertEqual(arc.sp_level.basis, 'cc-pvqz')
+        self.assertEqual(arc.sp_level.simple(),
+                         arc.sp_composite.primary_base_level.simple())
+
+    def test_user_supplied_sp_level_preserved(self):
+        """An explicit sp_level coexists with sp_composite and is not overridden."""
+        arc = ARC(project=f'test_sp_composite_preserves_sp_level_{self.worker}',
+                  sp_composite='HEAT-345Q',
+                  sp_level='wb97xd/def2-tzvp',
+                  freq_scale_factor=1)
+        arc.process_level_of_theory()
+        self.assertEqual(arc.sp_level.method, 'wb97xd')
+        self.assertEqual(arc.sp_level.basis, 'def2-tzvp')
+
+    def test_user_supplied_sp_level_with_sp_composite_warns(self):
+        """A user sp_level alongside sp_composite triggers a warning naming opt-out species."""
+        spc_in = ARCSpecies(label='H2', smiles='[H][H]')
+        spc_out = ARCSpecies(label='O2', smiles='[O][O]', sp_composite=None)
+        arc = ARC(project=f'test_sp_composite_sp_level_warn_{self.worker}',
+                  sp_composite='HEAT-345Q',
+                  sp_level='wb97xd/def2-tzvp',
+                  species=[spc_in, spc_out],
+                  freq_scale_factor=1)
+        # ARC.__init__ resets the log handlers, so re-run set_levels_of_theory to capture the warning.
+        with self.assertLogs(logger='arc', level=logging.WARNING) as cm:
+            arc.set_levels_of_theory()
+        joined = '\n'.join(cm.output)
+        self.assertIn('sp_level', joined)
+        self.assertIn('O2', joined)
+        self.assertIn('H2', joined)
+
+    def test_bac_type_forced_to_none(self):
+        """When sp_composite is active, bac_type is forced to None so BACs never reach processing."""
+        arc = ARC(project=f'test_sp_composite_bac_none_{self.worker}',
+                  sp_composite='HEAT-345Q',
+                  freq_scale_factor=1)
+        self.assertIsNone(arc.bac_type)
+
+    def test_zombie_kills_restart_roundtrip(self):
+        """A restart dict carrying _zombie_kills constructs ARC and reaches the scheduler-bound restart state."""
+        input_dict = {'project': f'test_sp_composite_zombie_{self.worker}',
+                      '_zombie_kills': {'H2': ['sp']},
+                      'freq_scale_factor': 1}
+        arc = ARC(**input_dict)
+        self.assertEqual(arc._zombie_kills, {'H2': ['sp']})
+        self.assertEqual(arc.restart_dict['_zombie_kills'], {'H2': ['sp']})
+
+    def test_standardize_output_paths_rebases_sp_composite(self):
+        """Stale absolute paths in output[label]['paths']['sp_composite'] are rebased on the project directory."""
+        project = f'test_sp_composite_paths_{self.worker}'
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        rel = os.path.join('calcs', 'Species', 'H2', 'sp_a', 'output.out')
+        real_path = os.path.join(project_directory, rel)
+        os.makedirs(os.path.dirname(real_path), exist_ok=True)
+        with open(real_path, 'w') as f:
+            f.write('test')
+        stale = os.path.join('/old_machine', 'runs', rel)
+        output = {'H2': {'paths': {'sp': stale, 'sp_composite': {'sp_a': stale}}}}
+        arc = ARC(project=project, project_directory=project_directory, output=output,
+                  freq_scale_factor=1)
+        self.assertEqual(arc.output['H2']['paths']['sp'], real_path)
+        self.assertEqual(arc.output['H2']['paths']['sp_composite']['sp_a'], real_path)
+
+    def test_sp_composite_restart_roundtrip(self):
+        """sp_composite survives an as_dict() → ARC(**dict) round trip."""
+        arc1 = ARC(project=f'test_sp_composite_roundtrip_{self.worker}', sp_composite='HEAT-345Q',
+                   freq_scale_factor=1)
+        arc2 = ARC(**arc1.as_dict())
+        self.assertIsInstance(arc2.sp_composite, CompositeProtocol)
+        self.assertEqual(arc2.sp_composite.preset_name, arc1.sp_composite.preset_name)
+        self.assertEqual([term.label for term in arc2.sp_composite.corrections],
+                         [term.label for term in arc1.sp_composite.corrections])
+
+    def test_per_species_aec_limitation_documented(self):
+        """
+        Known limitation: when species carry their own sp_composite overrides,
+        the project-level AEC lookup still uses the *global* ``sp_composite.base.level``
+        (not per-species base levels). The user should set ``arkane_level_of_theory``
+        explicitly if they need a different AEC target. This test locks that
+        behavior so it's an intentional contract, not accidental.
+        """
+        global_recipe = 'HEAT-345Q'
+        local_recipe = {
+            'base': {'method': 'mp2', 'basis': 'cc-pVTZ'},
+            'corrections': [],
+        }
+        spc = ARCSpecies(label='H2', smiles='[H][H]', sp_composite=local_recipe)
+        arc = ARC(project=f'test_sp_composite_per_species_aec_limit_{self.worker}',
+                  sp_composite=global_recipe,
+                  species=[spc],
+                  freq_scale_factor=1)
+        arc.arkane_level_of_theory = None
+        arc.check_arkane_level_of_theory()
+        # arkane_level_of_theory resolved to the GLOBAL protocol's base level
+        # (ccsd(t)-f12 from HEAT-345Q), not the species-level mp2.
+        self.assertEqual(arc.arkane_level_of_theory.method,
+                         arc.sp_composite.base.level.method)
+        self.assertEqual(arc.arkane_level_of_theory.method, 'ccsd(t)-f12')
+
+    def test_aec_defaults_to_base_and_bac_skipped_with_warning(self):
+        """
+        When sp_composite is active: AEC lookup uses base.level; BAC is skipped with
+        a logger warning. ARC logs to the ``'arc'`` named logger.
+        """
+        arc = ARC(project=f'test_sp_composite_aec_bac_{self.worker}',
+                  sp_composite='HEAT-345Q',
+                  freq_scale_factor=1)
+        # ARC.__init__ already ran check_arkane_level_of_theory once; clear the
+        # resolved value so the second call exercises the full branching.
+        arc.arkane_level_of_theory = None
+        with self.assertLogs(logger='arc', level=logging.WARNING) as cm:
+            arc.check_arkane_level_of_theory()
+        joined = '\n'.join(cm.output)
+        self.assertIn('sp_composite', joined)
+        self.assertIn('BAC', joined)
+        self.assertEqual(arc.arkane_level_of_theory.method,
+                         arc.sp_composite.base.level.method)
 
 
 if __name__ == '__main__':

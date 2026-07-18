@@ -395,10 +395,39 @@ def determine_ess_status(output_path: str,
             return 'errored', keywords, error, line
 
         elif software == 'molpro':
+            # MRCC ROHF-incompatibility check BEFORE the generic reverse scan
+            # because the underlying cause ("Use semicanonical orbitals!")
+            # appears earlier in the file than the downstream "Fatal error in
+            # mrcc." line — reverse iteration would otherwise classify the
+            # latter (generic) before the former (specific). The adapter
+            # avoids this on new runs by switching the SCF reference to UHF
+            # for open-shell species (UHF orbitals are semicanonical by
+            # construction); this keyword surfaces the diagnostic for any
+            # legacy run that hits it. Only classify as errored if the job
+            # did not terminate successfully, so a multi-step job that merely
+            # printed the note along the way is not misclassified.
+            rohf_line = next((ln for ln in lines if 'standard ROHF orbitals' in ln
+                              or 'Use semicanonical orbitals' in ln), None)
+            if rohf_line is not None \
+                    and not any('molpro calculation terminated' in ln.lower()
+                                or 'variable memory released' in ln.lower() for ln in reverse_lines):
+                return ('errored', ['MRCCRequiresSemicanonical'],
+                        'MRCC requires semicanonical orbitals; ROHF orbitals '
+                        'are not supported for approximate CC.',
+                        rohf_line)
             for line in reverse_lines:
                 if 'molpro calculation terminated' in line.lower() \
                         or 'variable memory released' in line.lower():
                     return 'done', list(), '', ''
+                elif 'Fatal error in xmrcc' in line or 'Fatal error in mrcc' in line:
+                    # MRCC's generic crash banner — printed alike for OOM,
+                    # disk-full, and internal errors, so it carries no
+                    # diagnostic specificity. Classify as a generic MRCC
+                    # failure and let the normal Molpro troubleshooting
+                    # ladder apply.
+                    keywords = ['MRCC']
+                    error = f'MRCC terminated with a fatal error: {line.strip()}'
+                    break
                 elif 'No convergence' in line and '?No convergence in rhfpr' not in line:
                     keywords = ['Unconverged']
                     error = 'Unconverged'
@@ -1035,27 +1064,38 @@ def trsh_ess_job(label: str,
             raise TrshError(f'DLPNO methods are incompatible with single-electron species {label} in Orca. '
                             f'This should have been caught by the Scheduler before job submission.')
         elif 'Memory' in job_status['keywords']:
-            # Increase memory allocation.
+            # Increase the memory per cpu core.
             # job_status will be for example
             # `Error  (ORCA_SCF): Not enough memory available! Please increase MaxCore to more than: 289 MB`.
+            # Whether ARC already attempted to increase the memory for this job. If so, simply requesting more
+            # total memory tends to keep failing (e.g. DLPNO-CCSD(T) triples need a large per-core MaxCore rather
+            # than more total node memory), so ARC reduces the number of cpu cores to raise the memory per core
+            # instead of resubmitting a near-identical job (which previously caused an endless retry loop).
+            memory_increased_before = 'memory' in ess_trsh_methods
             if 'memory' not in ess_trsh_methods:
                 ess_trsh_methods.append('memory')
+            per_cpu_core_memory = np.ceil(memory_gb / cpu_cores * 1024)  # MB currently allocated per cpu core
             try:
-                # parse Orca's memory requirement in MB
+                # parse Orca's explicit per cpu core memory requirement in MB (e.g., Orca 4.2.x)
                 estimated_mem_per_core = float(job_status['error'].split()[-2])
             except ValueError:
-                estimated_mem_per_core = estimate_orca_mem_cpu_requirement(num_heavy_atoms=num_heavy_atoms,
+                # Orca did not report an explicit requirement (e.g. Orca 5.x 'Insufficient job memory.').
+                # Aim for at least double the per-core memory already given so that reducing the number of cpu
+                # cores meaningfully raises the memory per core; never go below ARC's heuristic estimate.
+                heuristic_mem_per_core = estimate_orca_mem_cpu_requirement(num_heavy_atoms=num_heavy_atoms,
                                                                            server=server,
                                                                            consider_server_limits=True)[1]/cpu_cores
+                estimated_mem_per_core = max(2.0 * per_cpu_core_memory, heuristic_mem_per_core)
             # round up to the next hundred
             estimated_mem_per_core = int(np.ceil(estimated_mem_per_core / 100.0)) * 100
-            if 'max_total_job_memory' in job_status['keywords']:
-                per_cpu_core_memory = np.ceil(memory_gb / cpu_cores * 1024)
+            if 'max_total_job_memory' in job_status['keywords'] or memory_increased_before:
+                reason = 'the job had already requested the maximum amount of available total node memory' \
+                    if 'max_total_job_memory' in job_status['keywords'] \
+                    else 'increasing the total job memory had already been attempted and the job still ran out of memory'
                 logger.info(f'The crashed Orca job {label} was ran with {cpu_cores} cpu cores and '
                             f'{per_cpu_core_memory} MB memory per cpu core. It requires at least '
-                            f'{estimated_mem_per_core} MB per cpu core. Since the job had already requested the '
-                            f'maximum amount of available total node memory, ARC will attempt to reduce the number '
-                            f'of cpu cores to increase memory per cpu core.')
+                            f'{estimated_mem_per_core} MB per cpu core. Since {reason}, ARC will attempt to reduce '
+                            f'the number of cpu cores to increase memory per cpu core.')
                 if 'cpu' not in ess_trsh_methods:
                     ess_trsh_methods.append('cpu')
                 cpu_cores = math.floor(cpu_cores * per_cpu_core_memory / estimated_mem_per_core) - 2  # be conservative
@@ -1719,13 +1759,12 @@ def scan_quality_check(label: str,
             logger.warning(message)
             return invalidate, invalidation_reason, message, actions
         else:
-            logger.warning(f'The maximal barrier for rotor {pivots} of {label} is '
-                           f'{(np.max(energies) - np.min(energies)):.2f} kJ/mol, which is higher than the set threshold '
-                           f'of {maximum_barrier} kJ/mol. Since this mode when treated as torsion has {num_wells}, '
-                           f'this mode is not invalidated: treating it as a vibrational mode will be less accurate than '
-                           f'the hindered rotor treatment, since the entropy contribution from the population of '
-                           f'this species at the higher wells will not be taken into account. NOT invalidating this '
-                           f'torsional mode.')
+            barrier_kJmol = np.max(energies) - np.min(energies)
+            logger.warning(f'Rotor {pivots} of {label}: barrier {barrier_kJmol:.2f} kJ/mol '
+                           f'exceeds the {maximum_barrier} kJ/mol threshold, but the mode has '
+                           f'{num_wells} wells. Keeping the hindered-rotor treatment — '
+                           f'demoting to a harmonic vibration would miss the entropic '
+                           f'contribution from the upper well(s).')
 
     if preserve_params is not None:
         success = True

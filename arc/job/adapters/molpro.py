@@ -35,6 +35,20 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
     settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
     settings['output_filenames'], settings['servers'], settings['submit_filenames']
 
+# Methods that native Molpro does not support but its MRCC plugin does.
+# When the level's method matches one of these (case-insensitive), the adapter
+# emits a ``{mrcc,method=...}`` plugin call instead of a bare directive that
+# Molpro's input parser would reject with "Unknown command or directive".
+# Compared against the lowercased ``Level.method``.
+MRCC_ROUTED_METHODS = frozenset({
+    'ccsdt',
+    'ccsdt(q)',
+    'ccsdtq',
+    'ccsdtq(p)',
+    'ccsdtqp',
+})
+
+
 input_template = """***,${label}
 memory,Total=${memory},m;
 
@@ -47,7 +61,7 @@ ${auxiliary_basis}
 ${cabs}
 int;
 
-{hf;${shift}
+{${hf_method};${shift}
  maxit,999;
  wf,spin=${spin},charge=${charge};
 }
@@ -229,9 +243,36 @@ class MolproAdapter(JobAdapter):
         input_dict['spin'] = self.multiplicity - 1
         input_dict['xyz'] = xyz_to_str(self.xyz)
         input_dict['orbitals'] = '\ngprint,orbitals;\n'
+        input_dict['hf_method'] = 'hf'  # default; overridden below for open-shell MRCC
 
         if not is_restricted(self):
             input_dict['restricted'] = 'u'
+
+        if self.level.method in MRCC_ROUTED_METHODS:
+            # Restriction is implicit from the preceding {hf;...} block; the
+            # MRCC plugin call does not accept a 'u'/'r' prefix.
+            input_dict['method'] = '{mrcc,method=' + self.level.method.upper() + '}'
+            input_dict['restricted'] = ''
+            if not is_restricted(self):
+                # Open-shell wavefunction + MRCC's approximate-CC family
+                # (CCSDT(Q), CCSDTQ(P), and the perturbative-(T) variants)
+                # refuses standard ROHF orbitals:
+                #   "Approximate CC methods are not implemented for standard
+                #    ROHF orbitals! Use semicanonical orbitals!"
+                # Solution: use UHF instead of (RO)HF as the SCF reference.
+                # UHF orbitals are semicanonical by construction (alpha and
+                # beta Fock matrices are separately diagonal) and live at the
+                # default record 2100.2, which MRCC reads. MRCC then reports
+                # ``Type=UHF/CANONICAL`` and accepts.
+                #
+                # An earlier attempt at this fix prepended ``{uccsd}`` to the
+                # MRCC call. {uccsd} does run UCCSD on top of ROHF, but the
+                # post-UCCSD canonical orbitals go to a separate record while
+                # the default 2100.2 still holds the original ROHF orbitals —
+                # MRCC reads 2100.2 by default and complained. Switching the
+                # SCF reference to UHF avoids this orbital-record bookkeeping
+                # entirely.
+                input_dict['hf_method'] = 'uhf'
 
         # Job type specific options
         if self.job_type in ['opt', 'optfreq', 'conf_opt']:
