@@ -443,13 +443,21 @@ def determine_ess_status(output_path: str,
                 elif 'A further' in line and 'Mwords of memory are needed' in line and 'Increase memory to' in line:
                     # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run.
                     # Increase memory to 996.31 Mwords.` (w/o the line break)
+                    # The LAST number is the target ("Increase memory to M"), i.e. the required
+                    # PER-PROCESS working memory in megawords; the first number is only the
+                    # further-delta. Capture the target so the trsh can size a node-total card
+                    # that yields >= M MW per rank.
                     keywords = ['Memory']
-                    for line0 in reverse_lines:
-                        if ' For full I/O' in line0 and 'increase memory by' in line0 and 'Mwords to' in line0:
-                            memory_increase = re.findall(r"[\d.]+", line0)[0]
-                            error = f"Additional memory required: {memory_increase} MW"
-                            break
-                    error = f'Additional memory required: {line.split()[2]} MW' if 'error' not in locals() else error
+                    nums = re.findall(r"\d+(?:\.\d+)?", line)  # digit-anchored: don't match a lone '.'
+                    if nums:
+                        target_mw = float(nums[-1])
+                        error = f'Molpro recommends per-process memory {target_mw} MW'
+                    if not error:
+                        for line0 in reverse_lines:
+                            if ' For full I/O' in line0 and 'increase memory by' in line0 and 'Mwords to' in line0:
+                                memory_increase = re.findall(r"[\d.]+", line0)[0]
+                                error = f"Additional memory required: {memory_increase} MW"
+                                break
                     break
                 elif 'insufficient memory available - require' in line:
                     # e.g.: `insufficient memory available - require              228765625  have
@@ -1165,25 +1173,28 @@ def trsh_ess_job(label: str,
     elif 'molpro' in software:
         if 'Memory' in job_status['keywords']:
             # Increase memory allocation, bounded by the physical node-memory cap.
-            # molpro gives something like `'errored: additional memory (mW) required: 996.31'`.
-            # job_status standardizes the format to be:  `'Additional memory required: {0} MW'`
-            # The number is the ADDITIONAL memory required in MW.
-            # Mirror the Orca handling: bound the requested TOTAL memory by the node cap so we
-            # don't diverge (request N -> get clamped to the cap -> resubmit identically), and,
-            # once we are AT the cap, reduce the MPI rank count instead of re-inflating memory
-            # (the per-process `memory,Total` card in molpro.py scales with cpu_cores, so fewer
-            # ranks means more memory per process for the same total node allocation).
+            # Molpro's `memory,Total=N,m` card is the NODE-TOTAL pool (Molpro reserves the
+            # Global-Array space ~25% and splits the remainder across the `molpro -n {cpu_cores}`
+            # ranks), NOT per process. When Molpro reports a per-process target M (from the
+            # "Increase memory to M Mwords" triples message), size the node-total card so each
+            # rank gets >= M MW: per-process ~= 0.822 * card / nprocs (GA ~25%), so
+            # node-total MW = M * headroom * nprocs / 0.822; convert to GB (1 GB = 125 MW).
+            # Bound the requested TOTAL by the node cap so we don't diverge (request N -> get
+            # clamped -> resubmit identically), and once we are AT the cap, reduce the MPI rank
+            # count instead of re-inflating memory (fewer ranks -> more per-process from the same
+            # node-total allocation).
             ess_trsh_methods.append('memory')
             max_mem = servers[server].get('memory', 128)  # Node memory in GB, defaults to 128 if not specified
             max_mem_allocation = max_mem * default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
-            add_mem_str = job_status['error'].split()[-2]  # parse Molpro's requirement in MW
-            if all(c.isdigit() or c == '.' for c in add_mem_str):
-                add_mem = float(add_mem_str)
-                add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
-                desired_total = memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
+            m = re.search(r'per-process memory ([\d.]+) MW', job_status['error'])
+            if m:
+                target_mw = float(m.group(1))                 # required per-process working memory (MW)
+                headroom = 1.5                                # multiplicative; Molpro's number is a floor
+                # node-total card must yield >= target_mw/proc; per-process ~= 0.822*card/nprocs (GA ~25%),
+                # so node-total MW = target_mw*headroom * nprocs / 0.822; convert to GB (1 GB = 125 MW):
+                desired_total = math.ceil(target_mw * headroom * (cpu_cores or 1) / 0.822) / 125.0
             else:
-                # The required memory is not specified
-                desired_total = memory_gb * 3  # be conservative
+                desired_total = memory_gb * 3                 # unchanged fallback when no number parseable
             memory = min(desired_total, max_mem_allocation)
             at_cap = 'max_total_job_memory' in job_status['keywords'] or desired_total >= max_mem_allocation
             if at_cap:
