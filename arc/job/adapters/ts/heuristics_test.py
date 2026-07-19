@@ -2314,7 +2314,8 @@ H      -0.30139889    0.23142254    3.12085495"""
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests.
         """
-        for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile'):
+        for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile',
+                    'heuristics_cumulene'):
             shutil.rmtree(os.path.join(ARC_TESTING_PATH, sub), ignore_errors=True)
 
 
