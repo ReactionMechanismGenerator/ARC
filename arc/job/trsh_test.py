@@ -696,8 +696,9 @@ class TestTrsh(unittest.TestCase):
         memory_gb = 32.0
         # server1 has no 'memory' key, so trsh_ess_job injects the 64 GB default node memory
         # (cap = 64 * 0.95 = 60.8 GB). All three parsed requests below (222.16 / 96 / 62 GB)
-        # exceed that physical cap, so the Molpro memory trsh now bounds the total to the cap
-        # and instead halves the MPI rank count (per-process card scales with cpu_cores).
+        # exceed that physical cap, so the Molpro memory trsh now pins the total to the cap
+        # and halves the MPI rank count (per-process card scales with cpu_cores).
+        max_mem_allocation = 64 * 0.95  # 60.8 GB
         cpu_cores = 8
         ess_trsh_methods = ['change_node']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
@@ -706,7 +707,7 @@ class TestTrsh(unittest.TestCase):
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertIn('cpu', ess_trsh_methods)
-        self.assertEqual(memory, 32.0)  # total pinned to min(memory_gb, cap)
+        self.assertAlmostEqual(memory, max_mem_allocation)  # total pinned to the node cap
         self.assertEqual(cpu_cores, 4)  # ranks halved from 8
         self.assertFalse(couldnt_trsh)
 
@@ -718,7 +719,7 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(memory, 32.0)
+        self.assertAlmostEqual(memory, max_mem_allocation)
         self.assertEqual(cpu_cores, 2)  # ranks halved again from 4
 
         # Molpro: Insuffienct Memory 3 Test
@@ -733,7 +734,7 @@ class TestTrsh(unittest.TestCase):
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertIn('cpu_min', ess_trsh_methods)  # reached a single rank
-        self.assertEqual(memory, 32.0)
+        self.assertAlmostEqual(memory, max_mem_allocation)
         self.assertEqual(cpu_cores, 1)  # ranks halved again from 2
 
         # Test Orca
@@ -1342,10 +1343,11 @@ class TestTrsh(unittest.TestCase):
         self.assertGreater(memory, memory_gb)  # grew
         self.assertLessEqual(memory, 256 * 0.95)  # bounded by the node cap
 
-        # (ii) At the node cap: total is pinned at the cap and ranks are halved (not re-inflated).
-        memory_gb = 250.0  # above the cap, so total pins to the cap
+        # (ii) At the node cap: total is pinned at the cap and ranks are halved. memory_gb (200)
+        # is still BELOW the cap here, so pinning must lift the total UP to the cap (not keep 200).
+        memory_gb = 200.0
         cpu_cores = 8
-        job_status = {'keywords': ['Memory'], 'error': 'Additional memory required: 100 MW'}
+        job_status = {'keywords': ['Memory'], 'error': 'Additional memory required: 8000 MW'}  # desired > cap
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                        job_type, software, fine, memory_gb,
@@ -1354,7 +1356,7 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('memory', ess_trsh_methods)
         self.assertIn('cpu', ess_trsh_methods)
         self.assertEqual(cpu_cores, 4)  # halved from 8
-        self.assertAlmostEqual(memory, 256 * 0.95)  # pinned at the cap, not re-inflated
+        self.assertAlmostEqual(memory, 256 * 0.95)  # pinned UP to the cap, not left at memory_gb=200
 
         # (iii) At the cap with a single rank: cannot reduce further -> terminal error, no identical resubmit.
         memory_gb = 250.0
