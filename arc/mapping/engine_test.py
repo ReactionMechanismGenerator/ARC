@@ -1047,6 +1047,29 @@ class TestMappingEngine(unittest.TestCase):
         self.assertAlmostEqual(torsions[0]['angle 1'], 67.81049913527622)
         self.assertAlmostEqual(torsions[0]['angle 2'], 174.65228274664804)
 
+    def test_is_torsion_linear(self):
+        """Test the is_torsion_linear() function."""
+        # 2-pentyne (CC#CCC) has a collinear C1#C2-C3 alkyne segment.
+        spc = ARCSpecies(label='2-pentyne', smiles='CC#CCC')
+        spc.determine_rotors()
+        xyz = spc.get_xyz()
+        # The torsion [1, 2, 3, 4] spans the linear alkyne ([1, 2, 3] triplet ~180 degrees).
+        self.assertTrue(engine.is_torsion_linear(xyz, [1, 2, 3, 4]))
+        # A torsion around a normal single bond (the terminal ethyl rotor) is not linear.
+        self.assertFalse(engine.is_torsion_linear(xyz, [2, 3, 4, 10]))
+
+    def test_get_backbone_dihedral_angles_skips_linear_segment(self):
+        """Test that get_backbone_dihedral_angles() skips backbone torsions that span a linear segment."""
+        # 2-pentyne's only heavy-atom-terminated backbone torsion, [1, 2, 3, 4], spans a linear alkyne
+        # segment; it must be filtered out so it is never fed into the set_dihedral() alignment loop.
+        spc_1 = ARCSpecies(label='2-pentyne-a', smiles='CC#CCC')
+        spc_2 = ARCSpecies(label='2-pentyne-b', smiles='CC#CCC')
+        spc_1.determine_rotors()
+        spc_2.determine_rotors()
+        backbone_map = {i: i for i in range(len(spc_1.mol.atoms))}
+        torsions = engine.get_backbone_dihedral_angles(spc_1, spc_2, backbone_map=backbone_map)
+        self.assertFalse(any(torsion_dict['torsion 1'] == [1, 2, 3, 4] for torsion_dict in torsions))
+
     def test_map_lists(self):
         """Test the map_lists function."""
         self.assertEqual(engine.map_lists([], []), {})
