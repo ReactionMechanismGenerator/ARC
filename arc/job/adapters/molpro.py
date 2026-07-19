@@ -347,11 +347,15 @@ class MolproAdapter(JobAdapter):
         """
         Set the input_file_memory attribute.
         """
-        # Molpro's memory is per cpu core, but here we ask for Total memory.
-        # Molpro measures memory in MW (mega word; 1000 MW = 7.45 GB on a 64-bit machine)
-        # The conversion from mW to GB was done using https://www.molpro.net/manual/doku.php?id=general_program_structure#memory_option_in_command_line
-        # 3.2 GB = 100 mw (case sensitive) total (as in this implimentation) -> 31.25 mw/GB is the conversion rate
-        self.input_file_memory = math.ceil(self.job_memory_gb * 31.25)
+        # Molpro's `memory,Total=N,m` card allocates N mega-words (MW) PER MPI PROCESS,
+        # and ARC launches `molpro -n {cpu_cores}`, so the card must carry the PER-PROCESS
+        # share of the requested total job memory (mirroring Orca/CFOUR/TeraChem, which all
+        # divide the total by self.cpu_cores).
+        # On a 64-bit machine 1 MW = 8 bytes * 1e6 = 8e6 bytes = 0.008 GB, i.e. 125 MW = 1 GB.
+        # Therefore total_GB = card_MW * 0.008 * nprocs, and card = job_memory_gb * 125 / nprocs
+        # reproduces exactly job_memory_gb of total memory for ANY number of processes.
+        nprocs = self.cpu_cores or 1
+        self.input_file_memory = max(1, math.ceil(self.job_memory_gb * 125.0 / nprocs))
 
     def execute_incore(self):
         """

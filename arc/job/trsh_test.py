@@ -679,13 +679,21 @@ class TestTrsh(unittest.TestCase):
         job_type = "sp"
         fine = True
         memory_gb = 32.0
+        # server1 has no 'memory' key, so trsh_ess_job injects the 64 GB default node memory
+        # (cap = 64 * 0.95 = 60.8 GB). All three parsed requests below (222.16 / 96 / 62 GB)
+        # exceed that physical cap, so the Molpro memory trsh now bounds the total to the cap
+        # and instead halves the MPI rank count (per-process card scales with cpu_cores).
+        cpu_cores = 8
         ess_trsh_methods = ['change_node']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertAlmostEqual(memory, 222.15625)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertEqual(memory, 32.0)  # total pinned to min(memory_gb, cap)
+        self.assertEqual(cpu_cores, 4)  # ranks halved from 8
+        self.assertFalse(couldnt_trsh)
 
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory_2.out')
         status, keywords, error, line = trsh.determine_ess_status(output_path=path, species_label='TS', job_type='sp')
@@ -695,7 +703,8 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(memory, 96.0)
+        self.assertEqual(memory, 32.0)
+        self.assertEqual(cpu_cores, 2)  # ranks halved again from 4
 
         # Molpro: Insuffienct Memory 3 Test
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory_3.out')
@@ -708,7 +717,9 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(memory, 62.0)
+        self.assertIn('cpu_min', ess_trsh_methods)  # reached a single rank
+        self.assertEqual(memory, 32.0)
+        self.assertEqual(cpu_cores, 1)  # ranks halved again from 2
 
         # Test Orca
         # Orca: test 1
@@ -853,6 +864,57 @@ class TestTrsh(unittest.TestCase):
 
         self.assertTrue(couldnt_trsh)
         self.assertTrue(any('No applicable troubleshooting methods found' in out for out in output_errors))
+
+    def test_trsh_ess_job_molpro_memory(self):
+        """Test the Molpro 'Memory' trsh branch: below-cap growth, at-cap rank halving, and terminal case."""
+        label = 'TS'
+        level_of_theory = {'method': 'mrci', 'basis': 'aug-cc-pVTZ'}
+        server = 'server2'  # server2 defines memory = 256 GB -> cap = 256 * 0.95 = 243.2 GB
+        job_type = 'sp'
+        software = 'molpro'
+        fine = True
+        num_heavy_atoms = 2
+
+        # (i) Below the node cap: total memory grows but stays bounded, ranks unchanged.
+        memory_gb = 32.0
+        cpu_cores = 8
+        job_status = {'keywords': ['Memory'], 'error': 'Additional memory required: 100 MW'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        self.assertNotIn('cpu', ess_trsh_methods)
+        self.assertEqual(cpu_cores, 8)  # ranks unchanged below the cap
+        self.assertGreater(memory, memory_gb)  # grew
+        self.assertLessEqual(memory, 256 * 0.95)  # bounded by the node cap
+
+        # (ii) At the node cap: total is pinned at the cap and ranks are halved (not re-inflated).
+        memory_gb = 250.0  # above the cap, so total pins to the cap
+        cpu_cores = 8
+        job_status = {'keywords': ['Memory'], 'error': 'Additional memory required: 100 MW'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertEqual(cpu_cores, 4)  # halved from 8
+        self.assertAlmostEqual(memory, 256 * 0.95)  # pinned at the cap, not re-inflated
+
+        # (iii) At the cap with a single rank: cannot reduce further -> terminal error, no identical resubmit.
+        memory_gb = 250.0
+        cpu_cores = 1
+        job_status = {'keywords': ['Memory', 'max_total_job_memory'], 'error': 'Additional memory required: 100 MW'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertTrue(couldnt_trsh)
+        self.assertEqual(cpu_cores, 1)  # cannot go below a single rank
+        self.assertTrue(any('node cap' in out for out in output_errors))
 
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""
