@@ -15,7 +15,7 @@ from arc.imports import settings, submit_scripts
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.adapters.ts.heuristics import DIHEDRAL_INCREMENT
-from arc.job.adapters.ts.seed_hub import get_ts_seeds, get_wrapper_constraints
+from arc.job.adapters.ts.seed_hub import get_backup_ts_seeds, get_ts_seeds, get_wrapper_constraints
 from arc.job.factory import register_job_adapter
 from arc.job.local import check_job_status, submit_job
 from arc.plotter import save_geo
@@ -197,6 +197,23 @@ class CrestAdapter(JobAdapter):
                 base_adapter='heuristics',
                 dihedral_increment=self.dihedral_increment,
             )
+            if not xyz_guesses:
+                # Backup path: CREST's own heuristic seed construction produced nothing
+                # (e.g. a linear/cumulene reactive center such as HCCO that the heuristic
+                # Z-matrix builder cannot assemble). Seed CREST instead from a successful
+                # TS guess that another adapter (e.g. AutoTST) already generated for this
+                # TS. Those guesses are on rxn.ts_species.ts_guesses because the incore TS
+                # adapters run sequentially with CREST last. CREST only needs a seed
+                # geometry plus the family reactive-atom constraints, and the constraints
+                # are re-derived from the seed geometry below, so an external guess is a
+                # valid seed. The feedback-loop guard (exclude_method='crest') ensures
+                # CREST is never seeded from a prior CREST result.
+                xyz_guesses = get_backup_ts_seeds(rxn, exclude_method='crest')
+                if xyz_guesses:
+                    logger.info(
+                        f'CREST heuristic seed construction failed for {rxn.label}; falling back to '
+                        f'{len(xyz_guesses)} external TS guess(es) as CREST seed(s).'
+                    )
             if not xyz_guesses:
                 logger.warning(f'CREST TS search failed to generate any seed guesses for {rxn.label}.')
                 tsg.tok()
