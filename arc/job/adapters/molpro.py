@@ -347,15 +347,17 @@ class MolproAdapter(JobAdapter):
         """
         Set the input_file_memory attribute.
         """
-        # Molpro's `memory,Total=N,m` card allocates N mega-words (MW) PER MPI PROCESS,
-        # and ARC launches `molpro -n {cpu_cores}`, so the card must carry the PER-PROCESS
-        # share of the requested total job memory (mirroring Orca/CFOUR/TeraChem, which all
-        # divide the total by self.cpu_cores).
+        # Molpro's `memory,Total=N,m` card is the NODE-TOTAL memory pool, NOT per process.
+        # Empirically (molpro26 on zeus): a written card `Total=438` printed
+        # "Total memory per node: 438 MW" while giving only "Memory per process: 30 MW" and
+        # "Total GA space: 110 MW" -- Molpro itself reserves the Global-Array space (~25%) and
+        # splits the remainder across the `molpro -n {cpu_cores}` MPI ranks. So the card must
+        # carry the WHOLE job memory, and Molpro handles the per-rank division; dividing by
+        # cpu_cores here double-divides and starves the node ~cpu_cores-fold.
         # On a 64-bit machine 1 MW = 8 bytes * 1e6 = 8e6 bytes = 0.008 GB, i.e. 125 MW = 1 GB.
-        # Therefore total_GB = card_MW * 0.008 * nprocs, and card = job_memory_gb * 125 / nprocs
-        # reproduces exactly job_memory_gb of total memory for ANY number of processes.
-        nprocs = self.cpu_cores or 1
-        self.input_file_memory = max(1, math.ceil(self.job_memory_gb * 125.0 / nprocs))
+        # Therefore N = job_memory_gb * 125 makes the node-total card equal the PBS memory
+        # reservation (card-as-GB = N * 0.008 = job_memory_gb). Do NOT divide by cpu_cores.
+        self.input_file_memory = max(1, math.ceil(self.job_memory_gb * 125.0))
 
     def execute_incore(self):
         """

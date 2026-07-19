@@ -5,7 +5,9 @@
 This module contains unit tests of the arc.job.trsh module
 """
 
+import math
 import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -680,9 +682,10 @@ class TestTrsh(unittest.TestCase):
         fine = True
         memory_gb = 32.0
         # server1 has no 'memory' key, so trsh_ess_job injects the 64 GB default node memory
-        # (cap = 64 * 0.95 = 60.8 GB). All three parsed requests below (222.16 / 96 / 62 GB)
-        # exceed that physical cap, so the Molpro memory trsh now pins the total to the cap
-        # and halves the MPI rank count (per-process card scales with cpu_cores).
+        # (cap = 64 * 0.95 = 60.8 GB). These first two logs report only a raw "additional memory
+        # required" figure (no per-process target), so the fallback (memory_gb * 3) overshoots the
+        # physical cap; the Molpro memory trsh pins the total to the cap and halves the MPI rank
+        # count (fewer ranks -> more per-process from the same node-total pool).
         max_mem_allocation = 64 * 0.95  # 60.8 GB
         cpu_cores = 8
         ess_trsh_methods = ['change_node']
@@ -707,20 +710,29 @@ class TestTrsh(unittest.TestCase):
         self.assertAlmostEqual(memory, max_mem_allocation)
         self.assertEqual(cpu_cores, 2)  # ranks halved again from 4
 
-        # Molpro: Insuffienct Memory 3 Test
+        # Molpro: Insufficient Memory 3 Test -- this log carries a per-process TARGET
+        # ("A further 111.29 Mwords ... Increase memory to 1111.34 Mwords"). The classifier now
+        # captures the target (1111.34 MW) and the trsh sizes a node-total card that yields
+        # >= target/proc, which lands BELOW the node cap, so ranks are NOT reduced.
+        cpu_cores_before = cpu_cores  # 2 (halved 8->4->2 in the two cases above)
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory_3.out')
         status, keywords, error, line = trsh.determine_ess_status(output_path=path,
                                                                   species_label='TS',
                                                                   job_type='sp')
+        self.assertEqual(keywords, ['Memory'])
+        self.assertIn('per-process memory 1111.34 MW', error)  # target M captured, not the delta
         job_status = {'keywords': keywords, 'error': error}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertIn('cpu_min', ess_trsh_methods)  # reached a single rank
-        self.assertAlmostEqual(memory, max_mem_allocation)
-        self.assertEqual(cpu_cores, 1)  # ranks halved again from 2
+        self.assertNotIn('cpu_min', ess_trsh_methods)  # targeted card fits below the cap: no rank cut
+        # node-total GB = ceil(target_mw * headroom * nprocs / 0.822) / 125 (targeted, NOT memory_gb*3)
+        expected_targeted = math.ceil(1111.34 * 1.5 * cpu_cores_before / 0.822) / 125.0
+        self.assertAlmostEqual(memory, expected_targeted)
+        self.assertLess(memory, max_mem_allocation)  # below the node cap -> no rank reduction
+        self.assertEqual(cpu_cores, cpu_cores_before)  # ranks unchanged
 
         # Test Orca
         # Orca: test 1
@@ -917,6 +929,40 @@ class TestTrsh(unittest.TestCase):
         self.assertTrue(couldnt_trsh)
         self.assertEqual(cpu_cores, 1)  # cannot go below a single rank
         self.assertTrue(any('node cap' in out for out in output_errors))
+
+        # (iv) Molpro reports a PER-PROCESS target ("A further ... Increase memory to M Mwords"):
+        # the classifier captures M and the trsh sizes a node-total card targeted at M/proc
+        # (M * headroom * nprocs / 0.822, in GB), NOT the blunt memory_gb*3 fallback.
+        molpro_log = ('  Version 2022.3 linked Jul  1 2023 -- molpro run\n'
+                      ' Variable memory set to 1000.0 Mwords\n'
+                      ' CCSD(T)-F12 triples\n'
+                      ' For full I/O caching in triples, increase memory by 2924.55 Mwords to 3924.60 Mwords.\n'
+                      ' A further 92.19 Mwords of memory are needed for the triples to run. '
+                      'Increase memory to 738.15 Mwords.\n'
+                      ' GLOBAL ERROR fehler on processor   0\n')
+        fd, log_path = tempfile.mkstemp(suffix='.out', prefix='molpro_per_process_target_')
+        with os.fdopen(fd, 'w') as f:
+            f.write(molpro_log)
+        self.addCleanup(lambda: os.remove(log_path) if os.path.isfile(log_path) else None)
+        status, keywords, error, line = trsh.determine_ess_status(output_path=log_path,
+                                                                  species_label='TS', job_type='sp')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['Memory'])                      # (i) classified as Memory ...
+        self.assertIn('per-process memory 738.15 MW', error)        #     ... and target M captured
+        memory_gb = 32.0
+        cpu_cores = 12
+        job_status = {'keywords': keywords, 'error': error}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        # (ii) TARGETED sizing (node-total GB), NOT memory_gb*3:
+        expected_targeted = math.ceil(738.15 * 1.5 * 12 / 0.822) / 125.0
+        self.assertAlmostEqual(memory, expected_targeted)
+        self.assertNotAlmostEqual(memory, memory_gb * 3)
+        self.assertEqual(cpu_cores, 12)  # below the (256 GB) cap: ranks unchanged
 
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""
