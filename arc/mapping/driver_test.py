@@ -524,6 +524,33 @@ class TestMappingDriver(unittest.TestCase):
         self.assertEqual(removed_bond_orders, [1, 1])
         self.assertEqual(changed_bond_orders, [(1, 2), (1, 2), (1, 2), (2, 1)])
 
+    def test_map_rxn_first_orientation_failure_is_quiet(self):
+        """A recoverable first-orientation template-order failure must not log at ERROR level.
+
+        For a reaction whose family was discovered in the reverse direction, the forward-orientation
+        ``map_rxn`` attempt fails on ``get_template_product_order`` and returns None. ``map_reaction``
+        then recovers via its flip fallback, so this intermediate failure is benign and should be logged
+        at DEBUG, not ERROR (which previously read as a false hard failure). The genuine total-failure
+        error is surfaced separately by ``ARCReaction.atom_map``.
+        """
+        rxn = ARCReaction(
+            label='R1 <=> P1 + P2',
+            r_species=[ARCSpecies(label='R1', smiles='C1=CCCCC1', multiplicity=1)],
+            p_species=[ARCSpecies(label='P1', smiles='C=C', multiplicity=1),
+                       ARCSpecies(label='P2', smiles='C=CC=C', multiplicity=1)],
+            multiplicity=1,
+        )
+        # The forward orientation genuinely fails (returns None) but must do so quietly (no ERROR log).
+        with self.assertNoLogs(logger, level='ERROR'):
+            raw_map = map_rxn(rxn)
+        self.assertIsNone(raw_map)
+
+        # map_reaction recovers via the flip fallback and returns a valid map (result unchanged by the fix).
+        atom_map = map_reaction(rxn=rxn, backend='ARC')
+        self.assertIsNotNone(atom_map)
+        rxn.atom_map = atom_map
+        self.assertTrue(check_atom_map(rxn))
+
     def test_map_abstractions_h_plus_ch4_to_ch3_plus_h2(self):
         """H + CH4 <=> CH3 + H2 (reversed product order)"""
         r_1 = self._h_atom()

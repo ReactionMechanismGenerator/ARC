@@ -287,7 +287,10 @@ def map_rxn(rxn: ARCReaction,
         p_label_map = rxn.product_dicts[pdi]['p_label_map']
         template_products = rxn.product_dicts[pdi]['products']
     except (IndexError, KeyError) as e:
-        logger.error(f"No valid template maps for reaction {rxn} ({rxn.family}), cannot atom map. Got:\n{e}")
+        # A failed orientation is recoverable: map_reaction() retries via its flip fallback.
+        # Log at debug level so a benign first-orientation failure is not a false alarm; the genuine
+        # double-failure is surfaced once by ARCReaction.atom_map ("could not be atom mapped").
+        logger.debug(f"No valid template maps for reaction {rxn} ({rxn.family}), cannot atom map. Got:\n{e}")
         return None
     try:
         template_order = get_template_product_order(rxn, template_products)
@@ -295,7 +298,11 @@ def map_rxn(rxn: ARCReaction,
         if rxn.product_dicts is not None and len(rxn.product_dicts) - 1 > pdi < MAX_PDI:
             return map_rxn(rxn, backend=backend, product_dict_index_to_try=pdi + 1)
         else:
-            logger.error(f'No valid template order for reaction {rxn} ({rxn.family}), cannot atom map.')
+            # A failed orientation is recoverable: map_reaction() retries via its flip fallback
+            # (e.g. reactions whose family was discovered in the reverse direction). Log at debug so
+            # this benign first-orientation failure is not a false alarm; the genuine double-failure is
+            # surfaced once by ARCReaction.atom_map ("could not be atom mapped").
+            logger.debug(f'No valid template order for reaction {rxn} ({rxn.family}), cannot atom map.')
             return None
 
     updated_p_label_map = reorder_p_label_map(p_label_map=p_label_map,
