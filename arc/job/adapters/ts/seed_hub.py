@@ -8,7 +8,7 @@ This module centralizes:
 
 from typing import Dict, List, Optional
 
-from arc.common import get_logger
+from arc.common import almost_equal_coords, get_logger
 from arc.species.converter import xyz_to_dmat
 
 logger = get_logger()
@@ -84,6 +84,60 @@ def get_ts_seeds(reaction: 'ARCReaction',
                 'metadata': entry.get('metadata', {}).copy(),
             })
     return xyz_entries
+
+
+def get_backup_ts_seeds(reaction: 'ARCReaction',
+                        exclude_method: str = 'crest',
+                        ) -> List[dict]:
+    """
+    Build CREST seed entries from TS guesses that OTHER adapters already produced.
+
+    This is a fallback for when CREST's own heuristic seed construction
+    (:func:`get_ts_seeds`) yields nothing -- e.g. a linear/cumulene reactive center
+    (such as HCCO in H_Abstraction) that the heuristic Z-matrix builder cannot
+    assemble. Any successful non-CREST TS guess already present on
+    ``reaction.ts_species.ts_guesses`` is a valid CREST seed: CREST only needs a seed
+    geometry plus the family reactive-atom constraints, and the constraints are
+    re-derived from the seed geometry by :func:`get_wrapper_constraints` -- they do not
+    depend on how the seed geometry was originally built.
+
+    Seeds are returned with empty ``metadata`` so the wrapper-constraint derivation
+    re-infers the reactive atoms from the geometry itself (robust to the source
+    adapter's atom ordering). Guesses whose method contains ``exclude_method`` are
+    skipped so CREST is never seeded from a prior CREST result (feedback-loop guard).
+
+    Args:
+        reaction: The ARC reaction object.
+        exclude_method: A method substring to exclude (default ``'crest'``).
+
+    Returns:
+        List[dict]: Seed entries in the same schema as :func:`get_ts_seeds`.
+    """
+    ts_species = getattr(reaction, 'ts_species', None)
+    ts_guesses = getattr(ts_species, 'ts_guesses', None) or list()
+    exclude = (exclude_method or '').lower()
+    seeds = list()
+    seen_xyzs = list()
+    for tsg in ts_guesses:
+        method = (getattr(tsg, 'method', '') or '').lower()
+        if not getattr(tsg, 'success', False):
+            continue
+        if exclude and exclude in method:
+            continue
+        xyz = getattr(tsg, 'opt_xyz', None) or getattr(tsg, 'initial_xyz', None)
+        if not isinstance(xyz, dict) or not xyz.get('symbols'):
+            continue
+        if any(almost_equal_coords(xyz, seen) for seen in seen_xyzs):
+            continue
+        seen_xyzs.append(xyz)
+        seeds.append({
+            'xyz': xyz,
+            'method': getattr(tsg, 'method', None) or 'external',
+            'family': reaction.family,
+            'source_adapter': method or 'external',
+            'metadata': {},
+        })
+    return seeds
 
 
 def get_wrapper_constraints(wrapper: str,
