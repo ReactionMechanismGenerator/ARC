@@ -707,6 +707,35 @@ def get_modified_params_from_zmat_2(zmat_1: dict,
     return new_symbols, new_coords, new_vars, new_map
 
 
+def _perturb_collinear_zmat_angles(zmat: dict,
+                                   delta: float = 5.0,
+                                   ) -> dict:
+    """
+    Return a copy of ``zmat`` with any near-collinear (~0 deg or ~180 deg) bond-angle parameter nudged by ``delta``
+    degrees, keeping it within the valid [0, 180] range. Only bond-angle parameters ('A_...' / 'AX_...') are touched;
+    bond lengths and dihedrals are preserved, so connectivity is retained.
+
+    This is a fallback used solely to build a throwaway species for connectivity-based atom mapping when a
+    linear/cumulene fragment reduces to a zmat that zmat_to_xyz cannot place (three collinear reference atoms make a
+    dihedral undefined, collapsing every atom to the origin). It never affects returned TS coordinates.
+
+    Args:
+        zmat (dict): The zmat to copy and perturb.
+        delta (float, optional): The magnitude (in degrees) by which to nudge a collinear angle.
+
+    Returns:
+        dict: A copy of ``zmat`` with collinear bond angles perturbed.
+    """
+    new_vars = dict(zmat['vars'])
+    for param, value in zmat['vars'].items():
+        if param.split('_')[0] in ('A', 'AX'):
+            if value <= delta:
+                new_vars[param] = delta
+            elif value >= 180.0 - delta:
+                new_vars[param] = 180.0 - delta
+    return {**zmat, 'vars': new_vars}
+
+
 def get_new_zmat_2_map(zmat_1: dict,
                        zmat_2: dict,
                        reactant_2: ARCSpecies | None,
@@ -735,8 +764,19 @@ def get_new_zmat_2_map(zmat_1: dict,
     new_map = get_new_map_based_on_zmat_1(zmat_1=zmat_1, zmat_2=zmat_2, reactants_reversed=reactants_reversed)
     zmat_2_mod = remove_zmat_atom_0(zmat_2)
     zmat_2_mod['map'] = relocate_zmat_dummy_atoms_to_the_end(zmat_2_mod['map'])
-    spc_from_zmat_2 = ARCSpecies(label='spc_from_zmat_2', xyz=zmat_2_mod, multiplicity=reactant_2.multiplicity,
-                                 number_of_radicals=reactant_2.number_of_radicals, charge=reactant_2.charge)
+    try:
+        spc_from_zmat_2 = ARCSpecies(label='spc_from_zmat_2', xyz=zmat_2_mod, multiplicity=reactant_2.multiplicity,
+                                     number_of_radicals=reactant_2.number_of_radicals, charge=reactant_2.charge)
+    except SpeciesError:
+        # A linear/cumulene R(*3) fragment (e.g. the O=C=C acceptor center of ketene) can reduce, after removing
+        # the redundant H, to a zmat with a collinear (~0 deg / ~180 deg) bond angle. zmat_to_xyz cannot place a
+        # dihedral referencing three collinear atoms and collapses every atom to the origin, so the ARCSpecies build
+        # raises a "colliding atoms" SpeciesError. This species is used ONLY for connectivity-based atom mapping, so
+        # perturb the collinear angle(s) to recover a valid geometry (identical connectivity); the returned TS
+        # coordinates are unaffected as they are built from the original, un-perturbed zmat_2.
+        spc_from_zmat_2 = ARCSpecies(label='spc_from_zmat_2', xyz=_perturb_collinear_zmat_angles(zmat_2_mod),
+                                     multiplicity=reactant_2.multiplicity,
+                                     number_of_radicals=reactant_2.number_of_radicals, charge=reactant_2.charge)
     atom_map = map_two_species(spc_1=spc_from_zmat_2, spc_2=reactant_2, consider_chirality=False)
     new_map = update_new_map_based_on_zmat_2(new_map=new_map,
                                              zmat_2=zmat_2_mod,
