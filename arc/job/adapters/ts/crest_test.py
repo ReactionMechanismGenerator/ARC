@@ -347,5 +347,109 @@ class TestCrestAdapter(unittest.TestCase):
             crest_mod.SERVERS = backups['SERVERS']
 
 
+    def test_get_backup_ts_seeds_selects_successful_non_crest_guesses(self):
+        """The backup seed picker skips CREST/failed guesses, prefers opt_xyz, and dedups."""
+        from arc.job.adapters.ts.seed_hub import get_backup_ts_seeds
+
+        seed_geom = str_to_xyz("""O 0.00000000 -0.02752832 -1.20590500
+                                  H 0.00000000 -0.02752832 -0.03383145
+                                  O 0.00000000 -0.02752832  1.12142787
+                                  H 0.00000000  0.90131726  1.37454478""")
+        other_geom = str_to_xyz("""O 0.10000000 -0.02752832 -1.20590500
+                                   H 0.00000000 -0.02752832 -0.03383145
+                                   O 0.00000000 -0.02752832  1.12142787
+                                   H 0.00000000  0.90131726  1.37454478""")
+
+        def make_tsg(method, success, initial_xyz, opt_xyz=None):
+            return types.SimpleNamespace(method=method, success=success,
+                                         initial_xyz=initial_xyz, opt_xyz=opt_xyz)
+
+        ts_guesses = [
+            make_tsg('crest', True, other_geom),          # feedback-loop guard -> excluded
+            make_tsg('autotst', False, other_geom),       # unsuccessful -> excluded
+            make_tsg('autotst', True, other_geom, opt_xyz=seed_geom),  # selected; opt_xyz preferred
+            make_tsg('heuristics', True, seed_geom),      # duplicate geometry -> deduped
+        ]
+        reaction = types.SimpleNamespace(
+            family='H_Abstraction',
+            ts_species=types.SimpleNamespace(ts_guesses=ts_guesses),
+        )
+
+        seeds = get_backup_ts_seeds(reaction, exclude_method='crest')
+        self.assertEqual(len(seeds), 1)
+        seed = seeds[0]
+        self.assertEqual(seed['xyz'], seed_geom)  # opt_xyz was preferred over initial_xyz
+        self.assertEqual(seed['source_adapter'], 'autotst')
+        self.assertEqual(seed['family'], 'H_Abstraction')
+        self.assertEqual(seed['metadata'], {})
+
+        # No ts_species / no guesses -> empty (graceful, unchanged behavior).
+        self.assertEqual(get_backup_ts_seeds(types.SimpleNamespace(family='H_Abstraction')), [])
+        empty_rxn = types.SimpleNamespace(family='H_Abstraction',
+                                          ts_species=types.SimpleNamespace(ts_guesses=[]))
+        self.assertEqual(get_backup_ts_seeds(empty_rxn), [])
+
+    def test_backup_seed_drives_constraint_derivation_and_input_generation(self):
+        """An external TS guess seeds CREST: constraints are re-derived from its geometry."""
+        from arc.job.adapters.ts import crest as crest_mod
+        from arc.job.adapters.ts.seed_hub import get_backup_ts_seeds, get_wrapper_constraints
+
+        # An OH + OH H-abstraction-style geometry; the reactive A--H--B triad is inferred
+        # from the geometry alone (no metadata), exactly as it would be for HCCO.
+        external_guess_xyz = str_to_xyz("""O 0.00000000 -0.02752832 -1.20590500
+                                           H 0.00000000 -0.02752832 -0.03383145
+                                           O 0.00000000 -0.02752832  1.12142787
+                                           H 0.00000000  0.90131726  1.37454478""")
+        reaction = types.SimpleNamespace(
+            family='H_Abstraction',
+            ts_species=types.SimpleNamespace(ts_guesses=[
+                types.SimpleNamespace(method='autotst', success=True,
+                                      initial_xyz=external_guess_xyz, opt_xyz=None),
+            ]),
+        )
+
+        seeds = get_backup_ts_seeds(reaction, exclude_method='crest')
+        self.assertEqual(len(seeds), 1)
+        constraints = get_wrapper_constraints(wrapper='crest', reaction=reaction, seed=seeds[0])
+        self.assertIsNotNone(constraints)
+        self.assertIn('atoms', constraints)
+        self.assertIn('distance_pairs', constraints)
+        self.assertIn('angle_atoms', constraints)
+
+        backups = {
+            'settings': crest_mod.settings,
+            'submit_scripts': crest_mod.submit_scripts,
+            'CREST_PATH': crest_mod.CREST_PATH,
+            'CREST_ENV_PATH': crest_mod.CREST_ENV_PATH,
+            'SERVERS': crest_mod.SERVERS,
+        }
+        try:
+            crest_mod.settings = {'submit_filenames': {'PBS': 'submit.sh'}}
+            crest_mod.submit_scripts = {'local': {}}
+            crest_mod.CREST_PATH = '/usr/bin/crest'
+            crest_mod.CREST_ENV_PATH = ''
+            crest_mod.SERVERS = {
+                'local': {'cluster_soft': 'pbs', 'cpus': 4, 'memory': 8, 'queue': 'testq'},
+            }
+            crest_path = crest_mod.crest_ts_conformer_search(
+                xyz_guess=seeds[0]['xyz'],
+                constraints=constraints,
+                path=self.tmpdir.name,
+                xyz_crest_int=0,
+            )
+            self.assertTrue(os.path.exists(os.path.join(crest_path, 'coords.ref')))
+            with open(os.path.join(crest_path, 'constraints.inp')) as f:
+                constraints_text = f.read()
+            self.assertIn('atoms:', constraints_text)
+            self.assertIn('reference=coords.ref', constraints_text)
+            self.assertIn('$metadyn', constraints_text)
+        finally:
+            crest_mod.settings = backups['settings']
+            crest_mod.submit_scripts = backups['submit_scripts']
+            crest_mod.CREST_PATH = backups['CREST_PATH']
+            crest_mod.CREST_ENV_PATH = backups['CREST_ENV_PATH']
+            crest_mod.SERVERS = backups['SERVERS']
+
+
 if __name__ == "__main__":
     unittest.main()
