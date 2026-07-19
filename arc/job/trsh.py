@@ -1141,7 +1141,7 @@ def trsh_ess_job(label: str,
                                 f'reduce the rank count to {new_cpu} to increase the per-process memory share while '
                                 f'keeping the total memory pinned at the cap.')
                     cpu_cores = new_cpu
-                    memory = min(memory_gb, max_mem_allocation)  # keep total pinned at the cap
+                    memory = max_mem_allocation  # pin total to the node cap while raising per-rank share
                     if 'cpu' not in ess_trsh_methods:
                         ess_trsh_methods.append('cpu')
                     if new_cpu == 1 and 'cpu_min' not in ess_trsh_methods:
