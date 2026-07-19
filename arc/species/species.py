@@ -1488,7 +1488,7 @@ class ARCSpecies(object):
             deg_abs = calculate_dihedral_angle(coords=xyz, torsion=torsion) + deg_increment
         if is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[:3], index=0)) \
                 or is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[1:], index=0)):
-            logger.warning(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
+            logger.debug(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
             return None
         mol = self.mol
         if mol is None:

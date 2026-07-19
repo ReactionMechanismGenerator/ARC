@@ -321,6 +321,17 @@ class TestARCSpecies(unittest.TestCase):
         self.assertIsInstance(xyz, str)
         self.assertEqual(xyz, xyz_to_str(expected_xyz))
 
+    def test_set_dihedral_linear_segment(self):
+        """Test that set_dihedral() no-ops (returns None) without a WARNING when the torsion spans a linear segment."""
+        # Methylketene (CC=C=O) has a collinear C=C=O cumulene segment, so the torsion [0, 1, 2, 3]
+        # contains a linear segment (the [1, 2, 3] triplet is ~180 degrees).
+        spc = ARCSpecies(label='methylketene', smiles='CC=C=O')
+        xyz = spc.get_xyz()
+        with self.assertNoLogs(logger='arc', level='WARNING'):
+            result = spc.set_dihedral(scan=[0, 1, 2, 3], index=0, deg_abs=90.0,
+                                      count=False, chk_rotor_list=False, xyz=xyz)
+        self.assertIsNone(result)
+
     def test_conformers(self):
         """Test conformer generation"""
         self.spc1.conformers = list()
