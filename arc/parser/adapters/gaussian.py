@@ -564,6 +564,108 @@ class GaussianParser(ESSAdapter, ABC):
             i += 1
         return traj if traj else None
 
+    def parse_irc_path(self) -> list[dict] | None:
+        """Parse structured data for each converged point in a Gaussian IRC path."""
+        lines = _get_lines_from_file(self.log_file_path)
+        number = r"[-+]?\d*\.?\d+(?:[EDed][-+]?\d+)?"
+        energy_re = re.compile(r"SCF Done:\s+E\([^)]*\)\s*=\s*(" + number + r")")
+        forces_re = re.compile(
+            r"Cartesian Forces:\s+Max\s+(" + number + r")\s+RMS\s+(" + number + r")"
+        )
+        direction_re = re.compile(
+            r"Point Number\s+\d+\s+in\s+(FORWARD|REVERSE)\s+path direction"
+        )
+        point_re = re.compile(r"Point Number:\s+(\d+)\s+Path Number:\s+(\d+)")
+        coordinate_re = re.compile(
+            r"NET REACTION COORDINATE UP TO THIS POINT\s*=\s*(" + number + r")"
+        )
+
+        def to_float(value: str) -> float | None:
+            try:
+                return float(value.replace('D', 'E').replace('d', 'e'))
+            except (TypeError, ValueError):
+                return None
+
+        points = list()
+        direction = None
+        energy = None
+        max_gradient = None
+        rms_gradient = None
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            match = energy_re.search(line)
+            if match:
+                energy = to_float(match.group(1))
+                i += 1
+                continue
+            match = forces_re.search(line)
+            if match:
+                max_gradient = to_float(match.group(1))
+                rms_gradient = to_float(match.group(2))
+                i += 1
+                continue
+            match = direction_re.search(line)
+            if match:
+                direction = match.group(1).lower()
+                i += 1
+                continue
+            match = point_re.search(line)
+            if not match:
+                i += 1
+                continue
+
+            point_number = int(match.group(1))
+            structure_index = None
+            for j in range(i + 1, min(i + 7, len(lines))):
+                if 'CURRENT STRUCTURE' in lines[j]:
+                    structure_index = j
+                    break
+            if structure_index is None:
+                i += 1
+                continue
+
+            k = structure_index + 1
+            separator_count = 0
+            while k < len(lines) and separator_count < 2:
+                if '----' in lines[k]:
+                    separator_count += 1
+                k += 1
+
+            coords, numbers = list(), list()
+            while k < len(lines) and '----' not in lines[k]:
+                parts = lines[k].split()
+                if len(parts) >= 5:
+                    try:
+                        numbers.append(int(parts[1]))
+                        coords.append([float(parts[2]), float(parts[3]), float(parts[4])])
+                    except (IndexError, ValueError):
+                        pass
+                k += 1
+            xyz = xyz_from_data(coords=np.array(coords), numbers=numbers) if coords and numbers else None
+
+            reaction_coordinate = None
+            coordinate_end = min(k + 8, len(lines))
+            p = k
+            while p < coordinate_end:
+                coordinate_match = coordinate_re.search(lines[p])
+                if coordinate_match:
+                    reaction_coordinate = to_float(coordinate_match.group(1))
+                    break
+                p += 1
+            points.append({
+                'point_number': point_number,
+                'direction': direction,
+                'electronic_energy_hartree': energy,
+                'max_gradient': max_gradient,
+                'rms_gradient': rms_gradient,
+                'reaction_coordinate': reaction_coordinate,
+                'xyz': xyz,
+            })
+            i = p + 1 if p < coordinate_end else k
+
+        return points or None
+
     def parse_scan_conformers(self) -> pd.DataFrame | None:
         """
         Parse all internal coordinates of scan conformers into a DataFrame.

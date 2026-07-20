@@ -619,6 +619,38 @@ H      -1.69381305    0.40788834    0.90078104"""
         # 4. A missing file → None.
         self.assertIsNone(parser.parse_gsm_stringfile_energies('/no/such/stringfile.xyz0000'))
 
+    def test_parse_irc_path_gaussian_forward(self):
+        """Test structured point data from a Gaussian forward IRC path."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertIsNotNone(points)
+        self.assertEqual(len(points), 50)
+        first = points[0]
+        self.assertEqual(first['point_number'], 1)
+        self.assertEqual(first['direction'], 'forward')
+        self.assertAlmostEqual(first['electronic_energy_hartree'], -303.578211343)
+        self.assertAlmostEqual(first['reaction_coordinate'], 0.07236)
+        self.assertAlmostEqual(first['max_gradient'], 0.007275026)
+        self.assertAlmostEqual(first['rms_gradient'], 0.002502813)
+        self.assertEqual(len(first['xyz']['symbols']), 8)
+        self.assertEqual(
+            [point['reaction_coordinate'] for point in points],
+            sorted(point['reaction_coordinate'] for point in points),
+        )
+        self.assertEqual({point['direction'] for point in points}, {'forward'})
+
+    def test_parse_irc_path_gaussian_reverse_direction(self):
+        """Test direction labels from a Gaussian reverse IRC path."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out')
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertIsNotNone(points)
+        self.assertEqual({point['direction'] for point in points}, {'reverse'})
+
+    def test_parse_irc_path_failed_log_returns_none(self):
+        """Test that a failed IRC log has no structured path."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'irc_failed.out')
+        self.assertIsNone(parser.parse_irc_path(log_file_path=path))
+
     def test_parse_1d_scan_coords(self):
         """Test parsing the optimized coordinates of a torsion scan at each optimization point"""
         path_1 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2.out')

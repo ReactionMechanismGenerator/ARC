@@ -230,6 +230,12 @@ parse_irc_traj = make_parser(
     error_message='Could not parse IRC trajectory from {path}',
 )
 
+parse_irc_path = make_parser(
+    parse_method='parse_irc_path',
+    return_type=list[dict] | None,
+    error_message='Could not parse rich IRC path from {path}',
+)
+
 parse_scan_conformers = make_parser(
     parse_method='parse_scan_conformers',
     return_type=pd.DataFrame | None,
