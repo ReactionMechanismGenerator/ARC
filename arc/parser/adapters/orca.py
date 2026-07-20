@@ -4,7 +4,9 @@ An adapter for parsing Orca log files.
 
 from abc import ABC
 
+import glob
 import numpy as np
+import os
 import pandas as pd
 import re
 
@@ -162,6 +164,121 @@ class OrcaParser(ESSAdapter, ABC):
         """
         # Not implemented for Orca.
         return None, None
+
+    def _locate_hess_file(self) -> str | None:
+        """
+        Locate the sibling ``.hess`` file that Orca writes alongside the log.
+
+        Orca stores the Cartesian Hessian in a separate ``.hess`` file rather
+        than in the ``.out`` log. ARC downloads it as ``input.hess`` into the
+        job's local directory next to ``output.out`` (see
+        ``arc/job/adapter.py`` -> ``local_path_to_hess_file`` and
+        ``arc/job/adapters/orca.py`` -> ``files_to_download``). Prefer that
+        canonical name, then fall back to a unique ``*.hess`` sibling.
+
+        Returns: str | None
+            The path to the ``.hess`` file, or ``None`` if none is reachable.
+        """
+        directory = os.path.dirname(os.path.abspath(self.log_file_path))
+        canonical = os.path.join(directory, 'input.hess')
+        if os.path.isfile(canonical):
+            return canonical
+        candidates = sorted(glob.glob(os.path.join(directory, '*.hess')))
+        if len(candidates) == 1:
+            return candidates[0]
+        # Zero (nothing to parse) or ambiguous (>1) — decline rather than guess.
+        return None
+
+    def parse_cartesian_hessian_lower_triangle(self) -> list[float] | None:
+        """
+        Parse the Cartesian Hessian from the sibling ``.hess`` file and return
+        the packed lower triangle (including the diagonal), row-major, i.e.
+        ``[H[i][j] for i in range(3N) for j in range(i + 1)]``.
+
+        The Orca ``$hessian`` block stores the full (symmetric) ``3N x 3N``
+        matrix natively in atomic units (hartree/bohr²), paged in column
+        groups. Values are kept in their native hartree/bohr² units — no SI
+        conversion is applied (contrast Arkane's ``load_force_constant_matrix``,
+        which multiplies by ``4.35974417e-18 / 5.291772108e-11 ** 2``).
+
+        Returns: list[float] | None
+            The lower triangle in hartree/bohr² (length ``3N(3N+1)/2``), or
+            ``None`` if no ``.hess`` is reachable, the block is absent/malformed,
+            or it describes fewer than two atoms (``3N < 6``).
+        """
+        hess_path = self._locate_hess_file()
+        if hess_path is None:
+            return None
+        with open(hess_path, 'r') as f:
+            lines = f.readlines()
+
+        # Find the ``$hessian`` block; the next non-empty line is the integer
+        # dimension (3N), followed by paged blocks: a header row of 0-based
+        # column indices (all-integer tokens) then one line per matrix row
+        # ``<row_index> <val> ...``.
+        start = None
+        for idx, line in enumerate(lines):
+            if line.strip() == '$hessian':
+                start = idx + 1
+                break
+        if start is None:
+            return None
+        # Skip blank lines to the dimension line.
+        while start < len(lines) and not lines[start].strip():
+            start += 1
+        if start >= len(lines):
+            return None
+        try:
+            n_rows = int(lines[start].strip())
+        except ValueError:
+            return None
+        if n_rows < 6:
+            # Single atom (3N == 3) or empty — no meaningful Cartesian Hessian.
+            return None
+
+        matrix = np.zeros((n_rows, n_rows), dtype=np.float64)
+        seen = np.zeros((n_rows, n_rows), dtype=bool)
+        col_indices: list[int] = []
+        for line in lines[start + 1:]:
+            tokens = line.split()
+            if not tokens:
+                continue
+            if tokens[0].startswith('$'):
+                # Next section (e.g. ``$vibrational_frequencies``) — done.
+                break
+            if all(tok.isdigit() for tok in tokens):
+                # Page header: the 0-based column indices for the rows below.
+                col_indices = [int(tok) for tok in tokens]
+                continue
+            if not col_indices or not tokens[0].isdigit():
+                continue
+            row = int(tokens[0])
+            values = tokens[1:]
+            if row >= n_rows:
+                continue
+            for k, value in enumerate(values):
+                if k >= len(col_indices):
+                    break
+                col = col_indices[k]
+                if col >= n_rows:
+                    continue
+                try:
+                    matrix[row, col] = float(value)
+                except ValueError:
+                    return None
+                seen[row, col] = True
+
+        # Require at least the full lower triangle to have been populated.
+        lower_triangle: list[float] = []
+        for i in range(n_rows):
+            for j in range(i + 1):
+                if not (seen[i, j] or seen[j, i]):
+                    return None
+                # Prefer the explicitly-seen entry; fall back to the symmetric
+                # partner when only the upper triangle carried the value.
+                value = matrix[i, j] if seen[i, j] else matrix[j, i]
+                lower_triangle.append(float(value))
+        return lower_triangle
 
     def parse_t1(self) -> float | None:
         """

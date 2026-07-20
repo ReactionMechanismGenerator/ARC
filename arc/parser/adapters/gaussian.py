@@ -185,6 +185,79 @@ class GaussianParser(ESSAdapter, ABC):
 
         return freq_array, disp_array
 
+    def parse_cartesian_hessian_lower_triangle(self) -> list[float] | None:
+        """
+        Parse the Cartesian Hessian (mass-unweighted second-derivative matrix)
+        from the ``Force constants in Cartesian coordinates:`` block, returning
+        the packed lower triangle (including the diagonal), row-major, i.e.
+        ``[H[i][j] for i in range(3N) for j in range(i + 1)]``.
+
+        Gaussian prints this block natively in atomic units (hartree/bohr²) and
+        only when ``IOp(7/33=1)`` was requested (ARC sets this on ``freq`` and
+        ``optfreq`` jobs). Values are kept in their native hartree/bohr² units —
+        no SI conversion is applied (contrast Arkane's ``load_force_constant_matrix``,
+        which multiplies by ``4.35974417e-18 / 5.291772108e-11 ** 2`` to reach J/m²).
+
+        Returns: list[float] | None
+            The lower triangle in hartree/bohr² (length ``3N(3N+1)/2``), or
+            ``None`` if the block is absent, malformed, or describes fewer than
+            two atoms (``3N < 6``).
+        """
+        lines = _get_lines_from_file(self.log_file_path)
+        # Use the last occurrence of the block (freq jobs print one; optfreq may
+        # print the geometry-optimization forces earlier, so take the final one).
+        start = None
+        for idx in range(len(lines) - 1, -1, -1):
+            if 'Force constants in Cartesian coordinates:' in lines[idx]:
+                start = idx + 1
+                break
+        if start is None:
+            return None
+
+        # The block is a paged lower triangle. Each page opens with a header
+        # line of 1-based column indices (all-integer tokens), followed by data
+        # rows: ``<row_index> <val> [<val> ...]`` with values in Fortran ``D``
+        # exponent notation. Any line whose leading token is not an integer
+        # (e.g. ``Final forces over variables, ...``) terminates the block.
+        matrix: dict[tuple[int, int], float] = {}
+        col_offset = 0
+        max_index = -1
+        for line in lines[start:]:
+            tokens = line.split()
+            if not tokens:
+                break
+            if all(tok.isdigit() for tok in tokens):
+                # Page header: leading value is the first 1-based column index.
+                col_offset = int(tokens[0]) - 1
+                continue
+            if not tokens[0].isdigit():
+                break
+            row = int(tokens[0]) - 1
+            for k, value in enumerate(tokens[1:]):
+                col = col_offset + k
+                try:
+                    matrix[(row, col)] = float(value.replace('D', 'E').replace('d', 'E'))
+                except ValueError:
+                    return None
+            max_index = max(max_index, row)
+
+        n_rows = max_index + 1
+        if n_rows < 6:
+            # No block parsed (n_rows == 0) or a single atom (3N == 3); a
+            # monatomic species carries no meaningful Cartesian Hessian.
+            return None
+
+        lower_triangle: list[float] = []
+        for i in range(n_rows):
+            for j in range(i + 1):
+                value = matrix.get((i, j))
+                if value is None:
+                    # Incomplete lower triangle — treat as malformed rather than
+                    # silently emitting a partial Hessian.
+                    return None
+                lower_triangle.append(value)
+        return lower_triangle
+
     def parse_t1(self) -> float | None:
         """
         Parse the T1 parameter from a CC calculation.
