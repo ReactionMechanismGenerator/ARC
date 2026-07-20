@@ -2,8 +2,6 @@
 A module for plotting and saving output files such as RMG libraries.
 """
 
-from __future__ import annotations
-
 import matplotlib
 # Force matplotlib to not use any Xwindows backend.
 # This must be called before pylab, matplotlib.pyplot, or matplotlib.backends is imported.
@@ -1652,7 +1650,7 @@ def delete_multi_species_output_file(species_list: list[ARCSpecies],
         os.remove(multi_species_path_dict[spc_label])
 
 
-def get_rxn_units_and_conversion_factor(rxn: ARCReaction) -> tuple[str, float]:  # todo: add tests
+def get_rxn_units_and_conversion_factor(rxn: 'ARCReaction') -> tuple[str, float]:  # todo: add tests
     """
     Get the units and conversion factor for the reaction rate coefficient.
 
