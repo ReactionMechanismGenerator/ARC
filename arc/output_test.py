@@ -13,8 +13,8 @@ from arc.common import ARC_PATH
 from arc.level import Level
 from arc.common import ARC_TESTING_PATH
 from arc.output import (
-    _build_applied_corrections_for_species,
-    _build_scan_calculations,
+    _build_energy_corrections_for_species,
+    _build_rotor_scans,
     _build_scan_result_for_rotor,
     _compute_point_groups,
     _compute_species_corrections,
@@ -1380,7 +1380,7 @@ class TestGetPointGroupsScript(unittest.TestCase):
 
 
 class TestBuildAppliedCorrectionsForSpecies(unittest.TestCase):
-    """Direct tests for `_build_applied_corrections_for_species`.
+    """Direct tests for `_build_energy_corrections_for_species`.
 
     Stubs the rmg_env script's per-label result so we don't depend on the
     Arkane subprocess; the helper's job is purely shape-translation.
@@ -1424,14 +1424,13 @@ class TestBuildAppliedCorrectionsForSpecies(unittest.TestCase):
 
     def test_aec_total_emitted(self):
         sc = {'CH4': {'aec': self._aec_block()}}
-        out = _build_applied_corrections_for_species('CH4', sc, self._lot(), 'p')
-        roles = [e['application_role'] for e in out]
-        self.assertIn('aec_total', roles)
-        aec = next(e for e in out if e['application_role'] == 'aec_total')
-        self.assertAlmostEqual(aec['value'], -0.0234)
-        self.assertEqual(aec['value_unit'], 'hartree')
-        self.assertEqual(aec['scheme']['kind'], 'atom_energy')
-        self.assertEqual(aec['scheme']['name'], 'atom_energy')
+        out = _build_energy_corrections_for_species('CH4', sc, self._lot(), 'p')
+        roles = [e['correction_type'] for e in out]
+        self.assertIn('atom_energy', roles)
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertAlmostEqual(aec['total']['value'], -0.0234)
+        self.assertEqual(aec['total']['unit'], 'hartree')
+        self.assertEqual(aec['model'], 'arkane_atom_energy')
 
     def test_aec_components_sum_to_total(self):
         # Use values that arithmetically sum exactly so the test
@@ -1449,60 +1448,60 @@ class TestBuildAppliedCorrectionsForSpecies(unittest.TestCase):
             ],
         }
         sc = {'X': {'aec': block}}
-        out = _build_applied_corrections_for_species('X', sc, self._lot(), None)
-        aec = next(e for e in out if e['application_role'] == 'aec_total')
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), None)
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
         total = sum(c['contribution_value'] for c in aec['components'])
-        self.assertAlmostEqual(total, aec['value'], places=6)
+        self.assertAlmostEqual(total, aec['total']['value'], places=6)
 
     def test_pbac_total_and_components(self):
         sc = {'CH4': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
-        out = _build_applied_corrections_for_species('CH4', sc, self._lot(), 'p')
-        bac = next(e for e in out if e['application_role'] == 'bac_total')
-        self.assertEqual(bac['scheme']['kind'], 'bac_petersson')
-        self.assertEqual(bac['value_unit'], 'kcal_mol')
+        out = _build_energy_corrections_for_species('CH4', sc, self._lot(), 'p')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(bac['model'], 'petersson')
+        self.assertEqual(bac['total']['unit'], 'kcal_mol')
         self.assertEqual(len(bac['components']), 1)
         self.assertEqual(bac['components'][0]['key'], 'C-H')
 
     def test_mbac_total_only_no_components(self):
         sc = {'CH4': {'aec': self._aec_block(), 'bac': self._mbac_block()}}
-        out = _build_applied_corrections_for_species('CH4', sc, self._lot(), 'm')
-        bac = next(e for e in out if e['application_role'] == 'bac_total')
-        self.assertEqual(bac['scheme']['kind'], 'bac_melius')
+        out = _build_energy_corrections_for_species('CH4', sc, self._lot(), 'm')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(bac['model'], 'melius')
         self.assertEqual(bac['components'], [])
 
     def test_pbac_omits_components_when_param_missing(self):
         block = self._pbac_block()
         block['components'][0]['parameter_value'] = None
         sc = {'X': {'aec': self._aec_block(), 'bac': block}}
-        out = _build_applied_corrections_for_species('X', sc, self._lot(), 'p')
-        bac = next(e for e in out if e['application_role'] == 'bac_total')
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
         # Components dropped entirely (partial decomposition would mislead).
         self.assertEqual(bac['components'], [])
 
     def test_units_are_explicit(self):
         sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
-        out = _build_applied_corrections_for_species('X', sc, self._lot(), 'p')
-        units = {e['application_role']: e['value_unit'] for e in out}
-        self.assertEqual(units['aec_total'], 'hartree')
-        self.assertEqual(units['bac_total'], 'kcal_mol')
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
+        units = {e['correction_type']: e['total']['unit'] for e in out}
+        self.assertEqual(units['atom_energy'], 'hartree')
+        self.assertEqual(units['bond_additivity'], 'kcal_mol')
 
     def test_missing_correction_omits_silently(self):
         # AEC failed (no 'aec' key), BAC succeeded → only BAC emitted.
         sc = {'X': {'bac': self._pbac_block()}}
-        out = _build_applied_corrections_for_species('X', sc, self._lot(), 'p')
-        roles = [e['application_role'] for e in out]
-        self.assertEqual(roles, ['bac_total'])
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
+        roles = [e['correction_type'] for e in out]
+        self.assertEqual(roles, ['bond_additivity'])
 
     def test_no_data_returns_empty_list(self):
-        out = _build_applied_corrections_for_species('X', {}, self._lot(), 'p')
+        out = _build_energy_corrections_for_species('X', {}, self._lot(), 'p')
         self.assertEqual(out, [])
 
     def test_bac_type_none_omits_bac(self):
         # Even if a BAC block is present, bac_type=None means no BAC role.
         sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
-        out = _build_applied_corrections_for_species('X', sc, self._lot(), None)
-        roles = [e['application_role'] for e in out]
-        self.assertEqual(roles, ['aec_total'])
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), None)
+        roles = [e['correction_type'] for e in out]
+        self.assertEqual(roles, ['atom_energy'])
 
     # ---- scheme parameter tables (atom_params / bond_params) ----
 
@@ -1514,27 +1513,25 @@ class TestBuildAppliedCorrectionsForSpecies(unittest.TestCase):
         # for deterministic output.yml.
         aec_table = {'C': -37.84706, 'H': -0.50066}
         sc = {'X': {'aec': self._aec_block()}}
-        out = _build_applied_corrections_for_species(
+        out = _build_energy_corrections_for_species(
             'X', sc, self._lot(), 'p', aec_table=aec_table, bac_table=None,
         )
-        aec = next(e for e in out if e['application_role'] == 'aec_total')
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
         self.assertEqual(
-            aec['scheme']['atom_params'],
-            [{'element': 'C', 'value': -37.84706},
-             {'element': 'H', 'value': -0.50066}],
+            aec['parameter_table']['values'],
+            {'C': -37.84706, 'H': -0.50066},
         )
 
     def test_pbac_scheme_includes_bond_params_from_run_table(self):
         bac_table = {'C-H': -0.17350, 'C=O': -2.63454}
         sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
-        out = _build_applied_corrections_for_species(
+        out = _build_energy_corrections_for_species(
             'X', sc, self._lot(), 'p', aec_table=None, bac_table=bac_table,
         )
-        bac = next(e for e in out if e['application_role'] == 'bac_total')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
         self.assertEqual(
-            bac['scheme']['bond_params'],
-            [{'bond_key': 'C-H', 'value': -0.17350},
-             {'bond_key': 'C=O', 'value': -2.63454}],
+            bac['parameter_table']['values'],
+            {'C-H': -0.17350, 'C=O': -2.63454},
         )
 
     def test_mbac_scheme_omits_params(self):
@@ -1543,14 +1540,12 @@ class TestBuildAppliedCorrectionsForSpecies(unittest.TestCase):
         # The producer must NOT fabricate or coerce them — emit total only.
         bac_table = {'C-H': -0.17350}  # would coerce, but we must not
         sc = {'X': {'aec': self._aec_block(), 'bac': self._mbac_block()}}
-        out = _build_applied_corrections_for_species(
+        out = _build_energy_corrections_for_species(
             'X', sc, self._lot(), 'm', aec_table=None, bac_table=bac_table,
         )
-        bac = next(e for e in out if e['application_role'] == 'bac_total')
-        self.assertEqual(bac['scheme']['kind'], 'bac_melius')
-        self.assertNotIn('bond_params', bac['scheme'])
-        self.assertNotIn('atom_params', bac['scheme'])
-        self.assertNotIn('component_params', bac['scheme'])
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(bac['model'], 'melius')
+        self.assertNotIn('parameter_table', bac)
 
     def test_aec_scheme_omits_atom_params_when_table_missing(self):
         # Backward compat: when aec_table isn't supplied (caller predates
@@ -1558,24 +1553,22 @@ class TestBuildAppliedCorrectionsForSpecies(unittest.TestCase):
         # has identity but no atom_params field — schema treats it as []
         # via the default factory.
         sc = {'X': {'aec': self._aec_block()}}
-        out = _build_applied_corrections_for_species(
+        out = _build_energy_corrections_for_species(
             'X', sc, self._lot(), 'p', aec_table=None, bac_table=None,
         )
-        aec = next(e for e in out if e['application_role'] == 'aec_total')
-        self.assertNotIn('atom_params', aec['scheme'])
-        self.assertNotIn('bond_params', aec['scheme'])
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertNotIn('parameter_table', aec)
 
     def test_atom_params_sorted_for_determinism(self):
         # Stable insertion order matters for the idempotency hash
         # downstream consumers compute over the payload.
         aec_table = {'O': -75.07, 'H': -0.5, 'C': -37.85}
         sc = {'X': {'aec': self._aec_block()}}
-        out = _build_applied_corrections_for_species(
+        out = _build_energy_corrections_for_species(
             'X', sc, self._lot(), None, aec_table=aec_table, bac_table=None,
         )
-        aec = next(e for e in out if e['application_role'] == 'aec_total')
-        elements = [p['element'] for p in aec['scheme']['atom_params']]
-        self.assertEqual(elements, ['C', 'H', 'O'])  # sorted
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertEqual(list(aec['parameter_table']['values']), ['C', 'H', 'O'])
 
 
 class TestComputeSpeciesCorrections(unittest.TestCase):
@@ -1715,32 +1708,27 @@ class TestScanCalculations(unittest.TestCase):
         result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
         self.assertIsNotNone(result)
         self.assertEqual(result['dimension'], 1)
-        self.assertTrue(result['is_relaxed'])
+        self.assertTrue(result['relaxed'])
         # zero_energy_reference_hartree = min absolute energy on the curve.
         self.assertIsInstance(result['zero_energy_reference_hartree'], float)
         # One coordinate, dihedral, atoms 1–4, 1-based, with symmetry.
-        self.assertEqual(len(result['coordinates']), 1)
-        coord = result['coordinates'][0]
-        self.assertEqual(coord['coordinate_index'], 1)
-        self.assertEqual(coord['coordinate_kind'], 'dihedral')
-        self.assertEqual(
-            (coord['atom1_index'], coord['atom2_index'],
-             coord['atom3_index'], coord['atom4_index']),
-            (1, 2, 3, 4),
-        )
-        self.assertEqual(coord['value_unit'], 'degree')
+        coord = result['coordinate']
+        self.assertEqual(coord['coordinate_type'], 'dihedral')
+        self.assertEqual(coord['atom_indices'], [1, 2, 3, 4])
+        self.assertEqual(coord['index_base'], 1)
+        self.assertEqual(coord['unit'], 'degree')
         self.assertEqual(coord['symmetry_number'], 3)
-        self.assertEqual(coord['step_count'], len(result['points']))
+        self.assertEqual(coord['sample_count'], len(result['samples']))
         # Points carry index, energies, coordinate_values. Per-point
         # geometries are now emitted under ``geometry.xyz_text`` so
         # TCKDB can persist them into ``calc_scan_point.geometry_id``;
         # geometries come straight from
         # ``parse_1d_scan_full_result()['geometries']`` and are
         # serialized in the TCKDB count-headered xyz convention.
-        self.assertGreater(len(result['points']), 0)
-        first = result['points'][0]
-        self.assertEqual(first['point_index'], 1)
-        self.assertEqual(first['coordinate_values'][0]['value_unit'], 'degree')
+        self.assertGreater(len(result['samples']), 0)
+        first = result['samples'][0]
+        self.assertEqual(first['source_index'], 0)
+        self.assertIn('angle_degrees', first)
         self.assertIn('relative_energy_kj_mol', first)
         self.assertIn('electronic_energy_hartree', first)
         self.assertNotIn('xyz', first)
@@ -1787,13 +1775,12 @@ class TestScanCalculations(unittest.TestCase):
         """Two successful 1D rotors → two scan_rotor_<i> entries."""
         spc = MagicMock()
         spc.rotors_dict = {0: self._rotor(), 1: self._rotor()}
-        calcs = _build_scan_calculations(spc, '/tmp/project')
+        calcs = _build_rotor_scans(spc, '/tmp/project')
         self.assertEqual(len(calcs), 2)
         self.assertEqual(calcs[0]['key'], 'scan_rotor_0')
-        self.assertEqual(calcs[0]['type'], 'scan')
         self.assertEqual(calcs[1]['key'], 'scan_rotor_1')
-        self.assertIn('scan_result', calcs[0])
-        self.assertEqual(calcs[0]['scan_result']['dimension'], 1)
+        self.assertIn('source_log', calcs[0])
+        self.assertEqual(calcs[0]['result']['dimension'], 1)
 
     def test_build_scan_calculations_skips_failed_rotor(self):
         spc = MagicMock()
@@ -1801,7 +1788,7 @@ class TestScanCalculations(unittest.TestCase):
             0: self._rotor(),                     # ok
             1: self._rotor(success=False),        # filtered
         }
-        calcs = _build_scan_calculations(spc, '/tmp/project')
+        calcs = _build_rotor_scans(spc, '/tmp/project')
         self.assertEqual([c['key'] for c in calcs], ['scan_rotor_0'])
 
     def test_build_scan_calculations_skips_nd(self):
@@ -1811,7 +1798,7 @@ class TestScanCalculations(unittest.TestCase):
             0: self._rotor(),                  # 1D, ok
             1: self._rotor(dimensions=2),      # ND, skipped
         }
-        calcs = _build_scan_calculations(spc, '/tmp/project')
+        calcs = _build_rotor_scans(spc, '/tmp/project')
         self.assertEqual([c['key'] for c in calcs], ['scan_rotor_0'])
 
     def test_build_scan_calculations_skips_unparseable(self):
@@ -1821,7 +1808,7 @@ class TestScanCalculations(unittest.TestCase):
             0: self._rotor(scan_path=''),  # log missing → skipped
             1: self._rotor(),              # ok
         }
-        calcs = _build_scan_calculations(spc, '/tmp/project')
+        calcs = _build_rotor_scans(spc, '/tmp/project')
         self.assertEqual([c['key'] for c in calcs], ['scan_rotor_1'])
 
     def test_get_torsions_attaches_scan_key_when_log_present(self):
@@ -1849,9 +1836,9 @@ class TestScanCalculations(unittest.TestCase):
         }
         torsions = _get_torsions(spc, '/tmp/project')
         self.assertEqual(len(torsions), 2)
-        self.assertEqual(torsions[0]['source_scan_calculation_key'], 'scan_rotor_0')
+        self.assertEqual(torsions[0]['source_scan_key'], 'scan_rotor_0')
         # Second rotor has no scan log on disk → no fabricated key.
-        self.assertIsNone(torsions[1]['source_scan_calculation_key'])
+        self.assertIsNone(torsions[1]['source_scan_key'])
 
     # ---- per-point scan geometries (TCKDB calc_scan_point.geometry_id) ----
     #
@@ -1899,17 +1886,12 @@ class TestScanCalculations(unittest.TestCase):
                    return_value=self._stub_parsed(n_points=3)):
             result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
         self.assertIsNotNone(result)
-        self.assertEqual(len(result['points']), 3)
-        for point in result['points']:
-            self.assertIn('geometry', point)
-            self.assertIn('xyz_text', point['geometry'])
-            xyz_text = point['geometry']['xyz_text']
-            # TCKDB count-headered convention: "<n>\\n<comment>\\n<atoms>".
+        self.assertEqual(len(result['samples']), 3)
+        for point in result['samples']:
+            self.assertIn('geometry_xyz', point)
+            xyz_text = point['geometry_xyz']
             lines = xyz_text.splitlines()
-            self.assertEqual(int(lines[0].strip()), 2,
-                             msg=f"first line must be atom count, got {lines[0]!r}")
-            # Body has the right atom count.
-            self.assertEqual(len(lines), 4)  # count + comment + 2 atom rows
+            self.assertEqual(len(lines), 2)
 
     def test_scan_point_geometry_uses_only_xyz_text_no_db_id(self):
         """No ``geometry_id`` (or any DB id) anywhere under scan_result."""
@@ -1918,13 +1900,11 @@ class TestScanCalculations(unittest.TestCase):
             result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
         self.assertIsNotNone(result)
         forbidden = {'geometry_id', 'existing_geometry_id', 'id'}
-        for point in result['points']:
-            geom = point.get('geometry') or {}
-            self.assertEqual(set(geom.keys()), {'xyz_text'},
-                             msg=f"geometry must carry only xyz_text, got {geom}")
+        for point in result['samples']:
+            geom = point.get('geometry_xyz')
+            self.assertIsInstance(geom, str)
             for k in forbidden:
                 self.assertNotIn(k, point, msg=f"{k} leaked onto scan point")
-                self.assertNotIn(k, geom)
         # Top-level scan_result also has no DB ids.
         for k in forbidden:
             self.assertNotIn(k, result)
@@ -1936,7 +1916,7 @@ class TestScanCalculations(unittest.TestCase):
                    return_value=self._stub_parsed(n_points=3, geometries='none')):
             result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
         self.assertIsNotNone(result)
-        for point in result['points']:
+        for point in result['samples']:
             self.assertNotIn('geometry', point)
 
     def test_scan_points_omit_geometry_uniformly_on_length_mismatch(self):
@@ -1947,7 +1927,7 @@ class TestScanCalculations(unittest.TestCase):
             with self.assertLogs('arc', level='WARNING') as cm:
                 result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
         self.assertIsNotNone(result)
-        for point in result['points']:
+        for point in result['samples']:
             self.assertNotIn('geometry', point)
         self.assertTrue(any('does not match scan-point count' in m for m in cm.output),
                         msg=f"expected mismatch warning, got: {cm.output}")
@@ -1960,14 +1940,11 @@ class TestScanCalculations(unittest.TestCase):
         spacing). The fixture log has ``S N 8.0`` in its header."""
         result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
         self.assertIsNotNone(result)
-        coord = result['coordinates'][0]
-        self.assertIn('step_size', coord)
-        self.assertIn('resolution_degrees', coord)
-        # 1D dihedral torsion scan: resolution == step size.
-        self.assertEqual(coord['step_size'], coord['resolution_degrees'])
+        coord = result['coordinate']
+        self.assertIn('requested_step_size', coord)
         # ARC writes ``S 360/scan_res scan_res``; for the sBuOH fixture the
         # requested step size is 8 degrees.
-        self.assertAlmostEqual(coord['step_size'], 8.0, places=6)
+        self.assertAlmostEqual(coord['requested_step_size'], 8.0, places=6)
 
     def test_scan_coord_step_size_independent_from_completed_count(self):
         """``step_count`` reflects the *completed* points, ``step_size`` the
@@ -1975,12 +1952,12 @@ class TestScanCalculations(unittest.TestCase):
         coupled (a partially-failed scan would otherwise emit a misleading
         derived step_size). Spot-check both come from independent data."""
         result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        coord = result['coordinates'][0]
+        coord = result['coordinate']
         # step_count is the point count we actually parsed; step_size is
         # the requested grid spacing. Their product covers the requested
         # range only when no points dropped.
-        self.assertEqual(coord['step_count'], len(result['points']))
-        self.assertGreater(coord['step_size'], 0.0)
+        self.assertEqual(coord['sample_count'], len(result['samples']))
+        self.assertGreater(coord['requested_step_size'], 0.0)
 
     def test_scan_coord_omits_grid_metadata_for_non_gaussian(self):
         """``parse_scan_args`` raising NotImplementedError (ORCA, etc.) →
@@ -1990,8 +1967,8 @@ class TestScanCalculations(unittest.TestCase):
                    side_effect=NotImplementedError('ORCA path')):
             result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
         self.assertIsNotNone(result)
-        coord = result['coordinates'][0]
-        self.assertNotIn('step_size', coord)
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)
         self.assertNotIn('resolution_degrees', coord)
 
     def test_scan_coord_omits_grid_metadata_when_parser_raises(self):
@@ -2001,8 +1978,8 @@ class TestScanCalculations(unittest.TestCase):
                    side_effect=RuntimeError('boom')):
             result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
         self.assertIsNotNone(result)
-        coord = result['coordinates'][0]
-        self.assertNotIn('step_size', coord)
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)
         self.assertNotIn('resolution_degrees', coord)
 
     def test_scan_coord_omits_grid_metadata_when_step_size_zero(self):
@@ -2015,8 +1992,8 @@ class TestScanCalculations(unittest.TestCase):
         with patch('arc.output.parse_scan_args', return_value=stub):
             result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
         self.assertIsNotNone(result)
-        coord = result['coordinates'][0]
-        self.assertNotIn('step_size', coord)
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)
         self.assertNotIn('resolution_degrees', coord)
 
     def test_scan_coord_grid_metadata_does_not_affect_points(self):
@@ -2028,10 +2005,9 @@ class TestScanCalculations(unittest.TestCase):
             result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
         # Points still carry their actual coordinate_value list; step_size
         # didn't propagate into per-point data.
-        self.assertGreater(len(result['points']), 0)
-        for point in result['points']:
-            self.assertIn('coordinate_values', point)
-            self.assertEqual(point['coordinate_values'][0]['value_unit'], 'degree')
+        self.assertGreater(len(result['samples']), 0)
+        for point in result['samples']:
+            self.assertIn('angle_degrees', point)
 
     # ---- start_value / end_value (TCKDB requested-grid endpoints) ----
     #
@@ -2071,11 +2047,11 @@ class TestScanCalculations(unittest.TestCase):
         result = _build_scan_result_for_rotor(
             rotor, '/tmp/project', input_xyz=xyz,
         )
-        coord = result['coordinates'][0]
-        self.assertIn('start_value', coord)
+        coord = result['coordinate']
+        self.assertIn('requested_start', coord)
         # The fixture's offset compensates for the helper's right-hand
         # rule, so 60° in → 60° out.
-        self.assertAlmostEqual(coord['start_value'], 60.0, places=4)
+        self.assertAlmostEqual(coord['requested_start'], 60.0, places=4)
 
     def test_scan_end_value_extends_continuously_from_start(self):
         """``end_value = start_value + step_size * (step_count - 1)`` —
@@ -2086,14 +2062,14 @@ class TestScanCalculations(unittest.TestCase):
         result = _build_scan_result_for_rotor(
             rotor, '/tmp/project', input_xyz=xyz,
         )
-        coord = result['coordinates'][0]
+        coord = result['coordinate']
         # Real Gaussian fixture: step_size=8, len(points)=46 → +360 span.
-        expected_end = coord['start_value'] + coord['step_size'] * (
-            coord['step_count'] - 1
+        expected_end = coord['requested_start'] + coord['requested_step_size'] * (
+            coord['sample_count'] - 1
         )
-        self.assertAlmostEqual(coord['end_value'], expected_end, places=6)
+        self.assertAlmostEqual(coord['requested_end'], expected_end, places=6)
         # Not wrapped: a full-rotation scan exceeds 360°, never re-folds.
-        self.assertGreater(coord['end_value'], 360.0)
+        self.assertGreater(coord['requested_end'], 360.0)
 
     def test_scan_end_value_is_not_wrapped_into_minus_180_180(self):
         """Continuity contract: even when start is near 180°, the end
@@ -2103,11 +2079,11 @@ class TestScanCalculations(unittest.TestCase):
         result = _build_scan_result_for_rotor(
             rotor, '/tmp/project', input_xyz=xyz,
         )
-        coord = result['coordinates'][0]
+        coord = result['coordinate']
         # 170 + 360 = 530 — must NOT have folded to -190 or 170.
-        self.assertGreater(coord['end_value'], 360.0)
-        self.assertGreater(coord['end_value'] - coord['start_value'],
-                           coord['step_size'] * 0.99)
+        self.assertGreater(coord['requested_end'], 360.0)
+        self.assertGreater(coord['requested_end'] - coord['requested_start'],
+                           coord['requested_step_size'] * 0.99)
 
     def test_scan_start_end_absent_when_input_geometry_missing(self):
         """No ``input_xyz`` and no parser fallback → fields stay absent."""
@@ -2121,9 +2097,9 @@ class TestScanCalculations(unittest.TestCase):
             result = _build_scan_result_for_rotor(
                 rotor, '/tmp/project', input_xyz=None,
             )
-        coord = result['coordinates'][0]
-        self.assertNotIn('start_value', coord)
-        self.assertNotIn('end_value', coord)
+        coord = result['coordinate']
+        self.assertNotIn('requested_start', coord)
+        self.assertNotIn('requested_end', coord)
 
     def test_scan_start_end_absent_when_step_size_unknown(self):
         """Without step_size we can't compute end_value, so we omit BOTH
@@ -2135,10 +2111,10 @@ class TestScanCalculations(unittest.TestCase):
             result = _build_scan_result_for_rotor(
                 rotor, '/tmp/project', input_xyz=xyz,
             )
-        coord = result['coordinates'][0]
-        self.assertNotIn('step_size', coord)  # confirms the precondition
-        self.assertNotIn('start_value', coord)
-        self.assertNotIn('end_value', coord)
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)  # confirms the precondition
+        self.assertNotIn('requested_start', coord)
+        self.assertNotIn('requested_end', coord)
 
     def test_scan_start_end_absent_when_step_size_zero(self):
         """``parse_scan_args`` returning step_size=0 → no end_value
@@ -2151,9 +2127,9 @@ class TestScanCalculations(unittest.TestCase):
             result = _build_scan_result_for_rotor(
                 rotor, '/tmp/project', input_xyz=xyz,
             )
-        coord = result['coordinates'][0]
-        self.assertNotIn('start_value', coord)
-        self.assertNotIn('end_value', coord)
+        coord = result['coordinate']
+        self.assertNotIn('requested_start', coord)
+        self.assertNotIn('requested_end', coord)
 
     def test_scan_start_end_absent_when_dihedral_calc_raises(self):
         """A failed dihedral calculation logs a warning, omits start/end,
@@ -2168,11 +2144,11 @@ class TestScanCalculations(unittest.TestCase):
                 )
         # scan_result is still emitted (energies + step_size + points all there).
         self.assertIsNotNone(result)
-        coord = result['coordinates'][0]
-        self.assertNotIn('start_value', coord)
-        self.assertNotIn('end_value', coord)
-        self.assertIn('step_size', coord)  # other grid fields untouched
-        self.assertGreater(len(result['points']), 0)
+        coord = result['coordinate']
+        self.assertNotIn('requested_start', coord)
+        self.assertNotIn('requested_end', coord)
+        self.assertIn('requested_step_size', coord)  # other grid fields untouched
+        self.assertGreater(len(result['samples']), 0)
         self.assertTrue(any('dihedral calculation failed' in m for m in cm.output),
                         msg=f"expected dihedral-failure warning, got: {cm.output}")
 
@@ -2188,10 +2164,9 @@ class TestScanCalculations(unittest.TestCase):
             rotor, '/tmp/project', input_xyz=None,
         )
         # Same number of points, same coordinate_values per point.
-        self.assertEqual(len(result_with['points']), len(result_without['points']))
-        for p_with, p_without in zip(result_with['points'], result_without['points']):
-            self.assertEqual(p_with['coordinate_values'],
-                             p_without['coordinate_values'])
+        self.assertEqual(len(result_with['samples']), len(result_without['samples']))
+        for p_with, p_without in zip(result_with['samples'], result_without['samples']):
+            self.assertEqual(p_with['angle_degrees'], p_without['angle_degrees'])
 
     def test_scan_falls_back_to_parsed_first_frame_when_input_xyz_missing(self):
         """When ``input_xyz`` is None but the parser returned aligned
@@ -2203,11 +2178,11 @@ class TestScanCalculations(unittest.TestCase):
         result = _build_scan_result_for_rotor(
             rotor, '/tmp/project', input_xyz=None,
         )
-        coord = result['coordinates'][0]
+        coord = result['coordinate']
         # Real Gaussian fixture has ``geometries`` populated, so the
         # fallback resolves and start/end are emitted.
-        self.assertIn('start_value', coord)
-        self.assertIn('end_value', coord)
+        self.assertIn('requested_start', coord)
+        self.assertIn('requested_end', coord)
 
     def test_scan_points_omit_geometry_uniformly_on_serialization_failure(self):
         """One unserializable xyz dict → drop geometries from ALL points,
@@ -2218,7 +2193,7 @@ class TestScanCalculations(unittest.TestCase):
                 result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
         self.assertIsNotNone(result)
         # No partial coverage: nothing carries a geometry.
-        for point in result['points']:
+        for point in result['samples']:
             self.assertNotIn('geometry', point)
         self.assertTrue(
             any('serialization failed' in m or 'empty text' in m for m in cm.output),
@@ -2253,8 +2228,8 @@ class TestScanConstraintDispatch(unittest.TestCase):
 
     def test_gaussian_hint_routes_to_gaussian_parser(self):
         from arc.output import _parse_scan_constraints
-        sentinel = [{'constraint_kind': 'bond', 'atoms': [1, 2],
-                     'target_value': None}]
+        sentinel = [{'coordinate_type': 'distance', 'atom_indices': [1, 2],
+                     'index_base': 1, 'target_value': None}]
         with patch('arc.parser.adapters.gaussian.parse_gaussian_constraints',
                    return_value=sentinel) as gauss, \
              patch('arc.parser.adapters.orca.parse_orca_constraints') as orca:
@@ -2267,8 +2242,9 @@ class TestScanConstraintDispatch(unittest.TestCase):
 
     def test_orca_hint_routes_to_orca_parser(self):
         from arc.output import _parse_scan_constraints
-        sentinel = [{'constraint_kind': 'dihedral',
-                     'atoms': [1, 2, 3, 4], 'target_value': 90.0}]
+        sentinel = [{'coordinate_type': 'dihedral',
+                     'atom_indices': [0, 1, 2, 3], 'index_base': 0,
+                     'target_value': 90.0}]
         with patch('arc.parser.adapters.orca.parse_orca_constraints',
                    return_value=sentinel) as orca, \
              patch('arc.parser.adapters.gaussian.parse_gaussian_constraints') as gauss:

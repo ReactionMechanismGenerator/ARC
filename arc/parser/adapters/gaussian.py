@@ -1405,9 +1405,9 @@ def parse_str_blocks(file_path: str,
         return blks
 
 
-_GAUSSIAN_LETTER_TO_TCKDB_KIND: dict[str, tuple[str, int]] = {
-    'X': ('cartesian_atom', 1),
-    'B': ('bond', 2),
+_GAUSSIAN_CONSTRAINT_COORDINATES: dict[str, tuple[str, int]] = {
+    'X': ('cartesian', 1),
+    'B': ('distance', 2),
     'A': ('angle', 3),
     'D': ('dihedral', 4),
 }
@@ -1418,14 +1418,13 @@ _GAUSSIAN_LETTER_TO_TCKDB_KIND: dict[str, tuple[str, int]] = {
 _GAUSSIAN_NON_CONSTRAINT_LETTERS: frozenset[str] = frozenset({'L', 'O'})
 
 
-def _gaussian_letter_to_tckdb_kind(letter: str, n_atoms: int) -> str | None:
-    """Map a Gaussian ModRedundant coordinate letter to a TCKDB constraint kind.
+def _gaussian_constraint_coordinate_type(letter: str, n_atoms: int) -> str | None:
+    """Return the tool-neutral coordinate type for a ModRedundant letter.
 
-    Returns None for ModRedundant coordinate types that TCKDB does not model
-    as calculation constraints (L/O), unknown letters, or any letter whose
-    arity does not match the atom-count in the parsed line.
+    Returns ``None`` for non-fixed coordinate types (L/O), unknown letters,
+    or a coordinate whose arity does not match the parsed atom count.
     """
-    entry = _GAUSSIAN_LETTER_TO_TCKDB_KIND.get(letter)
+    entry = _GAUSSIAN_CONSTRAINT_COORDINATES.get(letter)
     if entry is None:
         return None
     kind, expected_n = entry
@@ -1441,14 +1440,15 @@ def parse_gaussian_constraints(file_path: str) -> list[dict]:
     via ``arc/job/adapters/gaussian.py``) or a Gaussian log file's
     ``ModRedundant input section has been read:`` block. Returns one record
     per ``F`` (frozen) coordinate; ``S`` (scan) coordinates are deliberately
-    excluded — those belong in ``scan_result.coordinates[]``, not in
-    ``calculation.constraints[]``.
+    excluded because they describe the active scan coordinate rather than a
+    held constraint.
 
     Each record has the shape::
 
         {
-            'constraint_kind': 'cartesian_atom' | 'bond' | 'angle' | 'dihedral',
-            'atoms': [int, ...],            # 1-based atom indices
+            'coordinate_type': 'cartesian' | 'distance' | 'angle' | 'dihedral',
+            'atom_indices': [int, ...],     # Gaussian-native, 1-based
+            'index_base': 1,
             'target_value': float | None,   # None when no value parsed
         }
 
@@ -1498,7 +1498,7 @@ def _read_modredundant_block(file_path: str) -> list[str]:
                 # blank line or a non-constraint line; the leading-letter
                 # filter below also catches the Isotopes/GradGrad sentinels.
                 first = stripped.split()[0].upper()
-                if first not in _GAUSSIAN_LETTER_TO_TCKDB_KIND \
+                if first not in _GAUSSIAN_CONSTRAINT_COORDINATES \
                         and first not in _GAUSSIAN_NON_CONSTRAINT_LETTERS:
                     break
                 block.append(stripped)
@@ -1518,7 +1518,7 @@ def _read_modredundant_block(file_path: str) -> list[str]:
         if not stripped:
             continue
         first = stripped.split()[0].upper()
-        if first in _GAUSSIAN_LETTER_TO_TCKDB_KIND \
+        if first in _GAUSSIAN_CONSTRAINT_COORDINATES \
                 or first in _GAUSSIAN_NON_CONSTRAINT_LETTERS:
             deck_lines.append(stripped)
     return deck_lines
@@ -1547,12 +1547,12 @@ def _parse_gaussian_constraint_line(line: str) -> dict | None:
                      "coordinate type %s in line: %s", letter, line)
         return None
 
-    if letter not in _GAUSSIAN_LETTER_TO_TCKDB_KIND:
+    if letter not in _GAUSSIAN_CONSTRAINT_COORDINATES:
         logger.warning("parse_gaussian_constraints: unknown ModRedundant "
                        "letter %s in line: %s", letter, line)
         return None
 
-    _kind_name, expected_n = _GAUSSIAN_LETTER_TO_TCKDB_KIND[letter]
+    _coordinate_type, expected_n = _GAUSSIAN_CONSTRAINT_COORDINATES[letter]
 
     # Atom indices are tokens[1 : 1 + expected_n] when the line is well-formed.
     if len(tokens) < 1 + expected_n:
@@ -1568,8 +1568,8 @@ def _parse_gaussian_constraint_line(line: str) -> dict | None:
                        "in line: %s", line)
         return None
 
-    kind = _gaussian_letter_to_tckdb_kind(letter, len(atoms))
-    if kind is None:
+    coordinate_type = _gaussian_constraint_coordinate_type(letter, len(atoms))
+    if coordinate_type is None:
         logger.warning("parse_gaussian_constraints: arity mismatch for "
                        "letter %s with %d atoms in line: %s",
                        letter, len(atoms), line)
@@ -1597,8 +1597,9 @@ def _parse_gaussian_constraint_line(line: str) -> dict | None:
         return None
 
     return {
-        'constraint_kind': kind,
-        'atoms': atoms,
+        'coordinate_type': coordinate_type,
+        'atom_indices': atoms,
+        'index_base': 1,
         'target_value': target_value,
     }
 

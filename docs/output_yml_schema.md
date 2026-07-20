@@ -42,6 +42,18 @@ output.yml
 │       ├── opt_n_steps?, opt_final_energy_hartree?
 │       ├── freq_n_imag?, imag_freq_cm1?
 │       ├── opt_log?, freq_log?, sp_log?
+│       ├── opt_constraints?, freq_constraints?, sp_constraints?
+│       │   └── [{coordinate_type, atom_indices, index_base, target_value?}, ...]
+│       ├── rotor_scans?: []
+│       │   └── key, source_log?, constraints?, result
+│       │       ├── dimension, relaxed, zero_energy_reference_hartree?
+│       │       ├── coordinate: {coordinate_type, atom_indices, index_base, unit, ...}
+│       │       └── samples: [{source_index, angle_degrees,
+│       │                      relative_energy_kj_mol,
+│       │                      electronic_energy_hartree?, geometry_xyz?}, ...]
+│       ├── energy_corrections?: []
+│       │   └── correction_type, model, level_of_theory?, total,
+│       │       components?, parameter_table?
 │       ├── ess_versions?
 │       ├── thermo?
 │       │   ├── h298_kj_mol, s298_j_mol_k, tmin_k, tmax_k
@@ -53,7 +65,8 @@ output.yml
 │           ├── is_linear, external_symmetry, point_group?
 │           ├── rigid_rotor_kind, harmonic_frequencies_cm1?
 │           └── torsions: []
-│               └── symmetry_number, treatment, atom_indices, pivot_atoms, barrier_kj_mol?
+│               └── symmetry_number, treatment, atom_indices, pivot_atoms,
+│                   barrier_kj_mol?, source_scan_key?
 │
 ├── transition_states: []
 │   └── (all species fields, plus:)
@@ -110,6 +123,13 @@ TCKDB upload request objects.
 ## Species
 
 `species` is a list of entries, one per non-TS species.
+
+Calculation constraints, rotor scans, and energy corrections are deliberately
+tool-neutral. Constraint and scan coordinates retain their source atom indices
+with an explicit `index_base`; scan samples retain source ordering and explicit
+units; correction records retain the applied model, total, components, level
+of theory, and native parameter table. Consumers own any database enum,
+one-based-index, calculation-DAG, or payload nesting conversion.
 
 ### Identity
 

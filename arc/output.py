@@ -149,7 +149,7 @@ def write_output_yml(
     for spc in species_dict.values():
         d = _spc_to_dict(spc, output_dict, project_directory, point_groups,
                          irc_requested=irc_requested, software_by_job=software_by_job)
-        d['applied_energy_corrections'] = _build_applied_corrections_for_species(
+        d['energy_corrections'] = _build_energy_corrections_for_species(
             spc.label, species_corrections, arkane_level_of_theory, bac_type,
             aec_table=aec, bac_table=bac,
         )
@@ -408,8 +408,8 @@ def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
     to per-ESS adapters; logs from any supported ESS work without
     branching here. Used for both fine and coarse opt logs — the coarse
     geometry surfaces as ``coarse_opt_output_xyz`` in output.yml so the
-    TCKDB bundle can chain ``opt_coarse → opt`` with the right geometry
-    on each side.
+    downstream consumers can reconstruct the ``opt_coarse → opt`` geometry
+    lineage.
     """
     if not geo_path:
         return None, None, None
@@ -649,9 +649,6 @@ def _safe(fn, default=None):
         return default
 
 
-_BAC_KIND_BY_TYPE = {'p': 'bac_petersson', 'm': 'bac_melius'}
-
-
 def _compute_species_corrections(
     species_dict: dict,
     arkane_level_of_theory,
@@ -767,33 +764,7 @@ def _compute_species_corrections(
                 logger.debug(f'Failed to remove temporary file {p!r}', exc_info=True)
 
 
-def _aec_atom_params(aec_table: dict | None) -> list[dict]:
-    """Translate ARC's run-level ``atom_energy_corrections`` mapping into
-    TCKDB ``SchemeAtomParamPayload`` shape, sorted by element for
-    deterministic output.yml. Returns ``[]`` when the table is empty or
-    missing — TCKDB then has no scheme params to persist, but the applied
-    correction row still lands."""
-    if not aec_table:
-        return []
-    return [
-        {'element': str(elem), 'value': float(value)}
-        for elem, value in sorted(aec_table.items())
-    ]
-
-
-def _pbac_bond_params(bac_table: dict | None) -> list[dict]:
-    """Translate ARC's run-level ``bond_additivity_corrections`` mapping
-    into TCKDB ``SchemeBondParamPayload`` shape, sorted by bond_key for
-    deterministic output.yml."""
-    if not bac_table:
-        return []
-    return [
-        {'bond_key': str(key), 'value': float(value)}
-        for key, value in sorted(bac_table.items())
-    ]
-
-
-def _build_applied_corrections_for_species(
+def _build_energy_corrections_for_species(
     label: str,
     species_corrections: dict[str, dict],
     arkane_level_of_theory,
@@ -802,25 +773,12 @@ def _build_applied_corrections_for_species(
     aec_table: dict | None = None,
     bac_table: dict | None = None,
 ) -> list[dict]:
-    """Build the per-species ``applied_energy_corrections`` list for output.yml.
+    """Build tool-neutral per-species correction facts for ``output.yml``.
 
-    Translates the rmg_env script's per-species totals + components into the
-    output.yml shape (mirroring TCKDB's ``AppliedEnergyCorrectionUploadPayload``
-    contract): each entry has ``application_role``, ``value``, ``value_unit``,
-    ``scheme``, and (optional) ``components``. Failure rows from the script
-    (``aec_error``/``bac_error``) are silently dropped — that species simply
-    has the failing role omitted.
-
-    ``aec_table`` and ``bac_table`` are the run-level parameter dicts ARC
-    already retrieves from the RMG database (see ``_get_energy_corrections``).
-    Attached to each scheme as ``atom_params`` / ``bond_params`` so TCKDB
-    populates the ``energy_correction_scheme_atom_param`` /
-    ``energy_correction_scheme_bond_param`` reference tables — without
-    them the applied correction lands but the scheme rows that link to
-    parameter values stay empty. mBAC schemes never carry params: the
-    Melius parameter table doesn't fit ``SchemeBondParamPayload``'s
-    bond-key shape (it's atom-pair indexed and includes mol-level
-    corrections), and there's no safe coercion at the producer.
+    ARC records the correction model, total, native component decomposition,
+    level of theory, and the parameter table it actually used. Consumers own
+    any database-specific scheme enums, roles, nesting, or reference rows.
+    Failure rows from the helper script are omitted independently.
     """
     entry = species_corrections.get(label) or {}
     applied: list[dict] = []
@@ -828,60 +786,47 @@ def _build_applied_corrections_for_species(
 
     aec_block = entry.get('aec')
     if aec_block and aec_block.get('value') is not None:
-        scheme: dict = {
-            'kind': 'atom_energy',
-            'name': 'atom_energy',
+        correction: dict = {
+            'correction_type': 'atom_energy',
+            'model': 'arkane_atom_energy',
             'level_of_theory': lot_dict,
-            'units': aec_block.get('value_unit', 'hartree'),
-            'version': None,
-            'source_literature': None,
-            'note': 'Per-species AEC computed by Arkane.',
-        }
-        atom_params = _aec_atom_params(aec_table)
-        if atom_params:
-            scheme['atom_params'] = atom_params
-        applied.append({
-            'application_role': 'aec_total',
-            'value': float(aec_block['value']),
-            'value_unit': aec_block.get('value_unit', 'hartree'),
-            'scheme': scheme,
+            'total': {
+                'value': float(aec_block['value']),
+                'unit': aec_block.get('value_unit', 'hartree'),
+            },
             'components': aec_block.get('components') or [],
-        })
+        }
+        if aec_table:
+            correction['parameter_table'] = {
+                'unit': aec_block.get('value_unit', 'hartree'),
+                'values': {str(k): float(v) for k, v in sorted(aec_table.items())},
+            }
+        applied.append(correction)
 
     bac_block = entry.get('bac')
-    if bac_block and bac_block.get('value') is not None and bac_type in _BAC_KIND_BY_TYPE:
-        scheme_kind = _BAC_KIND_BY_TYPE[bac_type]
+    if bac_block and bac_block.get('value') is not None and bac_type in ('p', 'm'):
         components = bac_block.get('components')
         # Drop components when any bond is missing a parameter — partial
         # decompositions would not sum to the total and would mislead
         # downstream consumers.
         if components and any(c.get('parameter_value') is None for c in components):
             components = None
-        scheme = {
-            'kind': scheme_kind,
-            'name': scheme_kind,
+        correction = {
+            'correction_type': 'bond_additivity',
+            'model': {'p': 'petersson', 'm': 'melius'}[bac_type],
             'level_of_theory': lot_dict,
-            'units': bac_block.get('value_unit', 'kcal_mol'),
-            'version': None,
-            'source_literature': None,
-            'note': f'Per-species BAC computed by Arkane (bac_type={bac_type}).',
-        }
-        # Petersson BAC has a clean (bond_key → value) parameter table;
-        # Melius does not — its parameters are atom-pair / length /
-        # neighbor / molecular and need ``component_params``, which ARC
-        # doesn't currently surface. Per spec we omit params for mBAC
-        # rather than fabricate or coerce.
-        if bac_type == 'p':
-            bond_params = _pbac_bond_params(bac_table)
-            if bond_params:
-                scheme['bond_params'] = bond_params
-        applied.append({
-            'application_role': 'bac_total',
-            'value': float(bac_block['value']),
-            'value_unit': bac_block.get('value_unit', 'kcal_mol'),
-            'scheme': scheme,
+            'total': {
+                'value': float(bac_block['value']),
+                'unit': bac_block.get('value_unit', 'kcal_mol'),
+            },
             'components': components or [],
-        })
+        }
+        if bac_type == 'p' and bac_table:
+            correction['parameter_table'] = {
+                'unit': bac_block.get('value_unit', 'kcal_mol'),
+                'values': {str(k): float(v) for k, v in sorted(bac_table.items())},
+            }
+        applied.append(correction)
 
     return applied
 
@@ -1111,12 +1056,12 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     d['freq_log'] = _make_rel_path(paths.get('freq') or None, project_directory)
     d['sp_log'] = _make_rel_path(paths.get('sp') or None, project_directory)
 
-    # ── S**2 spin-contamination diagnostic (for TCKDB, sp calc) ─────────────
+    # ── S**2 spin-contamination diagnostic for the SP wavefunction ──────────
     # A property of the (unrestricted) wavefunction, parsed from the sp job's
     # log (falling back to freq/opt when the sp energy reused the opt output).
     # Only populated for open-shell/unrestricted calcs where the ESS reported
     # ``<S**2>``; ``None`` (key present, null value) for restricted /
-    # closed-shell species — the TCKDB adapter omits the block in that case.
+    # closed-shell species; consumers can omit the absent block.
     d['sp_spin_diagnostic'] = _parse_spin_diagnostic(
         paths.get('sp') or None,
         paths.get('freq') or None,
@@ -1138,7 +1083,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         paths.get('sp') or None, software_by_job.get('sp'), project_directory,
     )
 
-    # ── held-fixed coordinate constraints (for TCKDB) ──────────────────────
+    # ── held-fixed coordinate constraints ──────────────────────────────────
     # Best-effort: parse the input deck (preferred — exact ARC-emitted form)
     # falling back to the log when no deck is on disk. Failures here never
     # fail output.yml generation; they just emit ``[]`` for that calc.
@@ -1151,7 +1096,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         software_by_job.get('freq'), project_directory,
     )
 
-    # ── per-calc final effective settings (for TCKDB) ──────────────────────
+    # ── per-calc final effective settings ──────────────────────────────────
     # These are the calc-specific scientific knobs (grid, scf_convergence,
     # opt_convergence, max_*_cycles, symmetry, guess, …) that defined the
     # FINAL job — distinct from ``level_of_theory`` identity and from
@@ -1271,9 +1216,9 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     # None-guard. Currently populated only for converged non-monoatomic
     # species with successful 1D rotor scans; everything else gets ``[]``.
     if not is_mono and converged:
-        d['additional_calculations'] = _build_scan_calculations(spc, project_directory)
+        d['rotor_scans'] = _build_rotor_scans(spc, project_directory)
     else:
-        d['additional_calculations'] = []
+        d['rotor_scans'] = []
 
     return d
 
@@ -1314,7 +1259,7 @@ def _thermo_to_dict(thermo) -> dict:
     }
 
     # ── Per-temperature thermochemistry ──────────────────────────────────────
-    # ``thermo_points`` carries the full TCKDB ``thermo_point`` shape
+    # ``thermo_points`` carries explicit thermodynamic facts and units
     # (Cp + H + S + G at each tabulated T). Falls back to building a
     # Cp-only point list from RMG's ``Tdata``/``Cpdata`` when only that
     # legacy form is available — H/S/G stay omitted because we don't
@@ -1371,10 +1316,10 @@ def _statmech_to_dict(spc, project_directory: str, point_group: str | None = Non
 def _get_torsions(spc, project_directory: str) -> list[dict]:
     """Build the torsions list from spc.rotors_dict.
 
-    Each emitted torsion carries a ``source_scan_calculation_key`` (e.g.
+    Each emitted torsion carries a ``source_scan_key`` (e.g.
     ``"scan_rotor_3"``) when its scan log is on disk and parseable. The key
-    matches the bundle-local key used by :func:`_build_scan_calculations`,
-    so TCKDB consumers can resolve the torsion's underlying scan calc.
+    matches the ARC-local key used by :func:`_build_rotor_scans`,
+    so consumers can resolve the torsion's underlying scan record.
     Rotors whose scan log is missing or fails to parse get the field set to
     ``None`` rather than fabricating a key that points at no calc.
     """
@@ -1399,7 +1344,7 @@ def _get_torsions(spc, project_directory: str) -> list[dict]:
             'atom_indices': scan,
             'pivot_atoms': pivots,
             'barrier_kj_mol': _get_rotor_barrier(rotor, project_directory),
-            'source_scan_calculation_key': scan_key,
+            'source_scan_key': scan_key,
         })
     return torsions
 
@@ -1445,31 +1390,30 @@ def _get_rotor_barrier(rotor: dict, project_directory: str) -> float | None:
     return None
 
 
-def _build_scan_calculations(spc, project_directory: str) -> list[dict]:
-    """Build the species' ``additional_calculations`` list from rotor scans.
+def _build_rotor_scans(spc, project_directory: str) -> list[dict]:
+    """Build tool-neutral parsed rotor-scan records for a species.
 
-    Emits one ``type='scan'`` calc per successful 1D rotor whose scan log
-    is on disk and parses cleanly. Each entry shape:
+    Emits one record per successful 1D rotor whose scan log is available and
+    parses cleanly. ARC reports source facts, native indices and explicit
+    units; consumers decide how scans map into their calculation models.
 
         {
             'key': 'scan_rotor_<i>',
-            'type': 'scan',
-            'scan_result': {
+            'source_log': str,
+            'result': {
                 'dimension': 1,
                 'is_relaxed': True,
                 'zero_energy_reference_hartree': float | None,
-                'coordinates': [{coordinate_index, coordinate_kind, atom*_index,
-                                 step_count, value_unit, symmetry_number}],
-                'points': [{point_index, electronic_energy_hartree,
-                            relative_energy_kj_mol,
-                            coordinate_values: [{coordinate_index,
-                                                 coordinate_value, value_unit}],
-                            xyz: str | None}],
+                'coordinate': {coordinate_type, atom_indices, index_base,
+                               unit, symmetry_number, ...},
+                'samples': [{source_index, angle_degrees,
+                             electronic_energy_hartree,
+                             relative_energy_kj_mol, geometry_xyz}],
             },
         }
 
     Rotors that don't produce a parseable scan_result are skipped — the
-    matching torsion's ``source_scan_calculation_key`` will be ``None``
+    matching torsion's ``source_scan_key`` will be ``None``
     so consumers don't end up with dangling references.
 
     Only 1D rotors are emitted here; ND rotors and any future
@@ -1499,8 +1443,8 @@ def _build_scan_calculations(spc, project_directory: str) -> list[dict]:
         scan_constraints = _parse_scan_constraints(rotor, project_directory)
         entry = {
             'key': f'scan_rotor_{rotor_index}',
-            'type': 'scan',
-            'scan_result': scan_result,
+            'source_log': _make_rel_path(_resolve_scan_path(rotor, project_directory), project_directory),
+            'result': scan_result,
         }
         if scan_constraints:
             entry['constraints'] = scan_constraints
@@ -1527,7 +1471,7 @@ def _parse_scan_constraints(rotor: dict, project_directory: str) -> list[dict]:
                             the consumer only cares about the absence)
 
     Never raises: parser failures degrade to ``[]`` so a malformed log
-    doesn't break ``additional_calculations`` for the rest of the run.
+    doesn't break the other rotor-scan records in the run.
     """
     scan_path = _resolve_scan_path(rotor, project_directory)
     if scan_path is None:
@@ -1605,26 +1549,14 @@ def _safe_dihedral_for_scan_atoms(
     return float(angle)
 
 
-def _xyz_dict_to_tckdb_xyz_text(xyz_dict: dict | None) -> str | None:
-    """Serialize an ARC xyz dict into TCKDB's count-headered xyz_text.
-
-    Mirrors the conformer-side normalization the adapter applies to the
-    species ``xyz`` field: bare atom-only string from
-    ``arc.species.converter.xyz_to_str`` plus a TCKDB-required
-    ``<n_atoms>\\n<comment>\\n<atoms>`` envelope. Returns ``None`` for
-    null/empty input so the caller can decide whether to omit the
-    field; serialization errors propagate as exceptions for the caller
-    to handle (uniform-drop on failure rather than per-point drop).
-    """
+def _xyz_dict_to_output_text(xyz_dict: dict | None) -> str | None:
+    """Serialize an ARC xyz dict using ARC's ordinary atom-line format."""
     if xyz_dict is None:
         return None
     bare = xyz_to_str(xyz_dict=xyz_dict)
     if not bare:
         return None
-    text = bare.strip()
-    if not text:
-        return None
-    return f"{len(text.splitlines())}\n\n{text}"
+    return bare.strip() or None
 
 
 def _build_scan_result_for_rotor(
@@ -1633,25 +1565,18 @@ def _build_scan_result_for_rotor(
     *,
     input_xyz: dict | None = None,
 ) -> dict | None:
-    """Parse the rotor's scan log and shape it into a TCKDB ``scan_result`` dict.
+    """Parse a rotor scan into a tool-neutral scientific result.
 
     Returns ``None`` when:
       * no scan log on disk (covered by ``_resolve_scan_path``)
       * parser fails to extract angles or relative energies (the only
         two fields that drive the shape — absolute Hartree and
         geometries are nice-to-have)
-      * atom_indices isn't a 4-int 1-based dihedral quartet (the
-        coordinates entry would be unusable downstream)
+      * atom indices are not a valid ARC-native 1-based dihedral quartet
 
-    On the happy path the dict carries plain Python primitives only, so
-    YAML emission via ``save_yaml_file`` Just Works. Per-point
-    geometries are emitted under ``points[i].geometry.xyz_text`` when
-    the parser returns a per-step geometry list aligned with the
-    energy/angle list (TCKDB resolves these server-side into
-    ``calc_scan_point.geometry_id``); on length mismatch or
-    serialization failure the geometries are dropped uniformly across
-    all points and a warning is logged — partial coverage would imply
-    a per-point alignment we can't actually verify.
+    Per-sample geometries use ARC's ordinary atom-line XYZ text. On length
+    mismatch or serialization failure they are dropped uniformly; partial
+    coverage would imply an alignment ARC cannot verify.
     """
     scan_path = _resolve_scan_path(rotor, project_directory)
     if scan_path is None:
@@ -1682,8 +1607,8 @@ def _build_scan_result_for_rotor(
 
     # Per-point geometries: the parser wrapper returns one xyz dict per
     # converged scan iteration. Attach to each point as
-    # ``geometry.xyz_text`` (TCKDB count-headered format) only when the
-    # list aligns 1:1 with the energy list; otherwise drop wholesale —
+    # geometry text only when the list aligns 1:1 with the energy list;
+    # otherwise drop wholesale —
     # mixing populated and missing entries would imply an alignment we
     # can't verify, and the schema accepts ``geometry`` as omitted but
     # not as ``null``.
@@ -1699,7 +1624,7 @@ def _build_scan_result_for_rotor(
         else:
             try:
                 point_geometry_xyz_texts = [
-                    _xyz_dict_to_tckdb_xyz_text(g) for g in geometries
+                    _xyz_dict_to_output_text(g) for g in geometries
                 ]
             except Exception as exc:
                 logger.warning(
@@ -1724,18 +1649,13 @@ def _build_scan_result_for_rotor(
             and all(isinstance(a, int) and a >= 1 for a in scan_atoms)
             and len(set(scan_atoms)) == 4):
         return None
-    a1, a2, a3, a4 = scan_atoms
-
     symmetry = rotor.get('symmetry')
     coord: dict[str, Any] = {
-        'coordinate_index': 1,
-        'coordinate_kind': 'dihedral',
-        'atom1_index': a1,
-        'atom2_index': a2,
-        'atom3_index': a3,
-        'atom4_index': a4,
-        'step_count': len(angles),
-        'value_unit': 'degree',
+        'coordinate_type': 'dihedral',
+        'atom_indices': list(scan_atoms),
+        'index_base': 1,
+        'unit': 'degree',
+        'sample_count': len(angles),
     }
     if isinstance(symmetry, int) and symmetry >= 1:
         coord['symmetry_number'] = symmetry
@@ -1746,8 +1666,7 @@ def _build_scan_result_for_rotor(
     # step size the user requested rather than one inferred from the
     # completed point spacing. ORCA / other ESS raise
     # ``NotImplementedError`` from the same parser; in those cases
-    # the grid fields stay absent rather than guessed at — TCKDB
-    # treats null as "unknown grid", which is honest.
+    # the grid fields stay absent rather than guessed at.
     requested_step_size: float | None = None
     try:
         scan_args = parse_scan_args(scan_path)
@@ -1760,13 +1679,9 @@ def _build_scan_result_for_rotor(
     except Exception:
         logger.debug(f"parse_scan_args failed for '{scan_path}'", exc_info=True)
     if requested_step_size is not None:
-        coord['step_size'] = requested_step_size
-        # 1D dihedral torsion scans: the resolution IS the step size.
-        # ND or non-dihedral scans would need a different mapping;
-        # this whole helper is the 1D path so the equivalence holds.
-        coord['resolution_degrees'] = requested_step_size
+        coord['requested_step_size'] = requested_step_size
 
-    # ``start_value``/``end_value`` describe the requested grid, not
+    # ``requested_start``/``requested_end`` describe the requested grid, not
     # the completed-point spacing. Computing them honestly requires
     # both the requested step size (above) AND the input dihedral
     # (the geometry the user pointed the scan at). The latter comes
@@ -1777,9 +1692,8 @@ def _build_scan_result_for_rotor(
     # it's reading a frozen DOF). ``end_value`` is then exact:
     # ``start + step_size * (step_count - 1)``. We deliberately do
     # NOT wrap into [-180, 180]: a full rotation must land at
-    # ``start + 360°``, not back at ``start`` — TCKDB's column has
-    # no range constraint, and continuity is what downstream
-    # consumers (rotor-treatment plotters, etc.) expect.
+    # ``start + 360°``, not back at ``start``; continuity is the scientific
+    # fact downstream consumers need.
     step_count_for_grid = len(rel_energies)
     if (
         requested_step_size is not None
@@ -1794,33 +1708,29 @@ def _build_scan_result_for_rotor(
             dihedral_source, scan_atoms, scan_path,
         )
         if start_value is not None:
-            coord['start_value'] = start_value
-            coord['end_value'] = (
+            coord['requested_start'] = start_value
+            coord['requested_end'] = (
                 start_value + requested_step_size * (step_count_for_grid - 1)
             )
 
-    points: list[dict[str, Any]] = []
-    for i, (angle, rel_e) in enumerate(zip(angles, rel_energies), start=1):
-        point: dict[str, Any] = {
-            'point_index': i,
+    samples: list[dict[str, Any]] = []
+    for source_index, (angle, rel_e) in enumerate(zip(angles, rel_energies)):
+        sample: dict[str, Any] = {
+            'source_index': source_index,
+            'angle_degrees': float(angle),
             'relative_energy_kj_mol': float(rel_e),
-            'coordinate_values': [{
-                'coordinate_index': 1,
-                'coordinate_value': float(angle),
-                'value_unit': 'degree',
-            }],
         }
         if abs_energies is not None:
-            point['electronic_energy_hartree'] = float(abs_energies[i - 1])
+            sample['electronic_energy_hartree'] = float(abs_energies[source_index])
         if point_geometry_xyz_texts is not None:
-            point['geometry'] = {'xyz_text': point_geometry_xyz_texts[i - 1]}
-        points.append(point)
+            sample['geometry_xyz'] = point_geometry_xyz_texts[source_index]
+        samples.append(sample)
 
     scan_result: dict[str, Any] = {
         'dimension': 1,
-        'is_relaxed': True,
-        'coordinates': [coord],
-        'points': points,
+        'relaxed': True,
+        'coordinate': coord,
+        'samples': samples,
     }
     zero_ref = parsed.get('zero_energy_reference_hartree')
     if isinstance(zero_ref, (int, float)):

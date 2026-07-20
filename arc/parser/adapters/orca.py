@@ -533,9 +533,9 @@ class OrcaParser(ESSAdapter, ABC):
         return None
 
 
-_ORCA_LETTER_TO_TCKDB_KIND: dict[str, tuple[str, int]] = {
-    'C': ('cartesian_atom', 1),
-    'B': ('bond', 2),
+_ORCA_CONSTRAINT_COORDINATES: dict[str, tuple[str, int]] = {
+    'C': ('cartesian', 1),
+    'B': ('distance', 2),
     'A': ('angle', 3),
     'D': ('dihedral', 4),
 }
@@ -554,8 +554,8 @@ def parse_orca_constraints(file_path: str) -> list[dict]:
         end
 
     Notes / known limitations:
-        - ORCA atom indices in the input deck are 0-based; this parser
-          converts them to TCKDB's 1-based convention at the boundary.
+        - ORCA atom indices remain in their native 0-based convention; each
+          record reports ``index_base: 0`` explicitly.
         - ARC's ORCA adapter does not currently emit ``%geom Constraints``
           blocks (only ``%geom Scan``). This parser is therefore mainly
           defensive — it handles user-supplied decks and any future ARC
@@ -597,9 +597,9 @@ def _parse_orca_constraint_line(line: str) -> dict | None:
         { <letter> <atom indices...> [<value>] C }
 
     The trailing ``C`` flags the coordinate as constrained. ``value`` is
-    optional. Atom indices are converted from 0-based (ORCA) to 1-based
-    (TCKDB). Unparseable lines return None and are skipped silently at
-    debug level so the rest of the block still parses.
+    optional. Atom indices remain 0-based, as written by ORCA. Unparseable
+    lines return ``None`` and are skipped silently at debug level so the rest
+    of the block still parses.
     """
     stripped = line.strip()
     if not stripped or stripped.startswith('#'):
@@ -612,12 +612,12 @@ def _parse_orca_constraint_line(line: str) -> dict | None:
     if len(tokens) < 2:
         return None
     letter = tokens[0].upper()
-    entry = _ORCA_LETTER_TO_TCKDB_KIND.get(letter)
+    entry = _ORCA_CONSTRAINT_COORDINATES.get(letter)
     if entry is None:
         logger.debug("parse_orca_constraints: skipping unrecognised letter "
                      "%s in line: %s", letter, line)
         return None
-    kind, expected_n = entry
+    coordinate_type, expected_n = entry
 
     if len(tokens) < 1 + expected_n:
         logger.debug("parse_orca_constraints: too few atom tokens for letter "
@@ -625,13 +625,11 @@ def _parse_orca_constraint_line(line: str) -> dict | None:
         return None
 
     try:
-        zero_based = [int(tok) for tok in tokens[1:1 + expected_n]]
+        atom_indices = [int(tok) for tok in tokens[1:1 + expected_n]]
     except ValueError:
         logger.debug("parse_orca_constraints: non-integer atom index in: %s",
                      line)
         return None
-    atoms = [a + 1 for a in zero_based]
-
     target_value: float | None = None
     rest = tokens[1 + expected_n:]
     for tok in rest:
@@ -643,8 +641,9 @@ def _parse_orca_constraint_line(line: str) -> dict | None:
             continue
 
     return {
-        'constraint_kind': kind,
-        'atoms': atoms,
+        'coordinate_type': coordinate_type,
+        'atom_indices': atom_indices,
+        'index_base': 0,
         'target_value': target_value,
     }
 
