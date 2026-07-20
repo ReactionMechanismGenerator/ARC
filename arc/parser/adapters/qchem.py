@@ -160,10 +160,8 @@ class QChemParser(ESSAdapter, ABC):
                 elif in_molecule and line.strip():
                     tokens = line.split()
                     if len(tokens) >= 2:
-                        try:
-                            multiplicity = int(tokens[1])
-                        except ValueError:
-                            pass
+                        token = tokens[1]
+                        multiplicity = int(token) if token.lstrip('+-').isdigit() else None
                     in_molecule = False
         if s_squared is None:
             return None

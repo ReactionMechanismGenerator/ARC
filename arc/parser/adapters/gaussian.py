@@ -737,10 +737,13 @@ class GaussianParser(ESSAdapter, ABC):
                 parts = lines[k].split()
                 if len(parts) >= 5:
                     try:
-                        numbers.append(int(parts[1]))
-                        coords.append([float(parts[2]), float(parts[3]), float(parts[4])])
+                        atomic_number = int(parts[1])
+                        coordinates = [float(parts[2]), float(parts[3]), float(parts[4])]
                     except (IndexError, ValueError):
-                        pass
+                        k += 1
+                        continue
+                    numbers.append(atomic_number)
+                    coords.append(coordinates)
                 k += 1
             xyz = xyz_from_data(coords=np.array(coords), numbers=numbers) if coords and numbers else None
 

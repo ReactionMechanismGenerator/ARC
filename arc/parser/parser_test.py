@@ -620,11 +620,6 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertIsNone(parser.parse_gsm_stringfile_energies('/no/such/stringfile.xyz0000'))
 
     def test_parse_irc_path_gaussian_forward(self):
-        """Test structured point data from a Gaussian forward IRC path."""
-        path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
-        points = parser.parse_irc_path(log_file_path=path)
-        self.assertIsNotNone(points)
-    def test_parse_irc_path_gaussian_forward(self):
         """parse_irc_path emits per-point energy, RC, grads, direction, and xyz."""
         path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
         points = parser.parse_irc_path(log_file_path=path)
@@ -645,18 +640,6 @@ H      -1.69381305    0.40788834    0.90078104"""
             sorted(point['reaction_coordinate'] for point in points),
         )
         self.assertEqual({point['direction'] for point in points}, {'forward'})
-
-    def test_parse_irc_path_gaussian_reverse_direction(self):
-        """Test direction labels from a Gaussian reverse IRC path."""
-        path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out')
-        points = parser.parse_irc_path(log_file_path=path)
-        self.assertIsNotNone(points)
-        self.assertEqual({point['direction'] for point in points}, {'reverse'})
-
-    def test_parse_irc_path_failed_log_returns_none(self):
-        """Test that a failed IRC log has no structured path."""
-        path = os.path.join(ARC_TESTING_PATH, 'irc', 'irc_failed.out')
-        self.assertIsNone(parser.parse_irc_path(log_file_path=path))
         # Reaction coordinate increases monotonically along a single
         # Gaussian IRC branch (cumulative path length).
         rcs = [p['reaction_coordinate'] for p in points]

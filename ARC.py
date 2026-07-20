@@ -6,6 +6,7 @@ ARC - Automatic Rate Calculator
 """
 
 import argparse
+from functools import lru_cache
 import logging
 import os
 
@@ -14,7 +15,15 @@ from arc.main import ARC
 
 
 logger = logging.getLogger('arc')
-_tckdb_missing_package_logged = False
+
+
+@lru_cache(maxsize=1)
+def _warn_missing_tckdb_package() -> None:
+    """Log the optional-adapter warning at most once per ARC process."""
+    logger.warning(
+        'TCKDB upload requested, but the optional standalone tckdb-arc package is not installed; '
+        'continuing without upload.'
+    )
 
 
 def run_tckdb_upload(tckdb_settings: dict, project_directory: str) -> None:
@@ -25,13 +34,7 @@ def run_tckdb_upload(tckdb_settings: dict, project_directory: str) -> None:
         import tckdb_arc
     except ModuleNotFoundError as exc:
         if exc.name == 'tckdb_arc':
-            global _tckdb_missing_package_logged
-            if not _tckdb_missing_package_logged:
-                logger.warning(
-                    'TCKDB upload requested, but the optional standalone tckdb-arc package is not installed; '
-                    'continuing without upload.'
-                )
-                _tckdb_missing_package_logged = True
+            _warn_missing_tckdb_package()
             return
         raise
     from tckdb_arc.adapter import TCKDBAdapter
