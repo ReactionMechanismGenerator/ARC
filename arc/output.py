@@ -956,7 +956,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         # Monoatomic species skip opt entirely (nothing to optimize), so neither
         # final_xyz nor initial_xyz is populated. Synthesize the trivial
         # one-atom geometry so output.yml carries a usable xyz for downstream
-        # consumers (e.g. the TCKDB uploader).
+        # consumers.
         xyz = {'symbols': (spc.mol.atoms[0].element.symbol,),
                'coords': ((0.0, 0.0, 0.0),)}
     d['xyz'] = xyz_to_str(xyz) if xyz is not None else None
@@ -966,7 +966,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     # at the same level. ``ARCSpecies.conformers`` holds them as xyz
     # dicts, with ``conformer_energies`` holding the post-screen E0 in
     # kJ/mol *relative* to the lowest. Surface both lists when populated
-    # so downstream consumers (TCKDB bundle) can emit the full set
+    # so downstream consumers can inspect the full set
     # rather than only the selected conformer of record. Skipped (key
     # omitted) when ARC has no screened conformers — backward compatible.
     raw_conformers = getattr(spc, 'conformers', None) or []
@@ -1039,9 +1039,8 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         d['opt_input_xyz'] = coarse_final_xyz
     else:
         # Either no coarse stage, or coarse ran but its geometry wasn't
-        # parseable. Producers downstream (TCKDB bundle) won't emit a
-        # standalone ``opt_coarse`` calc in that case — they need the
-        # output geometry to chain. Honest-empty beats fake-provenance.
+        # parseable. Consumers cannot reconstruct the standalone coarse stage
+        # without its output geometry. Honest-empty beats fake provenance.
         d['coarse_opt_input_xyz'] = None
         d['coarse_opt_output_xyz'] = None
         d['opt_input_xyz'] = initial_xyz_str
@@ -1272,8 +1271,8 @@ def _thermo_to_dict(thermo) -> dict:
     # (Cp + H + S + G at each tabulated T). Falls back to building a
     # Cp-only point list from RMG's ``Tdata``/``Cpdata`` when only that
     # legacy form is available — H/S/G stay omitted because we don't
-    # have the polynomial in scope here to evaluate them. The TCKDB
-    # adapter accepts either shape.
+    # have the polynomial in scope here to evaluate them. Consumers must accept
+    # either shape.
     points = getattr(thermo, 'thermo_points', None)
     if points is not None:
         t['thermo_points'] = points
