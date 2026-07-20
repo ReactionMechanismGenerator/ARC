@@ -72,6 +72,8 @@ class TestEvidenceProducer(unittest.TestCase):
         self.assertEqual(value["source"], "parsed_log")
         self.assertEqual(value["matrix_dimension"], 6)
         self.assertEqual(value["lower_triangle"], [float(i) for i in range(21)])
+        self.assertEqual(value["geometry_xyz_text"].splitlines()[1], "H2")
+        self.assertFalse(value["geometry_xyz_text"].endswith("\n"))
 
     @patch("arc.tckdb_evidence.ess_factory")
     @patch("arc.tckdb_evidence.determine_ess", return_value="orca")
@@ -113,6 +115,8 @@ class TestEvidenceProducer(unittest.TestCase):
         self.assertEqual(point["source_point_index"], 2)
         self.assertEqual(point["reaction_coordinate_sqrt_amu_bohr"], 0.4)
         self.assertEqual(point["max_gradient_hartree_per_bohr"], 0.01)
+        self.assertEqual(point["geometry_xyz_text"].splitlines()[1], "")
+        self.assertFalse(point["geometry_xyz_text"].endswith("\n"))
 
     @patch("arc.tckdb_evidence.parse_irc_traj", return_value=[XYZ_DICT])
     @patch("arc.tckdb_evidence.parse_irc_path", return_value=None)
@@ -152,6 +156,56 @@ class TestEvidenceProducer(unittest.TestCase):
         self.assertEqual([p["path_coordinate_angstrom"] for p in value["points"]], [0.0, 0.25, 0.5])
         self.assertEqual(value["points"][1]["electronic_energy_hartree"], -2.0)
         self.assertEqual(value["points"][2]["electronic_energy_hartree"], -1.0)
+        self.assertEqual(value["points"][1]["geometry_xyz_text"].splitlines()[1], "gsm_point_1")
+        self.assertFalse(value["points"][1]["geometry_xyz_text"].endswith("\n"))
+
+    @patch("arc.tckdb_evidence.parse_irc_path")
+    def test_malformed_and_nonfinite_irc_logs_are_isolated(self, rich):
+        self._touch("calcs/irc/bad.log")
+        self._touch("calcs/irc/good.log")
+        rich.side_effect = [
+            [{"point_number": 0, "xyz": XYZ_DICT, "electronic_energy_hartree": math.nan}],
+            [{"point_number": 1, "xyz": XYZ_DICT, "electronic_energy_hartree": -1.0}],
+        ]
+        envelope = _build_irc(
+            {"label": "TS0", "irc_logs": ["calcs/irc/bad.log", "calcs/irc/good.log"]},
+            self.root,
+        )
+        self.assertEqual(envelope["status"], "available")
+        self.assertEqual(envelope["value"]["omitted_source_paths"], ["calcs/irc/bad.log"])
+        self.assertEqual(len(envelope["value"]["trajectories"]), 1)
+
+    @patch("arc.tckdb_evidence.parse_irc_traj", return_value=None)
+    @patch("arc.tckdb_evidence.parse_irc_path", return_value=[{"xyz": None}])
+    def test_all_malformed_irc_logs_are_unavailable(self, rich, geometry):
+        self._touch("calcs/irc/bad.log")
+        envelope = _build_irc(
+            {"label": "TS0", "irc_logs": ["calcs/irc/bad.log"]}, self.root,
+        )
+        self.assertEqual(envelope["status"], "unavailable")
+        self.assertEqual(envelope["source_paths"], ["calcs/irc/bad.log"])
+
+    @patch("arc.tckdb_evidence._build_irc", side_effect=RuntimeError("unexpected"))
+    @patch("arc.tckdb_evidence._build_gsm")
+    @patch("arc.tckdb_evidence._build_hessian")
+    def test_unexpected_kind_failure_preserves_other_evidence(self, hessian, gsm, irc):
+        available = {"status": "available", "value": {}}
+        hessian.return_value = available
+        gsm.return_value = available
+        output = {
+            "schema_version": "1.1", "arc_version": "x", "arc_git_commit": "abc",
+            "species": [],
+            "transition_states": [{
+                "label": "TS0", "freq_log": "freq.log", "irc_logs": ["irc.log"],
+                "chosen_ts_method": "gsm", "gsm_log": "gsm.log",
+            }],
+        }
+        record = build_tckdb_evidence(
+            output_doc=output, project_directory=self.root, document_id=DOC_ID,
+        )["records"][0]
+        self.assertEqual(record["freq_hessian"], available)
+        self.assertEqual(record["gsm"], available)
+        self.assertEqual(record["irc"]["status"], "unavailable")
 
     @patch("arc.tckdb_evidence.parse_gsm_stringfile_energies", return_value=[0.0, 0.0, 0.0])
     @patch("arc.tckdb_evidence.parse_trajectory", return_value=[XYZ_DICT, XYZ_DICT, XYZ_DICT])
