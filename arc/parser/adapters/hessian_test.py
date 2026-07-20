@@ -9,14 +9,13 @@ The parsers return the packed lower triangle (including the diagonal),
 row-major, in **native atomic units (hartree/bohr²)** — no SI conversion is
 applied. These tests assert the triangle length (``3N(3N+1)/2``), native-unit
 sanity (diagonal force constants are O(0.1-1.5), not ~1e3 which would signal an
-SI J/m² leak), the graceful-absence path, and that the parsed triangle is
-accepted by the TCKDB ``HessianPayload`` schema.
+SI J/m² leak), and the graceful-absence path. ARC's parser tests deliberately
+assert only ARC-native scientific values and do not depend on a downstream
+consumer's schema package.
 """
 
 import os
 import unittest
-
-from tckdb_schemas.fragments.calculation import HessianPayload, HessianSource
 
 from arc.common import ARC_PATH
 from arc.parser.adapters.gaussian import GaussianParser
@@ -74,20 +73,6 @@ class TestGaussianCartesianHessian(unittest.TestCase):
         triangle = GaussianParser(path).parse_cartesian_hessian_lower_triangle()
         self.assertIsNone(triangle)
 
-    def test_parsed_triangle_validates_as_hessian_payload(self):
-        """The parsed Gaussian triangle is accepted by TCKDB HessianPayload."""
-        path = os.path.join(ARC_TESTING_PATH, 'freq', 'CHO_neg_freq.out')
-        triangle = GaussianParser(path).parse_cartesian_hessian_lower_triangle()
-        payload = HessianPayload(
-            geometry={'xyz_text': '3\nCHO\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0\nO 0.0 1.0 0.0'},
-            lower_triangle_hartree_bohr2=triangle,
-            source=HessianSource.parsed_log,
-            parser_version='arc-hessian-1',
-        )
-        self.assertEqual(payload.source, HessianSource.parsed_log)
-        self.assertEqual(len(payload.lower_triangle_hartree_bohr2), 45)
-
-
 class TestOrcaCartesianHessian(unittest.TestCase):
     """Orca sibling ``.hess`` file (``$hessian`` block) parsing."""
 
@@ -116,19 +101,6 @@ class TestOrcaCartesianHessian(unittest.TestCase):
         path = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_example_freq.log')
         triangle = OrcaParser(path).parse_cartesian_hessian_lower_triangle()
         self.assertIsNone(triangle)
-
-    def test_parsed_triangle_validates_as_hessian_payload(self):
-        """The parsed Orca triangle is accepted by TCKDB HessianPayload."""
-        triangle = OrcaParser(self.log_path).parse_cartesian_hessian_lower_triangle()
-        payload = HessianPayload(
-            geometry={'xyz_text': '3\nH2O\nO 0.0 0.0 0.0\nH 0.96 0.0 0.0\nH -0.24 0.93 0.0'},
-            lower_triangle_hartree_bohr2=triangle,
-            source=HessianSource.parsed_hess,
-            parser_version='arc-hessian-1',
-        )
-        self.assertEqual(payload.source, HessianSource.parsed_hess)
-        self.assertEqual(len(payload.lower_triangle_hartree_bohr2), 45)
-
 
 if __name__ == '__main__':
     unittest.main()
