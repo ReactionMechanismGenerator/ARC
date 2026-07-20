@@ -840,7 +840,11 @@ class TestEvidenceStatusCounts(unittest.TestCase):
              'gsm': {'status': 'unavailable'}},
             {'record_kind': 'species', 'label': 'B', 'other': {'status': 'available'}},
         ]}
-        self.assertEqual(_evidence_status_counts(evidence), (2, 2))
+        self.assertEqual(_evidence_status_counts(evidence), {
+            'freq_hessian': {'available': 1, 'unavailable': 1},
+            'irc': {'available': 1, 'unavailable': 0},
+            'gsm': {'available': 0, 'unavailable': 1},
+        })
 
 
 class TestRxnToDict(unittest.TestCase):

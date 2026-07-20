@@ -181,12 +181,19 @@ def write_output_yml(
             'schema_version': EVIDENCE_SCHEMA_VERSION,
             'document_id': document_id,
         }
-        available_count, unavailable_count = _evidence_status_counts(evidence_doc)
+        evidence_counts = _evidence_status_counts(evidence_doc)
         logger.info(
-            'Wrote parser evidence to %s (available=%d unavailable=%d)',
+            'Wrote parser evidence to %s '
+            '(freq_hessian: available=%d unavailable=%d; '
+            'irc: available=%d unavailable=%d; '
+            'gsm: available=%d unavailable=%d)',
             evidence_path,
-            available_count,
-            unavailable_count,
+            evidence_counts['freq_hessian']['available'],
+            evidence_counts['freq_hessian']['unavailable'],
+            evidence_counts['irc']['available'],
+            evidence_counts['irc']['unavailable'],
+            evidence_counts['gsm']['available'],
+            evidence_counts['gsm']['unavailable'],
         )
     except Exception as exc:
         logger.warning('Could not build/write optional parser evidence: %s', exc)
@@ -207,9 +214,12 @@ def write_output_yml(
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
-def _evidence_status_counts(evidence_doc: dict) -> tuple[int, int]:
-    """Count available and unavailable evidence envelopes in a sidecar."""
-    available = unavailable = 0
+def _evidence_status_counts(evidence_doc: dict) -> dict[str, dict[str, int]]:
+    """Count available and unavailable envelopes separately by evidence kind."""
+    counts = {
+        evidence_kind: {'available': 0, 'unavailable': 0}
+        for evidence_kind in ('freq_hessian', 'irc', 'gsm')
+    }
     for record in evidence_doc.get('records') or []:
         if not isinstance(record, dict):
             continue
@@ -217,11 +227,10 @@ def _evidence_status_counts(evidence_doc: dict) -> tuple[int, int]:
             envelope = record.get(evidence_kind)
             if not isinstance(envelope, dict):
                 continue
-            if envelope.get('status') == 'available':
-                available += 1
-            elif envelope.get('status') == 'unavailable':
-                unavailable += 1
-    return available, unavailable
+            status = envelope.get('status')
+            if status in counts[evidence_kind]:
+                counts[evidence_kind][status] += 1
+    return counts
 
 
 def _get_arkane_git_commit() -> str | None:
