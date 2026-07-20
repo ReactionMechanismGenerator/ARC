@@ -235,6 +235,7 @@ class xTBGSMAdapter(JobAdapter):
             safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'ograd'), destination=self.ograd_path)
             safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'tm2orca.py'), destination=self.tm2orca_path)
             change_mode(mode='+x', file_name=self.gsm_orca_path)
+            change_mode(mode='+x', file_name=self.ograd_path)
             change_mode(mode='+x', file_name=self.tm2orca_path)
 
     def set_files(self) -> None:
@@ -274,6 +275,7 @@ class xTBGSMAdapter(JobAdapter):
                                                                           local=os.path.join(self.xtb_gsm_scripts_path, 'inpfileq')))
             # 1.4 ograd
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='ograd',
+                                                                          make_x=True,
                                                                           local=os.path.join(self.xtb_gsm_scripts_path, 'ograd')))
             # 1.5 tm2orca.py
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='tm2orca.py',
@@ -306,6 +308,7 @@ class xTBGSMAdapter(JobAdapter):
         self.tm2orca_path = os.path.join(self.local_path, 'tm2orca.py')
         self.scratch_initial0000_path = os.path.join(self.local_path, 'scratch', 'initial0000.xyz')
         self.stringfile_path = os.path.join(self.local_path, 'stringfile.xyz0000')
+        self.gsm_node_outputs_path = os.path.join(self.local_path, 'gsm_node_outputs')
 
     def set_inpfileq_keywords(self) -> dict:
         """
@@ -393,6 +396,7 @@ class xTBGSMAdapter(JobAdapter):
             tsg.initial_xyz = traj[int((len(traj) - 1) / 2) + 1]
             tsg.execution_time = self.final_time - self.initial_time
             tsg.success = True
+            tsg.log_path = self.stringfile_path
         self.reactions[0].ts_species.ts_guesses.append(tsg)
 
     def cleanup_files(self):

@@ -33,6 +33,7 @@ class TestxTBGSMAdapter(unittest.TestCase):
                                 ignore_errors=True)
         cls.job_1 = xTBGSMAdapter(project='test_1',
                                   job_type='tsg',
+                                  server='local',
                                   project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAGSMdapter_1'),
                                   reactions=[ARCReaction(r_species=[ARCSpecies(label='HNO', smiles='N=O')],
                                                          p_species=[ARCSpecies(label='HON', smiles='[N-]=[OH+]')])],
@@ -77,7 +78,7 @@ class TestxTBGSMAdapter(unittest.TestCase):
                                  {'file_name': 'ograd',
                                   'local': os.path.join(self.job_1.xtb_gsm_scripts_path, 'ograd'),
                                   'remote': os.path.join(self.job_1.remote_path, 'ograd'),
-                                  'source': 'path', 'make_x': False},
+                                  'source': 'path', 'make_x': True},
                                  {'file_name': 'tm2orca.py',
                                   'local': os.path.join(self.job_1.xtb_gsm_scripts_path, 'tm2orca.py'),
                                   'remote': os.path.join(self.job_1.remote_path, 'tm2orca.py'),
@@ -110,6 +111,22 @@ H      -1.24880926   -0.46263779    0.00000000
         with open(self.job_1.scratch_initial0000_path, 'r') as f:
             actual_string = f.read()
         self.assertEqual(actual_string, expected_string)
+
+    def test_incore_scripts_are_executable(self):
+        """Test executability of scripts invoked directly by the GSM driver."""
+        self.job_2.write_input_file()
+        self.assertTrue(os.access(self.job_2.gsm_orca_path, os.X_OK))
+        self.assertTrue(os.access(self.job_2.ograd_path, os.X_OK))
+        self.assertTrue(os.access(self.job_2.tm2orca_path, os.X_OK))
+
+    def test_ograd_preserves_node_artifacts(self):
+        """Test that the gradient wrapper preserves raw per-node xTB results."""
+        with open(os.path.join(self.job_1.xtb_gsm_scripts_path, 'ograd'), 'r') as f:
+            ograd = f.read()
+        self.assertIn('gsm_node_outputs', ograd)
+        self.assertIn('${node_label}.energy', ograd)
+        self.assertIn('${node_label}.gradient', ograd)
+        self.assertIn('${node_label}.xtbout', ograd)
 
     def test_set_inpfileq_keywords(self):
         """Test the set_inpfileq_keywords() method."""
