@@ -11,8 +11,13 @@ import os
 
 from arc.common import read_yaml_file
 from arc.main import ARC
-from arc.tckdb.config import TCKDBConfig
-from arc.tckdb.sweep import run_upload_sweep
+
+try:
+    from tckdb_arc.config import TCKDBConfig
+    from tckdb_arc.sweep import run_upload_sweep
+except ImportError:  # in-tree fallback until Phase 4 removes arc/tckdb/
+    from arc.tckdb.config import TCKDBConfig
+    from arc.tckdb.sweep import run_upload_sweep
 
 
 def parse_command_line_arguments(command_line_args=None):
@@ -77,7 +82,10 @@ def main():
         arc_object.execute()
 
         if tckdb_config is not None:
-            from arc.tckdb.adapter import TCKDBAdapter
+            try:
+                from tckdb_arc.adapter import TCKDBAdapter
+            except ImportError:
+                from arc.tckdb.adapter import TCKDBAdapter
             adapter = TCKDBAdapter(tckdb_config, project_directory=arc_object.project_directory)
             run_upload_sweep(
                 adapter=adapter,
