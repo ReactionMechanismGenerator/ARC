@@ -181,7 +181,13 @@ def write_output_yml(
             'schema_version': EVIDENCE_SCHEMA_VERSION,
             'document_id': document_id,
         }
-        logger.info('Wrote parser evidence to %s', evidence_path)
+        available_count, unavailable_count = _evidence_status_counts(evidence_doc)
+        logger.info(
+            'Wrote parser evidence to %s (available=%d unavailable=%d)',
+            evidence_path,
+            available_count,
+            unavailable_count,
+        )
     except Exception as exc:
         logger.warning('Could not build/write optional parser evidence: %s', exc)
     out_path = os.path.join(out_dir, 'output.yml')
@@ -199,6 +205,23 @@ def write_output_yml(
     logger.info(f'Wrote consolidated results to {out_path}')
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+
+
+def _evidence_status_counts(evidence_doc: dict) -> tuple[int, int]:
+    """Count available and unavailable evidence envelopes in a sidecar."""
+    available = unavailable = 0
+    for record in evidence_doc.get('records') or []:
+        if not isinstance(record, dict):
+            continue
+        for evidence_kind in ('freq_hessian', 'irc', 'gsm'):
+            envelope = record.get(evidence_kind)
+            if not isinstance(envelope, dict):
+                continue
+            if envelope.get('status') == 'available':
+                available += 1
+            elif envelope.get('status') == 'unavailable':
+                unavailable += 1
+    return available, unavailable
 
 
 def _get_arkane_git_commit() -> str | None:
@@ -1182,6 +1205,26 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
                 None,
             )
         if chosen_guess is not None:
+            method = getattr(chosen_guess, 'method', None)
+            method = method.strip().lower() if isinstance(method, str) and method.strip() else None
+            method_sources = []
+            for source in (getattr(chosen_guess, 'method_sources', None) or []):
+                if not isinstance(source, str) or not source.strip():
+                    continue
+                source = source.strip().lower()
+                if source not in method_sources:
+                    method_sources.append(source)
+            if method is not None and method not in method_sources:
+                method_sources.insert(0, method)
+            # Only expose stable attribution fields. TSGuess.as_dict() also
+            # contains absolute paths, timestamps, geometries, and diagnostic
+            # state that do not belong in this result-contract seam.
+            d['ts_guesses'] = [{
+                'index': getattr(chosen_guess, 'index', chosen_index),
+                'chosen': True,
+                'method': method,
+                'method_sources': method_sources,
+            }]
             chosen_log = getattr(chosen_guess, 'log_path', None)
             log_field = _ts_guess_log_field_for_method(getattr(chosen_guess, 'method', None))
             if chosen_log and log_field and not d.get(log_field):
@@ -1194,6 +1237,8 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
                     if source_field and source_log:
                         d[source_field] = _make_rel_path(source_log, project_directory)
                         break
+        else:
+            d['ts_guesses'] = []
 
         irc_paths = list(paths.get('irc') or [])
         d['irc_logs'] = [_make_rel_path(path, project_directory) for path in irc_paths]

@@ -18,6 +18,7 @@ from arc.output import (
     _build_scan_result_for_rotor,
     _compute_point_groups,
     _compute_species_corrections,
+    _evidence_status_counts,
     _get_arkane_git_commit,
     _get_energy_corrections,
     _get_ess_versions,
@@ -818,6 +819,28 @@ class TestTsWithSmiles(unittest.TestCase):
         result = _spc_to_dict(spc, output_dict, '/run')
         self.assertEqual(result['gsm_log'], 'gsm/stringfile.xyz0000')
         self.assertIsNone(result['neb_log'])
+        self.assertEqual(result['ts_guesses'], [{
+            'index': 7,
+            'chosen': True,
+            'method': 'gcn',
+            'method_sources': ['gcn', 'xtb-gsm'],
+        }])
+
+
+class TestEvidenceStatusCounts(unittest.TestCase):
+    """Tests concise evidence-write diagnostics."""
+
+    def test_counts_only_known_evidence_envelopes(self):
+        evidence = {'records': [
+            {'record_kind': 'species', 'label': 'A',
+             'freq_hessian': {'status': 'available'}},
+            {'record_kind': 'transition_state', 'label': 'TS0',
+             'freq_hessian': {'status': 'unavailable'},
+             'irc': {'status': 'available'},
+             'gsm': {'status': 'unavailable'}},
+            {'record_kind': 'species', 'label': 'B', 'other': {'status': 'available'}},
+        ]}
+        self.assertEqual(_evidence_status_counts(evidence), (2, 2))
 
 
 class TestRxnToDict(unittest.TestCase):

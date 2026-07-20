@@ -234,6 +234,7 @@ All paths are relative to the project directory.
 | `imag_freq_cm1` | `float?` | Imaginary frequency (cm-1) |
 | `chosen_ts_method` | `str?` | The TS search method that was selected |
 | `successful_ts_methods` | `list[str]?` | All TS methods that succeeded |
+| `ts_guesses` | `list[dict]` | Sanitized provenance for the chosen guess: `index`, `chosen`, `method`, and merged `method_sources` |
 | `neb_log` | `str?` | Run-relative path to NEB log |
 | `gsm_log` | `str?` | Run-relative path to the selected GSM stringfile |
 | `neb_log` | `str?` | Run-relative path to NEB log (set when chosen TS method is `orca_neb`) |
