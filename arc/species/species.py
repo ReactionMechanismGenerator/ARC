@@ -2280,6 +2280,8 @@ class TSGuess(object):
         project_directory (str, optional): The path to the project directory.
 
     Attributes:
+        initial_xyz (dict): The 3D coordinates guess.
+        opt_xyz (dict): The 3D coordinates after optimization at the ts_guesses level.
         method (str): The method/source used for the xyz guess.
         method_sources (list[str]): All methods/sources that produced an equivalent xyz guess.
         method_index (int): A subindex, used for cases where a single method generates several guesses.
