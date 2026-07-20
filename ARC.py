@@ -13,6 +13,31 @@ from arc.common import read_yaml_file
 from arc.main import ARC
 
 
+def run_tckdb_upload(tckdb_settings: dict, project_directory: str) -> None:
+    """Run the optional standalone TCKDB adapter after ARC completes."""
+    try:
+        import tckdb_arc
+    except ModuleNotFoundError as exc:
+        if exc.name == 'tckdb_arc':
+            raise ModuleNotFoundError(
+                'A tckdb input block requires the standalone tckdb-arc package.'
+            ) from exc
+        raise
+    from tckdb_arc.adapter import TCKDBAdapter
+    from tckdb_arc.config import TCKDBConfig
+    from tckdb_arc.sweep import run_upload_sweep
+
+    config = TCKDBConfig.from_dict(tckdb_settings)
+    if config is None:
+        return
+    adapter = TCKDBAdapter(config, project_directory=project_directory)
+    run_upload_sweep(
+        adapter=adapter,
+        project_directory=project_directory,
+        tckdb_config=config,
+    )
+
+
 def parse_command_line_arguments(command_line_args=None):
     """
     Parse command-line arguments.
@@ -59,8 +84,11 @@ def main():
     input_dict['verbose'] = input_dict['verbose'] if 'verbose' in input_dict else verbose
     if 'project_directory' not in input_dict or not input_dict['project_directory']:
         input_dict['project_directory'] = project_directory
+    tckdb_settings = input_dict.pop('tckdb', None)
     arc_object = ARC(**input_dict)
     arc_object.execute()
+    if tckdb_settings:
+        run_tckdb_upload(tckdb_settings, arc_object.project_directory)
 
 
 if __name__ == '__main__':
