@@ -37,8 +37,7 @@ def _extract_nasa(thermo_data):
 def _extract_thermo_points(thermo_data):
     """Return a list of per-temperature thermochemistry dicts, or None.
 
-    Each entry carries the full set of TCKDB-shaped fields that
-    ``thermo_point`` accepts:
+    Each entry carries explicit thermodynamic values and units:
 
         ``temperature_k``  - the evaluation temperature in K
         ``cp_j_mol_k``     - heat capacity        (J/(mol*K))
@@ -48,8 +47,7 @@ def _extract_thermo_points(thermo_data):
 
     RMG's NASA / ThermoData accessors return SI units (J/mol for energies,
     J/(mol*K) for capacities/entropies); enthalpy and free energy are
-    converted to kJ/mol at the boundary because TCKDB persists them in
-    those units.
+    converted to kJ/mol for a compact, explicit output contract.
 
     Any per-temperature evaluation that raises (e.g., the polynomial is
     not valid at that T) is skipped silently — the goal is best-effort

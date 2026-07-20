@@ -2625,8 +2625,7 @@ class ThermoData(object):
             thermo_points (list): Tabulated per-temperature thermochemistry:
                 list of dicts with ``temperature_k``, ``cp_j_mol_k``,
                 ``h_kj_mol``, ``s_j_mol_k``, ``g_kj_mol``. Older field
-                name was ``cp_data`` (Cp-only); the field now carries
-                the full TCKDB ``thermo_point`` shape.
+                name was ``cp_data`` (Cp-only).
         """
         self.H298 = H298
         self.S298 = S298

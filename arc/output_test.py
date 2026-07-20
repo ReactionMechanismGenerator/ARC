@@ -1680,14 +1680,14 @@ class TestComputeSpeciesCorrections(unittest.TestCase):
 
 
 class TestScanCalculations(unittest.TestCase):
-    """Tests for the rotor scan → ``additional_calculations`` plumbing.
+    """Tests for tool-neutral rotor-scan result export.
 
     Covers two layers:
-    - ``_build_scan_result_for_rotor`` shapes one rotor into a TCKDB-like
-      ``scan_result`` dict, returning ``None`` when the input is unusable.
-    - ``_build_scan_calculations`` aggregates across ``rotors_dict`` and
+    - ``_build_scan_result_for_rotor`` preserves scientific scan facts,
+      returning ``None`` when the input is unusable.
+    - ``_build_rotor_scans`` aggregates across ``rotors_dict`` and
       filters non-1D / failed / unparseable rotors.
-    - ``_get_torsions`` attaches ``source_scan_calculation_key`` only when
+    - ``_get_torsions`` attaches ``source_scan_key`` only when
       the corresponding scan log is on disk.
     """
 
@@ -1723,12 +1723,8 @@ class TestScanCalculations(unittest.TestCase):
         self.assertEqual(coord['unit'], 'degree')
         self.assertEqual(coord['symmetry_number'], 3)
         self.assertEqual(coord['sample_count'], len(result['samples']))
-        # Points carry index, energies, coordinate_values. Per-point
-        # geometries are now emitted under ``geometry.xyz_text`` so
-        # TCKDB can persist them into ``calc_scan_point.geometry_id``;
-        # geometries come straight from
-        # ``parse_1d_scan_full_result()['geometries']`` and are
-        # serialized in the TCKDB count-headered xyz convention.
+        # Samples carry source index, angle, energies, and ARC-format geometry
+        # text straight from ``parse_1d_scan_full_result()['geometries']``.
         self.assertGreater(len(result['samples']), 0)
         first = result['samples'][0]
         self.assertEqual(first['source_index'], 0)
@@ -1844,12 +1840,10 @@ class TestScanCalculations(unittest.TestCase):
         # Second rotor has no scan log on disk → no fabricated key.
         self.assertIsNone(torsions[1]['source_scan_key'])
 
-    # ---- per-point scan geometries (TCKDB calc_scan_point.geometry_id) ----
+    # ---- per-sample scan geometries ----
     #
     # ARC's parser wrapper already returns aligned per-step xyz dicts.
-    # ``_build_scan_result_for_rotor`` previously dropped them; now it
-    # passes them through as ``points[i].geometry.xyz_text`` so TCKDB's
-    # bundle workflow can resolve and persist a geometry per scan point.
+    # ``_build_scan_result_for_rotor`` preserves them as ARC-format text.
 
     def _stub_parsed(self, *, n_points=3, geometries='aligned'):
         """Build a parser-wrapper return value with controllable geometry alignment.
