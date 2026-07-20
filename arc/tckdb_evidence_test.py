@@ -207,6 +207,35 @@ class TestEvidenceProducer(unittest.TestCase):
         self.assertEqual(record["gsm"], available)
         self.assertEqual(record["irc"]["status"], "unavailable")
 
+    @patch("arc.tckdb_evidence._build_gsm")
+    def test_geometry_winner_with_merged_gsm_source_emits_gsm_evidence(self, gsm):
+        """Sanitized chosen-guess sources retain path-search attribution."""
+        available = {"status": "available", "value": {"method": "gsm"}}
+        gsm.return_value = available
+        source_record = {
+            "label": "TS_merged",
+            "chosen_ts_method": "gcn",
+            "gsm_log": "calcs/gsm/stringfile.xyz0000",
+            "irc_logs": [],
+            "ts_guesses": [{
+                "index": 7,
+                "chosen": True,
+                "method": "gcn",
+                "method_sources": ["gcn", "xtb-gsm"],
+            }],
+        }
+        output = {
+            "schema_version": "1.1", "arc_version": "x", "arc_git_commit": "abc",
+            "species": [], "transition_states": [source_record],
+        }
+
+        record = build_tckdb_evidence(
+            output_doc=output, project_directory=self.root, document_id=DOC_ID,
+        )["records"][0]
+
+        self.assertEqual(record["gsm"], available)
+        gsm.assert_called_once_with(source_record, self.root)
+
     @patch("arc.tckdb_evidence.parse_gsm_stringfile_energies", return_value=[0.0, 0.0, 0.0])
     @patch("arc.tckdb_evidence.parse_trajectory", return_value=[XYZ_DICT, XYZ_DICT, XYZ_DICT])
     @patch("arc.tckdb_evidence.kabsch", return_value=0.0)
