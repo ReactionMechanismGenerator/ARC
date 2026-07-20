@@ -54,8 +54,8 @@ def _canonical_xyz(xyz: Mapping[str, Any] | str, label: str) -> str:
         count = int(lines[0])
         if len(lines) != count + 2:
             raise ValueError("malformed canonical XYZ")
-        return "\n".join(lines) + "\n"
-    return f"{len(lines)}\n{label}\n" + "\n".join(lines) + "\n"
+        return "\n".join(lines)
+    return f"{len(lines)}\n{label}\n" + "\n".join(lines)
 
 
 def _unavailable(reason: str, paths: list[str] | None = None) -> dict:
@@ -85,7 +85,7 @@ def _build_hessian(record: Mapping[str, Any], project_directory: str | Path) -> 
     if not resolved.is_file():
         return _unavailable("missing_source", paths)
     try:
-        geometry = _canonical_xyz(record.get("xyz") or "", f"{record.get('label')} freq")
+        geometry = _canonical_xyz(record.get("xyz") or "", str(record.get("label") or ""))
         atom_count = int(geometry.splitlines()[0])
         if atom_count <= 1:
             return _unavailable("unsupported_source", paths)
@@ -142,44 +142,50 @@ def _build_irc(record: Mapping[str, Any], project_directory: str | Path) -> dict
         if not resolved.is_file():
             omitted.append(source_log)
             continue
-        points = []
         try:
-            rich = parse_irc_path(log_file_path=str(resolved))
-        except Exception:
-            rich = None
-        if rich:
-            for fallback_index, point in enumerate(rich):
-                xyz = point.get("xyz")
-                if xyz is None:
-                    continue
-                item = {
-                    "source_point_index": int(point.get("point_number", fallback_index)),
-                    "direction": point.get("direction") or declared,
-                    "geometry_xyz_text": _canonical_xyz(xyz, f"{record.get('label')} IRC point"),
-                }
-                for source_key, evidence_key in (
-                    ("electronic_energy_hartree", "electronic_energy_hartree"),
-                    ("reaction_coordinate", "reaction_coordinate_sqrt_amu_bohr"),
-                    ("max_gradient", "max_gradient_hartree_per_bohr"),
-                    ("rms_gradient", "rms_gradient_hartree_per_bohr"),
-                ):
-                    if point.get(source_key) is not None:
-                        item[evidence_key] = float(point[source_key])
-                points.append(item)
-        else:
             try:
-                geometries = parse_irc_traj(log_file_path=str(resolved)) or []
+                rich = parse_irc_path(log_file_path=str(resolved))
             except Exception:
-                geometries = []
-            for index, xyz in enumerate(geometries):
-                points.append({
-                    "source_point_index": index,
-                    "direction": declared,
-                    "geometry_xyz_text": _canonical_xyz(xyz, f"{record.get('label')} IRC point {index}"),
-                })
-        if points:
-            trajectories.append({"source_log": source_log, "declared_direction": declared, "points": points})
-        else:
+                rich = None
+            points = []
+            if rich:
+                for fallback_index, point in enumerate(rich):
+                    xyz = point.get("xyz")
+                    if xyz is None:
+                        raise ValueError("IRC point has no geometry")
+                    item = {
+                        "source_point_index": int(point.get("point_number", fallback_index)),
+                        "direction": point.get("direction") or declared,
+                        "geometry_xyz_text": _canonical_xyz(xyz, ""),
+                    }
+                    for source_key, evidence_key in (
+                        ("electronic_energy_hartree", "electronic_energy_hartree"),
+                        ("reaction_coordinate", "reaction_coordinate_sqrt_amu_bohr"),
+                        ("max_gradient", "max_gradient_hartree_per_bohr"),
+                        ("rms_gradient", "rms_gradient_hartree_per_bohr"),
+                    ):
+                        if point.get(source_key) is not None:
+                            item[evidence_key] = float(point[source_key])
+                    _finite_json(item)
+                    points.append(item)
+            else:
+                try:
+                    geometries = parse_irc_traj(log_file_path=str(resolved)) or []
+                except Exception:
+                    geometries = []
+                for index, xyz in enumerate(geometries):
+                    points.append({
+                        "source_point_index": index,
+                        "direction": declared,
+                        "geometry_xyz_text": _canonical_xyz(xyz, ""),
+                    })
+            if not points:
+                raise ValueError("IRC source produced no valid points")
+            trajectory = {"source_log": source_log, "declared_direction": declared, "points": points}
+            _finite_json(trajectory)
+            trajectories.append(trajectory)
+        except Exception:
+            logger.debug("TCKDB evidence IRC source omitted: %s", source_log, exc_info=True)
             omitted.append(source_log)
     if not trajectories:
         return _unavailable("empty_result" if logs else "missing_source", [str(p) for p in logs] or None)
@@ -300,7 +306,7 @@ def _build_gsm(record: Mapping[str, Any], project_directory: str | Path) -> dict
             point = {
                 "source_point_index": index,
                 "node_label": index if index else None,
-                "geometry_xyz_text": _canonical_xyz(frame, f"{record.get('label')} GSM point {index}"),
+                "geometry_xyz_text": _canonical_xyz(frame, f"gsm_point_{index}"),
             }
             if coordinates is not None:
                 point["path_coordinate_angstrom"] = coordinates[index]
@@ -328,12 +334,22 @@ def build_tckdb_evidence(*, output_doc: Mapping[str, Any], project_directory: st
     for section, record_kind in (("species", "species"), ("transition_states", "transition_state")):
         for source_record in output_doc.get(section) or []:
             record = {"record_kind": record_kind, "label": source_record["label"]}
+            attempts = []
             if source_record.get("freq_log"):
-                record["freq_hessian"] = _build_hessian(source_record, project_directory)
+                attempts.append(("freq_hessian", _build_hessian, [str(source_record["freq_log"])]))
             if record_kind == "transition_state" and source_record.get("irc_logs"):
-                record["irc"] = _build_irc(source_record, project_directory)
+                attempts.append(("irc", _build_irc, [str(path) for path in source_record["irc_logs"]]))
             if record_kind == "transition_state" and _path_search_method(source_record) == "gsm" and source_record.get("gsm_log"):
-                record["gsm"] = _build_gsm(source_record, project_directory)
+                attempts.append(("gsm", _build_gsm, [str(source_record["gsm_log"])]))
+            for evidence_kind, builder, source_paths in attempts:
+                try:
+                    record[evidence_kind] = builder(source_record, project_directory)
+                except Exception:
+                    logger.debug(
+                        "Unexpected TCKDB evidence builder failure kind=%s label=%s",
+                        evidence_kind, source_record.get("label"), exc_info=True,
+                    )
+                    record[evidence_kind] = _unavailable("parse_failed", source_paths)
             for evidence_kind in ("freq_hessian", "irc", "gsm"):
                 envelope = record.get(evidence_kind)
                 if envelope and envelope.get("status") == "unavailable":
