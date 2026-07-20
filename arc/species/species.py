@@ -1370,6 +1370,7 @@ class ARCSpecies(object):
                                  'trsh_counter': 0,
                                  'trsh_methods': list(),
                                  'scan_path': '',
+                                 'scan_software': '',
                                  'directed_scan_type': key,
                                  'directed_scan': dict(),
                                  'dimensions': 0,
@@ -2605,7 +2606,7 @@ class ThermoData(object):
                  comment='',
                  nasa_low=None,
                  nasa_high=None,
-                 cp_data=None,
+                 thermo_points=None,
                  ):
         """
         Args:
@@ -2621,7 +2622,11 @@ class ThermoData(object):
             comment (str): Additional comments or description
             nasa_low (dict): Low-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
             nasa_high (dict): High-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
-            cp_data (list): Tabulated Cp: list of {temperature_k, cp_j_mol_k} dicts.
+            thermo_points (list): Tabulated per-temperature thermochemistry:
+                list of dicts with ``temperature_k``, ``cp_j_mol_k``,
+                ``h_kj_mol``, ``s_j_mol_k``, ``g_kj_mol``. Older field
+                name was ``cp_data`` (Cp-only); the field now carries
+                the full TCKDB ``thermo_point`` shape.
         """
         self.H298 = H298
         self.S298 = S298
@@ -2635,7 +2640,7 @@ class ThermoData(object):
         self.comment = comment
         self.nasa_low = nasa_low
         self.nasa_high = nasa_high
-        self.cp_data = cp_data
+        self.thermo_points = thermo_points
 
     def __repr__(self):
         """
@@ -2669,7 +2674,7 @@ class ThermoData(object):
         return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
                              self.Cp0, self.CpInf, self.Tmin, self.Tmax,
                              self.data, self.comment,
-                             self.nasa_low, self.nasa_high, self.cp_data))
+                             self.nasa_low, self.nasa_high, self.thermo_points))
 
     def update(self, data: dict):
         """
