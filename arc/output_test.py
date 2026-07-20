@@ -3,6 +3,7 @@ Tests for the arc.output module (consolidated output.yml writer).
 """
 
 import datetime
+import json
 import os
 import shutil
 import tempfile
@@ -1749,6 +1750,13 @@ class TestWriteOutputYml(unittest.TestCase):
         out_path = os.path.join(self.tmp_dir, 'output', 'output.yml')
         self.assertTrue(os.path.isfile(out_path))
         doc = read_yaml_file(out_path)
+        self.assertEqual(doc['schema_version'], '1.1')
+        self.assertEqual(doc['tckdb_evidence']['path'], 'tckdb_evidence.json')
+        evidence_path = os.path.join(self.tmp_dir, 'output', 'tckdb_evidence.json')
+        self.assertTrue(os.path.isfile(evidence_path))
+        with open(evidence_path) as handle:
+            evidence = json.load(handle)
+        self.assertEqual(evidence['document_id'], doc['tckdb_evidence']['document_id'])
         self.assertEqual(doc['project'], 'test_project')
         self.assertEqual(doc['arc_git_commit'], 'def456')
         self.assertEqual(doc['arkane_git_commit'], 'abc123')
@@ -1953,6 +1961,38 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertEqual(cm['per_ess']['orca']['job_count'], 1)
         self.assertAlmostEqual(cm['per_ess']['orca']['execution_time_hrs'], 0.25)
         self.assertAlmostEqual(cm['per_ess']['orca']['core_hours'], 4.0)
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output.build_tckdb_evidence', side_effect=RuntimeError('evidence failed'))
+    def test_evidence_failure_still_writes_output_without_descriptor(self, mock_build, mock_pg):
+        spc = self._make_spc_mock()
+        write_output_yml(
+            project='evidence_failure', project_directory=self.tmp_dir,
+            species_dict={'CH4': spc}, reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+        )
+        from arc.common import read_yaml_file
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertEqual(doc['schema_version'], '1.1')
+        self.assertNotIn('tckdb_evidence', doc)
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    def test_evidence_replaced_before_output(self, mock_pg):
+        spc = self._make_spc_mock()
+        real_replace = os.replace
+        destinations = []
+
+        def recording_replace(source, destination):
+            destinations.append(os.path.basename(destination))
+            return real_replace(source, destination)
+
+        with patch('os.replace', side_effect=recording_replace):
+            write_output_yml(
+                project='replace_order', project_directory=self.tmp_dir,
+                species_dict={'CH4': spc}, reactions=[],
+                output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+            )
+        self.assertEqual(destinations[-2:], ['tckdb_evidence.json', 'output.yml'])
 
 
 class TestTimedeltaToSeconds(unittest.TestCase):
