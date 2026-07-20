@@ -13,15 +13,26 @@ from arc.common import read_yaml_file
 from arc.main import ARC
 
 
+logger = logging.getLogger('arc')
+_tckdb_missing_package_logged = False
+
+
 def run_tckdb_upload(tckdb_settings: dict, project_directory: str) -> None:
     """Run the optional standalone TCKDB adapter after ARC completes."""
+    if tckdb_settings.get('enabled') is False:
+        return
     try:
         import tckdb_arc
     except ModuleNotFoundError as exc:
         if exc.name == 'tckdb_arc':
-            raise ModuleNotFoundError(
-                'A tckdb input block requires the standalone tckdb-arc package.'
-            ) from exc
+            global _tckdb_missing_package_logged
+            if not _tckdb_missing_package_logged:
+                logger.warning(
+                    'TCKDB upload requested, but the optional standalone tckdb-arc package is not installed; '
+                    'continuing without upload.'
+                )
+                _tckdb_missing_package_logged = True
+            return
         raise
     from tckdb_arc.adapter import TCKDBAdapter
     from tckdb_arc.config import TCKDBConfig

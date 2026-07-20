@@ -19,11 +19,19 @@ def _load_arc_cli():
 
 class TestStandaloneTCKDBHook(unittest.TestCase):
 
-    def test_missing_standalone_package_is_explicit(self):
+    def test_disabled_block_returns_before_import(self):
         module = _load_arc_cli()
-        with patch.dict(sys.modules, {'tckdb_arc': None}):
-            with self.assertRaisesRegex(ModuleNotFoundError, 'standalone tckdb-arc package'):
-                module.run_tckdb_upload({'enabled': True}, '/project')
+        with patch.dict(sys.modules, {'tckdb_arc': None}), patch.object(module.logger, 'warning') as warning:
+            module.run_tckdb_upload({'enabled': False}, '/project')
+        warning.assert_not_called()
+
+    def test_missing_standalone_package_logs_once_and_is_a_noop(self):
+        module = _load_arc_cli()
+        with patch.dict(sys.modules, {'tckdb_arc': None}), patch.object(module.logger, 'warning') as warning:
+            module.run_tckdb_upload({'enabled': True}, '/project')
+            module.run_tckdb_upload({'enabled': True}, '/project')
+        warning.assert_called_once()
+        self.assertIn('continuing without upload', warning.call_args.args[0])
 
     def test_internal_dependency_import_error_is_not_hidden(self):
         module = _load_arc_cli()
