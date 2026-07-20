@@ -272,6 +272,40 @@ parse_ess_version = make_parser(
     error_message='Could not parse ESS version from {path}',
 )
 
+parse_s_squared = make_parser(
+    parse_method='parse_s_squared',
+    return_type=dict | None,
+    error_message='Could not parse S**2 spin diagnostic from {path}',
+)
+
+
+def s_squared_expected_from_multiplicity(multiplicity: int | float | None) -> float | None:
+    """
+    Compute the ideal (spin-pure) expectation value ``S(S+1)`` of the total-spin
+    operator from a spin multiplicity.
+
+    For a spin state of multiplicity ``m`` the total spin is ``S = (m - 1) / 2``
+    and the ideal ``<S**2>`` is ``S * (S + 1)`` (e.g. doublet ``m=2`` → 0.75,
+    triplet ``m=3`` → 2.0).
+
+    Args:
+        multiplicity (int | float | None): The spin multiplicity.
+
+    Returns: float | None
+        The ideal ``S(S+1)`` value, or ``None`` if ``multiplicity`` is missing
+        or not a positive number.
+    """
+    if multiplicity is None:
+        return None
+    try:
+        m = float(multiplicity)
+    except (TypeError, ValueError):
+        return None
+    if m < 1:
+        return None
+    s = (m - 1.0) / 2.0
+    return s * (s + 1.0)
+
 
 def parse_1d_scan_energies_from_specific_angle(log_file_path: str,
                                                initial_angle: float,

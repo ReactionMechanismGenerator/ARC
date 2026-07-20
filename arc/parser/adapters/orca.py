@@ -15,7 +15,7 @@ from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import str_to_xyz, xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
-from arc.parser.parser import _get_lines_from_file
+from arc.parser.parser import _get_lines_from_file, s_squared_expected_from_multiplicity
 
 
 class OrcaParser(ESSAdapter, ABC):
@@ -295,6 +295,57 @@ class OrcaParser(ESSAdapter, ABC):
                     except (ValueError, IndexError):
                         continue
         return None
+
+    def parse_s_squared(self) -> dict[str, float | None] | None:
+        """
+        Parse the S**2 spin-contamination diagnostic from an ORCA UHF/UKS log.
+
+        ORCA prints, for an unrestricted reference::
+
+            Expectation value of <S**2>     :     0.754185
+            Ideal value S*(S+1) for S=0.5   :     0.750000
+
+        The value of record is the *last* (converged / final-SCF) pair on the
+        log. Restricted (closed-shell) references don't print these lines, so
+        this returns ``None`` for them. ORCA has no spin-contaminant
+        annihilation step, so ``s_squared_annihilated`` is always ``None``.
+        The ideal value is taken from the ``Ideal value S*(S+1)`` line when
+        present (that is exactly the expected ``S(S+1)``), else from the
+        parsed ``Multiplicity`` line.
+
+        Returns: dict[str, float | None] | None
+            ``{'s_squared': float, 's_squared_expected': float | None,
+               's_squared_annihilated': None}`` or ``None``.
+        """
+        s_squared, s_squared_expected, multiplicity = None, None, None
+        for line in _get_lines_from_file(self.log_file_path):
+            if 'Expectation value of <S**2>' in line:
+                match = re.search(r':\s*([-+]?\d*\.?\d+)', line)
+                if match:
+                    try:
+                        s_squared = float(match.group(1))
+                    except ValueError:
+                        continue
+            elif 'Ideal value S*(S+1)' in line:
+                match = re.search(r':\s*([-+]?\d*\.?\d+)', line)
+                if match:
+                    try:
+                        s_squared_expected = float(match.group(1))
+                    except ValueError:
+                        continue
+            elif 'Multiplicity' in line and 'Mult' in line:
+                match = re.search(r'\.\.\.\.\s*(\d+)', line)
+                if match:
+                    multiplicity = int(match.group(1))
+        if s_squared is None:
+            return None
+        if s_squared_expected is None:
+            s_squared_expected = s_squared_expected_from_multiplicity(multiplicity)
+        return {
+            's_squared': s_squared,
+            's_squared_expected': s_squared_expected,
+            's_squared_annihilated': None,
+        }
 
     def parse_e_elect(self) -> float | None:
         """

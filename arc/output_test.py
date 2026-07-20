@@ -23,6 +23,7 @@ from arc.output import (
     _level_to_dict,
     _make_rel_path,
     _parse_opt_log,
+    _parse_spin_diagnostic,
     _parse_zpe,
     _resolve_freq_scale_factor_source,
     _rxn_to_dict,
@@ -403,6 +404,50 @@ class TestParseOptLog(unittest.TestCase):
         from arc.parser.parser import parse_opt_steps
         opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
         self.assertEqual(parse_opt_steps(opt_path), 4)
+
+
+class TestParseSpinDiagnostic(unittest.TestCase):
+    """Tests for _parse_spin_diagnostic (output.yml S**2 plumbing)."""
+
+    def test_open_shell_gaussian_doublet(self):
+        """Open-shell doublet: block with s_squared, expected (from mult), annihilated."""
+        sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=2, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7535)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertAlmostEqual(sd['s_squared_annihilated'], 0.75)
+
+    def test_expected_recomputed_from_arc_multiplicity(self):
+        """s_squared_expected is authoritative from ARC's multiplicity (triplet -> 2.0)."""
+        sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'TSs', 'TS_freq.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=3, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 2.0153)
+        self.assertAlmostEqual(sd['s_squared_expected'], 2.0)
+
+    def test_closed_shell_returns_none(self):
+        """Restricted/closed-shell log (no <S**2>) -> None (block omitted)."""
+        sp = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
+        self.assertIsNone(_parse_spin_diagnostic(sp, None, None, multiplicity=1, project_directory='/dummy'))
+
+    def test_fallback_to_freq_when_sp_absent(self):
+        """When the sp log is absent, falls back to the freq log."""
+        freq = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        sd = _parse_spin_diagnostic(None, freq, None, multiplicity=2, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7535)
+
+    def test_no_paths_returns_none(self):
+        self.assertIsNone(_parse_spin_diagnostic(None, None, None, multiplicity=2, project_directory='/dummy'))
+
+    def test_orca_open_shell_no_annihilation_key(self):
+        """ORCA: annihilated is None -> the key is omitted from the emitted block."""
+        sp = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=2, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertNotIn('s_squared_annihilated', sd)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
 
 
 class TestParseEssVersion(unittest.TestCase):

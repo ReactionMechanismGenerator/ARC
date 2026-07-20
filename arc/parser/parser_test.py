@@ -708,6 +708,56 @@ H      -1.69381305    0.40788834    0.90078104"""
         t1 = parser.parse_t1(path)
         self.assertEqual(t1, 0.0002)
 
+    def test_parse_s_squared(self):
+        """Test parsing the S**2 spin-contamination diagnostic"""
+        # Gaussian, open-shell doublet (UwB97XD): <S**2>=0.7535, expected 0.75, annihilated 0.75.
+        path = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7535)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertAlmostEqual(sd['s_squared_annihilated'], 0.75)
+
+        # Gaussian, open-shell triplet: <S**2>=2.0153, expected 2.0, annihilated 2.0001.
+        path = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'TSs', 'TS_freq.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 2.0153)
+        self.assertAlmostEqual(sd['s_squared_expected'], 2.0)
+        self.assertAlmostEqual(sd['s_squared_annihilated'], 2.0001)
+
+        # Gaussian, closed-shell/restricted: no <S**2> printed -> None.
+        path = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
+        self.assertIsNone(parser.parse_s_squared(path))
+
+        # ORCA, open-shell doublet: last converged <S**2>=0.762333, Ideal value 0.75, no annihilation.
+        path = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.762333)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertIsNone(sd['s_squared_annihilated'])
+
+        # Q-Chem, open-shell doublet: <S^2> = 0.7572, expected from multiplicity, no annihilation.
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'NO3_freq_QChem_fails_on_cclib.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7572)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertIsNone(sd['s_squared_annihilated'])
+
+        # Malformed / non-ESS path -> None (no crash).
+        path = os.path.join(ARC_TESTING_PATH, 'mockter.yml')
+        self.assertIsNone(parser.parse_s_squared(path))
+
+    def test_s_squared_expected_from_multiplicity(self):
+        """Test the ideal S(S+1) helper"""
+        self.assertEqual(parser.s_squared_expected_from_multiplicity(2), 0.75)
+        self.assertEqual(parser.s_squared_expected_from_multiplicity(3), 2.0)
+        self.assertEqual(parser.s_squared_expected_from_multiplicity(1), 0.0)
+        self.assertIsNone(parser.s_squared_expected_from_multiplicity(None))
+        self.assertIsNone(parser.s_squared_expected_from_multiplicity(0))
+
     def test_parse_e_elect(self):
         """Test parsing the electronic energy from a single-point job output file"""
         path = os.path.join(ARC_TESTING_PATH, 'sp', 'mehylamine_CCSD(T).out')
