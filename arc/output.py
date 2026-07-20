@@ -207,6 +207,20 @@ def _make_rel_path(path: str | None, project_directory: str) -> str | None:
         return path  # Windows: relpath can fail across drives
 
 
+_TS_GUESS_METHOD_TO_LOG_FIELD = {
+    'orca_neb': 'neb_log',
+    'xtb_gsm': 'gsm_log',
+    'xtb-gsm': 'gsm_log',
+}
+
+
+def _ts_guess_log_field_for_method(method: object) -> str | None:
+    """Return the result-record log field associated with a TS-guess method."""
+    if not isinstance(method, str):
+        return None
+    return _TS_GUESS_METHOD_TO_LOG_FIELD.get(method.strip().lower())
+
+
 def _parse_zpe(freq_path: str | None, project_directory: str) -> float | None:
     """
     Parse ZPE in Hartree from the freq log file.
@@ -522,7 +536,36 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         d['chosen_ts_method'] = getattr(spc, 'chosen_ts_method', None)
         d['successful_ts_methods'] = getattr(spc, 'successful_methods', None) or None
         d['neb_log'] = _make_rel_path(paths.get('neb') or None, project_directory)
-        d['irc_logs'] = [_make_rel_path(p, project_directory) for p in (paths.get('irc') or [])]
+        d['gsm_log'] = _make_rel_path(paths.get('gsm') or None, project_directory)
+
+        chosen_index = getattr(spc, 'chosen_ts', None)
+        chosen_guess = None
+        if isinstance(chosen_index, int):
+            chosen_guess = next(
+                (guess for guess in (getattr(spc, 'ts_guesses', None) or [])
+                 if getattr(guess, 'index', None) == chosen_index),
+                None,
+            )
+        if chosen_guess is not None:
+            chosen_log = getattr(chosen_guess, 'log_path', None)
+            log_field = _ts_guess_log_field_for_method(getattr(chosen_guess, 'method', None))
+            if chosen_log and log_field and not d.get(log_field):
+                d[log_field] = _make_rel_path(chosen_log, project_directory)
+            if not d.get('neb_log') and not d.get('gsm_log'):
+                source_paths = getattr(chosen_guess, 'method_source_paths', None) or {}
+                for source in (getattr(chosen_guess, 'method_sources', None) or []):
+                    source_field = _ts_guess_log_field_for_method(source)
+                    source_log = source_paths.get(source)
+                    if source_field and source_log:
+                        d[source_field] = _make_rel_path(source_log, project_directory)
+                        break
+
+        irc_paths = list(paths.get('irc') or [])
+        d['irc_logs'] = [_make_rel_path(path, project_directory) for path in irc_paths]
+        irc_directions = list(paths.get('irc_directions') or [])
+        d['irc_log_directions'] = (
+            irc_directions + [None] * (len(irc_paths) - len(irc_directions))
+        )[:len(irc_paths)]
         if not irc_requested:
             d['irc_converged'] = None
         else:

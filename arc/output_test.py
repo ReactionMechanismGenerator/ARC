@@ -30,7 +30,7 @@ from arc.output import (
     _thermo_to_dict,
     write_output_yml,
 )
-from arc.species.species import ThermoData
+from arc.species.species import TSGuess, ThermoData
 
 
 class TestLevelToDict(unittest.TestCase):
@@ -692,6 +692,79 @@ class TestTsWithSmiles(unittest.TestCase):
         result = _spc_to_dict(spc, output_dict, '/abs')
         self.assertIsNone(result['smiles'])
         self.assertIsNone(result['formula'])
+
+    def test_ts_path_logs_and_irc_directions(self):
+        spc = MagicMock()
+        spc.label = 'TS_paths'
+        spc.original_label = None
+        spc.charge = 0
+        spc.multiplicity = 1
+        spc.is_ts = True
+        spc.mol = None
+        spc.final_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0, 0, 0),)}
+        spc.initial_xyz = None
+        spc.is_monoatomic.return_value = False
+        spc.e_elect = None
+        spc._is_linear = False
+        spc.optical_isomers = 1
+        spc.external_symmetry = 1
+        spc.freqs = [-1000.0, 100.0]
+        spc.rotors_dict = None
+        spc.thermo = None
+        spc.rxn_label = 'A <=> B'
+        spc.chosen_ts_method = 'xTB-GSM'
+        spc.successful_methods = ['xTB-GSM']
+        spc.chosen_ts = None
+        spc.ts_guesses = []
+        output_dict = {'TS_paths': {
+            'convergence': True,
+            'paths': {
+                'gsm': '/run/gsm/stringfile.xyz0000',
+                'neb': '',
+                'irc': ['/run/irc/forward.log', '/run/irc/reverse.log'],
+                'irc_directions': ['forward', 'reverse'],
+            },
+            'job_types': {'irc': True},
+        }}
+        result = _spc_to_dict(spc, output_dict, '/run')
+        self.assertEqual(result['gsm_log'], 'gsm/stringfile.xyz0000')
+        self.assertIsNone(result['neb_log'])
+        self.assertEqual(result['irc_log_directions'], ['forward', 'reverse'])
+
+    def test_merged_ts_guess_recovers_path_artifact_by_index(self):
+        spc = MagicMock()
+        spc.label = 'TS_merged'
+        spc.original_label = None
+        spc.charge = 0
+        spc.multiplicity = 1
+        spc.is_ts = True
+        spc.mol = None
+        spc.final_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0, 0, 0),)}
+        spc.initial_xyz = None
+        spc.is_monoatomic.return_value = False
+        spc.e_elect = None
+        spc._is_linear = False
+        spc.optical_isomers = 1
+        spc.external_symmetry = 1
+        spc.freqs = [-1000.0, 100.0]
+        spc.rotors_dict = None
+        spc.thermo = None
+        spc.rxn_label = 'A <=> B'
+        spc.chosen_ts_method = 'gcn'
+        spc.successful_methods = ['gcn', 'xTB-GSM']
+        guess = TSGuess(index=7, method='gcn', success=True, xyz='C 0 0 0')
+        guess.method_sources = ['gcn', 'xtb-gsm']
+        guess.method_source_paths = {'xtb-gsm': '/run/gsm/stringfile.xyz0000'}
+        spc.chosen_ts = 7
+        spc.ts_guesses = [guess]
+        output_dict = {'TS_merged': {
+            'convergence': True,
+            'paths': {'gsm': '', 'neb': '', 'irc': []},
+            'job_types': {},
+        }}
+        result = _spc_to_dict(spc, output_dict, '/run')
+        self.assertEqual(result['gsm_log'], 'gsm/stringfile.xyz0000')
+        self.assertIsNone(result['neb_log'])
 
 
 class TestRxnToDict(unittest.TestCase):
