@@ -92,7 +92,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   project='test',
                                   project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_7'),
                                   species=[ARCSpecies(label='N', xyz=["""N     0.0    0.0    0.0"""],
-                                                      multiplicity=3,
+                                                      multiplicity=4,
                                                       active={'occ': [3, 1, 1, 0, 1, 0, 0, 0],
                                                               'closed': [1, 0, 0, 0, 0, 0, 0, 0]})],
                                   testing=True,
@@ -412,17 +412,17 @@ int;
 
 {hf;
  maxit,999;
- wf,spin=2,charge=0;
+ wf,spin=3,charge=0;
 }
 
 
 {mp2;
- wf,spin=2,charge=0;
+ wf,spin=3,charge=0;
 }
 
 {casscf;
  maxit,999;
- wf,spin=2,charge=0;
+ wf,spin=3,charge=0;
  occ,3,1,1,0,1,0,0,0;
  closed,1,0,0,0,0,0,0,0;
  state,1;
@@ -430,7 +430,7 @@ int;
 
 {rs2c;
  maxit,999;
- wf,spin=2,charge=0;
+ wf,spin=3,charge=0;
 }
 
 
