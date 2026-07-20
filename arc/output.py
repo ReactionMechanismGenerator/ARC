@@ -13,6 +13,7 @@ import datetime
 import os
 import tempfile
 from typing import Any
+import uuid
 
 from arc.common import ARC_PATH, VERSION, get_git_commit, get_logger, read_yaml_file, save_yaml_file
 from arc.constants import E_h_kJmol
@@ -25,6 +26,13 @@ from arc.statmech.arkane import (
     MBAC_SECTION_START, MBAC_SECTION_END,
     PBAC_SECTION_START, PBAC_SECTION_END,
     find_best_across_files, get_qm_corrections_files,
+)
+from arc.tckdb_evidence import (
+    EVIDENCE_FILENAME,
+    EVIDENCE_SCHEMA_NAME,
+    EVIDENCE_SCHEMA_VERSION,
+    build_tckdb_evidence,
+    write_tckdb_evidence_atomic,
 )
 
 
@@ -77,7 +85,7 @@ def write_output_yml(
     doc: dict[str, Any] = {}
 
     # ---- header ----------------------------------------------------------------
-    doc['schema_version'] = '1.0'
+    doc['schema_version'] = '1.1'
     arc_git, _ = get_git_commit(ARC_PATH)
     doc['project'] = project
     doc['arc_version'] = VERSION
@@ -123,6 +131,26 @@ def write_output_yml(
     # ---- atomic write -----------------------------------------------------------
     out_dir = os.path.join(project_directory, 'output')
     os.makedirs(out_dir, exist_ok=True)
+    document_id = uuid.uuid4().hex
+    try:
+        evidence_doc = build_tckdb_evidence(
+            output_doc=doc,
+            project_directory=project_directory,
+            document_id=document_id,
+        )
+        evidence_path = write_tckdb_evidence_atomic(
+            evidence_doc=evidence_doc,
+            output_directory=out_dir,
+        )
+        doc['tckdb_evidence'] = {
+            'path': EVIDENCE_FILENAME,
+            'schema_name': EVIDENCE_SCHEMA_NAME,
+            'schema_version': EVIDENCE_SCHEMA_VERSION,
+            'document_id': document_id,
+        }
+        logger.info('Wrote parser evidence to %s', evidence_path)
+    except Exception as exc:
+        logger.warning('Could not build/write optional parser evidence: %s', exc)
     out_path = os.path.join(out_dir, 'output.yml')
     fd, tmp_path = tempfile.mkstemp(dir=out_dir, suffix='.output.yml.tmp')
     try:

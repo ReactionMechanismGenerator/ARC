@@ -13,6 +13,7 @@ the job was not requested, or the data is not applicable (e.g. monoatomic specie
 
 ```
 output.yml
+├── schema_version: "1.1"
 ├── project
 ├── arc_version
 ├── arc_git_commit?
@@ -29,6 +30,8 @@ output.yml
 ├── bac_type?
 ├── atom_energy_corrections?
 ├── bond_additivity_corrections?
+├── tckdb_evidence?
+│   └── path, schema_name, schema_version, document_id
 │
 ├── species: []
 │   └── label, original_label, charge, multiplicity, converged
@@ -55,7 +58,7 @@ output.yml
 ├── transition_states: []
 │   └── (all species fields, plus:)
 │       ├── chosen_ts_method?, successful_ts_methods?
-│       ├── neb_log?, irc_logs: [], irc_converged?
+│       ├── neb_log?, gsm_log?, irc_logs: [], irc_log_directions: [], irc_converged?
 │       └── rxn_label
 │
 └── reactions: []
@@ -73,11 +76,20 @@ output.yml
 
 | Field | Type | Description |
 |---|---|---|
+| `schema_version` | `str` | Output contract version; `1.1` adds the optional evidence descriptor |
 | `project` | `str` | ARC project name |
 | `arc_version` | `str` | ARC version string |
 | `arc_git_commit` | `str?` | ARC repo HEAD commit hash |
 | `arkane_git_commit` | `str?` | RMG-Py (Arkane) repo HEAD commit hash |
 | `datetime_completed` | `str` | Completion timestamp (`YYYY-MM-DD HH:MM`) |
+| `tckdb_evidence` | `dict?` | Descriptor for `tckdb_evidence.json`, present only after the sidecar was written successfully |
+
+The descriptor binds `output.yml` to the parser-neutral evidence sidecar with
+`path`, `schema_name`, `schema_version`, and a shared UUID4 `document_id`.
+ARC writes the sidecar first and `output.yml` second so consumers can reject a
+stale or interrupted pair by comparing document IDs. The evidence file contains
+best-effort, versioned Hessian, IRC, and GSM facts parsed by ARC; it contains no
+TCKDB upload request objects.
 
 ## Levels of Theory
 
@@ -219,7 +231,9 @@ All paths are relative to the project directory.
 | `chosen_ts_method` | `str?` | The TS search method that was selected |
 | `successful_ts_methods` | `list[str]?` | All TS methods that succeeded |
 | `neb_log` | `str?` | Run-relative path to NEB log |
+| `gsm_log` | `str?` | Run-relative path to the selected GSM stringfile |
 | `irc_logs` | `list[str]` | Run-relative paths to IRC logs |
+| `irc_log_directions` | `list[str?]` | Forward/reverse direction in lockstep with `irc_logs` |
 | `irc_converged` | `bool?` | Whether IRC converged (`null` if IRC was not requested) |
 | `rxn_label` | `str` | Reaction label this TS belongs to |
 | `thermo` | `null` | Always `null` for transition states |
