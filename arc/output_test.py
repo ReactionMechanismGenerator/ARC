@@ -174,7 +174,7 @@ class TestThermoToDict(unittest.TestCase):
         self.assertEqual(result['s298_j_mol_k'], 230.1)
         self.assertEqual(result['tmin_k'], 300)
         self.assertEqual(result['tmax_k'], 3000)
-        self.assertIsNone(result['cp_data'])
+        self.assertIsNone(result['thermo_points'])
         self.assertIsNone(result['nasa_low'])
         self.assertIsNone(result['nasa_high'])
 
@@ -189,9 +189,9 @@ class TestThermoToDict(unittest.TestCase):
 
     def test_thermo_with_cp_data(self):
         cp = [{'temperature_k': 300.0, 'cp_j_mol_k': 35.1}, {'temperature_k': 400.0, 'cp_j_mol_k': 40.5}]
-        thermo = ThermoData(H298=-10.0, S298=200.0, Tmin=(300, 'K'), Tmax=(2000, 'K'), cp_data=cp)
+        thermo = ThermoData(H298=-10.0, S298=200.0, Tmin=(300, 'K'), Tmax=(2000, 'K'), thermo_points=cp)
         result = _thermo_to_dict(thermo)
-        self.assertEqual(result['cp_data'], cp)
+        self.assertEqual(result['thermo_points'], cp)
 
     def test_tmin_tmax_scalar(self):
         """Tmin/Tmax can be plain numbers (not tuples)."""
@@ -370,20 +370,23 @@ class TestParseOptLog(unittest.TestCase):
     def test_gaussian_opt_log(self):
         """Parse a real Gaussian opt log for step count and final energy."""
         opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
-        n_steps, e_hartree = _parse_opt_log(opt_path, '/dummy')
+        n_steps, e_hartree, final_xyz = _parse_opt_log(opt_path, '/dummy')
         self.assertEqual(n_steps, 4)
         self.assertIsNotNone(e_hartree)
         self.assertAlmostEqual(e_hartree, -116.986089069, places=6)
+        self.assertIsNotNone(final_xyz)
 
     def test_missing_file(self):
-        n_steps, e_hartree = _parse_opt_log('/nonexistent/file.log', '/tmp')
+        n_steps, e_hartree, final_xyz = _parse_opt_log('/nonexistent/file.log', '/tmp')
         self.assertIsNone(n_steps)
         self.assertIsNone(e_hartree)
+        self.assertIsNone(final_xyz)
 
     def test_none_path(self):
-        n_steps, e_hartree = _parse_opt_log(None, '/tmp')
+        n_steps, e_hartree, final_xyz = _parse_opt_log(None, '/tmp')
         self.assertIsNone(n_steps)
         self.assertIsNone(e_hartree)
+        self.assertIsNone(final_xyz)
 
     def test_parse_zpe_from_freq_log(self):
         """Parse ZPE from a real Gaussian freq log."""

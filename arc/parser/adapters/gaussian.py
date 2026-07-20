@@ -5,15 +5,19 @@ An adapter for parsing Gaussian log files.
 from abc import ABC
 
 import numpy as np
+import os
 import pandas as pd
 import re
 
-from arc.common import SYMBOL_BY_NUMBER, is_same_pivot
+from arc.common import SYMBOL_BY_NUMBER, is_same_pivot, get_logger
 from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import str_to_xyz, xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
 from arc.parser.parser import _get_lines_from_file, s_squared_expected_from_multiplicity
+
+
+logger = get_logger()
 
 
 class GaussianParser(ESSAdapter, ABC):
@@ -449,19 +453,23 @@ class GaussianParser(ESSAdapter, ABC):
             return zpe_hartree * E_h_kJmol
         return None
 
-    def parse_1d_scan_energies(self) -> tuple[list[float] | None, list[float] | None]:
+    def _parse_1d_scan_walk(self):
         """
-        Parse the 1D torsion scan energies from an ESS log file.
-
-        Returns: tuple[list[float] | None, list[float] | None]
-            The electronic energy in kJ/mol and the dihedral scan angle in degrees.
+        Walk the log once and return ``(vlist_hartree, angle_list, opt_freq, non_optimized)``,
+        or ``(None, None, _, _)`` on parse failure. ``vlist_hartree`` is the raw list of
+        absolute SCF energies (Hartree) for every point recorded by the optimizer
+        (including those flagged as non-optimized); ``angle_list`` is the matching list
+        of dihedral angles (degrees), already shifted to start at zero. The two filter
+        signals (``opt_freq``, ``non_optimized``) are applied by the caller so that the
+        legacy zero-against-full-min behavior of :meth:`parse_1d_scan_energies` is
+        preserved bit-for-bit.
         """
         opt_freq = False
         rigid_scan = False
         energy = None
-        vlist = []
-        non_optimized = []
-        angle = []
+        vlist: list[float] = []
+        non_optimized: list[int] = []
+        angle: list[float] = []
 
         scan_pivot_atoms = self.load_scan_pivot_atoms()
         internal_coord = f"D({','.join(str(i) for i in scan_pivot_atoms)})"
@@ -491,37 +499,75 @@ class GaussianParser(ESSAdapter, ABC):
                         continue
 
         if not vlist:
-            return None, None
+            return None, None, opt_freq, non_optimized
 
         if rigid_scan:
             try:
                 scan_angle_resolution_deg = self.load_scan_angle()
             except AttributeError:
-                return None, None
-            angle = [i * scan_angle_resolution_deg for i in range(len(vlist))]
+                return None, None, opt_freq, non_optimized
+            angle_list = [i * scan_angle_resolution_deg for i in range(len(vlist))]
         else:
-            angle = np.array(angle, float)
-            if len(angle) != len(vlist):
-                return None, None
-            angle -= angle[0]
-            angle[angle < 0] += 360.0
-            if len(angle) > 1 and angle[-1] < 2 * (angle[1] - angle[0]):
-                angle[-1] += 360.0
-            angle = angle.tolist()
+            angle_arr = np.array(angle, float)
+            if len(angle_arr) != len(vlist):
+                return None, None, opt_freq, non_optimized
+            angle_arr -= angle_arr[0]
+            angle_arr[angle_arr < 0] += 360.0
+            if len(angle_arr) > 1 and angle_arr[-1] < 2 * (angle_arr[1] - angle_arr[0]):
+                angle_arr[-1] += 360.0
+            angle_list = angle_arr.tolist()
 
-        vlist = np.array(vlist, float)
-        vlist -= np.min(vlist)
-        vlist *= E_h_kJmol
+        return vlist, angle_list, opt_freq, non_optimized
+
+    def parse_1d_scan_energies(self) -> tuple[list[float] | None, list[float] | None]:
+        """
+        Parse the 1D torsion scan energies from an ESS log file.
+
+        Returns: tuple[list[float] | None, list[float] | None]
+            The electronic energy in kJ/mol and the dihedral scan angle in degrees.
+        """
+        vlist, angle, opt_freq, non_optimized = self._parse_1d_scan_walk()
+        if vlist is None:
+            return None, None
+
+        # Preserve legacy ordering: zero against the full vlist's min, then convert,
+        # then apply opt_freq trim, then drop non-optimized indices.
+        v = np.array(vlist, float)
+        v -= np.min(v)
+        v *= E_h_kJmol
 
         if opt_freq:
-            vlist = vlist[:-1]
+            v = v[:-1]
             angle = angle[:-1]
 
         if non_optimized:
-            vlist = np.delete(vlist, non_optimized)
+            v = np.delete(v, non_optimized)
             angle = np.delete(angle, non_optimized)
 
-        return vlist.tolist(), angle
+        return v.tolist(), angle
+
+    def parse_1d_scan_energies_hartree(self) -> tuple[list[float] | None, list[float] | None]:
+        """
+        Parse the 1D torsion scan absolute electronic energies in Hartree.
+
+        Returns: tuple[list[float] | None, list[float] | None]
+            The absolute electronic energy in Hartree and the dihedral scan angle
+            in degrees, with the same point-filtering applied as
+            :meth:`parse_1d_scan_energies` (opt_freq tail dropped, non-optimized
+            indices removed). Returns ``(None, None)`` on parse failure.
+        """
+        vlist, angle, opt_freq, non_optimized = self._parse_1d_scan_walk()
+        if vlist is None:
+            return None, None
+        if opt_freq:
+            vlist = vlist[:-1]
+            angle = angle[:-1]
+        if non_optimized:
+            drop = set(non_optimized)
+            keep = [i for i in range(len(vlist)) if i not in drop]
+            vlist = [vlist[i] for i in keep]
+            angle = [angle[i] for i in keep]
+        return vlist, angle
 
     def parse_1d_scan_coords(self) -> list[dict[str, tuple]] | None:
         """
@@ -717,6 +763,155 @@ class GaussianParser(ESSAdapter, ABC):
                 'xyz': xyz,
             })
             i = p + 1 if p < coordinate_end else k
+        """
+        Parse the IRC path with per-point structured data.
+
+        Walks the Gaussian log once and emits one record per converged
+        IRC point that carries a CURRENT STRUCTURE block. Records are in
+        file order — the TS seed (Point Number: 0) has no structure block
+        in Gaussian logs and is therefore not emitted; the caller is
+        expected to supply a TS reference energy separately.
+
+        Returns: list[dict] | None
+            A list of point dicts. Keys (any may be ``None`` if absent
+            from the log):
+
+              - ``point_number`` (int): Gaussian's per-branch index.
+              - ``direction`` (str | None): ``'forward'`` / ``'reverse'``,
+                taken from the ``Point Number N in FORWARD/REVERSE path
+                direction.`` announcement that precedes the converged
+                block. ``None`` if no announcement was seen yet.
+              - ``electronic_energy_hartree`` (float | None): the most
+                recent ``SCF Done`` energy preceding the converged block.
+              - ``max_gradient`` (float | None): max Cartesian force
+                (Hartrees/Bohr).
+              - ``rms_gradient`` (float | None): RMS Cartesian force.
+              - ``reaction_coordinate`` (float | None): ``NET REACTION
+                COORDINATE UP TO THIS POINT`` (sqrt(amu)*bohr in
+                Gaussian's mass-weighted convention).
+              - ``xyz`` (dict | None): the parsed Cartesian geometry,
+                in ARC's standard xyz dict shape.
+        """
+        lines = _get_lines_from_file(self.log_file_path)
+        num_pat = r"[-+]?\d*\.?\d+(?:[EDed][-+]?\d+)?"
+        energy_re = re.compile(r"SCF Done:\s+E\([^)]*\)\s*=\s*(" + num_pat + r")")
+        forces_re = re.compile(
+            r"Cartesian Forces:\s+Max\s+(" + num_pat + r")\s+RMS\s+(" + num_pat + r")"
+        )
+        dir_re = re.compile(
+            r"Point Number\s+\d+\s+in\s+(FORWARD|REVERSE)\s+path direction"
+        )
+        point_re = re.compile(r"Point Number:\s+(\d+)\s+Path Number:\s+(\d+)")
+        rc_re = re.compile(
+            r"NET REACTION COORDINATE UP TO THIS POINT\s*=\s*(" + num_pat + r")"
+        )
+
+        def _to_float(text: str) -> float | None:
+            try:
+                return float(text.replace('D', 'E').replace('d', 'e'))
+            except (ValueError, TypeError):
+                return None
+
+        points: list[dict] = []
+        cur_dir: str | None = None
+        last_energy: float | None = None
+        last_max_grad: float | None = None
+        last_rms_grad: float | None = None
+
+        i = 0
+        n = len(lines)
+        while i < n:
+            line = lines[i]
+            m = energy_re.search(line)
+            if m:
+                last_energy = _to_float(m.group(1))
+                i += 1
+                continue
+            m = forces_re.search(line)
+            if m:
+                last_max_grad = _to_float(m.group(1))
+                last_rms_grad = _to_float(m.group(2))
+                i += 1
+                continue
+            m = dir_re.search(line)
+            if m:
+                cur_dir = m.group(1).lower()
+                i += 1
+                continue
+            m = point_re.search(line)
+            if m:
+                point_num = int(m.group(1))
+                # Look for CURRENT STRUCTURE within a small window. Gaussian
+                # emits the converged-point block as
+                #   Point Number: N    Path Number: M
+                #                 CURRENT STRUCTURE
+                #                 Cartesian Coordinates (Ang):
+                # Point 0 (the TS seed) has no CURRENT STRUCTURE block —
+                # we skip it; the caller supplies a TS reference energy
+                # outside of this parser.
+                j = i + 1
+                window_end = min(j + 6, n)
+                struct_start = None
+                while j < window_end:
+                    if 'CURRENT STRUCTURE' in lines[j]:
+                        struct_start = j
+                        break
+                    j += 1
+                if struct_start is None:
+                    i += 1
+                    continue
+                # Walk past two dashed boundary lines, then read coord
+                # rows (atom_index atomic_number x y z) until the closing
+                # dashed line.
+                k = struct_start + 1
+                dash_count = 0
+                while k < n and dash_count < 2:
+                    if '----' in lines[k]:
+                        dash_count += 1
+                    k += 1
+                coords: list[list[float]] = []
+                numbers: list[int] = []
+                while k < n and '----' not in lines[k]:
+                    parts = lines[k].split()
+                    if len(parts) >= 5:
+                        try:
+                            atomic_num = int(parts[1])
+                            x, y, z = float(parts[2]), float(parts[3]), float(parts[4])
+                        except (ValueError, IndexError):
+                            k += 1
+                            continue
+                        coords.append([x, y, z])
+                        numbers.append(atomic_num)
+                    k += 1
+                xyz = (
+                    xyz_from_data(coords=np.array(coords), numbers=numbers)
+                    if coords and numbers
+                    else None
+                )
+                # NET REACTION COORDINATE shows up within ~6 lines after
+                # the closing dashed boundary; cap the lookahead so we
+                # never spill into the next point's block.
+                rc: float | None = None
+                rc_end = min(k + 8, n)
+                p = k
+                while p < rc_end:
+                    rc_match = rc_re.search(lines[p])
+                    if rc_match:
+                        rc = _to_float(rc_match.group(1))
+                        break
+                    p += 1
+                points.append({
+                    "point_number": point_num,
+                    "direction": cur_dir,
+                    "electronic_energy_hartree": last_energy,
+                    "max_gradient": last_max_grad,
+                    "rms_gradient": last_rms_grad,
+                    "reaction_coordinate": rc,
+                    "xyz": xyz,
+                })
+                i = p + 1 if p < rc_end else k
+                continue
+            i += 1
 
         return points or None
 
@@ -1208,6 +1403,240 @@ def parse_str_blocks(file_path: str,
         if len(blks) > 0 and (tail_repeat != tail_count):
             blks.pop()
         return blks
+
+
+_GAUSSIAN_LETTER_TO_TCKDB_KIND: dict[str, tuple[str, int]] = {
+    'X': ('cartesian_atom', 1),
+    'B': ('bond', 2),
+    'A': ('angle', 3),
+    'D': ('dihedral', 4),
+}
+
+# Letters Gaussian ModRedundant uses for non-constraint coordinate types
+# (linear bend, out-of-plane bookkeeping). Recognised so the caller logs
+# at debug rather than warning.
+_GAUSSIAN_NON_CONSTRAINT_LETTERS: frozenset[str] = frozenset({'L', 'O'})
+
+
+def _gaussian_letter_to_tckdb_kind(letter: str, n_atoms: int) -> str | None:
+    """Map a Gaussian ModRedundant coordinate letter to a TCKDB constraint kind.
+
+    Returns None for ModRedundant coordinate types that TCKDB does not model
+    as calculation constraints (L/O), unknown letters, or any letter whose
+    arity does not match the atom-count in the parsed line.
+    """
+    entry = _GAUSSIAN_LETTER_TO_TCKDB_KIND.get(letter)
+    if entry is None:
+        return None
+    kind, expected_n = entry
+    if n_atoms != expected_n:
+        return None
+    return kind
+
+
+def parse_gaussian_constraints(file_path: str) -> list[dict]:
+    """Parse held-fixed coordinate constraints from a Gaussian input deck or log.
+
+    Reads either a Gaussian input deck (the ``.gjf``-style file ARC writes
+    via ``arc/job/adapters/gaussian.py``) or a Gaussian log file's
+    ``ModRedundant input section has been read:`` block. Returns one record
+    per ``F`` (frozen) coordinate; ``S`` (scan) coordinates are deliberately
+    excluded — those belong in ``scan_result.coordinates[]``, not in
+    ``calculation.constraints[]``.
+
+    Each record has the shape::
+
+        {
+            'constraint_kind': 'cartesian_atom' | 'bond' | 'angle' | 'dihedral',
+            'atoms': [int, ...],            # 1-based atom indices
+            'target_value': float | None,   # None when no value parsed
+        }
+
+    The function never raises on malformed input: unparseable lines are
+    skipped and logged at warning level. Returns ``[]`` when the file
+    doesn't exist or contains no recognised constraints.
+    """
+    try:
+        lines = _read_modredundant_block(file_path)
+    except (OSError, IOError) as exc:
+        logger.warning("parse_gaussian_constraints: cannot read %s: %s",
+                       file_path, exc)
+        return []
+
+    constraints: list[dict] = []
+    for raw in lines:
+        record = _parse_gaussian_constraint_line(raw)
+        if record is not None:
+            constraints.append(record)
+    return constraints
+
+
+def _read_modredundant_block(file_path: str) -> list[str]:
+    """Return candidate ModRedundant lines from a Gaussian input deck OR log file.
+
+    Heuristic: if the file contains
+    ``"The following ModRedundant input section has been read:"`` (a log),
+    return the lines between that marker and the next blank line / known
+    end-of-block sentinel. Otherwise treat the file as an input deck and
+    return every line that begins with a constraint-coordinate letter
+    (B/A/D/X/L/O) — Gaussian decks place ModRedundant lines after a blank
+    line at the bottom of the file, but we don't depend on the exact
+    layout.
+    """
+    with open(file_path, 'r') as f:
+        all_lines = f.readlines()
+
+    log_marker = 'The following ModRedundant input section has been read:'
+    for idx, line in enumerate(all_lines):
+        if log_marker in line:
+            block: list[str] = []
+            for follow in all_lines[idx + 1:]:
+                stripped = follow.strip()
+                if not stripped:
+                    break
+                # Gaussian's log echoes the block then prints either a
+                # blank line or a non-constraint line; the leading-letter
+                # filter below also catches the Isotopes/GradGrad sentinels.
+                first = stripped.split()[0].upper()
+                if first not in _GAUSSIAN_LETTER_TO_TCKDB_KIND \
+                        and first not in _GAUSSIAN_NON_CONSTRAINT_LETTERS:
+                    break
+                block.append(stripped)
+            return block
+
+    # No ModRedundant marker. Only run the deck-line heuristic on actual
+    # input decks — applying it to a log file scans every Berny optimizer
+    # diagnostic / banner line whose first token is a single letter and
+    # floods the user with false-positive warnings.
+    if os.path.splitext(file_path)[1].lower() not in ('.gjf', '.com'):
+        return []
+
+    # Input deck path: pick lines whose first token is a coordinate letter.
+    deck_lines: list[str] = []
+    for line in all_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        first = stripped.split()[0].upper()
+        if first in _GAUSSIAN_LETTER_TO_TCKDB_KIND \
+                or first in _GAUSSIAN_NON_CONSTRAINT_LETTERS:
+            deck_lines.append(stripped)
+    return deck_lines
+
+
+def _parse_gaussian_constraint_line(line: str) -> dict | None:
+    """Parse one ModRedundant line into a constraint record, or None.
+
+    Honours:
+        - Only ``F`` (frozen) coordinates are emitted as constraints;
+          ``S`` (scan) and ``B`` (build/define) action codes return None.
+        - Lines without an explicit action code default to ``F`` (Gaussian's
+          implicit-freeze convention; mirrors the existing ``_load_scan_specs``
+          logic in this file).
+        - Optional target value preceding the action code is preserved
+          when present and parseable; absent or unparseable values yield
+          ``target_value=None``.
+    """
+    tokens = line.split()
+    if not tokens:
+        return None
+    letter = tokens[0].upper()
+
+    if letter in _GAUSSIAN_NON_CONSTRAINT_LETTERS:
+        logger.debug("parse_gaussian_constraints: skipping non-constraint "
+                     "coordinate type %s in line: %s", letter, line)
+        return None
+
+    if letter not in _GAUSSIAN_LETTER_TO_TCKDB_KIND:
+        logger.warning("parse_gaussian_constraints: unknown ModRedundant "
+                       "letter %s in line: %s", letter, line)
+        return None
+
+    _kind_name, expected_n = _GAUSSIAN_LETTER_TO_TCKDB_KIND[letter]
+
+    # Atom indices are tokens[1 : 1 + expected_n] when the line is well-formed.
+    if len(tokens) < 1 + expected_n:
+        logger.warning("parse_gaussian_constraints: line has too few tokens "
+                       "for letter %s (expected %d atoms): %s",
+                       letter, expected_n, line)
+        return None
+
+    try:
+        atoms = [int(tok) for tok in tokens[1:1 + expected_n]]
+    except ValueError:
+        logger.warning("parse_gaussian_constraints: non-integer atom index "
+                       "in line: %s", line)
+        return None
+
+    kind = _gaussian_letter_to_tckdb_kind(letter, len(atoms))
+    if kind is None:
+        logger.warning("parse_gaussian_constraints: arity mismatch for "
+                       "letter %s with %d atoms in line: %s",
+                       letter, len(atoms), line)
+        return None
+
+    # Action code + target value are after the atoms. The shape is one of:
+    #   <letter> <atoms...>                         → implicit F
+    #   <letter> <atoms...> F                       → explicit F, no value
+    #   <letter> <atoms...> = <value> F             → '=' separated value
+    #   <letter> <atoms...> <value> F               → bare numeric value
+    #   <letter> <atoms...> S <step> <step_size>    → scan, skip
+    rest = tokens[1 + expected_n:]
+    action, target_value = _extract_modredundant_action(rest)
+
+    if action == 'S':
+        # Scan coordinate; not a held constraint.
+        return None
+    if action == 'B':
+        # Build/define-only; not a held constraint.
+        return None
+    if action != 'F':
+        # Anything we don't recognise (K/H/R/...): conservatively skip.
+        logger.debug("parse_gaussian_constraints: skipping line with action "
+                     "%r: %s", action, line)
+        return None
+
+    return {
+        'constraint_kind': kind,
+        'atoms': atoms,
+        'target_value': target_value,
+    }
+
+
+def _extract_modredundant_action(rest: list[str]) -> tuple[str, float | None]:
+    """Read the action code + optional target value from the tail of a ModRedundant line.
+
+    ``rest`` is the slice of tokens *after* the atom indices. Returns
+    ``(action, target_value)`` where ``action`` defaults to ``'F'`` when
+    the tail is empty (Gaussian's implicit-freeze convention).
+    """
+    target_value: float | None = None
+    action = 'F'
+    if not rest:
+        return action, target_value
+
+    # Strip leading '=' if present ("D 1 2 3 4 = 180.0 F" form).
+    cleaned: list[str] = []
+    for tok in rest:
+        if tok == '=':
+            continue
+        # Token like "=180.0" — split off the leading '='.
+        if tok.startswith('=') and len(tok) > 1:
+            cleaned.append(tok[1:])
+        else:
+            cleaned.append(tok)
+
+    # If a numeric token precedes the action code, that's the target value.
+    for tok in cleaned:
+        if tok.upper() in {'F', 'S', 'B', 'K', 'H', 'R', 'D', 'A'}:
+            action = tok.upper()
+            break
+        try:
+            target_value = float(tok)
+        except ValueError:
+            # Unparseable token before the action — leave value as-is.
+            continue
+    return action, target_value
 
 
 def parse_scan_args(file_path: str) -> dict:

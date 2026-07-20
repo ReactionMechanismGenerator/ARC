@@ -10,12 +10,15 @@ import os
 import pandas as pd
 import re
 
-from arc.common import SYMBOL_BY_NUMBER
+from arc.common import SYMBOL_BY_NUMBER, get_logger
 from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import str_to_xyz, xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
 from arc.parser.parser import _get_lines_from_file, s_squared_expected_from_multiplicity
+
+
+logger = get_logger()
 
 
 class OrcaParser(ESSAdapter, ABC):
@@ -528,6 +531,122 @@ class OrcaParser(ESSAdapter, ABC):
                 if m:
                     return f'ORCA {m.group(1)}'
         return None
+
+
+_ORCA_LETTER_TO_TCKDB_KIND: dict[str, tuple[str, int]] = {
+    'C': ('cartesian_atom', 1),
+    'B': ('bond', 2),
+    'A': ('angle', 3),
+    'D': ('dihedral', 4),
+}
+
+
+def parse_orca_constraints(file_path: str) -> list[dict]:
+    """Parse held-fixed constraints from an ORCA input deck (best-effort).
+
+    Recognises the standard ORCA ``%geom Constraints`` block::
+
+        %geom Constraints
+          { B 0 1 1.4 C }
+          { A 0 1 2 90.0 C }
+          { D 0 1 2 3 180.0 C }
+          { C 0 C }
+        end
+
+    Notes / known limitations:
+        - ORCA atom indices in the input deck are 0-based; this parser
+          converts them to TCKDB's 1-based convention at the boundary.
+        - ARC's ORCA adapter does not currently emit ``%geom Constraints``
+          blocks (only ``%geom Scan``). This parser is therefore mainly
+          defensive — it handles user-supplied decks and any future ARC
+          emission. Scan blocks are *not* parsed as constraints.
+        - Variants like ``optimize { B i j C }`` (single-coordinate form)
+          and ``Constraints` blocks scattered across multiple ``%geom``
+          sections are recognised; everything else is ignored with a
+          debug log rather than failing the whole parse.
+
+    Returns ``[]`` on file read errors or when no recognised
+    ``Constraints`` block is found.
+    """
+    try:
+        with open(file_path, 'r') as f:
+            text = f.read()
+    except (OSError, IOError) as exc:
+        logger.warning("parse_orca_constraints: cannot read %s: %s",
+                       file_path, exc)
+        return []
+
+    constraints: list[dict] = []
+    # Find every Constraints block: from 'Constraints' up to the matching
+    # 'end' (case-insensitive). ORCA blocks are not nested.
+    pattern = re.compile(r'Constraints(.*?)end', re.IGNORECASE | re.DOTALL)
+    for match in pattern.finditer(text):
+        block = match.group(1)
+        for raw in block.splitlines():
+            record = _parse_orca_constraint_line(raw)
+            if record is not None:
+                constraints.append(record)
+    return constraints
+
+
+def _parse_orca_constraint_line(line: str) -> dict | None:
+    """Parse one ``{ B i j v C }``-style ORCA constraint line into a record.
+
+    ORCA constraint syntax inside ``%geom Constraints``::
+
+        { <letter> <atom indices...> [<value>] C }
+
+    The trailing ``C`` flags the coordinate as constrained. ``value`` is
+    optional. Atom indices are converted from 0-based (ORCA) to 1-based
+    (TCKDB). Unparseable lines return None and are skipped silently at
+    debug level so the rest of the block still parses.
+    """
+    stripped = line.strip()
+    if not stripped or stripped.startswith('#'):
+        return None
+    # Tolerate either '{' or no braces (rare hand-written variants).
+    inner = stripped.strip('{}').strip()
+    if not inner:
+        return None
+    tokens = inner.split()
+    if len(tokens) < 2:
+        return None
+    letter = tokens[0].upper()
+    entry = _ORCA_LETTER_TO_TCKDB_KIND.get(letter)
+    if entry is None:
+        logger.debug("parse_orca_constraints: skipping unrecognised letter "
+                     "%s in line: %s", letter, line)
+        return None
+    kind, expected_n = entry
+
+    if len(tokens) < 1 + expected_n:
+        logger.debug("parse_orca_constraints: too few atom tokens for letter "
+                     "%s (need %d): %s", letter, expected_n, line)
+        return None
+
+    try:
+        zero_based = [int(tok) for tok in tokens[1:1 + expected_n]]
+    except ValueError:
+        logger.debug("parse_orca_constraints: non-integer atom index in: %s",
+                     line)
+        return None
+    atoms = [a + 1 for a in zero_based]
+
+    target_value: float | None = None
+    rest = tokens[1 + expected_n:]
+    for tok in rest:
+        if tok.upper() == 'C':
+            break
+        try:
+            target_value = float(tok)
+        except ValueError:
+            continue
+
+    return {
+        'constraint_kind': kind,
+        'atoms': atoms,
+        'target_value': target_value,
+    }
 
 
 register_ess_adapter('orca', OrcaParser)

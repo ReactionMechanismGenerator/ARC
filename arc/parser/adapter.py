@@ -198,6 +198,22 @@ class ESSAdapter(ABC):
         """
         pass
 
+    def parse_1d_scan_energies_hartree(self) -> tuple[list[float] | None, list[float] | None]:
+        """
+        Parse the 1D torsion scan absolute electronic energies in Hartree.
+
+        Default returns ``(None, None)`` so adapters that haven't implemented
+        Hartree-preserving extraction don't break the new
+        :func:`parse_1d_scan_full_result` wrapper. Callers must treat absence as
+        "absolute energies unavailable for this ESS" and not as an error.
+
+        Returns: tuple[list[float] | None, list[float] | None]
+            The absolute electronic energy in Hartree and the dihedral scan angle
+            in degrees, with the same point-filtering applied as
+            :meth:`parse_1d_scan_energies`.
+        """
+        return None, None
+
     def parse_opt_steps(self) -> int | None:
         """
         Parse the number of geometry optimization steps from an opt job output file.

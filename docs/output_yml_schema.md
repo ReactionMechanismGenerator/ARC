@@ -45,7 +45,7 @@ output.yml
 │       ├── ess_versions?
 │       ├── thermo?
 │       │   ├── h298_kj_mol, s298_j_mol_k, tmin_k, tmax_k
-│       │   ├── cp_data?: [{temperature_k, cp_j_mol_k}, ...]
+│       │   ├── thermo_points?: [{temperature_k, cp_j_mol_k, h_kj_mol, s_j_mol_k, g_kj_mol}, ...]
 │       │   ├── nasa_low?: {tmin_k, tmax_k, coeffs}
 │       │   └── nasa_high?: {tmin_k, tmax_k, coeffs}
 │       └── statmech?
@@ -59,6 +59,7 @@ output.yml
 │   └── (all species fields, plus:)
 │       ├── chosen_ts_method?, successful_ts_methods?
 │       ├── neb_log?, gsm_log?, irc_logs: [], irc_log_directions: [], irc_converged?
+│       ├── neb_log?, gsm_log?, irc_logs: [], irc_converged?
 │       └── rxn_label
 │
 └── reactions: []
@@ -172,16 +173,19 @@ All paths are relative to the project directory.
 | `s298_j_mol_k` | `float` | Standard entropy at 298 K (J/(mol K)) |
 | `tmin_k` | `float` | Minimum temperature (K) |
 | `tmax_k` | `float` | Maximum temperature (K) |
-| `cp_data` | `list?` | Tabulated heat capacity (see below) |
+| `thermo_points` | `list?` | Tabulated per-temperature thermochemistry (see below) |
 | `nasa_low` | `dict?` | Low-temperature NASA polynomial |
 | `nasa_high` | `dict?` | High-temperature NASA polynomial |
 
-**`cp_data`** entries:
+**`thermo_points`** entries (one per evaluation temperature; `temperature_k` is required, all others are optional but emitted by default when produced via `arc/scripts/save_arkane_thermo.py`):
 
 | Field | Type | Description |
 |---|---|---|
 | `temperature_k` | `float` | Temperature (K) |
-| `cp_j_mol_k` | `float` | Heat capacity at constant pressure (J/(mol K)) |
+| `cp_j_mol_k` | `float?` | Heat capacity at constant pressure (J/(mol K)) |
+| `h_kj_mol`    | `float?` | Enthalpy at this temperature (kJ/mol) |
+| `s_j_mol_k`   | `float?` | Entropy at this temperature (J/(mol K)) |
+| `g_kj_mol`    | `float?` | Gibbs free energy at this temperature (kJ/mol) |
 
 **`nasa_low` / `nasa_high`**:
 
@@ -232,6 +236,8 @@ All paths are relative to the project directory.
 | `successful_ts_methods` | `list[str]?` | All TS methods that succeeded |
 | `neb_log` | `str?` | Run-relative path to NEB log |
 | `gsm_log` | `str?` | Run-relative path to the selected GSM stringfile |
+| `neb_log` | `str?` | Run-relative path to NEB log (set when chosen TS method is `orca_neb`) |
+| `gsm_log` | `str?` | Run-relative path to GSM stringfile (set when chosen TS method is `xtb_gsm`) |
 | `irc_logs` | `list[str]` | Run-relative paths to IRC logs |
 | `irc_log_directions` | `list[str?]` | Forward/reverse direction in lockstep with `irc_logs` |
 | `irc_converged` | `bool?` | Whether IRC converged (`null` if IRC was not requested) |
