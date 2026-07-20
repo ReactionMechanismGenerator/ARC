@@ -95,6 +95,12 @@ ARC into scripts, or work in a notebook:
 ``ARC`` also accepts species and reaction dictionaries, so YAML-style inputs can
 be converted into API calls without manually constructing every object.
 
+Running ARC in `Jupyter notebooks`__ (which come pre-installed with Anaconda) has
+the added benefit of displaying "live" and interactive 3D geometries for the
+species of interest.
+
+__ jupyter_
+
 Run Locally
 -----------
 
@@ -168,5 +174,7 @@ Arkane directly:
 
 For a source installation, make sure ``RMG_PY_PATH`` and ``RMG_DB_PATH`` point to
 valid checkouts before running Arkane.
+
+See the `Arkane`_ documentation for input file details.
 
 .. include:: links.txt

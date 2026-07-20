@@ -3,16 +3,31 @@
 Transition State Search
 =======================
 
-ARC can automatically search for and validate transition states (TSs) for selected reaction types.
-This section describes currently supported TS-search workflows and how to use them through ARC input files.
+ARC can automatically search for and validate transition states (TSs) for a wide
+range of reaction types, from fast heuristic builders to machine-learning and
+reaction-path approaches. This section describes the currently supported TS-search
+methods and how to use them through ARC input files.
+
+All methods are registered as **TS adapters** and configured via the ``ts_adapters``
+list in the ARC input file. ARC tries each adapter in order and collects all
+resulting TS guesses for downstream optimization and validation (energy, frequency,
+and IRC).
+
+ARC-native methods
+------------------
+
+These methods are implemented directly inside ARC and do not require any external
+package beyond the standard ARC environment.
 
 Heuristics adapter
 ^^^^^^^^^^^^^^^^^^
 
 ARC includes an internal TS-guess adapter named ``heuristics``. The implementation
 lives in ``arc/job/adapters/ts/heuristics.py`` and runs incore; it generates
-candidate TS geometries directly from the mapped reactant and product wells
-rather than submitting a separate external TS-search program.
+candidate TS geometries directly from the mapped reactant and product wells and the
+RMG reaction-family template rather than submitting a separate external TS-search
+program. It does not perform any electronic-structure calculation; TS construction is
+purely geometric.
 
 The current heuristic adapter supports:
 
@@ -47,7 +62,7 @@ Use it by listing ``heuristics`` under ``ts_adapters``:
    }
 
 Hydrogen abstraction heuristic TS search
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+""""""""""""""""""""""""""""""""""""""""
 
 For RMG ``H_Abstraction`` reactions, the heuristic adapter constructs TS guesses
 for reactions of the form:
@@ -57,10 +72,13 @@ for reactions of the form:
    R1-H + R2 <=> R1 + R2-H
 
 The algorithm identifies the transferred hydrogen and the two reacting centers
-from the mapped reaction, combines reactant/product geometries, stretches the
-forming and breaking H bonds, and samples relevant dihedral angles. Duplicate
-and colliding geometries are filtered before ARC stores the remaining guesses as
-``TSGuess(method='Heuristics')`` entries.
+from the mapped reaction, places the abstracted hydrogen between the donor and
+acceptor heavy atoms at Pauling partial-bond distances, combines reactant/product
+geometries, stretches the forming and breaking H bonds, and scans the approach
+dihedral at a configurable increment to generate multiple rotamer guesses. The
+``dihedral_increment`` keyword controls the rotational scan resolution (default 30°;
+smaller values yield more guesses). Duplicate and colliding geometries are filtered
+before ARC stores the remaining guesses as ``TSGuess(method='Heuristics')`` entries.
 
 At minimum, the reaction must have:
 
@@ -102,14 +120,14 @@ checks for a single meaningful imaginary frequency, optionally runs IRCs, and
 uses the successful TS in kinetics processing.
 
 Neutral hydrolysis TS search
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+""""""""""""""""""""""""""""
 
 ARC supports automated TS generation and validation for **neutral hydrolysis reactions**.
 This capability is designed to start from a high-level reaction definition (e.g., SMILES-defined reactants/products)
 and proceed through TS generation, optimization, and validation without requiring manual TS construction.
 
 Supported sub-families
-""""""""""""""""""""""
+~~~~~~~~~~~~~~~~~~~~~~~
 The current implementation supports the following neutral hydrolysis sub-families:
 
 - Ester hydrolysis
@@ -119,7 +137,7 @@ The current implementation supports the following neutral hydrolysis sub-familie
 - Nitrile hydrolysis
 
 How it is used
-""""""""""""""
+~~~~~~~~~~~~~~
 To run neutral hydrolysis TS search, define the reacting species and the overall reaction in the input file
 (see ARC's examples folder for an input file that executes a neutral hydrolysis TS search).
 At minimum, specify:
@@ -130,7 +148,7 @@ At minimum, specify:
 - The electronic structure levels used for optimization/validation (e.g., ``opt_level``, ``freq_level``, ``irc_level``)
 
 What ARC does
-""""""""""""""""""""""""""
+~~~~~~~~~~~~~
 For neutral hydrolysis reactions, ARC performs the following general steps:
 
 1. Identify the relevant reactive atoms based on the reaction family definition.
@@ -138,18 +156,160 @@ For neutral hydrolysis reactions, ARC performs the following general steps:
 3. Optimize the TS candidates that pass internal filtration.
 4. Validate the TS using vibrational frequency and IRC calculations.
 
+Linear interpolation adapter
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``linear`` adapter is an in-core adapter that generates TS guess geometries by
+interpolating internal coordinates (Z-matrices) between reactant and product. It
+handles both isomerization (A ⇌ B) and addition/dissociation (A ⇌ B + C) reactions,
+covering many families that ``heuristics`` does not support.
+
+For **isomerization** reactions, a strategy pipeline is executed for each reaction
+path identified from the RMG template:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Strategy
+     - Description
+   * - Ring scission
+     - Folds the reactant chain into a ring, then stretches breaking bonds.
+       Used for ring-opening reactions discovered in reverse.
+   * - Direct contraction
+     - Moves a terminal group toward its forming-bond partner. Useful for
+       radical ring-closure reactions (e.g., Intra_R_Add_Exocyclic).
+   * - Ring closure
+     - Rotates backbone torsions to close a forming bond into a ring.
+   * - Z-matrix interpolation
+     - The core method. Builds two Z-matrix chimeras (Type R from the
+       reactant topology, Type P from the product topology), blends them at
+       the interpolation weight, and converts back to Cartesian coordinates.
+       Only coordinates referencing reactive atoms are interpolated; spectator
+       coordinates are kept from the source geometry.
+   * - 3-center shift
+     - Repositions a migrating atom (e.g., halogen, sulfur) between its
+       donor and acceptor for 1,2-shift reactions.
+
+For **addition/dissociation** reactions, the adapter starts from the unimolecular
+species and:
+
+1. Identifies which bonds to cut using the RMG template or combinatorial
+   fragmentation.
+2. Stretches the fragments apart to Pauling TS-estimate distances.
+3. Migrates atoms (typically H) between fragments when the product
+   composition requires it.
+4. For concerted multi-bond eliminations (e.g., XY_elimination producing
+   C=C + H₂ + CO₂), a concerted builder simultaneously stretches breaking
+   bonds and contracts forming bonds.
+
+**Dedicated family builders:**
+
+* **XY elimination hydroxyl** — builds a 6-membered ring TS by folding the
+  molecule through three dihedral rotations, then setting element-specific
+  Pauling distances (H–H short, H–O shorter than H–C, C–C long).
+
+**Post-processing:** every guess goes through family-specific post-processing
+(forming-bond triangulation for H-transfer, donor H staggering, umbrella inversion
+for migrating groups, reactive-bond distance adjustment, H orientation correction)
+and validation (collision detection, detached-atom checks, fragment counting,
+backbone drift, family-specific motif filters).
+
+Set ``ts_adapters: ['heuristics', 'linear']`` to run both native adapters. The
+linear adapter is complementary to heuristics.
+
+External-package methods
+------------------------
+
+These methods rely on external packages that must be installed separately. See
+:ref:`installation` for setup instructions.
+
+AutoTST (``'autotst'``)
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Uses the `AutoTST <https://github.com/ReactionMechanismGenerator/AutoTST>`_
+package to generate TS guesses from RMG reaction templates. AutoTST performs
+systematic conformer searches of the TS using distance-geometry embedding and
+RDKit force-field optimization, guided by the reaction family template distances.
+
+Runs as a subprocess. Requires the ``autotst`` conda environment.
+
+KinBot (``'kinbot'``)
+^^^^^^^^^^^^^^^^^^^^^
+
+Uses the `KinBot <https://github.com/zadorlab/KinBot>`_ package, which performs
+automated reaction discovery and TS search using semiempirical or DFT methods.
+KinBot explores the potential energy surface starting from a given species and
+locates TS geometries for elementary reactions.
+
+Runs as a subprocess. Requires the ``kinbot`` conda environment.
+
+TS-GCN (``'gcn'``)
+^^^^^^^^^^^^^^^^^^
+
+Uses a graph-convolutional neural network (TS-GCN) trained on DFT-optimized TS
+geometries to predict 3D TS structures directly from the reactant and product
+graphs. This is the fastest external method but is limited to the atom types and
+reaction classes in its training data.
+
+Runs as a subprocess. Requires the ``ts_gcn`` conda environment.
+
+xTB-GSM (``'xtb_gsm'``)
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Uses the `Growing String Method (GSM)
+<https://github.com/ZimmermanGroup/molecularGSM>`_ with the GFN2-xTB
+semiempirical method to locate approximate TS geometries along the
+minimum-energy path between reactant and product. This is a reaction-path method
+rather than a guess-based method, so it tends to produce higher-quality initial TS
+geometries at the cost of longer compute time.
+
+Runs as a subprocess. Requires ``xtb`` and ``gsm`` executables.
+
+ORCA NEB (``'orca_neb'``)
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Uses ORCA's nudged elastic band (NEB) implementation to find the minimum-energy
+path and locate the TS as the highest-energy image. This is a DFT-level
+reaction-path method and produces high-quality TS geometries, but is significantly
+more expensive than the heuristic methods.
+
+Requires a configured ORCA installation and server access.
+
+General workflow
+----------------
+
+Regardless of which adapter(s) are used, ARC follows the same general workflow
+for each reaction:
+
+1. **TS guess generation** — each adapter produces one or more candidate TS
+   geometries.
+2. **Clustering** — near-duplicate guesses are removed.
+3. **Optimization** — each surviving guess is optimized at the specified level
+   of theory.
+4. **Validation** — frequency analysis confirms exactly one meaningful imaginary
+   frequency, and IRC calculations verify that the TS connects the correct
+   reactant and product wells.
+
+Multiple adapters can be combined (e.g., ``ts_adapters: ['heuristics', 'linear',
+'gcn', 'kinbot']``) to maximize coverage across reaction families.
+
 Outputs and validation
-""""""""""""""""""""""
+----------------------
 Validated TS results are reported in the project output (log files and generated artifacts),
 together with the supporting calculations (optimization, frequency, and IRC).
 ARC does not require TS geometries to be isomorphic with a stored 2D adjacency list, since a TS does not have a
 single strict graph representation. Instead, TS validation relies on TS-specific checks such as the imaginary
 frequency, normal mode displacement analysis, IRC results, and energetic consistency.
 
-Reference
-"""""""""
-A detailed description of the methodology, design choices, and validation benchmarks is provided in:
-L. Fahoum, A. Grinberg Dana, *“Automated Reaction Transition State Search for Neutral Hydrolysis Reactions”*,
-Digital Discovery, 2026.
+References
+----------
+
+[1] C. Pieters, A. Grinberg Dana, *"Learning Rates: Predicting Rate Coefficients for Hydrogen Abstraction Reactions"*,
+Digital Discovery 2026.
+
+[2] L. Fahoum, A. Grinberg Dana, *"Automated reaction transition state search for bimolecular liquid-phase reactions
+using internal coordinates: a test case for neutral hydrolysis"*, Digital Discovery 2026, 5, 1372-1387,
+DOI: 10.1039/D5DD00506J.
 
 .. include:: links.txt

@@ -50,7 +50,8 @@ Available Notebooks
 
 ``Visualize 2D Torsion scan.ipynb``
     Plots a two-dimensional rotor scan from the YAML files ARC creates for scan
-    surfaces. It can also show the conformer closest to selected dihedral values.
+    surfaces. It can also show the conformer closest to selected dihedral values,
+    and lets you change the colormap and resolution of the resulting image.
 
     GitHub: `Visualize 2D torsion scan notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/Visualize%202D%20Torsion%20scan.ipynb>`__
 
@@ -87,8 +88,11 @@ Available Notebooks
 
     .. warning::
 
-       This notebook can delete running jobs. Use it only when you understand
-       the selected server, user, and job-name filter.
+       This notebook can cause unintentional loss of data (running jobs). It might
+       delete non-ARC-related jobs, and it will delete ARC jobs of all projects you
+       are currently running on the selected server(s). Use it only when you
+       understand exactly what it does and the selected server, user, and job-name
+       filter.
 
     GitHub: `Delete jobs notebook <https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/delete%20all%20arc%20jobs.ipynb>`__
 
