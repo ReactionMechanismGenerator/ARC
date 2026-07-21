@@ -5,7 +5,9 @@
 This module contains unit tests of the arc.job.trsh module
 """
 
+import math
 import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -853,6 +855,84 @@ class TestTrsh(unittest.TestCase):
 
         self.assertTrue(couldnt_trsh)
         self.assertTrue(any('No applicable troubleshooting methods found' in out for out in output_errors))
+
+    def test_trsh_ess_job_molpro_memory(self):
+        """Test the Molpro 'Memory' trsh branch: below-cap growth, at-cap rank halving, and terminal case."""
+        label = 'TS'
+        level_of_theory = {'method': 'mrci', 'basis': 'aug-cc-pVTZ'}
+        server = 'server2'
+        job_type = 'sp'
+        software = 'molpro'
+        fine = True
+        num_heavy_atoms = 2
+
+        memory_gb = 32.0
+        cpu_cores = 8
+        job_status = {'keywords': ['Memory'], 'error': 'Additional memory required: 100 MW'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        self.assertNotIn('cpu', ess_trsh_methods)
+        self.assertEqual(cpu_cores, 8)
+        self.assertGreater(memory, memory_gb)
+        self.assertLessEqual(memory, 256 * 0.95)
+
+        memory_gb = 200.0
+        cpu_cores = 8
+        job_status = {'keywords': ['Memory'], 'error': 'Additional memory required: 8000 MW'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertEqual(cpu_cores, 4)
+        self.assertAlmostEqual(memory, 256 * 0.95)
+
+        memory_gb = 250.0
+        cpu_cores = 1
+        job_status = {'keywords': ['Memory', 'max_total_job_memory'], 'error': 'Additional memory required: 100 MW'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertTrue(couldnt_trsh)
+        self.assertEqual(cpu_cores, 1)
+        self.assertTrue(any('node cap' in out for out in output_errors))
+
+        molpro_log = ('  Version 2022.3 linked Jul  1 2023 -- molpro run\n'
+                      ' Variable memory set to 1000.0 Mwords\n'
+                      ' CCSD(T)-F12 triples\n'
+                      ' For full I/O caching in triples, increase memory by 2924.55 Mwords to 3924.60 Mwords.\n'
+                      ' A further 92.19 Mwords of memory are needed for the triples to run. '
+                      'Increase memory to 738.15 Mwords.\n'
+                      ' GLOBAL ERROR fehler on processor   0\n')
+        fd, log_path = tempfile.mkstemp(suffix='.out', prefix='molpro_per_process_target_')
+        with os.fdopen(fd, 'w') as f:
+            f.write(molpro_log)
+        self.addCleanup(lambda: os.remove(log_path) if os.path.isfile(log_path) else None)
+        status, keywords, error, line = trsh.determine_ess_status(output_path=log_path,
+                                                                  species_label='TS', job_type='sp')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['Memory'])
+        self.assertIn('per-process memory 738.15 MW', error)
+        memory_gb = 32.0
+        cpu_cores = 12
+        job_status = {'keywords': keywords, 'error': error}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        expected_targeted = math.ceil(738.15 * 1.5 * 12 / 0.822) / 125.0
+        self.assertAlmostEqual(memory, expected_targeted)
+        self.assertNotAlmostEqual(memory, memory_gb * 3)
+        self.assertEqual(cpu_cores, 12)
 
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""

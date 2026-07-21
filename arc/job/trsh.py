@@ -411,12 +411,16 @@ def determine_ess_status(output_path: str,
                     # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run.
                     # Increase memory to 996.31 Mwords.` (w/o the line break)
                     keywords = ['Memory']
-                    for line0 in reverse_lines:
-                        if ' For full I/O' in line0 and 'increase memory by' in line0 and 'Mwords to' in line0:
-                            memory_increase = re.findall(r"[\d.]+", line0)[0]
-                            error = f"Additional memory required: {memory_increase} MW"
-                            break
-                    error = f'Additional memory required: {line.split()[2]} MW' if 'error' not in locals() else error
+                    nums = re.findall(r"\d+(?:\.\d+)?", line)
+                    if nums:
+                        target_mw = float(nums[-1])
+                        error = f'Molpro recommends per-process memory {target_mw} MW'
+                    if not error:
+                        for line0 in reverse_lines:
+                            if ' For full I/O' in line0 and 'increase memory by' in line0 and 'Mwords to' in line0:
+                                memory_increase = re.findall(r"[\d.]+", line0)[0]
+                                error = f"Additional memory required: {memory_increase} MW"
+                                break
                     break
                 elif 'insufficient memory available - require' in line:
                     # e.g.: `insufficient memory available - require              228765625  have
@@ -1090,21 +1094,48 @@ def trsh_ess_job(label: str,
 
     elif 'molpro' in software:
         if 'Memory' in job_status['keywords']:
-            # Increase memory allocation.
-            # molpro gives something like `'errored: additional memory (mW) required: 996.31'`.
-            # job_status standardizes the format to be:  `'Additional memory required: {0} MW'`
-            # The number is the ADDITIONAL memory required in GB
             ess_trsh_methods.append('memory')
-            add_mem_str = job_status['error'].split()[-2]  # parse Molpro's requirement in MW
-            if all(c.isdigit() or c == '.' for c in add_mem_str):
-                add_mem = float(add_mem_str)
-                add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
-                memory = memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
+            original_cpu_cores = cpu_cores
+            max_mem = servers[server].get('memory', 128)
+            max_mem_allocation = max_mem * default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
+            m = re.search(r'per-process memory ([\d.]+) MW', job_status['error'])
+            if m:
+                target_mw = float(m.group(1))
+                headroom = 1.5
+                desired_total = math.ceil(target_mw * headroom * (cpu_cores or 1) / 0.822) / 125.0
             else:
-                # The required memory is not specified
-                memory = memory_gb * 3  # convert MW to GB, add 5 extra GB (be conservative)
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
-                        f'instead of {memory_gb} GB')
+                desired_total = memory_gb * 3
+            memory = min(desired_total, max_mem_allocation)
+            at_cap = 'max_total_job_memory' in job_status['keywords'] or desired_total >= max_mem_allocation
+            if at_cap:
+                new_cpu = max(1, cpu_cores // 2)
+                if new_cpu < cpu_cores and 'cpu_min' not in ess_trsh_methods:
+                    logger.info(f'The crashed Molpro job {label} was run with {cpu_cores} MPI rank(s) and had already '
+                                f'reached the node-memory cap ({max_mem_allocation:.2f} GB total allocation). ARC will '
+                                f'reduce the rank count to {new_cpu} to increase the per-process memory share while '
+                                f'keeping the total memory pinned at the cap.')
+                    cpu_cores = new_cpu
+                    memory = max_mem_allocation
+                    if 'cpu' not in ess_trsh_methods:
+                        ess_trsh_methods.append('cpu')
+                    if new_cpu == 1 and 'cpu_min' not in ess_trsh_methods:
+                        ess_trsh_methods.append('cpu_min')
+                else:
+                    couldnt_trsh = True
+                    output_errors.append(
+                        f'Error: Could not troubleshoot {job_type} for {label}! Molpro exhausted memory at the node '
+                        f'cap ({max_mem_allocation:.2f} GB total allocation) even at {cpu_cores} rank(s); ')
+                    logger.error(
+                        f'Could not troubleshoot {job_type} job in {software} for {label}. Molpro exhausted memory at '
+                        f'the node cap ({max_mem_allocation:.2f} GB total allocation) even at {cpu_cores} rank(s).')
+            if not couldnt_trsh:
+                if cpu_cores != original_cpu_cores:
+                    logger.info(f'Troubleshooting {job_type} job in {software} for {label} using '
+                                f'{memory:.2f} GB across {cpu_cores} MPI rank(s) '
+                                f'(was {memory_gb} GB across {original_cpu_cores} rank(s)).')
+                else:
+                    logger.info(f'Troubleshooting {job_type} job in {software} for {label} using '
+                                f'{memory:.2f} GB across {cpu_cores} MPI rank(s) (was {memory_gb} GB).')
         elif 'shift' not in ess_trsh_methods:
             # Try adding a level shift for alpha- and beta-spin orbitals
             # Applying large negative level shifts like {rhf; shift,-1.0,-0.5}
