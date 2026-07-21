@@ -545,8 +545,12 @@ def submit_crest_jobs(crest_paths: List[str]) -> dict:
     crest_jobs = {}
     for crest_path in crest_paths:
         job_status, job_id = submit_job(path=crest_path)
-        logger.info(f"CREST job {job_id} submitted for {crest_path}")
+        logger.debug(f"CREST job {job_id} submitted for {crest_path}")
         crest_jobs[job_id] = {"path": crest_path, "status": job_status}
+    if crest_jobs:
+        job_ids = list(crest_jobs.keys())
+        parent = os.path.dirname(crest_paths[0])
+        logger.info(f"Submitted {len(job_ids)} CREST jobs ({job_ids[0]}-{job_ids[-1]}) for {parent}")
     return crest_jobs
 
 
