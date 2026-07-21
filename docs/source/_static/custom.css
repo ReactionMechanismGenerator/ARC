@@ -1,0 +1,121 @@
+/* ARC documentation polish on top of sphinx_rtd_theme. */
+
+:root {
+  --arc-ink: #18212f;
+  --arc-muted: #5b6676;
+  --arc-blue: #1f6feb;
+  --arc-teal: #0f766e;
+  --arc-border: #d9e2ec;
+  --arc-code-bg: #f5f7fa;
+}
+
+body {
+  color: var(--arc-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.wy-side-nav-search {
+  background: linear-gradient(135deg, #12355b 0%, #0f766e 100%);
+}
+
+.wy-side-nav-search > a,
+.wy-side-nav-search .wy-dropdown > a {
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.wy-nav-side {
+  background: #142033;
+}
+
+.wy-menu-vertical a {
+  color: #dbe6f3;
+}
+
+.wy-menu-vertical a:hover {
+  background: #20314b;
+}
+
+.wy-menu-vertical li.current > a,
+.wy-menu-vertical li.on > a {
+  border-right: 4px solid #14b8a6;
+}
+
+.wy-nav-content {
+  max-width: 1040px;
+}
+
+.rst-content h1,
+.rst-content h2,
+.rst-content h3 {
+  color: var(--arc-ink);
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.rst-content h1 {
+  border-bottom: 1px solid var(--arc-border);
+  padding-bottom: 0.35em;
+}
+
+.rst-content p,
+.rst-content li {
+  line-height: 1.65;
+}
+
+.rst-content a {
+  color: var(--arc-blue);
+}
+
+.rst-content code.literal,
+.rst-content tt.literal {
+  color: #0f4c81;
+  background: var(--arc-code-bg);
+  border: 1px solid #e4e9f0;
+  border-radius: 4px;
+  padding: 0.1rem 0.28rem;
+}
+
+.rst-content div[class^="highlight"] {
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+.rst-content pre {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.rst-content .toctree-wrapper {
+  border-top: 1px solid var(--arc-border);
+  margin-top: 1.75rem;
+  padding-top: 1rem;
+}
+
+.rst-content .admonition,
+.rst-content .note,
+.rst-content .warning {
+  border-radius: 8px;
+  border: 1px solid var(--arc-border);
+  box-shadow: none;
+}
+
+.rst-content .admonition-title {
+  border-radius: 7px 7px 0 0;
+}
+
+.rst-content table.docutils {
+  border: 1px solid var(--arc-border);
+}
+
+.rst-content table.docutils td,
+.rst-content table.docutils th {
+  border-color: var(--arc-border);
+}
+
+footer {
+  color: var(--arc-muted);
+}
