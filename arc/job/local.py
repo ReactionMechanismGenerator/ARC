@@ -136,7 +136,7 @@ def check_job_status(job_id: int) -> str:
         14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06
 
     PBS (taken from zeldo.dow.com)::
-                                                                                         Req'd       Req'd       Elap
+
         Job ID                  Username    Queue    Jobname         SessID  NDS   TSK   Memory      Time    S   Time
         ----------------------- ----------- -------- --------------- ------ ----- ------ --------- --------- - ---------
         2016614.zeldo.local     u780444     workq    scan.pbs         75380     1     10       --  730:00:00 R  00:00:20

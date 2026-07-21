@@ -3,6 +3,8 @@ A module for scheduling ARC jobs
 Includes spawning, terminating, checking, and troubleshooting various jobs
 """
 
+from __future__ import annotations
+
 import datetime
 import itertools
 import os

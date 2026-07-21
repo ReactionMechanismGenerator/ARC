@@ -3,129 +3,177 @@
 Running ARC
 ===========
 
-Using an input file
-^^^^^^^^^^^^^^^^^^^
+ARC can be run from a YAML input file, from Python, or from notebooks. The same
+configuration concepts apply in all modes: define species and reactions, choose
+job types and levels of theory, and map electronic structure software to local
+or remote compute resources.
 
-To run ARC, make sure to first activate the ARC environment
-(see the :ref:`installation instructions <arce>`).
-Then simply type::
+Activate ARC First
+------------------
 
-    python <path_to_the_ARC_folder>/ARC.py input.yml
+Use ``arc_env`` for development and execution:
 
-replacing ``<path_to_the_ARC_folder>`` in the above command with the actual path to ARC.
-You could of course name the input file whatever you like.
-However, if you're using the :ref:`recommended aliases <aliases>`, then simply typing::
+.. code-block:: bash
 
-    arc
+   conda activate arc_env
 
-in any folder with a valid ``input.yml`` file will execute ARC using that file.
+Run from YAML
+-------------
 
-ARC automatically creates restart files, which have the same format as an input file.
-If ARC crashes (e.g., due to a bug which was later fixed, or due to connectivity issues), typing::
+Create an ``input.yml``:
 
-    arcrestart
+.. code-block:: yaml
 
-in a folder containing an ARC restart.yml file
-(assuming you're using the :ref:`recommended aliases <aliases>`)
-will cause ARC to execute, considering all previously spawned jobs specified in the restart file.
-In restart mode, ARC is aware of all past submitted jobs and collects their
-output files or waits for them to terminate if they are still running.
+   project: ethanol_demo
 
-ARC's adopts the `YAML <https://yaml.org/>`_ format for its input/restart files.
-In fact, a restart file is nothing but a very detailed
-input file, and internally ARC treats them the same.
-Other than the file name, the difference is that the restart file
-was automatically generated.
+   species:
+     - label: ethanol
+       smiles: CCO
 
+Run it from the repository checkout:
 
-A (very) simple input file might look like this::
+.. code-block:: bash
 
-    project: example1
+   python ARC.py input.yml
 
-    species:
-      - label: ethanol
-        smiles: CCO
+Or from elsewhere:
 
-All the parameters of :ref:`arc.main.ARC <main>` class are legal input file keywords.
-Specifying species and reactions lists define :ref:`ARCSpecies <species>` and :ref:`ARCReaction <reaction>`
-object. See ARC's API for a complete and updated list of keywords along with their allowed types.
+.. code-block:: bash
 
+   python /path/to/ARC/ARC.py /path/to/input.yml
 
-Additional input file examples are available in ARC's examples folder
-(`ARC/examples <https://github.com/ReactionMechanismGenerator/ARC/tree/main/examples>`_).
-Another convenient way to see a valid and detailed input file is to run an ARC job
-and peak at the automatically generated ``restart.yml`` file.
+ARC writes project files under ``Projects/<project>`` by default unless
+``project_directory`` is supplied.
+All parameters of :ref:`arc.main.ARC <main>` are legal top-level input file
+keywords. Entries under ``species`` and ``reactions`` define
+:ref:`ARCSpecies <species>` and :ref:`ARCReaction <reaction>` objects. See
+:ref:`input_reference` for the full input-key checklist.
 
-A sample reaction input file with a user-supplied TS geometry guess is::
+Restart a Project
+-----------------
 
-    project: example2
+ARC writes ``restart.yml`` files that contain the current state of the project,
+including submitted jobs. To restart, run ARC with the restart file:
 
-    species:
-      - label: N2H4
-        smiles: NN
+.. code-block:: bash
 
-      - label: NH
-        smiles: '[NH]'
+   python /path/to/ARC/ARC.py restart.yml
 
-      - label: N2H3
-        smiles: N[NH]
+In restart mode, ARC can collect finished jobs, keep waiting for jobs that are
+still running, and continue work that was not completed.
 
-      - label: NH2
-        smiles: '[NH2]'
+Run from Python
+---------------
 
-    reactions:
-      - label: N2H4 + NH <=> N2H3 + NH2
-        ts_xyz_guess:
-        - |
-          N      -0.4465194713     0.6830090994    -0.0932618217
-          H      -0.4573825998     1.1483344874     0.8104886823
-          H       0.6773598975     0.3820642106    -0.2197000290
-          N      -1.2239012380    -0.4695695875    -0.0069891203
-          H      -1.8039356973    -0.5112019151     0.8166872835
-          H      -1.7837217777    -0.5685801608    -0.8405154279
-          N       1.9039017235    -0.1568337145    -0.0766247796
-          H       1.7333130781    -0.8468572038     0.6711695415
+Use the Python API when you want to generate inputs programmatically, integrate
+ARC into scripts, or work in a notebook:
 
+.. code-block:: python
 
+   from arc import ARC
+   from arc.species import ARCSpecies
 
-Using the API
-^^^^^^^^^^^^^
+   ethanol = ARCSpecies(label='ethanol', smiles='CCO')
 
-To run ARC, make sure to first activate the ARC environment
-(see the :ref:`installation instructions <arce>`).
+   arc = ARC(
+       project='ethanol_api_demo',
+       species=[ethanol],
+       job_types={
+           'conf_opt': True,
+           'opt': True,
+           'fine': True,
+           'freq': True,
+           'sp': True,
+           'rotors': True,
+       },
+       level_of_theory='wb97xd/def2svp',
+       ess_settings={'gaussian': 'local'},
+   )
 
-ARC's API can be reached from any python platform, if ARC was added to the PYTHONPATH
-(see the :ref:`installation instructions <path>`).
+   arc.execute()
 
-Running ARC using `Jupyter notebooks`__ (comes pre-installed with Anaconda)
-has the benefit of displaying "live" and interactive
-3D geometries for the species of interest.
+``ARC`` also accepts species and reaction dictionaries, so YAML-style inputs can
+be converted into API calls without manually constructing every object.
+
+Running ARC in `Jupyter notebooks`__ (which come pre-installed with Anaconda) has
+the added benefit of displaying "live" and interactive 3D geometries for the
+species of interest.
 
 __ jupyter_
 
-Example iPython notebooks are available in the
-`ipython/Demo <https://github.com/ReactionMechanismGenerator/ARC/tree/main/ipython/Demo>`_
-folder. Various :ref:`standalone tools <tools>` in an iPython format are also available,
-demonstrating different utilizations of the API.
-Users are of course directed to read :ref:`ARC's API <api>`.
+Run Locally
+-----------
 
-.. _arkane-standalone:
+Use local mode when ARC and the relevant electronic structure software are on
+the same machine or cluster login environment. Configure ``servers`` with the
+reserved ``local`` key and route software to ``local``:
+Here, ``local`` means ARC does not use SSH for that server. The job is still
+submitted using the configured scheduler and submit template.
 
-Running Arkane independently
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. code-block:: python
 
-ARC runs Arkane automatically for statmech, but you can also run Arkane on its own.
-Make sure RMG-Py and the RMG database are available, then run Arkane with your input file.
+   servers = {
+       'local': {
+           'cluster_soft': 'Slurm',
+           'un': 'my_user',
+       },
+   }
 
-Conda install (recommended)::
+   global_ess_settings = {
+       'gaussian': 'local',
+       'orca': 'local',
+       'xtb': 'local',
+   }
 
-    conda run -n rmg_env python -m arkane input.py
+Run over SSH
+------------
 
-Source install::
+Use SSH mode when ARC runs on your workstation but submits jobs on one or more
+remote servers. Configure each remote server with ``address``, ``un``, and
+``key``, then route ESS names to those servers:
 
-    export RMG_PY_PATH=/path/to/RMG-Py
-    export RMG_DB_PATH=/path/to/RMG-database
-    python -m arkane input.py
+.. code-block:: python
+
+   servers = {
+       'cluster_a': {
+           'cluster_soft': 'Slurm',
+           'address': 'login.cluster.edu',
+           'un': 'my_user',
+           'key': '/home/my_user/.ssh/id_rsa',
+       },
+   }
+
+   global_ess_settings = {
+       'gaussian': 'cluster_a',
+       'molpro': 'cluster_a',
+   }
+
+Run on HPC
+----------
+
+On HPC systems, ARC usually runs on a login or workflow node and submits ESS jobs
+through the scheduler. The important site-specific pieces are:
+
+* ``cluster_soft`` in each server entry;
+* submit command paths in ``settings.py`` if the defaults do not match your site;
+* submit script templates in ``submit.py``;
+* scratch paths, queue names, wall time, memory, and CPU limits.
+
+Keep the scheduler template variables such as ``{memory}``, ``{cpus}``,
+``{name}``, and ``{input_file}`` intact so ARC can fill them at runtime.
+
+Run Arkane Independently
+------------------------
+
+ARC runs Arkane automatically for supported statmech workflows. You can also run
+Arkane directly:
+
+.. code-block:: bash
+
+   conda run -n rmg_env python -m arkane input.py
+
+For a source installation, make sure ``RMG_PY_PATH`` and ``RMG_DB_PATH`` point to
+valid checkouts before running Arkane.
 
 See the `Arkane`_ documentation for input file details.
 
