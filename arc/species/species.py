@@ -1625,6 +1625,13 @@ class ARCSpecies(object):
                 if tsg.index is None:
                     tsg.index = len(self.ts_guesses)
                 self.ts_guesses.append(tsg)
+            else:
+                # The queue TS-search job produced no usable geometry (nothing parseable, or
+                # colliding atoms). Mark it failed and do NOT add it as a clusterable guess: a
+                # coordinate-less "successful" guess would break equivalent-guess clustering.
+                tsg.success = False
+                logger.warning(f"The queue TS-guess job at {path} produced no usable geometry; "
+                               f"marking this '{tsg.method}' guess as failed and not clustering it.")
         elif path.endswith('.yml') or path.endswith('.yaml'):
             yml_path = path
             tsg_list = read_yaml_file(yml_path)
@@ -2544,8 +2551,14 @@ class TSGuess(object):
                       and any([not isclose(freq_1, freq_2, abs_tol=0.1)
                                for freq_1, freq_2 in zip(self.imaginary_freqs, other.imaginary_freqs)]))):
             return False
-        if almost_equal_coords(xyz1=self.get_xyz(), xyz2=other.get_xyz()) \
-                or compare_confs(xyz1=self.get_xyz(), xyz2=other.get_xyz(), rmsd_score=False):
+        self_xyz, other_xyz = self.get_xyz(), other.get_xyz()
+        if self_xyz is None or other_xyz is None:
+            # A coordinate-less guess (e.g. a failed queue/heuristic guess whose job produced no
+            # parseable geometry) can never be a geometric duplicate. Comparing it would pass None
+            # into almost_equal_coords and crash clustering (TypeError), so treat it as not-equal.
+            return False
+        if almost_equal_coords(xyz1=self_xyz, xyz2=other_xyz) \
+                or compare_confs(xyz1=self_xyz, xyz2=other_xyz, rmsd_score=False):
             return True
         return False
 
