@@ -346,12 +346,16 @@ class MolproAdapter(JobAdapter):
     def set_input_file_memory(self) -> None:
         """
         Set the input_file_memory attribute.
+
+        Molpro's ``memory,Total=N,m`` card is the NODE-TOTAL memory pool, NOT per process.
+        Molpro reserves the Global-Array space (~25%) and splits the remainder across the
+        ``molpro -n {cpu_cores}`` MPI ranks itself, so the card must carry the whole job
+        memory and Molpro handles the per-rank division; dividing by cpu_cores here would
+        double-divide and starve the node ~cpu_cores-fold. On a 64-bit machine 1 MW = 8e6
+        bytes = 0.008 GB, i.e. 125 MW = 1 GB, so N = job_memory_gb * 125 makes the node-total
+        card equal the PBS memory reservation. Do NOT divide by cpu_cores.
         """
-        # Molpro's memory is per cpu core, but here we ask for Total memory.
-        # Molpro measures memory in MW (mega word; 1000 MW = 7.45 GB on a 64-bit machine)
-        # The conversion from mW to GB was done using https://www.molpro.net/manual/doku.php?id=general_program_structure#memory_option_in_command_line
-        # 3.2 GB = 100 mw (case sensitive) total (as in this implimentation) -> 31.25 mw/GB is the conversion rate
-        self.input_file_memory = math.ceil(self.job_memory_gb * 31.25)
+        self.input_file_memory = max(1, math.ceil(self.job_memory_gb * 125.0))
 
     def execute_incore(self):
         """

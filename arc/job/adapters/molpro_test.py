@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.job.adapters.molpro module
 """
 
+import math
 import os
 import shutil
 import unittest
@@ -108,19 +109,25 @@ class TestMolproAdapter(unittest.TestCase):
 
     def test_set_input_file_memory(self):
         """Test setting the input_file_memory argument"""
+        expected_card = math.ceil(14.0 * 125)
+
         self.job_1.input_file_memory = None
         self.job_1.cpu_cores = 48
         self.job_1.set_input_file_memory()
-        self.assertEqual(self.job_1.input_file_memory, 438)
+        self.assertEqual(self.job_1.input_file_memory, expected_card)
+        self.assertAlmostEqual(self.job_1.input_file_memory * 8e6 / 1e9, 14.0, delta=0.5)
 
+        self.job_1.input_file_memory = None
         self.job_1.cpu_cores = 8
         self.job_1.set_input_file_memory()
-        self.assertEqual(self.job_1.input_file_memory, 438)
+        self.assertEqual(self.job_1.input_file_memory, expected_card)
 
         self.job_1.input_file_memory = None
         self.job_1.cpu_cores = 1
         self.job_1.set_input_file_memory()
-        self.assertEqual(self.job_1.input_file_memory, 438)
+        self.assertEqual(self.job_1.input_file_memory, expected_card)
+
+        self.assertEqual(self.job_1.input_file_memory, math.ceil(self.job_1.job_memory_gb * 125))
 
     def test_write_input_file(self):
         """Test writing Molpro input files"""
@@ -130,7 +137,7 @@ class TestMolproAdapter(unittest.TestCase):
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
         job_1_expected_input_file = """***,spc1
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 O       0.00000000    0.00000000    1.00000000}
@@ -163,7 +170,7 @@ uccsd(t)-f12;
         with open(os.path.join(self.job_2.local_path, input_filenames[self.job_2.job_adapter]), 'r') as f:
             content_2 = f.read()
         job_2_expected_input_file = """***,spc1
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 O       0.00000000    0.00000000    1.00000000}
@@ -198,7 +205,7 @@ optg, savexyz='geometry.xyz'
         with open(os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]), 'r') as f:
             content_3 = f.read()
         job_3_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -246,7 +253,7 @@ table,E_mrci,E_mrci_Davidson;
         with open(os.path.join(self.job_4.local_path, input_filenames[self.job_4.job_adapter]), 'r') as f:
             content_4 = f.read()
         job_4_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -294,7 +301,7 @@ table,E_mrci,E_mrci_Davidson;
         with open(os.path.join(self.job_5.local_path, input_filenames[self.job_5.job_adapter]), 'r') as f:
             content_5 = f.read()
         job_5_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -348,7 +355,7 @@ table,E_mrci,E_mrci_Davidson;
         with open(os.path.join(self.job_6.local_path, input_filenames[self.job_6.job_adapter]), 'r') as f:
             content_6 = f.read()
         job_6_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -397,7 +404,7 @@ int;
         with open(os.path.join(self.job_7.local_path, input_filenames[self.job_7.job_adapter]), 'r') as f:
             content_7 = f.read()
         job_7_expected_input_file = """***,N
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N       0.00000000    0.00000000    0.00000000}
