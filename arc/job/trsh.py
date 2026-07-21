@@ -1184,6 +1184,7 @@ def trsh_ess_job(label: str,
             # count instead of re-inflating memory (fewer ranks -> more per-process from the same
             # node-total allocation).
             ess_trsh_methods.append('memory')
+            original_cpu_cores = cpu_cores
             max_mem = servers[server].get('memory', 128)  # Node memory in GB, defaults to 128 if not specified
             max_mem_allocation = max_mem * default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
             m = re.search(r'per-process memory ([\d.]+) MW', job_status['error'])
@@ -1222,8 +1223,13 @@ def trsh_ess_job(label: str,
                         f'Could not troubleshoot {job_type} job in {software} for {label}. Molpro exhausted memory at '
                         f'the node cap ({max_mem_allocation:.2f} GB total allocation) even at {cpu_cores} rank(s).')
             if not couldnt_trsh:
-                logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
-                            f'instead of {memory_gb} GB and {cpu_cores} cpu core(s)')
+                if cpu_cores != original_cpu_cores:
+                    logger.info(f'Troubleshooting {job_type} job in {software} for {label} using '
+                                f'{memory:.2f} GB across {cpu_cores} MPI rank(s) '
+                                f'(was {memory_gb} GB across {original_cpu_cores} rank(s)).')
+                else:
+                    logger.info(f'Troubleshooting {job_type} job in {software} for {label} using '
+                                f'{memory:.2f} GB across {cpu_cores} MPI rank(s) (was {memory_gb} GB).')
         elif 'shift' not in ess_trsh_methods:
             # Try adding a level shift for alpha- and beta-spin orbitals
             # Applying large negative level shifts like {rhf; shift,-1.0,-0.5}
