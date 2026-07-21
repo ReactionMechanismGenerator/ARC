@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.job.adapters.molpro module
 """
 
+import math
 import os
 import shutil
 import unittest
@@ -92,7 +93,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   project='test',
                                   project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_7'),
                                   species=[ARCSpecies(label='N', xyz=["""N     0.0    0.0    0.0"""],
-                                                      multiplicity=3,
+                                                      multiplicity=4,
                                                       active={'occ': [3, 1, 1, 0, 1, 0, 0, 0],
                                                               'closed': [1, 0, 0, 0, 0, 0, 0, 0]})],
                                   testing=True,
@@ -108,19 +109,33 @@ class TestMolproAdapter(unittest.TestCase):
 
     def test_set_input_file_memory(self):
         """Test setting the input_file_memory argument"""
+        # The `memory,Total=N,m` card is the NODE-TOTAL memory pool (Molpro reserves the
+        # Global-Array space and splits the remainder across the `molpro -n cpu_cores` ranks
+        # itself), NOT per process. 125 MW == 1 GB (1 MW == 8e6 bytes), so the node-total card
+        # equals the reserved memory: N = ceil(job_memory_gb * 125), INDEPENDENT of cpu_cores.
+        self.assertEqual(self.job_1.job_memory_gb, 14.0)
+        expected_card = math.ceil(14.0 * 125)  # 1750 MW node-total == 14 GB reservation
+
         self.job_1.input_file_memory = None
         self.job_1.cpu_cores = 48
         self.job_1.set_input_file_memory()
-        self.assertEqual(self.job_1.input_file_memory, 438)
+        self.assertEqual(self.job_1.input_file_memory, expected_card)  # 1750
+        # node-total card (in GB) == the job's reserved memory:
+        self.assertAlmostEqual(self.job_1.input_file_memory * 8e6 / 1e9, 14.0, delta=0.5)
 
+        # The card is INDEPENDENT of the number of MPI ranks (node-total, not per-process):
+        self.job_1.input_file_memory = None
         self.job_1.cpu_cores = 8
         self.job_1.set_input_file_memory()
-        self.assertEqual(self.job_1.input_file_memory, 438)
+        self.assertEqual(self.job_1.input_file_memory, expected_card)  # 1750, unchanged
 
         self.job_1.input_file_memory = None
         self.job_1.cpu_cores = 1
         self.job_1.set_input_file_memory()
-        self.assertEqual(self.job_1.input_file_memory, 438)
+        self.assertEqual(self.job_1.input_file_memory, expected_card)  # 1750, unchanged
+
+        # Invariant: node-total card == ceil(job_memory_gb * 125) and does NOT depend on cpu_cores.
+        self.assertEqual(self.job_1.input_file_memory, math.ceil(self.job_1.job_memory_gb * 125))
 
     def test_write_input_file(self):
         """Test writing Molpro input files"""
@@ -130,7 +145,7 @@ class TestMolproAdapter(unittest.TestCase):
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
         job_1_expected_input_file = """***,spc1
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 O       0.00000000    0.00000000    1.00000000}
@@ -163,7 +178,7 @@ uccsd(t)-f12;
         with open(os.path.join(self.job_2.local_path, input_filenames[self.job_2.job_adapter]), 'r') as f:
             content_2 = f.read()
         job_2_expected_input_file = """***,spc1
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 O       0.00000000    0.00000000    1.00000000}
@@ -198,7 +213,7 @@ optg, savexyz='geometry.xyz'
         with open(os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]), 'r') as f:
             content_3 = f.read()
         job_3_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -246,7 +261,7 @@ table,E_mrci,E_mrci_Davidson;
         with open(os.path.join(self.job_4.local_path, input_filenames[self.job_4.job_adapter]), 'r') as f:
             content_4 = f.read()
         job_4_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -294,7 +309,7 @@ table,E_mrci,E_mrci_Davidson;
         with open(os.path.join(self.job_5.local_path, input_filenames[self.job_5.job_adapter]), 'r') as f:
             content_5 = f.read()
         job_5_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -348,7 +363,7 @@ table,E_mrci,E_mrci_Davidson;
         with open(os.path.join(self.job_6.local_path, input_filenames[self.job_6.job_adapter]), 'r') as f:
             content_6 = f.read()
         job_6_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -397,7 +412,7 @@ int;
         with open(os.path.join(self.job_7.local_path, input_filenames[self.job_7.job_adapter]), 'r') as f:
             content_7 = f.read()
         job_7_expected_input_file = """***,N
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N       0.00000000    0.00000000    0.00000000}
@@ -412,17 +427,17 @@ int;
 
 {hf;
  maxit,999;
- wf,spin=2,charge=0;
+ wf,spin=3,charge=0;
 }
 
 
 {mp2;
- wf,spin=2,charge=0;
+ wf,spin=3,charge=0;
 }
 
 {casscf;
  maxit,999;
- wf,spin=2,charge=0;
+ wf,spin=3,charge=0;
  occ,3,1,1,0,1,0,0,0;
  closed,1,0,0,0,0,0,0,0;
  state,1;
@@ -430,7 +445,7 @@ int;
 
 {rs2c;
  maxit,999;
- wf,spin=2,charge=0;
+ wf,spin=3,charge=0;
 }
 
 

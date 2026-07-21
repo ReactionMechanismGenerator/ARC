@@ -7,7 +7,9 @@ This module contains unit tests for the arc.main module
 
 import os
 import shutil
+import time
 import unittest
+from types import SimpleNamespace
 
 from arc.common import ARC_PATH
 from arc.exceptions import InputError
@@ -195,6 +197,34 @@ class TestARC(unittest.TestCase):
         job_type_expected = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
                              'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False}
         self.assertEqual(arc1.job_types, job_type_expected)
+
+    def test_save_project_info_file_skips_deleted_species(self):
+        """A species left in self.species but removed from self.output (e.g. a deleted IRC endpoint
+        species whose TS did not converge) must be skipped in the project info file, not crash it
+        with a KeyError. Exercises the summary writer directly with a bare ARC instance — the fix is
+        pure bookkeeping, so there is no need to construct a full ARC (which would drag in the Arkane
+        BAC tables and molecule perception this method never touches)."""
+        arc0 = ARC.__new__(ARC)  # bypass the heavy __init__; set only what save_project_info_file reads
+        arc0.t0 = time.time()
+        arc0.__version__ = 'test'
+        arc0.project = 'arc_info_test'
+        arc0.project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_info_test')
+        os.makedirs(arc0.project_directory, exist_ok=True)
+        self.addCleanup(shutil.rmtree, arc0.project_directory, ignore_errors=True)
+        arc0.job_types = {'fine': False, 'rotors': False}
+        arc0.composite_method, arc0.bac_type, arc0.ess_settings, arc0.reactions = None, None, {}, []
+        for attr in ('conformer_opt_level', 'conformer_sp_level', 'ts_guess_level',
+                     'opt_level', 'freq_level', 'sp_level', 'scan_level'):
+            setattr(arc0, attr, '')
+        # A deleted IRC species dangling in self.species while absent from self.output.
+        arc0.species = [SimpleNamespace(label='tst_spc', is_ts=False, run_time=None, mol=None),
+                        SimpleNamespace(label='IRC_TS0_1', is_ts=False, run_time=None, mol=None)]
+        arc0.output = {'tst_spc': {'convergence': True}}  # deliberately no 'IRC_TS0_1' entry
+        arc0.save_project_info_file()  # must not raise KeyError
+        with open(os.path.join(arc0.project_directory, 'arc_info_test.info'), 'r') as f:
+            content = f.read()
+        self.assertIn('tst_spc', content)
+        self.assertNotIn('IRC_TS0_1', content)
 
     def test_check_project_name(self):
         """Test project name invalidity"""

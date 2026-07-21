@@ -11,6 +11,8 @@ import os
 import shutil
 import unittest
 
+import numpy as np
+
 from arc.common import ARC_TESTING_PATH, almost_equal_coords
 from arc.family import get_reaction_family_products
 from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
@@ -33,7 +35,8 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
-from arc.species.species import ARCSpecies
+from arc.species.species import ARCSpecies, colliding_atoms
+from arc.species.vectors import calculate_distance
 from arc.species.zmat import _compare_zmats, get_parameter_from_atom_indices
 
 from arc.species.species import check_isomorphism
@@ -1128,6 +1131,68 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          )
         heuristics_1.execute_incore()
         self.assertEqual(len(rxn1.ts_species.ts_guesses), 12)
+
+    def test_heuristics_for_h_abstraction_linear_cumulene_acceptor(self):
+        # A cumulene (double-linear O=C=C) H-abstraction acceptor: HCCO + THF <=> CH2CO + THF_rad.
+        # The acceptor product (ketene) has a collinear O=C=C backbone; after removing the redundant H,
+        # its reduced zmat carries a collinear (~0 deg) bond angle that zmat_to_xyz cannot place (all atoms
+        # collapse to the origin), which previously raised a SpeciesError inside the atom-mapping step and
+        # yielded no TS guesses. The builder must now recover a valid combined structure.
+        hcco_xyz = {'symbols': ('O', 'C', 'C', 'H'), 'isotopes': (16, 12, 12, 1),
+                    'coords': ((-0.996315, 0.647862, 0.0), (0.985725, -0.782196, 0.0),
+                               (0.0, 0.042764, 0.0), (2.056167, -0.746307, 0.0))}
+        ketene_xyz = {'symbols': ('O', 'C', 'C', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1),
+                      'coords': ((0.0, 0.0, 1.258284), (0.0, 0.0, -1.203594), (0.0, 0.0, 0.103424),
+                                 (0.0, 0.939888, -1.732624), (0.0, -0.939888, -1.732624))}
+        thf_xyz = {'symbols': ('O', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                   'isotopes': (16, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
+                   'coords': ((0.0, 0.0, 1.240693), (-0.307372, -0.698827, -0.989684),
+                              (0.307372, 0.698827, -0.989684), (0.0, 1.165081, 0.428647),
+                              (0.0, -1.165081, 0.428647), (-1.386637, -0.638055, -1.145748),
+                              (0.111128, -1.358444, -1.748946), (1.386637, 0.638055, -1.145748),
+                              (-0.111128, 1.358444, -1.748946), (-0.985667, 1.64344, 0.479232),
+                              (0.7404, 1.866175, 0.818913), (0.985667, -1.64344, 0.479232),
+                              (-0.7404, -1.866175, 0.818913))}
+        thf_rad_xyz = {'symbols': ('O', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                       'isotopes': (16, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1),
+                       'coords': ((-0.765665, -0.986183, -0.060071), (0.093511, 1.206488, -0.190713),
+                                  (1.232815, 0.240321, 0.155856), (-1.140085, 0.376675, 0.149294),
+                                  (0.592627, -1.070428, -0.148362), (0.131081, 2.140234, 0.368336),
+                                  (0.110708, 1.439925, -1.256145), (2.1369, 0.419334, -0.42724),
+                                  (1.506174, 0.331401, 1.217331), (-2.004576, 0.594346, -0.477252),
+                                  (-1.427388, 0.495868, 1.199024), (0.999212, -2.04998, 0.060061))}
+        hcco = ARCSpecies(label='HCCO', smiles='[CH]=C=O', xyz=hcco_xyz)
+        thf = ARCSpecies(label='THF', smiles='C1CCOC1', xyz=thf_xyz)
+        ketene = ARCSpecies(label='CH2CO', smiles='C=C=O', xyz=ketene_xyz)
+        thf_rad = ARCSpecies(label='THF_rad', smiles='[CH]1CCOC1', xyz=thf_rad_xyz)
+        rxn = ARCReaction(r_species=[hcco, thf], p_species=[ketene, thf_rad])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        heuristics = HeuristicsAdapter(job_type='tsg',
+                                       reactions=[rxn],
+                                       testing=True,
+                                       project='test',
+                                       project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_cumulene'),
+                                       dihedral_increment=120,
+                                       )
+        heuristics.execute_incore()
+        # The combine must yield valid (non-degenerate, non-colliding) TS guesses for the cumulene acceptor.
+        self.assertTrue(rxn.ts_species.is_ts)
+        self.assertGreater(len(rxn.ts_species.ts_guesses), 0)
+        tsg_xyz = rxn.ts_species.ts_guesses[0].initial_xyz
+        self.assertEqual(len(tsg_xyz['symbols']), 17)  # HCCO (4) + THF (13).
+        coords = np.array(tsg_xyz['coords'], dtype=float)
+        self.assertFalse(np.isnan(coords).any())
+        self.assertFalse(colliding_atoms(tsg_xyz))
+        # The transferred H sits between the two carbons at reasonable forming/breaking distances (~1.3 Angstrom).
+        c_indices = [i for i, s in enumerate(tsg_xyz['symbols']) if s == 'C']
+        for h in [i for i, s in enumerate(tsg_xyz['symbols']) if s == 'H']:
+            near = sorted(calculate_distance(coords=tsg_xyz['coords'], atoms=[h, c]) for c in c_indices)
+            if near[0] < 1.6 and near[1] < 1.8:
+                self.assertGreater(near[0], 1.0)
+                self.assertGreater(near[1], 1.0)
+                break
+        else:
+            self.fail('Did not find a transferred H bridging two carbons in the cumulene-acceptor TS guess.')
 
     def test_heuristics_for_carbonyl_based_hydrolysis(self):
         """
@@ -2249,7 +2314,8 @@ H      -0.30139889    0.23142254    3.12085495"""
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests.
         """
-        for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile'):
+        for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile',
+                    'heuristics_cumulene'):
             shutil.rmtree(os.path.join(ARC_TESTING_PATH, sub), ignore_errors=True)
 
 

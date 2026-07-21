@@ -51,7 +51,9 @@ def _make_task_spec(task_id, engine='mockter', task_family='conf_opt',
 
 def _make_scheduler(project_directory):
     """Create a minimal Scheduler for testing pipe methods."""
-    ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
+    # PipeCoordinator refuses pipe for non-'local' servers (remote pipe
+    # support lives on a separate branch — see pipe_coordinator.py:70-76).
+    ess_settings = {'gaussian': ['local'], 'molpro': ['local'], 'qchem': ['local']}
     spc = ARCSpecies(label='H2O', smiles='O')
     spc.conformers = [None] * 5
     spc.conformer_energies = [None] * 5

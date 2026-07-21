@@ -572,6 +572,175 @@ kinetics(
         self.assertAlmostEqual(float(m.group(1)), 2.5)
 
 
+# A trimmed Arkane thermo output.py after the two identical reactants (R1, R2) of an A+A
+# reaction have been collapsed to a single block by _dedup_thermo_species_list: only the
+# representative R1 and the distinct product P1 appear. R2 has no block of its own here — its
+# thermo must be recovered by propagation from R1.
+DEDUP_OUTPUT_PY = """#!/usr/bin/env python
+conformer(
+    label = 'R1',
+    E0 = (22.2577, 'kJ/mol'),
+    modes = [
+        IdealGasTranslation(mass=(17.0027, 'amu')),
+        LinearRotor(inertia=(0.904473, 'amu*angstrom^2'), symmetry=1),
+        HarmonicOscillator(frequencies=([3675.45], 'cm^-1')),
+    ],
+    spin_multiplicity = 2,
+    optical_isomers = 1,
+)
+
+conformer(
+    label = 'P1',
+    E0 = (-250.574, 'kJ/mol'),
+    modes = [
+        IdealGasTranslation(mass=(18.0106, 'amu')),
+        NonlinearRotor(inertia=([0.611436, 1.17966, 1.7911], 'amu*angstrom^2'), symmetry=2),
+        HarmonicOscillator(frequencies=([1615.43, 3782.01, 3887.1], 'cm^-1')),
+    ],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+
+thermo(
+    label = 'R1',
+    thermo = NASA(
+        polynomials = [
+            NASAPolynomial(coeffs=[3.49683, 0.000188285, -1.03135e-06, 1.63951e-09, -6.45157e-13, 2675.74, 1.48391],
+                           Tmin=(10, 'K'), Tmax=(974.045, 'K')),
+            NASAPolynomial(coeffs=[3.44056, -0.000267412, 7.28022e-07, -2.88523e-10, 3.54839e-14, 2719.28, 1.92114],
+                           Tmin=(974.045, 'K'), Tmax=(3000, 'K')),
+        ],
+        Tmin = (10, 'K'), Tmax = (3000, 'K'),
+        E0 = (22.2464, 'kJ/mol'), Cp0 = (29.1007, 'J/(mol*K)'), CpInf = (37.4151, 'J/(mol*K)'),
+    ),
+)
+
+thermo(
+    label = 'P1',
+    thermo = NASA(
+        polynomials = [
+            NASAPolynomial(coeffs=[4.00485, -0.000245998, 8.95339e-07, 1.40307e-09, -1.18107e-12, -30136.7, -0.104547],
+                           Tmin=(10, 'K'), Tmax=(772.675, 'K')),
+            NASAPolynomial(coeffs=[3.50315, 0.00113242, 5.85407e-07, -3.70913e-10, 5.33992e-14, -30022.8, 2.42188],
+                           Tmin=(772.675, 'K'), Tmax=(3000, 'K')),
+        ],
+        Tmin = (10, 'K'), Tmax = (3000, 'K'),
+        E0 = (-250.569, 'kJ/mol'), Cp0 = (33.2579, 'J/(mol*K)'), CpInf = (58.2013, 'J/(mol*K)'),
+    ),
+)
+"""
+
+
+class TestArkaneThermoDedupAndReload(unittest.TestCase):
+    """
+    Tests for the A+A thermo fix: identical species are collapsed into a single Arkane block
+    (avoiding Arkane's save_thermo_lib duplicate-entry crash), and the collapsed duplicate still
+    gets its thermo populated by propagation from the representative species.
+    """
+
+    def _make_adapter(self, species):
+        tmp = tempfile.mkdtemp(prefix='test_Arkane_dedup_')
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        outdir, calcdir = os.path.join(tmp, 'output'), os.path.join(tmp, 'calcs')
+        os.makedirs(outdir, exist_ok=True)
+        os.makedirs(calcdir, exist_ok=True)
+        adapter = ArkaneAdapter(output_directory=outdir,
+                                calcs_directory=calcdir,
+                                output_dict={},
+                                species=species,
+                                sp_level=Level('gfn2'))
+        return adapter, tmp, calcdir
+
+    def _write_thermo_yaml(self, statmech_dir, labels):
+        """Emulate save_arkane_thermo.py: write thermo.yaml with the given representative labels."""
+        from arc.common import save_yaml_file
+        content = {lbl: {'H298': 30.9 + i, 'S298': 178.2 + i,
+                         'data': f'NASA(polynomials=[...]) for {lbl}',
+                         'nasa_low': {'tmin_k': 10.0, 'tmax_k': 974.0, 'coeffs': [3.49, 1.8e-4]},
+                         'nasa_high': {'tmin_k': 974.0, 'tmax_k': 3000.0, 'coeffs': [3.44, -2.6e-4]},
+                         'thermo_points': None}
+                   for i, lbl in enumerate(labels)}
+        save_yaml_file(path=os.path.join(statmech_dir, 'thermo.yaml'), content=content)
+
+    def test_dedup_collapses_identical_species(self):
+        """Two identical reactants ([OH] + [OH]) collapse to a single Arkane thermo block."""
+        r1 = ARCSpecies(label='R1', smiles='[OH]', multiplicity=2)
+        r2 = ARCSpecies(label='R2', smiles='[OH]', multiplicity=2)
+        p1 = ARCSpecies(label='P1', smiles='O', multiplicity=1)
+        adapter, tmp, _ = self._make_adapter([r1, r2, p1])
+        content = adapter.render_arkane_input_template(statmech_dir=tmp)
+        self.assertIn("species('R1'", content)
+        self.assertNotIn("species('R2'", content)   # collapsed out
+        self.assertIn("species('P1'", content)
+        self.assertIn("thermo('R1', 'NASA')", content)
+        self.assertNotIn("thermo('R2', 'NASA')", content)
+        self.assertEqual(adapter._thermo_duplicate_aliases, {'R2': 'R1'})
+
+    def test_aa_reaction_duplicate_species_gets_thermo(self):
+        """End-to-end: after collapse, the duplicate R2 still ends up with populated thermo,
+        recovered from R1 even though R2 has no block in output.py / thermo.yaml."""
+        r1 = ARCSpecies(label='R1', smiles='[OH]', multiplicity=2)
+        r2 = ARCSpecies(label='R2', smiles='[OH]', multiplicity=2)
+        p1 = ARCSpecies(label='P1', smiles='O', multiplicity=1)
+        adapter, tmp, calcdir = self._make_adapter([r1, r2, p1])
+        # 1. render collapses R2 -> R1 (records the alias).
+        adapter.render_arkane_input_template(statmech_dir=tmp)
+        self.assertEqual(adapter._thermo_duplicate_aliases, {'R2': 'R1'})
+        # 2. simulate the Arkane run: output.py holds only R1 & P1; the save script writes thermo.yaml.
+        statmech_dir = os.path.join(calcdir, 'statmech', 'thermo')
+        os.makedirs(statmech_dir, exist_ok=True)
+        with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+            f.write(DEDUP_OUTPUT_PY)
+
+        def fake_exec(*args, **kwargs):
+            self._write_thermo_yaml(statmech_dir, ['R1', 'P1'])
+            return ([], [])
+
+        with patch('arc.statmech.arkane.execute_command', side_effect=fake_exec):
+            adapter.parse_arkane_thermo_output(statmech_dir)
+        # 3. every species — including the collapsed duplicate — has thermo.
+        for spc in (r1, r2, p1):
+            self.assertIsNotNone(spc.thermo.data, f'{spc.label} thermo.data must be set')
+        self.assertEqual(r2.thermo.data, r1.thermo.data)
+        self.assertAlmostEqual(r2.thermo.H298, r1.thermo.H298)
+        self.assertAlmostEqual(r2.thermo.S298, r1.thermo.S298)
+        self.assertEqual(r2.thermo.nasa_low, r1.thermo.nasa_low)
+
+    def test_all_distinct_species_no_dedup_regression(self):
+        """Regression: the normal all-distinct path collapses nothing and loads thermo for all."""
+        a = ARCSpecies(label='A', smiles='[OH]', multiplicity=2)
+        b = ARCSpecies(label='B', smiles='O', multiplicity=1)
+        adapter, tmp, calcdir = self._make_adapter([a, b])
+        content = adapter.render_arkane_input_template(statmech_dir=tmp)
+        self.assertIn("species('A'", content)
+        self.assertIn("species('B'", content)
+        self.assertEqual(adapter._thermo_duplicate_aliases, {})
+        statmech_dir = os.path.join(calcdir, 'statmech', 'thermo')
+        os.makedirs(statmech_dir, exist_ok=True)
+        with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+            f.write(DEDUP_OUTPUT_PY.replace("'R1'", "'A'").replace("'P1'", "'B'"))
+
+        def fake_exec(*args, **kwargs):
+            self._write_thermo_yaml(statmech_dir, ['A', 'B'])
+            return ([], [])
+
+        with patch('arc.statmech.arkane.execute_command', side_effect=fake_exec):
+            adapter.parse_arkane_thermo_output(statmech_dir)
+        self.assertIsNotNone(a.thermo.data)
+        self.assertIsNotNone(b.thermo.data)
+        self.assertNotEqual(a.thermo.data, b.thermo.data)
+
+    def test_propagate_noop_when_representative_has_no_thermo(self):
+        """If the representative never got thermo, the duplicate is left untouched (no crash)."""
+        r1 = ARCSpecies(label='R1', smiles='[OH]', multiplicity=2)
+        r2 = ARCSpecies(label='R2', smiles='[OH]', multiplicity=2)
+        adapter, _, _ = self._make_adapter([r1, r2])
+        adapter._thermo_duplicate_aliases = {'R2': 'R1'}
+        # r1.thermo.data is None (never parsed) -> propagation must be a no-op, not raise.
+        adapter._propagate_duplicate_species_thermo()
+        self.assertIsNone(r2.thermo.data)
+
+
 class TestCheckArkaneCorrections(unittest.TestCase):
     """Tests for check_arkane_aec and check_arkane_bacs logging and matching."""
 
@@ -679,6 +848,132 @@ class TestCheckArkaneCorrections(unittest.TestCase):
             with self.assertLogs('arc', level='INFO') as cm:
                 result = check_arkane_bacs(sp_level=level, bac_type='p')
         self.assertTrue(result)
+
+
+class TestRunArkaneOutputPySignal(unittest.TestCase):
+    """``run_arkane``'s pass/fail signal is whether ``output.py`` was
+    produced — NOT whether stderr is empty. The stderr classification
+    is now advisory (logged) but doesn't gate the return value.
+
+    Pre-fix bug: complete Arkane runs were discarded because cosmetic
+    stderr noise (git rev-parse failure, OpenBabel warnings) tripped
+    a false-failure gate. Both the thermo and kinetics callers now
+    use the same authoritative output.py-existence signal.
+    """
+
+    def setUp(self):
+        from arc.statmech.arkane import run_arkane
+        self._run_arkane = run_arkane
+        self.tmp = tempfile.mkdtemp(prefix='arkane-stderr-test-')
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        # Pre-flight check in run_arkane requires input.py before the
+        # subprocess fires.
+        with open(os.path.join(self.tmp, 'input.py'), 'w') as f:
+            f.write('# fake arkane input\n')
+
+    def _create_output_py(self):
+        with open(os.path.join(self.tmp, 'output.py'), 'w') as f:
+            f.write('# fake arkane output\n')
+
+    def _run_with_stderr(self, stderr_lines):
+        with patch('arc.statmech.arkane.execute_command',
+                   return_value=(['ok'], stderr_lines)):
+            return self._run_arkane(self.tmp)
+
+    # ---- output.py present: success regardless of stderr ----
+
+    def test_empty_stderr_with_output_returns_true(self):
+        self._create_output_py()
+        self.assertTrue(self._run_with_stderr([]))
+
+    def test_cosmetic_stderr_with_output_returns_true(self):
+        """OpenBabel + git warnings are classified as cosmetic and don't gate."""
+        self._create_output_py()
+        self.assertTrue(self._run_with_stderr([
+            'fatal: not a git repository (or any of the parent directories): .git',
+            '*** Open Babel Warning  in InChI code',
+            '  #1 :Accepted unusual valence(s): C(3)',
+        ]))
+
+    def test_real_error_with_output_returns_true_and_warns(self):
+        """If output.py was produced, even a Python traceback in stderr
+        doesn't fail the run — but it IS logged at WARNING so the
+        operator sees it. This is the load-bearing change vs. the old
+        behavior that would have returned False here.
+        """
+        self._create_output_py()
+        with self.assertLogs('arc', level='WARNING') as logs:
+            result = self._run_with_stderr([
+                'Traceback (most recent call last):',
+                'KeyError: "level_of_theory"',
+            ])
+        self.assertTrue(result, "output.py exists → success regardless of stderr")
+        self.assertTrue(
+            any('non-cosmetic lines' in m for m in logs.output),
+            f"expected the advisory warning to fire; got {logs.output}",
+        )
+
+    # ---- output.py missing: failure ----
+
+    def test_missing_output_py_returns_false(self):
+        """No output.py = Arkane never wrote its result. That's the
+        only condition that should mean 'failure'."""
+        self.assertFalse(self._run_with_stderr([]))
+
+    def test_missing_output_py_with_real_error_logs_both_diagnostics(self):
+        """When output is missing AND stderr has real errors, log both
+        — the operator gets cause (stderr) and effect (no output)."""
+        with self.assertLogs('arc', level='ERROR') as logs:
+            result = self._run_with_stderr([
+                'Traceback (most recent call last):',
+                'ImportError: rmgpy not installed',
+            ])
+        self.assertFalse(result)
+        joined = '\n'.join(logs.output)
+        self.assertIn('Arkane run failed', joined)
+        self.assertIn('ImportError', joined)
+        self.assertIn('was not created', joined)
+
+    # ---- pre-flight checks still gate ----
+
+    def test_missing_input_py_returns_false_pre_flight(self):
+        """If the pre-flight finds no input.py, we never even run the
+        subprocess — and return False without checking stderr."""
+        os.unlink(os.path.join(self.tmp, 'input.py'))
+        self.assertFalse(self._run_with_stderr([]))
+
+    def test_missing_statmech_dir_returns_false_pre_flight(self):
+        from arc.statmech.arkane import run_arkane
+        self.assertFalse(run_arkane('/nonexistent/dir'))
+
+
+class TestClassifyArkaneStderr(unittest.TestCase):
+    """Direct tests of the stderr-noise filter, independent of run_arkane."""
+
+    def setUp(self):
+        from arc.statmech.arkane import _classify_arkane_stderr
+        self._classify = _classify_arkane_stderr
+
+    def test_empty_input_returns_empty(self):
+        self.assertEqual(self._classify(None), [])
+        self.assertEqual(self._classify([]), [])
+
+    def test_only_cosmetic_lines_return_empty(self):
+        self.assertEqual(self._classify([
+            '==============================',
+            '*** Open Babel Warning  in InChI code',
+            '  #1 :Accepted unusual valence(s): C(3)',
+            'fatal: not a git repository (or any of the parent directories): .git',
+            '',  # blank lines also dropped
+        ]), [])
+
+    def test_real_lines_returned_stripped(self):
+        result = self._classify([
+            'fatal: not a git repository',
+            '  KeyError: "level_of_theory"  ',
+            '*** Open Babel Warning in InChI code',
+        ])
+        self.assertEqual(result, ['KeyError: "level_of_theory"'])
 
 
 if __name__ == '__main__':

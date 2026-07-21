@@ -19,7 +19,7 @@ from arc.job.factory import job_factory
 from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.scheduler import (Scheduler, SchedulerError, species_has_freq, species_has_geo, species_has_sp,
-                           species_has_sp_and_freq)
+                           species_has_sp_and_freq, species_is_ready_for_e0)
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
@@ -748,6 +748,105 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertTrue(species_has_sp(species_output_dict=species_output_dict, yml_path=yml_path))
         self.assertTrue(species_has_sp_and_freq(species_output_dict=species_output_dict, yml_path=yml_path))
 
+    def test_species_is_ready_for_e0(self):
+        """Monoatomic species require an SP energy but legitimately have no frequencies."""
+        output = {'paths': {'sp': 'sp.out', 'freq': '', 'composite': ''}}
+        monoatomic = ARCSpecies(label='O', smiles='[O]')
+        molecular = ARCSpecies(label='OH', smiles='[OH]')
+        self.assertTrue(species_is_ready_for_e0(output, monoatomic))
+        self.assertFalse(species_is_ready_for_e0(output, molecular))
+        output['paths']['sp'] = ''
+        self.assertFalse(species_is_ready_for_e0(output, monoatomic))
+
+    @patch('arc.scheduler.check_ts')
+    def test_monoatomic_participant_reaches_e0_check_and_switches_ts(self, mock_check_ts):
+        """A failed E0 check switches guesses even when one reaction participant is monoatomic."""
+        scheduler = object.__new__(Scheduler)
+        species = {
+            'R': ARCSpecies(label='R', smiles='OO'),
+            'O': ARCSpecies(label='O', smiles='[O]'),
+            'P': ARCSpecies(label='P', smiles='O=O'),
+            'TS0': ARCSpecies(label='TS0', is_ts=True),
+        }
+        species['TS0'].ts_guesses_exhausted = False
+        species['TS0'].chosen_ts = 1
+        rxn = MagicMock()
+        rxn.reactants = ['R', 'O']
+        rxn.products = ['P']
+        rxn.ts_label = 'TS0'
+        rxn.ts_species = species['TS0']
+        rxn.label = 'R + O <=> P'
+        scheduler.rxn_list = [rxn]
+        scheduler.species_dict = species
+        scheduler.output = {
+            label: {'paths': {'sp': 'sp.out', 'freq': '' if label == 'O' else 'freq.out', 'composite': ''},
+                    'convergence': True}
+            for label in species
+        }
+        scheduler.project_directory = '/tmp'
+        scheduler.kinetics_adapter = 'arkane'
+        scheduler.sp_level = Level('gfn2')
+        scheduler.composite_method = None
+        scheduler.freq_scale_factor = 1.0
+        scheduler.switch_ts = MagicMock()
+
+        def fail_e0(**kwargs):
+            kwargs['reaction'].ts_species.ts_checks['E0'] = False
+
+        mock_check_ts.side_effect = fail_e0
+        scheduler.check_rxn_e0_by_spc('O')
+
+        mock_check_ts.assert_called_once()
+        scheduler.switch_ts.assert_called_once_with('TS0')
+
+    @patch('arc.scheduler.check_ts')
+    @patch('arc.scheduler.parser.parse_e_elect', return_value=-75.0)
+    def test_atomic_sp_completion_triggers_e0_check_and_switches_ts(self, mock_parse_e_elect, mock_check_ts):
+        """Completing the last atomic SP triggers the E0 check and switches a failed TS."""
+        scheduler = object.__new__(Scheduler)
+        species = {
+            'R': ARCSpecies(label='R', smiles='OO'),
+            'O': ARCSpecies(label='O', smiles='[O]'),
+            'P': ARCSpecies(label='P', smiles='O=O'),
+            'TS0': ARCSpecies(label='TS0', is_ts=True),
+        }
+        species['TS0'].ts_guesses_exhausted = False
+        species['TS0'].chosen_ts = 1
+        rxn = MagicMock()
+        rxn.reactants = ['R', 'O']
+        rxn.products = ['P']
+        rxn.ts_label = 'TS0'
+        rxn.ts_species = species['TS0']
+        rxn.label = 'R + O <=> P'
+        scheduler.rxn_list = [rxn]
+        scheduler.species_dict = species
+        scheduler.output = {
+            label: {'paths': {'sp': '' if label == 'O' else 'sp.out',
+                              'freq': '' if label == 'O' else 'freq.out',
+                              'composite': ''},
+                    'job_types': {'sp': False},
+                    'info': '',
+                    'convergence': True}
+            for label in species
+        }
+        scheduler.project_directory = '/tmp'
+        scheduler.kinetics_adapter = 'arkane'
+        scheduler.sp_level = Level('gfn2')
+        scheduler.composite_method = None
+        scheduler.freq_scale_factor = 1.0
+        scheduler.report_e_elect = False
+        scheduler.switch_ts = MagicMock()
+
+        def fail_e0(**kwargs):
+            kwargs['reaction'].ts_species.ts_checks['E0'] = False
+
+        mock_check_ts.side_effect = fail_e0
+        scheduler.post_sp_actions('O', 'atomic-sp.out')
+
+        mock_parse_e_elect.assert_called_once_with('atomic-sp.out')
+        mock_check_ts.assert_called_once()
+        scheduler.switch_ts.assert_called_once_with('TS0')
+
     def test_add_label_to_unique_species_labels(self):
         """Test the add_label_to_unique_species_labels() method."""
         self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO'])
@@ -1227,6 +1326,119 @@ H      -1.82570782    0.42754384   -0.56130718"""
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestTsGuessPathsKey(unittest.TestCase):
+    """Direct unit tests for ``_ts_guess_paths_key``.
+
+    Guards the contract that the scheduler routes each TS-guess
+    adapter's log path into a method-specific slot under
+    ``output[label]['paths']`` (``neb`` / ``gsm``) — so the TCKDB
+    adapter can dispatch a method-aware ``path_search`` parent calc
+    without inspecting the file. Geometry-only methods (no log to
+    file) must return ``None``.
+    """
+
+    def setUp(self):
+        from arc.scheduler import _ts_guess_paths_key
+        self.resolve = _ts_guess_paths_key
+
+    def test_orca_neb_routes_to_neb_slot(self):
+        self.assertEqual(self.resolve('orca_neb'), 'neb')
+
+    def test_xtb_gsm_underscore_routes_to_gsm_slot(self):
+        self.assertEqual(self.resolve('xtb_gsm'), 'gsm')
+
+    def test_xtb_gsm_dash_form_routes_to_gsm_slot(self):
+        # The xtb_gsm adapter sets ``tsg.method = 'xTB-GSM'`` (capital
+        # form with dash) on the produced TSGuess — see
+        # ``arc/job/adapters/ts/xtb_gsm.py:process_run``. The lookup
+        # must be case- and whitespace-insensitive so the scheduler
+        # routes both string forms to the same slot.
+        self.assertEqual(self.resolve('xTB-GSM'), 'gsm')
+        self.assertEqual(self.resolve('  xtb-gsm  '), 'gsm')
+        self.assertEqual(self.resolve('XTB_GSM'), 'gsm')
+
+    def test_geometry_only_methods_return_none(self):
+        for m in ('Heuristics', 'AutoTST', 'KinBot', 'GCN',
+                  'user guess 0', 'user guess 1'):
+            self.assertIsNone(self.resolve(m), msg=f'unexpected match: {m}')
+
+    def test_non_string_inputs_return_none(self):
+        self.assertIsNone(self.resolve(None))
+        self.assertIsNone(self.resolve(42))
+        self.assertIsNone(self.resolve({'method': 'xtb_gsm'}))
+
+
+class TestTsGuessPathProvenance(unittest.TestCase):
+    """``_ts_guess_path_provenance`` recovers a merged path-search source's
+    log path when a geometry-only method wins equivalent-guess dedup
+    (benchmark reaction_06: ``method=gcn``, ``method_sources`` also carrying
+    ``xtb-gsm``), without disturbing the primary-method behaviour or TS
+    selection.
+    """
+
+    class _StubTSG:
+        def __init__(self, method, log_path=None,
+                     method_sources=None, method_source_paths=None):
+            self.method = method
+            self.log_path = log_path
+            self.method_sources = method_sources if method_sources is not None else [method]
+            self.method_source_paths = method_source_paths or dict()
+
+    def setUp(self):
+        from arc.scheduler import _ts_guess_path_provenance
+        self.resolve = _ts_guess_path_provenance
+
+    def test_primary_path_method_wins(self):
+        # Unchanged behaviour: a guess whose own method is a path method.
+        tsg = self._StubTSG('xtb_gsm', log_path='/p/string.xyz0000',
+                            method_source_paths={'xtb_gsm': '/p/string.xyz0000'})
+        self.assertEqual(self.resolve(tsg), ('gsm', '/p/string.xyz0000'))
+
+    def test_geometry_primary_recovers_merged_gsm_source(self):
+        # Production spelling: the xtb_gsm adapter yields method 'xTB-GSM'
+        # -> lowercased 'xtb-gsm' in method_sources / method_source_paths.
+        tsg = self._StubTSG('gcn', log_path=None,
+                            method_sources=['gcn', 'xtb-gsm'],
+                            method_source_paths={'xtb-gsm': '/p/string.xyz0000'})
+        self.assertEqual(self.resolve(tsg), ('gsm', '/p/string.xyz0000'))
+
+    def test_geometry_primary_no_path_source_returns_none(self):
+        tsg = self._StubTSG('gcn', method_sources=['gcn', 'heuristics'])
+        self.assertEqual(self.resolve(tsg), (None, None))
+
+    def test_multiple_path_sources_first_in_order_wins(self):
+        # Deterministic: first path source in method_sources order with a
+        # preserved log wins.
+        tsg = self._StubTSG('gcn', method_sources=['gcn', 'xtb-gsm', 'orca_neb'],
+                            method_source_paths={'xtb-gsm': '/p/gsm',
+                                                 'orca_neb': '/p/neb.log'})
+        self.assertEqual(self.resolve(tsg), ('gsm', '/p/gsm'))
+
+    def test_path_source_without_preserved_log_falls_through(self):
+        # xtb_gsm listed but its log wasn't preserved → fall through to the
+        # next path source that has one.
+        tsg = self._StubTSG('gcn', method_sources=['gcn', 'xtb-gsm', 'orca_neb'],
+                            method_source_paths={'orca_neb': '/p/neb.log'})
+        self.assertEqual(self.resolve(tsg), ('neb', '/p/neb.log'))
+
+
+class TestPathsTemplateInitialization(unittest.TestCase):
+    """``initialize_output_dict`` must seed both ``neb`` and ``gsm``
+    slots on TS species so the per-method routing in
+    ``run_ts_conformer_jobs`` / ``determine_most_likely_ts_conformer``
+    can write into pre-existing keys (and the post-restart reset path
+    in ``restart_species`` preserves them).
+    """
+
+    def test_ts_species_paths_template_includes_gsm(self):
+        # Light test: assert the source of truth at the literal call
+        # site; a full Scheduler-instance test is heavy and adds no
+        # signal beyond the static template check.
+        with open(os.path.join(ARC_PATH, 'arc', 'scheduler.py')) as f:
+            sched_src = f.read()
+        self.assertIn("self.output[species.label]['paths']['gsm'] = ''", sched_src)
 
 
 class TestSpawnTsJobsAdmission(unittest.TestCase):

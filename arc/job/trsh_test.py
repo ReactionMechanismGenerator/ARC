@@ -5,7 +5,9 @@
 This module contains unit tests of the arc.job.trsh module
 """
 
+import math
 import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -679,13 +681,23 @@ class TestTrsh(unittest.TestCase):
         job_type = "sp"
         fine = True
         memory_gb = 32.0
+        # server1 has no 'memory' key, so trsh_ess_job injects the 64 GB default node memory
+        # (cap = 64 * 0.95 = 60.8 GB). These first two logs report only a raw "additional memory
+        # required" figure (no per-process target), so the fallback (memory_gb * 3) overshoots the
+        # physical cap; the Molpro memory trsh pins the total to the cap and halves the MPI rank
+        # count (fewer ranks -> more per-process from the same node-total pool).
+        max_mem_allocation = 64 * 0.95  # 60.8 GB
+        cpu_cores = 8
         ess_trsh_methods = ['change_node']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertAlmostEqual(memory, 222.15625)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertAlmostEqual(memory, max_mem_allocation)  # total pinned to the node cap
+        self.assertEqual(cpu_cores, 4)  # ranks halved from 8
+        self.assertFalse(couldnt_trsh)
 
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory_2.out')
         status, keywords, error, line = trsh.determine_ess_status(output_path=path, species_label='TS', job_type='sp')
@@ -695,20 +707,32 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(memory, 96.0)
+        self.assertAlmostEqual(memory, max_mem_allocation)
+        self.assertEqual(cpu_cores, 2)  # ranks halved again from 4
 
-        # Molpro: Insuffienct Memory 3 Test
+        # Molpro: Insufficient Memory 3 Test -- this log carries a per-process TARGET
+        # ("A further 111.29 Mwords ... Increase memory to 1111.34 Mwords"). The classifier now
+        # captures the target (1111.34 MW) and the trsh sizes a node-total card that yields
+        # >= target/proc, which lands BELOW the node cap, so ranks are NOT reduced.
+        cpu_cores_before = cpu_cores  # 2 (halved 8->4->2 in the two cases above)
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory_3.out')
         status, keywords, error, line = trsh.determine_ess_status(output_path=path,
                                                                   species_label='TS',
                                                                   job_type='sp')
+        self.assertEqual(keywords, ['Memory'])
+        self.assertIn('per-process memory 1111.34 MW', error)  # target M captured, not the delta
         job_status = {'keywords': keywords, 'error': error}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(memory, 62.0)
+        self.assertNotIn('cpu_min', ess_trsh_methods)  # targeted card fits below the cap: no rank cut
+        # node-total GB = ceil(target_mw * headroom * nprocs / 0.822) / 125 (targeted, NOT memory_gb*3)
+        expected_targeted = math.ceil(1111.34 * 1.5 * cpu_cores_before / 0.822) / 125.0
+        self.assertAlmostEqual(memory, expected_targeted)
+        self.assertLess(memory, max_mem_allocation)  # below the node cap -> no rank reduction
+        self.assertEqual(cpu_cores, cpu_cores_before)  # ranks unchanged
 
         # Test Orca
         # Orca: test 1
@@ -853,6 +877,92 @@ class TestTrsh(unittest.TestCase):
 
         self.assertTrue(couldnt_trsh)
         self.assertTrue(any('No applicable troubleshooting methods found' in out for out in output_errors))
+
+    def test_trsh_ess_job_molpro_memory(self):
+        """Test the Molpro 'Memory' trsh branch: below-cap growth, at-cap rank halving, and terminal case."""
+        label = 'TS'
+        level_of_theory = {'method': 'mrci', 'basis': 'aug-cc-pVTZ'}
+        server = 'server2'  # server2 defines memory = 256 GB -> cap = 256 * 0.95 = 243.2 GB
+        job_type = 'sp'
+        software = 'molpro'
+        fine = True
+        num_heavy_atoms = 2
+
+        # (i) Below the node cap: total memory grows but stays bounded, ranks unchanged.
+        memory_gb = 32.0
+        cpu_cores = 8
+        job_status = {'keywords': ['Memory'], 'error': 'Additional memory required: 100 MW'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        self.assertNotIn('cpu', ess_trsh_methods)
+        self.assertEqual(cpu_cores, 8)  # ranks unchanged below the cap
+        self.assertGreater(memory, memory_gb)  # grew
+        self.assertLessEqual(memory, 256 * 0.95)  # bounded by the node cap
+
+        # (ii) At the node cap: total is pinned at the cap and ranks are halved. memory_gb (200)
+        # is still BELOW the cap here, so pinning must lift the total UP to the cap (not keep 200).
+        memory_gb = 200.0
+        cpu_cores = 8
+        job_status = {'keywords': ['Memory'], 'error': 'Additional memory required: 8000 MW'}  # desired > cap
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertEqual(cpu_cores, 4)  # halved from 8
+        self.assertAlmostEqual(memory, 256 * 0.95)  # pinned UP to the cap, not left at memory_gb=200
+
+        # (iii) At the cap with a single rank: cannot reduce further -> terminal error, no identical resubmit.
+        memory_gb = 250.0
+        cpu_cores = 1
+        job_status = {'keywords': ['Memory', 'max_total_job_memory'], 'error': 'Additional memory required: 100 MW'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertTrue(couldnt_trsh)
+        self.assertEqual(cpu_cores, 1)  # cannot go below a single rank
+        self.assertTrue(any('node cap' in out for out in output_errors))
+
+        # (iv) Molpro reports a PER-PROCESS target ("A further ... Increase memory to M Mwords"):
+        # the classifier captures M and the trsh sizes a node-total card targeted at M/proc
+        # (M * headroom * nprocs / 0.822, in GB), NOT the blunt memory_gb*3 fallback.
+        molpro_log = ('  Version 2022.3 linked Jul  1 2023 -- molpro run\n'
+                      ' Variable memory set to 1000.0 Mwords\n'
+                      ' CCSD(T)-F12 triples\n'
+                      ' For full I/O caching in triples, increase memory by 2924.55 Mwords to 3924.60 Mwords.\n'
+                      ' A further 92.19 Mwords of memory are needed for the triples to run. '
+                      'Increase memory to 738.15 Mwords.\n'
+                      ' GLOBAL ERROR fehler on processor   0\n')
+        fd, log_path = tempfile.mkstemp(suffix='.out', prefix='molpro_per_process_target_')
+        with os.fdopen(fd, 'w') as f:
+            f.write(molpro_log)
+        self.addCleanup(lambda: os.remove(log_path) if os.path.isfile(log_path) else None)
+        status, keywords, error, line = trsh.determine_ess_status(output_path=log_path,
+                                                                  species_label='TS', job_type='sp')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['Memory'])                      # (i) classified as Memory ...
+        self.assertIn('per-process memory 738.15 MW', error)        #     ... and target M captured
+        memory_gb = 32.0
+        cpu_cores = 12
+        job_status = {'keywords': keywords, 'error': error}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        # (ii) TARGETED sizing (node-total GB), NOT memory_gb*3:
+        expected_targeted = math.ceil(738.15 * 1.5 * 12 / 0.822) / 125.0
+        self.assertAlmostEqual(memory, expected_targeted)
+        self.assertNotAlmostEqual(memory, memory_gb * 3)
+        self.assertEqual(cpu_cores, 12)  # below the (256 GB) cap: ranks unchanged
 
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""
@@ -1087,6 +1197,119 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('maytal_q', result.keys())
         self.assertIn('48:00:00', result.values())
         self.assertTrue(success)
+
+
+def _make_convergence_lines(cycles: list[dict]) -> list[str]:
+    """
+    Render a list of cycle dicts into Gaussian-style 'Item ... Threshold ... Converged?'
+    log lines that `_parse_convergence_table` can read.
+    Each dict supplies max_force, rms_force, max_disp, rms_disp ratios; thresholds
+    default to Gaussian's tight values (1.5e-5 / 1.0e-5 / 6.0e-5 / 4.0e-5).
+    """
+    out: list[str] = []
+    for c in cycles:
+        mf_thr = c.get('max_force_thr', 1.5e-5)
+        rf_thr = c.get('rms_force_thr', 1.0e-5)
+        md_thr = c.get('max_disp_thr',  6.0e-5)
+        rd_thr = c.get('rms_disp_thr',  4.0e-5)
+        mf, rf, md, rd = (
+            c['max_force_ratio'] * mf_thr,
+            c['rms_force_ratio'] * rf_thr,
+            c['max_disp_ratio']  * md_thr,
+            c['rms_disp_ratio']  * rd_thr,
+        )
+        out.append('         Item               Value     Threshold  Converged?\n')
+        out.append(f' Maximum Force            {mf:.6f}     {mf_thr:.6f}     {"YES" if mf <= mf_thr else "NO "}\n')
+        out.append(f' RMS     Force            {rf:.6f}     {rf_thr:.6f}     {"YES" if rf <= rf_thr else "NO "}\n')
+        out.append(f' Maximum Displacement     {md:.6f}     {md_thr:.6f}     {"YES" if md <= md_thr else "NO "}\n')
+        out.append(f' RMS     Displacement     {rd:.6f}     {rd_thr:.6f}     {"YES" if rd <= rd_thr else "NO "}\n')
+    return out
+
+
+class TestDispOnlyUnconverged(unittest.TestCase):
+    """
+    Tests for the flat-PES / opt=tight detection used to tag DispUnconverged
+    on top of MaxOptCycles failures.
+    """
+
+    def test_disp_only_unconverged_detects_flat_pes_pattern(self):
+        # Modeled on rxn_298 opt_a2354 last 5 cycles: forces hover at 1-5x threshold,
+        # max_disp oscillates 7-40x threshold (never improves to threshold).
+        cycles = [
+            {'max_force_ratio': 1.0, 'rms_force_ratio': 0.5, 'max_disp_ratio': 37.0, 'rms_disp_ratio': 17.0},
+            {'max_force_ratio': 2.3, 'rms_force_ratio': 0.9, 'max_disp_ratio': 28.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio': 4.5, 'rms_force_ratio': 1.8, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 4.6, 'rms_force_ratio': 1.7, 'max_disp_ratio': 15.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 1.7, 'rms_force_ratio': 0.8, 'max_disp_ratio': 40.0, 'rms_disp_ratio': 21.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertTrue(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_handles_one_cycle_dip(self):
+        # A motivating-case variant: one cycle's max_disp dips to ~7x while the rest
+        # are well above 10x. The all(>10x) check would miss this; the new rule should
+        # still fire because min_ratio >= 5x and >=3 cycles are >= 10x.
+        cycles = [
+            {'max_force_ratio': 1.0, 'rms_force_ratio': 0.5, 'max_disp_ratio': 30.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio': 2.0, 'rms_force_ratio': 0.8, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 4.5, 'rms_force_ratio': 1.6, 'max_disp_ratio':  7.0, 'rms_disp_ratio':  5.0},
+            {'max_force_ratio': 4.6, 'rms_force_ratio': 1.7, 'max_disp_ratio': 18.0, 'rms_disp_ratio':  8.0},
+            {'max_force_ratio': 1.7, 'rms_force_ratio': 0.8, 'max_disp_ratio': 35.0, 'rms_disp_ratio': 15.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertTrue(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_still_converging_pattern(self):
+        # Forces near threshold but max_disp is monotonically descending: 80x -> 4x.
+        # This run probably just needs more cycles or a different stepper, not no_tight.
+        cycles = [
+            {'max_force_ratio': 1.5, 'rms_force_ratio': 0.6, 'max_disp_ratio': 80.0, 'rms_disp_ratio': 35.0},
+            {'max_force_ratio': 1.4, 'rms_force_ratio': 0.6, 'max_disp_ratio': 40.0, 'rms_disp_ratio': 18.0},
+            {'max_force_ratio': 1.2, 'rms_force_ratio': 0.5, 'max_disp_ratio': 20.0, 'rms_disp_ratio':  9.0},
+            {'max_force_ratio': 1.1, 'rms_force_ratio': 0.4, 'max_disp_ratio': 10.0, 'rms_disp_ratio':  5.0},
+            {'max_force_ratio': 0.9, 'rms_force_ratio': 0.3, 'max_disp_ratio':  4.0, 'rms_disp_ratio':  2.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertFalse(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_large_force_pattern(self):
+        # Displacements stuck high but forces are 20-100x threshold: geometry is
+        # genuinely unconverged. opt=tight isn't the problem; need stepper/maxcycle.
+        cycles = [
+            {'max_force_ratio':  20.0, 'rms_force_ratio':  8.0, 'max_disp_ratio': 30.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio':  50.0, 'rms_force_ratio': 22.0, 'max_disp_ratio': 28.0, 'rms_disp_ratio': 11.0},
+            {'max_force_ratio': 100.0, 'rms_force_ratio': 40.0, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio':  60.0, 'rms_force_ratio': 25.0, 'max_disp_ratio': 18.0, 'rms_disp_ratio':  8.0},
+            {'max_force_ratio':  40.0, 'rms_force_ratio': 18.0, 'max_disp_ratio': 35.0, 'rms_disp_ratio': 15.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertFalse(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_unparseable_table(self):
+        # No convergence table at all.
+        self.assertFalse(trsh._disp_only_unconverged([]))
+        # Garbage that won't match the field tags.
+        self.assertFalse(trsh._disp_only_unconverged(['not a real log line\n'] * 50))
+
+    def test_disp_only_unconverged_real_log_rxn_298_opt_a2354(self):
+        # Regression test against the actual Gaussian log that motivated this fix.
+        # The fixture preserves every cycle's convergence table from opt_a2354
+        # (rxn_298, tert-butyl product, fine=true => opt=tight).
+        fixture = os.path.join(ARC_TESTING_PATH, 'trsh', 'opt_disp_unconverged_a2354.log')
+        with open(fixture) as f:
+            lines = f.readlines()
+        self.assertTrue(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_short_table(self):
+        # Only 4 cycles parsed: not enough to judge. Need >= 5.
+        cycles = [
+            {'max_force_ratio': 1.0, 'rms_force_ratio': 0.5, 'max_disp_ratio': 30.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio': 2.0, 'rms_force_ratio': 0.8, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 4.5, 'rms_force_ratio': 1.6, 'max_disp_ratio': 18.0, 'rms_disp_ratio':  8.0},
+            {'max_force_ratio': 1.7, 'rms_force_ratio': 0.8, 'max_disp_ratio': 35.0, 'rms_disp_ratio': 15.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertFalse(trsh._disp_only_unconverged(lines))
 
 
 if __name__ == "__main__":

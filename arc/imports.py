@@ -10,13 +10,30 @@ from arc.settings.inputs import input_files
 from arc.settings.submit import incore_commands, pipe_submit, submit_scripts
 
 
+def _local_overlays_disabled() -> bool:
+    """Return True when ~/.arc/{settings,submit,inputs}.py overlays should be skipped.
+
+    The repo's arc/settings/settings.py is always loaded as the baseline. This
+    guard only controls whether a user's personal ~/.arc/*.py files are layered
+    on top — we want them ignored under pytest (so tests see the same defaults
+    CI does) and overridable explicitly via env var.
+
+    Triggered by either pytest being loaded (`'pytest' in sys.modules`, true
+    from collection onward) or an explicit ARC_IGNORE_LOCAL_SETTINGS=1 env var.
+    """
+    if os.environ.get('ARC_IGNORE_LOCAL_SETTINGS') == '1':
+        return True
+    return 'pytest' in sys.modules
+
+
 # Common imports where the user can optionally put a modified copy of settings.py or submit.py file under ~/.arc
 home = os.getenv("HOME") or os.path.expanduser("~")
 local_arc_path = os.path.join(home, '.arc')
+_skip_local = _local_overlays_disabled()
 
 local_arc_settings_path = os.path.join(local_arc_path, 'settings.py')
 settings = {key: val for key, val in vars(arc_settings).items() if '__' not in key}
-if os.path.isfile(local_arc_settings_path):
+if not _skip_local and os.path.isfile(local_arc_settings_path):
     local_settings = dict()
     if local_arc_path not in sys.path:
         sys.path.insert(1, local_arc_path)
@@ -32,7 +49,7 @@ if os.path.isfile(local_arc_settings_path):
             if 'global_ess_settings' in local_settings_dict and local_settings_dict['global_ess_settings'] else None
 
 local_arc_submit_path = os.path.join(local_arc_path, 'submit.py')
-if os.path.isfile(local_arc_submit_path):
+if not _skip_local and os.path.isfile(local_arc_submit_path):
     local_incore_commands, local_pipe_submit, local_submit_scripts = dict(), dict(), dict()
     if local_arc_path not in sys.path:
         sys.path.insert(1, local_arc_path)
@@ -56,7 +73,7 @@ if os.path.isfile(local_arc_submit_path):
         submit_scripts.update(local_submit_scripts)
 
 local_arc_inputs_path = os.path.join(local_arc_path, 'inputs.py')
-if os.path.isfile(local_arc_inputs_path):
+if not _skip_local and os.path.isfile(local_arc_inputs_path):
     local_input_files = dict()
     if local_arc_path not in sys.path:
         sys.path.insert(1, local_arc_path)
