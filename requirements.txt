@@ -37,3 +37,9 @@ coverage
 # For interactive use
 jupyter
 ipython
+
+# TCKDB v2 client (installed from GitHub)
+tckdb-client @ git+https://github.com/calvinp0/tckdbv2.git#subdirectory=clients/python
+
+# TCKDB v2 wire-contract schemas (test-only; validates emitted payloads)
+tckdb-schemas @ git+https://github.com/calvinp0/tckdbv2.git#subdirectory=schemas/python/tckdb-schemas

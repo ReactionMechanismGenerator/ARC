@@ -1047,6 +1047,29 @@ class TestMappingEngine(unittest.TestCase):
         self.assertAlmostEqual(torsions[0]['angle 1'], 67.81049913527622)
         self.assertAlmostEqual(torsions[0]['angle 2'], 174.65228274664804)
 
+    def test_is_torsion_linear(self):
+        """Test the is_torsion_linear() function."""
+        # 2-pentyne (CC#CCC) has a collinear C1#C2-C3 alkyne segment.
+        spc = ARCSpecies(label='2-pentyne', smiles='CC#CCC')
+        spc.determine_rotors()
+        xyz = spc.get_xyz()
+        # The torsion [1, 2, 3, 4] spans the linear alkyne ([1, 2, 3] triplet ~180 degrees).
+        self.assertTrue(engine.is_torsion_linear(xyz, [1, 2, 3, 4]))
+        # A torsion around a normal single bond (the terminal ethyl rotor) is not linear.
+        self.assertFalse(engine.is_torsion_linear(xyz, [2, 3, 4, 10]))
+
+    def test_get_backbone_dihedral_angles_skips_linear_segment(self):
+        """Test that get_backbone_dihedral_angles() skips backbone torsions that span a linear segment."""
+        # 2-pentyne's only heavy-atom-terminated backbone torsion, [1, 2, 3, 4], spans a linear alkyne
+        # segment; it must be filtered out so it is never fed into the set_dihedral() alignment loop.
+        spc_1 = ARCSpecies(label='2-pentyne-a', smiles='CC#CCC')
+        spc_2 = ARCSpecies(label='2-pentyne-b', smiles='CC#CCC')
+        spc_1.determine_rotors()
+        spc_2.determine_rotors()
+        backbone_map = {i: i for i in range(len(spc_1.mol.atoms))}
+        torsions = engine.get_backbone_dihedral_angles(spc_1, spc_2, backbone_map=backbone_map)
+        self.assertFalse(any(torsion_dict['torsion 1'] == [1, 2, 3, 4] for torsion_dict in torsions))
+
     def test_map_lists(self):
         """Test the map_lists function."""
         self.assertEqual(engine.map_lists([], []), {})
@@ -1575,6 +1598,33 @@ class TestMappingEngine(unittest.TestCase):
         self.assertEqual(len(p_cuts),0)
         self.assertTrue(engine.r_cut_p_cut_isomorphic(ARCSpecies(label="r1", smiles="F[C]F", multiplicity=1),
                                                ARCSpecies(label="r1", smiles="F[C]F", multiplicity=3)))
+
+    def test_r_cut_p_cut_isomorphic_strict(self):
+        """Strict mode rejects constitutional isomers that share a molecular formula."""
+        alpha = ARCSpecies(label='alpha', smiles='C[CH]OCCC')  # α-radical
+        beta = ARCSpecies(label='beta', smiles='CC[CH]OCC')    # β-radical
+        self.assertTrue(engine.r_cut_p_cut_isomorphic(alpha, beta, strict=False))
+        self.assertFalse(engine.r_cut_p_cut_isomorphic(alpha, beta, strict=True))
+        same_a = ARCSpecies(label='a', smiles='CC[CH]OCC')
+        same_b = ARCSpecies(label='b', smiles='CC[CH]OCC')
+        self.assertTrue(engine.r_cut_p_cut_isomorphic(same_a, same_b, strict=True))
+
+    def test_pairing_prefers_strict_match_for_formula_isomers(self):
+        """
+        H-abstraction where abstractor = same species on both sides and the two
+        radicals on the radical side are α/β positional isomers of the same
+        skeleton. Strict-first pairing must match intact radicals with their
+        isomorphic cut-fragment counterparts, not with the wrong intact radical.
+        """
+        r_1 = ARCSpecies(label='r1', smiles='CC[CH]OCC')
+        r_2 = ARCSpecies(label='r2', smiles='CCCOCC')
+        p_1 = ARCSpecies(label='p1', smiles='C[CH]OCCC')
+        p_2 = ARCSpecies(label='p2', smiles='CCCOCC')
+        rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        atom_map = rxn.atom_map
+        self.assertIsNotNone(atom_map)
+        self.assertEqual(len(atom_map), sum(s.number_of_atoms for s in rxn.r_species))
 
     def test_pairing_reactants_and_products_for_mapping(self):
         """Test the pairing_reactants_and_products_for_mapping() function"""

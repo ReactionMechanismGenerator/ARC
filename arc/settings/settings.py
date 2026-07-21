@@ -9,6 +9,12 @@ import glob
 import os
 import string
 import sys
+import shutil
+from arc.settings.crest import (
+    find_crest_executable,
+    find_highest_version_in_directory,
+    parse_version,
+)
 
 # Users should update the following server dictionary.
 # Instructions for RSA key generation can be found here:
@@ -83,6 +89,7 @@ global_ess_settings = {
     'torchani': 'local',
     'openbabel': 'local',
     'orca_neb': 'local',
+    'qst2': 'local',
     'ase': 'local',
 }
 
@@ -90,7 +97,7 @@ global_ess_settings = {
 supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
-ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
+ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb', 'qst2', 'crest']
 
 # List here job types to execute by default
 default_job_types = {'conf_opt': True,        # defaults to True if not specified
@@ -166,6 +173,7 @@ input_filenames = {'ase': 'input.yml',
                    'onedmin': 'input.in',
                    'orca': 'input.in',
                    'orca_neb': 'input.in',
+                   'qst2': 'input.gjf',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
                    'xtb': 'input.sh',
@@ -180,6 +188,7 @@ output_filenames = {'ase': 'output.yml',
                     'onedmin': 'output.out',
                     'orca': 'input.log',
                     'orca_neb': 'input.log',
+                    'qst2': 'input.log',
                     'qchem': 'output.out',
                     'terachem': 'output.out',
                     'torchani': 'output.yml',
@@ -258,8 +267,12 @@ orca_neb_settings = {'keyword': {
                         'nnodes': 15,
                         'preopt': 'true',
                     },
-                    'level': 'wb97xd/def2tzvp',
+                    'level': 'wb97x-d3/def2tzvp',  # ORCA spelling; it does not accept Gaussian's 'wb97xd'
                     }
+
+qst2_settings = {'maxcycle': 150,
+                 'level': 'wb97xd/def2svp',  # match the TS-guess opt level; the guess is refined later
+                 }
 
 ase_default_options_dict = {'optimizer': 'BFGS',
                             'fmax': 0.001,
@@ -338,12 +351,37 @@ pipe_settings = {
 # An imaginary frequency is valid if it is between the following range (in cm-1):
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 
+# Optional UMA (FAIRChem) refinement of KinBot TS guesses, executed inside kinbot_env.
+# 'refine': If True, each KinBot template TS guess is refined with a Sella saddle-point
+#           search on Meta's UMA machine-learned potential before being returned to ARC.
+#           Requires installing kinbot_env with ``devtools/install_kinbot.sh --uma`` and
+#           either a local UMA checkpoint ('model_path') or a HuggingFace login with
+#           access to the (license-gated) UMA models for downloading 'model_name'.
+#           On any refinement failure ARC falls back to the unrefined template guess.
+kinbot_uma_settings = {
+    'refine': False,
+    'model_path': '',           # e.g., '/home/user/checkpoints/uma-s-1p2.pt'
+    'model_name': 'uma-s-1p1',  # used only if 'model_path' is empty
+    'task_name': 'omol',
+    'device': 'cpu',
+    'fmax': 0.005,              # Sella force convergence criterion
+    'steps': 250,               # maximal number of Sella steps
+}
+
 # ARC families folder path
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
+# The RMG reaction family set ARC uses to determine and validate reaction families.
+# 'default' matches RMG's recommended families (suitable for mechanism generation). Set to 'all'
+# to consider every family available in the RMG database — including families that ARC's TS
+# adapters support (see ts_adapters_by_rmg_family) but that RMG does not list as recommended
+# (e.g. Intra_RH_Add_Endocyclic, XY_Addition_MultipleBond). Useful when running specific
+# reactions across many families (e.g. a benchmark) rather than generating a mechanism.
+rmg_family_set = 'default'
+
 # Default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, UMA_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, XTB_PYTHON, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
-    None, None, None, None, None, None, None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, UMA_PYTHON, AUTOTST_PYTHON, KINBOT_PYTHON, ARC_PYTHON, XTB, XTB_PYTHON, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
+    None, None, None, None, None, None, None, None, None, None, None, None
 
 home = os.getenv("HOME") or os.path.expanduser("~")
 
@@ -385,6 +423,7 @@ SELLA_PYTHON = find_executable('sella_env')
 OB_PYTHON = find_executable('ob_env')
 TS_GCN_PYTHON = find_executable('ts_gcn')
 AUTOTST_PYTHON = find_executable('tst_env')
+KINBOT_PYTHON = find_executable('kinbot_env')
 ARC_PYTHON = find_executable('arc_env')
 XTB_PYTHON = find_executable('xtb_env')
 RMG_ENV_NAME = 'rmg_env'
@@ -489,3 +528,57 @@ for path in rmg_db_candidates:
     if path and os.path.isdir(path):
         RMG_DB_PATH = path
         break
+
+CREST_PATH, CREST_ENV_PATH = find_crest_executable()
+
+__all__ = [
+    "servers",
+    "global_ess_settings",
+    "supported_ess",
+    "ts_adapters",
+    "default_job_types",
+    "levels_ess",
+    "check_status_command",
+    "submit_command",
+    "delete_command",
+    "list_available_nodes_command",
+    "submit_filenames",
+    "t_max_format",
+    "input_filenames",
+    "output_filenames",
+    "default_levels_of_theory",
+    "orca_default_options_dict",
+    "tani_default_options_dict",
+    "ob_default_settings",
+    "xtb_gsm_settings",
+    "valid_chars",
+    "rotor_scan_resolution",
+    "maximum_barrier",
+    "minimum_barrier",
+    "inconsistency_az",
+    "inconsistency_ab",
+    "max_rotor_trsh",
+    "preserve_params_in_scan",
+    "workers_coeff",
+    "default_job_settings",
+    "ARC_FAMILIES_PATH",
+    "home",
+    "TANI_PYTHON",
+    "OB_PYTHON",
+    "TS_GCN_PYTHON",
+    "AUTOTST_PYTHON",
+    "ARC_PYTHON",
+    "RMG_ENV_NAME",
+    "RMG_PYTHON",
+    "XTB",
+    "exported_rmg_path",
+    "exported_rmg_db_path",
+    "gw",
+    "find_executable",
+    "add_rmg_db_candidates",
+    "parse_version",
+    "find_highest_version_in_directory",
+    "find_crest_executable",
+    "CREST_PATH",
+    "CREST_ENV_PATH",
+]

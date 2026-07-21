@@ -5,7 +5,9 @@
 This module contains unit tests of the arc.job.trsh module
 """
 
+import math
 import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -95,6 +97,20 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(keywords, ["CheckFile"])
         self.assertEqual(error, "Basis set data is not on the checkpoint file.")
         self.assertIn("Error termination via Lnk1e", line)
+        self.assertIn("g09/l401.exe", line)
+
+        # A GL401 "projection from the old to the new basis set has failed" error (guess=read from a
+        # checkpoint built with a different basis) is retryable by dropping the checkfile, so it is
+        # classified as CheckFile - NOT as a dead-end BasisSet error.
+        path = os.path.join(self.base_path["gaussian"], "l401_projection.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="Zr2O4H", job_type="opt"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["CheckFile"])
+        self.assertNotIn("BasisSet", keywords)
+        self.assertIn("projection from the old to the new basis set", error)
+        self.assertIn("removing the checkfile", error)
         self.assertIn("g09/l401.exe", line)
 
         path = os.path.join(self.base_path["gaussian"], "l9999.out")
@@ -461,10 +477,13 @@ class TestTrsh(unittest.TestCase):
         self.assertTrue(all('trsh_attempt' not in e for e in output_errors))
 
         # Gaussian: test 7 - part 2
-        # verify troubleshoot attempts counting (consolidated)
+        # verify troubleshoot attempts counting (consolidated). Full minimization MaxOptCycles
+        # ladder (maxcycle -> recalcfc -> calcall -> RFO -> GDIIS -> GEDIIS) must be exhausted.
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
         ess_trsh_methods = ['trsh_attempt',
                             'int=(Acc2E=14)', 'opt=(maxcycle=200)',
+                            'trsh_attempt', 'opt=(recalcfc=5)',
+                            'trsh_attempt', 'opt=(calcall)',
                             'trsh_attempt', 'opt=(RFO)',
                             'trsh_attempt', 'opt=(GDIIS)',
                             'trsh_attempt', 'opt=(GEDIIS)',
@@ -475,9 +494,10 @@ class TestTrsh(unittest.TestCase):
                                                                     num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertTrue(couldnt_trsh)
         e = output_errors[-1]
-        self.assertIn('Tried troubleshooting 5 time(s)', e)
+        self.assertIn('Tried troubleshooting 7 time(s)', e)
         self.assertNotIn('trsh_attempt', e)
-        for opt in ("opt=(maxcycle=200)", "opt=(RFO)", "opt=(GDIIS)", "opt=(GEDIIS)"):
+        for opt in ("opt=(maxcycle=200)", "opt=(recalcfc=5)", "opt=(calcall)",
+                    "opt=(RFO)", "opt=(GDIIS)", "opt=(GEDIIS)"):
             self.assertIn(opt, e)
         self.assertIn('all_attempted', e)
 
@@ -542,9 +562,8 @@ class TestTrsh(unittest.TestCase):
         self.assertFalse(couldnt_trsh)
         self.assertIn('opt=(maxcycle=200)', ess_trsh_methods)
         
-        # Gaussian: test 10 - part 2
-        # 'MaxOptCycles', 'GL9999'
-        # Adding RFO to opt
+        # Gaussian: test 10 - part 2 (minimization ladder)
+        # 'MaxOptCycles', 'GL9999' - Hessian recompute (recalcfc) comes before any algorithm flip
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
         ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
@@ -552,49 +571,47 @@ class TestTrsh(unittest.TestCase):
                                                                     job_type, software, fine, memory_gb,
                                                                     num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertFalse(couldnt_trsh)
-        self.assertIn('opt=(maxcycle=200)', ess_trsh_methods)
-        self.assertIn('opt=(RFO)', ess_trsh_methods)
-        self.assertIn('opt=(maxcycle=200,RFO)', trsh_keyword)
-        
-        # Gaussian: test 10 - part 3
-        # 'MaxOptCycles', 'GL9999'
-        # Adding GDIIS to opt
-        # Removing RFO from opt
+        self.assertIn('opt=(recalcfc=5)', ess_trsh_methods)
+        self.assertNotIn('opt=(RFO)', ess_trsh_methods)  # algorithm flip must NOT precede Hessian recompute
+        self.assertIn('opt=(maxcycle=200,recalcfc=5)', trsh_keyword)
+
+        # Gaussian: test 10 - part 3 - calcall (most aggressive Hessian) supersedes recalcfc in the route
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
-        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(RFO)']
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(recalcfc=5)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                     job_type, software, fine, memory_gb,
                                                                     num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertFalse(couldnt_trsh)
-        self.assertIn('opt=(maxcycle=200)', ess_trsh_methods)
-        self.assertIn('opt=(RFO)', ess_trsh_methods)
-        self.assertIn('opt=(GDIIS)', ess_trsh_methods)
-        self.assertIn('opt=(maxcycle=200,GDIIS)', trsh_keyword)
-        
-        # Gaussian: test 10 - part 4
-        # 'MaxOptCycles', 'GL9999'
-        # Adding GEDIIS to opt
-        # Removing RFO from opt
-        # Removing GDIIS from opt
+        self.assertIn('opt=(calcall)', ess_trsh_methods)
+        self.assertIn('opt=(maxcycle=200,calcall)', trsh_keyword)  # recalcfc collapsed into calcall
+
+        # Gaussian: test 10 - part 4 - only now flip to RFO (eigenvector following)
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
-        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(RFO)', 'opt=(GDIIS)']
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(calcall)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                     job_type, software, fine, memory_gb,
                                                                     num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertFalse(couldnt_trsh)
-        self.assertIn('opt=(maxcycle=200)', ess_trsh_methods)
         self.assertIn('opt=(RFO)', ess_trsh_methods)
-        self.assertIn('opt=(GDIIS)', ess_trsh_methods)
-        self.assertIn('opt=(GEDIIS)', ess_trsh_methods)
-        self.assertIn('opt=(maxcycle=200,GEDIIS)', trsh_keyword)
-        
-        # Gaussian: test 10 - part 5
-        # 'MaxOptCycles', 'GL9999'
-        # Final test to ensure that it cannot troubleshoot the job further
+        self.assertIn('opt=(maxcycle=200,calcall,RFO)', trsh_keyword)
+
+        # Gaussian: test 10 - part 5 - GDIIS then GEDIIS (minimization only)
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
-        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(RFO)', 'opt=(GDIIS)', 'opt=(GEDIIS)']
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(calcall)', 'opt=(RFO)']
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                    job_type, software, fine, memory_gb,
+                                                                    num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('opt=(GDIIS)', ess_trsh_methods)
+        self.assertIn('opt=(maxcycle=200,calcall,GDIIS)', trsh_keyword)
+
+        # Gaussian: test 10 - part 6 - final step exhausts the minimization ladder
+        job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(calcall)',
+                            'opt=(RFO)', 'opt=(GDIIS)', 'opt=(GEDIIS)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                     job_type, software, fine, memory_gb,
@@ -679,13 +696,23 @@ class TestTrsh(unittest.TestCase):
         job_type = "sp"
         fine = True
         memory_gb = 32.0
+        # server1 has no 'memory' key, so trsh_ess_job injects the 64 GB default node memory
+        # (cap = 64 * 0.95 = 60.8 GB). These first two logs report only a raw "additional memory
+        # required" figure (no per-process target), so the fallback (memory_gb * 3) overshoots the
+        # physical cap; the Molpro memory trsh pins the total to the cap and halves the MPI rank
+        # count (fewer ranks -> more per-process from the same node-total pool).
+        max_mem_allocation = 64 * 0.95  # 60.8 GB
+        cpu_cores = 8
         ess_trsh_methods = ['change_node']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertAlmostEqual(memory, 222.15625)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertAlmostEqual(memory, max_mem_allocation)  # total pinned to the node cap
+        self.assertEqual(cpu_cores, 4)  # ranks halved from 8
+        self.assertFalse(couldnt_trsh)
 
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory_2.out')
         status, keywords, error, line = trsh.determine_ess_status(output_path=path, species_label='TS', job_type='sp')
@@ -695,25 +722,37 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(memory, 96.0)
+        self.assertAlmostEqual(memory, max_mem_allocation)
+        self.assertEqual(cpu_cores, 2)  # ranks halved again from 4
 
-        # Molpro: Insuffienct Memory 3 Test
+        # Molpro: Insufficient Memory 3 Test -- this log carries a per-process TARGET
+        # ("A further 111.29 Mwords ... Increase memory to 1111.34 Mwords"). The classifier now
+        # captures the target (1111.34 MW) and the trsh sizes a node-total card that yields
+        # >= target/proc, which lands BELOW the node cap, so ranks are NOT reduced.
+        cpu_cores_before = cpu_cores  # 2 (halved 8->4->2 in the two cases above)
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory_3.out')
         status, keywords, error, line = trsh.determine_ess_status(output_path=path,
                                                                   species_label='TS',
                                                                   job_type='sp')
+        self.assertEqual(keywords, ['Memory'])
+        self.assertIn('per-process memory 1111.34 MW', error)  # target M captured, not the delta
         job_status = {'keywords': keywords, 'error': error}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(memory, 62.0)
+        self.assertNotIn('cpu_min', ess_trsh_methods)  # targeted card fits below the cap: no rank cut
+        # node-total GB = ceil(target_mw * headroom * nprocs / 0.822) / 125 (targeted, NOT memory_gb*3)
+        expected_targeted = math.ceil(1111.34 * 1.5 * cpu_cores_before / 0.822) / 125.0
+        self.assertAlmostEqual(memory, expected_targeted)
+        self.assertLess(memory, max_mem_allocation)  # below the node cap -> no rank reduction
+        self.assertEqual(cpu_cores, cpu_cores_before)  # ranks unchanged
 
         # Test Orca
         # Orca: test 1
         # Test troubleshooting insufficient memory issue
-        # Automatically increase memory provided not exceeding maximum available memory
+        # Keep total memory fixed and reduce cpu cores so %%maxcore increases
         label = 'test'
         level_of_theory = {'method': 'dlpno-ccsd(T)'}
         server = 'server1'
@@ -733,8 +772,8 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(cpu_cores, 32)
-        self.assertAlmostEqual(memory, 327)
+        self.assertEqual(cpu_cores, 24)
+        self.assertAlmostEqual(memory, 250)
 
         # Orca: test 2
         # Test troubleshooting insufficient memory issue
@@ -759,8 +798,8 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(cpu_cores, 22)
-        self.assertAlmostEqual(memory, 227)
+        self.assertEqual(cpu_cores, 24)
+        self.assertAlmostEqual(memory, 250)
 
         # Orca: test 3
         # Test troubleshooting insufficient memory issue
@@ -789,6 +828,28 @@ class TestTrsh(unittest.TestCase):
         self.assertLess(cpu_cores, 1)  # can't really run job with less than 1 cpu ^o^
 
         # Orca: test 4
+        # Test troubleshooting a capped-memory boundary where 1 cpu core is still viable
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server1'
+        job_type = 'sp'
+        software = 'orca'
+        fine = True
+        memory_gb = 10
+        cpu_cores = 2
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['memory']
+        job_status = {'keywords': ['MDCI', 'Memory', 'max_total_job_memory'],
+                      'error': 'Orca suggests to increase per cpu core memory to 10000 MB.'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertEqual(couldnt_trsh, False)
+        self.assertEqual(cpu_cores, 1)
+        self.assertEqual(memory, 10)
+
+        # Orca: test 5
         # Test troubleshooting too many cpu cores
         # Automatically reduce cpu cores
         label = 'test'
@@ -812,7 +873,95 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('cpu', ess_trsh_methods)
         self.assertEqual(cpu_cores, 10)
 
-        # Orca: test 5
+        # Orca: test 6
+        # Test troubleshooting old Orca memory message without a numeric MaxCore suggestion
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server1'
+        job_type = 'sp'
+        software = 'orca'
+        fine = True
+        memory_gb = 16
+        cpu_cores = 8
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['memory']
+        job_status = {'keywords': ['MDCI', 'Memory'],
+                      'error': 'Insufficient job memory.'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertEqual(couldnt_trsh, False)
+        self.assertEqual(cpu_cores, 6)
+        self.assertEqual(memory, 16)
+
+        # Orca: test 7
+        # Test troubleshooting generic Orca memory errors without resubmitting identical resources
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server1'
+        job_type = 'sp'
+        software = 'orca'
+        fine = True
+        memory_gb = 25
+        cpu_cores = 8
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['memory']
+        job_status = {'keywords': ['MDCI', 'Memory'],
+                      'error': 'Insufficient job memory.'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertEqual(couldnt_trsh, False)
+        self.assertEqual(cpu_cores, 6)
+        self.assertEqual(memory, 25)
+
+        # Orca: test 8
+        # Test stepping from 2 cpu cores down to 1 for generic Orca memory errors
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server1'
+        job_type = 'sp'
+        software = 'orca'
+        fine = True
+        memory_gb = 25
+        cpu_cores = 2
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['memory']
+        job_status = {'keywords': ['MDCI', 'Memory'],
+                      'error': 'Insufficient job memory.'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertEqual(couldnt_trsh, False)
+        self.assertEqual(cpu_cores, 1)
+        self.assertEqual(memory, 25)
+
+        # Orca: test 9
+        # Test troubleshooting old Orca cpu-limit message without a numeric pair count
+        label = 'test'
+        level_of_theory = {'method': 'dlpno-ccsd(T)'}
+        server = 'server1'
+        job_type = 'sp'
+        software = 'orca'
+        fine = True
+        memory_gb = 16
+        cpu_cores = 16
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['cpu']
+        job_status = {'keywords': ['MDCI', 'cpu'],
+                      'error': 'Orca cannot utilize cpu cores more than electron pairs in a molecule. ARC will '
+                               'estimate the number of cpu cores needed based on the number of heavy atoms in the '
+                               'molecule.'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertEqual(cpu_cores, 10)
+
+        # Orca: test 10
         # Test that DLPNO + monoatomic species raises TrshError
         label = 'H'
         level_of_theory = {'method': 'dlpno-ccsd(T)'}
@@ -831,6 +980,139 @@ class TestTrsh(unittest.TestCase):
                               job_type, software, fine, memory_gb,
                               num_heavy_atoms, cpu_cores, ess_trsh_methods,
                               is_h=True, is_monoatomic=True)
+
+    def test_trsh_ess_job_gaussian_non_retryable_refusal(self):
+        """
+        P1: Gaussian input/method errors that a resubmit cannot fix must refuse immediately
+        (couldnt_trsh=True) without appending int=(Acc2E=14) or any other remedy - previously
+        every Gaussian error picked up a spurious Acc2E=14 step and burned a resubmit.
+        """
+        def call(job_status):
+            return trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None, job_status,
+                                     'opt', 'gaussian', False, 16, 2, 8, [])
+        non_retryable_cases = [
+            (['Syntax'], 'There was a syntax error in the Gaussian input file.'),
+            (['InputError', 'GL101'], 'The blank line after the coordinate section is missing.'),
+            (['MP2', 'GL906'], 'The MP2 calculation has failed.'),
+            (['Scratch'], 'Wrongly specified the scratch directory.'),
+        ]
+        for keywords, error in non_retryable_cases:
+            out = call({'keywords': keywords, 'error': error})
+            output_errors, ess_trsh_methods, couldnt_trsh = out[0], out[1], out[11]
+            self.assertTrue(couldnt_trsh, f'{keywords} should refuse (couldnt_trsh=True)')
+            self.assertEqual(ess_trsh_methods, [], f'{keywords} must not append any remedy')
+            self.assertTrue(any('non-retryable' in e for e in output_errors),
+                            f'{keywords} should report a non-retryable error: {output_errors}')
+
+        # ZMat (L716) is NOT non-retryable: it must get the opt=(cartesian) remedy, not a refusal.
+        zmat = call({'keywords': ['ZMat', 'GL716'], 'error': 'Angle in z-matrix outside the allowed range 0 < x < 180.'})
+        self.assertFalse(zmat[11], 'ZMat must be troubleshot, not refused')
+        self.assertFalse(any('non-retryable' in e for e in zmat[0]), 'ZMat must not be reported non-retryable')
+        self.assertIn('cartesian', zmat[1])
+
+        # A genuine dead-end BasisSet error (GL301 "atomic number out of range") is STILL refused -
+        # via the dedicated BasisSet branch, not the non-retryable gate (so 'BasisSet' no longer
+        # needs to be in GAUSSIAN_NON_RETRYABLE_KEYWORDS).
+        self.assertNotIn('BasisSet', trsh.GAUSSIAN_NON_RETRYABLE_KEYWORDS)
+        bad_basis = call({'keywords': ['GL301', 'BasisSet'],
+                          'error': 'The basis set 6-311G is not appropriate for the this chemistry.'})
+        self.assertTrue(bad_basis[11], 'genuine BasisSet dead-end must still be refused')
+        self.assertEqual(bad_basis[1], [], 'refused BasisSet must not append any remedy')
+
+        # Legitimate, retryable classes must be UNAFFECTED (still get their remedies):
+        scf = call({'keywords': ['SCF', 'GL502', 'NoSymm'], 'error': 'Unconverged SCF'})
+        self.assertFalse(scf[11])
+        self.assertIn('scf=(qc)', scf[1])
+        opt = call({'keywords': ['MaxOptCycles', 'GL9999'], 'error': 'steps exceeded'})
+        self.assertFalse(opt[11])
+        self.assertIn('opt=(maxcycle=200)', opt[1])
+
+    def test_trsh_ess_job_gaussian_zmat_cartesian_then_terminates(self):
+        """
+        A ZMat (L716) error - the optimizer drove atoms collinear - must be troubleshot with
+        opt=(cartesian) on the first retry (same remedy L103 uses) and must terminate (not loop)
+        if it recurs after Cartesian has already been tried. Verified for both opt and conf_opt.
+        """
+        for job_type in ('opt', 'conf_opt'):
+            ess_trsh_methods = list()
+            history = list()
+            for _ in range(5):
+                out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None,
+                                        {'keywords': ['ZMat', 'GL716'],
+                                         'error': 'Angle in z-matrix outside the allowed range 0 < x < 180.'},
+                                        job_type, 'gaussian', False, 16, 2, 8, ess_trsh_methods)
+                ess_trsh_methods, trsh_keyword, couldnt_trsh = out[1], out[7], out[11]
+                history.append((list(ess_trsh_methods), list(trsh_keyword), couldnt_trsh))
+                if couldnt_trsh or 'all_attempted' in ess_trsh_methods:
+                    break
+            # First retry: Cartesian recorded and emitted, job is resubmitted (couldnt_trsh False).
+            self.assertIn('cartesian', history[0][0], f'{job_type}: first ZMat retry must record cartesian')
+            self.assertIn('opt=(cartesian)', history[0][1], f'{job_type}: first ZMat retry must emit opt=(cartesian)')
+            self.assertFalse(history[0][2], f'{job_type}: first ZMat retry must resubmit, not give up')
+            # Second retry (ZMat recurs after cartesian): must terminate, no loop.
+            self.assertTrue(history[-1][2], f'{job_type}: recurring ZMat after cartesian must terminate')
+            self.assertIn('all_attempted', history[-1][0], f'{job_type}: must reach all_attempted')
+            self.assertLessEqual(len(history), 2, f'{job_type}: cartesian tried once then terminate: {history}')
+
+    def test_trsh_ess_job_gaussian_optorientation_nosymm_then_terminates(self):
+        """
+        An l202 "OptOrientation" error (the standard orientation / point group changed mid-opt) is a
+        symmetry glitch that nosymm cures - the same remedy l101/l103 use - so it must be troubleshot
+        with nosymm on the first retry, NOT refused as a non-retryable dead-end, and must terminate
+        (not loop) if it recurs after nosymm has already been applied.
+        """
+        # OptOrientation must no longer be gated as a non-retryable dead-end.
+        self.assertNotIn('OptOrientation', trsh.GAUSSIAN_NON_RETRYABLE_KEYWORDS)
+        ess_trsh_methods, history = list(), list()
+        for _ in range(5):
+            out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None,
+                                    {'keywords': ['OptOrientation', 'GL202', 'NoSymm'],
+                                     'error': 'During the optimization process, either the standard '
+                                              'orientation or the point group of the molecule has changed.'},
+                                    'opt', 'gaussian', False, 16, 2, 8, ess_trsh_methods)
+            output_errors, ess_trsh_methods, trsh_keyword, couldnt_trsh = out[0], out[1], out[7], out[11]
+            history.append((list(ess_trsh_methods), list(trsh_keyword), couldnt_trsh,
+                            any('non-retryable' in e for e in output_errors)))
+            if couldnt_trsh or 'all_attempted' in ess_trsh_methods:
+                break
+        # First retry: nosymm recorded and emitted exactly once, job resubmitted, NOT refused.
+        self.assertIn('NoSymm', history[0][0], 'first OptOrientation retry must record NoSymm')
+        self.assertEqual(history[0][1].count('nosymm'), 1, 'nosymm must be emitted exactly once')
+        self.assertFalse(history[0][2], 'first OptOrientation retry must resubmit, not give up')
+        self.assertFalse(history[0][3], 'OptOrientation must not be reported non-retryable')
+        # Recurrence after nosymm already applied: terminate, no loop.
+        self.assertTrue(history[-1][2], 'recurring OptOrientation after nosymm must terminate')
+        self.assertIn('all_attempted', history[-1][0])
+        self.assertLessEqual(len(history), 2, f'nosymm tried once then terminate: {history}')
+
+    def test_trsh_ess_job_gaussian_gl401_projection_checkfile_then_terminates(self):
+        """
+        A GL401 "projection from the old to the new basis set has failed" error is reclassified as
+        CheckFile (see determine_ess_status), so trsh_ess_job must remove the checkfile (drop
+        guess=read) and resubmit - NOT refuse it as a dead-end BasisSet error - and must terminate
+        (not loop) if it recurs after the checkfile was already removed.
+        """
+        error = ('The projection from the old to the new basis set has failed; '
+                 'removing the checkfile to restart from a fresh SCF guess.')
+        ess_trsh_methods, history = list(), list()
+        for _ in range(5):
+            out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None,
+                                    {'keywords': ['CheckFile'], 'error': error},
+                                    'opt', 'gaussian', False, 16, 2, 8, ess_trsh_methods)
+            output_errors, ess_trsh_methods, remove_checkfile, couldnt_trsh = out[0], out[1], out[2], out[11]
+            history.append((list(ess_trsh_methods), remove_checkfile, couldnt_trsh,
+                            any('non-retryable' in e for e in output_errors)))
+            if couldnt_trsh or 'all_attempted' in ess_trsh_methods:
+                break
+        # First pass: checkfile removed, job resubmitted, NOT refused.
+        self.assertTrue(history[0][1], 'first pass must remove the checkfile')
+        self.assertIn('checkfile=None', history[0][0])
+        self.assertFalse(history[0][2], 'first pass must resubmit, not give up')
+        self.assertFalse(history[0][3], 'GL401 projection must not be reported non-retryable')
+        # Recurrence after checkfile already removed: terminate, no loop.
+        self.assertTrue(history[-1][2], 'recurring GL401 after checkfile removal must terminate')
+        self.assertIn('all_attempted', history[-1][0])
+        self.assertLessEqual(len(history), 2, f'checkfile removed once then terminate: {history}')
 
     def test_trsh_ess_job_terachem_trsh_attempt_only(self):
         """Isolate the terachem trsh_attempt-only case from Gaussian stateful flow."""
@@ -853,6 +1135,286 @@ class TestTrsh(unittest.TestCase):
 
         self.assertTrue(couldnt_trsh)
         self.assertTrue(any('No applicable troubleshooting methods found' in out for out in output_errors))
+
+    def test_trsh_ess_job_gaussian_scf_qc_progression(self):
+        """
+        Simulate a Gaussian job that persistently fails SCF convergence, feeding the returned
+        ess_trsh_methods back into trsh_ess_job() as the scheduler does on each retry:
+        - the job fails in l508 (the scf=(qc)/(xqc) quadratic-convergence link) whenever
+          'scf=(qc)' is part of the attempted methods (the adapter upgrades qc to xqc), and
+        - fails in l502 (plain SCF convergence) otherwise.
+
+        The cycle must progress monotonically:
+        - 'no_xqc' is recorded exactly once,
+        - 'scf=(qc)' is never re-added after 'no_xqc' has been recorded (no qc/no_xqc oscillation),
+        - the rest of the SCF ladder (NDamp, NoDIIS, guess=INDO, and the Fermi/Noincfock/NoVarAcc
+          last resort) is actually reached before the cycle declares 'all_attempted'.
+        """
+        label = 'ethanol'
+        level_of_theory = {'method': 'wb97xd', 'basis': 'def2tzvp'}
+        server = None  # server-independent: the SCF cycle under test never consults server settings
+        job_type = 'opt'
+        software = 'gaussian'
+        fine = False
+        memory_gb = 16
+        num_heavy_atoms = 2
+        cpu_cores = 8
+        scf_status = {'keywords': ['SCF', 'GL502', 'NoSymm'], 'error': 'Unconverged SCF'}
+        xqc_status = {'keywords': ['no_xqc', 'GL508'], 'error': 'Unconverged'}
+        ess_trsh_methods = list()
+        for _ in range(30):
+            job_status = xqc_status if 'scf=(qc)' in ess_trsh_methods else scf_status
+            output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, \
+                trsh_keyword, memory, shift, cpu_cores, couldnt_trsh = \
+                trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                  job_type, software, fine, memory_gb,
+                                  num_heavy_atoms, cpu_cores, ess_trsh_methods)
+            self.assertLessEqual(ess_trsh_methods.count('no_xqc'), 1,
+                                 f'no_xqc was re-appended (oscillation): {ess_trsh_methods}')
+            if 'no_xqc' in ess_trsh_methods:
+                self.assertNotIn('scf=(qc)', ess_trsh_methods,
+                                 f'scf=(qc) was re-added after no_xqc: {ess_trsh_methods}')
+            if couldnt_trsh or 'all_attempted' in ess_trsh_methods:
+                break
+        else:
+            self.fail(f'Gaussian SCF troubleshooting cycle did not terminate: {ess_trsh_methods}')
+        self.assertIn('no_xqc', ess_trsh_methods)
+        for method in ('scf=(NDamp=30)', 'scf=(NoDIIS)', 'guess=INDO',
+                       'scf=(Fermi)', 'scf=(Noincfock)', 'scf=(NoVarAcc)'):
+            self.assertIn(method, ess_trsh_methods,
+                          f'the SCF ladder never reached {method}: {ess_trsh_methods}')
+
+    def _run_gaussian_ladder(self, keywords, error, n=10, is_ts=False, fine=False):
+        """
+        Drive trsh_ess_job() repeatedly for a Gaussian job that keeps failing with the same
+        (keywords, error), feeding ess_trsh_methods back in as the scheduler does. Returns the
+        list of (ess_trsh_methods snapshot, couldnt_trsh) tuples, one per retry, stopping once
+        the cycle gives up or emits 'all_attempted'.
+        """
+        job_status = {'keywords': keywords, 'error': error}
+        ess_trsh_methods, history = list(), list()
+        for _ in range(n):
+            out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None, job_status,
+                                    'opt', 'gaussian', fine, 16, 2, 8, ess_trsh_methods, is_ts=is_ts)
+            ess_trsh_methods, fine, couldnt_trsh = out[1], out[6], out[11]
+            history.append((list(ess_trsh_methods), couldnt_trsh))
+            if couldnt_trsh or 'all_attempted' in ess_trsh_methods:
+                break
+        return history
+
+    @staticmethod
+    def _distinct_opts(history):
+        """Distinct opt=(...) remedies in first-seen (escalation) order across a ladder history."""
+        distinct = []
+        for snap, _ in history:
+            for m in snap:
+                if m.startswith('opt=') and m not in distinct:
+                    distinct.append(m)
+        return distinct
+
+    def test_trsh_ess_job_gaussian_inaccurate_quadrature_ladder(self):
+        """
+        Pin the InaccurateQuadrature (Gaussian l502 CalDSu) remedy ladder so the removal of the
+        dead 'int=ultrafine' branch in trsh_keyword_inaccurate_quadrature is provably behavior
+        preserving. Expected escalation, one remedy per retry, then termination:
+            int=grid=300590 -> scf=(NoVarAcc) -> guess=INDO -> all_attempted.
+        """
+        history = self._run_gaussian_ladder(['InaccurateQuadrature', 'GL502'], 'Inaccurate quadrature in CalDSu')
+        ess_snapshots = [snap for snap, _ in history]
+        self.assertEqual(ess_snapshots, [
+            ['int=(Acc2E=14)', 'int=grid=300590'],
+            ['int=(Acc2E=14)', 'int=grid=300590', 'scf=(NoVarAcc)'],
+            ['int=(Acc2E=14)', 'int=grid=300590', 'scf=(NoVarAcc)', 'guess=INDO'],
+            ['int=(Acc2E=14)', 'int=grid=300590', 'scf=(NoVarAcc)', 'guess=INDO', 'all_attempted'],
+        ])
+        self.assertTrue(history[-1][1])  # couldnt_trsh is True on the terminal retry
+
+    def test_trsh_ess_job_gaussian_maxoptcycles_ladder_minimization(self):
+        """
+        P3: MaxOptCycles ladder for a minimization (is_ts=False). Recompute the Hessian before any
+        step-algorithm flip, and keep the DIIS accelerators (legitimate for minima):
+            maxcycle=200 -> recalcfc=5 -> calcall -> RFO -> GDIIS -> GEDIIS -> all_attempted.
+        """
+        history = self._run_gaussian_ladder(['MaxOptCycles', 'GL9999'], 'Maximum optimization cycles reached.')
+        self.assertEqual([snap for snap, _ in history][0], ['int=(Acc2E=14)', 'opt=(maxcycle=200)'])
+        self.assertEqual(self._distinct_opts(history),
+                         ['opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(calcall)',
+                          'opt=(RFO)', 'opt=(GDIIS)', 'opt=(GEDIIS)'])
+        self.assertIn('all_attempted', history[-1][0])
+
+    def test_trsh_ess_job_gaussian_maxoptcycles_ladder_ts(self):
+        """
+        P3: MaxOptCycles ladder for a TS (is_ts=True). Hessian recompute comes before the algorithm
+        flip, and GDIIS/GEDIIS (minimization DIIS accelerators that can fall off the saddle) are
+        NOT applied - the ladder stops at RFO:
+            maxcycle=200 -> recalcfc=5 -> calcall -> RFO -> all_attempted.
+        """
+        history = self._run_gaussian_ladder(['MaxOptCycles', 'GL9999'],
+                                            'Maximum optimization cycles reached.', is_ts=True)
+        distinct = self._distinct_opts(history)
+        self.assertEqual(distinct, ['opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(calcall)', 'opt=(RFO)'])
+        self.assertNotIn('opt=(GDIIS)', distinct)
+        self.assertNotIn('opt=(GEDIIS)', distinct)
+        # Hessian recompute must precede the RFO algorithm flip:
+        self.assertLess(distinct.index('opt=(recalcfc=5)'), distinct.index('opt=(RFO)'))
+        self.assertLess(distinct.index('opt=(calcall)'), distinct.index('opt=(RFO)'))
+        self.assertIn('all_attempted', history[-1][0])
+
+    @staticmethod
+    def _maxoptcycles_trsh(ess_trsh_methods, is_ts, fine):
+        """One trsh_ess_job() retry for a MaxOptCycles (l9999) Gaussian opt; returns
+        (ess_trsh_methods, trsh_keyword, couldnt_trsh)."""
+        job_status = {'keywords': ['MaxOptCycles', 'GL9999'],
+                      'error': 'Maximum optimization cycles reached.'}
+        out = trsh.trsh_ess_job('lbl', {'method': 'wb97xd', 'basis': 'def2tzvp'}, None, job_status,
+                                'opt', 'gaussian', fine, 16, 2, 8, ess_trsh_methods, is_ts=is_ts)
+        return out[1], out[7], out[11]
+
+    def test_trsh_ess_job_gaussian_maxoptcycles_ladder_ts_fine_cartesian(self):
+        """
+        A FINE TS opt (is_ts=True, fine=True) that dead-ends on the l9999 "Optimization stopped"
+        MaxOptCycles oscillation must switch to Cartesian coordinates EARLY - after the cheap
+        maxcycle bump but before the expensive Hessian/algorithm escalation:
+            maxcycle=200 -> cartesian -> recalcfc=5 -> calcall -> RFO -> all_attempted.
+        Cartesian is tried exactly once and is carried through (merged into) the rest of the route.
+        """
+        history = self._run_gaussian_ladder(['MaxOptCycles', 'GL9999'],
+                                            'Maximum optimization cycles reached.',
+                                            is_ts=True, fine=True)
+        snapshots = [snap for snap, _ in history]
+        final_methods = snapshots[-1]
+        # Cartesian is recorded (bare marker), exactly once, and after the maxcycle bump.
+        self.assertIn('cartesian', final_methods,
+                      f'cartesian was never tried for the fine TS opt oscillation: {final_methods}')
+        self.assertEqual(final_methods.count('cartesian'), 1,
+                         f'cartesian must be recorded exactly once: {final_methods}')
+        self.assertLess(final_methods.index('opt=(maxcycle=200)'), final_methods.index('cartesian'))
+        self.assertLess(final_methods.index('cartesian'), final_methods.index('opt=(recalcfc=5)'))
+        # The route keyword emitted on the retry that introduces cartesian merges it with maxcycle.
+        ess, trsh_keyword, couldnt = self._maxoptcycles_trsh(
+            ['int=(Acc2E=14)', 'opt=(maxcycle=200)'], is_ts=True, fine=True)
+        self.assertIn('cartesian', ess)
+        self.assertFalse(couldnt)
+        self.assertIn('opt=(cartesian,maxcycle=200)', trsh_keyword)
+        # The ladder still terminates and GDIIS/GEDIIS stay excluded for a TS.
+        self.assertIn('all_attempted', final_methods)
+        self.assertTrue(history[-1][1])
+        self.assertFalse(any('GDIIS' in m for m in final_methods))
+
+    def test_trsh_ess_job_gaussian_maxoptcycles_cartesian_gated(self):
+        """
+        The fine-TS-opt Cartesian remedy must NOT leak into the ground-state opt ladder
+        (is_ts=False) nor the coarse TS opt ladder (fine=False) - both are unchanged. The
+        recalcfc Hessian recompute (not cartesian) must be the second rung in those cases.
+        """
+        for is_ts, fine, tag in [(False, True, 'ground-state fine opt'),
+                                 (True, False, 'coarse TS opt'),
+                                 (False, False, 'ground-state coarse opt')]:
+            ess, trsh_keyword, couldnt = self._maxoptcycles_trsh(
+                ['int=(Acc2E=14)', 'opt=(maxcycle=200)'], is_ts=is_ts, fine=fine)
+            self.assertNotIn('cartesian', ess, f'cartesian must not fire for a {tag}: {ess}')
+            self.assertNotIn('opt=(cartesian)', trsh_keyword,
+                             f'cartesian route must not appear for a {tag}: {trsh_keyword}')
+            self.assertIn('opt=(recalcfc=5)', ess, f'{tag} must escalate to recalcfc: {ess}')
+
+    def test_prioritize_opt_methods_ts_vs_min(self):
+        """P3 unit: TS keeps only RFO and the most aggressive Hessian directive; min keeps GEDIIS."""
+        acc = ['maxcycle=200', 'recalcfc=5', 'calcall', 'RFO', 'GDIIS', 'GEDIIS', 'calcfc']
+        ts = trsh.prioritize_opt_methods(list(acc), is_ts=True)
+        self.assertIn('RFO', ts)
+        self.assertNotIn('GDIIS', ts)
+        self.assertNotIn('GEDIIS', ts)
+        self.assertIn('calcall', ts)
+        self.assertNotIn('recalcfc=5', ts)  # calcall (more aggressive) wins
+        self.assertNotIn('calcfc', ts)
+        min_ = trsh.prioritize_opt_methods(list(acc), is_ts=False)
+        self.assertEqual([m for m in min_ if m in ('GEDIIS', 'GDIIS', 'RFO')], ['GEDIIS'])
+
+    def test_trsh_ess_job_molpro_memory(self):
+        """Test the Molpro 'Memory' trsh branch: below-cap growth, at-cap rank halving, and terminal case."""
+        label = 'TS'
+        level_of_theory = {'method': 'mrci', 'basis': 'aug-cc-pVTZ'}
+        server = 'server2'  # server2 defines memory = 256 GB -> cap = 256 * 0.95 = 243.2 GB
+        job_type = 'sp'
+        software = 'molpro'
+        fine = True
+        num_heavy_atoms = 2
+
+        # (i) Below the node cap: total memory grows but stays bounded, ranks unchanged.
+        memory_gb = 32.0
+        cpu_cores = 8
+        job_status = {'keywords': ['Memory'], 'error': 'Additional memory required: 100 MW'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        self.assertNotIn('cpu', ess_trsh_methods)
+        self.assertEqual(cpu_cores, 8)  # ranks unchanged below the cap
+        self.assertGreater(memory, memory_gb)  # grew
+        self.assertLessEqual(memory, 256 * 0.95)  # bounded by the node cap
+
+        # (ii) At the node cap: total is pinned at the cap and ranks are halved. memory_gb (200)
+        # is still BELOW the cap here, so pinning must lift the total UP to the cap (not keep 200).
+        memory_gb = 200.0
+        cpu_cores = 8
+        job_status = {'keywords': ['Memory'], 'error': 'Additional memory required: 8000 MW'}  # desired > cap
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertEqual(cpu_cores, 4)  # halved from 8
+        self.assertAlmostEqual(memory, 256 * 0.95)  # pinned UP to the cap, not left at memory_gb=200
+
+        # (iii) At the cap with a single rank: cannot reduce further -> terminal error, no identical resubmit.
+        memory_gb = 250.0
+        cpu_cores = 1
+        job_status = {'keywords': ['Memory', 'max_total_job_memory'], 'error': 'Additional memory required: 100 MW'}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertTrue(couldnt_trsh)
+        self.assertEqual(cpu_cores, 1)  # cannot go below a single rank
+        self.assertTrue(any('node cap' in out for out in output_errors))
+
+        # (iv) Molpro reports a PER-PROCESS target ("A further ... Increase memory to M Mwords"):
+        # the classifier captures M and the trsh sizes a node-total card targeted at M/proc
+        # (M * headroom * nprocs / 0.822, in GB), NOT the blunt memory_gb*3 fallback.
+        molpro_log = ('  Version 2022.3 linked Jul  1 2023 -- molpro run\n'
+                      ' Variable memory set to 1000.0 Mwords\n'
+                      ' CCSD(T)-F12 triples\n'
+                      ' For full I/O caching in triples, increase memory by 2924.55 Mwords to 3924.60 Mwords.\n'
+                      ' A further 92.19 Mwords of memory are needed for the triples to run. '
+                      'Increase memory to 738.15 Mwords.\n'
+                      ' GLOBAL ERROR fehler on processor   0\n')
+        fd, log_path = tempfile.mkstemp(suffix='.out', prefix='molpro_per_process_target_')
+        with os.fdopen(fd, 'w') as f:
+            f.write(molpro_log)
+        self.addCleanup(lambda: os.remove(log_path) if os.path.isfile(log_path) else None)
+        status, keywords, error, line = trsh.determine_ess_status(output_path=log_path,
+                                                                  species_label='TS', job_type='sp')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['Memory'])                      # (i) classified as Memory ...
+        self.assertIn('per-process memory 738.15 MW', error)        #     ... and target M captured
+        memory_gb = 32.0
+        cpu_cores = 12
+        job_status = {'keywords': keywords, 'error': error}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ['change_node'])
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('memory', ess_trsh_methods)
+        # (ii) TARGETED sizing (node-total GB), NOT memory_gb*3:
+        expected_targeted = math.ceil(738.15 * 1.5 * 12 / 0.822) / 125.0
+        self.assertAlmostEqual(memory, expected_targeted)
+        self.assertNotAlmostEqual(memory, memory_gb * 3)
+        self.assertEqual(cpu_cores, 12)  # below the (256 GB) cap: ranks unchanged
 
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""
@@ -1087,6 +1649,119 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('maytal_q', result.keys())
         self.assertIn('48:00:00', result.values())
         self.assertTrue(success)
+
+
+def _make_convergence_lines(cycles: list[dict]) -> list[str]:
+    """
+    Render a list of cycle dicts into Gaussian-style 'Item ... Threshold ... Converged?'
+    log lines that `_parse_convergence_table` can read.
+    Each dict supplies max_force, rms_force, max_disp, rms_disp ratios; thresholds
+    default to Gaussian's tight values (1.5e-5 / 1.0e-5 / 6.0e-5 / 4.0e-5).
+    """
+    out: list[str] = []
+    for c in cycles:
+        mf_thr = c.get('max_force_thr', 1.5e-5)
+        rf_thr = c.get('rms_force_thr', 1.0e-5)
+        md_thr = c.get('max_disp_thr',  6.0e-5)
+        rd_thr = c.get('rms_disp_thr',  4.0e-5)
+        mf, rf, md, rd = (
+            c['max_force_ratio'] * mf_thr,
+            c['rms_force_ratio'] * rf_thr,
+            c['max_disp_ratio']  * md_thr,
+            c['rms_disp_ratio']  * rd_thr,
+        )
+        out.append('         Item               Value     Threshold  Converged?\n')
+        out.append(f' Maximum Force            {mf:.6f}     {mf_thr:.6f}     {"YES" if mf <= mf_thr else "NO "}\n')
+        out.append(f' RMS     Force            {rf:.6f}     {rf_thr:.6f}     {"YES" if rf <= rf_thr else "NO "}\n')
+        out.append(f' Maximum Displacement     {md:.6f}     {md_thr:.6f}     {"YES" if md <= md_thr else "NO "}\n')
+        out.append(f' RMS     Displacement     {rd:.6f}     {rd_thr:.6f}     {"YES" if rd <= rd_thr else "NO "}\n')
+    return out
+
+
+class TestDispOnlyUnconverged(unittest.TestCase):
+    """
+    Tests for the flat-PES / opt=tight detection used to tag DispUnconverged
+    on top of MaxOptCycles failures.
+    """
+
+    def test_disp_only_unconverged_detects_flat_pes_pattern(self):
+        # Modeled on rxn_298 opt_a2354 last 5 cycles: forces hover at 1-5x threshold,
+        # max_disp oscillates 7-40x threshold (never improves to threshold).
+        cycles = [
+            {'max_force_ratio': 1.0, 'rms_force_ratio': 0.5, 'max_disp_ratio': 37.0, 'rms_disp_ratio': 17.0},
+            {'max_force_ratio': 2.3, 'rms_force_ratio': 0.9, 'max_disp_ratio': 28.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio': 4.5, 'rms_force_ratio': 1.8, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 4.6, 'rms_force_ratio': 1.7, 'max_disp_ratio': 15.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 1.7, 'rms_force_ratio': 0.8, 'max_disp_ratio': 40.0, 'rms_disp_ratio': 21.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertTrue(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_handles_one_cycle_dip(self):
+        # A motivating-case variant: one cycle's max_disp dips to ~7x while the rest
+        # are well above 10x. The all(>10x) check would miss this; the new rule should
+        # still fire because min_ratio >= 5x and >=3 cycles are >= 10x.
+        cycles = [
+            {'max_force_ratio': 1.0, 'rms_force_ratio': 0.5, 'max_disp_ratio': 30.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio': 2.0, 'rms_force_ratio': 0.8, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 4.5, 'rms_force_ratio': 1.6, 'max_disp_ratio':  7.0, 'rms_disp_ratio':  5.0},
+            {'max_force_ratio': 4.6, 'rms_force_ratio': 1.7, 'max_disp_ratio': 18.0, 'rms_disp_ratio':  8.0},
+            {'max_force_ratio': 1.7, 'rms_force_ratio': 0.8, 'max_disp_ratio': 35.0, 'rms_disp_ratio': 15.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertTrue(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_still_converging_pattern(self):
+        # Forces near threshold but max_disp is monotonically descending: 80x -> 4x.
+        # This run probably just needs more cycles or a different stepper, not no_tight.
+        cycles = [
+            {'max_force_ratio': 1.5, 'rms_force_ratio': 0.6, 'max_disp_ratio': 80.0, 'rms_disp_ratio': 35.0},
+            {'max_force_ratio': 1.4, 'rms_force_ratio': 0.6, 'max_disp_ratio': 40.0, 'rms_disp_ratio': 18.0},
+            {'max_force_ratio': 1.2, 'rms_force_ratio': 0.5, 'max_disp_ratio': 20.0, 'rms_disp_ratio':  9.0},
+            {'max_force_ratio': 1.1, 'rms_force_ratio': 0.4, 'max_disp_ratio': 10.0, 'rms_disp_ratio':  5.0},
+            {'max_force_ratio': 0.9, 'rms_force_ratio': 0.3, 'max_disp_ratio':  4.0, 'rms_disp_ratio':  2.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertFalse(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_large_force_pattern(self):
+        # Displacements stuck high but forces are 20-100x threshold: geometry is
+        # genuinely unconverged. opt=tight isn't the problem; need stepper/maxcycle.
+        cycles = [
+            {'max_force_ratio':  20.0, 'rms_force_ratio':  8.0, 'max_disp_ratio': 30.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio':  50.0, 'rms_force_ratio': 22.0, 'max_disp_ratio': 28.0, 'rms_disp_ratio': 11.0},
+            {'max_force_ratio': 100.0, 'rms_force_ratio': 40.0, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio':  60.0, 'rms_force_ratio': 25.0, 'max_disp_ratio': 18.0, 'rms_disp_ratio':  8.0},
+            {'max_force_ratio':  40.0, 'rms_force_ratio': 18.0, 'max_disp_ratio': 35.0, 'rms_disp_ratio': 15.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertFalse(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_unparseable_table(self):
+        # No convergence table at all.
+        self.assertFalse(trsh._disp_only_unconverged([]))
+        # Garbage that won't match the field tags.
+        self.assertFalse(trsh._disp_only_unconverged(['not a real log line\n'] * 50))
+
+    def test_disp_only_unconverged_real_log_rxn_298_opt_a2354(self):
+        # Regression test against the actual Gaussian log that motivated this fix.
+        # The fixture preserves every cycle's convergence table from opt_a2354
+        # (rxn_298, tert-butyl product, fine=true => opt=tight).
+        fixture = os.path.join(ARC_TESTING_PATH, 'trsh', 'opt_disp_unconverged_a2354.log')
+        with open(fixture) as f:
+            lines = f.readlines()
+        self.assertTrue(trsh._disp_only_unconverged(lines))
+
+    def test_disp_only_unconverged_rejects_short_table(self):
+        # Only 4 cycles parsed: not enough to judge. Need >= 5.
+        cycles = [
+            {'max_force_ratio': 1.0, 'rms_force_ratio': 0.5, 'max_disp_ratio': 30.0, 'rms_disp_ratio': 12.0},
+            {'max_force_ratio': 2.0, 'rms_force_ratio': 0.8, 'max_disp_ratio': 25.0, 'rms_disp_ratio': 10.0},
+            {'max_force_ratio': 4.5, 'rms_force_ratio': 1.6, 'max_disp_ratio': 18.0, 'rms_disp_ratio':  8.0},
+            {'max_force_ratio': 1.7, 'rms_force_ratio': 0.8, 'max_disp_ratio': 35.0, 'rms_disp_ratio': 15.0},
+        ]
+        lines = _make_convergence_lines(cycles)
+        self.assertFalse(trsh._disp_only_unconverged(lines))
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 
 import arc.species.converter as converter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
+from arc.constants import angstrom_to_bohr
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
 from arc.species.converter import order_mol_by_atom_map
@@ -700,6 +701,37 @@ H      3.654100    0.340300    0.057100"""
                                    (3.6541, 0.3403, 0.0571))}
         xyz = converter.str_to_xyz(xyz_format)
         self.assertEqual(xyz, expected_xyz)
+
+    def test_reorder_xyz_string_atom_first(self):
+        """Test reordering atom-first XYZ strings with unit conversion"""
+        xyz_format = "C 0.0 1.0 2.0\nH -1.0 0.5 0.0"
+        converted = converter.reorder_xyz_string(xyz_str=xyz_format, reverse_atoms=True, convert_to="bohr")
+        converted_lines = converted.splitlines()
+        self.assertEqual(len(converted_lines), 2)
+
+        x1, y1, z1, s1 = converted_lines[0].split()
+        self.assertEqual(s1, "C")
+        self.assertAlmostEqual(float(x1), 0.0)
+        self.assertAlmostEqual(float(y1), 1.0 * angstrom_to_bohr)
+        self.assertAlmostEqual(float(z1), 2.0 * angstrom_to_bohr)
+
+        x2, y2, z2, s2 = converted_lines[1].split()
+        self.assertEqual(s2, "H")
+        self.assertAlmostEqual(float(x2), -1.0 * angstrom_to_bohr)
+        self.assertAlmostEqual(float(y2), 0.5 * angstrom_to_bohr)
+        self.assertAlmostEqual(float(z2), 0.0)
+
+    def test_reorder_xyz_string_coordinate_first(self):
+        """Test reordering coordinate-first XYZ strings back to atom-last order with conversion"""
+        xyz_format = "0.0 0.0 0.0 N\n1.0 0.0 0.0 H"
+        converted = converter.reorder_xyz_string(
+            xyz_str=xyz_format,
+            reverse_atoms=False,
+            units="bohr",
+            convert_to="angstrom",
+        )
+        expected = "0.0 0.0 0.0 N\n0.529177 0.0 0.0 H"
+        self.assertEqual(converted, expected)
 
     def test_xyz_to_str(self):
         """Test converting an ARC xyz format to a string xyz format"""
@@ -5134,6 +5166,35 @@ H      -1.88123946   -2.00923795    0.23313156"""
                                                         isotopes=aspirin_xyz["isotopes"])
         score = converter.kabsch(aspirin_xyz, aspirin_perturbed_xyz)
         self.assertGreater(score, 0.01)
+
+    def test_align_xyz_to_ref_coords(self):
+        """Test rigid-body superimposing coordinates onto reference coordinates"""
+        xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+               'coords': ((0.0, 0.0, 0.0),
+                          (0.0, 0.757, 0.586),
+                          (0.0, -0.757, 0.586))}
+        # Rotate and translate the coordinates, then align back onto the originals.
+        r = Rotation.from_euler('zyx', [73, -25, 112], degrees=True)
+        moved_coords = r.apply(np.array(xyz['coords'])) + np.array([3.5, -2.0, 7.1])
+        moved_xyz = converter.xyz_from_data(coords=moved_coords, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
+        aligned_xyz = converter.align_xyz_to_ref_coords(xyz_dict=moved_xyz, ref_coords=xyz['coords'])
+        self.assertEqual(aligned_xyz['symbols'], xyz['symbols'])
+        self.assertEqual(aligned_xyz['isotopes'], xyz['isotopes'])
+        self.assertTrue(almost_equal_coords(aligned_xyz, xyz))
+        # The internal geometry must not be distorted.
+        d_orig = np.linalg.norm(np.array(moved_xyz['coords'][1]) - np.array(moved_xyz['coords'][2]))
+        d_aligned = np.linalg.norm(np.array(aligned_xyz['coords'][1]) - np.array(aligned_xyz['coords'][2]))
+        self.assertAlmostEqual(d_orig, d_aligned, places=8)
+
+        # A single atom is placed exactly at the reference position.
+        h_xyz = {'symbols': ('H',), 'isotopes': (1,), 'coords': ((5.0, 5.0, 5.0),)}
+        aligned_h = converter.align_xyz_to_ref_coords(xyz_dict=h_xyz, ref_coords=[(1.0, 2.0, 3.0)])
+        self.assertTrue(almost_equal_coords(aligned_h, {'symbols': ('H',), 'isotopes': (1,),
+                                                        'coords': ((1.0, 2.0, 3.0),)}))
+
+        # A shape mismatch raises a ValueError.
+        with self.assertRaises(ValueError):
+            converter.align_xyz_to_ref_coords(xyz_dict=xyz, ref_coords=[(0.0, 0.0, 0.0), (1.0, 1.0, 1.0)])
 
     def test_order_mol_by_atom_map_identity(self):
         """Identity map: result matches the element ordering of a plain deep copy."""

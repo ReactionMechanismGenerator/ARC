@@ -20,6 +20,7 @@ from arc.family.family import (ReactionFamily,
                                filter_products_by_reaction,
                                get_reaction_family_products,
                                get_all_families,
+                               get_rmg_family_directories,
                                get_entries,
                                split_entries,
                                get_group_adjlist,
@@ -721,6 +722,37 @@ H      -0.83821148   -0.26602407    0.00000000"""
         """An unknown family-set string should raise ValueError, not fall through to KeyError."""
         with self.assertRaises(ValueError):
             get_all_families(rmg_family_set='not_a_real_family_set', consider_arc_families=False)
+
+    def test_all_includes_database_directory_families(self):
+        """'all' must include families that exist in the RMG database as directories but are not in
+        any recommended family set (e.g. Intra_RH_Add_Endocyclic), which ARC's TS adapters support."""
+        directory_families = get_rmg_family_directories()
+        self.assertIsInstance(directory_families, list)
+        all_families = get_all_families(rmg_family_set='all', consider_arc_families=False)
+        default_families = get_all_families(rmg_family_set='default', consider_arc_families=False)
+        # 'all' is a superset of 'default'.
+        self.assertTrue(set(default_families).issubset(set(all_families)))
+        # Every family that exists as a database directory is reachable via 'all'.
+        for family in directory_families:
+            self.assertIn(family, all_families)
+        # No duplicates are introduced by unioning recommended sets with directory families.
+        self.assertEqual(len(all_families), len(set(all_families)))
+
+    def test_apply_recipe_coerces_string_bond_order(self):
+        """A CHANGE_BOND recipe whose bond-order is a string must still produce valid products.
+
+        Some RMG family recipes write the order change as a string (e.g. Intra_RH_Add_Endocyclic
+        has ['CHANGE_BOND', '*2', '-1', '*3']) while others use an int. Without coercion the string
+        corrupts the bond order to -1.0 and the family silently produces 0 products. Regression test.
+        """
+        family_dir = get_rmg_db_subpath('kinetics', 'families', 'Intra_RH_Add_Endocyclic', must_exist=False)
+        if not os.path.isdir(family_dir):
+            self.skipTest('Intra_RH_Add_Endocyclic is not available in this RMG database')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC', multiplicity=1)],
+                          p_species=[ARCSpecies(label='P', smiles='C1CCC1', multiplicity=1)])
+        product_dicts = rxn.get_product_dicts(rmg_family_set=['Intra_RH_Add_Endocyclic'])
+        self.assertTrue(len(product_dicts) > 0)
+        self.assertEqual(product_dicts[0]['family'], 'Intra_RH_Add_Endocyclic')
 
     def test_get_rmg_recommended_family_sets(self):
         """Test getting RMG recommended family sets"""

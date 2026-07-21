@@ -398,6 +398,11 @@ class ReactionFamily(object):
             if action[0] in ['CHANGE_BOND', 'FORM_BOND', 'BREAK_BOND']:
                 structure.reset_connectivity_values()
                 label_1, info, label_2 = action[1:]
+                # Bond-order info may be a string in some RMG family recipes (e.g.
+                # Intra_RH_Add_Endocyclic writes ['CHANGE_BOND', '*2', '-1', '*3'] while
+                # Intra_RH_Add_Exocyclic writes an int). Coerce to int so the bond-order
+                # arithmetic doesn't produce an invalid order (e.g. -1.0 from a '-1' string).
+                info = int(info)
                 labeled_1 = structure.get_labeled_atoms(label_1)
                 atom_1 = labeled_1[0] if labeled_1 else None
                 if label_1 == label_2 and len(labeled_1) >= 2:
@@ -751,6 +756,13 @@ def get_all_families(rmg_family_set: list[str] | str = 'default',
             for family_set_label, families in family_sets.items():
                 if 'surface' not in family_set_label:
                     rmg_families.extend(list(families))
+            # Also include families that exist in the RMG database as directories but are not
+            # part of any recommended family set. ARC's TS adapters support a broader set than
+            # RMG recommends (see ``ts_adapters_by_rmg_family``), and benchmark/user reactions may
+            # belong to such families (e.g. Intra_RH_Add_Endocyclic). Without this, ARC could not
+            # even determine the family of those reactions, so mapping and TS search would fail.
+            rmg_families.extend(get_rmg_family_directories())
+            rmg_families = list(dict.fromkeys(rmg_families))  # de-duplicate, preserving order
         else:
             rmg_families = list(family_sets[rmg_family_set]) \
                 if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else [rmg_family_set]
@@ -760,6 +772,29 @@ def get_all_families(rmg_family_set: list[str] | str = 'default',
                 continue
             arc_families.append(os.path.splitext(family)[0])
     return rmg_families + arc_families if rmg_families is not None else arc_families
+
+
+@functools.lru_cache(maxsize=1)
+def get_rmg_family_directories() -> list[str]:
+    """
+    List every reaction family that exists as a directory in the RMG database, including families
+    that are not part of any recommended family set. A directory is treated as a family only if it
+    contains a ``groups.py`` template. Surface families are excluded, mirroring ``get_all_families``.
+
+    Returns:
+        list[str]: The family directory names available in the RMG database (empty if unavailable).
+    """
+    families_dir = get_rmg_db_subpath('kinetics', 'families', must_exist=False)
+    if not families_dir or not os.path.isdir(families_dir):
+        return list()
+    families = list()
+    for name in sorted(os.listdir(families_dir)):
+        if name.startswith('.') or name.startswith('_') or 'surface' in name.lower():
+            continue
+        family_path = os.path.join(families_dir, name)
+        if os.path.isdir(family_path) and os.path.isfile(os.path.join(family_path, 'groups.py')):
+            families.append(name)
+    return families
 
 
 @functools.lru_cache(maxsize=1)
@@ -1170,4 +1205,4 @@ def check_family_name(family: str
     """
     if not isinstance(family, str) and family is not None:
         raise TypeError("Family name must be a string or None.")
-    return family in get_all_families() or family is None
+    return family in get_all_families(rmg_family_set=settings['rmg_family_set']) or family is None

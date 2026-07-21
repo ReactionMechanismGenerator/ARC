@@ -252,9 +252,9 @@ echo "============================================================"
 
 touch initial_time
 
-conda activate arc_env
+conda activate ts_gcn
 
-python $arc_path/arc/job/adapters/ts/scripts/gcn_runner.py --yml_in_path input.yml
+python $arc_path/arc/job/adapters/scripts/gcn_script.py --yml_in_path input.yml
 
 touch final_time
 
@@ -1061,9 +1061,9 @@ echo "============================================================"
 
 touch initial_time
 
-conda activate arc_env
+conda activate ts_gcn
 
-python $arc_path/arc/job/adapters/ts/scripts/gcn_runner.py --yml_in_path input.yml
+python $arc_path/arc/job/adapters/scripts/gcn_script.py --yml_in_path input.yml
 
 touch final_time
 

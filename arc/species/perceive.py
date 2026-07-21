@@ -33,6 +33,7 @@ def perceive_molecule_from_xyz(
     n_radicals: int | None = None,
     n_fragments: int | None = None,
     single_bond_tolerance: float = 1.20,
+    is_ts: bool = False,
 ) -> Molecule | None:
     """
     Infer a chemically valid Molecule with localized Lewis structure from Cartesian coordinates.
@@ -119,7 +120,7 @@ def perceive_molecule_from_xyz(
     # if we expected multiple fragments, hand off to the multi‐frag helper
     if len(fragments) != 1:
         if len(fragments) == n_fragments:
-            return _combine_fragments(symbols, coords, fragments, charge)
+            return _combine_fragments(symbols, coords, fragments, charge, is_ts=is_ts)
         return None
 
     # otherwise fall back on the existing single‐molecule code
@@ -149,6 +150,7 @@ def _combine_fragments(
     coords: tuple[tuple[float, float, float], ...],
     fragments: list[list[int]],
     total_charge: int,
+    is_ts: bool = False,
 ) -> Molecule:
     """
     Build disconnected fragments separately, then stitch them into one Molecule with charges distributed.
@@ -273,7 +275,7 @@ def _combine_fragments(
     best_mol.multiplicity = max(sm.multiplicity for sm in submols)
     assign_formal_charges(best_mol)
     enforce_target_charge(best_mol, total_charge)
-    _add_interfragment_bonds(best_mol, fragments, coords)
+    _add_interfragment_bonds(best_mol, fragments, coords, is_ts=is_ts)
 
     # restore original atom order
     idx_map: dict[int, int] = dict()
@@ -297,13 +299,16 @@ def _add_interfragment_bonds(
     mol: Molecule,
     fragments: list[list[int]],
     coords: tuple[tuple[float, float, float], ...],
+    is_ts: bool = False,
 ) -> None:
     """
     Connect separate fragments in a molecule by adding inter-fragment bonds.
 
     For each adjacent fragment pair, the algorithm finds the closest atom pair
     (based on `coords`) and adds a bond between them:
-        • If at least one atom is a radical, use bond order = 1.0 by default.
+        • For a TS, always use bond order = 0.05 (reaction bond) since the
+          inter-fragment contact is the breaking/forming bond by construction.
+        • Otherwise, if at least one atom is a radical, use bond order = 1.0 by default.
           If neither has available valence, use bond order = 0.05 (weak link).
         • If neither atom is a radical, set bond order = 0.0 (no real bond).
 
@@ -337,7 +342,9 @@ def _add_interfragment_bonds(
         a1 = mol.atoms[idx_map[i0]]
         a2 = mol.atoms[idx_map[j0]]
 
-        if a1.radical_electrons > 0 or a2.radical_electrons > 0:
+        if is_ts:
+            bond_order = 0.05
+        elif a1.radical_electrons > 0 or a2.radical_electrons > 0:
             bond_order = 1.0 if n_missing_electrons(a1) or n_missing_electrons(a2) else 0.05
         else:
             bond_order = 0.0

@@ -8,6 +8,7 @@ import os
 import numpy as np
 import pandas as pd
 import re
+from statistics import median
 
 from arc.common import (check_torsion_change,
                         convert_to_hours,
@@ -73,6 +74,13 @@ def determine_ess_status(output_path: str,
     if error:
         return 'errored', keywords, error, line
 
+    # Missing local file is the "remote never produced output" case
+    # (ssh.download_file returns early when the remote path doesn't
+    # exist after retries). Treat it the same as an unreadably-short
+    # log: ARC's troubleshooting layer routes ``NoOutput`` to a retry.
+    if not os.path.isfile(output_path):
+        return 'errored', ['NoOutput'], 'Log file is missing', ''
+
     if software is None:
         software = determine_ess(log_file_path=output_path)
 
@@ -100,6 +108,10 @@ def determine_ess_status(output_path: str,
                                 error = 'Maximum optimization cycles reached.'
                                 cycle_issue = True
                                 line = 'Number of steps exceeded'
+                                if _disp_only_unconverged(forward_lines):
+                                    keywords.append('DispUnconverged')
+                                    error = ('Maximum optimization cycles reached; forces near threshold but '
+                                             'displacement criteria unmet — likely flat PES under opt=tight.')
                                 break
                             elif "Wrong number of Negative eigenvalues" in reverse_lines[j]:
                                 keywords = ['NegEigenvalues', 'GL9999']
@@ -111,9 +123,18 @@ def determine_ess_status(output_path: str,
                             keywords = ['Unconverged', 'GL9999']  # GL stand for Gaussian Link
                             error = 'Unconverged'
                     elif 'l101.exe' in line:
-                        keywords = ['InputError', 'GL101']
-                        error = 'The blank line after the coordinate section is missing, ' \
-                                'or charge/multiplicity was not specified correctly.'
+                        interpolation_failed = any(
+                            'RedCar/ORedCr failed for GTrans' in reverse_lines[j]
+                            or 'New curvilinear step not converged' in reverse_lines[j]
+                            for j in range(i + 1, min(i + 50, len_reversed_lines))
+                        )
+                        if interpolation_failed:
+                            keywords = ['InternalCoordinateError', 'GL101', 'NoSymm']
+                            error = 'Endpoint interpolation failed in curvilinear coordinates.'
+                        else:
+                            keywords = ['InputError', 'GL101']
+                            error = 'The blank line after the coordinate section is missing, ' \
+                                    'or charge/multiplicity was not specified correctly.'
                     elif 'l103.exe' in line:
                         keywords = ['InternalCoordinateError', 'GL103','NoSymm']
                         error = 'Internal coordinate error'
@@ -122,7 +143,7 @@ def determine_ess_status(output_path: str,
                         error = 'There are two blank lines between z-matrix and ' \
                                 'the variables, expected only one.'
                     elif 'l202.exe' in line:
-                        keywords = ['OptOrientation', 'GL202']
+                        keywords = ['OptOrientation', 'GL202', 'NoSymm']
                         error = 'During the optimization process, either the standard ' \
                                 'orientation or the point group of the molecule has changed.'
                     elif 'l301.exe' in line:
@@ -190,8 +211,14 @@ def determine_ess_status(output_path: str,
                                         'specified correctly. Alternatively, a specified atom does not match any ' \
                                         'standard atomic symbol.'
                         elif 'GL401' in keywords:
-                            keywords.append('BasisSet')
-                            error = 'The projection from the old to the new basis set has failed.'
+                            # A guess=read from a checkpoint built with a different basis fails to
+                            # project onto the new basis. Removing the checkfile drops guess=read so
+                            # the job restarts from a fresh SCF guess with no projection step - this
+                            # is retryable, so classify it as CheckFile (mirroring the checkpoint-
+                            # data-missing cases above), not as a dead-end BasisSet error.
+                            keywords = ['CheckFile']
+                            error = 'The projection from the old to the new basis set has failed; ' \
+                                    'removing the checkfile to restart from a fresh SCF guess.'
                 elif 'Erroneous write' in line or 'Write error in NtrExt1' in line:
                     keywords = ['DiskSpace']
                     error = 'Ran out of disk space.'
@@ -388,6 +415,12 @@ def determine_ess_status(output_path: str,
                     keywords.append('GTOInt')
                     keywords.append('Memory')
                     break
+                elif 'F12-CC method not implemented for UHF references' in line:
+                    # ORCA 5.x rejects non-RI F12-CC on open-shell species; the /RI variant works.
+                    keywords = ['F12_UHF']
+                    error = ('ORCA does not support non-RI F12-CC methods on UHF references. '
+                             'Retrying with /RI appended to the method.')
+                    break
             if done:
                 return 'done', keywords, '', ''
             error = error if error else 'Orca job terminated for an unknown reason.'
@@ -410,13 +443,21 @@ def determine_ess_status(output_path: str,
                 elif 'A further' in line and 'Mwords of memory are needed' in line and 'Increase memory to' in line:
                     # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run.
                     # Increase memory to 996.31 Mwords.` (w/o the line break)
+                    # The LAST number is the target ("Increase memory to M"), i.e. the required
+                    # PER-PROCESS working memory in megawords; the first number is only the
+                    # further-delta. Capture the target so the trsh can size a node-total card
+                    # that yields >= M MW per rank.
                     keywords = ['Memory']
-                    for line0 in reverse_lines:
-                        if ' For full I/O' in line0 and 'increase memory by' in line0 and 'Mwords to' in line0:
-                            memory_increase = re.findall(r"[\d.]+", line0)[0]
-                            error = f"Additional memory required: {memory_increase} MW"
-                            break
-                    error = f'Additional memory required: {line.split()[2]} MW' if 'error' not in locals() else error
+                    nums = re.findall(r"\d+(?:\.\d+)?", line)  # digit-anchored: don't match a lone '.'
+                    if nums:
+                        target_mw = float(nums[-1])
+                        error = f'Molpro recommends per-process memory {target_mw} MW'
+                    if not error:
+                        for line0 in reverse_lines:
+                            if ' For full I/O' in line0 and 'increase memory by' in line0 and 'Mwords to' in line0:
+                                memory_increase = re.findall(r"[\d.]+", line0)[0]
+                                error = f"Additional memory required: {memory_increase} MW"
+                                break
                     break
                 elif 'insufficient memory available - require' in line:
                     # e.g.: `insufficient memory available - require              228765625  have
@@ -826,6 +867,23 @@ def trsh_special_rotor(special_rotor: list,
     return to_freeze
 
 
+# Gaussian error classes that resubmission cannot fix: input/template/method-basis problems.
+# When one of these is detected we refuse to troubleshoot instead of burning a resubmit on an
+# unrelated remedy (historically every Gaussian error picked up a spurious int=(Acc2E=14) step).
+# NOTE: this is deliberately conservative - it excludes classes that a resubmit *can* help
+# (SCF, opt cycles, internal-coordinate, negative eigenvalues, memory, checkfile, and the
+# generic 'Unknown' class, which the scheduler retries on a different node).
+# 'ZMat' (L716: z-matrix angle outside 0 < x < 180) is intentionally NOT here: ARC always
+# submits Cartesian geometries, so a ZMat error always means the optimizer drove atoms
+# collinear - the textbook opt=(cartesian) case, handled by trsh_keyword_cartesian.
+# 'BasisSet' is intentionally NOT here either: every genuine dead-end basis error (GL301
+# "atomic number out of range" / "Unrecognized basis set") is already refused by the dedicated
+# BasisSet branch in trsh_ess_job, and the one retryable BasisSet case - the GL401 guess=read
+# projection failure - is reclassified as 'CheckFile' (see determine_ess_status) and fixed by
+# dropping the checkfile. So no BasisSet error reaches this gate.
+GAUSSIAN_NON_RETRYABLE_KEYWORDS = ('Syntax', 'InputError', 'MP2', 'Scratch')
+
+
 def trsh_ess_job(label: str,
                  level_of_theory: Level | dict | str,
                  server: str,
@@ -839,6 +897,7 @@ def trsh_ess_job(label: str,
                  ess_trsh_methods: list,
                  is_h: bool = False,
                  is_monoatomic: bool = False,
+                 is_ts: bool = False,
                  ) -> tuple:
     """
     Troubleshoot issues related to the electronic structure software, such as convergence.
@@ -858,6 +917,8 @@ def trsh_ess_job(label: str,
         ess_trsh_methods (list): The troubleshooting methods tried for this job.
         is_h (bool): Whether the species is a hydrogen atom (or its isotope). e.g., H, D, T.
         is_monoatomic (bool): Whether the species is monoatomic (single atom).
+        is_ts (bool): Whether the species is a transition state. Makes the opt-cycle remedy
+                      ladder TS-aware (rely on RFO + Hessian recompute, avoid GDIIS/GEDIIS).
 
     Todo:
         - Change server to one that has the same ESS if running out of disk space.
@@ -901,6 +962,17 @@ def trsh_ess_job(label: str,
         couldnt_trsh = True
         logger.info(f'Troubleshooting {job_type} job in {software} for {label} that failed with '
                     '"Basis set data is not on the checkpoint file" by removing the checkfile.')
+
+    elif software == 'gaussian' \
+            and any(kw in job_status['keywords'] for kw in GAUSSIAN_NON_RETRYABLE_KEYWORDS):
+        # Non-retryable input/method error: refuse rather than waste a resubmit (see note above).
+        non_retryable = next(kw for kw in GAUSSIAN_NON_RETRYABLE_KEYWORDS if kw in job_status['keywords'])
+        output_errors.append(f'Error: Could not troubleshoot {job_type} for {label}! Gaussian reported a '
+                             f'non-retryable "{non_retryable}" error that resubmission cannot fix '
+                             f'({job_status.get("error", "").strip() or "no further detail"}); ')
+        logger.error(f'Could not troubleshoot {job_type} job in {software} for {label}: non-retryable '
+                     f'"{non_retryable}" error. {job_status.get("error", "").strip()}')
+        couldnt_trsh = True
 
     elif software == 'gaussian':
         trsh_keyword = [] # initialize as a list
@@ -949,9 +1021,16 @@ def trsh_ess_job(label: str,
         # Check if NegEigenvalues is in the keyword
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
 
+        # Drop opt=tight when forces have converged but displacement criteria are unreachable
+        # (flat-PES / floppy-rotor case). Tried before the algorithm-flip ladder so we don't
+        # waste retries cycling RFO/GDIIS/GEDIIS against an unreachable threshold.
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_loose_disp(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        if 'no_tight' in ess_trsh_methods:
+            logger_info.append('dropping opt=tight (forces converged, displacements unreachable)')
+
         # Troubleshoot by increasing opt max cycles
         #P opt=(calcfc,maxstep=5,tight,maxcycle=200) guess=mix wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight,maxcycle=512) iop(3/33=1)
-        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, is_ts, fine)
         # print out any words that beging with 'opt='
         opt_list = [i for i in ess_trsh_methods if i.startswith('opt=')]
         if opt_list:
@@ -969,9 +1048,9 @@ def trsh_ess_job(label: str,
                 formatted_string += f', {i}'
             logger_info.append(formatted_string)
             
-        # Remove qc from ess_trsh_methods if 'no_qc' is in the keywords
+        # Drop the quadratic-convergence SCF remedy (record 'no_xqc') if Gaussian failed in l508
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
-        if 'no_qc' in ess_trsh_methods:
+        if 'no_xqc' in ess_trsh_methods:
             logger_info.append('removed QC')
         
 
@@ -1035,44 +1114,37 @@ def trsh_ess_job(label: str,
             raise TrshError(f'DLPNO methods are incompatible with single-electron species {label} in Orca. '
                             f'This should have been caught by the Scheduler before job submission.')
         elif 'Memory' in job_status['keywords']:
-            # Increase memory allocation.
-            # job_status will be for example
-            # `Error  (ORCA_SCF): Not enough memory available! Please increase MaxCore to more than: 289 MB`.
+            # ORCA memory troubleshooting keeps the total job memory fixed and
+            # reduces cpu cores so %%maxcore increases on the rerun.
             if 'memory' not in ess_trsh_methods:
                 ess_trsh_methods.append('memory')
+            original_cpu_cores = cpu_cores
+            total_memory_mb = math.ceil(memory_gb * 1024)
             try:
                 # parse Orca's memory requirement in MB
                 estimated_mem_per_core = float(job_status['error'].split()[-2])
+                # round up to the next hundred
+                estimated_mem_per_core = int(np.ceil(estimated_mem_per_core / 100.0)) * 100
+                cpu_cores = math.floor(total_memory_mb / estimated_mem_per_core)
             except ValueError:
-                estimated_mem_per_core = estimate_orca_mem_cpu_requirement(num_heavy_atoms=num_heavy_atoms,
-                                                                           server=server,
-                                                                           consider_server_limits=True)[1]/cpu_cores
-            # round up to the next hundred
-            estimated_mem_per_core = int(np.ceil(estimated_mem_per_core / 100.0)) * 100
-            if 'max_total_job_memory' in job_status['keywords']:
-                per_cpu_core_memory = np.ceil(memory_gb / cpu_cores * 1024)
-                logger.info(f'The crashed Orca job {label} was ran with {cpu_cores} cpu cores and '
-                            f'{per_cpu_core_memory} MB memory per cpu core. It requires at least '
-                            f'{estimated_mem_per_core} MB per cpu core. Since the job had already requested the '
-                            f'maximum amount of available total node memory, ARC will attempt to reduce the number '
-                            f'of cpu cores to increase memory per cpu core.')
-                if 'cpu' not in ess_trsh_methods:
-                    ess_trsh_methods.append('cpu')
-                cpu_cores = math.floor(cpu_cores * per_cpu_core_memory / estimated_mem_per_core) - 2  # be conservative
-                if cpu_cores > 1:
-                    logger.info(f'Troubleshooting job {label} using {cpu_cores} cpu cores.')
-                elif cpu_cores == 1:  # last resort
-                    logger.info(f'Troubleshooting job {label} using only {cpu_cores} cpu core. Notice that the '
-                                f'required job time may be unrealistically long or exceed limits on servers.')
-                else:
+                # Old ORCA messages do not provide a numeric target. Step cores down
+                # so %%maxcore increases on each retry instead of resubmitting the same input.
+                cpu_cores = original_cpu_cores - 2 if original_cpu_cores > 2 else original_cpu_cores - 1
+
+            if not couldnt_trsh:
+                if cpu_cores >= original_cpu_cores:
+                    cpu_cores = original_cpu_cores - 2 if original_cpu_cores > 2 else original_cpu_cores - 1
+                if cpu_cores < 1:
                     logger.info(f'Not enough computational resource to accomplish job {label}. Please consider cheaper '
                                 f'methods or allocate more resources if possible.')
                     couldnt_trsh = True
-            if not couldnt_trsh:
-                memory = estimated_mem_per_core * cpu_cores  # total memory for all cpu cores
-                memory = np.ceil(memory / 1024 + 5)  # convert MB to GB, add 5 extra GB (be conservative)
-                logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {memory} GB total memory '
-                            f'and {cpu_cores} cpu cores.')
+                memory = memory_gb
+                if not couldnt_trsh:
+                    if cpu_cores != original_cpu_cores and 'cpu' not in ess_trsh_methods:
+                        ess_trsh_methods.append('cpu')
+                    per_cpu_core_memory = np.ceil(memory * 1024 / cpu_cores)
+                    logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {memory} GB total memory '
+                                f'and {cpu_cores} cpu cores ({per_cpu_core_memory:.0f} MB per cpu core).')
         elif 'cpu' in job_status['keywords']:
             # Reduce cpu allocation.
             try:
@@ -1085,26 +1157,79 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {cpu_cores} cpu cores.')
             if 'cpu' not in ess_trsh_methods:
                 ess_trsh_methods.append('cpu')
+        elif 'F12_UHF' in job_status['keywords'] and 'f12_ri' not in ess_trsh_methods:
+            # Non-RI F12-CC on UHF: append '/RI' to the method and retry this job only.
+            level_dict = level_of_theory.as_dict()
+            level_dict.pop('method_type', None)  # re-deduce after method change
+            level_dict['method'] = f"{level_of_theory.method}/ri"
+            level_of_theory = Level(repr=level_dict)
+            ess_trsh_methods.append('f12_ri')
+            logger.info(f"Troubleshooting {job_type} job in {software} for {label}: appending '/RI' to the "
+                        f"method (non-RI F12-CC is unsupported for UHF references in this ORCA version). "
+                        f"Retrying with {level_of_theory.method}.")
         else:
             couldnt_trsh = True
 
     elif 'molpro' in software:
         if 'Memory' in job_status['keywords']:
-            # Increase memory allocation.
-            # molpro gives something like `'errored: additional memory (mW) required: 996.31'`.
-            # job_status standardizes the format to be:  `'Additional memory required: {0} MW'`
-            # The number is the ADDITIONAL memory required in GB
+            # Increase memory allocation, bounded by the physical node-memory cap.
+            # Molpro's `memory,Total=N,m` card is the NODE-TOTAL pool (Molpro reserves the
+            # Global-Array space ~25% and splits the remainder across the `molpro -n {cpu_cores}`
+            # ranks), NOT per process. When Molpro reports a per-process target M (from the
+            # "Increase memory to M Mwords" triples message), size the node-total card so each
+            # rank gets >= M MW: per-process ~= 0.822 * card / nprocs (GA ~25%), so
+            # node-total MW = M * headroom * nprocs / 0.822; convert to GB (1 GB = 125 MW).
+            # Bound the requested TOTAL by the node cap so we don't diverge (request N -> get
+            # clamped -> resubmit identically), and once we are AT the cap, reduce the MPI rank
+            # count instead of re-inflating memory (fewer ranks -> more per-process from the same
+            # node-total allocation).
             ess_trsh_methods.append('memory')
-            add_mem_str = job_status['error'].split()[-2]  # parse Molpro's requirement in MW
-            if all(c.isdigit() or c == '.' for c in add_mem_str):
-                add_mem = float(add_mem_str)
-                add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
-                memory = memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
+            original_cpu_cores = cpu_cores
+            max_mem = servers[server].get('memory', 128)  # Node memory in GB, defaults to 128 if not specified
+            max_mem_allocation = max_mem * default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
+            m = re.search(r'per-process memory ([\d.]+) MW', job_status['error'])
+            if m:
+                target_mw = float(m.group(1))                 # required per-process working memory (MW)
+                headroom = 1.5                                # multiplicative; Molpro's number is a floor
+                # node-total card must yield >= target_mw/proc; per-process ~= 0.822*card/nprocs (GA ~25%),
+                # so node-total MW = target_mw*headroom * nprocs / 0.822; convert to GB (1 GB = 125 MW):
+                desired_total = math.ceil(target_mw * headroom * (cpu_cores or 1) / 0.822) / 125.0
             else:
-                # The required memory is not specified
-                memory = memory_gb * 3  # convert MW to GB, add 5 extra GB (be conservative)
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
-                        f'instead of {memory_gb} GB')
+                desired_total = memory_gb * 3                 # unchanged fallback when no number parseable
+            memory = min(desired_total, max_mem_allocation)
+            at_cap = 'max_total_job_memory' in job_status['keywords'] or desired_total >= max_mem_allocation
+            if at_cap:
+                # Already at (or requesting beyond) the node cap: adding more total memory can't help,
+                # so reduce the number of MPI ranks to raise the per-process memory share instead.
+                new_cpu = max(1, cpu_cores // 2)
+                if new_cpu < cpu_cores and 'cpu_min' not in ess_trsh_methods:
+                    logger.info(f'The crashed Molpro job {label} was run with {cpu_cores} MPI rank(s) and had already '
+                                f'reached the node-memory cap ({max_mem_allocation:.2f} GB total allocation). ARC will '
+                                f'reduce the rank count to {new_cpu} to increase the per-process memory share while '
+                                f'keeping the total memory pinned at the cap.')
+                    cpu_cores = new_cpu
+                    memory = max_mem_allocation  # pin total to the node cap while raising per-rank share
+                    if 'cpu' not in ess_trsh_methods:
+                        ess_trsh_methods.append('cpu')
+                    if new_cpu == 1 and 'cpu_min' not in ess_trsh_methods:
+                        ess_trsh_methods.append('cpu_min')
+                    # 'memory' was already appended at the top of this branch.
+                else:
+                    couldnt_trsh = True
+                    output_errors.append(
+                        f'Error: Could not troubleshoot {job_type} for {label}! Molpro exhausted memory at the node '
+                        f'cap ({max_mem_allocation:.2f} GB total allocation) even at {cpu_cores} rank(s); ')
+                    logger.error(
+                        f'Could not troubleshoot {job_type} job in {software} for {label}. Molpro exhausted memory at '
+                        f'the node cap ({max_mem_allocation:.2f} GB total allocation) even at {cpu_cores} rank(s).')
+            if not couldnt_trsh:
+                if cpu_cores != original_cpu_cores:
+                    logger.info(f'Troubleshooting {job_type} job in {software} for {label} using '
+                                f'{memory:.2f} GB across {cpu_cores} MPI rank(s) '
+                                f'(was {memory_gb} GB across {original_cpu_cores} rank(s)).')
+                else:
+                    logger.info(f'Troubleshooting {job_type} job in {software} for {label} using '
+                                f'{memory:.2f} GB across {cpu_cores} MPI rank(s) (was {memory_gb} GB).')
         elif 'shift' not in ess_trsh_methods:
             # Try adding a level shift for alpha- and beta-spin orbitals
             # Applying large negative level shifts like {rhf; shift,-1.0,-0.5}
@@ -1819,9 +1944,16 @@ def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tu
 
 def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword: list, couldnt_trsh: bool) -> tuple[list, list, bool]:
     """
-    Check if the job requires change of cartesian coordinate
+    Switch the optimization to Cartesian coordinates (opt=(cartesian)).
+
+    Fires for both L103 ('InternalCoordinateError') and L716 ('ZMat', z-matrix angle driven
+    outside 0 < x < 180 during the optimization). Since ARC always submits Cartesian geometries,
+    a ZMat error is never a bad input - it is the collinear-angle degeneracy that Cartesian
+    optimization sidesteps. Tried once (guarded by 'cartesian' not in ess_trsh_methods); if the
+    error recurs after Cartesian was already attempted, ess_trsh_methods stops changing and
+    trsh_ess_job() terminates the retry loop via the 'all_attempted' marker.
     """
-    if 'InternalCoordinateError' in job_status['keywords'] \
+    if ('InternalCoordinateError' in job_status['keywords'] or 'ZMat' in job_status['keywords']) \
                 and 'cartesian' not in ess_trsh_methods:
         ess_trsh_methods.append('cartesian')
         trsh_keyword.append('opt=(cartesian)')
@@ -1839,8 +1971,10 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
     Check if the job requires change of scf
     """
     scf_pattern = r"scf=\((.*?)\)" # e.g., scf=(xqc,MaxCycle=1000), will match xqc,MaxCycle=1000
-    if 'SCF' in job_status['keywords'] and 'scf=(qc)' not in ess_trsh_methods and 'no_qc' not in ess_trsh_methods:
+    if 'SCF' in job_status['keywords'] and 'scf=(qc)' not in ess_trsh_methods and 'no_xqc' not in ess_trsh_methods:
         # try both qc and nosymm
+        # ('no_xqc' records that the quadratic-convergence remedy already failed in l508
+        # and was dropped, so don't re-add it - see trsh_keyword_no_qc())
         ess_trsh_methods.append('scf=(qc)')
         couldnt_trsh = False
     elif 'SCF' in job_status['keywords'] and 'scf=(NDamp=30)' not in ess_trsh_methods:
@@ -1855,8 +1989,12 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
         ess_trsh_methods.append('guess=INDO')
         couldnt_trsh = False
         trsh_keyword.append('guess=INDO')
-    # If we have attempted all scf methods above, then we will try last resort methods
-    if 'SCF' in job_status['keywords'] and 'scf=(qc)' in ess_trsh_methods and 'scf=(NDamp=30)' in ess_trsh_methods and 'scf=(NoDIIS)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods \
+    # If we have attempted all scf methods above, then we will try last resort methods.
+    # 'scf=(qc)' counts as attempted either if it is still active or if it was tried and
+    # dropped after failing in l508 (recorded as 'no_xqc').
+    if 'SCF' in job_status['keywords'] \
+        and ('scf=(qc)' in ess_trsh_methods or 'no_xqc' in ess_trsh_methods) \
+        and 'scf=(NDamp=30)' in ess_trsh_methods and 'scf=(NoDIIS)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods \
         and 'scf=(Fermi)' not in ess_trsh_methods and 'scf=(Noincfock)' not in ess_trsh_methods and 'scf=(NoVarAcc)' not in ess_trsh_methods:
         # Uses Fermi broadening to help SCF convergence
         ess_trsh_methods.append('scf=(Fermi)')
@@ -1864,7 +2002,8 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
         ess_trsh_methods.append('scf=(Noincfock)')
         ess_trsh_methods.append('scf=(NoVarAcc)')
         couldnt_trsh = False
-    if 'no_qc' in ess_trsh_methods and 'scf=(qc)' in ess_trsh_methods:
+    if 'no_xqc' in ess_trsh_methods and 'scf=(qc)' in ess_trsh_methods:
+        # safety net: never keep the qc remedy active once it has been dropped via 'no_xqc'
         ess_trsh_methods.remove('scf=(qc)')
         couldnt_trsh = False
 
@@ -1877,7 +2016,8 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
 
 def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine) -> tuple[list, list, bool, bool]:
     """
-    Check if the job requires change of scf
+    Remediate a generic 'Unconverged' (Gaussian l9999) failure by switching to a fine
+    integration grid for the SCF and the integrals (recorded as 'fine'). This is tried once.
     """
     if 'Unconverged' in job_status['keywords'] and 'fine' not in ess_trsh_methods and not fine:
         # try a fine grid for SCF and integral
@@ -1903,39 +2043,85 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 
-def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
+def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, is_ts=False, fine=False) -> tuple[list, list, bool]:
     """
-    Check if the job requires change of opt(maxcycle=200)
+    Escalate the remedy for an optimization that hit its cycle limit (MaxOptCycles), one step
+    per retry. The ladder recomputes the Hessian before flipping the step algorithm:
+
+        1. opt=(maxcycle=200)  - simply allow more cycles (cheapest).
+        1b. opt=(cartesian)    - fine TS opt ONLY (is_ts and fine): a fine TS opt that dead-ends on
+                                 the l9999 "Optimization stopped" redundant-internal-coordinate
+                                 oscillation is far more likely to be a coordinate-system pathology
+                                 than a step/Hessian-quality problem, so switch to Cartesian
+                                 coordinates (which sidestep the collinear/redundant-coordinate
+                                 degeneracy) BEFORE spending expensive recalcfc/calcall/RFO cycles.
+                                 Tried once (guarded by 'cartesian' not in ess_trsh_methods) and
+                                 carried through the rest of the ladder via the opt-route merge.
+                                 Gated tightly to the fine TS opt so ground-state (is_ts=False) and
+                                 coarse TS opt (fine=False) ladders are unchanged.
+        2. opt=(recalcfc=5)    - recompute the exact Hessian every 5 steps. Recomputing force
+                                 constants is the first-line remedy for a stuck optimization, and
+                                 is essential for a TS opt where following the single negative
+                                 eigenvalue depends entirely on Hessian quality.
+        3. opt=(calcall)       - recompute the Hessian at every step (expensive last resort).
+        4. opt=(RFO)           - rational-function / eigenvector-following step. Correct for both
+                                 minima and TS.
+        5. opt=(GDIIS)         - minimization only. GDIIS is a DIIS step accelerator that can walk
+        6. opt=(GEDIIS)          a TS opt downhill into a nearby minimum and lose the saddle, so
+                                 these are skipped for TS optimizations (is_ts=True).
     """
     opt_pattern = r"opt=\((.*?)\)"
-    if 'MaxOptCycles' in job_status['keywords'] and 'opt=(maxcycle=200)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(maxcycle=200)')
-        trsh_keyword.append('opt=(maxcycle=200)')
-        couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords'] and 'opt=(RFO)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(RFO)')
-        trsh_keyword.append('opt=(RFO)')
-        couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords']  and 'opt=(RFO)' in ess_trsh_methods and 'opt=(GDIIS)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(GDIIS)')
-        trsh_keyword.append('opt=(GDIIS)')
-        couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords']  and 'opt=(RFO)' in ess_trsh_methods and 'opt=(GDIIS)' in ess_trsh_methods and 'opt=(GEDIIS)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(GEDIIS)')
-        trsh_keyword.append('opt=(GEDIIS)')
-        couldnt_trsh = False
-    
+    if 'MaxOptCycles' in job_status['keywords']:
+        if 'opt=(maxcycle=200)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(maxcycle=200)')
+            trsh_keyword.append('opt=(maxcycle=200)')
+            couldnt_trsh = False
+        elif is_ts and fine and 'cartesian' not in ess_trsh_methods:
+            # Fine TS opt oscillation (l9999 "Optimization stopped"): try Cartesian coordinates
+            # early, before escalating the Hessian ladder. Stored as the bare 'cartesian' marker
+            # (consistent with trsh_keyword_cartesian) and folded into the opt route by the merge
+            # block below.
+            ess_trsh_methods.append('cartesian')
+            trsh_keyword.append('opt=(cartesian)')
+            couldnt_trsh = False
+        elif 'opt=(recalcfc=5)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(recalcfc=5)')
+            trsh_keyword.append('opt=(recalcfc=5)')
+            couldnt_trsh = False
+        elif 'opt=(calcall)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(calcall)')
+            trsh_keyword.append('opt=(calcall)')
+            couldnt_trsh = False
+        elif 'opt=(RFO)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(RFO)')
+            trsh_keyword.append('opt=(RFO)')
+            couldnt_trsh = False
+        elif not is_ts and 'opt=(GDIIS)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(GDIIS)')
+            trsh_keyword.append('opt=(GDIIS)')
+            couldnt_trsh = False
+        elif not is_ts and 'opt=(GDIIS)' in ess_trsh_methods and 'opt=(GEDIIS)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(GEDIIS)')
+            trsh_keyword.append('opt=(GEDIIS)')
+            couldnt_trsh = False
+
     if any('opt' in keyword for keyword in ess_trsh_methods):
         opt_list = [match for element in ess_trsh_methods for match in re.findall(opt_pattern, element)] if any(re.search(opt_pattern, element) for element in ess_trsh_methods) else []
 
+        # Fold the bare 'cartesian' marker (see the is_ts+fine branch above) into the merged opt
+        # route as a leading parameter so it survives alongside the maxcycle/Hessian/algorithm
+        # keywords rather than being clobbered by the route rewrite below.
+        if 'cartesian' in ess_trsh_methods and 'cartesian' not in opt_list:
+            opt_list.insert(0, 'cartesian')
+
         if opt_list:
 
-            filtered_methods = prioritize_opt_methods(opt_list)
+            filtered_methods = prioritize_opt_methods(opt_list, is_ts=is_ts)
 
             new_opt_keyword = 'opt=(' + ','.join(filtered_methods) + ')'
 
             trsh_keyword = [kw if not kw.startswith('opt') else new_opt_keyword for kw in trsh_keyword]
-    
+
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 
@@ -1970,12 +2156,11 @@ def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keywor
         ess_trsh_methods.append('guess=INDO')
         trsh_keyword.append('guess=INDO')
         couldnt_trsh = False
-    elif 'InaccurateQuadrature' in job_status['keywords'] and 'int=grid=300590' in ess_trsh_methods and 'scf=(NoVarAcc)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods and 'int=ultrafine' not in ess_trsh_methods:
-        # Try all methods above
-        trsh_keyword.append('int=grid=300590')
-        trsh_keyword.append('guess=INDO')
-        # NoVarAcc is not included in trsh_keyword, because it will be in ess_trsh_methods
-        
+    # Once int=grid=300590, scf=(NoVarAcc) and guess=INDO have all been tried, the ladder is
+    # exhausted: ess_trsh_methods stops changing and trsh_ess_job() terminates the retry loop
+    # via the 'all_attempted' marker. (There is no separate int=ultrafine step - the fine-grid
+    # remedy is handled by trsh_keyword_unconverged, and ultrafine is the Gaussian 16 default.)
+
     scf_pattern = r"scf=\((.*?)\)" # e.g., scf=(xqc,MaxCycle=1000), will match xqc,MaxCycle=1000
     if any('scf' in keyword for keyword in ess_trsh_methods):
         scf_list = [match for element in ess_trsh_methods for match in re.findall(scf_pattern, element)] if any(re.search(scf_pattern, element) for element in ess_trsh_methods) else []
@@ -2024,30 +2209,181 @@ def trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_t
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 
-def prioritize_opt_methods(opt_methods):
+def prioritize_opt_methods(opt_methods, is_ts=False):
+    """
+    Reduce an accumulated list of opt=(...) parameters to a self-consistent set:
 
-    preferred_order = ['GEDIIS', 'GDIIS', 'RFO']
-    selected_method = None
-    
-    for method in preferred_order:
-        if method in opt_methods:
-            selected_method = method
-            break
-    
-    filtered_methods = [method for method in opt_methods if method not in preferred_order or method == selected_method]
+    - Keep a single step algorithm. For minimizations prefer GEDIIS > GDIIS > RFO. For a TS
+      optimization keep only RFO (eigenvector following); GDIIS/GEDIIS are minimization-oriented
+      DIIS accelerators that can drift off the saddle, so they are dropped.
+    - Keep a single Hessian-recompute directive, most aggressive wins: calcall > recalcfc=* > calcfc.
+    """
+    all_algorithms = ['GEDIIS', 'GDIIS', 'RFO']
+    preferred_order = ['RFO'] if is_ts else all_algorithms
+    selected_method = next((method for method in preferred_order if method in opt_methods), None)
+    methods = [method for method in opt_methods if method not in all_algorithms or method == selected_method]
 
-    return filtered_methods
+    # Collapse conflicting force-constant recompute directives to the single most aggressive one.
+    has_calcall = 'calcall' in methods
+    has_recalcfc = any(method.startswith('recalcfc') for method in methods)
+
+    def _keep_fc(method: str) -> bool:
+        if method == 'calcfc':
+            return not (has_calcall or has_recalcfc)
+        if method.startswith('recalcfc'):
+            return not has_calcall
+        return True
+
+    return [method for method in methods if _keep_fc(method)]
 
 
 def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
-    When a job fails with no qc, there are two possible solutions based upon the error message:
-    1. If SCF fails, then try to change the algorithm to LQA.
-    2. If SCF fails, then try to change the algorithm to LQA.
+    Drop the quadratic-convergence SCF remedy after Gaussian failed in link 508.
+
+    A previous retry added 'scf=(qc)' (which the Gaussian adapter upgrades to scf=(xqc)).
+    If the job then died in l508, the QC/XQC algorithm itself failed to converge, so remove
+    'scf=(qc)' from the attempted methods and record 'no_xqc' instead. 'no_xqc' guards
+    trsh_keyword_scf() from re-adding 'scf=(qc)' (while still counting it as attempted for
+    the last-resort SCF methods) and tells the Gaussian adapter not to upgrade qc to xqc.
     """
     if 'no_xqc' in job_status['keywords'] and 'scf=(qc)' in ess_trsh_methods:
         ess_trsh_methods.remove('scf=(qc)')
-        ess_trsh_methods.append('no_xqc')
+        if 'no_xqc' not in ess_trsh_methods:
+            ess_trsh_methods.append('no_xqc')
         couldnt_trsh = False
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+
+def trsh_keyword_loose_disp(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
+    """
+    Remediate a MaxOptCycles failure where forces have effectively converged but the
+    displacement criteria under opt=tight cannot be reached (typical of floppy radicals
+    on a flat PES).
+
+    Drops the `tight` opt keyword on the next attempt by recording 'no_tight' in
+    ess_trsh_methods. The Gaussian adapter checks for this flag and omits `tight`
+    from the opt keyword list while keeping the ultrafine integration grid intact.
+    """
+    if 'DispUnconverged' in job_status['keywords'] and 'no_tight' not in ess_trsh_methods:
+        ess_trsh_methods.append('no_tight')
+        couldnt_trsh = False
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+
+def _parse_convergence_table(forward_lines: list[str], max_cycles: int = 10) -> list[dict]:
+    """
+    Parse the per-cycle convergence summary that Gaussian prints between
+    'Item               Value     Threshold  Converged?' and the next 'GradGradGrad' banner.
+
+    Returns up to `max_cycles` of the most recent cycles, each as:
+        {'max_force': float, 'max_force_thr': float, 'max_force_ok': bool,
+         'rms_force': float, 'rms_force_thr': float, 'rms_force_ok': bool,
+         'max_disp':  float, 'max_disp_thr':  float, 'max_disp_ok':  bool,
+         'rms_disp':  float, 'rms_disp_thr':  float, 'rms_disp_ok':  bool}
+    Order is oldest-first within the returned slice. If parsing fails, returns [].
+    """
+    cycles: list[dict] = []
+    fields = (
+        ('Maximum Force',        'max_force'),
+        ('RMS     Force',        'rms_force'),
+        ('Maximum Displacement', 'max_disp'),
+        ('RMS     Displacement', 'rms_disp'),
+    )
+    current: dict = {}
+    for ln in forward_lines:
+        for tag, key in fields:
+            if ln.startswith(' ' + tag) or ln.lstrip().startswith(tag):
+                parts = ln.split()
+                try:
+                    val = float(parts[-3])
+                    thr = float(parts[-2])
+                    ok = parts[-1].strip() == 'YES'
+                except (ValueError, IndexError):
+                    current = {}
+                    break
+                current[key] = val
+                current[key + '_thr'] = thr
+                current[key + '_ok'] = ok
+                if key == 'rms_disp':
+                    cycles.append(current)
+                    current = {}
+                break
+    return cycles[-max_cycles:]
+
+
+def _disp_only_unconverged(forward_lines: list[str]) -> bool:
+    """
+    Decide whether a MaxOptCycles failure is the "displacements only" failure mode:
+    forces hover near threshold across the recent cycles, but displacement
+    thresholds (under opt=tight: 6e-5 / 4e-5 angstrom) are never reached and are
+    not steadily improving.
+
+    Returns True only when the pattern matches a flat / floppy PES with unreachable
+    tight displacement criteria — i.e., where dropping `tight` is the right next
+    move. Returns False for genuinely unconverged geometries (forces still large)
+    or runs where displacements are clearly decreasing toward threshold.
+
+    The window is the last 5 parsed cycles. The thresholds (5x / 10x ratios,
+    50% drop, 1 sign change) were chosen to fit the rxn_298 opt_a2354 data
+    (forces 0.7-4.6x, disp 7-60x, oscillatory) without firing on healthy runs.
+    """
+    cycles = _parse_convergence_table(forward_lines)
+    if len(cycles) < 5:
+        return False
+
+    recent = cycles[-5:]
+
+    force_ratios = [
+        c['max_force'] / c['max_force_thr']
+        for c in recent
+        if c.get('max_force_thr', 0) > 0
+    ]
+    disp_ratios = [
+        c['max_disp'] / c['max_disp_thr']
+        for c in recent
+        if c.get('max_disp_thr', 0) > 0
+    ]
+
+    if len(force_ratios) != len(recent) or len(disp_ratios) != len(recent):
+        return False
+
+    # Forces should hover near the convergence threshold, not be orders of magnitude away.
+    # `max <= 5x` ensures we're not genuinely far off; the OR clause accepts either a single
+    # near-threshold visit (min <= 1.5x — geometry hit the floor) or a noisy trajectory whose
+    # central tendency is near threshold (median <= 3x).
+    forces_near_threshold = (
+        max(force_ratios) <= 5.0
+        and (
+            min(force_ratios) <= 1.5
+            or median(force_ratios) <= 3.0
+        )
+    )
+
+    # Displacements should remain substantially above the tight threshold across the window.
+    # We use min >= 5x (not all > 10x) so a single cycle dipping to ~7x doesn't disqualify.
+    displacements_far_from_threshold = (
+        min(disp_ratios) >= 5.0
+        and sum(r >= 10.0 for r in disp_ratios) >= 3
+    )
+
+    # Avoid firing on a normal optimization that's still moving steadily toward convergence.
+    # If the window's last value is much smaller than the first, the run may just need more cycles.
+    displacement_not_clearly_improving = disp_ratios[-1] > 0.5 * disp_ratios[0]
+
+    # Catch oscillatory behavior typical of this failure mode: at least one sign flip
+    # in the differences between consecutive displacement ratios.
+    deltas = [b - a for a, b in zip(disp_ratios, disp_ratios[1:])]
+    sign_changes = sum(
+        1
+        for a, b in zip(deltas, deltas[1:])
+        if a * b < 0
+    )
+    displacement_oscillatory = sign_changes >= 1
+
+    return (
+        forces_near_threshold
+        and displacements_far_from_threshold
+        and (displacement_not_clearly_improving or displacement_oscillatory)
+    )

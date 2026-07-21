@@ -108,6 +108,7 @@ def run_in_conda_env(
     script_path: str,
     *script_args: str,
     check: bool = False,
+    strip_pythonpath: bool = False,
 ) -> subprocess.CompletedProcess:
     """Run ``python script_path *script_args`` inside the env that owns
     ``python_executable``, isolated from ARC's process env.
@@ -120,6 +121,17 @@ def run_in_conda_env(
     ``.stderr``) for callers that need to inspect them. ``check=True``
     raises ``CalledProcessError`` on non-zero exit. Args are passed as
     a list, so no shell quoting concerns.
+
+    ``strip_pythonpath=True`` removes ``PYTHONPATH`` from the child's
+    environment. The launcher's ``run`` re-fires the target env's
+    activation hooks but leaves ``PYTHONPATH`` untouched, and PYTHONPATH
+    entries shadow the target env's site-packages — so a stale source
+    checkout on the caller's PYTHONPATH (e.g. an old KinBot clone in
+    ``~/.bashrc``) would silently win over the env's installed package.
+    Use it for adapters whose package must come from the target env
+    itself. Leave it off for adapters that intentionally receive code
+    via PYTHONPATH activation hooks set at env activation (those hooks
+    still fire and re-add their paths inside the child either way).
     """
     env_prefix = env_prefix_from_python(python_executable)
     launcher, extra_flags = _detect_launcher()
@@ -129,7 +141,10 @@ def run_in_conda_env(
         "python", script_path,
         *script_args,
     ]
-    result = subprocess.run(argv, check=check, capture_output=True, text=True)
+    child_env = None
+    if strip_pythonpath:
+        child_env = {key: val for key, val in os.environ.items() if key != 'PYTHONPATH'}
+    result = subprocess.run(argv, check=check, capture_output=True, text=True, env=child_env)
     if result.returncode:
         logger.warning(
             "env-run: %s exited with %d\ncmd: %s\nstdout:\n%s\nstderr:\n%s",

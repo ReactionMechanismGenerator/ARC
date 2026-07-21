@@ -12,8 +12,9 @@ from mako.template import Template
 
 import arc.plotter as plotter
 from arc.common import ARC_PATH, get_logger, read_yaml_file
-from arc.exceptions import InputError
+from arc.exceptions import AtomTypeError, InputError
 from arc.imports import incore_commands, settings
+from arc.molecule.molecule import Molecule
 from arc.job.local import execute_command
 from arc.statmech.adapter import StatmechAdapter
 from arc.statmech.factory import register_statmech_adapter
@@ -37,6 +38,13 @@ MBAC_SECTION_START = "mbac = {"
 MBAC_SECTION_END = "freq_dict ="
 FREQ_SECTION_START = "freq_dict = {"
 
+# Tunneling method ARC uses for every reaction kinetics fit. Single source
+# of truth: the Arkane input template renders this constant, and output.yml
+# / the TCKDB adapter both read it back so downstream consumers know which
+# correction was applied.
+ARKANE_TUNNELING_METHOD = 'Eckart'
+
+
 main_input_template = """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
@@ -57,7 +65,11 @@ bondCorrectionType = '${bac_type}'
 % endif
 
 % for spc in species_list:
-% if spc['smiles']:
+% if spc.get('adjlist'):
+species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''},
+        structure=adjacencyList(\"\"\"
+${spc['adjlist']}\"\"\"))
+% elif spc['smiles']:
 species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''},
         structure=SMILES('${spc['smiles']}'), spinMultiplicity=${spc['multiplicity']})
 % else:
@@ -75,7 +87,7 @@ reaction(
     reactants=${rxn.reactants},
     products=${rxn.products},
     transitionState='${rxn.ts_species.label}',
-    tunneling='Eckart',
+    tunneling='${tunneling_method}',
 )
 % endfor
 
@@ -172,6 +184,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.T_min = T_min
         self.T_max = T_max
         self.T_count = T_count
+        # Maps a duplicate species label -> its representative label when identical species
+        # (same adjacency list + multiplicity, e.g. the two OH reactants of OH + OH) are
+        # collapsed into a single Arkane thermo block. parse_arkane_thermo_output uses it to
+        # copy the representative's parsed thermo back onto the collapsed duplicate(s).
+        self._thermo_duplicate_aliases: dict = {}
         if not self.output_directory or not self.calcs_directory:
             raise InputError(f'Output and calcs directories must be given, got: {self.output_directory}, {self.calcs_directory}')
 
@@ -215,7 +232,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                                            delete_existing_subdir=True)
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors, e0_only=e0_only)
         self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=not e0_only)
-        run_arkane(statmech_dir)
+        if not run_arkane(statmech_dir):
+            # No output.py was produced — parsing would either error or
+            # silently miss data. Skip cleanly; matches the kinetics
+            # caller's gate.
+            return
         self.parse_arkane_thermo_output(statmech_dir)
 
     def compute_high_p_rate_coefficient(self,
@@ -243,10 +264,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors)
         self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=False)
         self.generate_ts_files(statmech_dir, skip_rotors)
-        success = run_arkane(statmech_dir)
-        if not success:
+        if run_arkane(statmech_dir):
+            self.parse_arkane_kinetics_output(statmech_dir)
+        if not any(reaction.kinetics for reaction in self.reactions):
             return
-        self.parse_arkane_kinetics_output(statmech_dir)
         for reaction in self.reactions:
             plotter.log_kinetics(reaction.ts_species.label, path=statmech_dir)
             clean_output_directory(species_path=os.path.join(self.output_directory, 'rxns', reaction.ts_species.label),
@@ -334,9 +355,25 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         species_list = list()
         for spc in self.species:
             if e0_only or spc.compute_thermo:
+                smiles = spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else ''
+                adjlist = ''
+                if smiles:
+                    # SMILES cannot encode a lone-pair singlet (e.g. a singlet carbene [CH2]): re-perceiving
+                    # the SMILES yields unpaired radicals whose count clashes with the multiplicity (Hund's
+                    # rule) when Arkane saves the thermo library, crashing the whole thermo step. When the
+                    # SMILES does not round-trip to the same multiplicity, emit the lossless adjacency list.
+                    perceived_mult = None
+                    try:
+                        perceived_mult = Molecule(smiles=smiles).multiplicity
+                    except (ValueError, AtomTypeError):
+                        perceived_mult = None
+                    if perceived_mult != spc.mol.multiplicity:
+                        adjlist = spc.mol.copy(deep=True).to_adjacency_list()
+                        smiles = ''
                 species_list.append({'label': spc.label,
                                      'path': spc.yml_path or os.path.join(statmech_dir, 'species', f'{spc.label}.py'),
-                                     'smiles': spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else '',
+                                     'smiles': smiles,
+                                     'adjlist': adjlist,
                                      'multiplicity': spc.multiplicity,
                                      })
         ts_list = [{'label': rxn.ts_species.label,
@@ -365,6 +402,12 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                 rxn.reactants = [spc.label for spc in reactants]
                 rxn.products = [spc.label for spc in products]
         calc_type = 'kinetics' if self.reactions else 'thermo'
+        if calc_type == 'thermo' and not e0_only:
+            # Only the full-thermo run emits thermo() blocks and triggers Arkane's
+            # save_thermo_lib, which rejects duplicate species. Collapse identical species
+            # here so that crash never fires; the kinetics / e0-only runs keep every species
+            # block (reactions reference each participant label; E0 is parsed per species).
+            species_list = self._dedup_thermo_species_list(species_list)
         return Template(main_input_template).render(
             title=f'Arkane {calc_type} calculation',
             description='Generated by ARC.',
@@ -382,7 +425,81 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             t_min=self.T_min,
             t_max=self.T_max,
             t_count=self.T_count,
+            tunneling_method=ARKANE_TUNNELING_METHOD,
         )
+
+    def _dedup_thermo_species_list(self, species_list: list) -> list:
+        """
+        Collapse species with an identical molecular identity into a single Arkane thermo block.
+
+        Arkane's ``save_thermo_lib`` keys thermo-library entries by adjacency list + multiplicity
+        and raises ``DatabaseError`` on a duplicate (e.g. the two identical reactants of an A+A
+        reaction such as OH + OH). That crash fires at the very end of Arkane's run — after
+        ``output.py`` is already written — and aborts the whole thermo step, so ARC would never
+        reload the (already computed) thermo. Emitting each unique species only once avoids it.
+
+        The dropped duplicate labels are recorded in ``self._thermo_duplicate_aliases`` so that
+        :meth:`parse_arkane_thermo_output` can copy the representative's parsed thermo/E0 back
+        onto them (their own blocks are absent from ``output.py``).
+
+        Args:
+            species_list (list): The list of species-template dicts (each with a ``'label'`` key).
+
+        Returns:
+            list: ``species_list`` with isomorphic, same-multiplicity duplicates removed.
+        """
+        self._thermo_duplicate_aliases = dict()
+        deduped, representatives = list(), list()  # representatives: (label, ARCSpecies) tuples
+        for entry in species_list:
+            spc = self.species_dict.get(entry['label'])
+            rep_label = None
+            if spc is not None and spc.mol is not None:
+                for existing_label, existing_spc in representatives:
+                    if existing_spc.multiplicity == spc.multiplicity \
+                            and existing_spc.mol is not None \
+                            and existing_spc.mol.is_isomorphic(spc.mol):
+                        rep_label = existing_label
+                        break
+            if rep_label is not None:
+                self._thermo_duplicate_aliases[entry['label']] = rep_label
+                logger.info(f"Collapsing species '{entry['label']}' into identical species "
+                            f"'{rep_label}' for the Arkane thermo library (avoids a duplicate-entry crash).")
+                continue
+            deduped.append(entry)
+            if spc is not None:
+                representatives.append((entry['label'], spc))
+        return deduped
+
+    def _propagate_duplicate_species_thermo(self) -> None:
+        """
+        Copy parsed thermo/E0 from each representative species to the duplicate(s) collapsed
+        out of the Arkane input by :meth:`_dedup_thermo_species_list`.
+
+        The duplicates have no block of their own in ``output.py``/``thermo.yaml``; because they
+        are isomorphic and share the representative's multiplicity, their thermochemistry is
+        identical, so the representative's values are simply mirrored onto them.
+        """
+        if not self._thermo_duplicate_aliases:
+            return
+        for dup_label, rep_label in self._thermo_duplicate_aliases.items():
+            dup = self.species_dict.get(dup_label)
+            rep = self.species_dict.get(rep_label)
+            if dup is None or rep is None:
+                continue
+            # Conformer-level statmech (E0, symmetry) is copied even if thermo itself failed, so a
+            # partial parse degrades symmetrically between the representative and its duplicate.
+            if dup.e0 is None and rep.e0 is not None:
+                dup.e0 = rep.e0
+            if dup.optical_isomers is None and rep.optical_isomers is not None:
+                dup.optical_isomers = rep.optical_isomers
+            if dup.external_symmetry is None and rep.external_symmetry is not None:
+                dup.external_symmetry = rep.external_symmetry
+            if rep.thermo is None or rep.thermo.data is None:
+                continue
+            for attr in ('H298', 'S298', 'data', 'nasa_low', 'nasa_high', 'thermo_points',
+                         'Tdata', 'Cpdata', 'Cp0', 'CpInf', 'Tmin', 'Tmax', 'comment'):
+                setattr(dup.thermo, attr, getattr(rep.thermo, attr))
+            logger.info(f"Copied computed thermo from '{rep_label}' to identical species '{dup_label}'.")
 
     def generate_species_files(self,
                                statmech_dir: str,
@@ -499,7 +616,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     spc.thermo.data = content[lbl]['data']
                     spc.thermo.nasa_low = content[lbl].get('nasa_low')
                     spc.thermo.nasa_high = content[lbl].get('nasa_high')
-                    spc.thermo.cp_data = content[lbl].get('cp_data')
+                    spc.thermo.thermo_points = content[lbl].get('thermo_points')
 
                     line = (
                         f"   {lbl:<{label_width}}  "
@@ -507,6 +624,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                         f"{spc.thermo.S298:>{s_width}.2f}"
                     )
                     logger.info(line)
+
+        # Mirror the representative's thermo onto any identical species collapsed out of the
+        # Arkane input (their own blocks are absent from output.py / thermo.yaml).
+        self._propagate_duplicate_species_thermo()
 
     def parse_arkane_kinetics_output(self, statmech_dir: str) -> None:
         """Parse Arkane kinetic output and assign results to reactions."""
@@ -565,33 +686,94 @@ fi' '''
                                        shell=True,
                                        no_fail=True,
                                        executable='/bin/bash')
-    if std_err:
-        ignorable_phrases = [
-            "Open Babel Warning",
-            "Accepted unusual valence",
-            "==============================",
-            "pjrt_executable.cc",
-        ]
 
-        real_errors = []
-        for line in std_err:
-            line = line.strip()
-            if not line:
-                continue
-            if not any(phrase in line for phrase in ignorable_phrases):
-                real_errors.append(line)
-
-        if real_errors:
-            logger.info(f'Arkane run failed with errors:\n{std_err}')
-            return False
-
+    # The authoritative success signal is whether Arkane wrote
+    # ``output.py``. Stderr content alone is unreliable — upstream tools
+    # (OpenBabel, Arkane's ``git rev-parse`` provenance stamp, JAX/XLA's
+    # TPU probe) emit lines that look like errors but don't represent
+    # failure, and using stderr-non-empty as a gate caused us to discard
+    # complete Arkane runs (see the kinetics caller, which bails on a
+    # False return). The classification below is now advisory: if stderr
+    # has lines that don't match a known-cosmetic pattern, we log them
+    # at WARNING so they're visible without making them load-bearing.
+    real_errors = _classify_arkane_stderr(std_err)
     output_file = os.path.join(statmech_dir, 'output.py')
-    if not os.path.isfile(output_file):
-        logger.error(f'Arkane run finished but {output_file} was not created. Check stdout/stderr.')
+    output_present = os.path.isfile(output_file)
+
+    if real_errors and output_present:
+        logger.warning(
+            "Arkane emitted errors but still produced output.py (proceeding): %s",
+            _summarize_arkane_stderr(real_errors),
+        )
+    elif real_errors and not output_present:
+        # Genuine failure: stderr has real errors AND no output. Log the salient error (the full
+        # traceback is preserved in the run directory's stderr.log if a deeper look is needed).
+        logger.error("Arkane run failed: %s", _summarize_arkane_stderr(real_errors))
+
+    if not output_present:
+        logger.error(
+            f'Arkane run finished but {output_file} was not created. '
+            'Check stdout/stderr.'
+        )
         return False
 
     logger.debug(f'Arkane run completed:\n{std_out}')
     return True
+
+
+# Cosmetic stderr lines from upstream tools that Arkane shells out to.
+# Tracking these explicitly (rather than accepting all stderr) keeps the
+# WARNING log signal-rich: if a NEW source of stderr noise appears, it
+# shows up loudly until we either fix it or add it here.
+_ARKANE_STDERR_IGNORABLE_PHRASES: tuple[str, ...] = (
+    "Open Babel Warning",
+    "Accepted unusual valence",
+    "==============================",
+    "pjrt_executable.cc",
+    # Arkane runs `git rev-parse` to stamp its output with the
+    # RMG-database commit; when run from a non-git CWD (the
+    # common case under conda-installed databases) git emits
+    # this and Arkane carries on regardless.
+    "fatal: not a git repository",
+)
+
+
+def _classify_arkane_stderr(std_err: list[str] | None) -> list[str]:
+    """Return the subset of ``std_err`` lines that aren't known cosmetic noise.
+
+    Used by :func:`run_arkane` for advisory logging only — the boolean
+    success signal is whether Arkane produced ``output.py``, not whether
+    this list is empty.
+    """
+    if not std_err:
+        return []
+    real: list[str] = []
+    for line in std_err:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not any(phrase in stripped for phrase in _ARKANE_STDERR_IGNORABLE_PHRASES):
+            real.append(stripped)
+    return real
+
+
+def _summarize_arkane_stderr(real_errors: list[str]) -> str:
+    """Condense classified Arkane stderr to the salient error line for logging.
+
+    Arkane failures surface as a full Python traceback; dumping every line into arc.log is noise,
+    especially when Arkane still produced output.py (e.g. a first attempt that failed on the Eckart
+    barrier and was retried). Return the actual exception line — the informative part — plus a count
+    of the remaining lines, rather than the whole traceback.
+    """
+    if not real_errors:
+        return ''
+    # Prefer the Python exception line, e.g. "ValueError: ...". Skip the conda wrapper's own
+    # "ERROR conda.cli..." line, which only reports that the child process exited non-zero.
+    exception_lines = [ln for ln in real_errors
+                       if re.match(r'^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):', ln)]
+    salient = exception_lines[-1] if exception_lines else real_errors[-1]
+    extra = len(real_errors) - 1
+    return salient + (f' [+{extra} more stderr line(s)]' if extra > 0 else '')
 
 
 def clean_output_directory(species_path: str,  # todo

@@ -5,8 +5,10 @@ A module for representing a reaction.
 from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
+from arc.imports import settings
 from arc.molecule.resonance import generate_resonance_structures_safely
-from arc.species.converter import (check_xyz_dict,
+from arc.species.converter import (align_xyz_to_ref_coords,
+                                   check_xyz_dict,
                                    sort_xyz_using_indices,
                                    translate_to_center_of_mass,
                                    translate_xyz,
@@ -17,6 +19,9 @@ from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
 
 logger = get_logger()
+
+# The RMG family set used to determine/validate reaction families (configurable via settings.py).
+RMG_FAMILY_SET = settings['rmg_family_set']
 
 
 class ARCReaction(object):
@@ -526,7 +531,7 @@ class ARCReaction(object):
         return multiplicity
 
     def get_product_dicts(self,
-                          rmg_family_set: str = 'default',
+                          rmg_family_set: str = RMG_FAMILY_SET,
                           consider_rmg_families: bool = True,
                           consider_arc_families: bool = True,
                           discover_own_reverse_rxns_in_reverse: bool = False,
@@ -559,7 +564,7 @@ class ARCReaction(object):
         return product_dicts
 
     def determine_family(self,
-                         rmg_family_set: str = 'default',
+                         rmg_family_set: str = RMG_FAMILY_SET,
                          consider_rmg_families: bool = True,
                          consider_arc_families: bool = True,
                          discover_own_reverse_rxns_in_reverse: bool = False,
@@ -885,15 +890,21 @@ class ARCReaction(object):
             Orient the fragments according to the reactive site.
         """
         xyz_dict = dict()
-        if len(self.r_species) == 1:
-            xyz_dict = self.r_species[0].get_xyz()
-        elif len(self.r_species) >= 2:
+        # Expand each species by the number of times it participates in the reactant well so that a
+        # species appearing more than once (e.g. 'A + A <=> ...', where remove_dup_species collapses
+        # r_species to a single entry) still contributes all of its atoms and the combined geometry
+        # matches the atom map. get_species_count is 1 in the common case, leaving it unchanged.
+        reactants = [spc for spc in self.r_species
+                     for _ in range(self.get_species_count(species=spc, well=0))]
+        if len(reactants) == 1:
+            xyz_dict = reactants[0].get_xyz()
+        elif len(reactants) >= 2:
             xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-            for i, reactant in enumerate(self.r_species):
+            for i, reactant in enumerate(reactants):
                 xyz = translate_to_center_of_mass(reactant.get_xyz())
                 if i:
                     xyz = translate_xyz(xyz_dict=xyz,
-                                        translation=(sum(spc.radius for spc in self.r_species[:i]) * 1.1 * i, 0, 0))
+                                        translation=(sum(spc.radius for spc in reactants[:i]) * 1.1 * i, 0, 0))
                 xyz_dict['symbols'] += xyz['symbols']
                 xyz_dict['isotopes'] += xyz['isotopes']
                 xyz_dict['coords'] += xyz['coords']
@@ -902,7 +913,10 @@ class ARCReaction(object):
             xyz_dict = xyz_to_str(xyz_dict)
         return xyz_dict
 
-    def get_products_xyz(self, return_format='str') -> dict | str:
+    def get_products_xyz(self,
+                         return_format='str',
+                         align_to_reactants: bool = False,
+                         ) -> dict | str:
         """
         Get a combined string/dict representation of the cartesian coordinates of all product species.
         The resulting coordinates are ordered as the reactants using an atom map.
@@ -910,29 +924,99 @@ class ARCReaction(object):
         Args:
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
                                  Default: ``'str'``.
+            align_to_reactants (bool, optional): Whether to rigidly superimpose (Kabsch) each product fragment
+                                                 onto the reactant atoms it maps to, so that each product atom
+                                                 starts near the reactant atom it corresponds to. This gives
+                                                 double-ended TS search methods (e.g., NEB, QST2) a short and
+                                                 physical interpolation path. If the alignment cannot be
+                                                 performed (e.g., no atom map), the default (unaligned)
+                                                 placement is returned instead. Default: ``False``.
 
         Returns: dict | str
             The combined cartesian coordinates.
-
-        Todo:
-            Orient the fragments according to the reactive site.
         """
-        if len(self.p_species) == 1:
-            xyz_dict = self.p_species[0].get_xyz()
-        else:
-            xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-            for i, product in enumerate(self.p_species):
-                xyz = translate_to_center_of_mass(product.get_xyz())
-                if i:
-                    xyz = translate_xyz(xyz_dict=xyz,
-                                        translation=(sum(spc.radius for spc in self.p_species[:i]) * 1.1 * i, 0, 0))
-                xyz_dict['symbols'] += xyz['symbols']
-                xyz_dict['isotopes'] += xyz['isotopes']
-                xyz_dict['coords'] += xyz['coords']
-        xyz_dict = translate_to_center_of_mass(check_xyz_dict(xyz_dict))
-        xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
+        # Expand each species by its count in the product well (see get_reactants_xyz) so that a
+        # repeated product contributes all of its atoms and the combined geometry matches the atom map.
+        products = [spc for spc in self.p_species
+                    for _ in range(self.get_species_count(species=spc, well=1))]
+        xyz_dict = self._get_products_xyz_aligned_to_reactants(products) if align_to_reactants else None
+        if xyz_dict is None:
+            if len(products) == 1:
+                xyz_dict = products[0].get_xyz()
+            else:
+                xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+                for i, product in enumerate(products):
+                    xyz = translate_to_center_of_mass(product.get_xyz())
+                    if i:
+                        xyz = translate_xyz(xyz_dict=xyz,
+                                            translation=(sum(spc.radius for spc in products[:i]) * 1.1 * i, 0, 0))
+                    xyz_dict['symbols'] += xyz['symbols']
+                    xyz_dict['isotopes'] += xyz['isotopes']
+                    xyz_dict['coords'] += xyz['coords']
+            xyz_dict = translate_to_center_of_mass(check_xyz_dict(xyz_dict))
+            xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
         if return_format == 'str':
             xyz_dict = xyz_to_str(xyz_dict)
+        return xyz_dict
+
+    def _get_products_xyz_aligned_to_reactants(self, products: list) -> dict | None:
+        """
+        Build the combined product coordinates with each product fragment rigidly superimposed (Kabsch)
+        onto the reactant atoms it maps to via the reaction's atom map.
+
+        Each fragment keeps its own (e.g., optimized) internal geometry, but is rotated and translated
+        so that its atoms overlay the corresponding reactant atoms. The combined coordinates are returned
+        in the reactant frame (as returned by :meth:`get_reactants_xyz`) and ordered as the reactants
+        (i.e., already sorted using the atom map).
+
+        Args:
+            products (list): The product ARCSpecies, expanded by their respective counts in the product well
+                             (a species formed more than once, e.g. 'A <=> B + B', appears once per occurrence).
+
+        Returns: dict | None
+            The combined, aligned, reactant-ordered cartesian coordinates,
+            or ``None`` if the alignment cannot be performed.
+        """
+        if self.atom_map is None:
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants '
+                           f'without an atom map. Using the unaligned product placement instead.')
+            return None
+        product_xyzs = [product.get_xyz() for product in products]
+        reactant_xyzs = [reactant.get_xyz() for reactant in self.r_species]
+        if any(xyz is None for xyz in product_xyzs + reactant_xyzs):
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants, '
+                           f'since not all species have coordinates. '
+                           f'Using the unaligned product placement instead.')
+            return None
+        num_atoms = sum(len(xyz['symbols']) for xyz in product_xyzs)
+        if len(self.atom_map) != num_atoms or sorted(self.atom_map) != list(range(num_atoms)):
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants: '
+                           f'the atom map is not a valid permutation of the {num_atoms} product atoms. '
+                           f'Using the unaligned product placement instead.')
+            return None
+        reactants_xyz = self.get_reactants_xyz(return_format='dict')
+        if len(reactants_xyz['symbols']) != num_atoms:
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants: '
+                           f'the reactants have {len(reactants_xyz["symbols"])} atoms, '
+                           f'while the products have {num_atoms} atoms. '
+                           f'Using the unaligned product placement instead.')
+            return None
+        # self.atom_map[reactant_index] = product_index; invert it to look up reactant atoms by product index.
+        inverse_map = [0] * num_atoms
+        for r_index, p_index in enumerate(self.atom_map):
+            inverse_map[p_index] = r_index
+        combined_xyz = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+        offset = 0
+        for product_xyz in product_xyzs:
+            fragment_size = len(product_xyz['symbols'])
+            ref_coords = [reactants_xyz['coords'][inverse_map[offset + j]] for j in range(fragment_size)]
+            aligned_xyz = align_xyz_to_ref_coords(xyz_dict=product_xyz, ref_coords=ref_coords)
+            combined_xyz['symbols'] += aligned_xyz['symbols']
+            combined_xyz['isotopes'] += aligned_xyz['isotopes']
+            combined_xyz['coords'] += aligned_xyz['coords']
+            offset += fragment_size
+        xyz_dict = check_xyz_dict(combined_xyz)
+        xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
         return xyz_dict
 
     def get_element_mass(self) -> list[float]:
@@ -962,8 +1046,6 @@ class ARCReaction(object):
                 A length-2 tuple is which entries represent reactants and product information, respectively.
                 Each entry is a list of tuples, each represents a bond and contains sorted atom indices.
         """
-        if self.atom_map is None:
-            raise ReactionError('Cannot get bonds without an atom map.')
         reactants, products = self.get_reactants_and_products()
         r_bonds, p_bonds = list(), list()
         len_atoms = 0
@@ -977,6 +1059,8 @@ class ARCReaction(object):
         len_atoms = 0
         if r_bonds_only:
             return r_bonds, p_bonds
+        if self.atom_map is None:
+            raise ReactionError('Cannot get product bonds without an atom map.')
         for spc in products:
             for i, atom_1 in enumerate(spc.mol.atoms):
                 for atom2, bond12 in atom_1.edges.items():
@@ -985,10 +1069,66 @@ class ARCReaction(object):
                     if bond not in p_bonds:
                         p_bonds.append(bond)
             len_atoms += spc.number_of_atoms
-        mapped_p_bonds = list()
-        for p_bond in p_bonds:
-            mapped_p_bonds.append(tuple([self.atom_map.index(p_bond[0]), self.atom_map.index(p_bond[1])]))
         return r_bonds, p_bonds
+
+    def get_reactive_bonds_from_family(
+        self,
+    ) -> tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]] | None:
+        """
+        Derive formed, broken, and order-changed bonds directly from the RMG family's
+        recipe actions and ``r_label_map``, bypassing ``atom_map``.
+
+        All tuples are in reactant global index space. This is the canonical source
+        used elsewhere in ARC (see ``arc.mapping.engine.find_all_breaking_bonds``),
+        and is sufficient for NMD validation which only needs reactive-atom roles.
+
+        Returns:
+            tuple[formed, broken, changed] | None: ``None`` when the family or
+            ``r_label_map`` is unavailable and the label-based path cannot be taken.
+        """
+        if self.family is None or not self.product_dicts:
+            return None
+        r_label_map = self.product_dicts[0].get('r_label_map')
+        if not r_label_map:
+            return None
+        actions = ReactionFamily(label=self.family).actions
+        formed, broken, changed = list(), list(), list()
+        for action in actions:
+            kind = action[0].upper()
+            if kind not in ('BREAK_BOND', 'FORM_BOND', 'CHANGE_BOND'):
+                continue
+            label_1, label_2 = action[1], action[3]
+            idx_1 = self._resolve_label_index(r_label_map, label_1, preferred_occurrence=0)
+            idx_2 = self._resolve_label_index(
+                r_label_map, label_2,
+                preferred_occurrence=1 if label_1 == label_2 else 0,
+            )
+            if idx_1 is None or idx_2 is None or idx_1 == idx_2:
+                return None
+            bond = tuple(sorted((idx_1, idx_2)))
+            if kind == 'FORM_BOND':
+                formed.append(bond)
+            elif kind == 'BREAK_BOND':
+                broken.append(bond)
+            else:
+                changed.append(bond)
+        return formed, broken, changed
+
+    @staticmethod
+    def _resolve_label_index(
+        label_map: dict[str, int],
+        label: str,
+        preferred_occurrence: int = 0,
+    ) -> int | None:
+        """Resolve an RMG label (e.g. ``'*1'``) to a global atom index in ``label_map``.
+
+        When the same label appears twice in a recipe (e.g. ``R_Recombination``),
+        the label map disambiguates duplicates via suffixed keys (``'*'``, ``'*_2'``).
+        """
+        keys = sorted(k for k in label_map if k == label or k.startswith(f'{label}_'))
+        if not keys:
+            return None
+        return label_map[keys[min(preferred_occurrence, len(keys) - 1)]]
 
     def get_formed_and_broken_bonds(self) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
         """
@@ -996,6 +1136,15 @@ class ARCReaction(object):
         Returns:
             tuple[list[tuple[int, int]], list[tuple[int, int]]]: The formed and broken bonds.
         """
+        if self.atom_map is None and self.family and self.product_dicts:
+            family_bonds = self.get_reactive_bonds_from_family()
+            if family_bonds is not None:
+                formed, broken, _changed = family_bonds
+                logger.warning(
+                    f'Using RMG-family-derived formed/broken bonds for reaction {self} '
+                    f'because no atom map is available.'
+                )
+                return formed, broken
         r_bonds, p_bonds = self.get_bonds()
         r_bonds, p_bonds = set(r_bonds), set(p_bonds)
         formed_bonds, broken_bonds = p_bonds - r_bonds, r_bonds - p_bonds
@@ -1007,6 +1156,11 @@ class ARCReaction(object):
         Returns:
             list[tuple[int, int]]: The bonds that change their bond order.
         """
+        if self.atom_map is None and self.family and self.product_dicts:
+            family_bonds = self.get_reactive_bonds_from_family()
+            if family_bonds is not None:
+                _formed, _broken, changed = family_bonds
+                return changed
         r_bonds, p_bonds = self.get_bonds()
         r_bonds, p_bonds = set(r_bonds), set(p_bonds)
         shared_bonds = p_bonds.intersection(r_bonds)

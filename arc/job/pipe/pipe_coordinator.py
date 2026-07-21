@@ -8,18 +8,21 @@ This module owns the lifecycle of pipe runs once they are created.
 Family-specific task planning lives in ``pipe_planner.py``.
 """
 
+import json
 import os
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from arc.common import get_logger
 from arc.imports import settings
 
-from arc.job.pipe.pipe_run import PipeRun, ingest_completed_task
+from arc.job.factory import job_factory
+from arc.job.pipe.pipe_run import PipeRun, SCHEDULER_VISIBILITY_GRACE, ingest_completed_task
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
-    TaskStateRecord, read_task_state,
+    TaskStateRecord, get_task_attempt_dir, read_task_state,
 )
+from arc.level import Level
 
 if TYPE_CHECKING:
     from arc.scheduler import Scheduler
@@ -66,6 +69,21 @@ class PipeCoordinator:
             return False
         min_tasks = pipe_settings.get('min_tasks', 10)
         if len(tasks) < min_tasks:
+            return False
+        # PipeRun.submit_to_scheduler invokes qsub/sbatch on the orchestrator
+        # machine and the worker (`python -m arc.scripts.pipe_worker`) reads
+        # pipe_root from the local filesystem. If this engine's resolved
+        # server is remote, that submission silently errors and the run
+        # deadlocks. Refuse pipe so the planner falls back to per-job queue
+        # submissions over SSH (scheduler.py:546-554). Remote pipe support
+        # tracked separately on the pipe-ssh-support branch.
+        ess_settings = getattr(self.sched, 'ess_settings', None) or {}
+        servers_dict = settings['servers']
+        server_list = ess_settings.get(tasks[0].engine, [])
+        if isinstance(server_list, str):
+            server_list = [server_list]
+        first_server = next((s for s in server_list if s in servers_dict), None)
+        if first_server is not None and first_server != 'local':
             return False
         ref = tasks[0]
         return all(t.engine == ref.engine
@@ -189,7 +207,38 @@ class PipeCoordinator:
         self.active_pipes[pipe.run_id] = pipe
         return pipe
 
-    def poll_pipes(self) -> None:
+    @staticmethod
+    def _is_scheduler_job_alive(pipe: PipeRun,
+                                server_job_ids: Optional[List[str]],
+                                ) -> bool:
+        """
+        Check whether a pipe run's scheduler job is still in the cluster queue.
+
+        For PBS/Slurm array jobs the stored ``scheduler_job_id`` is the base
+        ID (e.g. ``'4018898[]'`` for PBS, ``'12345'`` for Slurm), while the
+        queue lists individual elements (``'4018898[0]'`` for PBS,
+        ``'12345_7'`` for Slurm).  We match on the numeric prefix with both
+        ``[`` and ``_`` array separators so both formats are recognised.
+
+        Returns True (optimistic) when *server_job_ids* is unavailable.
+        """
+        if server_job_ids is None or pipe.scheduler_job_id is None:
+            return True  # Cannot determine — assume alive.
+        base = pipe.scheduler_job_id.rstrip('[]')
+        if any(jid == base
+               or jid.startswith(base + '[')
+               or jid.startswith(base + '_')
+               for jid in server_job_ids):
+            return True
+        # Grace period: the scheduler snapshot may not yet list a just-submitted
+        # job (array jobs can take seconds to surface in qstat, and a fresh
+        # get_server_job_ids() call drops any append made by submit).
+        if pipe.submitted_at is not None \
+                and time.time() - pipe.submitted_at < SCHEDULER_VISIBILITY_GRACE:
+            return True
+        return False
+
+    def poll_pipes(self, server_job_ids: Optional[List[str]] = None) -> None:
         """
         Reconcile all active pipe runs.
 
@@ -198,12 +247,19 @@ class PipeCoordinator:
 
         Tolerates up to 3 consecutive reconciliation failures per run before
         marking it as FAILED and removing it.
+
+        Args:
+            server_job_ids: Job IDs currently present in the cluster queue
+                (from ``check_running_jobs_ids``).  Used to detect when a
+                pipe's scheduler job has left the queue so that orphaned
+                tasks can be cleaned up immediately.
         """
         max_consecutive_failures = 3
         for run_id in list(self.active_pipes.keys()):
             pipe = self.active_pipes[run_id]
+            job_alive = self._is_scheduler_job_alive(pipe, server_job_ids)
             try:
-                counts = pipe.reconcile()
+                counts = pipe.reconcile(scheduler_job_alive=job_alive)
             except Exception:
                 n_failures = self._pipe_poll_failures.get(run_id, 0) + 1
                 self._pipe_poll_failures[run_id] = n_failures
@@ -273,6 +329,7 @@ class PipeCoordinator:
                 logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                              f'could not read state, skipping.')
                 continue
+            self._record_pipe_task_cost(pipe=pipe, spec=spec, state=state)
             if state.status == TaskState.COMPLETED.value:
                 ingest_completed_task(pipe.run_id, pipe.pipe_root, spec, state,
                                       self.sched.species_dict, self.sched.output)
@@ -291,6 +348,45 @@ class PipeCoordinator:
                         f'for troubleshooting. Deferring post-ingestion workflow.')
         else:
             self._post_ingest_pipe_run(pipe)
+
+    def _record_pipe_task_cost(self, pipe: PipeRun, spec: TaskSpec, state: TaskStateRecord) -> None:
+        """
+        Record a per-task cost entry for a terminal pipe task, matching the shape of
+        ``Scheduler._record_completed_job`` records so the output.yml cost metrics
+        aggregate pipe tasks and Scheduler jobs uniformly.
+
+        Timing covers the task's last attempt (``started_at``..``ended_at`` from the
+        task state); tasks that never ran are counted with a missing run time rather
+        than dropped. Ingestion may be re-entered for a pipe run after a restart, so
+        records are deduplicated by job name.
+
+        Args:
+            pipe (PipeRun): The pipe run being ingested.
+            spec (TaskSpec): The task's specification (engine, cores, family, owner).
+            state (TaskStateRecord): The task's terminal state record.
+        """
+        terminal_statuses = (TaskState.COMPLETED.value, TaskState.FAILED_ESS.value,
+                             TaskState.FAILED_TERMINAL.value, TaskState.CANCELLED.value)
+        if state.status not in terminal_statuses:
+            return
+        records = getattr(self.sched, 'completed_job_records', None)
+        if records is None:
+            return
+        job_name = f'pipe_{pipe.run_id}/{spec.task_id}'
+        if any(record.get('job_name') == job_name for record in records):
+            return
+        run_time_sec = state.ended_at - state.started_at \
+            if state.started_at is not None and state.ended_at is not None else None
+        records.append({
+            'job_name': job_name,
+            'label': spec.owner_key,
+            'job_type': spec.task_family,
+            'job_adapter': spec.engine,
+            'server': 'pipe',
+            'cpu_cores': spec.required_cores,
+            'run_time_sec': run_time_sec,
+            'job_status': state.status,
+        })
 
     def _post_ingest_pipe_run(self, pipe: PipeRun) -> None:
         """
@@ -370,6 +466,19 @@ class PipeCoordinator:
             else:
                 self.sched.run_composite_job(label)
 
+    def _read_task_parser_summary(self, pipe_root: str, task_id: str, attempt_index: int) -> Dict:
+        """Read parser_summary from a worker-written result.json for a failed task attempt."""
+        result_path = os.path.join(get_task_attempt_dir(pipe_root, task_id, attempt_index), 'result.json')
+        if not os.path.isfile(result_path):
+            return {}
+        try:
+            with open(result_path, 'r') as f:
+                result_data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return {}
+        parser_summary = result_data.get('parser_summary')
+        return parser_summary if isinstance(parser_summary, dict) else {}
+
     def _eject_to_scheduler(self, pipe: 'PipeRun', spec: TaskSpec,
                             state: 'TaskStateRecord') -> None:
         """
@@ -402,6 +511,7 @@ class PipeCoordinator:
             return
         payload = spec.input_payload or {}
         meta = spec.ingestion_metadata or {}
+        parser_summary = self._read_task_parser_summary(pipe.pipe_root, spec.task_id, state.attempt_index)
         kwargs = {
             'job_type': job_type,
             'label': label,
@@ -409,6 +519,8 @@ class PipeCoordinator:
             'job_adapter': spec.engine,
             'xyz': payload.get('xyz'),
             'conformer': meta.get('conformer_index'),
+            'cpu_cores': spec.required_cores,
+            'memory': spec.required_memory_mb / 1024.0,
         }
         if spec.task_family == 'irc':
             kwargs['irc_direction'] = meta.get('irc_direction')
@@ -416,9 +528,45 @@ class PipeCoordinator:
             kwargs['rotor_index'] = meta.get('rotor_index')
             kwargs['torsions'] = payload.get('torsions')
         try:
-            logger.info(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
-                        f'ejecting to Scheduler as individual {job_type} job for {label}.')
-            self.sched.run_job(**kwargs)
+            if parser_summary:
+                job = job_factory(
+                    job_adapter=spec.engine,
+                    project=self.sched.project,
+                    project_directory=self.sched.project_directory,
+                    job_type=job_type,
+                    level=Level(repr=spec.level),
+                    ess_settings=self.sched.ess_settings,
+                    species=[self.sched.species_dict[label]],
+                    xyz=payload.get('xyz'),
+                    conformer=meta.get('conformer_index'),
+                    cpu_cores=spec.required_cores,
+                    job_memory_gb=spec.required_memory_mb / 1024.0,
+                    ess_trsh_methods=list(),
+                    execution_type='queue',
+                    irc_direction=meta.get('irc_direction'),
+                    rotor_index=meta.get('rotor_index'),
+                    torsions=payload.get('torsions'),
+                    args=spec.args,
+                    testing=getattr(self.sched, 'testing', False),
+                )
+                parser_summary.setdefault('status', 'errored')
+                parser_summary.setdefault('keywords', list())
+                parser_summary.setdefault('error', '')
+                parser_summary.setdefault('line', '')
+                job.job_status = ['done', parser_summary]
+                logger.info(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                            f'ejecting to Scheduler for immediate troubleshooting as individual '
+                            f'{job_type} job for {label}.')
+                self.sched.troubleshoot_ess(
+                    label=label,
+                    job=job,
+                    level_of_theory=Level(repr=spec.level),
+                    conformer=meta.get('conformer_index'),
+                )
+            else:
+                logger.info(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                            f'ejecting to Scheduler as individual {job_type} job for {label}.')
+                self.sched.run_job(**kwargs)
         except Exception:
             logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                          f'failed to eject to Scheduler.', exc_info=True)

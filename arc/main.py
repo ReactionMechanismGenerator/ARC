@@ -663,6 +663,7 @@ class ARC(object):
                 arkane_level_of_theory=self.arkane_level_of_theory,
                 irc_requested=self.job_types.get('irc', True),
                 t0=self.t0,
+                completed_job_records=self.scheduler.completed_job_records,
             )
         except Exception as e:
             logger.error(f'Could not write output.yml: {e}')
@@ -708,6 +709,10 @@ class ARC(object):
         txt += f'\nUsing the following ESS settings: {self.ess_settings}\n'
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.species:
+            if species.label not in self.output:
+                # A species deleted mid-run (e.g., an IRC endpoint species whose TS did not converge)
+                # can linger in self.species after being removed from self.output; don't report it.
+                continue
             descriptor = 'TS' if species.is_ts else 'Species'
             failed = '' if self.output[species.label]['convergence'] else ' (Failed!)'
             txt += f'{descriptor} {species.label}{failed} (run time: {species.run_time})\n'
@@ -728,7 +733,7 @@ class ARC(object):
         if os.path.exists(path):
             os.remove(path)
         for species in self.species:
-            if not species.is_ts:
+            if not species.is_ts and species.label in self.output:
                 spc_dict = dict()
                 spc_dict['label'] = species.label
                 spc_dict['success'] = self.output[species.label]['convergence']

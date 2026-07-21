@@ -224,10 +224,27 @@ parse_1d_scan_coords = make_parser(
     error_message='Could not parse 1d scan coords from {path}',
 )
 
+parse_1d_scan_energies_hartree = make_parser(
+    parse_method='parse_1d_scan_energies_hartree',
+    return_type=tuple[list[float] | None, list[float] | None],
+    error_message='Could not parse 1d scan absolute energies (Hartree) from {path}',
+)
+
 parse_irc_traj = make_parser(
     parse_method='parse_irc_traj',
     return_type=list[dict[str, tuple]] | None,
     error_message='Could not parse IRC trajectory from {path}',
+)
+
+# Rich IRC parser. Sibling of parse_irc_traj — emits per-point dicts with
+# energy, reaction coordinate, gradients, direction, and xyz so consumers
+# don't have to align fields across multiple narrow parses. ESS adapters
+# that don't implement parse_irc_path get None back from make_parser
+# (graceful fallback to the geometry-only parse_irc_traj at call sites).
+parse_irc_path = make_parser(
+    parse_method='parse_irc_path',
+    return_type=list[dict] | None,
+    error_message='Could not parse rich IRC path from {path}',
 )
 
 parse_scan_conformers = make_parser(
@@ -265,6 +282,103 @@ parse_ess_version = make_parser(
     return_type=str | None,
     error_message='Could not parse ESS version from {path}',
 )
+
+parse_s_squared = make_parser(
+    parse_method='parse_s_squared',
+    return_type=dict | None,
+    error_message='Could not parse S**2 spin diagnostic from {path}',
+)
+
+
+def s_squared_expected_from_multiplicity(multiplicity: int | float | None) -> float | None:
+    """
+    Compute the ideal (spin-pure) expectation value ``S(S+1)`` of the total-spin
+    operator from a spin multiplicity.
+
+    For a spin state of multiplicity ``m`` the total spin is ``S = (m - 1) / 2``
+    and the ideal ``<S**2>`` is ``S * (S + 1)`` (e.g. doublet ``m=2`` → 0.75,
+    triplet ``m=3`` → 2.0).
+
+    Args:
+        multiplicity (int | float | None): The spin multiplicity.
+
+    Returns: float | None
+        The ideal ``S(S+1)`` value, or ``None`` if ``multiplicity`` is missing
+        or not a positive number.
+    """
+    if multiplicity is None:
+        return None
+    try:
+        m = float(multiplicity)
+    except (TypeError, ValueError):
+        return None
+    if m < 1:
+        return None
+    s = (m - 1.0) / 2.0
+    return s * (s + 1.0)
+
+
+def parse_1d_scan_full_result(log_file_path: str) -> dict:
+    """
+    Parse a 1D rotor scan log into a single bundle of derived quantities suitable
+    for both ARC-internal use and TCKDB upload.
+
+    The returned dict aggregates what individual narrow parsers expose so that
+    callers (in particular the ``output.yml`` writer) don't have to re-walk the
+    log file three times. Fields are populated independently — any of them may
+    be ``None`` if the underlying parser cannot extract that information for the
+    given ESS log; the wrapper never raises.
+
+    Args:
+        log_file_path (str): Path to the ESS scan log.
+
+    Returns: dict
+        ``{
+            'angles_deg': list[float] | None,
+            'relative_energies_kj_mol': list[float] | None,
+            'absolute_energies_hartree': list[float] | None,
+            'zero_energy_reference_hartree': float | None,   # min absolute energy
+            'geometries': list[dict[str, tuple]] | None,
+        }``
+
+        ``angles_deg`` is taken from the relative-energies parse (the
+        established source of truth) when available, else from the absolute
+        parse. ``zero_energy_reference_hartree`` is the minimum of
+        ``absolute_energies_hartree`` when present, else ``None``.
+    """
+    rel_energies, rel_angles = parse_1d_scan_energies(log_file_path=log_file_path)
+    abs_energies, abs_angles = parse_1d_scan_energies_hartree(log_file_path=log_file_path)
+    geometries = parse_1d_scan_coords(log_file_path=log_file_path)
+
+    # Coerce numpy outputs (Gaussian's relative path returns lists; older code
+    # paths and ORCA may return ndarrays) to plain lists so YAML/JSON
+    # serialisers downstream don't choke on numpy scalars.
+    def _to_list(x):
+        if x is None:
+            return None
+        try:
+            return [float(v) for v in x]
+        except TypeError:
+            return None
+
+    rel_energies = _to_list(rel_energies)
+    rel_angles = _to_list(rel_angles)
+    abs_energies = _to_list(abs_energies)
+    abs_angles = _to_list(abs_angles)
+
+    angles = rel_angles if rel_angles is not None else abs_angles
+
+    zero_ref = None
+    if abs_energies:
+        zero_ref = min(abs_energies)
+
+    return {
+        'angles_deg': angles,
+        'relative_energies_kj_mol': rel_energies,
+        'absolute_energies_hartree': abs_energies,
+        'zero_energy_reference_hartree': zero_ref,
+        'geometries': geometries,
+    }
 
 
 def parse_1d_scan_energies_from_specific_angle(log_file_path: str,
@@ -425,7 +539,11 @@ def parse_trajectory(path: str) -> list[dict[str, tuple]] | None:
         Entries are xyz's on the trajectory.
     """
     ess_file, traj = False, None
-    if path.split('.')[-1] != 'xyz':
+    # GSM emits stringfile.xyz0000, stringfile.xyz0001, ... — the four-digit
+    # suffix is the GSM iteration index, not a different format. Treat any
+    # ``.xyz`` followed by optional digits as a plain XYZ trajectory and skip
+    # the ESS sniff (which would warn benignly on a non-ESS file).
+    if not re.search(r'\.xyz\d*$', path):
         ess_file = bool(determine_ess(log_file_path=path, raise_error=False))
     if ess_file:
         try:
@@ -470,6 +588,66 @@ def parse_trajectory(path: str) -> list[dict[str, tuple]] | None:
         logger.error(f'Could not parse trajectory from {path}')
         return None
     return traj
+
+
+def parse_gsm_stringfile_energies(path: str) -> list[float] | None:
+    """
+    Parse the per-frame energy values from the comment lines of a GSM
+    (Growing String Method) ``stringfile.xyzNNNN`` trajectory.
+
+    ``molecularGSM`` writes each node as a standard XYZ block whose second
+    (comment) line holds that node's energy **relative to the first node**,
+    conventionally in kcal/mol (so the first node is ``0.000000``). This
+    helper returns one float per frame, in frame order.
+
+    This is intentionally separate from :func:`parse_trajectory` (which
+    only returns coordinates and is shared by scan / IRC / ESS callers) so
+    that adding energy extraction here cannot change the behavior of any
+    existing ``parse_trajectory`` caller.
+
+    Note:
+        Some ``molecularGSM`` builds/configurations write ``0.000000`` for
+        every comment line (no energy emitted — this is the case for ARC's
+        current xtb_gsm build). This function faithfully returns those
+        zeros; the caller must decide whether an all-zero column is a real
+        (degenerate) profile or the "no energy written" sentinel.
+
+    Args:
+        path (str): The stringfile path.
+
+    Returns: list[float] | None
+        Per-frame comment-line energies (frame order), or ``None`` if the
+        file is absent or any frame's comment line is not a leading float
+        (i.e. the file does not carry a per-frame energy column at all).
+    """
+    if not os.path.isfile(path):
+        return None
+    lines = _get_lines_from_file(path)
+    energies: list[float] = []
+    i, n = 0, len(lines)
+    while i < n:
+        header = lines[i].strip().split()
+        # An XYZ atom-count header is a single all-digit token; anything
+        # else (blank/partial trailing lines) is skipped.
+        if len(header) == 1 and header[0].isdigit():
+            num_atoms = int(header[0])
+            comment_idx = i + 1
+            if comment_idx >= n:
+                break
+            comment_tokens = lines[comment_idx].strip().split()
+            if not comment_tokens:
+                return None
+            try:
+                energies.append(float(comment_tokens[0]))
+            except ValueError:
+                # No numeric energy in the comment column — this file is a
+                # plain geometry trajectory, not an energy-bearing GSM
+                # stringfile. Report ``None`` rather than a partial list.
+                return None
+            i = comment_idx + 1 + num_atoms
+        else:
+            i += 1
+    return energies or None
 
 
 def _get_lines_from_file(path: str) -> list[str]:

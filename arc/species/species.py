@@ -9,7 +9,8 @@ import os
 from math import isclose
 
 import arc.molecule.element as elements
-from arc.common import (SYMBOL_BY_NUMBER,
+from arc.common import (NUMBER_BY_SYMBOL,
+                        SYMBOL_BY_NUMBER,
                         almost_equal_coords,
                         convert_list_index_0_to_1,
                         dfs,
@@ -477,6 +478,15 @@ class ARCSpecies(object):
                         self.multiplicity = self.mol.multiplicity
                     if self.charge is None:
                         self.charge = self.mol.get_net_charge()
+                    if multiplicity is not None and number_of_radicals is None and not adjlist \
+                            and self.mol.multiplicity != multiplicity:
+                        # SMILES/InChI don't encode electron spin, so the perceived .mol may
+                        # disagree with an explicitly requested multiplicity (e.g. [CH2] is
+                        # perceived as triplet but the user asked for the singlet carbene).
+                        # Reconcile the graph to the requested spin state. Skipped when
+                        # number_of_radicals is given, since that declares an open-shell state
+                        # (e.g. a singlet biradical) where the radical count is intentional.
+                        self.reconcile_mol_multiplicity()
             if regen_mol and not (self.mol is not None and self.keep_mol):
                 # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
                 # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
@@ -516,6 +526,7 @@ class ARCSpecies(object):
         if not isinstance(self.charge, int):
             raise SpeciesError(f'Charge for species {self.label} is not an integer. '
                                f'Got {self.charge} which is a {type(self.charge)}.')
+        self.check_multiplicity_parity()
         if not self.is_ts and self.initial_xyz is None and self.final_xyz is None and self.mol is None \
                 and not self.conformers:
             raise SpeciesError(f'No structure (xyz, SMILES, adjList, or Molecule) '
@@ -547,8 +558,40 @@ class ARCSpecies(object):
                                        f'Expected tuples of two 1-indexed atoms, got:\n{self.bdes}')
 
         self.set_mol_list()
+        self._init_monoatomic_geometry()
         if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
             self.populate_ts_checks()
+
+    def _init_monoatomic_geometry(self) -> None:
+        """Promote (or synthesize) a one-atom geometry into ``final_xyz``.
+
+        ARC skips opt for atoms (nothing to optimize), so without this hook
+        ``final_xyz`` would stay ``None`` for the entire run. That breaks
+        invariants downstream — most visibly ``Reaction.check_done_opt_r_n_p``
+        gates TS-search dispatch on every reactant/product having a non-None
+        ``final_xyz``, so atomic reactants (e.g. ``[H]`` in H_Abstraction)
+        silently block all TSG jobs. Setting the one-atom geometry up front
+        gives every consumer a single, consistent invariant: a converged
+        species has a geometry.
+
+        Prefers any user-supplied geometry already on the species
+        (``initial_xyz`` / first conformer / cheap conformer) so we don't
+        clobber explicit input. Falls back to origin coordinates when none of
+        those exist — for an atom, the choice of frame is arbitrary anyway.
+        """
+        if self.is_ts or self.final_xyz is not None:
+            return
+        if self.mol is None or len(self.mol.atoms) != 1:
+            return
+        existing = (self.initial_xyz
+                    or (self.conformers[0] if self.conformers else None)
+                    or self.most_stable_conformer
+                    or self.cheap_conformer)
+        if existing is not None:
+            self.final_xyz = existing
+            return
+        symbol = self.mol.atoms[0].element.symbol
+        self.final_xyz = xyz_from_data(coords=((0.0, 0.0, 0.0),), symbols=(symbol,))
 
     def __str__(self) -> str:
         """Return a string representation of the object"""
@@ -958,6 +1001,16 @@ class ARCSpecies(object):
                                  f'{self.multiplicity} (ignored mol.multiplicity)')
                 else:
                     self.multiplicity = self.mol.multiplicity
+            elif self.number_of_radicals is None and not self.is_ts and adjlist is None \
+                    and 'mol' not in species_dict and (smiles is not None or inchi is not None) \
+                    and self.mol.multiplicity != self.multiplicity:
+                # SMILES/InChI don't encode electron spin, so the perceived .mol may disagree with the
+                # declared multiplicity (e.g. [CH2] is perceived as triplet u2, but multiplicity: 1 is the
+                # singlet carbene u0 p1). Reconcile the graph to the declared spin state so downstream
+                # graph-based logic (RMG family determination, isomorphism checks) sees the correct species.
+                # Mirrors the kwargs __init__ path; skipped for adjlist/mol input (spin already encoded) and
+                # for open-shell states declared via number_of_radicals.
+                self.reconcile_mol_multiplicity()
             if self.charge is None:
                 self.charge = self.mol.get_net_charge()
         if 'conformers' in species_dict:
@@ -1370,6 +1423,7 @@ class ARCSpecies(object):
                                  'trsh_counter': 0,
                                  'trsh_methods': list(),
                                  'scan_path': '',
+                                 'scan_software': '',
                                  'directed_scan_type': key,
                                  'directed_scan': dict(),
                                  'dimensions': 0,
@@ -1453,7 +1507,7 @@ class ARCSpecies(object):
             deg_abs = calculate_dihedral_angle(coords=xyz, torsion=torsion) + deg_increment
         if is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[:3], index=0)) \
                 or is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[1:], index=0)):
-            logger.warning(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
+            logger.debug(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
             return None
         mol = self.mol
         if mol is None:
@@ -1462,6 +1516,7 @@ class ARCSpecies(object):
                                              multiplicity=self.multiplicity,
                                              n_radicals=self.number_of_radicals,
                                              n_fragments=self.get_n_fragments(),
+                                             is_ts=self.is_ts,
                                              )
         if chk_rotor_list:
             for rotor in self.rotors_dict.values():
@@ -1489,6 +1544,56 @@ class ARCSpecies(object):
                                     mol=mol,
                                     )
             self.initial_xyz = new_xyz
+
+    def reconcile_mol_multiplicity(self):
+        """
+        Reconcile the ``.mol`` graph with a user-provided ``self.multiplicity`` that is lower than
+        the spin state perceived from a spin-agnostic descriptor (SMILES or InChI), by pairing
+        two radical electrons that sit on the *same* atom into a lone pair.
+
+        SMILES and InChI do not encode electron spin, so RMG perceives a default spin state
+        (e.g. ``[CH2]`` is perceived as triplet methylene, with two radicals on the carbon). When
+        the user requests a lower multiplicity (e.g. the singlet carbene), those same-atom radicals
+        are the ones meant to pair into a lone pair.
+
+        This deliberately handles ONLY same-atom pairing. Radicals on *different* atoms that are
+        overall spin-paired form an open-shell singlet (e.g. a singlet biradical) — a valid state
+        that must NOT be collapsed; such species are declared with ``number_of_radicals`` and are
+        filtered out before this method is called. If the requested multiplicity cannot be reached
+        purely by same-atom pairing, the molecule is left untouched (the caller keeps the perceived
+        structure, i.e. the pre-existing behavior).
+        """
+        perceived_multiplicity = self.mol.multiplicity
+        needed_pairs = (self.mol.get_radical_count() - (self.multiplicity - 1)) / 2
+        # Only a positive, whole number of same-atom pairings is meaningful here.
+        if needed_pairs <= 0 or needed_pairs != int(needed_pairs):
+            return
+        needed_pairs = int(needed_pairs)
+        available_pairs = sum(atom.radical_electrons // 2 for atom in self.mol.atoms)
+        if available_pairs < needed_pairs:
+            # Not achievable by same-atom pairing (e.g. an open-shell biradical, or an impossible
+            # request). Leave the perceived structure as-is rather than corrupt it.
+            return
+        for atom in sorted(self.mol.atoms, key=lambda a: a.radical_electrons, reverse=True):
+            while needed_pairs and atom.radical_electrons >= 2:
+                atom.decrement_radical()
+                atom.decrement_radical()
+                atom.increment_lone_pairs()
+                needed_pairs -= 1
+        self.mol.multiplicity = self.multiplicity
+        self.mol.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
+        # Same-atom pairing yields a valid graph, but when the radicals sat on atoms that are
+        # bonded, a localized lone pair is a poor representation (e.g. [N][N] quintet -> triplet
+        # should delocalize to N=N with a radical on each atom, not a nitride/nitrene pair).
+        # Normalize to the most representative resonance structure, which RMG places first.
+        if all(atom.id == -1 for atom in self.mol.atoms):
+            self.mol.assign_atom_ids()
+        resonance = generate_resonance_structures_safely(self.mol.copy(deep=True), save_order=True)
+        if resonance and resonance[0].multiplicity == self.multiplicity:
+            self.mol = resonance[0]
+        logger.info(f'Reconciled species {self.label!r} to the requested multiplicity '
+                    f'{self.multiplicity} (its SMILES/InChI was perceived as multiplicity '
+                    f'{perceived_multiplicity}).')
 
     def determine_multiplicity(self,
                                smiles: str,
@@ -1560,6 +1665,66 @@ class ARCSpecies(object):
                 self.multiplicity = 1
                 logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 1')
 
+    def get_number_of_electrons(self) -> int | None:
+        """
+        Count the total number of electrons of the species, ignoring the net charge
+        (i.e., the sum of the atomic numbers of all atoms, as for the neutral species).
+
+        Returns:
+            Optional[int]: The total number of electrons, or ``None`` if the composition
+                           is not yet known (no Molecule and no xyz at this point).
+        """
+        if self.mol is not None:
+            return sum(atom.element.number for atom in self.mol.atoms)
+        xyz = self.get_xyz()
+        if xyz is None and len(self.conformers):
+            xyz = self.conformers[0]
+        if xyz and xyz.get('symbols'):
+            electrons = 0
+            for symbol in xyz['symbols']:
+                if symbol not in NUMBER_BY_SYMBOL:
+                    # Unknown/dummy atom symbol; cannot count electrons reliably.
+                    return None
+                electrons += NUMBER_BY_SYMBOL[symbol]
+            return electrons
+        return None
+
+    def check_multiplicity_parity(self):
+        """
+        Verify that the requested spin multiplicity is consistent with the electron count.
+
+        For any species the parity relation
+        ``(total_electrons - net_charge) % 2 == (multiplicity - 1) % 2``
+        must hold (an even electron count requires an odd multiplicity and vice versa).
+        This is an inviolable parity relation, so this guard can only ever fire on a
+        genuinely impossible specification (zero false positives). It is skipped
+        gracefully when either the multiplicity or the electron count is not yet known
+        (e.g. a TS or an xyz-less species defined only by descriptors that failed to
+        perceive a Molecule).
+
+        Raises:
+            SpeciesError: If the requested multiplicity has the wrong parity for the
+                          species' electron count and net charge.
+        """
+        if self.multiplicity is None or self.charge is None:
+            return
+        total_electrons = self.get_number_of_electrons()
+        if total_electrons is None:
+            return
+        n_electrons = total_electrons - self.charge
+        if n_electrons % 2 != (self.multiplicity - 1) % 2:
+            # The requested multiplicity has the wrong parity. Suggest the nearest valid ones.
+            lower = self.multiplicity - 1
+            valid = [m for m in (lower, self.multiplicity + 1) if m >= 1]
+            parity_word = 'odd' if n_electrons % 2 == 0 else 'even'
+            raise SpeciesError(
+                f'Impossible multiplicity for species {self.label}: a species with '
+                f'{total_electrons} electrons and a net charge of {self.charge} has '
+                f'{n_electrons} electrons, which requires an {parity_word} multiplicity, '
+                f'but a multiplicity of {self.multiplicity} was requested. '
+                f'Valid nearby multiplicities would be {valid}. '
+                f'Check the multiplicity (2S+1), charge, and composition of this species.')
+
     def make_ts_report(self):
         """A helper function to write content into the .ts_report attribute"""
         self.ts_report = ''
@@ -1595,6 +1760,21 @@ class ARCSpecies(object):
                     cluster_tsg.method_sources = TSGuess._normalize_method_sources(
                         (cluster_tsg.method_sources or []) + (tsg.method_sources or [])
                     )
+                    # Preserve per-source log paths on the winner so path-search provenance
+                    # (per-node energies / points) survives dedup even when a geometry-only
+                    # method is the winning (primary) source. Seed from each guess's live
+                    # method/log_path (the xtb_gsm / orca_neb / qst2 adapters assign
+                    # ``log_path`` *after* construction, so ``method_source_paths`` may still
+                    # be empty at clustering time), then merge any already-preserved entries.
+                    if getattr(cluster_tsg, 'method_source_paths', None) is None:
+                        cluster_tsg.method_source_paths = dict()
+                    for source_tsg in (cluster_tsg, tsg):
+                        for source, source_log in (getattr(source_tsg, 'method_source_paths', None) or dict()).items():
+                            cluster_tsg.method_source_paths.setdefault(source, source_log)
+                        source_method = getattr(source_tsg, 'method', None)
+                        source_log = getattr(source_tsg, 'log_path', None)
+                        if source_method and source_log:
+                            cluster_tsg.method_source_paths.setdefault(source_method, source_log)
                     break
             else:
                 tsg.cluster = [tsg.index]
@@ -1605,18 +1785,21 @@ class ARCSpecies(object):
             logger.info(f'Clustered {n_before} TS guesses for {self.label} '
                         f'into {len(cluster_tsgs)} unique conformers.')
 
-    def process_completed_tsg_queue_jobs(self, path: str):
+    def process_completed_tsg_queue_jobs(self, path: str, method: str = 'orca_neb'):
         """
         Process YAML files which are the output of running a TS guess job in the queue.
 
         Args:
             path (str): The path to the output file.
+            method (str): The TS-search adapter that produced the output (e.g. ``'orca_neb'``,
+                          ``'qst2'``). Used to correctly attribute the resulting TS guess; several
+                          queue adapters emit a ``.log`` so this must not be hard-coded.
         """
         if not isinstance(path, str) or not os.path.isfile(path):
             return None
         if path.endswith('.log'):
             xyz = parse_geometry(path)
-            tsg = TSGuess(method='orca_neb',
+            tsg = TSGuess(method=method,
                           success=True,
                           xyz=xyz,
                           log_path=path,
@@ -1625,6 +1808,13 @@ class ARCSpecies(object):
                 if tsg.index is None:
                     tsg.index = len(self.ts_guesses)
                 self.ts_guesses.append(tsg)
+            else:
+                # The queue TS-search job produced no usable geometry (nothing parseable, or
+                # colliding atoms). Mark it failed and do NOT add it as a clusterable guess: a
+                # coordinate-less "successful" guess would break equivalent-guess clustering.
+                tsg.success = False
+                logger.warning(f"The queue TS-guess job at {path} produced no usable geometry; "
+                               f"marking this '{tsg.method}' guess as failed and not clustering it.")
         elif path.endswith('.yml') or path.endswith('.yaml'):
             yml_path = path
             tsg_list = read_yaml_file(yml_path)
@@ -1678,6 +1868,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=_n_rad_for_perception,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
             if perceived_mol is not None:
                 if self.is_ts:
@@ -1712,6 +1903,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
             if perceived_mol is None and self.is_ts:
                 perceived_mol = perceive_molecule_from_xyz(xyz,
@@ -1719,6 +1911,7 @@ class ARCSpecies(object):
                                                            multiplicity=self.multiplicity,
                                                            n_radicals=self.number_of_radicals,
                                                            n_fragments=2,
+                                                           is_ts=True,
                                                            )
             if perceived_mol is not None:
                 self.mol = perceived_mol
@@ -1892,6 +2085,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
 
             # 2. A. Check isomorphism with bond orders using b_mol
@@ -2276,6 +2470,9 @@ class TSGuess(object):
         t0 (datetime.datetime, optional): Initial time of spawning the guess job.
         execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.
         log_path (str, optional): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
+        level (dict, optional): A plain dictionary representation of the level of theory at which the guess-generating
+                                adapter ran its electronic structure calculations (e.g., the NEB level for orca_neb,
+                                GFN2-xTB for xtb_gsm). ``None`` for pure ML/template based guess methods.
         project_directory (str, optional): The path to the project directory.
 
     Attributes:
@@ -2301,6 +2498,12 @@ class TSGuess(object):
         errors (str): Problems experienced with this TSGuess. Used for logging.
         cluster (list[int]): Indices of TSGuess object instances clustered together.
         log_path (str): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
+        method_source_paths (dict[str, str]): Maps each method in ``method_sources`` to the ESS log path it produced,
+                                              preserved across equivalent-guess clustering. Lets path-search provenance
+                                              (per-node energies / points) survive dedup even when a geometry-only
+                                              method is the primary (winning) source of the merged guess.
+        level (dict): The level of theory the guess-generating adapter ran its electronic structure calculations at,
+                      as a plain dictionary. ``None`` for pure ML/template based guess methods.
     """
 
     def __init__(self,
@@ -2319,6 +2522,7 @@ class TSGuess(object):
                  energy: float | None = None,
                  cluster: list[int] | None = None,
                  log_path: str | None = None,
+                 level: dict | None = None,
                  project_directory: str | None = None,
                  ):
 
@@ -2342,6 +2546,10 @@ class TSGuess(object):
             self.energy = energy
             self.cluster = cluster
             self.log_path = log_path
+            self.level = level
+            self.method_source_paths = dict()
+            if self.log_path is not None:
+                self.method_source_paths[self.method] = self.log_path
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
@@ -2427,6 +2635,8 @@ class TSGuess(object):
         ts_dict['success'] = self.success
         if self.energy is not None:
             ts_dict['energy'] = self.energy
+        if self.level is not None:
+            ts_dict['level'] = self.level
         ts_dict['index'] = self.index
         if self.imaginary_freqs is not None:
             ts_dict['imaginary_freqs'] = [float(f) for f in self.imaginary_freqs]
@@ -2449,6 +2659,8 @@ class TSGuess(object):
                 ts_dict['errors'] = self.errors
             if self.log_path is not None:
                 ts_dict['log_path'] = self.log_path
+            if getattr(self, 'method_source_paths', None):
+                ts_dict['method_source_paths'] = dict(self.method_source_paths)
         return ts_dict
 
     def from_dict(self, ts_dict: dict):
@@ -2485,6 +2697,13 @@ class TSGuess(object):
             self.execution_time = datetime.timedelta(seconds=0)
         self.family = ts_dict['family'] if 'family' in ts_dict else None
         self.log_path = ts_dict['log_path'] if 'log_path' in ts_dict else None
+        if 'method_source_paths' in ts_dict and isinstance(ts_dict['method_source_paths'], dict):
+            self.method_source_paths = {str(k).lower(): v for k, v in ts_dict['method_source_paths'].items()}
+        else:
+            self.method_source_paths = dict()
+            if self.log_path is not None:
+                self.method_source_paths[self.method] = self.log_path
+        self.level = ts_dict['level'] if 'level' in ts_dict else None
         self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
 
     def process_xyz(self,
@@ -2543,8 +2762,14 @@ class TSGuess(object):
                       and any([not isclose(freq_1, freq_2, abs_tol=0.1)
                                for freq_1, freq_2 in zip(self.imaginary_freqs, other.imaginary_freqs)]))):
             return False
-        if almost_equal_coords(xyz1=self.get_xyz(), xyz2=other.get_xyz()) \
-                or compare_confs(xyz1=self.get_xyz(), xyz2=other.get_xyz(), rmsd_score=False):
+        self_xyz, other_xyz = self.get_xyz(), other.get_xyz()
+        if self_xyz is None or other_xyz is None:
+            # A coordinate-less guess (e.g. a failed queue/heuristic guess whose job produced no
+            # parseable geometry) can never be a geometric duplicate. Comparing it would pass None
+            # into almost_equal_coords and crash clustering (TypeError), so treat it as not-equal.
+            return False
+        if almost_equal_coords(xyz1=self_xyz, xyz2=other_xyz) \
+                or compare_confs(xyz1=self_xyz, xyz2=other_xyz, rmsd_score=False):
             return True
         return False
 
@@ -2580,7 +2805,7 @@ class ThermoData(object):
                  comment='',
                  nasa_low=None,
                  nasa_high=None,
-                 cp_data=None,
+                 thermo_points=None,
                  ):
         """
         Args:
@@ -2596,7 +2821,11 @@ class ThermoData(object):
             comment (str): Additional comments or description
             nasa_low (dict): Low-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
             nasa_high (dict): High-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
-            cp_data (list): Tabulated Cp: list of {temperature_k, cp_j_mol_k} dicts.
+            thermo_points (list): Tabulated per-temperature thermochemistry:
+                list of dicts with ``temperature_k``, ``cp_j_mol_k``,
+                ``h_kj_mol``, ``s_j_mol_k``, ``g_kj_mol``. Older field
+                name was ``cp_data`` (Cp-only); the field now carries
+                the full TCKDB ``thermo_point`` shape.
         """
         self.H298 = H298
         self.S298 = S298
@@ -2610,7 +2839,7 @@ class ThermoData(object):
         self.comment = comment
         self.nasa_low = nasa_low
         self.nasa_high = nasa_high
-        self.cp_data = cp_data
+        self.thermo_points = thermo_points
 
     def __repr__(self):
         """
@@ -2644,7 +2873,7 @@ class ThermoData(object):
         return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
                              self.Cp0, self.CpInf, self.Tmin, self.Tmax,
                              self.data, self.comment,
-                             self.nasa_low, self.nasa_high, self.cp_data))
+                             self.nasa_low, self.nasa_high, self.thermo_points))
 
     def update(self, data: dict):
         """

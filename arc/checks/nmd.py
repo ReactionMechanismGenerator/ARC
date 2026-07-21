@@ -51,7 +51,8 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
         return None
     ts_xyz = reaction.ts_species.get_xyz()
     n_ts = len(ts_xyz['symbols'])
-    n_expected = sum(spc.number_of_atoms for spc in reaction.r_species)
+    n_expected = sum(spc.number_of_atoms * reaction.get_species_count(species=spc, well=0)
+                     for spc in reaction.r_species)
     if n_ts != n_expected:
         return False
     try:
@@ -63,26 +64,57 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
     amplitude_list = [amplitude] if isinstance(amplitude, (float, int)) else amplitude
     weights_array = get_weights_from_xyz(xyz=ts_xyz, weights=weights)
     r_eq_atoms, _ = find_equivalent_atoms(reaction=reaction, reactant_only=True)
-    formed_bonds, broken_bonds = reaction.get_formed_and_broken_bonds()
-    changed_bonds = reaction.get_changed_bonds()
+    bond_change_candidates = get_bond_change_candidates(reaction=reaction)
 
     for amp in amplitude_list:
         if not amp:
             continue
         xyzs = get_displaced_xyzs(xyz=ts_xyz, amplitude=amp, normal_mode_disp=normal_mode_disp[0], weights=weights_array)
 
-        nmd_correct = is_nmd_correct_for_any_mapping(
-            reaction=reaction,
-            xyzs=xyzs,
-            formed_bonds=formed_bonds,
-            broken_bonds=broken_bonds,
-            changed_bonds=changed_bonds,
-            r_eq_atoms=r_eq_atoms,
-            weights=weights_array,
-            amplitude=amp)
-        if nmd_correct:
-            return True
+        for formed_bonds, broken_bonds, changed_bonds in bond_change_candidates:
+            nmd_correct = is_nmd_correct_for_any_mapping(
+                reaction=reaction,
+                xyzs=xyzs,
+                formed_bonds=formed_bonds,
+                broken_bonds=broken_bonds,
+                changed_bonds=changed_bonds,
+                r_eq_atoms=r_eq_atoms,
+                weights=weights_array,
+                amplitude=amp)
+            if nmd_correct:
+                return True
     return False
+
+
+def get_bond_change_candidates(reaction: ARCReaction,
+                               ) -> list[tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]]]:
+    """
+    Get candidate (formed, broken, changed) bond-set derivations for validating a TS normal mode.
+
+    The reaction atom map is only determined up to permutations of chemically equivalent atoms.
+    A valid-but-permuted map (e.g., spectator H atoms crossed between the two equivalent carbons
+    of an ethylene product in an HO2 elimination) inflates the map-derived formed/broken bond sets
+    with spurious break/form pairs that no genuine reactive mode can satisfy. The RMG family recipe
+    defines the canonical reactive bonds independently of the atom map, so it is tried first when
+    available, with the map-derived sets kept as a fallback candidate.
+
+    Args:
+        reaction (ARCReaction): The reaction for which the TS is checked.
+
+    Returns:
+        list[tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]]]:
+            Candidate (formed_bonds, broken_bonds, changed_bonds) tuples, most reliable first.
+    """
+    candidates = list()
+    family_bonds = reaction.get_reactive_bonds_from_family()
+    if family_bonds is not None:
+        candidates.append(family_bonds)
+    formed_bonds, broken_bonds = reaction.get_formed_and_broken_bonds()
+    changed_bonds = reaction.get_changed_bonds()
+    map_bonds = (formed_bonds, broken_bonds, changed_bonds)
+    if not any(all(set(candidate[i]) == set(map_bonds[i]) for i in range(3)) for candidate in candidates):
+        candidates.append(map_bonds)
+    return candidates
 
 
 def check_bond_directionality(formed_bonds: list[tuple[int, int]],
@@ -477,6 +509,37 @@ def get_bond_length_in_reaction(bond: tuple[int, int] | list[int],
     return float(distance)
 
 
+def get_repeated_species_atom_equivalences(reaction: ARCReaction,
+                                           well: int = 0,
+                                           ) -> list[list[int]]:
+    """
+    Build atom-equivalence groups across repeated identical species in a reaction well.
+
+    When a species participates more than once (e.g. OH + OH), ``r_species`` is deduplicated, so the
+    atom map may assign a reactive atom to one copy while the located TS uses the equivalent atom of
+    another copy. For each atom position within such a species, the atoms at that position across all
+    copies are equivalent. Indices follow the expanded (per-occurrence) atom ordering used by the atom
+    map and by ``get_reactants_and_products``.
+
+    Args:
+        reaction (ARCReaction): The reaction.
+        well (int): ``0`` for the reactants well, ``1`` for the products well.
+
+    Returns:
+        list[list[int]]: Equivalence groups (each a list of global atom indices) for repeated species.
+    """
+    species = reaction.r_species if well == 0 else reaction.p_species
+    groups, offset = list(), 0
+    for spc in species:
+        count = reaction.get_species_count(species=spc, well=well)
+        n_atoms = spc.number_of_atoms
+        if count > 1:
+            for pos in range(n_atoms):
+                groups.append([offset + copy_i * n_atoms + pos for copy_i in range(count)])
+        offset += count * n_atoms
+    return groups
+
+
 def find_equivalent_atoms(reaction: ARCReaction,
                           reactant_only: bool = True,
                           ) -> tuple[list[list[int]], list[list[int]]]:
@@ -501,6 +564,11 @@ def find_equivalent_atoms(reaction: ARCReaction,
                                                                 inc=sum([len(r.mol.atoms) for r in reactants[:i]]),
                                                                 atom_map=None,
                                                                 ))
+    # Cross-molecule equivalence for repeated identical reactants (e.g. OH + OH): the corresponding
+    # atoms across the copies are equivalent. identify_equivalent_atoms_in_molecule only finds
+    # equivalence within a single molecule, so the atom map may pick one copy's atom while the TS
+    # uses the other's; add these groups so NMD can try the alternative mapping.
+    r_eq_atoms.extend(get_repeated_species_atom_equivalences(reaction, well=0))
     if not reactant_only:
         for i, product in enumerate(products):
             p_eq_atoms.extend(identify_equivalent_atoms_in_molecule(molecule=product.mol,

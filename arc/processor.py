@@ -3,6 +3,7 @@ Processor module for computing thermodynamic properties and rate coefficients us
 """
 
 import os
+import re
 import shutil
 
 import arc.plotter as plotter
@@ -28,6 +29,30 @@ def resolve_neb_level(ts_adapters: list) -> Level | None:
         if neb_level_repr:
             return Level(repr=neb_level_repr)
     return None
+
+
+def _thermo_lib_has_isomorph(spc: 'ARCSpecies', species_list: list) -> bool:
+    """
+    Whether ``species_list`` already contains a species with the same molecular identity as ``spc``.
+
+    Arkane keys thermo-library entries by adjacency list + multiplicity and rejects duplicates, so a
+    reaction with identical participants (e.g. OH + OH) must contribute each unique species only once.
+
+    Args:
+        spc (ARCSpecies): The candidate species.
+        species_list (list): Species already collected for the thermo library.
+
+    Returns:
+        bool: ``True`` if an isomorphic, same-multiplicity species is already present.
+    """
+    if spc.mol is None:
+        return False
+    for existing in species_list:
+        if existing.mol is not None \
+                and existing.multiplicity == spc.multiplicity \
+                and existing.mol.is_isomorphic(spc.mol):
+            return True
+    return False
 
 
 def process_arc_project(thermo_adapter: str,
@@ -156,6 +181,12 @@ def process_arc_project(thermo_adapter: str,
         for spc in species_dict.values():
             if spc.is_ts:
                 continue
+            if not (spc.compute_thermo or spc.e0_only):
+                # Thermo was never requested for this species (e.g. IRC endpoint species, which
+                # only run an opt to verify the reaction path). It is neither a converged thermo
+                # target nor an unconverged failure, so skip it rather than reporting it as
+                # "did not converge".
+                continue
             if (spc.compute_thermo or spc.e0_only) and output_dict[spc.label]['convergence']:
                 if spc.e0_only:
                     converged_e0_only_species.append(spc)
@@ -194,7 +225,10 @@ def process_arc_project(thermo_adapter: str,
                                             )
         statmech_adapter.compute_thermo(e0_only=True)
     for spc in converged_species:
-        if spc.thermo is not None:
+        if spc.thermo is not None and not _thermo_lib_has_isomorph(spc, species_for_thermo_lib):
+            # Skip a species whose molecular identity (structure + multiplicity) already appears in
+            # the library. Arkane rejects duplicate thermo entries (e.g. identical reactants such as
+            # OH + OH), which would otherwise abort the entire thermo library for the project.
             species_for_thermo_lib.append(spc)
         plotter.augment_arkane_yml_file_with_mol_repr(spc, output_directory)
     if species_for_thermo_lib:
@@ -252,6 +286,8 @@ def compare_thermo(species_for_thermo_lib: list,
         species_for_thermo_lib (list): Species for which thermochemical properties were computed.
         output_directory (str): The path to the project's output folder.
     """
+    if not species_for_thermo_lib:
+        return  # nothing to compare; avoid a pointless RMG database load and a spurious error report.
     species_to_compare = list()  # species for which thermo was both calculated and estimated.
     species_thermo_path = os.path.join(output_directory, 'RMG_thermo.yml')
     save_yaml_file(path=species_thermo_path,
@@ -270,9 +306,20 @@ def compare_thermo(species_for_thermo_lib: list,
                 'fi"',
                 ]
     stdout, stderr = execute_command(command=commands, no_fail=True)
-    if len(stderr):
-        logger.error(f'Error while running RMG thermo script: {stderr}')
-    species_list = read_yaml_file(path=species_thermo_path)
+    species_list = read_yaml_file(path=species_thermo_path) or list()
+    # RMG/Arkane route their normal startup logging (e.g. "INFO:root:Loading thermodynamics library ...",
+    # "WARNING:root:...") to stderr, so a non-empty stderr does NOT imply the script failed. Demote that
+    # benign log chatter to debug, and only report an error if genuine (non-log) content remains on stderr,
+    # or the deliverable wasn't actually produced (execute_command doesn't surface the return code here).
+    stderr_lines = stderr or list()
+    benign_log_regex = re.compile(r'^(INFO|WARNING|DEBUG):root')
+    error_lines = [line for line in stderr_lines if line.strip() and not benign_log_regex.match(line.strip())]
+    thermo_computed = any(isinstance(spc, dict) and spc.get('h298') is not None and spc.get('s298') is not None
+                          for spc in species_list)
+    if error_lines or not thermo_computed:
+        logger.error(f"Error while running RMG thermo script: {error_lines or stderr_lines}")
+    elif stderr_lines:
+        logger.debug('RMG thermo script log output (stderr):\n' + '\n'.join(stderr_lines))
     for original_spc, rmg_spc in zip(species_for_thermo_lib, species_list):
         h298, s298, comment = rmg_spc.get('h298', None), rmg_spc.get('s298', None), rmg_spc.get('comment', None)
         if h298 is not None and s298 is not None:

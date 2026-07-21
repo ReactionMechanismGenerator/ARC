@@ -29,6 +29,7 @@ from arc.common import (extremum_list,
                         torsions_to_scans,
                         )
 from arc.exceptions import (InputError,
+                            JobError,
                             SchedulerError,
                             SpeciesError,
                             TrshError,
@@ -69,6 +70,55 @@ if TYPE_CHECKING:
 
 
 logger = get_logger()
+
+
+# TS-guess adapter ``method`` strings → ``output[label]['paths']`` slot
+# carrying the produced log-path. Distinct slots so consumers (notably
+# the TCKDB adapter) can dispatch a method-aware path_search calc
+# without inspecting the file. Match is case- and whitespace-insensitive.
+# Geometry-only methods (heuristics, AutoTST, KinBot, GCN, user XYZ)
+# don't appear here — they have no log artifact to file.
+_TS_GUESS_METHOD_TO_PATHS_KEY: dict[str, str] = {
+    'orca_neb': 'neb',
+    'xtb_gsm': 'gsm',
+    'xtb-gsm': 'gsm',
+    'qst2': 'qst2',
+}
+
+
+def _ts_guess_paths_key(method: object) -> str | None:
+    """Return the ``output[label]['paths']`` slot for a TS-guess method,
+    or ``None`` for geometry-only / unknown methods."""
+    if not isinstance(method, str):
+        return None
+    return _TS_GUESS_METHOD_TO_PATHS_KEY.get(method.strip().lower())
+
+
+def _ts_guess_path_provenance(tsg: object) -> tuple[str | None, str | None]:
+    """Resolve the ``(paths-slot, log-path)`` a TS guess contributes to ``output[label]['paths']``.
+
+    The guess's own (primary) ``method`` takes precedence — unchanged behaviour for guesses whose
+    winning method is itself a path-search adapter. When the primary method is geometry-only
+    (e.g. ``gcn``) but a path-search method (``xtb-gsm`` / ``orca_neb`` / ``qst2``) was merged into
+    this guess during equivalent-guess clustering (``ARCSpecies.cluster_tsgs``), recover that
+    source's preserved log path from ``method_source_paths`` so the path-search provenance
+    (per-node energies / points) survives dedup. This does NOT change which guess/method won
+    selection — only which log path is routed into the ``paths`` slot. ``method_sources`` are
+    scanned in order; the first path-search source with a preserved log wins (deterministic).
+
+    Returns ``(None, None)`` when the guess contributes no path-search log.
+    """
+    key = _ts_guess_paths_key(getattr(tsg, 'method', None))
+    log_path = getattr(tsg, 'log_path', None)
+    if key and log_path:
+        return key, log_path
+    source_paths = getattr(tsg, 'method_source_paths', None) or dict()
+    for source in (getattr(tsg, 'method_sources', None) or []):
+        source_key = _ts_guess_paths_key(source)
+        if source_key and source_paths.get(source):
+            return source_key, source_paths[source]
+    return None, None
+
 
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
     default_job_types, default_ts_adapters, max_ess_trsh, max_rotor_trsh, rotor_scan_resolution, servers_dict = \
@@ -187,6 +237,9 @@ class Scheduler(object):
         running_jobs (dict): A dictionary of currently running jobs (a subset of `job_dict`).
                              Keys are species/TS label, values are lists of job names (e.g. 'conformer3', 'opt_a123').
         server_job_ids (list): A list of relevant job IDs currently running on the server.
+        completed_job_records (list[dict]): Lightweight per-job cost records (name, type, adapter, server, cores,
+                                            run time in seconds, status) accumulated as jobs complete.
+                                            Persisted in the restart file and used for output.yml cost metrics.
         output (dict): Output dictionary with status per job type and final QM file paths for all species.
         output_multi_spc (dict): Output dictionary with status per job type of multi-species clusters.
         ess_settings (dict): A dictionary of available ESS and a corresponding server list.
@@ -281,6 +334,7 @@ class Scheduler(object):
         self.job_dict = dict()
         self.server_job_ids = list()
         self.completed_incore_jobs = list()
+        self.completed_job_records = list()
         self.running_jobs = dict()
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.testing = testing
@@ -298,6 +352,7 @@ class Scheduler(object):
         self.freq_scale_factor = freq_scale_factor
         self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
         self.ts_adapters = [ts_adapter.lower() for ts_adapter in self.ts_adapters]
+        self.ts_adapters = self._filter_unavailable_ts_adapters(self.ts_adapters)
         self.output = output or dict()
         self.output_multi_spc = dict()
         self.report_e_elect = report_e_elect
@@ -311,6 +366,8 @@ class Scheduler(object):
         if self.restart_dict is not None:
             self.output = self.restart_dict['output'] if 'output' in self.restart_dict else dict()
             self.output_multi_spc = self.restart_dict['output_multi_spc'] if 'output_multi_spc' in self.restart_dict else dict()
+            self.completed_job_records = self.restart_dict['completed_job_records'] \
+                if 'completed_job_records' in self.restart_dict else list()
             if 'running_jobs' in self.restart_dict:
                 self.restore_running_jobs()
         self.initialize_output_dict()
@@ -439,6 +496,10 @@ class Scheduler(object):
                 if self.output[species.label]['convergence']:
                     continue
                 if species.is_monoatomic():
+                    if species.final_xyz is None:
+                        # Monoatomic species skip opt, so promote the best available xyz to final_xyz
+                        # now — otherwise reaction.done_opt_r_n_p stays False and TS spawning never fires.
+                        species.final_xyz = species.get_xyz(generate=True)
                     if not self.output[species.label]['job_types']['sp'] \
                             and not self.output[species.label]['job_types']['composite'] \
                             and 'sp' not in list(self.job_dict[species.label].keys()) \
@@ -532,6 +593,40 @@ class Scheduler(object):
         self.timer = True
         if not self.testing:
             self.schedule_jobs()
+
+    @staticmethod
+    def _filter_unavailable_ts_adapters(ts_adapters: list[str]) -> list[str]:
+        """Drop TS adapters whose backing software/conda env isn't installed.
+
+        ARC's default ``ts_adapters`` list assumes every sister env (ts_gcn,
+        tst_env, ...) exists on every host. On dev machines that's rarely
+        true; the missing-env case used to surface 300 frames deep as
+        ``TypeError: argument should be a str ... not 'NoneType'`` from
+        ``Path(None)``. Filtering at scheduler init turns that into a clear
+        warning the user can act on.
+        """
+        env_requirements = {
+            'gcn': ('TS_GCN_PYTHON', 'ts_gcn'),
+            'autotst': ('AUTOTST_PYTHON', 'tst_env'),
+        }
+        kept = []
+        for adapter in ts_adapters:
+            requirement = env_requirements.get(adapter)
+            if requirement is None:
+                kept.append(adapter)
+                continue
+            setting_name, env_name = requirement
+            if settings.get(setting_name):
+                kept.append(adapter)
+                continue
+            logger.warning(
+                f"TS adapter '{adapter}' is configured but its backing software "
+                f"was not found ({setting_name} is unset; expected the '{env_name}' "
+                f"conda env). Skipping this adapter for the current run. To use it, "
+                f"either install the '{env_name}' env or remove '{adapter}' from "
+                f"your ts_adapters in input.yml / arc/settings/settings.py."
+            )
+        return kept
 
     def flush_pending_pipe_batches(self) -> None:
         """
@@ -673,20 +768,7 @@ class Scheduler(object):
                     if 'tsg' in job_name:
                         job = self.job_dict[label]['tsg'][get_i_from_job_name(job_name)]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
-                            # This is a successfully completed tsg job. It may have resulted in several TSGuesses.
-                            self.end_job(job=job, label=label, job_name=job_name)
-                            if job.local_path_to_output_file.endswith('.yml') or job.local_path_to_output_file.endswith('.log'):
-                                for rxn in job.reactions:
-                                    rxn.ts_species.process_completed_tsg_queue_jobs(path=job.local_path_to_output_file)
-                            # Just terminated a tsg job.
-                            # Are there additional tsg jobs currently running for this species?
-                            for spec_jobs in job_list:
-                                if 'tsg' in spec_jobs:
-                                    break
-                            else:
-                                # All tsg jobs terminated. Spawn confs.
-                                logger.info(f'\nTS guess jobs for {label} successfully terminated.\n')
-                                self.run_conformer_jobs(labels=[label])
+                            self.process_completed_tsg_job(job=job, label=label, job_name=job_name)
                             self.timer = False
                             break
                     elif 'opt' in job_name and 'conf_opt' not in job_name:
@@ -836,7 +918,7 @@ class Scheduler(object):
 
             # Poll active pipe runs (per-run failures are handled inside poll_pipes).
             if self.active_pipes:
-                self.pipe_coordinator.poll_pipes()
+                self.pipe_coordinator.poll_pipes(server_job_ids=self.server_job_ids)
 
             # Flush deferred pipe batches (SP, freq, IRC, conf_sp) after all
             # newly-ready work has been discovered and before the loop sleeps.
@@ -853,6 +935,37 @@ class Scheduler(object):
         # Generate a TS report:
         self.generate_final_ts_guess_report()
 
+    def _running_job_snapshot_entry(self, label: str, job_name: str) -> dict:
+        """
+        Resolve a running ``job_name`` (as stored in ``self.running_jobs``, e.g. ``'tsg3'``)
+        back to its Job object and build a snapshot entry that carries the identifiers needed
+        to find the job on the server: ``server_name`` (the queue job name shown by ``qstat``,
+        e.g. ``a3129``), ``job_id`` (the queue's numeric id), the ``adapter`` (software), and the
+        ``server``. Falls back to just ``{'name': job_name}`` if the Job object can't be located
+        (e.g. the job was already popped, or a restart-loaded entry whose stored name doesn't
+        match any live ``job.job_name``). Resolved incore/local jobs still get an entry, just with
+        ``server``/``job_id`` possibly ``None``.
+
+        Args:
+            label (str): The species/TS label the job belongs to.
+            job_name (str): The job name as stored in ``self.running_jobs``.
+
+        Returns:
+            dict: A self-describing snapshot entry for the running job.
+        """
+        entry = {'name': job_name}
+        for jobs in self.job_dict.get(label, dict()).values():
+            if not isinstance(jobs, dict):
+                continue
+            for job in jobs.values():
+                if getattr(job, 'job_name', None) == job_name:
+                    entry['server_name'] = job.job_server_name
+                    entry['job_id'] = job.job_id
+                    entry['adapter'] = job.job_adapter
+                    entry['server'] = job.server
+                    return entry
+        return entry
+
     def report_running_jobs_snapshot(self) -> None:
         """
         Overwrite ``<project>/running_jobs.yml`` with a timestamped snapshot of
@@ -860,7 +973,9 @@ class Scheduler(object):
         to the previous snapshot, the file is left untouched and only a one-line
         heartbeat is logged to ARC.log.
         """
-        payload = {'running_jobs': {label: list(job_names) for label, job_names in self.running_jobs.items()},
+        payload = {'running_jobs': {label: [self._running_job_snapshot_entry(label, job_name)
+                                            for job_name in job_names]
+                                    for label, job_names in self.running_jobs.items()},
                    'active_pipes': list(self.active_pipes.keys())}
         n_species = len(self.running_jobs)
         n_jobs = sum(len(v) for v in self.running_jobs.values())
@@ -1072,6 +1187,39 @@ class Scheduler(object):
             job_adapter = level.software
         return job_adapter.lower()
 
+    def process_completed_tsg_job(self,
+                                  job: JobAdapter,
+                                  label: str,
+                                  job_name: str,
+                                  ) -> None:
+        """Finalize one queue TS-guess job and ingest output only after a successful ESS run."""
+        if job_name not in self.running_jobs.get(label, []):
+            return
+
+        successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+        ess_succeeded = job.job_status[1]['status'] == 'done'
+        is_log_output = job.local_path_to_output_file.endswith('.log')
+        is_yaml_output = job.local_path_to_output_file.endswith(('.yml', '.yaml'))
+        should_ingest = successful_server_termination \
+            and (is_yaml_output or (is_log_output and ess_succeeded))
+        if should_ingest:
+            for rxn in job.reactions:
+                rxn.ts_species.process_completed_tsg_queue_jobs(
+                    path=job.local_path_to_output_file, method=job.job_adapter)
+        elif is_log_output and job.job_status[0] == 'done' and not ess_succeeded:
+            ess_status = job.job_status[1]
+            warning = (f'TS guess job {job.job_name} using {job.job_adapter} failed with ESS status '
+                       f'"{ess_status["status"]}" and keywords {ess_status["keywords"]}.')
+            if ess_status['error']:
+                warning += f' {ess_status["error"]}'
+            if ess_status['line']:
+                warning += f' Error line: "{ess_status["line"]}".'
+            logger.warning(warning)
+
+        if not any('tsg' in running_job for running_job in self.running_jobs.get(label, [])):
+            logger.info(f'\nTS guess jobs for {label} terminated.\n')
+            self.run_conformer_jobs(labels=[label])
+
     def end_job(self, job: JobAdapter,
                 label: str,
                 job_name: str,
@@ -1090,7 +1238,7 @@ class Scheduler(object):
         if job.job_status[0] != 'done' or job.job_status[1]['status'] != 'done':
             try:
                 job.determine_job_status()  # Also downloads the output file.
-            except IOError:
+            except (IOError, JobError):
                 if job.job_type not in ['orbitals']:
                     logger.warning(f'Tried to determine status of job {job.job_name}, '
                                    f'but it seems like the job never ran. Re-running job.')
@@ -1098,7 +1246,8 @@ class Scheduler(object):
                 if job_name in self.running_jobs[label]:
                     self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
 
-        if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['memory']:
+        if job.job_status[1]['status'] == 'errored' and len(job.job_status[1]['keywords']) == 1 \
+                and job.job_status[1]['keywords'][0].lower() == 'memory':
             original_mem = job.job_memory_gb
             if 'insufficient job memory' in job.job_status[1]['error'].lower():
                 job.job_memory_gb *= 3
@@ -1152,6 +1301,7 @@ class Scheduler(object):
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
             self.timer = False
             job.write_completed_job_to_csv_file()
+            self._record_completed_job(job=job, label=label)
             logger.info(f'  Ending job {job_name} for {label} (run time: {job.run_time})')
             if job.job_status[0] != 'done':
                 return False
@@ -1172,8 +1322,35 @@ class Scheduler(object):
                 for rotors_dict in self.species_dict[label].rotors_dict.values():
                     if rotors_dict['pivots'] in [job.pivots, job.pivots[0]]:
                         rotors_dict['scan_path'] = job.local_path_to_output_file
+                        rotors_dict['scan_software'] = job.job_adapter
+            try:
+                job.remove_remote_files()
+            except Exception as e:
+                logger.warning(f'Could not remove remote files for job {job.job_name}: {e}')
             self.save_restart_dict()
             return True
+
+    def _record_completed_job(self, job: JobAdapter, label: str):
+        """
+        Record a lightweight per-job cost entry for a completed job.
+
+        The records are persisted in the restart file (so they survive restarts)
+        and are aggregated into the cost metrics section of output.yml.
+
+        Args:
+            job (JobAdapter): The completed job object.
+            label (str): The species label.
+        """
+        self.completed_job_records.append({
+            'job_name': job.job_name,
+            'label': label,
+            'job_type': job.job_type,
+            'job_adapter': job.job_adapter,
+            'server': job.server,
+            'cpu_cores': job.cpu_cores,
+            'run_time_sec': job.run_time.total_seconds() if job.run_time is not None else None,
+            'job_status': job.job_status[0],
+        })
 
     def _run_a_job(self,
                    job: JobAdapter,
@@ -1328,8 +1505,10 @@ class Scheduler(object):
                     self.run_composite_job(label)
                 self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
                 self.species_dict[label].successful_methods = [self.species_dict[label].ts_guesses[0].method]
-                if getattr(self.species_dict[label].ts_guesses[0], 'log_path', None):
-                    self.output[label]['paths']['neb'] = self.species_dict[label].ts_guesses[0].log_path
+                tsg0 = self.species_dict[label].ts_guesses[0]
+                paths_key, tsg0_log_path = _ts_guess_path_provenance(tsg0)
+                if paths_key and tsg0_log_path:
+                    self.output[label]['paths'][paths_key] = tsg0_log_path
 
     def run_opt_job(self, label: str, fine: bool = False):
         """
@@ -2374,8 +2553,9 @@ class Scheduler(object):
                     self.species_dict[label].initial_xyz = tsg.opt_xyz
                     self.species_dict[label].final_xyz = None
                     self.species_dict[label].ts_guesses_exhausted = False
-                    if getattr(tsg, 'log_path', None):
-                        self.output[label]['paths']['neb'] = tsg.log_path
+                    paths_key, tsg_log_path = _ts_guess_path_provenance(tsg)
+                    if paths_key and tsg_log_path:
+                        self.output[label]['paths'][paths_key] = tsg_log_path
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
@@ -2762,7 +2942,7 @@ class Scheduler(object):
     def check_rxn_e0_by_spc(self, label: str):
         """
         Check the E0 (electronic energy + ZPE) of reactions related to a specific species.
-        Requires all opt + freq computations to be converged for all species (and TS) participating in each reaction.
+        Requires SP energies for all participants and frequencies for all non-monoatomic participants.
 
         Args:
             label (str): A label representing a species.
@@ -2770,8 +2950,8 @@ class Scheduler(object):
         for rxn in self.rxn_list:
             labels = rxn.reactants + rxn.products + [rxn.ts_label]
             if label in labels and rxn.ts_species.ts_checks['E0'] is None \
-                    and all([species_has_sp_and_freq(output_dict, self.species_dict[spc_label].yml_path)
-                             for spc_label, output_dict in self.output.items() if spc_label in labels]):
+                    and all([species_is_ready_for_e0(self.output[spc_label], self.species_dict[spc_label])
+                             for spc_label in set(labels)]):
                 check_ts(reaction=rxn,
                          checks=['energy'],
                          species_dict=self.species_dict,
@@ -2900,7 +3080,7 @@ class Scheduler(object):
                     self.output[label]['paths']['sp_no_sol'] = sp_path
                 self.output[label]['paths']['sp'] = original_sp_path  # restore the original path
 
-        if species_has_freq(self.output[label], self.species_dict[label].yml_path):
+        if species_is_ready_for_e0(self.output[label], self.species_dict[label]):
             self.check_rxn_e0_by_spc(label)
 
         if self.report_e_elect:
@@ -2921,6 +3101,13 @@ class Scheduler(object):
             job (JobAdapter): The IRC job object.
         """
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
+        # Track IRC direction in lockstep with the path list so downstream
+        # consumers (TCKDB computed-reaction upload) can label points
+        # forward/reverse without filename guesswork. setdefault handles
+        # restarts from older projects whose 'paths' dict predates this key.
+        self.output[label]['paths'].setdefault('irc_directions', list()).append(
+            getattr(job, 'irc_direction', None)
+        )
         index = 1
         if len(self.output[label]['paths']['irc']) == 2:
             index = 2
@@ -3091,6 +3278,7 @@ class Scheduler(object):
         # Save the path and invalidation reason for debugging and tracking the file.
         # If ``success`` is None, it means that the job is being troubleshooted.
         self.species_dict[label].rotors_dict[job.rotor_index]['scan_path'] = job.local_path_to_output_file
+        self.species_dict[label].rotors_dict[job.rotor_index]['scan_software'] = job.job_adapter
         self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] += invalidation_reason
 
         # If energies were obtained, draw the scan curve.
@@ -3419,56 +3607,70 @@ class Scheduler(object):
 
         # A lower conformation was found.
         if 'change conformer' in methods:
-            # We will delete all of the jobs no matter we can successfully change to the conformer.
-            # If success, we have to cancel jobs to avoid conflicts
-            # If not succeed, we are in a situation that we find a lower conformer, but either
-            # this is an incorrect conformer or we have applied this troubleshooting before, but it
-            # didn't yield a good result.
+            new_xyz = methods['change conformer']
+            duplicate = any(
+                'change conformer' in used_trsh_method
+                and compare_confs(new_xyz, used_trsh_method['change conformer'])
+                for used_trsh_method in used_trsh_methods
+            )
+
+            if duplicate:
+                # The "lower" frame from the scan re-opts back to the source geometry,
+                # so the scan reported a sub-kcal numerical artifact rather than a real
+                # lower minimum. Preserve the species' existing converged opt/freq/sp
+                # results — fail only this rotor.
+                rotor = self.species_dict[label].rotors_dict[job.rotor_index]
+                pivots = rotor['pivots']
+                rotor['success'] = False
+                rotor['invalidation_reason'] += (
+                    'change conformer trsh proposed an already-tried conformer '
+                    '(re-opt of the rotor-scan minimum returns the source geometry); '
+                    'rotor disabled, species jobs preserved. '
+                )
+                logger.warning(
+                    f'Rotor {pivots} of {label}: change-conformer troubleshoot proposed '
+                    f'a conformer already tried (lowest scan frame opts back to source). '
+                    f'Disabling this rotor and keeping the existing opt/freq/sp results.'
+                )
+                return trsh_success, actual_actions
+
+            # Otherwise we may switch conformers — wipe in-flight jobs/paths so the new
+            # initial xyz starts cleanly.
             self.delete_all_species_jobs(label)
 
-            new_xyz = methods['change conformer']
-            # Check if the same conformer is used in previous troubleshooting
-            for used_trsh_method in used_trsh_methods:
-                if 'change conformer' in used_trsh_method \
-                        and compare_confs(new_xyz, used_trsh_method['change conformer']):
-                    # Find we have used this conformer for troubleshooting. Invalid the troubleshooting.
-                    logger.error(f'The change conformer method for {label} is invalid. '
-                                 f'ARC will not change to the same conformer twice.')
-                    break
+            if self.species_dict[label].is_ts:
+                is_isomorphic = True
             else:
-                # If 'change conformer' is not used, check for isomorphism.
-                if self.species_dict[label].is_ts:
-                    is_isomorphic = True
-                else:
-                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
-                        allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                        xyz=new_xyz)
-                if is_isomorphic:
-                    self.species_dict[label].final_xyz = new_xyz
-                    # Remove all completed rotor calculation information.
-                    for rotor in self.species_dict[label].rotors_dict.values():
-                        # Don't initialize all parameters, e.g., `times_dihedral_set` needs to remain as is.
-                        rotor['scan_path'] = ''
-                        rotor['invalidation_reason'] = ''
-                        rotor['success'] = None
-                        rotor['symmetry'] = None
-                        if rotor['scan'] == torsions_to_scans(job.torsions)[0]:
-                            rotor['times_dihedral_set'] += 1
-                        # We can save the change conformer trsh info, but other trsh methods like
-                        # freezing or increasing scan resolution can be cleaned, otherwise, they may
-                        # not be troubleshot.
-                        rotor['trsh_methods'] = [trsh_method for trsh_method in rotor['trsh_methods']
-                                                 if 'change conformer' in trsh_method]
-                    # Re-run opt (or composite) on the new initial_xyz with the desired dihedral.
-                    if not self.composite_method:
-                        self.run_opt_job(label)
-                    else:
-                        self.run_composite_job(label)
-                    trsh_success = True
-                    actual_actions = methods
-                    return trsh_success, actual_actions
+                is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
+                    allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                    xyz=new_xyz)
 
-            # The conformer is wrong, or we are in a loop changing to the same conformers again.
+            if is_isomorphic:
+                self.species_dict[label].final_xyz = new_xyz
+                # Remove all completed rotor calculation information.
+                for rotor in self.species_dict[label].rotors_dict.values():
+                    # Don't initialize all parameters, e.g., `times_dihedral_set` needs to remain as is.
+                    rotor['scan_path'] = ''
+                    rotor['invalidation_reason'] = ''
+                    rotor['success'] = None
+                    rotor['symmetry'] = None
+                    if rotor['scan'] == torsions_to_scans(job.torsions)[0]:
+                        rotor['times_dihedral_set'] += 1
+                    # We can save the change conformer trsh info, but other trsh methods like
+                    # freezing or increasing scan resolution can be cleaned, otherwise, they may
+                    # not be troubleshot.
+                    rotor['trsh_methods'] = [trsh_method for trsh_method in rotor['trsh_methods']
+                                             if 'change conformer' in trsh_method]
+                # Re-run opt (or composite) on the new initial_xyz with the desired dihedral.
+                if not self.composite_method:
+                    self.run_opt_job(label)
+                else:
+                    self.run_composite_job(label)
+                trsh_success = True
+                actual_actions = methods
+                return trsh_success, actual_actions
+
+            # The proposed lower conformer is non-isomorphic — real chemistry mismatch.
             self.output[label]['errors'] += \
                 f'A lower conformer was found for {label} via a torsion mode, ' \
                 f'but it is not isomorphic with the 2D graph representation ' \
@@ -3656,6 +3858,7 @@ class Scheduler(object):
                          job_status=job.job_status[1],
                          is_h=is_h,
                          is_monoatomic=self.species_dict[label].is_monoatomic(),
+                         is_ts=self.species_dict[label].is_ts,
                          job_type=job.job_type,
                          num_heavy_atoms=self.species_dict[label].number_of_heavy_atoms,
                          software=job.job_adapter,
@@ -3780,7 +3983,10 @@ class Scheduler(object):
                     logger.info(f'Deleted job {job_name}')
                     job.delete()
         self.running_jobs[label] = list()
-        self.output[label]['paths'] = {key: '' if key != 'irc' else list() for key in self.output[label]['paths'].keys()}
+        self.output[label]['paths'] = {
+            key: list() if key in ('irc', 'irc_directions') else ''
+            for key in self.output[label]['paths'].keys()
+        }
         for job_type in self.output[label]['job_types']:
             # rotors and bde are initialised to True (see initialize_output_dict) because
             # species with no torsional modes / no BDE targets should not be blocked from
@@ -3808,7 +4014,11 @@ class Scheduler(object):
                     if irc_label in self.output:
                         del self.output[irc_label]
                     if irc_label in self.species_dict:
-                        self.species_list = [spc for spc in self.species_list if spc.label != irc_label]
+                        # In-place removal (slice assignment) so the deletion propagates through the
+                        # list reference shared with ARC.species; a plain reassignment would rebind
+                        # only this variable and leave the deleted IRC species dangling in ARC.species
+                        # (which then KeyErrors against the synced self.output in save_project_info_file).
+                        self.species_list[:] = [spc for spc in self.species_list if spc.label != irc_label]
                         del self.species_dict[irc_label]
                     if irc_label in self.unique_species_labels:
                         self.unique_species_labels.remove(irc_label)
@@ -3901,6 +4111,7 @@ class Scheduler(object):
             logger.debug('Creating a restart file...')
             self.restart_dict['output'] = self.output
             self.restart_dict['output_multi_spc'] = self.output_multi_spc
+            self.restart_dict['completed_job_records'] = self.completed_job_records
             self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
             self.restart_dict['running_jobs'] = dict()
             for spc in self.species_dict.values():
@@ -4067,8 +4278,12 @@ class Scheduler(object):
                     if species.is_ts:
                         if 'irc' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['irc'] = list()
+                        if 'irc_directions' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['irc_directions'] = list()
                         if 'neb' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['neb'] = ''
+                        if 'gsm' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['gsm'] = ''
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:
@@ -4246,3 +4461,12 @@ def species_has_sp_and_freq(species_output_dict: dict,
         Whether a species has a valid converged single-point energy and frequencies.
     """
     return species_has_sp(species_output_dict, yml_path) and species_has_freq(species_output_dict, yml_path)
+
+
+def species_is_ready_for_e0(species_output_dict: dict,
+                            species: ARCSpecies,
+                            ) -> bool:
+    """Check whether a species has the SP energy and, when applicable, frequencies needed to compute its E0."""
+    if species.is_monoatomic():
+        return species_has_sp(species_output_dict, species.yml_path)
+    return species_has_sp_and_freq(species_output_dict, species.yml_path)

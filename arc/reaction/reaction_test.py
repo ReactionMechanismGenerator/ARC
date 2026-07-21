@@ -11,7 +11,10 @@ import shutil
 import time
 import unittest
 
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, read_yaml_file
+import numpy as np
+from scipy.spatial.transform import Rotation
+
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, calc_rmsd, read_yaml_file
 from arc.exceptions import ReactionError
 from arc.main import ARC
 from arc.reaction.reaction import ARCReaction, remove_dup_species
@@ -602,6 +605,163 @@ class TestARCReaction(unittest.TestCase):
         rxn2 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
         self.assertEqual(rxn2.get_species_count(label=n2h3.label, well=1), 2)
 
+    def test_get_reactants_xyz_repeated_species(self):
+        """Test that a reactant appearing twice (e.g. OH + OH) contributes all of its atoms."""
+        oh = ARCSpecies(label='R1', smiles='[OH]',
+                        xyz={'coords': ((0.0, 0.0, 0.109), (0.0, 0.0, -0.868)),
+                             'isotopes': (16, 1), 'symbols': ('O', 'H')})
+        h2o = ARCSpecies(label='P1', smiles='O')
+        o = ARCSpecies(label='P2', smiles='[O]')
+        rxn = ARCReaction(r_species=[oh, oh], p_species=[h2o, o])
+        # remove_dup_species collapses r_species to a single OH, but the combined reactant geometry
+        # must still contain both OH molecules (4 atoms), matching the atom map length.
+        self.assertEqual(len(rxn.r_species), 1)
+        self.assertEqual(rxn.get_species_count(species=oh, well=0), 2)
+        reactants_xyz = rxn.get_reactants_xyz(return_format='dict')
+        self.assertEqual(len(reactants_xyz['symbols']), 4)
+        self.assertEqual(sorted(reactants_xyz['symbols']), ['H', 'H', 'O', 'O'])
+
+    def test_get_products_xyz_align_to_reactants(self):
+        """Test superimposing (Kabsch) each product fragment onto the reactant atoms it maps to.
+
+        Uses a Retroene reaction, 1-nonene <=> propene + 1-hexene, with geometries optimized at
+        b3lyp/def2tzvp (benchmark reaction 15, where the unaligned side-by-side product placement
+        made the NEB TS search fail).
+        """
+        r1_xyz = """C      -3.83139100    1.58621200    0.02329400
+                    C      -3.43540600    0.41614000   -0.46259900
+                    C      -2.93481400   -0.74415900    0.34478600
+                    C      -1.52816700   -1.22052800   -0.05645000
+                    C      -0.41588500   -0.21779800    0.24986900
+                    C       0.97390000   -0.71215800   -0.15234900
+                    C       2.09258900    0.28184200    0.16032500
+                    C       3.48292800   -0.20952200   -0.24386500
+                    C       4.59394000    0.78979900    0.07307100
+                    H      -4.19058800    2.37805600   -0.62203000
+                    H      -3.81427900    1.79422800    1.08767700
+                    H      -3.47002700    0.25827600   -1.53921100
+                    H      -2.94968700   -0.48608600    1.40816900
+                    H      -3.62866600   -1.58322100    0.21677300
+                    H      -1.31819900   -2.16138000    0.46232100
+                    H      -1.52205200   -1.45660300   -1.12673500
+                    H      -0.42318700    0.00802100    1.32278000
+                    H      -0.62642100    0.72857300   -0.25799900
+                    H       0.98055200   -0.93637100   -1.22542800
+                    H       1.18263100   -1.66132200    0.35509100
+                    H       1.88474900    1.23142400   -0.34645000
+                    H       2.08801000    0.50583500    1.23351600
+                    H       3.69078500   -1.15820200    0.26261000
+                    H       3.48816900   -0.43218700   -1.31627900
+                    H       4.63714600    1.00580500    1.14363500
+                    H       4.43288500    1.73740200   -0.44722900
+                    H       5.57201700    0.40878200   -0.22770000"""
+        p1_xyz = """C      -1.27817900    0.21971600    0.00000000
+                    C      -0.13370800   -0.45221200    0.00000000
+                    C       1.23091500    0.16223300   -0.00000000
+                    H      -1.30042200    1.30417000   -0.00000000
+                    H      -2.23454000   -0.28763900    0.00000000
+                    H      -0.16601400   -1.53908400    0.00000000
+                    H       1.80352500   -0.15394700    0.87705300
+                    H       1.80352500   -0.15394800   -0.87705300
+                    H       1.17975600    1.25202200   -0.00000000"""
+        p2_xyz = """C      -2.28281200   -0.96753000   -0.08325200
+                    C      -1.68350800    0.20738700   -0.23396200
+                    C      -0.62778500    0.77443700    0.66729800
+                    C       0.67283300    1.14948200   -0.06668000
+                    C       1.43771100   -0.02576000   -0.68551200
+                    C       2.01501300   -1.00793000    0.33384800
+                    H      -3.04564500   -1.30958000   -0.77140800
+                    H      -2.03565900   -1.63020700    0.73913100
+                    H      -1.96704100    0.83397800   -1.07787300
+                    H      -1.02048300    1.68349000    1.13763000
+                    H      -0.42171600    0.07318200    1.47994900
+                    H       1.32888900    1.67513800    0.63503000
+                    H       0.43103400    1.87025800   -0.85483600
+                    H       2.25455500    0.37723600   -1.29174700
+                    H       0.78168900   -0.56283200   -1.37689900
+                    H       1.23248100   -1.50203400    0.91261600
+                    H       2.59491900   -1.78939300   -0.16121100
+                    H       2.67826400   -0.49975800    1.03917900"""
+        r_1 = ARCSpecies(label='C9H18', smiles='C=CCCCCCCC', xyz=r1_xyz)
+        p_1 = ARCSpecies(label='C3H6', smiles='C=CC', xyz=p1_xyz)
+        p_2 = ARCSpecies(label='C6H12', smiles='C=CCCCC', xyz=p2_xyz)
+        rxn = ARCReaction(r_species=[r_1], p_species=[p_1, p_2])
+        # Pin the atom map (as computed by ARC's mapping driver for these geometries) so this test
+        # does not depend on the mapping backend.
+        atom_map = [2, 1, 0, 9, 10, 11, 12, 13, 14, 8, 6, 5, 4, 3, 15, 16, 7, 17, 19, 18, 20, 21,
+                    22, 23, 25, 24, 26]
+        rxn.atom_map = atom_map
+        reactants_xyz = rxn.get_reactants_xyz(return_format='dict')
+        default_xyz = rxn.get_products_xyz(return_format='dict')
+        aligned_xyz = rxn.get_products_xyz(return_format='dict', align_to_reactants=True)
+        # Both placements are ordered as the reactants via the atom map.
+        self.assertEqual(default_xyz['symbols'], reactants_xyz['symbols'])
+        self.assertEqual(aligned_xyz['symbols'], reactants_xyz['symbols'])
+        # The aligned placement is substantially closer to the reactant geometry
+        # (2.47 vs. 1.86 Angstrom for these geometries).
+        r_coords = np.array(reactants_xyz['coords'])
+        default_rmsd = calc_rmsd(np.array(default_xyz['coords']), r_coords)
+        aligned_rmsd = calc_rmsd(np.array(aligned_xyz['coords']), r_coords)
+        self.assertGreater(default_rmsd, 2.3)
+        self.assertLess(aligned_rmsd, 2.0)
+        self.assertLess(aligned_rmsd, default_rmsd - 0.4)
+
+        # The aligned placement has no inter-fragment atomic clash, while the default side-by-side
+        # placement puts two atoms of different fragments 0.26 Angstrom apart for this reaction.
+        p1_indices = [r_i for r_i in range(27) if atom_map[r_i] < 9]
+        p2_indices = [r_i for r_i in range(27) if atom_map[r_i] >= 9]
+
+        def min_inter_fragment_distance(xyz_dict):
+            coords = np.array(xyz_dict['coords'])
+            diffs = coords[p1_indices][:, None, :] - coords[p2_indices][None, :, :]
+            return float(np.linalg.norm(diffs, axis=2).min())
+
+        self.assertLess(min_inter_fragment_distance(default_xyz), 0.5)
+        self.assertGreater(min_inter_fragment_distance(aligned_xyz), 1.5)
+
+        # Identity sanity check: product fragments cut out of the reactant geometry itself
+        # (then arbitrarily rotated and translated) must be placed back exactly onto the reactant.
+        inverse_map = [0] * len(atom_map)
+        for r_i, p_i in enumerate(atom_map):
+            inverse_map[p_i] = r_i
+        rotation = Rotation.from_euler('zyx', [113, -40, 62], degrees=True)
+        cut_species = list()
+        for label, smiles, start, size in [('C3H6_cut', 'C=CC', 0, 9), ('C6H12_cut', 'C=CCCCC', 9, 18)]:
+            coords = np.array([reactants_xyz['coords'][inverse_map[p_i]] for p_i in range(start, start + size)])
+            coords = rotation.apply(coords) + np.array([5.0, -3.0, 1.0])
+            spc = ARCSpecies(label=label, smiles=smiles)
+            spc.final_xyz = {'symbols': tuple(reactants_xyz['symbols'][inverse_map[p_i]]
+                                              for p_i in range(start, start + size)),
+                             'isotopes': tuple(reactants_xyz['isotopes'][inverse_map[p_i]]
+                                               for p_i in range(start, start + size)),
+                             'coords': tuple(tuple(coord) for coord in coords)}
+            cut_species.append(spc)
+        rxn_identity = ARCReaction(r_species=[r_1], p_species=cut_species)
+        rxn_identity.atom_map = atom_map
+        identity_xyz = rxn_identity.get_products_xyz(return_format='dict', align_to_reactants=True)
+        identity_rmsd = calc_rmsd(np.array(identity_xyz['coords']), r_coords)
+        self.assertAlmostEqual(identity_rmsd, 0.0, places=5)
+
+        # An invalid atom map cannot be used for alignment (the helper falls back to ``None``).
+        rxn.atom_map = list(range(26))
+        self.assertIsNone(rxn._get_products_xyz_aligned_to_reactants(products=[p_1, p_2]))
+
+    def test_reverse_reaction_of_repeated_species(self):
+        """Test that the reverse of a reaction with a repeated species (OH + OH <=> H2O + O) stays
+        atom-balanced. remove_dup_species dedups rxn.reactants to ['R1'], so building the reverse
+        from it (as consumers like the AutoTST adapter do) must re-expand by get_species_count, else
+        the reverse becomes the imbalanced 'P1 + P2 <=> R1'."""
+        oh = ARCSpecies(label='R1', smiles='[OH]', multiplicity=2)
+        h2o = ARCSpecies(label='P1', smiles='O', multiplicity=1)
+        o = ARCSpecies(label='P2', smiles='[O]', multiplicity=3)
+        fwd = ARCReaction(label='R1 + R1 <=> P1 + P2', r_species=[oh, oh], p_species=[h2o, o])
+        rev_reactants = [lbl for lbl in fwd.products for _ in range(fwd.get_species_count(label=lbl, well=1))]
+        rev_products = [lbl for lbl in fwd.reactants for _ in range(fwd.get_species_count(label=lbl, well=0))]
+        self.assertEqual(rev_products, ['R1', 'R1'])
+        rev = ARCReaction(r_species=fwd.p_species, p_species=fwd.r_species,
+                          reactants=rev_reactants, products=rev_products)  # must not raise "not atom balanced"
+        self.assertEqual(rev.label, 'P1 + P2 <=> R1 + R1')
+
     def test_get_reactants_and_products(self):
         """Test getting reactants and products"""
         self.rxn1.remove_dup_species()
@@ -877,6 +1037,44 @@ H       1.12853146   -0.86793870    0.06973060"""
         rxn_2.check_done_opt_r_n_p()
         self.assertEqual(rxn_2.done_opt_r_n_p, False)
 
+    def test_check_done_opt_r_n_p_with_monoatomic_reactant(self):
+        """Atoms skip opt entirely, so before the species-init synthesis fix,
+        an H_Abstraction reaction with [H] as reactant or product would never
+        flip ``done_opt_r_n_p`` to True — silently blocking TS-search dispatch
+        in scheduler.py (see ``spawn_ts_jobs``)."""
+        ethane_xyz = """C      0.64340000     0.33900000    -0.16980000
+                        C     -0.66730000    -0.31410000     0.16730000
+                        H      1.40700000    -0.43230000    -0.09610000
+                        H      0.75020000     0.67440000    -1.19910000
+                        H      0.99460000     1.08270000     0.54210000
+                        H     -0.65730000    -0.72540000     1.17790000
+                        H     -0.89640000    -1.12500000    -0.52580000
+                        H     -1.48860000     0.40690000     0.11350000"""
+        ethyl_xyz = """C     -0.62010000     0.01890000    -0.00170000
+                       C      0.85890000    -0.05530000     0.05000000
+                       H     -1.07380000    -0.97300000    -0.05590000
+                       H     -0.96800000     0.57060000    -0.88720000
+                       H     -1.03030000     0.53690000     0.86780000
+                       H      1.39390000    -0.83860000    -0.46950000
+                       H      1.43940000     0.74040000     0.49650000"""
+        h2_xyz = """H     -0.18030000     0.20060000    -0.02170000
+                    H      0.31280000    -0.34800000     0.03770000"""
+        ethane = ARCSpecies(label='ethane', smiles='CC', xyz=ethane_xyz)
+        ethyl = ARCSpecies(label='ethyl', smiles='C[CH2]', xyz=ethyl_xyz)
+        h2 = ARCSpecies(label='H2', smiles='[H][H]', xyz=h2_xyz)
+        h_atom = ARCSpecies(label='H_atom', smiles='[H]')
+        # Polyatomic species need an opt to populate final_xyz; emulate that
+        # post-opt state by promoting their conformer here.
+        ethane.final_xyz = ethane.conformers[0]
+        ethyl.final_xyz = ethyl.conformers[0]
+        h2.final_xyz = h2.conformers[0]
+        # Sanity: the atom never received an opt result, but the species init
+        # synthesized its trivial geometry so the reaction gate can pass.
+        self.assertIsNotNone(h_atom.final_xyz)
+        rxn = ARCReaction(r_species=[ethane, h_atom], p_species=[ethyl, h2])
+        rxn.check_done_opt_r_n_p()
+        self.assertTrue(rxn.done_opt_r_n_p)
+
     def tests_white_space_in_reaction_label(self):
         """Test that an extra white space in the reaction label does not confuse ARC."""
         hno = ARCSpecies(label='HNO', smiles='N=O')
@@ -947,6 +1145,36 @@ H       1.12853146   -0.86793870    0.06973060"""
         formed_bonds, broken_bonds = self.rxn_13_w_xyz.get_formed_and_broken_bonds()
         self.assertEqual(formed_bonds, [(0, 5)])
         self.assertEqual(broken_bonds, [(3, 5)])
+
+    def test_get_bonds_and_reactive_bonds_without_atom_map(self):
+        """
+        When atom_map cannot be built (e.g. fingerprint-based pair superposition
+        fails on positional-isomer radicals), get_bonds(r_bonds_only=True) must
+        still work, and get_formed_and_broken_bonds / get_changed_bonds must fall
+        back to the RMG family recipe + r_label_map instead of raising.
+        """
+        # Intermolecular H-abstraction between α- and β-radical of pentyl ether.
+        # map_two_species cannot superimpose the two radical cuts, so atom_map is None.
+        r1 = ARCSpecies(label='r1', smiles='CC[CH]OCC')
+        r2 = ARCSpecies(label='r2', smiles='CCCOCC')
+        p1 = ARCSpecies(label='p1', smiles='C[CH]OCCC')
+        p2 = ARCSpecies(label='p2', smiles='CCCOCC')
+        rxn = ARCReaction(r_species=[r1, r2], p_species=[p1, p2])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        self.assertTrue(rxn.product_dicts)
+        rxn.atom_map = None  # simulate mapping failure
+
+        r_bonds, p_bonds = rxn.get_bonds(r_bonds_only=True)
+        self.assertGreater(len(r_bonds), 0)
+        self.assertEqual(p_bonds, [])
+
+        r_label_map = rxn.product_dicts[0]['r_label_map']
+        star1, star2, star3 = r_label_map['*1'], r_label_map['*2'], r_label_map['*3']
+
+        formed, broken = rxn.get_formed_and_broken_bonds()
+        self.assertEqual(formed, [tuple(sorted((star2, star3)))])
+        self.assertEqual(broken, [tuple(sorted((star1, star2)))])
+        self.assertEqual(rxn.get_changed_bonds(), [])
 
     def test_get_changed_bonds(self):
         """Test the get_changed_bonds() function."""

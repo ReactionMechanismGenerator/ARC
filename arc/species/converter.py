@@ -5,7 +5,8 @@ A module for performing various species-related format conversions.
 import math
 import numpy as np
 import os
-from typing import TYPE_CHECKING
+import warnings
+from typing import TYPE_CHECKING, Optional
 from collections.abc import Iterable
 
 from ase import Atoms
@@ -48,6 +49,103 @@ logger = get_logger()
 
 DIST_PRECISION = 0.01  # Angstrom
 ANGL_PRECISION = 0.1  # rad (for both bond angle and dihedral)
+
+def reorder_xyz_string(xyz_str: str,
+                       reverse_atoms: bool = False,
+                       units: str = 'angstrom',
+                       convert_to: str = 'angstrom',
+                       project_directory: Optional[str] = None
+                       ) -> str:
+    """
+    Reorder an XYZ string between ``ATOM X Y Z`` and ``X Y Z ATOM`` with optional unit conversion.
+
+    Args:
+        xyz_str (str): The string xyz format to be converted.
+        reverse_atoms (bool, optional): Whether to reverse the atoms and coordinates.
+        units (str, optional): Units of the input coordinates ('angstrom' or 'bohr').
+        convert_to (str, optional): The units to convert to (either 'angstrom' or 'bohr').
+        project_directory (str, optional): The path to the project directory.
+    
+    Raises:
+        ConverterError: If xyz_str is not a string or does not have four space-separated entries per non-empty line.
+
+    Returns: str
+        The converted string xyz format.
+    """
+    if isinstance(xyz_str, tuple):
+        xyz_str = '\n'.join(xyz_str)
+    if isinstance(xyz_str, list):
+        xyz_str = '\n'.join(xyz_str)
+    if not isinstance(xyz_str, str):
+        raise ConverterError(f'Expected a string input, got {type(xyz_str)}')
+    if project_directory is not None:
+        file_path = os.path.join(project_directory, xyz_str)
+        if os.path.isfile(file_path):
+            with open(file_path, 'r') as f:
+                xyz_str = f.read()
+    
+
+    if units.lower() == 'angstrom' and convert_to.lower() == 'angstrom':
+        conversion_factor = 1
+    elif units.lower() == 'bohr' and convert_to.lower() == 'bohr':
+        conversion_factor = 1
+    elif units.lower() == 'angstrom' and convert_to.lower() == 'bohr':
+        conversion_factor = constants.angstrom_to_bohr
+    elif units.lower() == 'bohr' and convert_to.lower() == 'angstrom':
+        conversion_factor = constants.bohr_to_angstrom
+    else:
+        raise ConverterError("Invalid target unit. Choose 'angstrom' or 'bohr'.")
+
+    processed_lines = list()
+    # Split the string into lines
+    lxyz = xyz_str.strip().splitlines()
+    # Determine whether the atom label appears first or last in each line
+    first_line_tokens = lxyz[0].strip().split()
+    atom_first = not is_str_float(first_line_tokens[0])
+
+    for item in lxyz:
+        parts = item.strip().split()
+
+        if len(parts) != 4:
+            raise ConverterError(f'xyz_str has an incorrect format, expected 4 elements in each line, '
+                                    f'got "{item}" in:\n{xyz_str}')
+        if atom_first:
+            atom, x_str, y_str, z_str = parts
+        else:
+            x_str, y_str, z_str, atom = parts
+        
+        try:
+            x = float(x_str) * conversion_factor
+            y = float(y_str) * conversion_factor
+            z = float(z_str) * conversion_factor
+        
+        except ValueError as e:
+            raise ConverterError(f'Could not convert {x_str}, {y_str}, or {z_str} to floats.') from e
+        
+        if reverse_atoms and atom_first:
+            formatted_line = f'{x} {y} {z} {atom}'
+        elif reverse_atoms and not atom_first:
+            formatted_line = f'{atom} {x} {y} {z}'
+        elif not reverse_atoms and atom_first:
+            formatted_line = f'{atom} {x} {y} {z}'
+        elif not reverse_atoms and not atom_first:
+            formatted_line = f'{x} {y} {z} {atom}'
+        
+        processed_lines.append(formatted_line)
+    
+    return '\n'.join(processed_lines)
+
+
+def str_to_str(*args, **kwargs) -> str:
+    """
+    Backwards compatible wrapper for reorder_xyz_string.
+    """
+    warnings.warn(
+        "str_to_str was renamed to reorder_xyz_string and will be removed in a future ARC release",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return reorder_xyz_string(*args, **kwargs)
 
 
 def str_to_xyz(xyz_str: str,
@@ -2470,6 +2568,45 @@ def kabsch(xyz1: dict, xyz2: dict) -> float:
     coords1, coords2 = np.array(xyz1['coords']), np.array(xyz2['coords'])
     _, score = Rotation.align_vectors(coords1, coords2)
     return score
+
+
+def align_xyz_to_ref_coords(xyz_dict: dict,
+                            ref_coords: list | tuple | np.ndarray,
+                            ) -> dict:
+    """
+    Rigid-body superimpose (Kabsch) Cartesian coordinates onto reference coordinates.
+
+    The atoms in ``xyz_dict`` and the rows of ``ref_coords`` must correspond one-to-one
+    (i.e., be in the same atom order). The returned coordinates are the input coordinates
+    rotated and translated as a rigid body (the internal geometry is not distorted)
+    such that the RMSD to ``ref_coords`` is minimized.
+
+    Args:
+        xyz_dict (dict): The Cartesian coordinates to align (ARC xyz dict format).
+        ref_coords (list | tuple | np.ndarray): The reference Cartesian coordinates,
+                                                an N x 3 array-like in the same atom order as ``xyz_dict``.
+
+    Raises:
+        ValueError: If the number of reference coordinates does not match the number of atoms.
+
+    Returns:
+        dict: The aligned Cartesian coordinates (ARC xyz dict format).
+    """
+    coords = np.array(xyz_dict['coords'], dtype=float)
+    ref = np.array(ref_coords, dtype=float)
+    if coords.shape != ref.shape:
+        raise ValueError(f'Cannot align coordinates of shape {coords.shape} '
+                         f'onto reference coordinates of shape {ref.shape}.')
+    if len(coords) == 1:
+        new_coords = ref.copy()
+    else:
+        centroid, ref_centroid = coords.mean(axis=0), ref.mean(axis=0)
+        rotation, _ = Rotation.align_vectors(ref - ref_centroid, coords - centroid)
+        new_coords = rotation.apply(coords - centroid) + ref_centroid
+    return xyz_from_data(coords=[tuple(coord) for coord in new_coords],
+                         symbols=xyz_dict['symbols'],
+                         isotopes=xyz_dict.get('isotopes'),
+                         )
 
 
 def order_xyz_by_atom_map(xyz: dict,

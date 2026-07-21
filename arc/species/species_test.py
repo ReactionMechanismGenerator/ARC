@@ -7,6 +7,7 @@ This module contains unit tests of the arc.species.species module
 
 import os
 import shutil
+import tempfile
 import unittest
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, check_that_all_entries_are_in_list
@@ -205,6 +206,32 @@ class TestARCSpecies(unittest.TestCase):
         spc_5 = ARCSpecies(label='N2H2(T)', smiles='[NH][NH]', xyz=self.n2h2_t_xyz)
         self.assertEqual(len(spc_5.mol_list), 1)
 
+    def test_reconcile_mol_multiplicity(self):
+        """An explicit multiplicity conflicting with the SMILES/InChI-perceived spin state is honored."""
+        # [CH2] is perceived as triplet, but multiplicity=1 should give the singlet carbene.
+        carbene = ARCSpecies(label='carbene', smiles='[CH2]', multiplicity=1)
+        self.assertEqual(carbene.mol.multiplicity, 1)
+        self.assertEqual(carbene.multiplicity, 1)
+        self.assertEqual([atom.radical_electrons for atom in carbene.mol.atoms], [0, 0, 0])
+        self.assertEqual([atom.lone_pairs for atom in carbene.mol.atoms], [1, 0, 0])
+        self.assertTrue(carbene.mol.is_isomorphic(ARCSpecies(
+            label='ref', adjlist='1 C u0 p1 c0 {2,S} {3,S}\n2 H u0 p0 c0 {1,S}\n3 H u0 p0 c0 {1,S}').mol))
+
+        # Without an explicit multiplicity, the default (triplet) perception is preserved.
+        triplet = ARCSpecies(label='triplet', smiles='[CH2]')
+        self.assertEqual(triplet.mol.multiplicity, 3)
+
+        # An adjacency list remains authoritative and is never reconciled away.
+        singlet_adj = ARCSpecies(label='adj', adjlist='1 C u0 p1 c0 {2,S} {3,S}\n'
+                                                       '2 H u0 p0 c0 {1,S}\n3 H u0 p0 c0 {1,S}')
+        self.assertEqual(singlet_adj.mol.multiplicity, 1)
+
+        # An open-shell singlet biradical (number_of_radicals given) is NOT collapsed: the two
+        # radicals sit on different atoms and are spin-paired across space, not into a lone pair.
+        biradical = ARCSpecies(label='biradical', smiles='[CH2][CH2]',
+                               multiplicity=1, number_of_radicals=2)
+        self.assertEqual(sum(atom.radical_electrons for atom in biradical.mol.atoms), 2)
+
     def test_preserving_atom_order_in_mol_list(self):
         """Test preserving atom order in the .mol_list attribute"""
         bond_dict = dict()
@@ -256,6 +283,35 @@ class TestARCSpecies(unittest.TestCase):
         n_rad = ARCSpecies(label='N', smiles='[N]')
         self.assertTrue(n_rad.is_monoatomic())
 
+    def test_monoatomic_species_get_trivial_final_xyz(self):
+        """Atoms skip opt, so ``__init__`` synthesizes the origin geometry up
+        front. Without this, every consumer that checks ``final_xyz is not
+        None`` (TS-search dispatch in particular) silently misbehaves on
+        reactions involving a monoatomic reactant or product."""
+        h_rad = ARCSpecies(label='H_atom', smiles='[H]')
+        self.assertIsNotNone(h_rad.final_xyz)
+        self.assertEqual(h_rad.final_xyz['symbols'], ('H',))
+        self.assertEqual(h_rad.final_xyz['coords'], ((0.0, 0.0, 0.0),))
+
+        n_rad = ARCSpecies(label='N_atom', smiles='[N]')
+        self.assertIsNotNone(n_rad.final_xyz)
+        self.assertEqual(n_rad.final_xyz['symbols'], ('N',))
+
+    def test_polyatomic_species_no_synthesized_final_xyz(self):
+        """Negative case: don't invent geometry for species that legitimately
+        need an opt to determine their geometry."""
+        ch3 = ARCSpecies(label='CH3', smiles='[CH3]')
+        self.assertIsNone(ch3.final_xyz)
+
+    def test_existing_final_xyz_not_overwritten_for_atom(self):
+        """If an atom is constructed with a user-supplied xyz (non-origin), the
+        synthesis must not clobber it."""
+        cl_xyz = """Cl     0.10000000    0.20000000    0.30000000"""
+        cl = ARCSpecies(label='Cl', smiles='[Cl]', xyz=cl_xyz)
+        self.assertIsNotNone(cl.final_xyz)
+        self.assertEqual(cl.final_xyz['symbols'], ('Cl',))
+        self.assertNotEqual(cl.final_xyz['coords'], ((0.0, 0.0, 0.0),))
+
     def test_is_diatomic(self):
         """Test the is_diatomic() method."""
         self.assertFalse(self.spc1.is_diatomic())
@@ -290,6 +346,17 @@ class TestARCSpecies(unittest.TestCase):
         xyz = n3.get_xyz(return_format='str')
         self.assertIsInstance(xyz, str)
         self.assertEqual(xyz, xyz_to_str(expected_xyz))
+
+    def test_set_dihedral_linear_segment(self):
+        """Test that set_dihedral() no-ops (returns None) without a WARNING when the torsion spans a linear segment."""
+        # Methylketene (CC=C=O) has a collinear C=C=O cumulene segment, so the torsion [0, 1, 2, 3]
+        # contains a linear segment (the [1, 2, 3] triplet is ~180 degrees).
+        spc = ARCSpecies(label='methylketene', smiles='CC=C=O')
+        xyz = spc.get_xyz()
+        with self.assertNoLogs(logger='arc', level='WARNING'):
+            result = spc.set_dihedral(scan=[0, 1, 2, 3], index=0, deg_abs=90.0,
+                                      count=False, chk_rotor_list=False, xyz=xyz)
+        self.assertIsNone(result)
 
     def test_conformers(self):
         """Test conformer generation"""
@@ -585,6 +652,38 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc6.multiplicity, 1)
         self.assertEqual(spc7.multiplicity, 2)
         self.assertEqual(spc8.multiplicity, 1)
+
+    def test_check_multiplicity_parity(self):
+        """Test that an impossible electron-count/multiplicity parity raises a SpeciesError."""
+        # Valid pairings must NOT raise.
+        spc_even = ARCSpecies(label='ethylene', smiles='C=C', multiplicity=1, compute_thermo=False)
+        self.assertEqual(spc_even.get_number_of_electrons(), 16)
+        self.assertEqual(spc_even.multiplicity, 1)
+        spc_odd = ARCSpecies(label='HO2', smiles='[O]O', multiplicity=2, compute_thermo=False)
+        self.assertEqual(spc_odd.get_number_of_electrons(), 17)
+        self.assertEqual(spc_odd.multiplicity, 2)
+
+        # Even electrons + even multiplicity is impossible.
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='ethylene_bad', smiles='C=C', multiplicity=2, compute_thermo=False)
+        # Odd electrons + odd multiplicity is impossible.
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='HO2_bad', smiles='[O]O', multiplicity=1, compute_thermo=False)
+
+        # A charged species: even electron count with charge +1 gives an odd electron
+        # count, so an even multiplicity is required; an odd multiplicity must raise.
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='CH4_cation_bad', smiles='C', charge=1, multiplicity=1,
+                       xyz="""C  0.0 0.0 0.0
+                              H  0.6 0.6 0.6
+                              H -0.6 -0.6 0.6
+                              H -0.6 0.6 -0.6
+                              H  0.6 -0.6 -0.6""", compute_thermo=False)
+
+        # A TS with neither Molecule nor xyz has an unknown electron count; the guard
+        # must skip gracefully rather than raise.
+        ts = ARCSpecies(label='TS0', is_ts=True, multiplicity=2)
+        self.assertIsNone(ts.get_number_of_electrons())
 
     def test_as_dict(self):
         """Test Species.as_dict()"""
@@ -1228,6 +1327,21 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         spc = ARCSpecies(species_dict=species_dict)
         self.assertTrue(spc.is_ts)
 
+    def test_from_dict_reconciles_spin_ambiguous_multiplicity(self):
+        """from_dict() must reconcile a SMILES-perceived mol to the declared multiplicity, so a
+        singlet carbene [CH2] (multiplicity 1) becomes u0 p1 rather than the perceived triplet u2.
+        Without this, graph-based logic (RMG family determination) sees a triplet and fails to
+        classify the reaction (see BENCHMARK_ERRORS.md reaction_01)."""
+        singlet = ARCSpecies(species_dict={'label': 'R2', 'smiles': '[CH2]', 'multiplicity': 1})
+        self.assertEqual(singlet.multiplicity, 1)
+        self.assertEqual(singlet.mol.multiplicity, 1)
+        self.assertIn('C u0 p1', singlet.mol.to_adjacency_list())
+        # The triplet carbene and ordinary spin-ambiguous species must be untouched.
+        triplet = ARCSpecies(species_dict={'label': 'T', 'smiles': '[CH2]', 'multiplicity': 3})
+        self.assertEqual(triplet.mol.multiplicity, 3)
+        o2 = ARCSpecies(species_dict={'label': 'O2', 'smiles': '[O][O]', 'multiplicity': 3})
+        self.assertEqual(o2.mol.multiplicity, 3)
+
     def test_label_atoms(self):
         """Test the label_atoms method"""
         spc_copy = self.spc6.copy()
@@ -1711,13 +1825,19 @@ H       1.32129900    0.71837500    0.38017700
         spc3 = ARCSpecies(species_dict=species_dict3)
         spc4 = ARCSpecies(species_dict=species_dict4)
 
+        # All four fixtures use atomic carbon 'C', so the monoatomic
+        # geometry hook in __init__ promotes the available conformer/
+        # initial_xyz into final_xyz. Conformer routing still works
+        # exactly as before — that's what this test's original intent
+        # was — but final_xyz is now the source of truth even for atoms
+        # that never run an opt.
         self.assertIsNone(spc1.initial_xyz)
-        self.assertIsNone(spc1.final_xyz)
+        self.assertEqual(spc1.final_xyz, {'coords': ((0.1, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
         self.assertEqual(spc1.conformers, [{'coords': ((0.1, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
         self.assertEqual(spc1.conformer_energies, [None])
 
         self.assertEqual(spc2.initial_xyz, {'coords': ((0.2, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
-        self.assertIsNone(spc2.final_xyz)
+        self.assertEqual(spc2.final_xyz, {'coords': ((0.2, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
         self.assertEqual(spc2.conformers, [])
         self.assertEqual(spc2.conformer_energies, [])
 
@@ -1727,7 +1847,7 @@ H       1.32129900    0.71837500    0.38017700
         self.assertEqual(spc3.conformer_energies, [])
 
         self.assertIsNone(spc4.initial_xyz)
-        self.assertIsNone(spc4.final_xyz)
+        self.assertEqual(spc4.final_xyz, {'coords': ((0.4, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
         self.assertEqual(spc4.conformers, [{'coords': ((0.4, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)},
                                            {'coords': ((0.5, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
         self.assertEqual(spc4.conformer_energies, [None, None])
@@ -2337,6 +2457,16 @@ H       1.11582953    0.94384729   -0.10134685"""
         ts_doublet.determine_multiplicity_from_xyz()
         self.assertEqual(ts_doublet.multiplicity, 2)
 
+    def test_process_completed_tsg_queue_jobs_attributes_method(self):
+        """A queue TS-guess job that emits a .log must attribute its guess to the adapter that ran it
+        (e.g. 'qst2'), not a hard-coded 'orca_neb' — several queue adapters (orca_neb, qst2) emit a
+        .log, so the method label must be passed through, not assumed."""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        log = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        ts.process_completed_tsg_queue_jobs(path=log, method='qst2')
+        self.assertTrue(any(tsg.method == 'qst2' for tsg in ts.ts_guesses))
+        self.assertFalse(any(tsg.method == 'orca_neb' for tsg in ts.ts_guesses))
+
     def test_cluster_tsgs(self):
         """Test the cluster_tsgs() method."""
         xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
@@ -2421,6 +2551,103 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(len(spc_3.ts_guesses), 12)
         spc_3.cluster_tsgs()
         self.assertEqual(len(spc_3.ts_guesses), 6)
+
+    def test_cluster_tsgs_preserves_path_search_source_log(self):
+        """A geometry-only guess (GCN) that wins dedup must retain a merged
+        path-search source's log path in ``method_source_paths`` so
+        path-search provenance survives clustering (benchmark reaction_06).
+        Selection is unchanged: the winner is still GCN."""
+        xyz_a = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_b = """N       0.9177905899     0.5194617794     0.0000000010
+                   H       1.8140204898     1.0381941417     0.0000000055
+                   H      -0.4763167868     0.7509348792     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000010
+                   N      -1.4430010939     0.0274543357     0.0000000055
+                   H      -0.6371484821    -0.7497769124     0.0000000020
+                   H      -2.0093636433     0.0331190312    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # ~equal to xyz_a
+        gsm_log = '/tmp/arc_test/TS0/xtb_gsm/stringfile.xyz0000'
+        # Use the exact string the xtb_gsm adapter sets (method='xTB-GSM').
+        gsm_guess = TSGuess(index=1, method='xTB-GSM', success=True, xyz=xyz_b)
+        # Production shape: the xtb_gsm/orca_neb/qst2 adapters assign log_path
+        # *after* construction, so method_source_paths is empty until cluster_tsgs
+        # seeds it from the live attributes.
+        gsm_guess.log_path = gsm_log
+        self.assertEqual(gsm_guess.method_source_paths, {})
+        spc = ARCSpecies(label='TS_ms', is_ts=True)
+        spc.ts_guesses = [TSGuess(index=0, method='GCN', success=True, xyz=xyz_a),
+                          gsm_guess]
+        for tsg in spc.ts_guesses:
+            tsg.execution_time = '00:00:02'
+        spc.cluster_tsgs()
+        self.assertEqual(len(spc.ts_guesses), 1)
+        winner = spc.ts_guesses[0]
+        self.assertEqual(winner.method, 'gcn')  # selection unchanged
+        self.assertIn('xtb-gsm', winner.method_sources)
+        self.assertEqual(winner.method_source_paths.get('xtb-gsm'), gsm_log)
+        # Round-trips through as_dict/from_dict (restart persistence).
+        restored = TSGuess(ts_dict=winner.as_dict())
+        self.assertEqual(restored.method_source_paths.get('xtb-gsm'), gsm_log)
+
+    def test_cluster_tsgs_with_coordinate_less_guesses(self):
+        """Clustering must tolerate coordinate-less TS guesses (e.g. failed kinbot/queue guesses
+        whose job produced no parseable geometry). Reaction_08 benchmark crash: two such guesses
+        reached almost_equal_coords(None, None) -> TypeError, aborting the whole scheduler."""
+        xyz = """N       0.9177905887     0.5194617797     0.0000000000
+                 H       1.8140204898     1.0381941417     0.0000000000
+                 H      -0.4763167868     0.7509348722     0.0000000000
+                 N       0.9992350860    -0.7048575683     0.0000000000
+                 N      -1.4430010939     0.0274543367     0.0000000000
+                 H      -0.6371484821    -0.7497769134     0.0000000000
+                 H      -2.0093636431     0.0331190314    -0.8327683174
+                 H      -2.0093636431     0.0331190314     0.8327683174"""
+        failed_1 = TSGuess(index=0, method='kinbot', success=False)
+        failed_2 = TSGuess(index=1, method='kinbot', success=False)
+        good = TSGuess(index=2, method='gcn', success=True, xyz=xyz)
+        # A coordinate-less "successful" guess: same success as ``good`` so the first (success) filter
+        # passes and the None-xyz guard is the sole reason the comparison returns False.
+        xyz_less_success = TSGuess(index=3, method='gcn', success=True)
+        # A coordinate-less guess yields no xyz.
+        self.assertIsNone(failed_1.get_xyz())
+        self.assertIsNone(xyz_less_success.get_xyz())
+        # almost_equal_tsgs must not raise and must never treat a coordinate-less guess as a duplicate.
+        self.assertFalse(failed_1.almost_equal_tsgs(failed_2))  # both None (the reaction_08 crash)
+        self.assertFalse(good.almost_equal_tsgs(xyz_less_success))  # one None, equal success -> guard only
+        self.assertFalse(xyz_less_success.almost_equal_tsgs(good))
+        self.assertFalse(failed_1.almost_equal_tsgs(good))
+        self.assertFalse(good.almost_equal_tsgs(failed_1))
+        # cluster_tsgs over a mix of coordinate-less and real guesses must not raise and must keep them distinct.
+        spc = ARCSpecies(label='TS_none_xyz', is_ts=True)
+        spc.ts_guesses = [failed_1, failed_2, good]
+        for tsg in spc.ts_guesses:
+            tsg.execution_time = '00:00:01'
+        spc.cluster_tsgs()  # must not raise
+        self.assertEqual(len(spc.ts_guesses), 3)
+
+    def test_process_completed_tsg_queue_jobs_no_geometry(self):
+        """A queue TS-guess job whose .log has no parseable geometry must not be added as a
+        clusterable 'successful' guess, must be marked failed, and must not crash the subsequent
+        cluster_tsgs() call (reaction_08: an orca_neb queue job whose NEB geometry was cleaned
+        from scratch)."""
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        empty_log = os.path.join(tmp_dir, 'input.log')
+        with open(empty_log, 'w') as f:
+            f.write('ORCA TERMINATED NORMALLY\nno coordinates were retrieved from scratch\n')
+        spc = ARCSpecies(label='TS_no_geo', is_ts=True)
+        # Pre-seed with a coordinate-less failed guess so cluster_tsgs would exercise the None path.
+        spc.ts_guesses = [TSGuess(index=0, method='kinbot', success=False)]
+        spc.process_completed_tsg_queue_jobs(path=empty_log)  # must not raise
+        # No coordinate-less guess was added as a successful clusterable guess.
+        self.assertTrue(all(tsg.get_xyz() is not None or not tsg.success for tsg in spc.ts_guesses))
+        self.assertFalse(any(tsg.success and tsg.get_xyz() is None for tsg in spc.ts_guesses))
 
     def test_are_coords_compliant_with_graph(self):
         """Test coordinates compliant with 2D graph connectivity"""
@@ -3102,6 +3329,21 @@ class TestTSGuess(unittest.TestCase):
         ts_dict_for_report = self.tsg1.as_dict(for_report=True)
         self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_sources', 'method_index', 'success', 'index',
                                                            'conformer_index', 'initial_xyz', 'opt_xyz'])
+
+    def test_level_round_trip(self):
+        """Test that the TSGuess.level attribute survives an as_dict()/from_dict() round trip"""
+        level = {'method': 'wb97x-d3', 'basis': 'def2-tzvp', 'software': 'orca'}
+        tsg = TSGuess(method='orca_neb', success=True, level=level)
+        tsg_dict = tsg.as_dict()
+        self.assertEqual(tsg_dict['level'], level)
+        tsg_restored = TSGuess(ts_dict=tsg_dict)
+        self.assertEqual(tsg_restored.level, level)
+        # A guess without a level round-trips to None and omits the key.
+        tsg_no_level = TSGuess(method='gcn', success=True)
+        self.assertIsNone(tsg_no_level.level)
+        tsg_no_level_dict = tsg_no_level.as_dict()
+        self.assertNotIn('level', tsg_no_level_dict)
+        self.assertIsNone(TSGuess(ts_dict=tsg_no_level_dict).level)
 
     def test_process_xyz(self):
         """Test the process_xyz() method"""

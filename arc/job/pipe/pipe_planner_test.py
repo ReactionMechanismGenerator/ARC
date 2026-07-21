@@ -50,7 +50,9 @@ def _make_mock_sched(project_directory):
     sched.freq_level = Level(method='wb97xd', basis='def2-tzvp')
     sched.scan_level = Level(method='wb97xd', basis='def2-tzvp')
     sched.irc_level = Level(method='wb97xd', basis='def2-tzvp')
-    sched.ess_settings = {'gaussian': ['server1']}
+    # PipeCoordinator refuses pipe for non-'local' servers (remote pipe
+    # support lives on a separate branch — see pipe_coordinator.py:70-76).
+    sched.ess_settings = {'gaussian': ['local']}
     sched.job_types = {'conf_opt': True, 'conf_sp': True, 'opt': True,
                        'freq': True, 'sp': True, 'rotors': True}
     spc = ARCSpecies(label='H2O', smiles='O')

@@ -9,7 +9,6 @@ import shutil
 import sys
 import re
 
-from pprint import pformat
 from typing import TYPE_CHECKING
 
 from arc.common import get_logger
@@ -27,13 +26,13 @@ logger = get_logger()
 default_job_settings, global_ess_settings, rotor_scan_resolution = \
     settings['default_job_settings'], settings['global_ess_settings'], settings['rotor_scan_resolution']
 
-ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'linear'],
+ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
                              '1,2_Insertion_CO': ['kinbot', 'linear'],
                              '1,2_Insertion_carbene': ['kinbot', 'linear'],
                              '1,2_NH3_elimination': ['linear'],
                              '1,2_XY_interchange': ['orca_neb', 'linear'],
-                             '1,2_shiftC': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             '1,2_shiftS': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             '1,2_shiftC': ['gcn', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
+                             '1,2_shiftS': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
                              '1,3_Insertion_CO2': ['kinbot', 'linear'],
                              '1,3_Insertion_ROR': ['kinbot', 'linear'],
                              '1,3_Insertion_RSR': ['kinbot', 'linear'],
@@ -49,8 +48,9 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'linear'],
                              'Cyclic_Ether_Formation': ['kinbot', 'linear'],
                              'Cyclic_Thioether_Formation': ['linear'],
                              'Cyclopentadiene_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Diels_alder_addition': ['kinbot', 'linear'],
+                             'Diels_alder_addition': ['kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
                              'Diels_alder_addition_Aromatic': ['linear'],
+                             'Disproportionation': ['autotst'],
                              'HO2_Elimination_from_PeroxyRadical': ['kinbot', 'linear'],
                              'H_Abstraction': ['heuristics', 'autotst', 'crest'],
                              'Intra_2+2_cycloaddition_Cd': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
@@ -65,24 +65,24 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'linear'],
                              'Intra_R_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
                              'Intra_Retro_Diels_alder_bicyclic': ['kinbot', 'linear'],
                              'Intra_ene_reaction': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Ketoenol': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'Ketoenol': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
                              'Korcek_step1': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
                              'Korcek_step2': ['kinbot', 'linear'],
                              'R_Addition_COm': ['kinbot', 'linear'],
                              'R_Addition_CSm': ['kinbot', 'linear'],
                              'R_Addition_MultipleBond': ['autotst', 'kinbot', 'linear'],
-                             'Retroene': ['kinbot', 'linear'],
+                             'Retroene': ['kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
                              'Singlet_Carbene_Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'XY_Addition_MultipleBond': ['linear'],
-                             'XY_elimination_hydroxyl': ['linear'],
+                             'XY_Addition_MultipleBond': ['heuristics', 'crest', 'xtb_gsm', 'orca_neb', 'linear'],
+                             'XY_elimination_hydroxyl': ['xtb_gsm', 'orca_neb', 'linear'],
                              'carbonyl_based_hydrolysis': ['heuristics'],
                              'ether_hydrolysis': ['heuristics'],
                              'halocarbene_recombination': ['linear'],
                              'halocarbene_recombination_double': ['linear'],
-                             'intra_H_migration': ['autotst', 'gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'intra_NO2_ONO_conversion': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'intra_OH_migration': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'intra_halogen_migration': ['linear'],
+                             'intra_H_migration': ['autotst', 'gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
+                             'intra_NO2_ONO_conversion': ['gcn', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
+                             'intra_OH_migration': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
+                             'intra_halogen_migration': ['xtb_gsm', 'orca_neb', 'qst2', 'linear'],
                              'intra_substitutionCS_cyclization': ['linear'],
                              'intra_substitutionCS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
                              'intra_substitutionS_cyclization': ['linear'],
@@ -501,12 +501,7 @@ def set_job_args(args: dict | None,
     Returns:
         dict: The initialized job specific arguments.
     """
-    # Ignore user-specified additional job arguments when troubleshooting.
-    if args is not None and args and any(val for val in args.values()) \
-            and level is not None and level.args and any(val for val in level.args.values()):
-        logger.warning(f'When troubleshooting {job_name}, ARC ignores the following user-specified options:\n'
-                       f'{pformat(level.args)}')
-    elif not args and level is not None:
+    if not args and level is not None:
         args = level.args
     for key in ['keyword', 'block', 'trsh']:
         if key not in args.keys():

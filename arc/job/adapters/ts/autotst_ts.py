@@ -124,9 +124,13 @@ class AutoTSTAdapter(JobAdapter):
         self.execution_type = execution_type or 'incore'
         self.command = None  # AutoTST does not have an executable file, just an API.
         self.url = 'https://github.com/ReactionMechanismGenerator/AutoTST'
+        # Note: 'Disproportionation' requires the AutoTST env to be on a branch whose
+        # SUPPORTED_FAMILIES includes 'Disproportionation' (e.g. fix/disproportionation-support),
+        # not on AutoTST main.
         self.supported_families = ['intra_H_migration',
                                    'H_Abstraction',
-                                   'R_Addition_MultipleBond']
+                                   'R_Addition_MultipleBond',
+                                   'Disproportionation']
 
         if reactions is None:
             raise ValueError('Cannot execute AutoTST without ARCReaction object(s).')
@@ -230,10 +234,17 @@ class AutoTSTAdapter(JobAdapter):
                                                 multiplicity=rxn.multiplicity,
                                                 )
                 reaction_label_fwd = get_autotst_reaction_string(rxn)
+                # remove_dup_species dedups rxn.reactants/products, dropping the count of a repeated
+                # species (e.g. OH + OH). Rebuild count-preserving label lists so the reverse reaction
+                # is atom-balanced (P1 + P2 <=> R1 + R1, not P1 + P2 <=> R1).
+                rev_reactant_labels = [lbl for lbl in rxn.products
+                                       for _ in range(rxn.get_species_count(label=lbl, well=1))]
+                rev_product_labels = [lbl for lbl in rxn.reactants
+                                      for _ in range(rxn.get_species_count(label=lbl, well=0))]
                 reaction_label_rev = get_autotst_reaction_string(ARCReaction(r_species=rxn.p_species,
                                                                              p_species=rxn.r_species,
-                                                                             reactants=rxn.products,
-                                                                             products=rxn.reactants))
+                                                                             reactants=rev_reactant_labels,
+                                                                             products=rev_product_labels))
 
                 i = 0
                 for reaction_label, direction in zip([reaction_label_fwd, reaction_label_rev], ['F', 'R']):

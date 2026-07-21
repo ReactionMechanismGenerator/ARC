@@ -2,9 +2,10 @@
 set -eo pipefail
 
 # Enable tracing of each command, but tee it to a logfile
+LOGFILE="tani_env_setup.log"
 exec 3>&1 4>&2
 trap 'exec 2>&4 1>&3' EXIT
-exec 1> >(tee   .log) 2>&1
+exec 1> >(tee "$LOGFILE") 2>&1
 set -x
 
 echo ">>> Starting TANI environment setup at $(date)"
@@ -53,7 +54,7 @@ fi
 echo ">>> Creating conda env from $ENV_YAML (name=$ENV_NAME)"
 if ! $COMMAND_PKG env create -n "$ENV_NAME" -f "$ENV_YAML" -v; then
     echo "❌  Environment creation failed. Dumping last 200 lines of log:"
-    tail -n 200 tani_env_setup.log
+    tail -n 200 "$LOGFILE"
     echo "---- Disk usage at failure ----"
     df -h .
     exit 1
