@@ -9,6 +9,8 @@
   <title>Examples &mdash; ARC 1.1.0 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=6285a516" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
@@ -20,7 +22,7 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Transition State Search" href="TS_search.html" />
-    <link rel="prev" title="Running ARC" href="running.html" /> 
+    <link rel="prev" title="Input YAML Reference" href="input_reference.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -33,6 +35,7 @@
           
           <a href="index.html" class="icon icon-home">
             ARC
+              <img src="_static/arc.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -42,20 +45,34 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation instructions</a></li>
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="how_it_works.html">How ARC Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Examples</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#calculating-thermodynamic-properties">Calculating thermodynamic properties</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#optimizing-transition-states">Optimizing transition states</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#minimal-species-thermochemistry">Minimal Species Thermochemistry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#several-species-and-coordinate-formats">Several Species and Coordinate Formats</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#reaction-with-a-ts-guess">Reaction with a TS Guess</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#transition-state-species">Transition-State Species</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#python-api">Python API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#job-type-shortcuts">Job-Type Shortcuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-to-find-more-inputs">Where to Find More Inputs</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="TS_search.html">Transition State Search</a></li>
-<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone Tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
 <li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
@@ -90,169 +107,184 @@
              
   <section id="examples">
 <span id="id1"></span><h1>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h1>
-<p>ARC’s examples folder (<a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/tree/main/examples">ARC/examples</a>) is an excellent resource for up-to-date sample input files,
-demonstrating different features. Below are examples for common basic tasks performed using ARC.</p>
-<section id="calculating-thermodynamic-properties">
-<h2>Calculating thermodynamic properties<a class="headerlink" href="#calculating-thermodynamic-properties" title="Link to this heading"></a></h2>
-<p>The example below shows how to set the levels of theory and job types.
-Multiple species are defined using SMILES / an XYZ list / InChI:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">arc_demo_1</span>
+<p>This page shows compact, current input patterns. Use them as starting points,
+then adapt levels of theory, software routing, and server settings to your site.</p>
+<section id="minimal-species-thermochemistry">
+<h2>Minimal Species Thermochemistry<a class="headerlink" href="#minimal-species-thermochemistry" title="Link to this heading"></a></h2>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ethanol_thermo</span>
 
-<span class="n">ess_settings</span><span class="p">:</span>
-  <span class="n">gaussian</span><span class="p">:</span>
-  <span class="o">-</span> <span class="n">local</span>
-  <span class="o">-</span> <span class="n">server1</span>
-  <span class="n">molpro</span><span class="p">:</span>
-  <span class="o">-</span> <span class="n">server1</span>
-  <span class="n">qchem</span><span class="p">:</span>
-  <span class="o">-</span> <span class="n">server2</span>
+<span class="nt">species</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ethanol</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CCO</span>
 
-<span class="n">job_types</span><span class="p">:</span>
-  <span class="n">rotors</span><span class="p">:</span> <span class="n">true</span>
-  <span class="n">conf_opt</span><span class="p">:</span> <span class="n">true</span>
-  <span class="n">fine</span><span class="p">:</span> <span class="n">true</span>
-  <span class="n">freq</span><span class="p">:</span> <span class="n">true</span>
-  <span class="n">opt</span><span class="p">:</span> <span class="n">true</span>
-  <span class="n">sp</span><span class="p">:</span> <span class="n">true</span>
-
-<span class="n">max_job_time</span><span class="p">:</span> <span class="mi">24</span>
-
-<span class="n">level_of_theory</span><span class="p">:</span> <span class="n">CCSD</span><span class="p">(</span><span class="n">T</span><span class="p">)</span><span class="o">-</span><span class="n">F12</span><span class="o">/</span><span class="n">cc</span><span class="o">-</span><span class="n">pVTZ</span><span class="o">-</span><span class="n">F12</span><span class="o">//</span><span class="n">wb97xd</span><span class="o">/</span><span class="n">def2tzvp</span>
-<span class="n">scan_level</span><span class="p">:</span> <span class="n">wb97xd</span><span class="o">/</span><span class="n">def2tzvp</span>
-<span class="n">conformer_level</span><span class="p">:</span>
-  <span class="n">method</span><span class="p">:</span> <span class="n">b3lyp</span>
-  <span class="n">basis</span><span class="p">:</span> <span class="s1">&#39;6-311+g(d,p)&#39;</span>
-  <span class="n">dispersion</span><span class="p">:</span> <span class="n">empiricaldispersion</span><span class="o">=</span><span class="n">gd3bj</span>
-
-<span class="n">species</span><span class="p">:</span>
-
-<span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">propane</span>
-  <span class="n">smiles</span><span class="p">:</span> <span class="n">CCC</span>
-
-<span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">vinoxy</span>
-  <span class="n">xyz</span><span class="p">:</span>
-  <span class="o">-</span> <span class="o">|</span>
-    <span class="n">O</span>       <span class="mf">1.35170118</span>   <span class="o">-</span><span class="mf">1.00275231</span>   <span class="o">-</span><span class="mf">0.48283333</span>
-    <span class="n">C</span>      <span class="o">-</span><span class="mf">0.67437022</span>    <span class="mf">0.01989281</span>    <span class="mf">0.16029161</span>
-    <span class="n">C</span>       <span class="mf">0.62797113</span>   <span class="o">-</span><span class="mf">0.03193934</span>   <span class="o">-</span><span class="mf">0.15151370</span>
-    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.14812497</span>    <span class="mf">0.95492850</span>    <span class="mf">0.42742905</span>
-    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.27300665</span>   <span class="o">-</span><span class="mf">0.88397696</span>    <span class="mf">0.14797321</span>
-    <span class="n">H</span>       <span class="mf">1.11582953</span>    <span class="mf">0.94384729</span>   <span class="o">-</span><span class="mf">0.10134685</span>
-  <span class="o">-</span> <span class="o">|</span>
-    <span class="n">O</span>       <span class="mf">1.49847909</span>   <span class="o">-</span><span class="mf">0.87864716</span>    <span class="mf">0.21971764</span>
-    <span class="n">C</span>      <span class="o">-</span><span class="mf">0.69134542</span>   <span class="o">-</span><span class="mf">0.01812252</span>    <span class="mf">0.05076812</span>
-    <span class="n">C</span>       <span class="mf">0.64534929</span>    <span class="mf">0.00412787</span>   <span class="o">-</span><span class="mf">0.04279617</span>
-    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.19713983</span>   <span class="o">-</span><span class="mf">0.90988817</span>    <span class="mf">0.40350584</span>
-    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.28488154</span>    <span class="mf">0.84437992</span>   <span class="o">-</span><span class="mf">0.22108130</span>
-    <span class="n">H</span>       <span class="mf">1.02953840</span>    <span class="mf">0.95815005</span>   <span class="o">-</span><span class="mf">0.41011413</span>
-  <span class="o">-</span> <span class="o">|</span>
-    <span class="n">O</span>      <span class="o">-</span><span class="mf">1.15888237</span>    <span class="mf">1.27653343</span>    <span class="mf">0.30527086</span>
-    <span class="n">C</span>       <span class="mf">0.63650559</span>   <span class="o">-</span><span class="mf">0.15873769</span>   <span class="o">-</span><span class="mf">0.22478280</span>
-    <span class="n">C</span>      <span class="o">-</span><span class="mf">0.59108268</span>    <span class="mf">0.16116823</span>    <span class="mf">0.20729283</span>
-    <span class="n">H</span>       <span class="mf">1.31343166</span>    <span class="mf">0.61755575</span>   <span class="o">-</span><span class="mf">0.56336439</span>
-    <span class="n">H</span>       <span class="mf">0.97181468</span>   <span class="o">-</span><span class="mf">1.18699193</span>   <span class="o">-</span><span class="mf">0.24372402</span>
-    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.17178687</span>   <span class="o">-</span><span class="mf">0.70952779</span>    <span class="mf">0.51930751</span>
-
-<span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">propanol</span>
-  <span class="n">inchi</span><span class="p">:</span> <span class="n">InChI</span><span class="o">=</span><span class="mi">1</span><span class="n">S</span><span class="o">/</span><span class="n">C3H8O</span><span class="o">/</span><span class="n">c1</span><span class="o">-</span><span class="mi">2</span><span class="o">-</span><span class="mi">3</span><span class="o">-</span><span class="mi">4</span><span class="o">/</span><span class="n">h4H</span><span class="p">,</span><span class="mi">2</span><span class="o">-</span><span class="mi">3</span><span class="n">H2</span><span class="p">,</span><span class="mi">1</span><span class="n">H3</span>
+<span class="nt">level_of_theory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wb97xd/def2svp</span>
+<span class="nt">ess_settings</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">gaussian</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
 </pre></div>
 </div>
-<p>In the above example, <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code> is a directive that specifies in one line the
-<code class="docutils literal notranslate"><span class="pre">sp_method/sp_basis_set//opt_method/opt_basis_set</span></code>. Specifying the <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code>
-also sets the <code class="docutils literal notranslate"><span class="pre">freq_level</span></code> as equal to the <code class="docutils literal notranslate"><span class="pre">opt_level</span></code>. Note that if the <code class="docutils literal notranslate"><span class="pre">scan_level</span></code>
-isn’t set, and ARC will use the default in settings.py unless directed otherwise.</p>
-<p>To specify a composite method, simply define something like:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">level_of_theory</span><span class="p">:</span> <span class="n">CBS</span><span class="o">-</span><span class="n">QB3</span>
+<p>This asks ARC to use the default job types, which include conformer optimization,
+optimization, fine-grid optimization, frequency, single-point, rotor, and IRC
+where applicable.</p>
+</section>
+<section id="several-species-and-coordinate-formats">
+<h2>Several Species and Coordinate Formats<a class="headerlink" href="#several-species-and-coordinate-formats" title="Link to this heading"></a></h2>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">species_inputs</span>
+
+<span class="nt">ess_settings</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">gaussian</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">server1</span>
+<span class="w">  </span><span class="nt">orca</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+
+<span class="nt">job_types</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">conf_opt</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">opt</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">fine</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">freq</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">sp</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">rotors</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+
+<span class="nt">level_of_theory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CCSD(T)-F12/cc-pVTZ-F12//wb97xd/def2tzvp</span>
+
+<span class="nt">species</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">propane</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CCC</span>
+
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">propanol</span>
+<span class="w">    </span><span class="nt">inchi</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">InChI=1S/C3H8O/c1-2-3-4/h4H,2-3H2,1H3</span>
+
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vinoxy</span>
+<span class="w">    </span><span class="nt">xyz</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">      </span><span class="no">O       1.35170118   -1.00275231   -0.48283333</span>
+<span class="w">      </span><span class="no">C      -0.67437022    0.01989281    0.16029161</span>
+<span class="w">      </span><span class="no">C       0.62797113   -0.03193934   -0.15151370</span>
+<span class="w">      </span><span class="no">H      -1.14812497    0.95492850    0.42742905</span>
+<span class="w">      </span><span class="no">H      -1.27300665   -0.88397696    0.14797321</span>
+<span class="w">      </span><span class="no">H       1.11582953    0.94384729   -0.10134685</span>
 </pre></div>
 </div>
-<p>Note: Do not include year suffixes in <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code> (e.g., <code class="docutils literal notranslate"><span class="pre">wb97xd32023</span></code>). Year suffixes are
-for Arkane database matching only and are not valid QC methods. If you need a specific correction year,
-specify a <code class="docutils literal notranslate"><span class="pre">year</span></code> key on <code class="docutils literal notranslate"><span class="pre">arkane_level_of_theory</span></code>.</p>
-<p>If <code class="docutils literal notranslate"><span class="pre">year</span></code> is omitted, ARC will prefer the no-year Arkane entry for that method/basis; if none exists,
-ARC will fall back to the latest available year in the Arkane database.</p>
-<p>Note that for composite methods the <code class="docutils literal notranslate"><span class="pre">freq_level</span></code> and <code class="docutils literal notranslate"><span class="pre">scan_level</span></code> may have different
-default values than for non-composite methods (defined in settings.py). Note: an independent
-frequencies calculation job is automatically executed after a composite job just so that the Hamiltonian will
-be outputted.</p>
-<p>For detailed discussion on specifying levels of theory (e.g., including auxiliary basis sets and DFT dispersions),
-see see <a class="reference internal" href="advanced.html#levels"><span class="std std-ref">Levels of theory</span></a>.</p>
-<p>The same example as above ran via the API (e.g., in <a class="reference external" href="https://jupyter.org/">Jupyter notebooks</a>) would look like the following:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">arc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARC</span>
+</section>
+<section id="reaction-with-a-ts-guess">
+<h2>Reaction with a TS Guess<a class="headerlink" href="#reaction-with-a-ts-guess" title="Link to this heading"></a></h2>
+<p>This is a reaction-definition fragment. Add <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code> and
+<code class="docutils literal notranslate"><span class="pre">ess_settings</span></code> for the ESS you intend to use before running it.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">reaction_demo</span>
+
+<span class="nt">species</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">N2H4</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NN</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NH</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;[NH]&#39;</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">N2H3</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">N[NH]</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NH2</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;[NH2]&#39;</span>
+
+<span class="nt">reactions</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">N2H4 + NH &lt;=&gt; N2H3 + NH2</span>
+<span class="w">    </span><span class="nt">ts_xyz_guess</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">        </span><span class="no">N      -0.4465194713     0.6830090994    -0.0932618217</span>
+<span class="w">        </span><span class="no">H      -0.4573825998     1.1483344874     0.8104886823</span>
+<span class="w">        </span><span class="no">H       0.6773598975     0.3820642106    -0.2197000290</span>
+<span class="w">        </span><span class="no">N      -1.2239012380    -0.4695695875    -0.0069891203</span>
+<span class="w">        </span><span class="no">H      -1.8039356973    -0.5112019151     0.8166872835</span>
+<span class="w">        </span><span class="no">H      -1.7837217777    -0.5685801608    -0.8405154279</span>
+<span class="w">        </span><span class="no">N       1.9039017235    -0.1568337145    -0.0766247796</span>
+<span class="w">        </span><span class="no">H       1.7333130781    -0.8468572038     0.6711695415</span>
+</pre></div>
+</div>
+</section>
+<section id="transition-state-species">
+<h2>Transition-State Species<a class="headerlink" href="#transition-state-species" title="Link to this heading"></a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">is_ts:</span> <span class="pre">true</span></code> when the species entry itself is a transition state:
+This example is a fragment; add <code class="docutils literal notranslate"><span class="pre">ess_settings</span></code> for your configured ESS before
+running it.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ts_opt</span>
+
+<span class="nt">level_of_theory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">apfd/def2TZVPP</span>
+<span class="nt">freq_scale_factor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.992</span>
+
+<span class="nt">species</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TS1</span>
+<span class="w">    </span><span class="nt">is_ts</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">multiplicity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<span class="w">    </span><span class="nt">xyz</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TS1/guess_1.gjf</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TS1/guess_2.gjf</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TS1/guess_3.gjf</span>
+</pre></div>
+</div>
+<p>ARC can read coordinate guesses from multiline XYZ strings, XYZ files, Gaussian
+input files, and supported ESS output files.</p>
+</section>
+<section id="python-api">
+<h2>Python API<a class="headerlink" href="#python-api" title="Link to this heading"></a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">arc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARC</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">IPython.display</span><span class="w"> </span><span class="kn">import</span> <span class="n">display</span>
-<span class="o">%</span><span class="n">matplotlib</span> <span class="n">notebook</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.reaction</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCReaction</span>
 
-<span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;propane&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;CCC&#39;</span><span class="p">)</span>
+<span class="n">n2h4</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;N2H4&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;NN&#39;</span><span class="p">)</span>
+<span class="n">nh</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;NH&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;[NH]&#39;</span><span class="p">)</span>
+<span class="n">n2h3</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;N2H3&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;N[NH]&#39;</span><span class="p">)</span>
+<span class="n">nh2</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;NH2&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;[NH2]&#39;</span><span class="p">)</span>
 
-<span class="n">xyz_list</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;&quot;&quot;O       1.35170118   -1.00275231   -0.48283333</span>
-<span class="s2">               C      -0.67437022    0.01989281    0.16029161</span>
-<span class="s2">               C       0.62797113   -0.03193934   -0.15151370</span>
-<span class="s2">               H      -1.14812497    0.95492850    0.42742905</span>
-<span class="s2">               H      -1.27300665   -0.88397696    0.14797321</span>
-<span class="s2">               H       1.11582953    0.94384729   -0.10134685&quot;&quot;&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="sd">&quot;&quot;&quot;O       1.49847909   -0.87864716    0.21971764</span>
-<span class="sd">               C      -0.69134542   -0.01812252    0.05076812</span>
-<span class="sd">               C       0.64534929    0.00412787   -0.04279617</span>
-<span class="sd">               H      -1.19713983   -0.90988817    0.40350584</span>
-<span class="sd">               H      -1.28488154    0.84437992   -0.22108130</span>
-<span class="sd">               H       1.02953840    0.95815005   -0.41011413&quot;&quot;&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="sd">&quot;&quot;&quot;O      -1.15888237    1.27653343    0.30527086</span>
-<span class="sd">               C       0.63650559   -0.15873769   -0.22478280</span>
-<span class="sd">               C      -0.59108268    0.16116823    0.20729283</span>
-<span class="sd">               H       1.31343166    0.61755575   -0.56336439</span>
-<span class="sd">               H       0.97181468   -1.18699193   -0.24372402</span>
-<span class="sd">               H      -1.17178687   -0.70952779    0.51930751&quot;&quot;&quot;</span><span class="p">]</span>
+<span class="n">reaction</span> <span class="o">=</span> <span class="n">ARCReaction</span><span class="p">(</span>
+    <span class="n">label</span><span class="o">=</span><span class="s1">&#39;N2H4 + NH &lt;=&gt; N2H3 + NH2&#39;</span><span class="p">,</span>
+    <span class="n">r_species</span><span class="o">=</span><span class="p">[</span><span class="n">n2h4</span><span class="p">,</span> <span class="n">nh</span><span class="p">],</span>
+    <span class="n">p_species</span><span class="o">=</span><span class="p">[</span><span class="n">n2h3</span><span class="p">,</span> <span class="n">nh2</span><span class="p">],</span>
+<span class="p">)</span>
 
-<span class="n">spc2</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;vinoxy&#39;</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">xyz_list</span><span class="p">)</span>
-
-<span class="n">spc3</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;propanol&#39;</span><span class="p">,</span> <span class="n">inchi</span><span class="o">=</span><span class="s1">&#39;InChI=1S/C3H8O/c1-2-3-4/h4H,2-3H2,1H3&#39;</span><span class="p">)</span>
-
-<span class="n">arc</span> <span class="o">=</span> <span class="n">ARC</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s1">&#39;arc_demo_1&#39;</span><span class="p">,</span>
-          <span class="n">ess_settings</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;gaussian&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">,</span> <span class="s1">&#39;server1&#39;</span><span class="p">],</span> <span class="s1">&#39;molpro&#39;</span><span class="p">:</span> <span class="s1">&#39;server1&#39;</span><span class="p">,</span> <span class="s1">&#39;qchem&#39;</span><span class="p">:</span> <span class="s1">&#39;server2&#39;</span><span class="p">},</span>
-          <span class="n">job_types</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;rotors&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s1">&#39;conf_opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s1">&#39;conf_sp&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s1">&#39;fine&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s1">&#39;opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="n">sp</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-          <span class="n">max_job_time</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span>
-          <span class="n">level_of_theory</span><span class="o">=</span><span class="s1">&#39;CCSD(T)-F12/cc-pVTZ-F12//wb97xd/def2tzvp&#39;</span><span class="p">,</span>
-          <span class="n">scan_level</span><span class="o">=</span><span class="s1">&#39;wb97xd/def2tzvp&#39;</span><span class="p">,</span>
-          <span class="n">conformer_opt_level</span><span class="o">=</span><span class="s1">&#39;b3lyp/6-311+g(d,p)&#39;</span><span class="p">,</span>
-          <span class="n">species</span><span class="o">=</span><span class="p">[</span><span class="n">spc1</span><span class="p">,</span> <span class="n">spc2</span><span class="p">,</span> <span class="n">spc3</span><span class="p">],</span>
-          <span class="p">)</span>
+<span class="n">arc</span> <span class="o">=</span> <span class="n">ARC</span><span class="p">(</span>
+    <span class="n">project</span><span class="o">=</span><span class="s1">&#39;api_reaction_demo&#39;</span><span class="p">,</span>
+    <span class="n">species</span><span class="o">=</span><span class="p">[</span><span class="n">n2h4</span><span class="p">,</span> <span class="n">nh</span><span class="p">,</span> <span class="n">n2h3</span><span class="p">,</span> <span class="n">nh2</span><span class="p">],</span>
+    <span class="n">reactions</span><span class="o">=</span><span class="p">[</span><span class="n">reaction</span><span class="p">],</span>
+    <span class="n">job_types</span><span class="o">=</span><span class="p">{</span>
+        <span class="s1">&#39;conf_opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;fine&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;freq&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;rotors&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="n">level_of_theory</span><span class="o">=</span><span class="s1">&#39;wb97xd/def2svp&#39;</span><span class="p">,</span>
+    <span class="n">ess_settings</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;gaussian&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">},</span>
+<span class="p">)</span>
 
 <span class="n">arc</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
 </pre></div>
 </div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">ARCSpecies</span></code> for species definitions, <code class="docutils literal notranslate"><span class="pre">ARCReaction</span></code> for reactions, and
+<code class="docutils literal notranslate"><span class="pre">ARC</span></code> for project execution. The same keyword names used in YAML are generally
+accepted by the Python API.</p>
 </section>
-<section id="optimizing-transition-states">
-<h2>Optimizing transition states<a class="headerlink" href="#optimizing-transition-states" title="Link to this heading"></a></h2>
-<p>Here’s an example for optimizing a transition state (TS) after generating several guesses, say in GaussView:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">BNdTSs</span>
+<section id="job-type-shortcuts">
+<h2>Job-Type Shortcuts<a class="headerlink" href="#job-type-shortcuts" title="Link to this heading"></a></h2>
+<p>To run only one job family, use <code class="docutils literal notranslate"><span class="pre">specific_job_type</span></code>:
+This example is a fragment; add <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code> and <code class="docutils literal notranslate"><span class="pre">ess_settings</span></code> before
+running it.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bde_demo</span>
+<span class="nt">specific_job_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bde</span>
 
-<span class="n">level_of_theory</span><span class="p">:</span> <span class="n">apfd</span><span class="o">/</span><span class="n">def2TZVPP</span>
-<span class="n">freq_scale_factor</span><span class="p">:</span> <span class="mf">0.992</span>
-
-<span class="n">species</span><span class="p">:</span>
-  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">TS1</span>
-    <span class="n">is_ts</span><span class="p">:</span> <span class="n">true</span>
-    <span class="n">multiplicity</span><span class="p">:</span> <span class="mi">2</span>
-    <span class="n">xyz</span><span class="p">:</span>
-      <span class="o">-</span> <span class="n">TS1</span><span class="o">/</span><span class="mf">1.</span><span class="n">gjf</span>
-      <span class="o">-</span> <span class="n">TS1</span><span class="o">/</span><span class="mf">2.</span><span class="n">gjf</span>
-      <span class="o">-</span> <span class="n">TS1</span><span class="o">/</span><span class="mf">3.</span><span class="n">gjf</span>
-      <span class="o">-</span> <span class="n">TS1</span><span class="o">/</span><span class="mf">4.</span><span class="n">gjf</span>
-      <span class="o">-</span> <span class="n">TS1</span><span class="o">/</span><span class="mf">5.</span><span class="n">gjf</span>
-      <span class="o">-</span> <span class="n">TS1</span><span class="o">/</span><span class="mf">6.</span><span class="n">gjf</span>
-  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">TS3</span>
-    <span class="n">is_ts</span><span class="p">:</span> <span class="n">true</span>
-    <span class="n">multiplicity</span><span class="p">:</span> <span class="mi">2</span>
-    <span class="n">xyz</span><span class="p">:</span>
-      <span class="o">-</span> <span class="n">TS3</span><span class="o">/</span><span class="mf">1.</span><span class="n">gjf</span>
-      <span class="o">-</span> <span class="n">TS3</span><span class="o">/</span><span class="mf">2.</span><span class="n">gjf</span>
-      <span class="o">-</span> <span class="n">TS3</span><span class="o">/</span><span class="mf">3.</span><span class="n">gjf</span>
-      <span class="o">-</span> <span class="n">TS3</span><span class="o">/</span><span class="mf">4.</span><span class="n">gjf</span>
+<span class="nt">species</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ethanol</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CCO</span>
 </pre></div>
 </div>
-<p>In the above example we’re using <cite>.gjf</cite> files (Gaussian job files) that contain the coordinate guesses.
-You could define <code class="docutils literal notranslate"><span class="pre">xyz</span></code> using various forms, see <a class="reference internal" href="advanced.html#flexxyz"><span class="std std-ref">Flexible coordinates (xyz) input</span></a>.</p>
-<p>Note that the main difference is the <code class="docutils literal notranslate"><span class="pre">is_ts</span></code> flag which is set to <cite>True</cite> (it is <cite>False</cite> by default).</p>
+<p>For BDE workflows, ARC automatically enables the supporting optimization,
+fine-grid, frequency, and single-point jobs required by the workflow.</p>
+</section>
+<section id="where-to-find-more-inputs">
+<h2>Where to Find More Inputs<a class="headerlink" href="#where-to-find-more-inputs" title="Link to this heading"></a></h2>
+<p>The repository includes more examples and fixtures:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">examples</span></code> - maintained YAML examples for minimal, stationary-species,
+reaction, BDE, TS, and developer/mock workflows;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ipython/Demo</span></code> - tutorial notebooks and YAML examples;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ipython/Tools</span></code> - notebook tools that exercise ARC utilities;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">arc/testing/yml_testing</span></code> - YAML fixtures used by tests;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">arc/testing/restart</span></code> - restart-file examples.</p></li>
+</ul>
 </section>
 </section>
 
@@ -260,7 +292,7 @@ You could define <code class="docutils literal notranslate"><span class="pre">xy
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="running.html" class="btn btn-neutral float-left" title="Running ARC" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="input_reference.html" class="btn btn-neutral float-left" title="Input YAML Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="TS_search.html" class="btn btn-neutral float-right" title="Transition State Search" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

@@ -1,0 +1,496 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How ARC Works &mdash; ARC 1.1.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=6285a516" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fc837d61"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Input YAML Reference" href="input_reference.html" />
+    <link rel="prev" title="Running ARC" href="running.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            ARC
+              <img src="_static/arc.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="docker.html">Docker image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">How ARC Works</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#high-level-workflow">High-Level Workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#core-objects">Core Objects</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#job-lifecycle">Job Lifecycle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#execution-paths">Execution Paths</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#data-flow">Data Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#important-data-structures">Important Data Structures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-files-are-written">Where Files Are Written</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#extension-points">Extension Points</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#related-pages">Related Pages</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="input_reference.html">Input YAML Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TS_search.html">Transition State Search</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone Tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="licence.html">Licence</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">ARC</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">How ARC Works</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/how_it_works.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="how-arc-works">
+<span id="how-it-works"></span><h1>How ARC Works<a class="headerlink" href="#how-arc-works" title="Link to this heading"></a></h1>
+<p>ARC is organized around a small set of core objects and a scheduler that turns
+chemical intent into electronic structure jobs. This page gives the system map:
+what happens after ARC reads an input file, which objects own which data, and
+where outputs come from.</p>
+<section id="high-level-workflow">
+<h2>High-Level Workflow<a class="headerlink" href="#high-level-workflow" title="Link to this heading"></a></h2>
+<p>An ARC run follows this general path:</p>
+<ol class="arabic simple">
+<li><p>Read an <code class="docutils literal notranslate"><span class="pre">input.yml</span></code> or restart file.</p></li>
+<li><p>Build an <a class="reference internal" href="api/main.html#main"><span class="std std-ref">ARC</span></a> project object.</p></li>
+<li><p>Convert <code class="docutils literal notranslate"><span class="pre">species</span></code> entries into <a class="reference internal" href="api/species.html#species"><span class="std std-ref">ARCSpecies</span></a> objects.</p></li>
+<li><p>Convert <code class="docutils literal notranslate"><span class="pre">reactions</span></code> entries into <a class="reference internal" href="api/reaction.html#reaction"><span class="std std-ref">ARCReaction</span></a> objects.</p></li>
+<li><p>Resolve levels of theory, job types, ESS routing, and project directories.</p></li>
+<li><p>Start the scheduler.</p></li>
+<li><p>Generate conformers, TS guesses, rotor scans, and ESS jobs as requested.</p></li>
+<li><p>Submit jobs locally or through SSH/scheduler adapters.</p></li>
+<li><p>Parse completed outputs, troubleshoot failures, and update <code class="docutils literal notranslate"><span class="pre">restart.yml</span></code>.</p></li>
+<li><p>Run statmech processing and write output libraries, plots, status files, and
+processed geometries.</p></li>
+</ol>
+<figure class="align-default" id="id1">
+<div class="graphviz"><img src="_images/graphviz-f54e53a7655203f11410f17e8252057ac52851bd.png" alt="digraph arc_workflow {
+   graph [rankdir=LR, bgcolor=&quot;transparent&quot;];
+   node [shape=box, style=&quot;rounded,filled&quot;, fillcolor=&quot;#f5f7fa&quot;, color=&quot;#9fb3c8&quot;, fontname=&quot;Helvetica&quot;];
+   edge [color=&quot;#5b6676&quot;, fontname=&quot;Helvetica&quot;];
+
+   input [label=&quot;input.yml\nor restart.yml&quot;];
+   arc [label=&quot;ARC project&quot;];
+   objects [label=&quot;ARCSpecies\nARCReaction&quot;];
+   scheduler [label=&quot;Scheduler&quot;];
+   jobs [label=&quot;JobAdapter\nESS jobs&quot;];
+   parse [label=&quot;Parsers\nTroubleshooting&quot;];
+   statmech [label=&quot;Arkane/statmech\nprocessing&quot;];
+   output [label=&quot;restart.yml\nstatus.yml\nlibraries\nplots&quot;];
+
+   input -&gt; arc -&gt; objects -&gt; scheduler -&gt; jobs -&gt; parse -&gt; scheduler;
+   parse -&gt; statmech -&gt; output;
+   scheduler -&gt; output [label=&quot;updates&quot;];
+}" class="graphviz" /></div>
+<figcaption>
+<p><span class="caption-text">The main ARC run loop.</span><a class="headerlink" href="#id1" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+</section>
+<section id="core-objects">
+<h2>Core Objects<a class="headerlink" href="#core-objects" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">ARC</span></code></dt><dd><p>The project entry point. It owns user-facing project options such as
+<code class="docutils literal notranslate"><span class="pre">project</span></code>, <code class="docutils literal notranslate"><span class="pre">species</span></code>, <code class="docutils literal notranslate"><span class="pre">reactions</span></code>, <code class="docutils literal notranslate"><span class="pre">job_types</span></code>, levels of theory,
+ESS routing, statmech settings, resource settings, and restart state.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">ARCSpecies</span></code></dt><dd><p>The species representation. It stores labels, graph representations,
+charge/multiplicity, XYZ data, conformers, rotor information, thermo data,
+TS metadata, BDE requests, and output-related state.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">ARCReaction</span></code></dt><dd><p>The reaction representation. It stores reactant/product labels or species
+objects, atom mapping state, reaction charge/multiplicity, TS guesses, TS
+labels, family information, and kinetics data.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Scheduler</span></code></dt><dd><p>The central job orchestrator. It decides which jobs are needed, creates job
+adapters, submits jobs, polls job status, parses results, applies
+troubleshooting, and advances species/reaction state.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Level</span></code></dt><dd><p>The level-of-theory representation. It normalizes method, basis, ESS,
+auxiliary basis, F12 CABS, solvation, arguments, and Arkane correction-year
+metadata.</p>
+</dd>
+</dl>
+</section>
+<section id="job-lifecycle">
+<h2>Job Lifecycle<a class="headerlink" href="#job-lifecycle" title="Link to this heading"></a></h2>
+<p>Most ESS jobs move through the same lifecycle:</p>
+<ol class="arabic simple">
+<li><p>ARC determines that a job type is needed for a species, TS, reaction, rotor,
+or conformer.</p></li>
+<li><p>The scheduler calls the job factory to create the correct adapter.</p></li>
+<li><p>The adapter writes an ESS input file and a submit script.</p></li>
+<li><p>ARC submits the job through the configured local or SSH execution path.</p></li>
+<li><p>The scheduler periodically checks job status.</p></li>
+<li><p>When the job finishes, ARC parses geometry, energy, frequencies, scan data,
+or other output as appropriate.</p></li>
+<li><p>If the job failed and troubleshooting is enabled, ARC classifies the failure,
+modifies settings or input, and resubmits when a recovery path exists.</p></li>
+<li><p>ARC updates output state and <code class="docutils literal notranslate"><span class="pre">restart.yml</span></code> so the project can continue
+after interruption.</p></li>
+</ol>
+<figure class="align-default" id="id2">
+<div class="graphviz"><img src="_images/graphviz-a31e524950488d8626efb52b0a1686fbf615d2af.png" alt="digraph job_lifecycle {
+   graph [rankdir=LR, bgcolor=&quot;transparent&quot;];
+   node [shape=box, style=&quot;rounded,filled&quot;, fillcolor=&quot;#f8fafc&quot;, color=&quot;#9fb3c8&quot;, fontname=&quot;Helvetica&quot;];
+   edge [color=&quot;#5b6676&quot;, fontname=&quot;Helvetica&quot;];
+
+   needed [label=&quot;Job needed&quot;];
+   factory [label=&quot;job_factory()&quot;];
+   adapter [label=&quot;JobAdapter&quot;];
+   submit [label=&quot;write input\nsubmit script&quot;];
+   run [label=&quot;scheduler/ESS run&quot;];
+   done [label=&quot;parse output&quot;];
+   trsh [label=&quot;troubleshoot\nif failed&quot;];
+   state [label=&quot;update state\nrestart.yml&quot;];
+
+   needed -&gt; factory -&gt; adapter -&gt; submit -&gt; run -&gt; done -&gt; state;
+   done -&gt; trsh [label=&quot;failed&quot;];
+   trsh -&gt; submit [label=&quot;resubmit&quot;];
+}" class="graphviz" /></div>
+<figcaption>
+<p><span class="caption-text">A typical ESS job lifecycle.</span><a class="headerlink" href="#id2" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+</section>
+<section id="execution-paths">
+<h2>Execution Paths<a class="headerlink" href="#execution-paths" title="Link to this heading"></a></h2>
+<p>ARC distinguishes where it runs from where ESS jobs run:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">local</span></code></dt><dd><p>The reserved server name for jobs submitted from the same host or login
+environment where ARC is running. This still normally uses a scheduler such
+as Slurm, OGE/SGE, PBS, or HTCondor.</p>
+</dd>
+<dt>Remote SSH server</dt><dd><p>ARC connects to a configured SSH host, writes project/job files remotely,
+submits jobs through that host’s scheduler, and downloads outputs for
+parsing.</p>
+</dd>
+<dt>Pipe mode</dt><dd><p>An opt-in execution path for large homogeneous HPC batches. It stages many
+ready tasks into a shared task directory and uses scheduler array workers to
+claim and execute tasks.</p>
+</dd>
+</dl>
+</section>
+<section id="data-flow">
+<h2>Data Flow<a class="headerlink" href="#data-flow" title="Link to this heading"></a></h2>
+<p>The most common data path is:</p>
+<figure class="align-default" id="id3">
+<div class="graphviz"><img src="_images/graphviz-6f4d8564c9a8f88d0029e8d249483cb2babdf1a4.png" alt="digraph data_flow {
+   graph [rankdir=TB, bgcolor=&quot;transparent&quot;];
+   node [shape=box, style=&quot;rounded,filled&quot;, fillcolor=&quot;#f5f7fa&quot;, color=&quot;#9fb3c8&quot;, fontname=&quot;Helvetica&quot;];
+   edge [color=&quot;#5b6676&quot;, fontname=&quot;Helvetica&quot;];
+
+   input [label=&quot;input.yml&quot;];
+   arc [label=&quot;ARC(...)&quot;];
+   species [label=&quot;ARCSpecies&quot;];
+   reaction [label=&quot;ARCReaction&quot;];
+   scheduler [label=&quot;Scheduler&quot;];
+   adapter [label=&quot;JobAdapter&quot;];
+   ess [label=&quot;ESS input/output&quot;];
+   parsed [label=&quot;Parsed geometry,\nenergy, freq, scans&quot;];
+   outputs [label=&quot;status.yml\nrestart.yml\ngeometry files\nRMG libraries\nplots&quot;];
+
+   input -&gt; arc;
+   arc -&gt; species;
+   arc -&gt; reaction;
+   species -&gt; scheduler;
+   reaction -&gt; scheduler;
+   scheduler -&gt; adapter -&gt; ess -&gt; parsed -&gt; scheduler;
+   scheduler -&gt; outputs;
+}" class="graphviz" /></div>
+<figcaption>
+<p><span class="caption-text">Data flow from user input to processed outputs.</span><a class="headerlink" href="#id3" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<p>Restart files are not a separate format. They are expanded ARC input files that
+also include accumulated state such as running jobs, output paths, and parsed
+results.</p>
+</section>
+<section id="important-data-structures">
+<h2>Important Data Structures<a class="headerlink" href="#important-data-structures" title="Link to this heading"></a></h2>
+<dl>
+<dt>XYZ dictionary</dt><dd><p>ARC’s internal Cartesian coordinate format. It contains <code class="docutils literal notranslate"><span class="pre">symbols</span></code>,
+<code class="docutils literal notranslate"><span class="pre">isotopes</span></code>, and <code class="docutils literal notranslate"><span class="pre">coords</span></code> tuples. Most coordinate strings and files are
+normalized into this structure.</p>
+<p>Template:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">xyz</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;symbols&#39;</span><span class="p">:</span> <span class="p">(</span><span class="s1">&#39;C&#39;</span><span class="p">,</span> <span class="s1">&#39;O&#39;</span><span class="p">,</span> <span class="s1">&#39;H&#39;</span><span class="p">,</span> <span class="s1">&#39;H&#39;</span><span class="p">,</span> <span class="s1">&#39;H&#39;</span><span class="p">,</span> <span class="s1">&#39;H&#39;</span><span class="p">),</span>
+    <span class="s1">&#39;isotopes&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+    <span class="s1">&#39;coords&#39;</span><span class="p">:</span> <span class="p">(</span>
+        <span class="p">(</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">),</span>
+        <span class="p">(</span><span class="mf">1.420000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">),</span>
+        <span class="p">(</span><span class="o">-</span><span class="mf">0.540000</span><span class="p">,</span> <span class="mf">0.935000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">),</span>
+        <span class="p">(</span><span class="o">-</span><span class="mf">0.540000</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.467000</span><span class="p">,</span> <span class="mf">0.809000</span><span class="p">),</span>
+        <span class="p">(</span><span class="o">-</span><span class="mf">0.540000</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.467000</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.809000</span><span class="p">),</span>
+        <span class="p">(</span><span class="mf">1.780000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.960000</span><span class="p">),</span>
+    <span class="p">),</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</dd>
+<dt>Z-matrix dictionary</dt><dd><p>Internal-coordinate representation used by geometry and rotor workflows. It
+stores symbols, coordinate parameter names, parameter values, and atom maps.</p>
+<p>Template:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">zmat</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;symbols&#39;</span><span class="p">:</span> <span class="p">(</span><span class="s1">&#39;C&#39;</span><span class="p">,</span> <span class="s1">&#39;O&#39;</span><span class="p">,</span> <span class="s1">&#39;H&#39;</span><span class="p">),</span>
+    <span class="s1">&#39;coords&#39;</span><span class="p">:</span> <span class="p">(</span>
+        <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;R_1_0&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;R_2_0&#39;</span><span class="p">,</span> <span class="s1">&#39;A_2_0_1&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+    <span class="p">),</span>
+    <span class="s1">&#39;vars&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;R_1_0&#39;</span><span class="p">:</span> <span class="mf">1.42</span><span class="p">,</span>
+        <span class="s1">&#39;R_2_0&#39;</span><span class="p">:</span> <span class="mf">1.09</span><span class="p">,</span>
+        <span class="s1">&#39;A_2_0_1&#39;</span><span class="p">:</span> <span class="mf">109.5</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s1">&#39;map&#39;</span><span class="p">:</span> <span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</dd>
+<dt>Conformer dictionaries</dt><dd><p>Candidate conformers contain an XYZ dictionary plus metadata such as source,
+index, force-field energy, torsion information, chirality information, and
+distance-matrix data where relevant.</p>
+<p>Template:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">conformer</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;xyz&#39;</span><span class="p">:</span> <span class="n">xyz</span><span class="p">,</span>
+    <span class="s1">&#39;index&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="s1">&#39;FF energy&#39;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+    <span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="s1">&#39;RDKit&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;torsion_dihedrals&#39;</span><span class="p">:</span> <span class="p">{(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">):</span> <span class="mf">180.0</span><span class="p">},</span>
+    <span class="s1">&#39;chirality&#39;</span><span class="p">:</span> <span class="p">{},</span>
+    <span class="s1">&#39;dmat&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</dd>
+<dt>Rotor dictionaries</dt><dd><p>Species rotor information is stored by rotor index. Entries include pivots,
+tops, scan definitions, torsions, scan paths, invalidation reasons, symmetry,
+and scan results.</p>
+<p>Template:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">rotors_dict</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="mi">0</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;pivots&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+        <span class="s1">&#39;top&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span>
+        <span class="s1">&#39;scan&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span>
+        <span class="s1">&#39;torsion&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+        <span class="s1">&#39;success&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s1">&#39;invalidation_reason&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;scan_path&#39;</span><span class="p">:</span> <span class="s1">&#39;/path/to/scan/output.out&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_e&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s1">&#39;trsh_counter&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="s1">&#39;trsh_methods&#39;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s1">&#39;symmetry&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s1">&#39;dimensions&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="s1">&#39;directed_scan&#39;</span><span class="p">:</span> <span class="p">{},</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</dd>
+<dt>Status dictionaries</dt><dd><p>ARC writes structured status information for species, TSs, reactions, job
+convergence, paths, warnings, and errors so users can inspect project state
+without reading every output file.</p>
+<p>Representative <code class="docutils literal notranslate"><span class="pre">output/status.yml</span></code> shape:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">species</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">ethanol</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">converged</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">isomorphism</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">paths</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">geo</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/path/to/output/Species/ethanol/geometry/ethanol.xyz</span>
+<span class="w">      </span><span class="nt">freq</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/path/to/calcs/Species/ethanol/freq_a123/output.out</span>
+<span class="w">    </span><span class="nt">warnings</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
+<span class="w">    </span><span class="nt">errors</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
+<span class="nt">reactions</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">ethanol + OH &lt;=&gt; products</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">converged</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="w">    </span><span class="nt">warnings</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TS search incomplete</span>
+</pre></div>
+</div>
+</dd>
+<dt>Job dictionaries</dt><dd><p>The scheduler tracks active and completed jobs by species/reaction label and
+job type. This is the state that lets ARC restart after interruption.</p>
+<p>Simplified shape:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">job_dict</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;ethanol&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;conf_opt&#39;</span><span class="p">:</span> <span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="s1">&#39;&lt;JobAdapter&gt;&#39;</span><span class="p">},</span>
+        <span class="s1">&#39;opt&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;opt_a123&#39;</span><span class="p">:</span> <span class="s1">&#39;&lt;JobAdapter&gt;&#39;</span><span class="p">},</span>
+        <span class="s1">&#39;freq&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;freq_a124&#39;</span><span class="p">:</span> <span class="s1">&#39;&lt;JobAdapter&gt;&#39;</span><span class="p">},</span>
+        <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;sp_a125&#39;</span><span class="p">:</span> <span class="s1">&#39;&lt;JobAdapter&gt;&#39;</span><span class="p">},</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</dd>
+</dl>
+<figure class="align-default" id="id4">
+<div class="graphviz"><img src="_images/graphviz-5d8f87b97f32888544da70effebe89037fa2e96f.png" alt="digraph data_structures {
+   graph [rankdir=LR, bgcolor=&quot;transparent&quot;];
+   node [shape=box, style=&quot;rounded,filled&quot;, fillcolor=&quot;#f8fafc&quot;, color=&quot;#9fb3c8&quot;, fontname=&quot;Helvetica&quot;];
+   edge [color=&quot;#5b6676&quot;, fontname=&quot;Helvetica&quot;];
+
+   xyz [label=&quot;XYZ dict&quot;];
+   zmat [label=&quot;Z-matrix dict&quot;];
+   conformer [label=&quot;Conformer dict&quot;];
+   rotor [label=&quot;Rotor dict&quot;];
+   species [label=&quot;ARCSpecies&quot;];
+   scheduler [label=&quot;Scheduler&quot;];
+   output [label=&quot;status.yml\nrestart.yml&quot;];
+
+   xyz -&gt; species;
+   zmat -&gt; species;
+   conformer -&gt; species;
+   rotor -&gt; species;
+   species -&gt; scheduler;
+   scheduler -&gt; output;
+}" class="graphviz" /></div>
+<figcaption>
+<p><span class="caption-text">Common ARC data structures and where they are used.</span><a class="headerlink" href="#id4" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+</section>
+<section id="where-files-are-written">
+<h2>Where Files Are Written<a class="headerlink" href="#where-files-are-written" title="Link to this heading"></a></h2>
+<p>Local project outputs are written under <code class="docutils literal notranslate"><span class="pre">project_directory</span></code>. If no explicit
+directory is given, command-line runs use the input file directory and API runs
+default to <code class="docutils literal notranslate"><span class="pre">ARC/Projects/&lt;project&gt;</span></code>.</p>
+<p>Inside a project, the key paths are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">arc.log</span></code> - human-readable execution log.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">restart.yml</span></code> - restartable ARC state.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">calcs/</span></code> - job inputs, submit scripts, raw ESS outputs, and auxiliary files.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">output/status.yml</span></code> - project status summary.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">output/Species</span></code> - processed species outputs and geometries.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">output/rxns</span></code> - processed reaction outputs.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">output/RMG</span> <span class="pre">libraries</span></code> - thermo and kinetics libraries when generated.</p></li>
+</ul>
+<p>Remote jobs use project directories on the selected server. The optional
+<code class="docutils literal notranslate"><span class="pre">path</span></code> key in a server definition controls the base path for remote project
+storage.</p>
+</section>
+<section id="extension-points">
+<h2>Extension Points<a class="headerlink" href="#extension-points" title="Link to this heading"></a></h2>
+<p>ARC is intentionally adapter-driven:</p>
+<ul class="simple">
+<li><p>ESS support lives in job adapters.</p></li>
+<li><p>Parser support lives in parser adapters and parser helpers.</p></li>
+<li><p>TS search methods are registered adapters.</p></li>
+<li><p>Statmech processing is selected through statmech adapters.</p></li>
+<li><p>Site-specific scheduler and submit behavior is configured in <code class="docutils literal notranslate"><span class="pre">settings.py</span></code>
+and <code class="docutils literal notranslate"><span class="pre">submit.py</span></code> overrides.</p></li>
+</ul>
+<p>For normal users, these extension points mostly appear as input/settings choices.
+For developers, they are the places to add new ESS integrations, TS generation
+methods, statmech backends, or scheduler behavior.</p>
+</section>
+<section id="related-pages">
+<h2>Related Pages<a class="headerlink" href="#related-pages" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="input_reference.html#input-reference"><span class="std std-ref">Input YAML Reference</span></a> for accepted YAML keys.</p></li>
+<li><p><a class="reference internal" href="running.html#running"><span class="std std-ref">Running ARC</span></a> for execution modes.</p></li>
+<li><p><a class="reference internal" href="advanced.html#advanced"><span class="std std-ref">Advanced Usage</span></a> for levels, job types, resources, troubleshooting, and pipe mode.</p></li>
+<li><p><a class="reference internal" href="output.html#output"><span class="std std-ref">Output</span></a> for generated files and project structure.</p></li>
+<li><p><a class="reference internal" href="api/index.html#api"><span class="std std-ref">ARC’s API</span></a> for the detailed Python API.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="running.html" class="btn btn-neutral float-left" title="Running ARC" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="input_reference.html" class="btn btn-neutral float-right" title="Input YAML Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2026, Alon Grinberg Dana.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

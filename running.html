@@ -9,6 +9,8 @@
   <title>Running ARC &mdash; ARC 1.1.0 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=6285a516" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
@@ -19,7 +21,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Examples" href="examples.html" />
+    <link rel="next" title="How ARC Works" href="how_it_works.html" />
     <link rel="prev" title="Docker image" href="docker.html" /> 
 </head>
 
@@ -33,6 +35,7 @@
           
           <a href="index.html" class="icon icon-home">
             ARC
+              <img src="_static/arc.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -42,21 +45,35 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation instructions</a></li>
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="docker.html">Docker image</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Running ARC</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#using-an-input-file">Using an input file</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#using-the-api">Using the API</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#running-arkane-independently">Running Arkane independently</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#activate-arc-first">Activate ARC First</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#run-from-yaml">Run from YAML</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#restart-a-project">Restart a Project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#run-from-python">Run from Python</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#run-locally">Run Locally</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#run-over-ssh">Run over SSH</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#run-on-hpc">Run on HPC</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#run-arkane-independently">Run Arkane Independently</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="how_it_works.html">How ARC Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="TS_search.html">Transition State Search</a></li>
-<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone Tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
 <li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
@@ -91,111 +108,150 @@
              
   <section id="running-arc">
 <span id="running"></span><h1>Running ARC<a class="headerlink" href="#running-arc" title="Link to this heading"></a></h1>
-<section id="using-an-input-file">
-<h2>Using an input file<a class="headerlink" href="#using-an-input-file" title="Link to this heading"></a></h2>
-<p>To run ARC, make sure to first activate the ARC environment
-(see the <a class="reference internal" href="installation.html#arce"><span class="std std-ref">installation instructions</span></a>).
-Then simply type:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">&lt;</span><span class="n">path_to_the_ARC_folder</span><span class="o">&gt;/</span><span class="n">ARC</span><span class="o">.</span><span class="n">py</span> <span class="nb">input</span><span class="o">.</span><span class="n">yml</span>
-</pre></div>
-</div>
-<p>replacing <code class="docutils literal notranslate"><span class="pre">&lt;path_to_the_ARC_folder&gt;</span></code> in the above command with the actual path to ARC.
-You could of course name the input file whatever you like.
-However, if you’re using the <a class="reference internal" href="installation.html#aliases"><span class="std std-ref">recommended aliases</span></a>, then simply typing:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">arc</span>
-</pre></div>
-</div>
-<p>in any folder with a valid <code class="docutils literal notranslate"><span class="pre">input.yml</span></code> file will execute ARC using that file.</p>
-<p>ARC automatically creates restart files, which have the same format as an input file.
-If ARC crashes (e.g., due to a bug which was later fixed, or due to connectivity issues), typing:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">arcrestart</span>
-</pre></div>
-</div>
-<p>in a folder containing an ARC restart.yml file
-(assuming you’re using the <a class="reference internal" href="installation.html#aliases"><span class="std std-ref">recommended aliases</span></a>)
-will cause ARC to execute, considering all previously spawned jobs specified in the restart file.
-In restart mode, ARC is aware of all past submitted jobs and collects their
-output files or waits for them to terminate if they are still running.</p>
-<p>ARC’s adopts the <a class="reference external" href="https://yaml.org/">YAML</a> format for its input/restart files.
-In fact, a restart file is nothing but a very detailed
-input file, and internally ARC treats them the same.
-Other than the file name, the difference is that the restart file
-was automatically generated.</p>
-<p>A (very) simple input file might look like this:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">example1</span>
-
-<span class="n">species</span><span class="p">:</span>
-  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">ethanol</span>
-    <span class="n">smiles</span><span class="p">:</span> <span class="n">CCO</span>
-</pre></div>
-</div>
-<p>All the parameters of <a class="reference internal" href="api/main.html#main"><span class="std std-ref">arc.main.ARC</span></a> class are legal input file keywords.
-Specifying species and reactions lists define <a class="reference internal" href="api/species.html#species"><span class="std std-ref">ARCSpecies</span></a> and <a class="reference internal" href="api/reaction.html#reaction"><span class="std std-ref">ARCReaction</span></a>
-object. See ARC’s API for a complete and updated list of keywords along with their allowed types.</p>
-<p>Additional input file examples are available in ARC’s examples folder
-(<a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/tree/main/examples">ARC/examples</a>).
-Another convenient way to see a valid and detailed input file is to run an ARC job
-and peak at the automatically generated <code class="docutils literal notranslate"><span class="pre">restart.yml</span></code> file.</p>
-<p>A sample reaction input file with a user-supplied TS geometry guess is:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">example2</span>
-
-<span class="n">species</span><span class="p">:</span>
-  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">N2H4</span>
-    <span class="n">smiles</span><span class="p">:</span> <span class="n">NN</span>
-
-  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">NH</span>
-    <span class="n">smiles</span><span class="p">:</span> <span class="s1">&#39;[NH]&#39;</span>
-
-  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">N2H3</span>
-    <span class="n">smiles</span><span class="p">:</span> <span class="n">N</span><span class="p">[</span><span class="n">NH</span><span class="p">]</span>
-
-  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">NH2</span>
-    <span class="n">smiles</span><span class="p">:</span> <span class="s1">&#39;[NH2]&#39;</span>
-
-<span class="n">reactions</span><span class="p">:</span>
-  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">N2H4</span> <span class="o">+</span> <span class="n">NH</span> <span class="o">&lt;=&gt;</span> <span class="n">N2H3</span> <span class="o">+</span> <span class="n">NH2</span>
-    <span class="n">ts_xyz_guess</span><span class="p">:</span>
-    <span class="o">-</span> <span class="o">|</span>
-      <span class="n">N</span>      <span class="o">-</span><span class="mf">0.4465194713</span>     <span class="mf">0.6830090994</span>    <span class="o">-</span><span class="mf">0.0932618217</span>
-      <span class="n">H</span>      <span class="o">-</span><span class="mf">0.4573825998</span>     <span class="mf">1.1483344874</span>     <span class="mf">0.8104886823</span>
-      <span class="n">H</span>       <span class="mf">0.6773598975</span>     <span class="mf">0.3820642106</span>    <span class="o">-</span><span class="mf">0.2197000290</span>
-      <span class="n">N</span>      <span class="o">-</span><span class="mf">1.2239012380</span>    <span class="o">-</span><span class="mf">0.4695695875</span>    <span class="o">-</span><span class="mf">0.0069891203</span>
-      <span class="n">H</span>      <span class="o">-</span><span class="mf">1.8039356973</span>    <span class="o">-</span><span class="mf">0.5112019151</span>     <span class="mf">0.8166872835</span>
-      <span class="n">H</span>      <span class="o">-</span><span class="mf">1.7837217777</span>    <span class="o">-</span><span class="mf">0.5685801608</span>    <span class="o">-</span><span class="mf">0.8405154279</span>
-      <span class="n">N</span>       <span class="mf">1.9039017235</span>    <span class="o">-</span><span class="mf">0.1568337145</span>    <span class="o">-</span><span class="mf">0.0766247796</span>
-      <span class="n">H</span>       <span class="mf">1.7333130781</span>    <span class="o">-</span><span class="mf">0.8468572038</span>     <span class="mf">0.6711695415</span>
+<p>ARC can be run from a YAML input file, from Python, or from notebooks. The same
+configuration concepts apply in all modes: define species and reactions, choose
+job types and levels of theory, and map electronic structure software to local
+or remote compute resources.</p>
+<section id="activate-arc-first">
+<h2>Activate ARC First<a class="headerlink" href="#activate-arc-first" title="Link to this heading"></a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">arc_env</span></code> for development and execution:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>activate<span class="w"> </span>arc_env
 </pre></div>
 </div>
 </section>
-<section id="using-the-api">
-<h2>Using the API<a class="headerlink" href="#using-the-api" title="Link to this heading"></a></h2>
-<p>To run ARC, make sure to first activate the ARC environment
-(see the <a class="reference internal" href="installation.html#arce"><span class="std std-ref">installation instructions</span></a>).</p>
-<p>ARC’s API can be reached from any python platform, if ARC was added to the PYTHONPATH
-(see the <a class="reference internal" href="installation.html#path"><span class="std std-ref">installation instructions</span></a>).</p>
-<p>Running ARC using <a class="reference external" href="https://jupyter.org/">Jupyter notebooks</a> (comes pre-installed with Anaconda)
-has the benefit of displaying “live” and interactive
-3D geometries for the species of interest.</p>
-<p>Example iPython notebooks are available in the
-<a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/tree/main/ipython/Demo">ipython/Demo</a>
-folder. Various <a class="reference internal" href="tools.html#tools"><span class="std std-ref">standalone tools</span></a> in an iPython format are also available,
-demonstrating different utilizations of the API.
-Users are of course directed to read <a class="reference internal" href="api/index.html#api"><span class="std std-ref">ARC’s API</span></a>.</p>
+<section id="run-from-yaml">
+<h2>Run from YAML<a class="headerlink" href="#run-from-yaml" title="Link to this heading"></a></h2>
+<p>Create an <code class="docutils literal notranslate"><span class="pre">input.yml</span></code>:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ethanol_demo</span>
+
+<span class="nt">species</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ethanol</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CCO</span>
+</pre></div>
+</div>
+<p>Run it from the repository checkout:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>ARC.py<span class="w"> </span>input.yml
+</pre></div>
+</div>
+<p>Or from elsewhere:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>/path/to/ARC/ARC.py<span class="w"> </span>/path/to/input.yml
+</pre></div>
+</div>
+<p>ARC writes project files under <code class="docutils literal notranslate"><span class="pre">Projects/&lt;project&gt;</span></code> by default unless
+<code class="docutils literal notranslate"><span class="pre">project_directory</span></code> is supplied.
+All parameters of <a class="reference internal" href="api/main.html#main"><span class="std std-ref">arc.main.ARC</span></a> are legal top-level input file
+keywords. Entries under <code class="docutils literal notranslate"><span class="pre">species</span></code> and <code class="docutils literal notranslate"><span class="pre">reactions</span></code> define
+<a class="reference internal" href="api/species.html#species"><span class="std std-ref">ARCSpecies</span></a> and <a class="reference internal" href="api/reaction.html#reaction"><span class="std std-ref">ARCReaction</span></a> objects. See
+<a class="reference internal" href="input_reference.html#input-reference"><span class="std std-ref">Input YAML Reference</span></a> for the full input-key checklist.</p>
 </section>
-<section id="running-arkane-independently">
-<span id="arkane-standalone"></span><h2>Running Arkane independently<a class="headerlink" href="#running-arkane-independently" title="Link to this heading"></a></h2>
-<p>ARC runs Arkane automatically for statmech, but you can also run Arkane on its own.
-Make sure RMG-Py and the RMG database are available, then run Arkane with your input file.</p>
-<p>Conda install (recommended):</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">conda</span> <span class="n">run</span> <span class="o">-</span><span class="n">n</span> <span class="n">rmg_env</span> <span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">arkane</span> <span class="nb">input</span><span class="o">.</span><span class="n">py</span>
+<section id="restart-a-project">
+<h2>Restart a Project<a class="headerlink" href="#restart-a-project" title="Link to this heading"></a></h2>
+<p>ARC writes <code class="docutils literal notranslate"><span class="pre">restart.yml</span></code> files that contain the current state of the project,
+including submitted jobs. To restart, run ARC with the restart file:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>/path/to/ARC/ARC.py<span class="w"> </span>restart.yml
 </pre></div>
 </div>
-<p>Source install:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">export</span> <span class="n">RMG_PY_PATH</span><span class="o">=/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">RMG</span><span class="o">-</span><span class="n">Py</span>
-<span class="n">export</span> <span class="n">RMG_DB_PATH</span><span class="o">=/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">RMG</span><span class="o">-</span><span class="n">database</span>
-<span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">arkane</span> <span class="nb">input</span><span class="o">.</span><span class="n">py</span>
+<p>In restart mode, ARC can collect finished jobs, keep waiting for jobs that are
+still running, and continue work that was not completed.</p>
+</section>
+<section id="run-from-python">
+<h2>Run from Python<a class="headerlink" href="#run-from-python" title="Link to this heading"></a></h2>
+<p>Use the Python API when you want to generate inputs programmatically, integrate
+ARC into scripts, or work in a notebook:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">arc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARC</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span>
+
+<span class="n">ethanol</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;ethanol&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;CCO&#39;</span><span class="p">)</span>
+
+<span class="n">arc</span> <span class="o">=</span> <span class="n">ARC</span><span class="p">(</span>
+    <span class="n">project</span><span class="o">=</span><span class="s1">&#39;ethanol_api_demo&#39;</span><span class="p">,</span>
+    <span class="n">species</span><span class="o">=</span><span class="p">[</span><span class="n">ethanol</span><span class="p">],</span>
+    <span class="n">job_types</span><span class="o">=</span><span class="p">{</span>
+        <span class="s1">&#39;conf_opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;fine&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;freq&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;rotors&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="n">level_of_theory</span><span class="o">=</span><span class="s1">&#39;wb97xd/def2svp&#39;</span><span class="p">,</span>
+    <span class="n">ess_settings</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;gaussian&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">},</span>
+<span class="p">)</span>
+
+<span class="n">arc</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
 </pre></div>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">ARC</span></code> also accepts species and reaction dictionaries, so YAML-style inputs can
+be converted into API calls without manually constructing every object.</p>
+<p>Running ARC in <a class="reference external" href="https://jupyter.org/">Jupyter notebooks</a> (which come pre-installed with Anaconda) has
+the added benefit of displaying “live” and interactive 3D geometries for the
+species of interest.</p>
+</section>
+<section id="run-locally">
+<h2>Run Locally<a class="headerlink" href="#run-locally" title="Link to this heading"></a></h2>
+<p>Use local mode when ARC and the relevant electronic structure software are on
+the same machine or cluster login environment. Configure <code class="docutils literal notranslate"><span class="pre">servers</span></code> with the
+reserved <code class="docutils literal notranslate"><span class="pre">local</span></code> key and route software to <code class="docutils literal notranslate"><span class="pre">local</span></code>:
+Here, <code class="docutils literal notranslate"><span class="pre">local</span></code> means ARC does not use SSH for that server. The job is still
+submitted using the configured scheduler and submit template.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;local&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;cluster_soft&#39;</span><span class="p">:</span> <span class="s1">&#39;Slurm&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;un&#39;</span><span class="p">:</span> <span class="s1">&#39;my_user&#39;</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+
+<span class="n">global_ess_settings</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;gaussian&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;orca&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;xtb&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="run-over-ssh">
+<h2>Run over SSH<a class="headerlink" href="#run-over-ssh" title="Link to this heading"></a></h2>
+<p>Use SSH mode when ARC runs on your workstation but submits jobs on one or more
+remote servers. Configure each remote server with <code class="docutils literal notranslate"><span class="pre">address</span></code>, <code class="docutils literal notranslate"><span class="pre">un</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">key</span></code>, then route ESS names to those servers:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;cluster_a&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;cluster_soft&#39;</span><span class="p">:</span> <span class="s1">&#39;Slurm&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;address&#39;</span><span class="p">:</span> <span class="s1">&#39;login.cluster.edu&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;un&#39;</span><span class="p">:</span> <span class="s1">&#39;my_user&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;key&#39;</span><span class="p">:</span> <span class="s1">&#39;/home/my_user/.ssh/id_rsa&#39;</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+
+<span class="n">global_ess_settings</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;gaussian&#39;</span><span class="p">:</span> <span class="s1">&#39;cluster_a&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;molpro&#39;</span><span class="p">:</span> <span class="s1">&#39;cluster_a&#39;</span><span class="p">,</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="run-on-hpc">
+<h2>Run on HPC<a class="headerlink" href="#run-on-hpc" title="Link to this heading"></a></h2>
+<p>On HPC systems, ARC usually runs on a login or workflow node and submits ESS jobs
+through the scheduler. The important site-specific pieces are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">cluster_soft</span></code> in each server entry;</p></li>
+<li><p>submit command paths in <code class="docutils literal notranslate"><span class="pre">settings.py</span></code> if the defaults do not match your site;</p></li>
+<li><p>submit script templates in <code class="docutils literal notranslate"><span class="pre">submit.py</span></code>;</p></li>
+<li><p>scratch paths, queue names, wall time, memory, and CPU limits.</p></li>
+</ul>
+<p>Keep the scheduler template variables such as <code class="docutils literal notranslate"><span class="pre">{memory}</span></code>, <code class="docutils literal notranslate"><span class="pre">{cpus}</span></code>,
+<code class="docutils literal notranslate"><span class="pre">{name}</span></code>, and <code class="docutils literal notranslate"><span class="pre">{input_file}</span></code> intact so ARC can fill them at runtime.</p>
+</section>
+<section id="run-arkane-independently">
+<h2>Run Arkane Independently<a class="headerlink" href="#run-arkane-independently" title="Link to this heading"></a></h2>
+<p>ARC runs Arkane automatically for supported statmech workflows. You can also run
+Arkane directly:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>run<span class="w"> </span>-n<span class="w"> </span>rmg_env<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>arkane<span class="w"> </span>input.py
+</pre></div>
+</div>
+<p>For a source installation, make sure <code class="docutils literal notranslate"><span class="pre">RMG_PY_PATH</span></code> and <code class="docutils literal notranslate"><span class="pre">RMG_DB_PATH</span></code> point to
+valid checkouts before running Arkane.</p>
 <p>See the <a class="reference external" href="http://reactionmechanismgenerator.github.io/RMG-Py/users/arkane/input.html">Arkane</a> documentation for input file details.</p>
 </section>
 </section>
@@ -205,7 +261,7 @@ Make sure RMG-Py and the RMG database are available, then run Arkane with your i
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="docker.html" class="btn btn-neutral float-left" title="Docker image" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="examples.html" class="btn btn-neutral float-right" title="Examples" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="how_it_works.html" class="btn btn-neutral float-right" title="How ARC Works" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

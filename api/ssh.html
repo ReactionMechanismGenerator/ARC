@@ -9,6 +9,8 @@
   <title>arc.job.ssh &mdash; ARC 1.1.0 Documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=6285a516" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -33,6 +35,7 @@
           
           <a href="../index.html" class="icon icon-home">
             ARC
+              <img src="../_static/arc.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
@@ -42,14 +45,21 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation instructions</a></li>
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../how_it_works.html">How ARC Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../TS_search.html">Transition State Search</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced.html">Advanced Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tools.html">Standalone Tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul class="current">
 <li class="toctree-l1 current"><a class="reference internal" href="index.html">ARC’s API</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="main.html">arc.main</a></li>
 <li class="toctree-l2"><a class="reference internal" href="species.html">arc.species.species</a></li>
@@ -93,13 +103,14 @@
 <li class="toctree-l2"><a class="reference internal" href="parser.html">arc.parser</a></li>
 <li class="toctree-l2"><a class="reference internal" href="plotter.html">arc.plotter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="processor.html">arc.processor</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rmgdb.html">arc.rmgdb</a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html">arc.common</a></li>
 <li class="toctree-l2"><a class="reference internal" href="level.html">arc.level</a></li>
 <li class="toctree-l2"><a class="reference internal" href="scale.html">arc.utils.scale</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="../tools.html">Standalone tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="../media.html">Media</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../release.html">Release notes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../credits.html">Credits</a></li>
@@ -139,7 +150,7 @@
 Used for giving commands, uploading, and downloading files.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">SSHClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">SSHClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient" title="Link to this definition"></a></dt>
 <dd><p>This is a class for communicating with remote servers via SSH.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -214,7 +225,7 @@ Used for giving commands, uploading, and downloading files.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.change_mode">
-<span class="sig-name descname"><span class="pre">change_mode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recursive</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remote_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.change_mode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.change_mode" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">change_mode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recursive</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remote_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.change_mode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.change_mode" title="Link to this definition"></a></dt>
 <dd><p>Change the mode of a file or a directory.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -231,7 +242,7 @@ under a directory.``True`` for recursively change.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.check_job_status">
-<span class="sig-name descname"><span class="pre">check_job_status</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.check_job_status"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.check_job_status" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">check_job_status</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_id</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.check_job_status"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.check_job_status" title="Link to this definition"></a></dt>
 <dd><p>Check job’s status.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -247,7 +258,7 @@ under a directory.``True`` for recursively change.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.check_running_jobs_ids">
-<span class="sig-name descname"><span class="pre">check_running_jobs_ids</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.check_running_jobs_ids"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.check_running_jobs_ids" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">check_running_jobs_ids</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.check_running_jobs_ids"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.check_running_jobs_ids" title="Link to this definition"></a></dt>
 <dd><p>Check all jobs submitted by the user on a server.</p>
 <dl class="simple">
 <dt>Returns: list</dt><dd><p>A list of job IDs.</p>
@@ -257,13 +268,13 @@ under a directory.``True`` for recursively change.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.close">
-<span class="sig-name descname"><span class="pre">close</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.close"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.close" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">close</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.close"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.close" title="Link to this definition"></a></dt>
 <dd><p>Close the connection to paramiko SSHClient and SFTPClient</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.connect">
-<span class="sig-name descname"><span class="pre">connect</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.connect"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.connect" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">connect</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.connect"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.connect" title="Link to this definition"></a></dt>
 <dd><p>A modulator function for _connect(). Connect to the server.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
@@ -274,7 +285,7 @@ under a directory.``True`` for recursively change.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.delete_job">
-<span class="sig-name descname"><span class="pre">delete_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.delete_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.delete_job" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">delete_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_id</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.delete_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.delete_job" title="Link to this definition"></a></dt>
 <dd><p>Deletes a running job.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -285,7 +296,7 @@ under a directory.``True`` for recursively change.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.delete_jobs">
-<span class="sig-name descname"><span class="pre">delete_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">jobs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.delete_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.delete_jobs" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">delete_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">jobs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.delete_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.delete_jobs" title="Link to this definition"></a></dt>
 <dd><p>Delete all of the jobs on a specific server.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -296,7 +307,7 @@ under a directory.``True`` for recursively change.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.download_file">
-<span class="sig-name descname"><span class="pre">download_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_file_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">local_file_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.download_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.download_file" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">download_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_file_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">local_file_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.download_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.download_file" title="Link to this definition"></a></dt>
 <dd><p>Download a file from the server.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -313,7 +324,7 @@ under a directory.``True`` for recursively change.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.find_package">
-<span class="sig-name descname"><span class="pre">find_package</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">package_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.find_package"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.find_package" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">find_package</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">package_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.find_package"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.find_package" title="Link to this definition"></a></dt>
 <dd><p>Find the path to the package.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -324,7 +335,7 @@ under a directory.``True`` for recursively change.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.list_available_nodes">
-<span class="sig-name descname"><span class="pre">list_available_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.list_available_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.list_available_nodes" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">list_available_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.list_available_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.list_available_nodes" title="Link to this definition"></a></dt>
 <dd><p>List available nodes on the server.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
@@ -338,7 +349,7 @@ under a directory.``True`` for recursively change.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.list_dir">
-<span class="sig-name descname"><span class="pre">list_dir</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.list_dir"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.list_dir" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">list_dir</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.list_dir"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.list_dir" title="Link to this definition"></a></dt>
 <dd><p>List directory contents.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -349,7 +360,7 @@ under a directory.``True`` for recursively change.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.submit_job">
-<span class="sig-name descname"><span class="pre">submit_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recursion</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.submit_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.submit_job" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">submit_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recursion</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.submit_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.submit_job" title="Link to this definition"></a></dt>
 <dd><p>Submit a job to the server.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -371,7 +382,7 @@ Either <cite>errored</cite> or <cite>submitted</cite>.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.upload_file">
-<span class="sig-name descname"><span class="pre">upload_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_file_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">local_file_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_string</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.upload_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.upload_file" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">upload_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_file_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">local_file_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_string</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.upload_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.upload_file" title="Link to this definition"></a></dt>
 <dd><p>Upload a local file or contents from a string to the remote server.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -395,7 +406,7 @@ Either <cite>errored</cite> or <cite>submitted</cite>.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.job.ssh.check_connections">
-<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">check_connections</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#check_connections"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.check_connections" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">check_connections</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#check_connections"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.check_connections" title="Link to this definition"></a></dt>
 <dd><p>A decorator designned for <code class="docutils literal notranslate"><span class="pre">SSHClient``to</span> <span class="pre">check</span> <span class="pre">SSH</span> <span class="pre">connections</span> <span class="pre">before</span>
 <span class="pre">calling</span> <span class="pre">a</span> <span class="pre">method.</span> <span class="pre">It</span> <span class="pre">first</span> <span class="pre">checks</span> <span class="pre">if</span> <span class="pre">``self._ssh</span></code> is available in a
 SSHClient instance and then checks if you can send <code class="docutils literal notranslate"><span class="pre">ls</span></code> and get response
@@ -406,7 +417,7 @@ error when executing the method.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.job.ssh.check_job_status_in_stdout">
-<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">check_job_status_in_stdout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stdout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">server</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#check_job_status_in_stdout"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.check_job_status_in_stdout" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">check_job_status_in_stdout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stdout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">server</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#check_job_status_in_stdout"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.check_job_status_in_stdout" title="Link to this definition"></a></dt>
 <dd><p>A helper function for checking job status.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -427,7 +438,7 @@ error when executing the method.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.job.ssh.delete_all_arc_jobs">
-<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">delete_all_arc_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">jobs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#delete_all_arc_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.delete_all_arc_jobs" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">delete_all_arc_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">jobs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#delete_all_arc_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.delete_all_arc_jobs" title="Link to this definition"></a></dt>
 <dd><p>Delete all ARC-spawned jobs (with job name starting with <cite>a</cite> and a digit) from :list:servers
 (<cite>servers</cite> could also be a string of one server name)
 Make sure you know what you’re doing, so unrelated jobs won’t be deleted…

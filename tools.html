@@ -6,9 +6,11 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Standalone tools &mdash; ARC 1.1.0 Documentation</title>
+  <title>Standalone Tools &mdash; ARC 1.1.0 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=6285a516" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
@@ -19,8 +21,8 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Media" href="media.html" />
-    <link rel="prev" title="arc.utils.scale" href="api/scale.html" /> 
+    <link rel="next" title="ARC’s API" href="api/index.html" />
+    <link rel="prev" title="Output" href="output.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -33,6 +35,7 @@
           
           <a href="index.html" class="icon icon-home">
             ARC
+              <img src="_static/arc.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -42,28 +45,28 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation instructions</a></li>
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="how_it_works.html">How ARC Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="TS_search.html">Transition State Search</a></li>
-<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
-<li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Standalone tools</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#arc-ess-diagnostics">ARC ESS diagnostics</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#conformers">Conformers</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#delete-all-arc-jobs">Delete all ARC jobs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#determine-harmonic-frequencies-scaling-factor">Determine harmonic frequencies scaling factor</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#external-symmetry-and-optical-isomers">External symmetry and optical isomers</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#onedmin-script">OneDMin script</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#perceive-xyz-xyz-to-smiles">Perceive_xyz_(xyz_to_smiles)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#plot-xyz">Plot xyz</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#visualize-1d-torsion-scan">Visualize 1D Torsion scan</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#visualize-2d-torsion-scan">Visualize 2D Torsion scan</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Standalone Tools</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#available-notebooks">Available Notebooks</a></li>
 </ul>
 </li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
 <li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
@@ -86,7 +89,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Standalone tools</li>
+      <li class="breadcrumb-item active">Standalone Tools</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/tools.rst.txt" rel="nofollow"> View page source</a>
       </li>
@@ -97,57 +100,78 @@
            <div itemprop="articleBody">
              
   <section id="standalone-tools">
-<span id="tools"></span><h1>Standalone tools<a class="headerlink" href="#standalone-tools" title="Link to this heading"></a></h1>
-<p>The ARC repository includes various stand-alone scripts, able to perform useful tasks using ARC’s functions and methods
-without spawning actual ESS jobs. These scripts are available as iPython Jupyter notebooks under the <code class="docutils literal notranslate"><span class="pre">ipython</span></code> folder.</p>
-<section id="arc-ess-diagnostics">
-<h2>ARC ESS diagnostics<a class="headerlink" href="#arc-ess-diagnostics" title="Link to this heading"></a></h2>
-<p>This tool will search all servers defined in ARC’s settings file, and report on the different ESS it finds.</p>
-</section>
-<section id="conformers">
-<h2>Conformers<a class="headerlink" href="#conformers" title="Link to this heading"></a></h2>
-<p>This tool uses ARC’s method to generate force field conformers.</p>
-</section>
-<section id="delete-all-arc-jobs">
-<h2>Delete all ARC jobs<a class="headerlink" href="#delete-all-arc-jobs" title="Link to this heading"></a></h2>
-<p>This tool will delete all jobs on the selected server that have job names starting with <code class="docutils literal notranslate"><span class="pre">a_</span></code>.</p>
-<p><strong>WARNING</strong>: This script might cause unintentional loss of data (running jobs).
-Make sure you understand exactly what you are doing and what it does before executing it.
-I might delete non-ARC related jobs, and it will delete ARC jobs of all projects you are
-currently running on that server/s.</p>
-</section>
-<section id="determine-harmonic-frequencies-scaling-factor">
-<h2>Determine harmonic frequencies scaling factor<a class="headerlink" href="#determine-harmonic-frequencies-scaling-factor" title="Link to this heading"></a></h2>
-<p>This tool uses <a class="reference external" href="https://dx.doi.org/10.1016/j.cpc.2016.09.004">Truhlar’s method</a> to determine frequency scaling factors for the user’s choice of level of theory.</p>
-</section>
-<section id="external-symmetry-and-optical-isomers">
-<h2>External symmetry and optical isomers<a class="headerlink" href="#external-symmetry-and-optical-isomers" title="Link to this heading"></a></h2>
-<p>This tool calculates external symmetry and number of optical isomers (1 or 2) from 3D coordinates.</p>
-</section>
-<section id="onedmin-script">
-<h2>OneDMin script<a class="headerlink" href="#onedmin-script" title="Link to this heading"></a></h2>
-<p>This tool assist in determination of r_min and r_max for a OneDMin calculation by visualizing the bath gas
-at these distances from the center of mass of the target species.</p>
-</section>
-<section id="perceive-xyz-xyz-to-smiles">
-<h2>Perceive_xyz_(xyz_to_smiles)<a class="headerlink" href="#perceive-xyz-xyz-to-smiles" title="Link to this heading"></a></h2>
-<p>This perception tool returns SMILES for given 3D coordinates.</p>
-</section>
-<section id="plot-xyz">
-<h2>Plot xyz<a class="headerlink" href="#plot-xyz" title="Link to this heading"></a></h2>
-<p>This is a plotter tool for 3D coordinates.</p>
-</section>
-<section id="visualize-1d-torsion-scan">
-<h2>Visualize 1D Torsion scan<a class="headerlink" href="#visualize-1d-torsion-scan" title="Link to this heading"></a></h2>
-<p>This is a plotter tool for 1D torsion scans.</p>
-</section>
-<section id="visualize-2d-torsion-scan">
-<h2>Visualize 2D Torsion scan<a class="headerlink" href="#visualize-2d-torsion-scan" title="Link to this heading"></a></h2>
-<p>This is a plotter tool for 2D torsion scans created by ARC
-(the YAML file created by ARC is necessary to visuallize this map).
-The user can also change the color pam and resolution of the resulting image.</p>
-<p>Specifying a combination of two pivots will show a 3D representation of the respective conformer
-with the closest dihedrals to the ones specified.</p>
+<span id="tools"></span><h1>Standalone Tools<a class="headerlink" href="#standalone-tools" title="Link to this heading"></a></h1>
+<p>ARC ships several Jupyter notebooks under <code class="docutils literal notranslate"><span class="pre">ipython/Tools</span></code>. They are not
+embedded web apps in the documentation site; they are notebooks you open and run
+locally from the repository after activating <code class="docutils literal notranslate"><span class="pre">arc_env</span></code>.</p>
+<p>Run them from the repository root:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>activate<span class="w"> </span>arc_env
+jupyter<span class="w"> </span>notebook<span class="w"> </span>ipython/Tools
+</pre></div>
+</div>
+<p>The notebooks are useful for diagnostics, geometry inspection, conversion, and
+small calculations that reuse ARC internals without launching a full ARC project.</p>
+<section id="available-notebooks">
+<h2>Available Notebooks<a class="headerlink" href="#available-notebooks" title="Link to this heading"></a></h2>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">ARC</span> <span class="pre">ESS</span> <span class="pre">diagnostics.ipynb</span></code></dt><dd><p>Checks configured servers and reports which electronic structure software ARC
+can find. Use this after editing <code class="docutils literal notranslate"><span class="pre">~/.arc/settings.py</span></code> and <code class="docutils literal notranslate"><span class="pre">~/.arc/submit.py</span></code>.</p>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/ARC%20ESS%20diagnostics.ipynb">ARC ESS diagnostics notebook</a></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">conformers.ipynb</span></code></dt><dd><p>Runs ARC conformer-generation utilities for a molecule and lets you inspect
+candidate conformers before launching expensive ESS jobs.</p>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/conformers.ipynb">Conformers notebook</a></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">coordinates</span> <span class="pre">conversions.ipynb</span></code></dt><dd><p>Demonstrates conversions between XYZ strings, ARC XYZ dictionaries,
+Z-matrices, and related coordinate formats.</p>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/coordinates%20conversions.ipynb">Coordinate conversions notebook</a></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Plot</span> <span class="pre">xyz.ipynb</span></code></dt><dd><p>Visualizes a 3D geometry from XYZ-style input.</p>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/Plot%20xyz.ipynb">Plot XYZ notebook</a></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Visualize</span> <span class="pre">1D</span> <span class="pre">Torsion</span> <span class="pre">scan.ipynb</span></code></dt><dd><p>Plots a one-dimensional rotor scan from ARC scan data.</p>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/Visualize%201D%20Torsion%20scan.ipynb">Visualize 1D torsion scan notebook</a></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Visualize</span> <span class="pre">2D</span> <span class="pre">Torsion</span> <span class="pre">scan.ipynb</span></code></dt><dd><p>Plots a two-dimensional rotor scan from the YAML files ARC creates for scan
+surfaces. It can also show the conformer closest to selected dihedral values,
+and lets you change the colormap and resolution of the resulting image.</p>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/Visualize%202D%20Torsion%20scan.ipynb">Visualize 2D torsion scan notebook</a></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">External</span> <span class="pre">symmetry</span> <span class="pre">and</span> <span class="pre">optical</span> <span class="pre">isomers.ipynb</span></code></dt><dd><p>Calculates external symmetry and optical isomer counts from 3D coordinates.</p>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/External%20symmetry%20and%20optical%20isomers.ipynb">External symmetry notebook</a></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Determine</span> <span class="pre">harmonic</span> <span class="pre">frequencies</span> <span class="pre">scaling</span> <span class="pre">factor.ipynb</span></code></dt><dd><p>Uses Truhlar’s method to determine a harmonic frequency scaling factor for a
+selected level of theory.</p>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/Determine%20harmonic%20frequencies%20scaling%20factor.ipynb">Frequency scaling notebook</a></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Perceive_xyz_(xyz_to_smiles).ipynb</span></code></dt><dd><p>Attempts to infer connectivity and return a SMILES representation from 3D
+coordinates.</p>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/Perceive_xyz_(xyz_to_smiles).ipynb">XYZ perception notebook</a></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">OneDMin</span> <span class="pre">script.ipynb</span></code></dt><dd><p>Helps choose <code class="docutils literal notranslate"><span class="pre">r_min</span></code> and <code class="docutils literal notranslate"><span class="pre">r_max</span></code> for OneDMin calculations by visualizing
+bath gas placement around the target species.</p>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/OneDMin%20script.ipynb">OneDMin notebook</a></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">TS</span> <span class="pre">Guesses.ipynb</span></code></dt><dd><p>Demonstrates transition-state guess utilities and inspection workflows.</p>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/TS%20Guesses.ipynb">TS guesses notebook</a></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">delete</span> <span class="pre">all</span> <span class="pre">arc</span> <span class="pre">jobs.ipynb</span></code></dt><dd><p>Deletes jobs on a selected server whose names start with <code class="docutils literal notranslate"><span class="pre">a_</span></code>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This notebook can cause unintentional loss of data (running jobs). It might
+delete non-ARC-related jobs, and it will delete ARC jobs of all projects you
+are currently running on the selected server(s). Use it only when you
+understand exactly what it does and the selected server, user, and job-name
+filter.</p>
+</div>
+<p>GitHub: <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Tools/delete%20all%20arc%20jobs.ipynb">Delete jobs notebook</a></p>
+</dd>
+</dl>
+<p>Demo notebooks are also available under <code class="docutils literal notranslate"><span class="pre">ipython/Demo</span></code>:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Demo/ARC%20thermo%20demo.ipynb">ARC thermo demo</a></p></li>
+<li><p><a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/ipython/Demo/ARC%20rxn%20demo%20using%20YAML.ipynb">ARC reaction demo using YAML</a></p></li>
+</ul>
 </section>
 </section>
 
@@ -155,8 +179,8 @@ with the closest dihedrals to the ones specified.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="api/scale.html" class="btn btn-neutral float-left" title="arc.utils.scale" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="media.html" class="btn btn-neutral float-right" title="Media" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="output.html" class="btn btn-neutral float-left" title="Output" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api/index.html" class="btn btn-neutral float-right" title="ARC’s API" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

@@ -8,6 +8,8 @@
   <title>arc.species.species &mdash; ARC 1.1.0 Documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=6285a516" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
@@ -30,6 +32,7 @@
           
           <a href="../../../index.html" class="icon icon-home">
             ARC
+              <img src="../../../_static/arc.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
@@ -39,16 +42,25 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation instructions</a></li>
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../how_it_works.html">How ARC Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../examples.html">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../TS_search.html">Transition State Search</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../advanced.html">Advanced Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tools.html">Standalone Tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../api/index.html">ARC’s API</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../tools.html">Standalone tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../media.html">Media</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../release.html">Release notes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../credits.html">Credits</a></li>
@@ -2424,7 +2436,8 @@
 <span class="sd">        Args:</span>
 <span class="sd">            other (ARCSpecies): The other species to compare to.</span>
 <span class="sd">            map_ (list): A list of atom indices mapping atoms from this species to the other species. (i.e., if</span>
-<span class="sd">                         this species has atoms [A, B, C] and the other species has atoms [C, A, B], then map_ would be [1, 2, 0]</span>
+<span class="sd">                         this species has atoms [A, B, C] and the other species has atoms [C, A, B],</span>
+<span class="sd">                         then ``map_`` would be [1, 2, 0])</span>
 <span class="sd">        Returns:</span>
 <span class="sd">            float: The Kabsch RMSD value.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -2441,6 +2454,8 @@
 
 
 
+<div class="viewcode-block" id="TSGuess">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">TSGuess</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A class for representing TS a guess.</span>
@@ -2500,7 +2515,7 @@
                  <span class="n">success</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">family</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">arc_reaction</span><span class="p">:</span> <span class="n">Optional</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">arc_reaction</span><span class="p">:</span> <span class="s1">&#39;ARCReaction | None&#39;</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">ts_dict</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">energy</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">cluster</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -2589,6 +2604,8 @@
                 <span class="n">normalized</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">normalized</span>
 
+<div class="viewcode-block" id="TSGuess.as_dict">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.as_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">for_report</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A helper function for dumping this object as a dictionary.</span>
@@ -2635,8 +2652,11 @@
                 <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;errors&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">errors</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;log_path&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span>
-        <span class="k">return</span> <span class="n">ts_dict</span>
+        <span class="k">return</span> <span class="n">ts_dict</span></div>
 
+
+<div class="viewcode-block" id="TSGuess.from_dict">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.from_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A helper function for loading this object from a dictionary in a YAML file for restarting ARC</span>
@@ -2671,8 +2691,11 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">execution_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">seconds</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">family</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;family&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;family&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;log_path&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;log_path&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="kc">None</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">errors</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;errors&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;errors&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">errors</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">&#39;errors&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;errors&#39;</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span></div>
 
+
+<div class="viewcode-block" id="TSGuess.process_xyz">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.process_xyz">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">process_xyz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                     <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -2690,8 +2713,11 @@
         <span class="k">if</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="p">(</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">)):</span>
                 <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;xyz must be either a dictionary or string, got:</span><span class="se">\n</span><span class="si">{</span><span class="n">xyz</span><span class="si">}</span><span class="se">\n</span><span class="s1">which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="n">project_directory</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="n">project_directory</span><span class="p">)</span></div>
 
+
+<div class="viewcode-block" id="TSGuess.get_xyz">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.get_xyz">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_xyz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                 <span class="n">return_format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;dict&#39;</span><span class="p">,</span>
                 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
@@ -2708,8 +2734,11 @@
         <span class="n">xyz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">opt_xyz</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span>
         <span class="k">if</span> <span class="n">return_format</span> <span class="o">==</span> <span class="s1">&#39;str&#39;</span><span class="p">:</span>
             <span class="n">xyz</span> <span class="o">=</span> <span class="n">xyz_to_str</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">xyz</span>
+        <span class="k">return</span> <span class="n">xyz</span></div>
 
+
+<div class="viewcode-block" id="TSGuess.almost_equal_tsgs">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.almost_equal_tsgs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">almost_equal_tsgs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">TSGuess</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine whether two TSGuess object instances represent the same geometry.</span>
@@ -2732,20 +2761,28 @@
         <span class="k">if</span> <span class="n">almost_equal_coords</span><span class="p">(</span><span class="n">xyz1</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get_xyz</span><span class="p">(),</span> <span class="n">xyz2</span><span class="o">=</span><span class="n">other</span><span class="o">.</span><span class="n">get_xyz</span><span class="p">())</span> \
                 <span class="ow">or</span> <span class="n">compare_confs</span><span class="p">(</span><span class="n">xyz1</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get_xyz</span><span class="p">(),</span> <span class="n">xyz2</span><span class="o">=</span><span class="n">other</span><span class="o">.</span><span class="n">get_xyz</span><span class="p">(),</span> <span class="n">rmsd_score</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
             <span class="k">return</span> <span class="kc">True</span>
-        <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
 
+
+<div class="viewcode-block" id="TSGuess.tic">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.tic">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">tic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Initialize self.t0.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">t0</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">t0</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span></div>
 
+
+<div class="viewcode-block" id="TSGuess.tok">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.tok">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">tok</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Assign the time difference between now and self.t0 into self.execution_time.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">t0</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">execution_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">t0</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">execution_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">t0</span></div>
+</div>
+
 
 
 <div class="viewcode-block" id="ThermoData">

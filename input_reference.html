@@ -1,0 +1,427 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Input YAML Reference &mdash; ARC 1.1.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=6285a516" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fc837d61"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Examples" href="examples.html" />
+    <link rel="prev" title="How ARC Works" href="how_it_works.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            ARC
+              <img src="_static/arc.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="docker.html">Docker image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="how_it_works.html">How ARC Works</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Input YAML Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#minimal-shape">Minimal Shape</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#top-level-keys">Top-Level Keys</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#species-entries">Species Entries</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#reaction-entries">Reaction Entries</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#level-dictionaries">Level Dictionaries</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#job-types">Job Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#ess-settings">ESS Settings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#complete-example">Complete Example</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TS_search.html">Transition State Search</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone Tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="licence.html">Licence</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">ARC</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Input YAML Reference</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/input_reference.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="input-yaml-reference">
+<span id="input-reference"></span><h1>Input YAML Reference<a class="headerlink" href="#input-yaml-reference" title="Link to this heading"></a></h1>
+<p>ARC input files are YAML dictionaries passed directly to <code class="docutils literal notranslate"><span class="pre">ARC(**input_dict)</span></code>.
+Top-level keys must match arguments accepted by <a class="reference internal" href="api/main.html#main"><span class="std std-ref">arc.main.ARC</span></a>.
+Entries under <code class="docutils literal notranslate"><span class="pre">species</span></code> are converted to <code class="docutils literal notranslate"><span class="pre">ARCSpecies</span></code> objects, and entries
+under <code class="docutils literal notranslate"><span class="pre">reactions</span></code> are converted to <code class="docutils literal notranslate"><span class="pre">ARCReaction</span></code> objects.</p>
+<p>Use this page as a practical checklist of accepted keys. For deeper behavior,
+see the API reference pages for <a class="reference internal" href="api/main.html#main"><span class="std std-ref">ARC</span></a>, <a class="reference internal" href="api/species.html#species"><span class="std std-ref">ARCSpecies</span></a>,
+<a class="reference internal" href="api/reaction.html#reaction"><span class="std std-ref">ARCReaction</span></a>, and <a class="reference internal" href="api/level.html#level"><span class="std std-ref">Level</span></a>.</p>
+<section id="minimal-shape">
+<h2>Minimal Shape<a class="headerlink" href="#minimal-shape" title="Link to this heading"></a></h2>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my_project</span>
+
+<span class="nt">species</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ethanol</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CCO</span>
+
+<span class="nt">level_of_theory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wb97xd/def2svp</span>
+<span class="nt">ess_settings</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">gaussian</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+</pre></div>
+</div>
+</section>
+<section id="top-level-keys">
+<h2>Top-Level Keys<a class="headerlink" href="#top-level-keys" title="Link to this heading"></a></h2>
+<p>Project and execution:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">project</span></code> - project name. Required for new projects.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">project_directory</span></code> - local directory for project output.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">verbose</span></code> - logging level.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">running_jobs</span></code> - restart state for submitted jobs.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">output</span></code> - restart/status state for species.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">output_multi_spc</span></code> - restart/status state for multi-species workflows.</p></li>
+</ul>
+<p>Species and reactions:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">species</span></code> - list of species dictionaries.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">reactions</span></code> - list of reaction dictionaries.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dont_gen_confs</span></code> - species labels for which conformer generation should be avoided when XYZ is supplied.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">n_confs</span></code> - number of low-energy force-field conformers to keep. Default: <code class="docutils literal notranslate"><span class="pre">10</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">e_confs</span></code> - conformer energy window in kJ/mol. Default: <code class="docutils literal notranslate"><span class="pre">5.0</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">allow_nonisomorphic_2d</span></code> - allow optimization even when generated 3D geometry is not isomorphic to the 2D graph.</p></li>
+</ul>
+<p>Levels of theory:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code> - shortcut for composite or <code class="docutils literal notranslate"><span class="pre">sp//opt</span></code> style levels.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">composite_method</span></code> - composite method level.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">conformer_level</span></code> - alias for <code class="docutils literal notranslate"><span class="pre">conformer_opt_level</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">conformer_opt_level</span></code> - conformer optimization level.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">conformer_sp_level</span></code> - conformer single-point level.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ts_guess_level</span></code> - level for TS guess comparison/optimization.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">opt_level</span></code> - geometry optimization level.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">freq_level</span></code> - frequency level.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sp_level</span></code> - single-point energy level.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">scan_level</span></code> - rotor scan level.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">irc_level</span></code> - IRC level.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">orbitals_level</span></code> - orbitals level.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">arkane_level_of_theory</span></code> - level used for Arkane atom and bond corrections.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">adaptive_levels</span></code> - level choices by heavy-atom count.</p></li>
+</ul>
+<p>Job selection and resources:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">job_types</span></code> - dictionary of job type booleans.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">specific_job_type</span></code> - run one job family; takes precedence over <code class="docutils literal notranslate"><span class="pre">job_types</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">job_memory</span></code> - memory per job in GB.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">max_job_time</span></code> - wall-time limit in hours.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">keep_checks</span></code> - keep ESS checkfiles.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">trsh_ess_jobs</span></code> - troubleshoot failed ESS jobs. Default: <code class="docutils literal notranslate"><span class="pre">true</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">trsh_rotors</span></code> - troubleshoot failed rotor scans. Default: <code class="docutils literal notranslate"><span class="pre">true</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">skip_nmd</span></code> - skip normal-mode-displacement checks.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">report_e_elect</span></code> - report electronic energy.</p></li>
+</ul>
+<p>Software and statmech:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">ess_settings</span></code> - map ESS names to server names for this project.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">thermo_adapter</span></code> - thermochemistry adapter. Default: <code class="docutils literal notranslate"><span class="pre">Arkane</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">kinetics_adapter</span></code> - kinetics adapter. Default: <code class="docutils literal notranslate"><span class="pre">Arkane</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">compare_to_rmg</span></code> - compare calculated data to RMG database values. Default: <code class="docutils literal notranslate"><span class="pre">true</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">compute_thermo</span></code> - compute thermodynamic properties. Default: <code class="docutils literal notranslate"><span class="pre">true</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">compute_rates</span></code> - compute rate coefficients. Default: <code class="docutils literal notranslate"><span class="pre">true</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">compute_transport</span></code> - compute transport properties. Default: <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bac_type</span></code> - bond additivity correction type: <code class="docutils literal notranslate"><span class="pre">p</span></code>, <code class="docutils literal notranslate"><span class="pre">m</span></code>, or <code class="docutils literal notranslate"><span class="pre">null</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">freq_scale_factor</span></code> - harmonic frequency scaling factor.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">calc_freq_factor</span></code> - calculate a scaling factor if one cannot be found. Default: <code class="docutils literal notranslate"><span class="pre">true</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bath_gas</span></code> - bath gas for OneDMin/Lennard-Jones workflows.</p></li>
+</ul>
+<p>Kinetics conditions and TS search:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">T_min</span></code> - minimum temperature tuple, e.g. <code class="docutils literal notranslate"><span class="pre">[500,</span> <span class="pre">K]</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">T_max</span></code> - maximum temperature tuple, e.g. <code class="docutils literal notranslate"><span class="pre">[3000,</span> <span class="pre">K]</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">T_count</span></code> - number of temperature points. Default: <code class="docutils literal notranslate"><span class="pre">50</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ts_adapters</span></code> - TS search adapters to try, such as <code class="docutils literal notranslate"><span class="pre">heuristics</span></code>, <code class="docutils literal notranslate"><span class="pre">AutoTST</span></code>, <code class="docutils literal notranslate"><span class="pre">GCN</span></code>, <code class="docutils literal notranslate"><span class="pre">xtb_gsm</span></code>, and <code class="docutils literal notranslate"><span class="pre">orca_neb</span></code>.</p></li>
+</ul>
+</section>
+<section id="species-entries">
+<h2>Species Entries<a class="headerlink" href="#species-entries" title="Link to this heading"></a></h2>
+<p>Each entry under <code class="docutils literal notranslate"><span class="pre">species</span></code> may use the following keys:</p>
+<p>Identity and structure:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">label</span></code> - species label.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">smiles</span></code> - SMILES string.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">inchi</span></code> - InChI string.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">adjlist</span></code> - RMG adjacency list.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">xyz</span></code> - XYZ string, XYZ dictionary, list of XYZ entries, or path to a supported coordinate/input/output file.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">yml_path</span></code> - path to a species YAML file.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mol</span></code> - RMG Molecule object when using the Python API.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">species_dict</span></code> - dictionary representation used in restarts/API workflows.</p></li>
+</ul>
+<p>Charge, spin, and TS metadata:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">charge</span></code> - integer charge.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">multiplicity</span></code> - spin multiplicity.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">number_of_radicals</span></code> - radical count override.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">is_ts</span></code> - whether this species is a transition state.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ts_number</span></code> - TS index.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rxn_label</span></code> - associated reaction label.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rxn_index</span></code> - associated reaction index.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">irc_label</span></code> - IRC label.</p></li>
+</ul>
+<p>Thermo and output behavior:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">compute_thermo</span></code> - compute thermo for this species.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">include_in_thermo_lib</span></code> - include species in output thermo library.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">e0_only</span></code> - compute/store only E0 where applicable.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bond_corrections</span></code> - custom bond correction data.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bdes</span></code> - bond dissociation energy atom-pair list.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">checkfile</span></code> - ESS checkfile path.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">run_time</span></code> - restart/runtime metadata.</p></li>
+</ul>
+<p>Conformers, rotors, and geometry controls:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">force_field</span></code> - force field for conformer generation. Default: <code class="docutils literal notranslate"><span class="pre">MMFF94s</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">directed_rotors</span></code> - directed rotor scan requests.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">preserve_param_in_scan</span></code> - internal coordinates to preserve during scans.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">consider_all_diastereomers</span></code> - consider all diastereomers during conformer generation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fragments</span></code> - fragment atom indices.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">active</span></code> - active-space metadata.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">external_symmetry</span></code> - external symmetry number.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">optical_isomers</span></code> - number of optical isomers.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">multi_species</span></code> - multi-species label.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">keep_mol</span></code> - preserve the molecule object.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">project_directory</span></code> - species-specific project directory metadata.</p></li>
+</ul>
+</section>
+<section id="reaction-entries">
+<h2>Reaction Entries<a class="headerlink" href="#reaction-entries" title="Link to this heading"></a></h2>
+<p>Each entry under <code class="docutils literal notranslate"><span class="pre">reactions</span></code> may use the following keys:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">label</span></code> - reaction label, commonly <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">+</span> <span class="pre">B</span> <span class="pre">&lt;=&gt;</span> <span class="pre">C</span> <span class="pre">+</span> <span class="pre">D</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">reactants</span></code> - list of reactant labels.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">products</span></code> - list of product labels.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">r_species</span></code> - reactant <code class="docutils literal notranslate"><span class="pre">ARCSpecies</span></code> objects when using the Python API.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">p_species</span></code> - product <code class="docutils literal notranslate"><span class="pre">ARCSpecies</span></code> objects when using the Python API.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ts_label</span></code> - associated TS species label.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ts_xyz_guess</span></code> - TS guess or list of guesses.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">xyz</span></code> - alias for <code class="docutils literal notranslate"><span class="pre">ts_xyz_guess</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">family</span></code> - RMG reaction family.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">multiplicity</span></code> - reaction PES multiplicity.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">charge</span></code> - reaction PES charge.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">preserve_param_in_scan</span></code> - scan constraints for the reaction/TS.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">kinetics</span></code> - user-supplied kinetics data.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">reaction_dict</span></code> - dictionary representation used in restarts/API workflows.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">species_list</span></code> - species object list used when reconstructing from dictionaries.</p></li>
+</ul>
+</section>
+<section id="level-dictionaries">
+<h2>Level Dictionaries<a class="headerlink" href="#level-dictionaries" title="Link to this heading"></a></h2>
+<p>Any level key can be a string:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">opt_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wb97xd/def2tzvp</span>
+</pre></div>
+</div>
+<p>or a dictionary:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">sp_level</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DLPNO-CCSD(T)-F12</span>
+<span class="w">  </span><span class="nt">basis</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cc-pVTZ-F12</span>
+<span class="w">  </span><span class="nt">auxiliary_basis</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aug-cc-pVTZ/C</span>
+<span class="w">  </span><span class="nt">cabs</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cc-pVTZ-F12-CABS</span>
+<span class="w">  </span><span class="nt">software</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orca</span>
+</pre></div>
+</div>
+<p>Accepted level dictionary keys are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">method</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">basis</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">auxiliary_basis</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dispersion</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cabs</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">method_type</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">software</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">software_version</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">compatible_ess</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">solvation_method</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">solvent</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">solvation_scheme_level</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">args</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">year</span></code></p></li>
+</ul>
+<p>Use <code class="docutils literal notranslate"><span class="pre">year</span></code> only for Arkane correction matching, not inside QC method names.</p>
+</section>
+<section id="job-types">
+<h2>Job Types<a class="headerlink" href="#job-types" title="Link to this heading"></a></h2>
+<p>Current job type keys are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">conf_opt</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">conf_sp</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">opt</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fine</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">freq</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sp</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rotors</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">irc</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">orbitals</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">onedmin</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bde</span></code></p></li>
+</ul>
+<p>Legacy aliases are normalized by ARC:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">fine_grid</span></code> -&gt; <code class="docutils literal notranslate"><span class="pre">fine</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lennard_jones</span></code> -&gt; <code class="docutils literal notranslate"><span class="pre">onedmin</span></code></p></li>
+</ul>
+<p>Example:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">job_types</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">conf_opt</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">opt</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">fine</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">freq</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">sp</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">rotors</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</pre></div>
+</div>
+</section>
+<section id="ess-settings">
+<h2>ESS Settings<a class="headerlink" href="#ess-settings" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ess_settings</span></code> maps software names to configured server names:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">ess_settings</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">gaussian</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cluster_a</span>
+<span class="w">  </span><span class="nt">orca</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+<span class="w">  </span><span class="nt">molpro</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cluster_b</span>
+</pre></div>
+</div>
+<p>Supported ESS keys include <code class="docutils literal notranslate"><span class="pre">cfour</span></code>, <code class="docutils literal notranslate"><span class="pre">gaussian</span></code>, <code class="docutils literal notranslate"><span class="pre">mockter</span></code>, <code class="docutils literal notranslate"><span class="pre">molpro</span></code>,
+<code class="docutils literal notranslate"><span class="pre">orca</span></code>, <code class="docutils literal notranslate"><span class="pre">qchem</span></code>, <code class="docutils literal notranslate"><span class="pre">terachem</span></code>, <code class="docutils literal notranslate"><span class="pre">onedmin</span></code>, <code class="docutils literal notranslate"><span class="pre">xtb</span></code>, <code class="docutils literal notranslate"><span class="pre">torchani</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">openbabel</span></code>. TS adapters such as <code class="docutils literal notranslate"><span class="pre">heuristics</span></code>, <code class="docutils literal notranslate"><span class="pre">AutoTST</span></code>, <code class="docutils literal notranslate"><span class="pre">GCN</span></code>,
+<code class="docutils literal notranslate"><span class="pre">xtb_gsm</span></code>, and <code class="docutils literal notranslate"><span class="pre">orca_neb</span></code> are configured through <code class="docutils literal notranslate"><span class="pre">ts_adapters</span></code> and related
+installation/settings.</p>
+</section>
+<section id="complete-example">
+<h2>Complete Example<a class="headerlink" href="#complete-example" title="Link to this heading"></a></h2>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ethanol_reference_demo</span>
+<span class="nt">project_directory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/tmp/arc_ethanol_reference_demo</span>
+
+<span class="nt">ess_settings</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">gaussian</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+
+<span class="nt">job_types</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">conf_opt</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">opt</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">fine</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">freq</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">sp</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">rotors</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">irc</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+
+<span class="nt">level_of_theory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wb97xd/def2svp</span>
+<span class="nt">sp_level</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wb97xd</span>
+<span class="w">  </span><span class="nt">basis</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">def2tzvp</span>
+<span class="w">  </span><span class="nt">software</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gaussian</span>
+
+<span class="nt">job_memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">14</span>
+<span class="nt">max_job_time</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">24</span>
+<span class="nt">compute_thermo</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="nt">compute_rates</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="nt">bac_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span>
+
+<span class="nt">species</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ethanol</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CCO</span>
+<span class="w">    </span><span class="nt">multiplicity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">    </span><span class="nt">charge</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="how_it_works.html" class="btn btn-neutral float-left" title="How ARC Works" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="examples.html" class="btn btn-neutral float-right" title="Examples" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2026, Alon Grinberg Dana.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

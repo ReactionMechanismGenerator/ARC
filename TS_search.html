@@ -9,6 +9,8 @@
   <title>Transition State Search &mdash; ARC 1.1.0 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=6285a516" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
@@ -19,7 +21,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Advanced Features" href="advanced.html" />
+    <link rel="next" title="Advanced Usage" href="advanced.html" />
     <link rel="prev" title="Examples" href="examples.html" /> 
 </head>
 
@@ -33,6 +35,7 @@
           
           <a href="index.html" class="icon icon-home">
             ARC
+              <img src="_static/arc.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -42,15 +45,22 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation instructions</a></li>
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="how_it_works.html">How ARC Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Transition State Search</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#arc-native-methods">ARC-native methods</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#heuristics-heuristics">Heuristics (<code class="docutils literal notranslate"><span class="pre">'heuristics'</span></code>)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#linear-interpolation-linear">Linear interpolation (<code class="docutils literal notranslate"><span class="pre">'linear'</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#heuristics-adapter">Heuristics adapter</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#hydrogen-abstraction-heuristic-ts-search">Hydrogen abstraction heuristic TS search</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#neutral-hydrolysis-ts-search">Neutral hydrolysis TS search</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#linear-interpolation-adapter">Linear interpolation adapter</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#external-package-methods">External-package methods</a><ul>
@@ -61,16 +71,21 @@
 <li class="toctree-l3"><a class="reference internal" href="#orca-neb-orca-neb">ORCA NEB (<code class="docutils literal notranslate"><span class="pre">'orca_neb'</span></code>)</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#general-workflow">General workflow</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#outputs-and-validation">Outputs and validation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#general-workflow">General workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#outputs-and-validation">Outputs and validation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
 </ul>
 </li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone Tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
 <li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
@@ -106,54 +121,156 @@
   <section id="transition-state-search">
 <span id="ts-search"></span><h1>Transition State Search<a class="headerlink" href="#transition-state-search" title="Link to this heading"></a></h1>
 <p>ARC can automatically search for and validate transition states (TSs) for a wide
-range of reaction types.  It supports several TS-search methods, from fast
-heuristic builders to machine-learning and reaction-path approaches.</p>
-<p>All methods are registered as <strong>TS adapters</strong> and configured via the
-<code class="docutils literal notranslate"><span class="pre">ts_adapters</span></code> list in the ARC input file.  ARC tries each adapter in order
-and collects all resulting TS guesses for downstream optimization and
-validation (energy, frequency, and IRC).</p>
+range of reaction types, from fast heuristic builders to machine-learning and
+reaction-path approaches. This section describes the currently supported TS-search
+methods and how to use them through ARC input files.</p>
+<p>All methods are registered as <strong>TS adapters</strong> and configured via the <code class="docutils literal notranslate"><span class="pre">ts_adapters</span></code>
+list in the ARC input file. ARC tries each adapter in order and collects all
+resulting TS guesses for downstream optimization and validation (energy, frequency,
+and IRC).</p>
 <section id="arc-native-methods">
 <h2>ARC-native methods<a class="headerlink" href="#arc-native-methods" title="Link to this heading"></a></h2>
-<p>These methods are implemented directly inside ARC and do not require any
-external package beyond the standard ARC environment.</p>
-<section id="heuristics-heuristics">
-<h3>Heuristics (<code class="docutils literal notranslate"><span class="pre">'heuristics'</span></code>)<a class="headerlink" href="#heuristics-heuristics" title="Link to this heading"></a></h3>
-<p>A rule-based TS builder that constructs chemically reasonable TS guess
-geometries from the reactant/product structures and the RMG reaction-family
-template.  It does not perform any electronic-structure calculation; TS
-construction is purely geometric.</p>
-<p><strong>Supported families:</strong></p>
-<dl class="simple">
-<dt><em>Hydrogen abstraction</em></dt><dd><p>For bimolecular <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">+</span> <span class="pre">B</span> <span class="pre">⇌</span> <span class="pre">C</span> <span class="pre">+</span> <span class="pre">D</span></code> H-abstraction reactions, the adapter
-places the abstracted hydrogen between the donor and acceptor heavy atoms
-at Pauling partial-bond distances, then scans the approach dihedral at a
-configurable increment (default 30°) to generate multiple rotamer guesses.
-See reference [1] below.</p>
-</dd>
-<dt><em>Neutral hydrolysis</em></dt><dd><p>For neutral hydrolysis reactions (ester, amide, acyl halide, ether, and
-nitrile hydrolysis), the adapter identifies the reactive atoms from the
-family definition and constructs one or more TS guesses for the water
-attack / leaving-group departure mechanism.  See Reference [2] below.</p>
-</dd>
-</dl>
-<p><strong>Usage:</strong>
-Set <code class="docutils literal notranslate"><span class="pre">ts_adapters:</span> <span class="pre">['heuristics']</span></code> in the input file.  For hydrogen
-abstraction, the <code class="docutils literal notranslate"><span class="pre">dihedral_increment</span></code> keyword controls the rotational
-scan resolution (smaller values yield more guesses).</p>
-<p><strong>Reference:</strong></p>
-<p>[1] C. Pieters, A. Grinberg Dana, “Learning Rates: Predicting Rate Coefficients for Hydrogen Abstraction Reactions”,
-<em>Digital Discovery</em> 2026.</p>
-<p>[2] L. Fahoum, A. Grinberg Dana, “Automated reaction transition state search for bimolecular liquid-phase reactions
-using internal coordinates: a test case for neutral hydrolysis”, <em>Digital Discovery</em> 2026, 5, 1372-1387,
-DOI: 10.1039/D5DD00506J.</p>
+<p>These methods are implemented directly inside ARC and do not require any external
+package beyond the standard ARC environment.</p>
+<section id="heuristics-adapter">
+<h3>Heuristics adapter<a class="headerlink" href="#heuristics-adapter" title="Link to this heading"></a></h3>
+<p>ARC includes an internal TS-guess adapter named <code class="docutils literal notranslate"><span class="pre">heuristics</span></code>. The implementation
+lives in <code class="docutils literal notranslate"><span class="pre">arc/job/adapters/ts/heuristics.py</span></code> and runs incore; it generates
+candidate TS geometries directly from the mapped reactant and product wells and the
+RMG reaction-family template rather than submitting a separate external TS-search
+program. It does not perform any electronic-structure calculation; TS construction is
+purely geometric.</p>
+<p>The current heuristic adapter supports:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">H_Abstraction</span></code> reactions</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">carbonyl_based_hydrolysis</span></code> reactions</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ether_hydrolysis</span></code> reactions</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">nitrile_hydrolysis</span></code> reactions</p></li>
+</ul>
+<p>Use it by listing <code class="docutils literal notranslate"><span class="pre">heuristics</span></code> under <code class="docutils literal notranslate"><span class="pre">ts_adapters</span></code>:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">ts_adapters</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">heuristics</span>
+</pre></div>
+</div>
+<figure class="align-default" id="id2">
+<div class="graphviz"><img src="_images/graphviz-f7a008c174b2e8c34eb9c19164450c0e4f1c0e25.png" alt="digraph heuristic_ts {
+   graph [rankdir=LR, bgcolor=&quot;transparent&quot;];
+   node [shape=box, style=&quot;rounded,filled&quot;, fillcolor=&quot;#f5f7fa&quot;, color=&quot;#9fb3c8&quot;, fontname=&quot;Helvetica&quot;];
+   edge [color=&quot;#5b6676&quot;, fontname=&quot;Helvetica&quot;];
+
+   rxn [label=&quot;ARCReaction\nmapped wells&quot;];
+   family [label=&quot;Reaction family&quot;];
+   heuristics [label=&quot;heuristics.py&quot;];
+   guesses [label=&quot;TSGuess objects\nXYZ geometries&quot;];
+   opt [label=&quot;TS optimization&quot;];
+   validate [label=&quot;frequency / IRC\nvalidation&quot;];
+
+   rxn -&gt; family -&gt; heuristics -&gt; guesses -&gt; opt -&gt; validate;
+}" class="graphviz" /></div>
+<figcaption>
+<p><span class="caption-text">How the heuristic TS adapter fits into an ARC run.</span><a class="headerlink" href="#id2" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<section id="hydrogen-abstraction-heuristic-ts-search">
+<h4>Hydrogen abstraction heuristic TS search<a class="headerlink" href="#hydrogen-abstraction-heuristic-ts-search" title="Link to this heading"></a></h4>
+<p>For RMG <code class="docutils literal notranslate"><span class="pre">H_Abstraction</span></code> reactions, the heuristic adapter constructs TS guesses
+for reactions of the form:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>R1-H + R2 &lt;=&gt; R1 + R2-H
+</pre></div>
+</div>
+<p>The algorithm identifies the transferred hydrogen and the two reacting centers
+from the mapped reaction, places the abstracted hydrogen between the donor and
+acceptor heavy atoms at Pauling partial-bond distances, combines reactant/product
+geometries, stretches the forming and breaking H bonds, and scans the approach
+dihedral at a configurable increment to generate multiple rotamer guesses. The
+<code class="docutils literal notranslate"><span class="pre">dihedral_increment</span></code> keyword controls the rotational scan resolution (default 30°;
+smaller values yield more guesses). Duplicate and colliding geometries are filtered
+before ARC stores the remaining guesses as <code class="docutils literal notranslate"><span class="pre">TSGuess(method='Heuristics')</span></code> entries.</p>
+<p>At minimum, the reaction must have:</p>
+<ul class="simple">
+<li><p>A recognized <code class="docutils literal notranslate"><span class="pre">H_Abstraction</span></code> family assignment.</p></li>
+<li><p>3D coordinates for all reactant and product wells.</p></li>
+<li><p>Atom mapping between reactants and products, including the transferred H.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">heuristics</span></code> enabled in <code class="docutils literal notranslate"><span class="pre">ts_adapters</span></code>.</p></li>
+</ul>
+<p>Example input pattern:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">h_abstraction_example</span>
+
+<span class="nt">ts_adapters</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">heuristics</span>
+
+<span class="nt">species</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">methane</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">C</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">OH</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;[OH]&quot;</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">methyl</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;[CH3]&quot;</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">water</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">O</span>
+
+<span class="nt">reactions</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">methane + OH &lt;=&gt; methyl + water</span>
+<span class="w">    </span><span class="nt">reactants</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">methane</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">OH</span>
+<span class="w">    </span><span class="nt">products</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">methyl</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">water</span>
+</pre></div>
+</div>
+<p>ARC then uses the heuristic guesses as normal TS candidates: it optimizes them,
+checks for a single meaningful imaginary frequency, optionally runs IRCs, and
+uses the successful TS in kinetics processing.</p>
 </section>
-<section id="linear-interpolation-linear">
-<h3>Linear interpolation (<code class="docutils literal notranslate"><span class="pre">'linear'</span></code>)<a class="headerlink" href="#linear-interpolation-linear" title="Link to this heading"></a></h3>
-<p>An in-core adapter that generates TS guess geometries by interpolating
-internal coordinates (Z-matrices) between reactant and product.  It handles
-both isomerization (A ⇌ B) and addition/dissociation (A ⇌ B + C) reactions.</p>
-<p>For <strong>isomerization</strong> reactions, a strategy pipeline is executed for each
-reaction path identified from the RMG template:</p>
+<section id="neutral-hydrolysis-ts-search">
+<h4>Neutral hydrolysis TS search<a class="headerlink" href="#neutral-hydrolysis-ts-search" title="Link to this heading"></a></h4>
+<p>ARC supports automated TS generation and validation for <strong>neutral hydrolysis reactions</strong>.
+This capability is designed to start from a high-level reaction definition (e.g., SMILES-defined reactants/products)
+and proceed through TS generation, optimization, and validation without requiring manual TS construction.</p>
+<section id="supported-sub-families">
+<h5>Supported sub-families<a class="headerlink" href="#supported-sub-families" title="Link to this heading"></a></h5>
+<p>The current implementation supports the following neutral hydrolysis sub-families:</p>
+<ul class="simple">
+<li><p>Ester hydrolysis</p></li>
+<li><p>Amide hydrolysis</p></li>
+<li><p>Acyl halide hydrolysis</p></li>
+<li><p>Ether hydrolysis</p></li>
+<li><p>Nitrile hydrolysis</p></li>
+</ul>
+</section>
+<section id="how-it-is-used">
+<h5>How it is used<a class="headerlink" href="#how-it-is-used" title="Link to this heading"></a></h5>
+<p>To run neutral hydrolysis TS search, define the reacting species and the overall reaction in the input file
+(see ARC’s examples folder for an input file that executes a neutral hydrolysis TS search).
+At minimum, specify:</p>
+<ul class="simple">
+<li><p>The participating species (e.g., SMILES, xyz, InChI, or adjacency list)</p></li>
+<li><p>A reaction string connecting the species labels (e.g., <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">+</span> <span class="pre">H2O</span> <span class="pre">&lt;=&gt;</span> <span class="pre">products</span></code>)</p></li>
+<li><p>The TS generation adapter(s) under <code class="docutils literal notranslate"><span class="pre">ts_adapters</span></code> (in this case, use: <code class="docutils literal notranslate"><span class="pre">['heuristics']</span></code>)</p></li>
+<li><p>The electronic structure levels used for optimization/validation (e.g., <code class="docutils literal notranslate"><span class="pre">opt_level</span></code>, <code class="docutils literal notranslate"><span class="pre">freq_level</span></code>, <code class="docutils literal notranslate"><span class="pre">irc_level</span></code>)</p></li>
+</ul>
+</section>
+<section id="what-arc-does">
+<h5>What ARC does<a class="headerlink" href="#what-arc-does" title="Link to this heading"></a></h5>
+<p>For neutral hydrolysis reactions, ARC performs the following general steps:</p>
+<ol class="arabic simple">
+<li><p>Identify the relevant reactive atoms based on the reaction family definition.</p></li>
+<li><p>Generate one or more chemically reasonable TS guesses for the hydrolysis transformation.</p></li>
+<li><p>Optimize the TS candidates that pass internal filtration.</p></li>
+<li><p>Validate the TS using vibrational frequency and IRC calculations.</p></li>
+</ol>
+</section>
+</section>
+</section>
+<section id="linear-interpolation-adapter">
+<h3>Linear interpolation adapter<a class="headerlink" href="#linear-interpolation-adapter" title="Link to this heading"></a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">linear</span></code> adapter is an in-core adapter that generates TS guess geometries by
+interpolating internal coordinates (Z-matrices) between reactant and product. It
+handles both isomerization (A ⇌ B) and addition/dissociation (A ⇌ B + C) reactions,
+covering many families that <code class="docutils literal notranslate"><span class="pre">heuristics</span></code> does not support.</p>
+<p>For <strong>isomerization</strong> reactions, a strategy pipeline is executed for each reaction
+path identified from the RMG template:</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 25.0%" />
@@ -170,14 +287,14 @@ reaction path identified from the RMG template:</p>
 Used for ring-opening reactions discovered in reverse.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Direct contraction</p></td>
-<td><p>Moves a terminal group toward its forming-bond partner.  Useful for
+<td><p>Moves a terminal group toward its forming-bond partner. Useful for
 radical ring-closure reactions (e.g., Intra_R_Add_Exocyclic).</p></td>
 </tr>
 <tr class="row-even"><td><p>Ring closure</p></td>
 <td><p>Rotates backbone torsions to close a forming bond into a ring.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Z-matrix interpolation</p></td>
-<td><p>The core method.  Builds two Z-matrix chimeras (Type R from the
+<td><p>The core method. Builds two Z-matrix chimeras (Type R from the
 reactant topology, Type P from the product topology), blends them at
 the interpolation weight, and converts back to Cartesian coordinates.
 Only coordinates referencing reactive atoms are interpolated; spectator
@@ -189,8 +306,8 @@ donor and acceptor for 1,2-shift reactions.</p></td>
 </tr>
 </tbody>
 </table>
-<p>For <strong>addition/dissociation</strong> reactions, the adapter starts from the
-unimolecular species and:</p>
+<p>For <strong>addition/dissociation</strong> reactions, the adapter starts from the unimolecular
+species and:</p>
 <ol class="arabic simple">
 <li><p>Identifies which bonds to cut using the RMG template or combinatorial
 fragmentation.</p></li>
@@ -207,89 +324,93 @@ bonds and contracts forming bonds.</p></li>
 molecule through three dihedral rotations, then setting element-specific
 Pauling distances (H–H short, H–O shorter than H–C, C–C long).</p></li>
 </ul>
-<p><strong>Post-processing:</strong></p>
-<p>Every guess goes through family-specific post-processing (forming-bond
-triangulation for H-transfer, donor H staggering, umbrella inversion for
-migrating groups, reactive-bond distance adjustment, H orientation
-correction) and validation (collision detection, detached-atom checks,
-fragment counting, backbone drift, family-specific motif filters).</p>
-<p><strong>Usage:</strong>
-Set <code class="docutils literal notranslate"><span class="pre">ts_adapters:</span> <span class="pre">['heuristics',</span> <span class="pre">'linear']</span></code> to run both native adapters.
-The linear adapter is complementary to heuristics — it covers many families
-that heuristics does not support.</p>
+<p><strong>Post-processing:</strong> every guess goes through family-specific post-processing
+(forming-bond triangulation for H-transfer, donor H staggering, umbrella inversion
+for migrating groups, reactive-bond distance adjustment, H orientation correction)
+and validation (collision detection, detached-atom checks, fragment counting,
+backbone drift, family-specific motif filters).</p>
+<p>Set <code class="docutils literal notranslate"><span class="pre">ts_adapters:</span> <span class="pre">['heuristics',</span> <span class="pre">'linear']</span></code> to run both native adapters. The
+linear adapter is complementary to heuristics.</p>
 </section>
 </section>
 <section id="external-package-methods">
 <h2>External-package methods<a class="headerlink" href="#external-package-methods" title="Link to this heading"></a></h2>
-<p>These methods rely on external packages that must be installed separately.
-See the ARC installation guide for setup instructions.</p>
+<p>These methods rely on external packages that must be installed separately. See
+<a class="reference internal" href="installation.html#installation"><span class="std std-ref">Installation</span></a> for setup instructions.</p>
 <section id="autotst-autotst">
 <h3>AutoTST (<code class="docutils literal notranslate"><span class="pre">'autotst'</span></code>)<a class="headerlink" href="#autotst-autotst" title="Link to this heading"></a></h3>
 <p>Uses the <a class="reference external" href="https://github.com/ReactionMechanismGenerator/AutoTST">AutoTST</a>
-package to generate TS guesses from RMG reaction templates.  AutoTST
-performs systematic conformer searches of the TS using distance-geometry
-embedding and RDKit force-field optimization, guided by the reaction family
-template distances.</p>
-<p>Runs as a subprocess.  Requires the <code class="docutils literal notranslate"><span class="pre">autotst</span></code> conda environment.</p>
+package to generate TS guesses from RMG reaction templates. AutoTST performs
+systematic conformer searches of the TS using distance-geometry embedding and
+RDKit force-field optimization, guided by the reaction family template distances.</p>
+<p>Runs as a subprocess. Requires the <code class="docutils literal notranslate"><span class="pre">autotst</span></code> conda environment.</p>
 </section>
 <section id="kinbot-kinbot">
 <h3>KinBot (<code class="docutils literal notranslate"><span class="pre">'kinbot'</span></code>)<a class="headerlink" href="#kinbot-kinbot" title="Link to this heading"></a></h3>
-<p>Uses the <a class="reference external" href="https://github.com/zadorlab/KinBot">KinBot</a> package, which
-performs automated reaction discovery and TS search using semiempirical
-or DFT methods.  KinBot explores the potential energy surface starting from
-a given species and locates TS geometries for elementary reactions.</p>
-<p>Runs as a subprocess.  Requires the <code class="docutils literal notranslate"><span class="pre">kinbot</span></code> conda environment.</p>
+<p>Uses the <a class="reference external" href="https://github.com/zadorlab/KinBot">KinBot</a> package, which performs
+automated reaction discovery and TS search using semiempirical or DFT methods.
+KinBot explores the potential energy surface starting from a given species and
+locates TS geometries for elementary reactions.</p>
+<p>Runs as a subprocess. Requires the <code class="docutils literal notranslate"><span class="pre">kinbot</span></code> conda environment.</p>
 </section>
 <section id="ts-gcn-gcn">
 <h3>TS-GCN (<code class="docutils literal notranslate"><span class="pre">'gcn'</span></code>)<a class="headerlink" href="#ts-gcn-gcn" title="Link to this heading"></a></h3>
-<p>Uses a graph-convolutional neural network (TS-GCN) trained on DFT-optimized
-TS geometries to predict 3D TS structures directly from the reactant and
-product graphs.  This is the fastest external method but is limited to the
-atom types and reaction classes in its training data.</p>
-<p>Runs as a subprocess.  Requires the <code class="docutils literal notranslate"><span class="pre">ts_gcn</span></code> conda environment.</p>
+<p>Uses a graph-convolutional neural network (TS-GCN) trained on DFT-optimized TS
+geometries to predict 3D TS structures directly from the reactant and product
+graphs. This is the fastest external method but is limited to the atom types and
+reaction classes in its training data.</p>
+<p>Runs as a subprocess. Requires the <code class="docutils literal notranslate"><span class="pre">ts_gcn</span></code> conda environment.</p>
 </section>
 <section id="xtb-gsm-xtb-gsm">
 <h3>xTB-GSM (<code class="docutils literal notranslate"><span class="pre">'xtb_gsm'</span></code>)<a class="headerlink" href="#xtb-gsm-xtb-gsm" title="Link to this heading"></a></h3>
 <p>Uses the <a class="reference external" href="https://github.com/ZimmermanGroup/molecularGSM">Growing String Method (GSM)</a> with the GFN2-xTB
 semiempirical method to locate approximate TS geometries along the
-minimum-energy path between reactant and product.  This is a reaction-path
-method rather than a guess-based method, so it tends to produce higher-quality
-initial TS geometries at the cost of longer compute time.</p>
-<p>Runs as a subprocess.  Requires <code class="docutils literal notranslate"><span class="pre">xtb</span></code> and <code class="docutils literal notranslate"><span class="pre">gsm</span></code> executables.</p>
+minimum-energy path between reactant and product. This is a reaction-path method
+rather than a guess-based method, so it tends to produce higher-quality initial TS
+geometries at the cost of longer compute time.</p>
+<p>Runs as a subprocess. Requires <code class="docutils literal notranslate"><span class="pre">xtb</span></code> and <code class="docutils literal notranslate"><span class="pre">gsm</span></code> executables.</p>
 </section>
 <section id="orca-neb-orca-neb">
 <h3>ORCA NEB (<code class="docutils literal notranslate"><span class="pre">'orca_neb'</span></code>)<a class="headerlink" href="#orca-neb-orca-neb" title="Link to this heading"></a></h3>
-<p>Uses ORCA’s nudged elastic band (NEB) implementation to find the
-minimum-energy path and locate the TS as the highest-energy image.
-This is a DFT-level reaction-path method and produces high-quality TS
-geometries, but is significantly more expensive than the heuristic methods.</p>
+<p>Uses ORCA’s nudged elastic band (NEB) implementation to find the minimum-energy
+path and locate the TS as the highest-energy image. This is a DFT-level
+reaction-path method and produces high-quality TS geometries, but is significantly
+more expensive than the heuristic methods.</p>
 <p>Requires a configured ORCA installation and server access.</p>
 </section>
 </section>
 <section id="general-workflow">
 <h2>General workflow<a class="headerlink" href="#general-workflow" title="Link to this heading"></a></h2>
-<p>Regardless of which adapter(s) are used, ARC follows the same general
-workflow for each reaction:</p>
+<p>Regardless of which adapter(s) are used, ARC follows the same general workflow
+for each reaction:</p>
 <ol class="arabic simple">
-<li><p><strong>TS guess generation</strong> — each adapter produces one or more candidate
-TS geometries.</p></li>
+<li><p><strong>TS guess generation</strong> — each adapter produces one or more candidate TS
+geometries.</p></li>
 <li><p><strong>Clustering</strong> — near-duplicate guesses are removed.</p></li>
-<li><p><strong>Optimization</strong> — each surviving guess is optimized at the specified
-level of theory.</p></li>
-<li><p><strong>Validation</strong> — frequency analysis confirms exactly one imaginary
+<li><p><strong>Optimization</strong> — each surviving guess is optimized at the specified level
+of theory.</p></li>
+<li><p><strong>Validation</strong> — frequency analysis confirms exactly one meaningful imaginary
 frequency, and IRC calculations verify that the TS connects the correct
 reactant and product wells.</p></li>
 </ol>
-<p>Multiple adapters can be combined (e.g., <code class="docutils literal notranslate"><span class="pre">ts_adapters:</span> <span class="pre">['heuristics',</span>
-<span class="pre">'linear',</span> <span class="pre">'gcn',</span> <span class="pre">'kinbot']</span></code>) to maximize coverage across reaction families.</p>
+<p>Multiple adapters can be combined (e.g., <code class="docutils literal notranslate"><span class="pre">ts_adapters:</span> <span class="pre">['heuristics',</span> <span class="pre">'linear',</span>
+<span class="pre">'gcn',</span> <span class="pre">'kinbot']</span></code>) to maximize coverage across reaction families.</p>
+</section>
 <section id="outputs-and-validation">
-<h3>Outputs and validation<a class="headerlink" href="#outputs-and-validation" title="Link to this heading"></a></h3>
+<h2>Outputs and validation<a class="headerlink" href="#outputs-and-validation" title="Link to this heading"></a></h2>
 <p>Validated TS results are reported in the project output (log files and generated artifacts),
 together with the supporting calculations (optimization, frequency, and IRC).
 ARC does not require TS geometries to be isomorphic with a stored 2D adjacency list, since a TS does not have a
 single strict graph representation. Instead, TS validation relies on TS-specific checks such as the imaginary
 frequency, normal mode displacement analysis, IRC results, and energetic consistency.</p>
 </section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<p>[1] C. Pieters, A. Grinberg Dana, <em>“Learning Rates: Predicting Rate Coefficients for Hydrogen Abstraction Reactions”</em>,
+Digital Discovery 2026.</p>
+<p>[2] L. Fahoum, A. Grinberg Dana, <em>“Automated reaction transition state search for bimolecular liquid-phase reactions
+using internal coordinates: a test case for neutral hydrolysis”</em>, Digital Discovery 2026, 5, 1372-1387,
+DOI: 10.1039/D5DD00506J.</p>
 </section>
 </section>
 
@@ -298,7 +419,7 @@ frequency, normal mode displacement analysis, IRC results, and energetic consist
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="examples.html" class="btn btn-neutral float-left" title="Examples" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="advanced.html" class="btn btn-neutral float-right" title="Advanced Features" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="advanced.html" class="btn btn-neutral float-right" title="Advanced Usage" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

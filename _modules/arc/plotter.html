@@ -8,6 +8,8 @@
   <title>arc.plotter &mdash; ARC 1.1.0 Documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=6285a516" />
 
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
@@ -30,6 +32,7 @@
           
           <a href="../../index.html" class="icon icon-home">
             ARC
+              <img src="../../_static/arc.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
@@ -39,16 +42,25 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation instructions</a></li>
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../how_it_works.html">How ARC Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../examples.html">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../TS_search.html">Transition State Search</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../advanced.html">Advanced Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../tools.html">Standalone Tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="../../api/index.html">ARC’s API</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../tools.html">Standalone tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="../../media.html">Media</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../release.html">Release notes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../credits.html">Credits</a></li>
@@ -1559,6 +1571,7 @@
 <span class="sd">        results (dict):</span>
 <span class="sd">            The results dictionary, dihedrals are assumed to be in degrees (not radians).</span>
 <span class="sd">            This dictionary has the following structure::</span>
+
 <span class="sd">                {&#39;directed_scan_type&#39;: &lt;str, used for the fig name&gt;,</span>
 <span class="sd">                 &#39;scans&#39;: &lt;list, entries are lists of torsion indices&gt;,</span>
 <span class="sd">                 &#39;directed_scan&#39;: &lt;dict&gt;, keys are tuples of &#39;{0:.2f}&#39; formatted dihedrals,</span>
@@ -1826,7 +1839,9 @@
 
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">get_rxn_units_and_conversion_factor</span><span class="p">(</span><span class="n">rxn</span><span class="p">:</span> <span class="n">ARCReaction</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>  <span class="c1"># todo: add tests</span>
+<div class="viewcode-block" id="get_rxn_units_and_conversion_factor">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.get_rxn_units_and_conversion_factor">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_rxn_units_and_conversion_factor</span><span class="p">(</span><span class="n">rxn</span><span class="p">:</span> <span class="s1">&#39;ARCReaction&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>  <span class="c1"># todo: add tests</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the units and conversion factor for the reaction rate coefficient.</span>
 
@@ -1845,7 +1860,8 @@
         <span class="n">units</span> <span class="o">=</span> <span class="s1">&#39;(cm^3/(mol*s))&#39;</span>
     <span class="k">elif</span> <span class="n">reaction_order</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
         <span class="n">units</span> <span class="o">=</span> <span class="s1">&#39;(cm^6/(mol^2*s))&#39;</span>
-    <span class="k">return</span> <span class="n">units</span><span class="p">,</span> <span class="n">conversion_factors</span><span class="p">[</span><span class="n">reaction_order</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">units</span><span class="p">,</span> <span class="n">conversion_factors</span><span class="p">[</span><span class="n">reaction_order</span><span class="p">]</span></div>
+
 </pre></div>
 
            </div>
