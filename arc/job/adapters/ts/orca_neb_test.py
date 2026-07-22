@@ -34,6 +34,7 @@ class TestOrcaNEB(unittest.TestCase):
         cls.project_directory = os.path.join(ARC_TESTING_PATH, 'test_OrcaNEBAdapter')
         if os.path.exists(cls.project_directory):
             shutil.rmtree(cls.project_directory)
+        cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
         os.makedirs(cls.project_directory)
 
         # Mock objects for both orca_neb and orca/adapter modules
@@ -180,7 +181,6 @@ class TestOrcaNEB(unittest.TestCase):
         cls.adapter_t_max_format_patcher.stop()
         cls.adapter_output_filenames_patcher.stop()
         cls.orca_neb_output_filenames_patcher.stop()
-        shutil.rmtree(cls.project_directory, ignore_errors=True)
 
 
 if __name__ == '__main__':

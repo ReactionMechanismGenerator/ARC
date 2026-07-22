@@ -1,347 +1,321 @@
 .. _installation:
 
-Installation instructions
-=========================
+Installation
+============
 
-ARC can be installed on a server, as well as on your local desktop / laptop, submitting jobs to your server(s).
-The instructions below make this differentiation when relevant (the only difference is that ARC should be "aware"
-of software installed on the same machine, where the communication isn't done via SSH).
+ARC is normally installed from source into the Conda environment defined by the
+repository. Install ARC on every machine that will execute ARC itself. Electronic
+structure software can be local to that machine or available on remote servers
+that ARC reaches over SSH.
 
-Note:
-    ARC was only tested on Linux (Ubuntu_ 18.04.1 and 20.04 LTS) and Mac machines.
-    We don't expect it to work smoothly on Windows machines.
+ARC currently targets Python 3.14 through ``environment.yml`` and
+``pyproject.toml``. Linux and macOS are the supported practical targets. Windows
+is not expected to be smooth unless used through a Linux-like environment.
 
-Note:
-    For a containerized setup, see the :ref:`Docker image <docker>` documentation.
+Quick Install
+-------------
 
-Note:
-    These installation instructions assume you already have access to a server with a cluster scheduling software
-    (ARC currently supports SGE, Slurm, PBS, and HTCondor) and with properly installed electronic structure software
-    (ARC currently supports Gaussian, QChem, Molpro, TeraChem, Orca, and Psi4). We further assume that you have
-    some experience working with the server, e.g., writing appropriate submit scripts (example scripts are given,
-    but modifications are usually required).
+Clone ARC and create the environment:
 
-.. _path:
+.. code-block:: bash
 
-Clone and setup path
-^^^^^^^^^^^^^^^^^^^^
+   git clone https://github.com/ReactionMechanismGenerator/ARC.git
+   cd ARC
+   conda env create -f environment.yml
+   conda activate arc_env
 
-- Download and install the `Anaconda Python Platform`__ for Python 3.14 or higher if you haven't already.
-- Get git and appropriate compilers if you don't have them already by typing ``sudo apt install git gcc g++ make``
-  in a terminal.
-- Clone ARC's repository to by typing the following command in the desired folder (e.g., under `~/Code/`)::
+Compile ARC's Cython extensions:
 
-    git clone https://github.com/ReactionMechanismGenerator/ARC.git
+.. code-block:: bash
 
-- Add ARC to your local path in ``.bashrc`` (make sure to change ``~/Path/to/ARC/`` accordingly)::
+   make compile
 
-    export PYTHONPATH=$PYTHONPATH:~/Path/to/ARC/
+Run the unit tests when you want to verify the installation:
 
-__ anaconda_
+.. code-block:: bash
 
+   make test
 
-.. _arce:
+If you only need the Docker image, see :ref:`docker`.
 
-Install dependencies
-^^^^^^^^^^^^^^^^^^^^
+Core Requirements
+-----------------
 
-- Create the Anaconda environment for ARC (after changing the directory to the
-  installation folder by, e.g., ``cd ~/Code/ARC/``)::
+The Conda environment installs ARC's Python dependencies, including RDKit,
+OpenBabel bindings, Sphinx, pytest, and the packages needed by ARC's molecule
+and scheduler layers.
 
-    conda env create -f environment.yml
+Install system build tools before creating the environment if they are missing:
 
-  Activate the ARC environment every time before you run ARC::
+.. code-block:: bash
 
-     conda activate arc_env
+   sudo apt install git gcc g++ make
 
-- Install RMG (choose one option):
+On macOS, install the equivalent compiler toolchain through Xcode command-line
+tools or your normal package manager.
 
-  - Use the installer script via Make (recommended). Default is the packaged release::
+Optional External Tools
+-----------------------
 
-    make install-rmg
+ARC can use several external projects and programs. Install only the ones you
+need for your workflows and the electronic structure software you can actually
+run.
 
-    To install from source instead::
+ARC does not install commercial or third-party ESS binaries such as Gaussian,
+ORCA, Q-Chem, Molpro, TeraChem, Psi4, or CFour. Those programs must already be
+licensed where required, installed on the routed machine, and loadable from the
+submit environment used by ARC.
 
-    make install-rmg RMG_ARGS=--source
+Useful Make targets include:
 
-    Additional source options (examples)::
+.. code-block:: bash
 
-    make install-rmg RMG_ARGS="--source --conda"
-    make install-rmg RMG_ARGS="--source --pip"
+   make install-rmg       # RMG-Py, RMG-database, and Arkane support
+   make install-xtb       # xTB support
+   make install-kinbot    # KinBot TS search support
+   make install-gcn       # TS-GCN support
+   make install-gcn-cpu   # CPU TS-GCN support
+   make install-autotst   # AutoTST support
+   make install-sella     # Sella support
+   make install-torchani  # TorchANI support
+   make install-ob        # OpenBabel support
+   make install-all       # install the full external stack
 
-    Optional extras (examples)::
+The RMG installer accepts flags:
 
-    make install-rmg RMG_ARGS="--rms"
-    make install-rmg RMG_ARGS="--source --rms --ssh"
+.. code-block:: bash
 
-    See ``devtools/install_rmg.sh --help`` for all flags.
+   make install-rmg
+   make install-rmg RMG_ARGS=--source
+   make install-rmg RMG_ARGS="--source --ssh"
 
-  - Source install RMG-Py + RMG-database manually, then set `RMG_PY_PATH` and `RMG_DB_PATH` in your shell or
-    `.arc/settings.py`.
+Run this for the full list:
 
-  - Install the packaged RMG release (RMG-Py + RMG-database + Arkane) into a dedicated environment::
+.. code-block:: bash
 
-    mamba create -n rmg_env -c rmg -c conda-forge python=3.9 conda-forge::numpy>=1.10.0,<2 \
-        blas=*=openblas conda-forge::numdifftools rmg=3.3.0 connie::symmetry
+   devtools/install_rmg.sh --help
 
-    ARC runs Arkane automatically for statmech from this environment.
-    ARC will locate the RMG database inside `rmg_env` by default. If you keep the database elsewhere,
-    set `RMG_DB_PATH` in your shell or `.arc/settings.py`.
-- Type ``make install-all`` under the ARC repository folder to install the following 3rd party repositories:
-  `AutoTST <https://github.com/ReactionMechanismGenerator/AutoTST>`_
-  (`West et al. <https://doi.org/10.1021/acs.jpca.7b07361>`_),
-  `KinBot <https://github.com/zadorlab/KinBot>`_
-  (`Van de Vijver et al. <https://doi.org/10.1016/j.cpc.2019.106947>`_),
-  and `TS-GCN <https://github.com/ReactionMechanismGenerator/TS-GCN.git>`_
-  (`Pattanaik et al. <https://chemrxiv.org/articles/Genereting_Transition_States_of_Isomerization_Reactions_with_Deep_Learning/12302084>`_).
-  Note that this should be done on each machine ARC is expected to be executed on.
-  For advanced users: ARC will look for the paths to these repos. If your path on a server in not conventional,
-  you can assist ARC discover your external repos in ``settings.py``.
-- Test ARC by typing ``make test`` under the ARC folder after activating the anaconda `arc_env` environment.
-
-
-Create a ``.arc`` folder (optional but recommended)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Users are encouraged to create a ``.arc`` folder under their ``HOME`` folder on the machine running ARC.
-Copy (and modify as appropriate, see below) the following python files
-from the ARC repository into the newly created folder:
-``<base_folder>/ARC/arc/settings/settings.py`` --> ``HOME/.arc/settings.py``
-``<base_folder>/ARC/arc/settings/input.py`` --> ``HOME/.arc/input.py``
-``<base_folder>/ARC/arc/settings/submit.py`` --> ``HOME/.arc/submit.py``
-
-By doing this, ARC will use the respective settings and definitions from the files under ``.arc``
-to override its defaults. Users many (carefully) modify the definitions in the local files
-as appropriate. Note that you may choose to copy only some of these files, in which case the
-definitions from any non-copied files will be taken from ARC's defaults (e.g., most users will
-not need to modify ``input.py``).  Note also that definitions within these files may be partial
-(i.e., you may keep only those parameters you may wish to change within each file), and that any
-missing parameter will be assigned its default value from ARC's defaults. It is recommended to
-only keep parameters you modified in ``settings.py``, so that other parameters will be updated
-as you update the ARC repository in the future. This recommendation helps avoid merge conflicts
-when updating ARC, and allows a single ARC instance on a server to be used by different users
-with different preferences.
-
-Principally, ARC would also work fine if users directly change the respective files within ARC's repository
-instead of making copies. However, modifying the files in ARC directly may cause merging conflicts when
-updating ARC. The down side is that users are responsible to keep their copies up to date with ARC's format
-if major changes are made. Such changes will be listed under the Release Notes and will result in an increase
-of the MINOR version number (i.e., ,major.MINOR.patch, e.g., `1.1.5` --> `1.2.0`).
-
-
-Generating RSA SSH keys and defining servers
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The first two directives are only required if you'd like ARC to access remote servers
-(ARC could also run "locally" when it's installed on a server).
-
-- Generate RSA SSH keys for your favorite server(s) on which relevant electronic structure software
-  (ESS, e.g., Gaussian) are installed. `Instructions for generating RSA keys could be found here
-  <https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2>`_.
-- Copy the RSA SSH key path(s) on your local machine to ``settings.py`` in the ``servers``
-  dictionary under keys.
-- Update the ``servers`` dictionary in your copy of ARC's `settings.py
-  <https://github.com/ReactionMechanismGenerator/ARC/blob/main/arc/settings/settings.py>`_.
-
-  * **A local server must be named with the reserved keyword ``local``**.
-    ``cluster_soft`` and username (``un``) are mandatory.
-  * A remote server has no limitations for naming. ``cluster_soft``, ``address``, username (``un``), and ``key``
-    (the path to the local RSA SSH key) are mandatory.
-  * Optional parameters for both local and remote servers are ``cpus``, ``memory``, and ``path``.
-    The first two parameters stand for the maximum amount of cpu cores and memory in GB available on a node.
-    If a job crashes due to cpu or memory issues, ARC will automatically re-run the job with different cpu
-    and memory allocations within the specified limitations. By default, ``cpus`` is 8 and ``memory`` is 14 GB.
-    The optional ``path`` key is used if it is necessary to direct ARC to create project files in a specific
-    location on the server. E.g., if the value ``/storage/group_name/`` is given for ``path``, ARC will
-    create project files under ``/storage/group_name/$USER/runs/ARC_Projects/project_name/``.
-  * Although ARC currently does not allocate computing resources dynamically based on system size or ESS,
-    the user can manually control memory specifications for each project.
-    See :ref:`Advanced Features <advanced>` for details.
-  * A default ESS job in ARC has 14 GB of memory, 8 cpu cores, and 120 hours of maximum execution time.
-    The default settings can be changed by providing different values to the ``job_total_memory_gb``,
-    ``job_cpu_cores``, and ``job_time_limit_hrs`` keys in the ``default_job_settings`` dictionary under ``settings.py``.
-  * ARC will alter job memory, cpu, and time settings when troubleshoot jobs crashed due to resource allocation issues.
-    The ``job_max_server_node_memory_allocation`` key stands for the maximum percentage of total node memory ARC will
-    use when troubleshoot a job. The default value is 80%.
-
-- Update the submit scripts in your copy of ARC's `submit.py
-  <https://github.com/ReactionMechanismGenerator/ARC/blob/main/arc/settings/submit.py>`_
-  according to your servers' definitions.
-  * See the given template examples, and follow the structure of nested dictionaries (by server name, then by ESS name).
-  * Preserve the variables in curly braces (e.g., ``{memory}``), so that ARC is able to auto-fill them.
-
-
-Associating software with servers
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ARC keeps track of software location on servers using a Python dictionary associating the different software (keys)
-with the servers they are installed on (values). The server name must be consistent with the respective definition
-in the ``servers`` dictionary mentioned above. Typically, you would update the ``global_ess_settings`` dictionary in
-your copy of ARC's
-`settings.py <https://github.com/ReactionMechanismGenerator/ARC/blob/main/arc/settings/settings.py>`_
-to reflect your software and servers, for example::
-
-  global_ess_settings = {
-      'gaussian': ['server1', 'server2'],
-      'molpro': 'server2',
-      'qchem': 'local',
-  }
-
-Note that the above example reflects a situation where QChem in installed on the same machine as ARC, while Gaussian
-and Molpro are installed on different servers ARC has access to. You can of course make any combination as you'd like.
-The servers can be listed as a simple string for a single server, or as a list for multiple servers, where relevant.
-
-These global settings are used by default unless ARC is given an ``ess_settings`` dictionary through an input file
-or the API, thus allowing more flexibility when running several instances of ARC simultaneously (e.g., if Gaussian is
-installed on two servers, where one has more memory in its nodes, the user can request ARC to use that specific server
-for the more memory-intensive jobs). More about the ``ess_settings`` dictionary can be found in the
-:ref:`Advanced Features <advanced>` section of the documentation.
-
-If neither ``global_ess_settings`` (in settings.py) nor ``ess_settings`` (via an input file or the API) are specified,
-ARC will use its "radar" feature to "scans" the servers it has access to, and assign relevant ESS it is familiar with
-to the respective server. In order for this feature to function properly, make sure your .bashrc file on the remote
-server\s does not have an interactive shell check. If it does, disable it.
-
-It is recommended, though, to use the ``global_ess_settings`` and/or ``ess_settings`` dictionaries rather than allowing
-the "radar" to do its thing blindly. The "radar" feature, however, is very useful for diagnostics
-(see Tests_ below).
-
-You can check what the "radar" detects using the ARC ESS diagnostics notebook.
-
-
-Cluster software definitions
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-ARC supports Slurm and Oracle/Sun Grid Engine (OGE / SGE). If you're using other `cluster software`__, or if your
-server's definitions are different that ARC's, you should also modify the following variables in your copy of ARC's
-`settings.py <https://github.com/ReactionMechanismGenerator/ARC/blob/main/arc/settings/settings.py>`_:
-
-- ``check_status_command``
-- ``submit_command``
-- ``delete_command``
-- ``list_available_nodes_command``
-- ``submit_filename``
-- ``t_max_format``
-
-__ cluster_
-
-You will find the values for ``check_status_command``, ``submit_command``, ``delete_command``, and
-``list_available_nodes_command`` by typing on the respective server the `which` command, e.g.::
-
-  which sbatch
-
-If you have different servers with the same cluster software that have different cluster software definitions, just name
-them differently, e.g., `Slurm1` and `Slurm2`, and make sure to pair them accordingly under the ``servers`` dictionary.
-
-
-.. _Tests:
-
-Tests
-^^^^^
-
-- If you'd like to make sure ARC has access to your servers and recognises your ESS, use the "radar" tool, available
-  as an iPython notebook (see :ref:`Standalone tools <tools>`).
-- Run the minimal example (see :ref:`Examples <examples>`), and a couple more examples, if you'd like, using both input files
-  and the API (via iPython notebooks or any other method).
-- Run ARC's unit tests. Note that for all tests to pass, ARC expects to find the unmodified settings in settings.py.
-  If you made changes to any settings instead of creating respective files under a local ``.arc.`` folder,
-  it is recommended to first stash your changes (``git stash``). To run the tests, type::
-
-    make test
-
-  After the tests complete, you may unstash your changes, if relevant (``git stash pop``).
-  
-  In addition, functional tests are helpful in making sure that ARC is installed and functioning correctly.
-
-  Again, before performing these tests, it is reccommended to first stash your changes (``git stash``).
-  
-  To trigger the functional tests, type::
-   
-   make test-functional
-
-  After the tests complete, you may unstash your changes, if relevant (``git stash pop``).
-
-
-.. _aliases:
-
-Optional: Add ARC aliases to your .bashrc (for convenience)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Below are optional aliases to make ARC (even) more convenient (make sure to change `~/Path/to/ARC/` accordingly).
-Add these to your ``.bashrc`` file (edit it by typing, e.g., ``nano ~/.bashrc``)::
-
-  export arc_path=$HOME'/Path/to/ARC/'
-  alias arce='source activate arc_env'
-  alias arc='python $arc_path/ARC.py input.yml'
-  alias arcrestart='python $arc_path/ARC.py restart.yml'
-  alias arcode='cd $arc_path'
-  alias j='cd $arc_path/ipython/ && jupyter notebook'
+UMA Engine (Optional)
+---------------------
 
+ARC can use `UMA <https://github.com/facebookresearch/fairchem>`_, Meta FAIR's
+``fairchem-core`` foundation machine-learned interatomic potential, as a fast local
+engine for geometry optimization, frequencies, single points, hindered-rotor scans,
+IRCs, and transition-state searches. Use ``method='uma'`` in a level of theory to
+select it (it resolves to the latest UMA model implemented in ARC).
 
+UMA runs in its own ``uma_env`` conda environment and is **not** installed by
+``make install-all`` or in CI, because the model is gated behind a Meta license and a
+HuggingFace token and is heavy to download. To set it up, run:
+
+.. code-block:: bash
+
+   make install-uma          # or: bash devtools/install_uma.sh
+
+This creates ``uma_env`` (``fairchem-core`` + ``sella`` + ``ase``), verifies the
+required imports, and walks you through the one-time HuggingFace login for the gated
+model. Before running it, accept the model license at
+https://huggingface.co/facebook/UMA (in a browser logged into HuggingFace) and create
+a token with read access to gated repositories. To also run the UMA model-dependent
+unit tests after installing, use ``bash devtools/install_uma.sh --test``.
+
+Personal Configuration
+----------------------
+
+Do not edit repository defaults for routine use. Create a personal ``~/.arc``
+directory and add short override files containing only the settings you need to
+customize:
+
+.. code-block:: bash
+
+   mkdir -p ~/.arc
+   touch ~/.arc/settings.py
+
+Copy the full templates only when you want a starting point for site-specific
+configuration:
+
+.. code-block:: bash
+
+   mkdir -p ~/.arc
+   cp arc/settings/settings.py ~/.arc/settings.py
+   cp arc/settings/submit.py ~/.arc/submit.py
+   cp arc/settings/inputs.py ~/.arc/inputs.py
+
+Most users should keep a short ``~/.arc/settings.py`` containing only changed
+values, such as ``servers``, ``global_ess_settings``, ``levels_ess``, and job
+defaults. Missing values fall back to ARC's repository defaults.
+
+Remote Servers and SSH
+----------------------
+
+Use SSH keys for remote servers. A remote server entry needs:
+
+* ``cluster_soft`` - one of the cluster software names configured in ARC;
+* ``address`` - SSH hostname;
+* ``un`` - username;
+* ``key`` - path to the private SSH key on the machine running ARC.
+
+Example:
+
+.. code-block:: python
+
+   servers = {
+       'my_slurm': {
+           'cluster_soft': 'Slurm',
+           'address': 'login.cluster.edu',
+           'un': 'my_user',
+           'key': '/home/my_user/.ssh/id_rsa',
+           'cpus': 32,
+           'memory': 128,
+       },
+   }
+
+Local and HPC Execution
+-----------------------
+
+If ARC runs on the same machine or login node that submits the quantum chemistry
+jobs, define a server named ``local``. The name ``local`` is reserved.
+In this context, ``local`` means "no SSH hop"; ARC still submits ESS jobs through
+the configured scheduler unless your site-specific submit templates implement a
+different execution path.
+
+.. code-block:: python
+
+   servers = {
+       'local': {
+           'cluster_soft': 'Slurm',
+           'un': 'my_user',
+           'cpus': 32,
+           'memory': 128,
+       },
+   }
+
+ARC supports scheduler definitions for OGE/SGE, Slurm, PBS, and HTCondor. If
+your site uses different command paths, queue names, or submit script headers,
+customize ``check_status_command``, ``submit_command``, ``delete_command``,
+``submit_filenames``, and the templates in ``~/.arc/submit.py``.
+
+Map Software to Servers
+-----------------------
+
+Tell ARC where electronic structure software is available using
+``global_ess_settings``:
+
+.. code-block:: python
+
+   global_ess_settings = {
+       'gaussian': ['local', 'my_slurm'],
+       'orca': 'local',
+       'qchem': 'my_slurm',
+       'xtb': 'local',
+   }
+
+Per-project ``ess_settings`` in a YAML input or Python script overrides the
+global mapping. If neither is provided, ARC can scan configured servers for
+known software, but explicit mappings are more reproducible.
+
+SSH and HPC Preflight
+---------------------
+
+Before running ARC on remote or scheduled resources, verify the pieces ARC will
+depend on:
+
+* passwordless SSH works from the ARC machine to each remote ``address``;
+* the remote host key is already accepted in ``known_hosts``;
+* scheduler commands such as ``sbatch``, ``qsub``, ``qstat``, ``squeue``, or
+  ``condor_submit`` work in a normal shell;
+* each routed ESS executable can be loaded by the submit script environment;
+* scratch and project paths have enough space and write permissions;
+* any required module loads, license variables, or environment setup commands
+  are present in ``~/.arc/submit.py`` or the relevant site startup scripts.
+
+Verify the Install
+------------------
+
+After activating ``arc_env``:
+
+.. code-block:: bash
+
+   make compile
+   make test
+
+For a smaller functional check, run a minimal YAML project from :ref:`examples`.
+If you use remote servers, also verify SSH access and queue submission with your
+cluster's native tools before asking ARC to submit jobs.
 
 Updating ARC
-^^^^^^^^^^^^
+------------
 
-ARC is being updated frequently. Make sure to update ARC and enjoy new features and bug fixes.
+ARC is updated frequently. Update regularly to enjoy new features and bug fixes.
 
-Note:
-    If you change ARC's parameters within the repository rather than copies thereof as explained above,
-    it is highly recommended to backup the files you manually changed before updating ARC.
-    These are usually `ARC/arc/settings/settings.py` and `ARC/arc/settings/submit.py`.
+.. note::
+
+   If you change ARC's parameters within the repository rather than copies thereof
+   (see the Personal Configuration section above), it is highly recommended to
+   back up the files you manually changed before updating ARC. These are usually
+   ``arc/settings/settings.py`` and ``arc/settings/submit.py``.
 
 You can update ARC to a specific version, or to the most recent developer version.
-To get the most recent developer version, do the following
-(and make sure to change `~/Path/to/ARC/` accordingly)::
+To get the most recent developer version, do the following (change ``~/Path/to/ARC/``
+accordingly):
 
-    cd ~/Path/to/ARC/
-    git stash
-    git fetch origin
-    git pull origin main
-    git stash pop
+.. code-block:: bash
 
-The above will update your `main` branch of ARC.
+   cd ~/Path/to/ARC/
+   git stash
+   git fetch origin
+   git pull origin main
+   git stash pop
 
-To update to a specific version (e.g., version 1.1.0), do the following
-(and make sure to change `~/Path/to/ARC/` accordingly)::
+The above will update your ``main`` branch of ARC.
 
-    cd ~/Path/to/ARC/
-    git stash
-    git fetch origin
-    git checkout tags/1.1.0 -b v1.1.0
-    git stash pop
+To update to a specific version (e.g., version 1.1.0), do the following:
 
-The above will create a `v1.1.0` branch which replicates the stable 1.1.0 version.
+.. code-block:: bash
 
-**Note:** This process might cause merge conflicts if the updated version (either the developer version
-or a stable version) changes a file you changed locally. Although we try to avoid causing merge conflicts
-for ARC's users as much as we can, it could still sometimes happen.
-You'll identify a merge conflict if git prints a message similar to this::
+   cd ~/Path/to/ARC/
+   git stash
+   git fetch origin
+   git checkout tags/1.1.0 -b v1.1.0
+   git stash pop
 
-    $ git merge BRANCH-NAME
-    > Auto-merging settings.py
-    > CONFLICT (content): Merge conflict in styleguide.md
-    > Automatic merge failed; fix conflicts and then commit the result
+The above creates a ``v1.1.0`` branch that replicates the stable 1.1.0 version.
+
+This process might cause merge conflicts if the updated version changes a file you
+changed locally. Although we try to avoid causing merge conflicts for ARC's users as
+much as we can, it can still sometimes happen. You'll identify a merge conflict if git
+prints a message similar to this:
+
+.. code-block:: bash
+
+   $ git merge BRANCH-NAME
+   > Auto-merging settings.py
+   > CONFLICT (content): Merge conflict in styleguide.md
+   > Automatic merge failed; fix conflicts and then commit the result
 
 Detailed steps to resolve a git merge conflict can be found `online`__.
 
 __ mergeConflict_
 
-Principally, you should open the files that have merge conflicts, and look for the following markings::
+Open the files that have merge conflicts and look for the following markings:
 
-    <<<<<<< HEAD
-    this is some content introduced by updating ARC
-    =======
-    totally different content the user added, adding different changes
-    to the same lines that were also updated remotely
-    >>>>>>> new_branch_to_merge_later
+.. code-block:: text
+
+   <<<<<<< HEAD
+   this is some content introduced by updating ARC
+   =======
+   totally different content the user added, adding different changes
+   to the same lines that were also updated remotely
+   >>>>>>> new_branch_to_merge_later
 
 Resolving a merge conflict consists of three stages:
 
-- determine which version of the code you'd like to keep
-  (usually you should manually append your oun changes to the more
-  updated ARC code). Make the changes and get rid of the unneeded ``<<<<<<< HEAD``,
-  ``=======``, and ``>>>>>>> new_branch_to_merge_later`` markings. Repeat for all conflicts.
-- Stage the changed by typing: ``git add .``
-- If you don't plan to commit your changes, unstage them by typing: ``git reset --soft origin/main``
-
+- Determine which version of the code you'd like to keep (usually you should manually
+  append your own changes to the more updated ARC code). Make the changes and get rid
+  of the unneeded ``<<<<<<< HEAD``, ``=======``, and
+  ``>>>>>>> new_branch_to_merge_later`` markings. Repeat for all conflicts.
+- Stage the changes by typing ``git add .``.
+- If you don't plan to commit your changes, unstage them by typing
+  ``git reset --soft origin/main``.
 
 .. include:: links.txt

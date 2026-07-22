@@ -285,12 +285,14 @@ def identify_superimposable_candidates(fingerprint_1: dict[int, dict[str, str | 
                               of species 1, values are potentially mapped atom indices of species 2.
     """
     candidates = list()
-    for key_1 in fingerprint_1.keys():
-        for key_2 in fingerprint_2.keys():
-            # Try all combinations of heavy atoms.
-            result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2)
-            if result is not None:
-                candidates.append(result)
+    if not fingerprint_1:
+        return []
+    key_1 = list(fingerprint_1.keys())[0]
+    for key_2 in fingerprint_2.keys():
+        # Try all combinations of heavy atoms.
+        result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2)
+        if result is not None:
+            candidates.append(result)
     return prune_identical_dicts(candidates)
 
 
@@ -328,8 +330,7 @@ def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
                   ) -> dict[int, int] | None:
     """
     A depth first search (DFS) graph traversal algorithm to determine possible superimposable ordering of heavy atoms.
-    This is an iterative and not a recursive algorithm since Python doesn't have a great support for recursion
-    since it lacks Tail Recursion Elimination and because there is a limit of recursion stack depth (by default is 1000).
+    Implemented as a backtracking search to guarantee correctness.
 
     Args:
         fingerprint_1 (dict[int, dict[str, list[int]]]): Adjacent elements dictionary 1 (graph 1).
@@ -343,31 +344,67 @@ def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
         dict[int, int] | None: ``None`` if this is an invalid superimposable candidate. Keys are atom indices of
                                   heavy atoms of species 1, values are potentially mapped atom indices of species 2.
     """
-    visited_1, visited_2 = list(), list()
-    stack_1, stack_2 = deque(), deque()
-    stack_1.append(key_1)
-    stack_2.append(key_2)
-    result: dict[int, int] = dict()
-    while stack_1 and stack_2:
-        current_key_1 = stack_1.pop()
-        current_key_2 = stack_2.pop()
-        if current_key_1 in visited_1 or current_key_2 in visited_2:
-            continue
-        if not are_adj_elements_in_agreement(fingerprint_1[current_key_1], fingerprint_2[current_key_2]) \
-                and not (allow_first_key_pair_to_disagree and len(result) == 0):
-            continue
-        visited_1.append(current_key_1)
-        visited_2.append(current_key_2)
-        result[current_key_1] = current_key_2
-        for symbol in fingerprint_1[current_key_1].keys():
-            if symbol not in RESERVED_FINGERPRINT_KEYS + ['H']:
-                for combination_tuple in product(fingerprint_1[current_key_1][symbol], fingerprint_2[current_key_2][symbol]):
-                    if combination_tuple[0] not in visited_1 and combination_tuple[1] not in visited_2:
-                        stack_1.append(combination_tuple[0])
-                        stack_2.append(combination_tuple[1])
-    if len(result) != len(fingerprint_1):
+    keys_1 = list(fingerprint_1.keys())
+    keys_2 = list(fingerprint_2.keys())
+    if len(keys_1) != len(keys_2):
         return None
-    return result
+
+    if not allow_first_key_pair_to_disagree:
+        if not are_adj_elements_in_agreement(fingerprint_1[key_1], fingerprint_2[key_2]):
+            return None
+
+    mapping = {key_1: key_2}
+    mapped_2 = {key_2}
+
+    traversal_order = []
+    visited = set()
+
+    def dfs_order(k):
+        visited.add(k)
+        traversal_order.append(k)
+        for symbol in fingerprint_1[k].keys():
+            if symbol not in RESERVED_FINGERPRINT_KEYS + ['H']:
+                for nbr in fingerprint_1[k][symbol]:
+                    if nbr not in visited:
+                        dfs_order(nbr)
+
+    dfs_order(key_1)
+    for k in keys_1:
+        if k not in visited:
+            dfs_order(k)
+
+    def backtrack(idx_1):
+        if idx_1 == len(traversal_order):
+            return True
+        k1 = traversal_order[idx_1]
+        for k2 in keys_2:
+            if k2 in mapped_2:
+                continue
+            if not are_adj_elements_in_agreement(fingerprint_1[k1], fingerprint_2[k2]):
+                continue
+            consistent = True
+            for symbol in fingerprint_1[k1].keys():
+                if symbol not in RESERVED_FINGERPRINT_KEYS + ['H']:
+                    for nbr1 in fingerprint_1[k1][symbol]:
+                        if nbr1 in mapping:
+                            if mapping[nbr1] not in fingerprint_2[k2].get(symbol, []):
+                                consistent = False
+                                break
+                if not consistent:
+                    break
+            if not consistent:
+                continue
+            mapping[k1] = k2
+            mapped_2.add(k2)
+            if backtrack(idx_1 + 1):
+                return True
+            del mapping[k1]
+            mapped_2.remove(k2)
+        return False
+
+    if backtrack(1):
+        return mapping
+    return None
 
 
 def prune_identical_dicts(dicts_list: list[dict]) -> list[dict]:
@@ -382,14 +419,7 @@ def prune_identical_dicts(dicts_list: list[dict]) -> list[dict]:
     """
     new_dicts_list = list()
     for new_dict in dicts_list:
-        unique_ = True
-        for existing_dict in new_dicts_list:
-            if unique_:
-                for new_key, new_val in new_dict.items():
-                    if new_key not in existing_dict.keys() or new_val == existing_dict[new_key]:
-                        unique_ = False
-                        break
-        if unique_:
+        if new_dict not in new_dicts_list:
             new_dicts_list.append(new_dict)
     return new_dicts_list
 
@@ -1195,11 +1225,18 @@ def pairing_reactants_and_products_for_mapping(r_cuts: list[ARCSpecies],
         list[tuple[ARCSpecies,ARCSpecies]]: A list of paired reactant and products, to be sent to map_two_species.
     """
     pairs: list[tuple[ARCSpecies, ARCSpecies]] = list()
-    for react in r_cuts:
+    r_res = [generate_resonance_structures_safely(react.mol, save_order=True) or [react.mol] for react in r_cuts]
+    for i, react in enumerate(r_cuts):
+        res1 = r_res[i]
         for idx, prod in enumerate(p_cuts):
-            if r_cut_p_cut_isomorphic(react, prod):
-                pairs.append((react, prod))
-                p_cuts.pop(idx)
+            found = False
+            for res in res1:
+                if res.fingerprint == prod.mol.fingerprint or prod.mol.is_isomorphic(res, save_order=True):
+                    pairs.append((react, prod))
+                    p_cuts.pop(idx)
+                    found = True
+                    break
+            if found:
                 break
     return pairs
 
@@ -1460,7 +1497,10 @@ def copy_species_list_for_mapping(species: list["ARCSpecies"]) -> list["ARCSpeci
     Returns:
         list[ARCSpecies]: The copied species list.
     """
-    copies = [spc.copy() for spc in species]
+    copies = list()
+    for spc in species:
+        new_spc = ARCSpecies(label=spc.label, mol=spc.mol.copy(deep=True), xyz=spc.get_xyz(), keep_mol=True)
+        copies.append(new_spc)
     for copy, spc in zip(copies, species):
         for atom1, atom2 in zip(copy.mol.atoms, spc.mol.atoms):
             atom1.label = atom2.label

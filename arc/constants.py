@@ -25,7 +25,7 @@ amu (float): Atomic mass unit, 1.660538921e-27 kg.
 pi (float): Pi, 3.14159...
 """
 
-import math
+from math import pi
 
 #: The Hartree energy :math:`E_\mathrm{h}` in :math:`\mathrm{J}`
 E_h = 4.35974434e-18
@@ -47,7 +47,7 @@ bohr_to_angstrom = a0 * 1e10
 amu = 1.660538921e-27
 
 #: The speed of light in a vacuum :math:`c` in :math:`\mathrm{m/s}`
-c = 299792458
+c = 299792458.0
 
 #: The elementary charge :math:`e` in :math:`\mathrm{C}`
 e = 1.602176565e-19
@@ -71,7 +71,7 @@ m_n = 1.674927351e-27
 m_p = 1.672621777e-27
 
 #: :math:`\pi = 3.14159 \ldots`
-pi = float(math.pi)
+pi = float(pi)
 
 #: Faradays Constant F in C/mol
 F = 96485.3321233100184

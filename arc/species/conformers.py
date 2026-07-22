@@ -164,6 +164,7 @@ def generate_conformers(mol_list: list[Molecule] | Molecule,
                         return_all_conformers=False,
                         plot_path=None,
                         print_logs=True,
+                        economic_generation=False,
                         ) -> list | tuple[list, list] | None:
     """
     Generate conformers for (non-TS) species starting from a list of RMG Molecules.
@@ -195,6 +196,10 @@ def generate_conformers(mol_list: list[Molecule] | Molecule,
                                    If None, the plot will not be shown (nor saved).
         print_logs (bool, optional): Whether define a logger so logs are also printed to stdout.
                                      Useful when run outside of ARC. True to print.
+        economic_generation (bool, optional): Use a scaled-down (but still n_rotors- / n_heavy-dependent)
+                                              conformer count for cheap use-cases such as BDE scissors
+                                              fragments and atom-mapping fingerprints. Ignored when
+                                              ``num_confs_to_generate`` is given explicitly.
 
     Raises:
         ConformerError: If something goes wrong.
@@ -267,7 +272,7 @@ def generate_conformers(mol_list: list[Molecule] | Molecule,
         torsions, tops = determine_rotors(mol_list)
     conformers = generate_force_field_conformers(
         mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions), charge=charge, multiplicity=multiplicity,
-        num_confs=num_confs_to_generate, force_field=force_field)
+        num_confs=num_confs_to_generate, force_field=force_field, economic_generation=economic_generation)
 
     lowest_confs = list()
     if len(conformers):
@@ -640,6 +645,7 @@ def generate_force_field_conformers(label,
                                     xyzs=None,
                                     num_confs=None,
                                     force_field='MMFF94s',
+                                    economic_generation=False,
                                     ) -> list[dict]:
     """
     Generate conformers using RDKit and OpenBabel and optimize them using a force field
@@ -654,6 +660,8 @@ def generate_force_field_conformers(label,
         multiplicity (int): The species spin multiplicity.
         num_confs (int, optional): The number of conformers to generate.
         force_field (str, optional): The type of force field to use.
+        economic_generation (bool, optional): When ``num_confs`` is not given, scale the auto-determined
+                                              conformer count down (still a function of n_rotors / n_heavy).
 
     Raises:
         ConformerError: If xyzs is given and it is not a list, or its entries are not strings.
@@ -666,7 +674,7 @@ def generate_force_field_conformers(label,
     if num_confs is None:
         num_confs, num_chiral_centers = determine_number_of_conformers_to_generate(
             label=label, heavy_atoms=number_of_heavy_atoms, torsion_num=torsion_num, mol=mol_list[0],
-            xyz=xyzs[0] if xyzs is not None else None)
+            xyz=xyzs[0] if xyzs is not None else None, minimalist=economic_generation)
     else:
         num_chiral_centers = ''
     chiral_centers = '' if not num_chiral_centers else f', {num_chiral_centers} chiral centers,'

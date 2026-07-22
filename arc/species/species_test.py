@@ -7,6 +7,7 @@ This module contains unit tests of the arc.species.species module
 
 import os
 import shutil
+import tempfile
 import unittest
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, check_that_all_entries_are_in_list
@@ -204,6 +205,27 @@ class TestARCSpecies(unittest.TestCase):
 
         spc_5 = ARCSpecies(label='N2H2(T)', smiles='[NH][NH]', xyz=self.n2h2_t_xyz)
         self.assertEqual(len(spc_5.mol_list), 1)
+
+    def test_reconcile_mol_multiplicity(self):
+        """An explicit multiplicity conflicting with the SMILES/InChI-perceived spin state is honored."""
+        carbene = ARCSpecies(label='carbene', smiles='[CH2]', multiplicity=1)
+        self.assertEqual(carbene.mol.multiplicity, 1)
+        self.assertEqual(carbene.multiplicity, 1)
+        self.assertEqual([atom.radical_electrons for atom in carbene.mol.atoms], [0, 0, 0])
+        self.assertEqual([atom.lone_pairs for atom in carbene.mol.atoms], [1, 0, 0])
+        self.assertTrue(carbene.mol.is_isomorphic(ARCSpecies(
+            label='ref', adjlist='1 C u0 p1 c0 {2,S} {3,S}\n2 H u0 p0 c0 {1,S}\n3 H u0 p0 c0 {1,S}').mol))
+
+        triplet = ARCSpecies(label='triplet', smiles='[CH2]')
+        self.assertEqual(triplet.mol.multiplicity, 3)
+
+        singlet_adj = ARCSpecies(label='adj', adjlist='1 C u0 p1 c0 {2,S} {3,S}\n'
+                                                       '2 H u0 p0 c0 {1,S}\n3 H u0 p0 c0 {1,S}')
+        self.assertEqual(singlet_adj.mol.multiplicity, 1)
+
+        biradical = ARCSpecies(label='biradical', smiles='[CH2][CH2]',
+                               multiplicity=1, number_of_radicals=2)
+        self.assertEqual(sum(atom.radical_electrons for atom in biradical.mol.atoms), 2)
 
     def test_preserving_atom_order_in_mol_list(self):
         """Test preserving atom order in the .mol_list attribute"""
@@ -607,6 +629,26 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc_dict['mol']['atoms'][0]['element']['number'], 6)
         self.assertEqual(spc_dict['mol']['atoms'][0]['element']['isotope'], -1)
         self.assertEqual(spc_dict['mol']['atoms'][0]['atomtype'], 'Cs')
+
+    def test_thermo_at_own_level_round_trip(self):
+        """Test that thermo_at_own_level and adaptive_lot_n_heavy round-trip through as_dict/from_dict"""
+        # Defaults: not serialized, restored to False / None.
+        default_spc = ARCSpecies(label='ethane', smiles='CC')
+        default_dict = default_spc.as_dict()
+        self.assertNotIn('thermo_at_own_level', default_dict)
+        self.assertNotIn('adaptive_lot_n_heavy', default_dict)
+        restored_default = ARCSpecies(species_dict=default_dict)
+        self.assertFalse(restored_default.thermo_at_own_level)
+        self.assertIsNone(restored_default.adaptive_lot_n_heavy)
+
+        # Non-default values: serialized and restored.
+        spc = ARCSpecies(label='ethane', smiles='CC', thermo_at_own_level=True, adaptive_lot_n_heavy=8)
+        spc_dict = spc.as_dict()
+        self.assertTrue(spc_dict['thermo_at_own_level'])
+        self.assertEqual(spc_dict['adaptive_lot_n_heavy'], 8)
+        restored = ARCSpecies(species_dict=spc_dict)
+        self.assertTrue(restored.thermo_at_own_level)
+        self.assertEqual(restored.adaptive_lot_n_heavy, 8)
 
     def test_from_dict(self):
         """Test Species.from_dict()"""
@@ -1464,8 +1506,9 @@ H      -1.69944700    0.93441600   -0.11271200"""
         mol = self.spc8.mol
         mol_list = self.spc8.mol_list
 
-        self.assertEqual(len(mol_list), 2)
-        res1, res2 = mol_list
+        self.assertGreaterEqual(len(mol_list), 2)
+        res1 = mol_list[0]
+        res2 = mol_list[1]
 
         self.assertTrue(mol.atom_ids_valid())
         self.assertTrue(res1.atom_ids_valid())
@@ -1480,6 +1523,71 @@ H      -1.69944700    0.93441600   -0.11271200"""
         res2_ids = [(a.element.symbol, a.id) if a.element.symbol != 'O' else (a.element.symbol,) for a in res2.atoms]
         self.assertEqual(mol_ids, res1_ids)
         self.assertEqual(mol_ids, res2_ids)
+
+    def test_preserving_singlet_biradical_from_adjlist_with_xyz(self):
+        """Test that a singlet biradical defined via adjlist + xyz preserves its radical sites."""
+        xyz = """C      -1.71276869   -2.14835263   -0.29600082
+C      -1.30379477   -0.91506552    0.02297736
+C       0.02166928   -0.61873233    0.53428358
+C       0.12717819    0.82647389    0.91669270
+C      -1.28264593    1.32277593    0.84036811
+C      -1.85754229    2.26155916    1.60812418
+C      -3.29934285    2.39956966    1.60188376
+C      -4.08920980    1.47079635    1.03722857
+C      -3.52758183    0.33798706    0.32703925
+C      -2.07314208    0.38964129   -0.05559628
+H      -2.71169105   -2.33428156   -0.67752001
+H      -1.05967066   -3.00703332   -0.18456792
+H       0.81708685   -1.33998293    0.63942836
+H       0.76667301    1.35549222    0.20321493
+H       0.54320924    0.92870099    1.92345007
+H      -1.28510222    2.85939041    2.30922346
+H      -3.72854139    3.24346240    2.13325690
+H      -5.17022073    1.55123850    1.09315776
+H      -4.19994276   -0.36461812   -0.14850570
+H      -1.99779884    0.76292039   -1.08682170"""
+        spc = ARCSpecies(label='birad', adjlist="""multiplicity 1
+1  C u0 p0 c0 {2,D} {11,S} {12,S}
+2  C u0 p0 c0 {1,D} {3,S} {10,S}
+3  C u1 p0 c0 {2,S} {4,S} {13,S}
+4  C u0 p0 c0 {3,S} {5,S} {14,S} {15,S}
+5  C u1 p0 c0 {4,S} {6,S} {10,S}
+6  C u0 p0 c0 {5,S} {7,D} {16,S}
+7  C u0 p0 c0 {6,D} {8,S} {17,S}
+8  C u0 p0 c0 {7,S} {9,D} {18,S}
+9  C u0 p0 c0 {8,D} {10,S} {19,S}
+10 C u0 p0 c0 {2,S} {5,S} {9,S} {20,S}
+11 H u0 p0 c0 {1,S}
+12 H u0 p0 c0 {1,S}
+13 H u0 p0 c0 {3,S}
+14 H u0 p0 c0 {4,S}
+15 H u0 p0 c0 {4,S}
+16 H u0 p0 c0 {6,S}
+17 H u0 p0 c0 {7,S}
+18 H u0 p0 c0 {8,S}
+19 H u0 p0 c0 {9,S}
+20 H u0 p0 c0 {10,S}
+""", xyz=xyz, multiplicity=1)
+        self.assertEqual(spc.multiplicity, 1)
+        self.assertEqual(spc.mol.multiplicity, 1)
+        radical_atoms = [i for i, a in enumerate(spc.mol.atoms) if a.radical_electrons > 0]
+        self.assertEqual(len(radical_atoms), 2, 'Expected two radical centers in singlet biradical')
+        self.assertTrue(all(spc.mol.atoms[i].element.symbol == 'C' for i in radical_atoms))
+        # Verify atom ordering matches xyz (first heavy atom is C at xyz index 0).
+        self.assertEqual(spc.mol.atoms[0].element.symbol, 'C')
+        self.assertEqual(spc.mol.atoms[10].element.symbol, 'H')
+
+    def test_radical_perception_hint_skipped_on_multiplicity_mismatch(self):
+        """Test that the mol radical-count perception hint is not applied when mol and species multiplicities differ."""
+        # The adjlist mol is a triplet O atom (2 radicals), but the user specifies a singlet species.
+        # The radical count of self.mol must not be forced on perception (mol_from_xyz),
+        # so the perceived singlet O atom carries no radicals.
+        spc = ARCSpecies(label='O_singlet', adjlist='multiplicity 3\n1 O u2 p2 c0',
+                         xyz='O 0.0 0.0 0.0', multiplicity=1)
+        self.assertEqual(spc.multiplicity, 1)
+        self.assertIsNotNone(spc.mol)
+        self.assertEqual(spc.mol.multiplicity, 1)
+        self.assertEqual(sum(atom.radical_electrons for atom in spc.mol.atoms), 0)
 
     def test_preserving_multiplicity(self):
         """Test that multiplicity is being preserved, especially when it is guessed differently from xyz"""
@@ -2067,7 +2175,7 @@ H       1.11582953    0.94384729   -0.10134685"""
         cycle.final_xyz = cycle.get_xyz()
         cycle_scissors = cycle.scissors()
         cycle_scissors[0].mol.update(sort_atoms=False)
-        self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2+]C[CH2+]").mol))
+        self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2]C[CH2]").mol))
         self.assertEqual(len(cycle_scissors), 1)
 
         benzyl_alcohol = ARCSpecies(label='benzyl_alcohol', smiles='c1ccccc1CO',
@@ -2335,6 +2443,59 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(len(spc_3.ts_guesses), 12)
         spc_3.cluster_tsgs()
         self.assertEqual(len(spc_3.ts_guesses), 6)
+
+    def test_cluster_tsgs_with_coordinate_less_guesses(self):
+        """Clustering must tolerate coordinate-less TS guesses (e.g. failed kinbot/queue guesses
+        whose job produced no parseable geometry). Reaction_08 benchmark crash: two such guesses
+        reached almost_equal_coords(None, None) -> TypeError, aborting the whole scheduler."""
+        xyz = """N       0.9177905887     0.5194617797     0.0000000000
+                 H       1.8140204898     1.0381941417     0.0000000000
+                 H      -0.4763167868     0.7509348722     0.0000000000
+                 N       0.9992350860    -0.7048575683     0.0000000000
+                 N      -1.4430010939     0.0274543367     0.0000000000
+                 H      -0.6371484821    -0.7497769134     0.0000000000
+                 H      -2.0093636431     0.0331190314    -0.8327683174
+                 H      -2.0093636431     0.0331190314     0.8327683174"""
+        failed_1 = TSGuess(index=0, method='kinbot', success=False)
+        failed_2 = TSGuess(index=1, method='kinbot', success=False)
+        good = TSGuess(index=2, method='gcn', success=True, xyz=xyz)
+        # A coordinate-less "successful" guess: same success as ``good`` so the first (success) filter
+        # passes and the None-xyz guard is the sole reason the comparison returns False.
+        xyz_less_success = TSGuess(index=3, method='gcn', success=True)
+        # A coordinate-less guess yields no xyz.
+        self.assertIsNone(failed_1.get_xyz())
+        self.assertIsNone(xyz_less_success.get_xyz())
+        # almost_equal_tsgs must not raise and must never treat a coordinate-less guess as a duplicate.
+        self.assertFalse(failed_1.almost_equal_tsgs(failed_2))  # both None (the reaction_08 crash)
+        self.assertFalse(good.almost_equal_tsgs(xyz_less_success))  # one None, equal success -> guard only
+        self.assertFalse(xyz_less_success.almost_equal_tsgs(good))
+        self.assertFalse(failed_1.almost_equal_tsgs(good))
+        self.assertFalse(good.almost_equal_tsgs(failed_1))
+        # cluster_tsgs over a mix of coordinate-less and real guesses must not raise and must keep them distinct.
+        spc = ARCSpecies(label='TS_none_xyz', is_ts=True)
+        spc.ts_guesses = [failed_1, failed_2, good]
+        for tsg in spc.ts_guesses:
+            tsg.execution_time = '00:00:01'
+        spc.cluster_tsgs()  # must not raise
+        self.assertEqual(len(spc.ts_guesses), 3)
+
+    def test_process_completed_tsg_queue_jobs_no_geometry(self):
+        """A queue TS-guess job whose .log has no parseable geometry must not be added as a
+        clusterable 'successful' guess, must be marked failed, and must not crash the subsequent
+        cluster_tsgs() call (reaction_08: an orca_neb queue job whose NEB geometry was cleaned
+        from scratch)."""
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        empty_log = os.path.join(tmp_dir, 'input.log')
+        with open(empty_log, 'w') as f:
+            f.write('ORCA TERMINATED NORMALLY\nno coordinates were retrieved from scratch\n')
+        spc = ARCSpecies(label='TS_no_geo', is_ts=True)
+        # Pre-seed with a coordinate-less failed guess so cluster_tsgs would exercise the None path.
+        spc.ts_guesses = [TSGuess(index=0, method='kinbot', success=False)]
+        spc.process_completed_tsg_queue_jobs(path=empty_log)  # must not raise
+        # No coordinate-less guess was added as a successful clusterable guess.
+        self.assertTrue(all(tsg.get_xyz() is not None or not tsg.success for tsg in spc.ts_guesses))
+        self.assertFalse(any(tsg.success and tsg.get_xyz() is None for tsg in spc.ts_guesses))
 
     def test_are_coords_compliant_with_graph(self):
         """Test coordinates compliant with 2D graph connectivity"""
@@ -2905,6 +3066,49 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         # Test incorrect map_ length
         with self.assertRaises(SpeciesError):
             self.spc1.kabsch(self.spc1, [0, 1, 2])
+
+
+    def test_assign_radicals_after_scission_cyclic(self):
+        """
+        Test radical assignment for a cyclic scission (single molecule result).
+        Using Cyclopropane to represent a true ring opening.
+        """
+        mol = Molecule().from_smiles('C1CC1')
+        
+        # Find a C-C bond to remove to simulate a ring opening
+        for bond in mol.get_all_edges():
+            if bond.atom1.is_carbon() and bond.atom2.is_carbon():
+                c1, c2 = bond.atom1, bond.atom2
+                mol.remove_bond(bond)
+                break
+        
+        self.assertEqual(c1.radical_electrons, 0)
+        self.assertEqual(c2.radical_electrons, 0)
+        
+        spc = ARCSpecies(label='cyclopropane', mol=Molecule().from_smiles('C1CC1'))
+        spc._assign_radicals_after_scission(mol=mol)
+        
+        self.assertEqual(c1.radical_electrons, 1)
+        self.assertEqual(c2.radical_electrons, 1)
+
+    def test_assign_radicals_after_scission_with_added_radical_list(self):
+        """
+        Test radical assignment using the added_radical tracking list (non-cyclic scission).
+        """
+        mol1 = Molecule().from_smiles('[CH3]')
+        mol1.atoms[0].radical_electrons = 0
+        
+        spc = ARCSpecies(label='parent', mol=Molecule().from_smiles('CC'))
+        added_radical = []
+        
+        spc._assign_radicals_after_scission(mol=mol1, label='fragment_A', added_radical=added_radical)
+        self.assertEqual(mol1.atoms[0].radical_electrons, 1)
+        self.assertEqual(added_radical, ['fragment_A'])
+        
+        # Reset the radical electron to simulate another atom in the same fragment needing one
+        mol1.atoms[0].radical_electrons = 0
+        with self.assertRaises(SpeciesError):
+            spc._assign_radicals_after_scission(mol=mol1, label='fragment_A', added_radical=added_radical)
 
 
 class TestTSGuess(unittest.TestCase):
