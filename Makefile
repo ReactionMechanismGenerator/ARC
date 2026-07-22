@@ -9,7 +9,7 @@ DEVTOOLS_DIR := devtools
 .PHONY: all help clean test test-unittests test-functional test-all \
         install-all install-ci install-rmg install-rmgdb install-autotst install-gcn \
         install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-uma install-ob \
-        lite check-env compile
+        install-goflow install-rits lite check-env compile
 
 
 # Default target
@@ -38,6 +38,8 @@ help:
 	@echo "  install-torchani Install TorchANI"
 	@echo "  install-uma      Install UMA (fairchem MLIP, gated model; users only, not CI)"
 	@echo "  install-ob       Install OpenBabel"
+	@echo "  install-goflow   Install GoFlow (TS guesser, ~2-3 GB env; downloads pretrained ckpt from Zenodo, SHA-256-verified)"
+	@echo "  install-rits     Install RitS (TS guesser, ~3 GB env; downloads pretrained ckpt from Zenodo, SHA-256-verified)"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  lite             Run lite installation (no tests)"
@@ -66,8 +68,8 @@ install:
 	bash $(DEVTOOLS_DIR)/install_all.sh
 
 install-ci:
-	@echo "Installing all external ARC dependencies for CI (no clean)..."
-	bash $(DEVTOOLS_DIR)/install_all.sh --no-clean
+	@echo "Installing all external ARC dependencies for CI (no clean, no GoFlow, no RitS — each runs in its own CI lane)..."
+	bash $(DEVTOOLS_DIR)/install_all.sh --no-clean --no-goflow --no-rits
 
 install-lite:
 	@echo "Installing ARC's lite version (no external dependencies)..."
@@ -107,6 +109,12 @@ install-uma:
 
 install-ob:
 	bash $(DEVTOOLS_DIR)/install_ob.sh
+
+install-goflow:
+	bash $(DEVTOOLS_DIR)/install_goflow.sh
+
+install-rits:
+	bash $(DEVTOOLS_DIR)/install_rits.sh
 
 lite:
 	bash $(DEVTOOLS_DIR)/lite.sh

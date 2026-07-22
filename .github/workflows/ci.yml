@@ -63,6 +63,44 @@ jobs:
           CONDA_ALWAYS_YES: "true"
         run: make install-ci
 
+      - name: Restore GoFlow cache (clone + goflow_env + checkpoint)
+        id: goflow-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/goflow_lean
+            ~/micromamba/envs/goflow_env
+          key: goflow-cpu-${{ runner.os }}-${{ hashFiles('ARC/devtools/install_goflow.sh') }}
+
+      - name: Install GoFlow (CPU)
+        shell: micromamba-shell {0}
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [[ -d goflow_lean/.git ]]; then
+            bash ARC/devtools/install_goflow.sh --cpu --path "$PWD/goflow_lean"
+          else
+            bash ARC/devtools/install_goflow.sh --cpu
+          fi
+
+      - name: Restore RitS cache (clone + rits_env + checkpoint)
+        id: rits-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/RitS
+            ~/micromamba/envs/rits_env
+          key: rits-cpu-${{ runner.os }}-${{ hashFiles('ARC/devtools/install_rits.sh') }}
+
+      - name: Install RitS (CPU)
+        shell: micromamba-shell {0}
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [[ -d RitS/.git ]]; then
+            bash ARC/devtools/install_rits.sh --cpu --path "$PWD/RitS"
+          else
+            bash ARC/devtools/install_rits.sh --cpu
+          fi
+
       - name: Set TS-GCN and AutoTST in PYTHONPATH
         shell: micromamba-shell {0}
         working-directory: ARC
@@ -84,6 +122,8 @@ jobs:
           ARC_COVERAGE: 1
           CYTHON_TRACE: 1
           COVERAGE_CORE: ctrace
+          ARC_GOFLOW_CKPT: ${{ github.workspace }}/goflow_lean/data/RDB7/epoch_316.ckpt
+          ARC_RITS_CKPT: ${{ github.workspace }}/RitS/data/rits.ckpt
         run: |
           echo "Running Unit Tests..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"

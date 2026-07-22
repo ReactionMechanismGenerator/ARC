@@ -312,4 +312,172 @@ Digital Discovery 2026.
 using internal coordinates: a test case for neutral hydrolysis"*, Digital Discovery 2026, 5, 1372-1387,
 DOI: 10.1039/D5DD00506J.
 
+GoFlow (flow-matching ML TS generator)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+ARC supports automated TS generation via **GoFlow**, a flow-matching, E(3)-equivariant
+neural network that predicts transition-state Cartesian geometries from atom-mapped
+reactant + product 2D graphs (SMILES + RDKit features). The model was trained on the
+`RDB7 <https://zenodo.org/records/13328872>`_ database of single-step organic reactions.
+
+Supported domain
+""""""""""""""""
+GoFlow is **opt-in only** — its inference stack (``goflow_env`` + pretrained
+checkpoint) is heavyweight, so it is intentionally absent from the default
+``ts_adapters`` list. When enabled, the adapter skips cleanly at runtime if
+``goflow_env`` or the checkpoint is not installed, and it enforces a runtime
+domain guard:
+
+- Elements: H, C, N, O, F
+- Reaction size: up to 100 atoms
+
+Reactions outside this domain (or hosts without the GoFlow stack installed) are
+skipped with a warning instead of being attempted with out-of-distribution inputs.
+
+How it is used
+""""""""""""""
+To enable GoFlow, install its environment and request it explicitly:
+
+1. Install the dedicated conda env and download the pretrained checkpoint:
+
+   .. code-block:: bash
+
+      make install-goflow
+
+   This creates ``goflow_env`` (PyTorch 2.6 + PyTorch Geometric + GoFlow), clones
+   ``goflow_lean``, downloads the published checkpoint from Zenodo
+   (`10.5281/zenodo.20073635 <https://doi.org/10.5281/zenodo.20073635>`_), and verifies
+   its SHA-256.
+
+2. Add ``goflow`` to ``ts_adapters`` in the input file:
+
+   .. code-block:: yaml
+
+      ts_adapters:
+        - heuristics
+        - goflow
+
+   Once requested, GoFlow is invoked automatically for every reaction within its
+   supported domain.
+
+3. (Optional) Override the default checkpoint or feature-dictionary location via env vars:
+
+   .. code-block:: bash
+
+      export ARC_GOFLOW_CKPT=/path/to/your/epoch_<NNN>.ckpt
+      export ARC_GOFLOW_FEAT_DICT=/path/to/your/feat_dict_organic.pkl
+
+   These take precedence over both the in-repo paths and the Zenodo download.
+
+What ARC does
+"""""""""""""
+For each reaction with GoFlow selected, ARC:
+
+1. Validates the reaction is within GoFlow's supported domain (elements + atom count); skips with a warning otherwise.
+2. Builds atom-mapped reactant and product SMILES (every hydrogen explicit; map numbers consistent across sides via ``rxn.atom_map``).
+3. Spawns the GoFlow inference subprocess (in ``goflow_env``), which performs flow-matching ODE sampling and returns multiple candidate TS geometries.
+4. Filters out colliding-atom geometries and consolidates near-duplicate samples that share a heavy-atom skeleton (torsion-invariant deduplication; controlled by ``GOFLOW_DEDUP_DMAT_RMSD = 0.15`` Å).
+5. Appends the surviving guesses to the reaction's TS species for downstream optimization, frequency, and IRC validation by ARC's standard pipeline.
+
+GoFlow is best used **alongside** other adapters (e.g. ``heuristics``) — its samples
+provide additional starting points but do not replace the optimization/validation steps.
+
+Outputs and validation
+""""""""""""""""""""""
+Each surviving TS guess is written as a numbered ``GoFlow N.xyz`` file under the
+TS-guess directory of the reaction, alongside the staged ``input.yml`` and the raw
+multi-frame ``output.yml`` returned by the subprocess. Optimized + validated TSs follow
+the same reporting flow as any other ARC TS guess.
+
+Reference
+"""""""""
+The GoFlow model is described in:
+L. Galustian, K. Mark, J. Karwounopoulos, M. P.-P. Kovar, E. Heid,
+*"GoFlow: efficient transition state geometry prediction with flow matching and
+E(3)-equivariant neural networks"*, Digital Discovery 2025, DOI
+`10.1039/D5DD00283D <https://doi.org/10.1039/D5DD00283D>`_.
+
+The upstream implementation lives at `heid-lab/goflow_lean
+<https://github.com/heid-lab/goflow_lean>`_.
+
+RitS (flow-matching ML TS generator)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+ARC supports automated TS generation via **RitS** (*Right into the Saddle*),
+a flow-matching neural network from the Isayev lab that predicts transition-
+state Cartesian geometries directly from atom-mapped reactant + product 3D
+structures. Unlike GCN — which is restricted to single-bond isomerizations —
+RitS handles bimolecular reactions and charged species and is therefore
+applied to **all** reaction families (it is the only entry currently in
+``all_families_ts_adapters``).
+
+How it is used
+""""""""""""""
+RitS is **opt-in only** — its inference stack is heavyweight, so it is
+intentionally absent from the default ``ts_adapters`` list. To enable it,
+install its environment once and request it in the ARC input file:
+
+1. Install the dedicated conda env and download the pretrained checkpoint:
+
+   .. code-block:: bash
+
+      make install-rits
+
+   This creates ``rits_env`` (PyTorch 2.7 + PyTorch Geometric + RitS / megalodon),
+   clones ``RitS``, downloads the published checkpoint from Zenodo
+   (`10.5281/zenodo.19474153 <https://doi.org/10.5281/zenodo.19474153>`_), and
+   verifies its SHA-256 (~364 MB).
+
+2. Opt in to the adapter for a given run by adding it to ``ts_adapters``:
+
+   .. code-block:: yaml
+
+      ts_adapters:
+        - heuristics
+        - rits
+
+3. (Optional) Override the default repository or checkpoint location via env vars:
+
+   .. code-block:: bash
+
+      export ARC_RITS_REPO=/path/to/your/RitS
+      export ARC_RITS_CKPT=/path/to/your/rits.ckpt
+
+   These take precedence over both the default ``~/Code/RitS`` /
+   sibling-of-ARC discovery and the install-time Zenodo download.
+
+What ARC does
+"""""""""""""
+For each reaction with RitS selected, ARC:
+
+1. Builds atom-mapped reactant and product XYZ files using the reaction's
+   ``rxn.atom_map``-aligned coordinates.
+2. Spawns the RitS inference subprocess (in ``rits_env``), which performs
+   flow-matching ODE sampling and returns ``n_samples`` candidate TS
+   geometries in a single multi-frame XYZ.
+3. Deduplicates near-duplicate samples that share a heavy-atom skeleton via
+   ``compare_confs`` (translation- and rotation-invariant distance-matrix
+   comparison).
+4. Appends the surviving guesses to the reaction's TS species for downstream
+   optimization, frequency, and IRC validation by ARC's standard pipeline.
+
+If ``rits_env`` or the checkpoint is missing, the adapter logs a warning
+and skips cleanly — the rest of the TS pipeline continues unaffected.
+
+Outputs and validation
+""""""""""""""""""""""
+Each surviving TS guess is written as a numbered ``RitS N.xyz`` file under
+the TS-guess directory of the reaction, alongside the staged ``input.yml``
+and the raw multi-frame ``output.yml`` returned by the subprocess. Optimized
++ validated TSs follow the same reporting flow as any other ARC TS guess.
+
+Reference
+"""""""""
+The RitS model is described in:
+*"Right into the Saddle"* (Isayev lab),
+DOI `10.26434/chemrxiv.15001681/v1 <https://doi.org/10.26434/chemrxiv.15001681/v1>`_.
+
+The upstream implementation lives at `isayevlab/RitS
+<https://github.com/isayevlab/RitS>`_.
+
 .. include:: links.txt
