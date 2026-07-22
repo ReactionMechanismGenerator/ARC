@@ -1993,6 +1993,7 @@ class ARCSpecies(object):
 
     def scissors(self,
                  sort_atom_labels: bool = False,
+                 skip_conformers: bool = False,
                  ) -> list:
         """
         Cut chemical bonds to create new species from the original one according to the .bdes attribute,
@@ -2030,7 +2031,8 @@ class ARCSpecies(object):
             self.label_atoms()
         resulting_species = list()
         for index_tuple in self.bdes:
-            new_species_list = self._scissors(indices=index_tuple, sort_atom_labels=sort_atom_labels)
+            new_species_list = self._scissors(indices=index_tuple, sort_atom_labels=sort_atom_labels,
+                                              skip_conformers=skip_conformers)
             for new_species in new_species_list:
                 if new_species.label not in [existing_species.label for existing_species in resulting_species]:
                     # Mainly checks that the H species doesn't already exist.
@@ -2040,6 +2042,7 @@ class ARCSpecies(object):
     def _scissors(self,
                   indices: tuple,
                   sort_atom_labels: bool = True,
+                  skip_conformers: bool = False,
                   ) -> list:
         """
         Cut a chemical bond to create two new species from the original one, preserving the 3D geometry.
@@ -2091,7 +2094,8 @@ class ARCSpecies(object):
                               compute_thermo=False,
                               e0_only=True,
                               keep_mol=True)
-            spc1.generate_conformers(economic_generation=True)
+            if not skip_conformers:
+                spc1.generate_conformers(economic_generation=True)
             return [spc1]
         elif len(mol_splits) == 2:
             mol1, mol2 = mol_splits
@@ -2134,7 +2138,8 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc1.generate_conformers(economic_generation=True)
+        if not skip_conformers:
+            spc1.generate_conformers(economic_generation=True)
         spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
                           mol=mol2,
@@ -2144,7 +2149,8 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc2.generate_conformers(economic_generation=True)
+        if not skip_conformers:
+            spc2.generate_conformers(economic_generation=True)
         spc2.rotors_dict = None
 
         return [spc1, spc2]

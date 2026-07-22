@@ -258,17 +258,34 @@ def compare_thermo(species_for_thermo_lib: list,
                    content=[{'label': spc.label, 'adjlist': spc.mol.copy(deep=True).to_adjacency_list()} for spc in species_for_thermo_lib])
     env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
     rmg_db_path = settings.get('RMG_DB_PATH') or ""
-    commands = ['bash -lc "set -euo pipefail; '
-                f'export RMG_DB_PATH=\\"{rmg_db_path}\\"; '
-                f'export RMG_DATABASE=\\"{rmg_db_path}\\"; '
-                'if command -v micromamba >/dev/null 2>&1; then '
-                f'    micromamba run -n {env_name} python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
-                'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
-                f'    conda run -n {env_name} python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
-                'else '
-                '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
-                'fi"',
-                ]
+    rmg_python = settings.get('RMG_PYTHON')
+    mamba_exe = os.environ.get('MAMBA_EXE', '')
+    if mamba_exe and os.path.isfile(mamba_exe):
+        commands = [
+            f'export RMG_DB_PATH="{rmg_db_path}"',
+            f'export RMG_DATABASE="{rmg_db_path}"',
+            f'"{mamba_exe}" run -n {env_name} python {THERMO_SCRIPT_PATH} {species_thermo_path}',
+        ]
+    elif rmg_python and os.path.isfile(rmg_python):
+        rmg_bin = os.path.dirname(rmg_python)
+        commands = [
+            f'export PATH="{rmg_bin}:$PATH"',
+            f'export RMG_DB_PATH="{rmg_db_path}"',
+            f'export RMG_DATABASE="{rmg_db_path}"',
+            f'"{rmg_python}" {THERMO_SCRIPT_PATH} {species_thermo_path}',
+        ]
+    else:
+        commands = ['bash -lc "set -euo pipefail; '
+                    f'export RMG_DB_PATH=\\"{rmg_db_path}\\"; '
+                    f'export RMG_DATABASE=\\"{rmg_db_path}\\"; '
+                    'if command -v micromamba >/dev/null 2>&1; then '
+                    f'    micromamba run -n {env_name} python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
+                    'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
+                    f'    conda run -n {env_name} python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
+                    'else '
+                    '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
+                    'fi"',
+                    ]
     stdout, stderr = execute_command(command=commands, no_fail=True)
     if len(stderr):
         logger.error(f'Error while running RMG thermo script: {stderr}')
@@ -316,7 +333,23 @@ def compare_rates(rxns_for_kinetics_lib: list,
                    )
     env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
     rmg_db_path = settings.get('RMG_DB_PATH') or ""
-    shell_script = f"""if command -v micromamba &> /dev/null; then
+    rmg_python = settings.get('RMG_PYTHON')
+    mamba_exe = os.environ.get('MAMBA_EXE', '')
+    log_suffix = '> >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)'
+    if mamba_exe and os.path.isfile(mamba_exe):
+        shell_script = rf'''bash -c 'set -euo pipefail
+export RMG_DB_PATH="{rmg_db_path}"
+export RMG_DATABASE="{rmg_db_path}"
+"{mamba_exe}" run -n {env_name} python {KINETICS_SCRIPT_PATH} {reactions_kinetics_path} {log_suffix}' '''
+    elif rmg_python and os.path.isfile(rmg_python):
+        rmg_bin = os.path.dirname(rmg_python)
+        shell_script = rf'''bash -c 'set -euo pipefail
+export PATH="{rmg_bin}:$PATH"
+export RMG_DB_PATH="{rmg_db_path}"
+export RMG_DATABASE="{rmg_db_path}"
+"{rmg_python}" {KINETICS_SCRIPT_PATH} {reactions_kinetics_path} {log_suffix}' '''
+    else:
+        shell_script = f"""if command -v micromamba &> /dev/null; then
     eval "$(micromamba shell hook --shell=bash)"
     micromamba activate {env_name}
 elif command -v mamba &> /dev/null; then
@@ -330,7 +363,7 @@ else
 fi
 export RMG_DB_PATH="{rmg_db_path}"
 export RMG_DATABASE="{rmg_db_path}"
-python {KINETICS_SCRIPT_PATH} {reactions_kinetics_path}   > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)
+python {KINETICS_SCRIPT_PATH} {reactions_kinetics_path} {log_suffix}
 """
     o, e = execute_command(command=shell_script,
                            shell=True,
