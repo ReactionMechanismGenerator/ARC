@@ -372,8 +372,8 @@ class Level(object):
         if self.software is not None and job_type is None:
             return
 
-        # UMA (run via the ASE adapter; 'uma' resolves to the latest model)
-        if self.method in ('uma', 'uma-s-1', 'uma-s-1p1'):
+        # UMA (run via the ASE adapter; 'uma' resolves to UMA_LATEST_MODEL; specific checkpoints named explicitly)
+        if self.method in ('uma', 'uma-s-1', 'uma-s-1p1', 'uma-s-1p2', 'uma-m-1p1'):
             self.software = 'ase'
             return
 

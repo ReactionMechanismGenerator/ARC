@@ -28,8 +28,8 @@ DEFAULT_ASE_ENV = {
     'uma': 'UMA_PYTHON',
 }
 
-# Level methods that select the UMA calculator. 'uma' resolves to the latest model.
-UMA_METHODS = ('uma', 'uma-s-1', 'uma-s-1p1')
+# Level methods that select the UMA calculator. 'uma' resolves to UMA_LATEST_MODEL; specific checkpoints named explicitly.
+UMA_METHODS = ('uma', 'uma-s-1', 'uma-s-1p1', 'uma-s-1p2', 'uma-m-1p1')
 
 class ASEAdapter(JobAdapter):
     """
