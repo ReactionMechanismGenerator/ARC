@@ -916,6 +916,17 @@ class TestNMD(unittest.TestCase):
         valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25, weights=True)
         self.assertTrue(valid)
 
+    def test_analyze_ts_normal_mode_displacement_unmapped_reaction(self):
+        """
+        A reaction ARC cannot atom-map (e.g. CH3 + CS <=> CCS, R_Addition_MultipleBond with a charged
+        CS) must skip the NMD check and return None, not crash the run with a ReactionError.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='CS', smiles='[C-]#[S+]')],
+                          p_species=[ARCSpecies(label='CCS', smiles='C[C]=S')])
+        self.assertIsNone(rxn.atom_map)
+        self.assertIsNone(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job))
+
     @classmethod
     def tearDownClass(cls):
         """
