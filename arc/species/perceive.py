@@ -8,8 +8,6 @@ from itertools import combinations, product
 from math import dist
 from typing import Any
 
-from openbabel import pybel
-
 from arc.common import NUMBER_BY_SYMBOL, distance_matrix, get_bonds_from_dmat, get_logger, get_single_bond_length
 from arc.exceptions import AtomTypeError, InputError, SanitizationError
 from arc.molecule.filtration import get_octet_deviation
@@ -932,8 +930,9 @@ def alternative_perception(
     mol_3 = mol.copy(deep=True)
     try:
         xyz_file_format = str(len(xyz['symbols'])) + '\n\n' + xyz_to_str(xyz) + '\n'
+        from openbabel import pybel
         pybel_mol = pybel.readstring('xyz', xyz_file_format)
-    except (IOError, InputError):
+    except (IOError, ImportError, ValueError, InputError):
         pybel_mol = None
     if pybel_mol is not None:
         if bool(len([atom.is_hydrogen() for atom in mol_3.atoms])):
