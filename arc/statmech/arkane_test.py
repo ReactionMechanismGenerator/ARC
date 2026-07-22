@@ -402,6 +402,21 @@ class TestArkaneAdapter(unittest.TestCase):
         for expected_line in expected_lines:
             self.assertIn(expected_line + '\n', lines, f"Expected line '{expected_line}' not found in {input_path}")
 
+    def test_lone_pair_species_uses_adjacency_list(self):
+        """A lone-pair singlet (singlet carbene [CH2], mult 1) whose SMILES round-trips to a different
+        multiplicity must be written to Arkane as an adjacency list, not SMILES + spinMultiplicity —
+        the latter re-perceives [CH2] as a u2 biradical, violating Hund's rule when Arkane saves the
+        thermo library. Normal species must still use SMILES."""
+        ch2 = ARCSpecies(label='R2', smiles='[CH2]', multiplicity=1)
+        h2o = ARCSpecies(label='P1', smiles='O', multiplicity=1)
+        adapter = ArkaneAdapter(output_directory=self.tmpdir, calcs_directory=self.tmpdir,
+                                output_dict={}, species=[ch2, h2o], sp_level=Level('gfn2'))
+        content = adapter.render_arkane_input_template(statmech_dir=self.tmpdir)
+        self.assertIn('adjacencyList(', content)
+        self.assertIn('1 C u0 p1', content)              # correct singlet-carbene adjlist
+        self.assertNotIn("SMILES('[CH2]')", content)     # must NOT use the lossy SMILES
+        self.assertIn("structure=SMILES('O')", content)  # normal species unchanged
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -679,6 +694,158 @@ class TestCheckArkaneCorrections(unittest.TestCase):
             with self.assertLogs('arc', level='INFO') as cm:
                 result = check_arkane_bacs(sp_level=level, bac_type='p')
         self.assertTrue(result)
+
+
+class TestRunArkaneOutputPySignal(unittest.TestCase):
+    """``run_arkane``'s pass/fail signal is whether ``output.py`` was
+    produced — NOT whether stderr is empty. The stderr classification
+    is now advisory (logged) but doesn't gate the return value.
+
+    Pre-fix bug: complete Arkane runs were discarded because cosmetic
+    stderr noise (git rev-parse failure, OpenBabel warnings) tripped
+    a false-failure gate. Both the thermo and kinetics callers now
+    use the same authoritative output.py-existence signal.
+    """
+
+    def setUp(self):
+        from arc.statmech.arkane import run_arkane
+        self._run_arkane = run_arkane
+        self.tmp = tempfile.mkdtemp(prefix='arkane-stderr-test-')
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        # Pre-flight check in run_arkane requires input.py before the
+        # subprocess fires.
+        with open(os.path.join(self.tmp, 'input.py'), 'w') as f:
+            f.write('# fake arkane input\n')
+
+    def _create_output_py(self):
+        with open(os.path.join(self.tmp, 'output.py'), 'w') as f:
+            f.write('# fake arkane output\n')
+
+    def _run_with_stderr(self, stderr_lines):
+        with patch('arc.statmech.arkane.execute_command',
+                   return_value=(['ok'], stderr_lines)):
+            return self._run_arkane(self.tmp)
+
+    # ---- output.py present: success regardless of stderr ----
+
+    def test_empty_stderr_with_output_returns_true(self):
+        self._create_output_py()
+        self.assertTrue(self._run_with_stderr([]))
+
+    def test_cosmetic_stderr_with_output_returns_true(self):
+        """OpenBabel + git warnings are classified as cosmetic and don't gate."""
+        self._create_output_py()
+        self.assertTrue(self._run_with_stderr([
+            'fatal: not a git repository (or any of the parent directories): .git',
+            '*** Open Babel Warning  in InChI code',
+            '  #1 :Accepted unusual valence(s): C(3)',
+        ]))
+
+    def test_real_error_with_output_returns_true_and_warns(self):
+        """If output.py was produced, even a Python traceback in stderr
+        doesn't fail the run — but it IS logged at WARNING so the
+        operator sees it. This is the load-bearing change vs. the old
+        behavior that would have returned False here.
+        """
+        self._create_output_py()
+        with self.assertLogs('arc', level='WARNING') as logs:
+            result = self._run_with_stderr([
+                'Traceback (most recent call last):',
+                'KeyError: "level_of_theory"',
+            ])
+        self.assertTrue(result, "output.py exists → success regardless of stderr")
+        self.assertTrue(
+            any('still produced output.py' in m for m in logs.output),
+            f"expected the advisory warning to fire; got {logs.output}",
+        )
+
+    # ---- output.py missing: failure ----
+
+    def test_missing_output_py_returns_false(self):
+        """No output.py = Arkane never wrote its result. That's the
+        only condition that should mean 'failure'."""
+        self.assertFalse(self._run_with_stderr([]))
+
+    def test_missing_output_py_with_real_error_logs_both_diagnostics(self):
+        """When output is missing AND stderr has real errors, log both
+        — the operator gets cause (stderr) and effect (no output)."""
+        with self.assertLogs('arc', level='ERROR') as logs:
+            result = self._run_with_stderr([
+                'Traceback (most recent call last):',
+                'ImportError: rmgpy not installed',
+            ])
+        self.assertFalse(result)
+        joined = '\n'.join(logs.output)
+        self.assertIn('Arkane run failed', joined)
+        self.assertIn('ImportError', joined)
+        self.assertIn('was not created', joined)
+
+    # ---- pre-flight checks still gate ----
+
+    def test_missing_input_py_returns_false_pre_flight(self):
+        """If the pre-flight finds no input.py, we never even run the
+        subprocess — and return False without checking stderr."""
+        os.unlink(os.path.join(self.tmp, 'input.py'))
+        self.assertFalse(self._run_with_stderr([]))
+
+    def test_missing_statmech_dir_returns_false_pre_flight(self):
+        from arc.statmech.arkane import run_arkane
+        self.assertFalse(run_arkane('/nonexistent/dir'))
+
+
+class TestClassifyArkaneStderr(unittest.TestCase):
+    """Direct tests of the stderr-noise filter, independent of run_arkane."""
+
+    def setUp(self):
+        from arc.statmech.arkane import _classify_arkane_stderr
+        self._classify = _classify_arkane_stderr
+
+    def test_empty_input_returns_empty(self):
+        self.assertEqual(self._classify(None), [])
+        self.assertEqual(self._classify([]), [])
+
+    def test_only_cosmetic_lines_return_empty(self):
+        self.assertEqual(self._classify([
+            '==============================',
+            '*** Open Babel Warning  in InChI code',
+            '  #1 :Accepted unusual valence(s): C(3)',
+            'fatal: not a git repository (or any of the parent directories): .git',
+            '',  # blank lines also dropped
+        ]), [])
+
+    def test_real_lines_returned_stripped(self):
+        result = self._classify([
+            'fatal: not a git repository',
+            '  KeyError: "level_of_theory"  ',
+            '*** Open Babel Warning in InChI code',
+        ])
+        self.assertEqual(result, ['KeyError: "level_of_theory"'])
+
+
+class TestSummarizeArkaneStderr(unittest.TestCase):
+    """The stderr summarizer condenses a traceback to the salient exception line for arc.log."""
+
+    def setUp(self):
+        from arc.statmech.arkane import _summarize_arkane_stderr
+        self._summarize = _summarize_arkane_stderr
+
+    def test_empty(self):
+        self.assertEqual(self._summarize([]), '')
+
+    def test_picks_exception_line_over_conda_wrapper(self):
+        lines = [
+            'Traceback (most recent call last):',
+            '  File ".../kinetics.py", line 183, in generate_kinetics',
+            'ValueError: One or both of the barrier heights of -20.7 and 28.2 kJ/mol are invalid.',
+            'ERROR conda.cli.main_run:execute(148): `conda run python -m arkane input.py` failed.',
+        ]
+        summary = self._summarize(lines)
+        self.assertTrue(summary.startswith('ValueError: One or both of the barrier heights'))
+        self.assertIn('[+3 more stderr line(s)]', summary)
+        self.assertNotIn('Traceback', summary)
+
+    def test_single_line_no_extra_suffix(self):
+        self.assertEqual(self._summarize(['RuntimeError: boom']), 'RuntimeError: boom')
 
 
 if __name__ == '__main__':
