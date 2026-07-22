@@ -575,6 +575,9 @@
                         <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">multiplicity</span>
                     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">charge</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                         <span class="bp">self</span><span class="o">.</span><span class="n">charge</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">get_net_charge</span><span class="p">()</span>
+                    <span class="k">if</span> <span class="n">multiplicity</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">number_of_radicals</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">adjlist</span> \
+                            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">!=</span> <span class="n">multiplicity</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">reconcile_mol_multiplicity</span><span class="p">()</span>
             <span class="k">if</span> <span class="n">regen_mol</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">keep_mol</span><span class="p">):</span>
                 <span class="c1"># Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.</span>
                 <span class="c1"># It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.</span>
@@ -1631,6 +1634,52 @@
                                     <span class="n">mol</span><span class="o">=</span><span class="n">mol</span><span class="p">,</span>
                                     <span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="o">=</span> <span class="n">new_xyz</span></div>
+
+
+<div class="viewcode-block" id="ARCSpecies.reconcile_mol_multiplicity">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.reconcile_mol_multiplicity">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">reconcile_mol_multiplicity</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Reconcile the ``.mol`` graph with a user-provided ``self.multiplicity`` that is lower than</span>
+<span class="sd">        the spin state perceived from a spin-agnostic descriptor (SMILES or InChI), by pairing</span>
+<span class="sd">        two radical electrons that sit on the *same* atom into a lone pair.</span>
+
+<span class="sd">        SMILES and InChI do not encode electron spin, so RMG perceives a default spin state</span>
+<span class="sd">        (e.g. ``[CH2]`` is perceived as triplet methylene, with two radicals on the carbon). When</span>
+<span class="sd">        the user requests a lower multiplicity (e.g. the singlet carbene), those same-atom radicals</span>
+<span class="sd">        are the ones meant to pair into a lone pair.</span>
+
+<span class="sd">        This deliberately handles ONLY same-atom pairing. Radicals on *different* atoms that are</span>
+<span class="sd">        overall spin-paired form an open-shell singlet (e.g. a singlet biradical) — a valid state</span>
+<span class="sd">        that must NOT be collapsed; such species are declared with ``number_of_radicals`` and are</span>
+<span class="sd">        filtered out before this method is called. If the requested multiplicity cannot be reached</span>
+<span class="sd">        purely by same-atom pairing, the molecule is left untouched (the caller keeps the perceived</span>
+<span class="sd">        structure, i.e. the pre-existing behavior).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">perceived_multiplicity</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">multiplicity</span>
+        <span class="n">needed_pairs</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">get_radical_count</span><span class="p">()</span> <span class="o">-</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span> <span class="o">/</span> <span class="mi">2</span>
+        <span class="k">if</span> <span class="n">needed_pairs</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">needed_pairs</span> <span class="o">!=</span> <span class="nb">int</span><span class="p">(</span><span class="n">needed_pairs</span><span class="p">):</span>
+            <span class="k">return</span>
+        <span class="n">needed_pairs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">needed_pairs</span><span class="p">)</span>
+        <span class="n">available_pairs</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">atom</span><span class="o">.</span><span class="n">radical_electrons</span> <span class="o">//</span> <span class="mi">2</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">available_pairs</span> <span class="o">&lt;</span> <span class="n">needed_pairs</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">a</span><span class="p">:</span> <span class="n">a</span><span class="o">.</span><span class="n">radical_electrons</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="k">while</span> <span class="n">needed_pairs</span> <span class="ow">and</span> <span class="n">atom</span><span class="o">.</span><span class="n">radical_electrons</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">atom</span><span class="o">.</span><span class="n">decrement_radical</span><span class="p">()</span>
+                <span class="n">atom</span><span class="o">.</span><span class="n">decrement_radical</span><span class="p">()</span>
+                <span class="n">atom</span><span class="o">.</span><span class="n">increment_lone_pairs</span><span class="p">()</span>
+                <span class="n">needed_pairs</span> <span class="o">-=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">log_species</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">raise_atomtype_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">sort_atoms</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="n">atom</span><span class="o">.</span><span class="n">id</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">assign_atom_ids</span><span class="p">()</span>
+        <span class="n">resonance</span> <span class="o">=</span> <span class="n">generate_resonance_structures_safely</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span> <span class="n">save_order</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">resonance</span> <span class="ow">and</span> <span class="n">resonance</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="o">=</span> <span class="n">resonance</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Reconciled species </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="si">!r}</span><span class="s1"> to the requested multiplicity &#39;</span>
+                    <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span><span class="si">}</span><span class="s1"> (its SMILES/InChI was perceived as multiplicity &#39;</span>
+                    <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">perceived_multiplicity</span><span class="si">}</span><span class="s1">).&#39;</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="ARCSpecies.determine_multiplicity">

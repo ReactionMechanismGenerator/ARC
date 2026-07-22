@@ -169,6 +169,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.process_completed_tsg_queue_jobs"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.process_completed_tsg_queue_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.process_xyz"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.process_xyz()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.radius"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.radius</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.reconcile_mol_multiplicity"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.reconcile_mol_multiplicity()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.scissors"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.scissors()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.set_dihedral"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.set_dihedral()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.set_mol_list"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.set_mol_list()</span></code></a></li>
@@ -1671,6 +1672,24 @@ atoms in 3D space.</p>
 <dd class="field-even"><p>float</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.reconcile_mol_multiplicity">
+<span class="sig-name descname"><span class="pre">reconcile_mol_multiplicity</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.reconcile_mol_multiplicity"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.reconcile_mol_multiplicity" title="Link to this definition"></a></dt>
+<dd><p>Reconcile the <code class="docutils literal notranslate"><span class="pre">.mol</span></code> graph with a user-provided <code class="docutils literal notranslate"><span class="pre">self.multiplicity</span></code> that is lower than
+the spin state perceived from a spin-agnostic descriptor (SMILES or InChI), by pairing
+two radical electrons that sit on the <em>same</em> atom into a lone pair.</p>
+<p>SMILES and InChI do not encode electron spin, so RMG perceives a default spin state
+(e.g. <code class="docutils literal notranslate"><span class="pre">[CH2]</span></code> is perceived as triplet methylene, with two radicals on the carbon). When
+the user requests a lower multiplicity (e.g. the singlet carbene), those same-atom radicals
+are the ones meant to pair into a lone pair.</p>
+<p>This deliberately handles ONLY same-atom pairing. Radicals on <em>different</em> atoms that are
+overall spin-paired form an open-shell singlet (e.g. a singlet biradical) — a valid state
+that must NOT be collapsed; such species are declared with <code class="docutils literal notranslate"><span class="pre">number_of_radicals</span></code> and are
+filtered out before this method is called. If the requested multiplicity cannot be reached
+purely by same-atom pairing, the molecule is left untouched (the caller keeps the perceived
+structure, i.e. the pre-existing behavior).</p>
 </dd></dl>
 
 <dl class="py method">
