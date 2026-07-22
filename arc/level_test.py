@@ -60,6 +60,8 @@ class TestLevel(unittest.TestCase):
                          'gaussian')
         self.assertEqual(Level(method='uma').software, 'ase')
         self.assertEqual(Level(method='uma-s-1p1').software, 'ase')
+        self.assertEqual(Level(method='uma-s-1p2').software, 'ase')
+        self.assertEqual(Level(method='uma-m-1p1').software, 'ase')
         level_uma = Level(method='uma')
         level_uma.deduce_software(job_type='irc')  # UMA must stay on 'ase', not fall through to Gaussian
         self.assertEqual(level_uma.software, 'ase')

@@ -97,7 +97,7 @@ def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1):
         # UMA (Meta FAIR fairchem-core). Total charge and spin (= multiplicity) are conditioned on
         # the ase.Atoms via atoms.info in main(); they are not calculator kwargs.
         from fairchem.core import FAIRChemCalculator, pretrained_mlip
-        model = calc_config.get('model', 'uma-s-1p1')
+        model = calc_config.get('model', 'uma-m-1p1')
         device = calc_config.get('device', 'cpu')
         task = calc_config.get('task', 'omol')
         predictor = pretrained_mlip.get_predict_unit(model, device=device)
