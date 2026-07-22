@@ -6,7 +6,7 @@ Unit tests for using the UMA (Meta FAIR fairchem-core) calculator through ARC's 
 
 The env-independent tests verify UMA routing, calculator/settings resolution, input writing, and
 output parsing without the gated model. The model-dependent tests (skipped unless uma_env and the
-model are available and UMA_RUN_MODEL is set) run the real uma-m-1p1 model end-to-end.
+model are available and UMA_RUN_MODEL is set) run the real default uma-s-1p2 model end-to-end.
 """
 
 import os
@@ -148,7 +148,7 @@ class TestUMAViaASEAdapter(unittest.TestCase):
 
 @requires_model
 class TestUMAViaASEWithModel(unittest.TestCase):
-    """Model-dependent tests; run the real uma-m-1p1 model via the ASE adapter."""
+    """Model-dependent tests; run the real default uma-s-1p2 model via the ASE adapter."""
 
     @classmethod
     def setUpClass(cls):
