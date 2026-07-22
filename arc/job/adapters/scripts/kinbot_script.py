@@ -22,7 +22,7 @@ Input (YAML file passed via ``--yml_in_path``), keys:
                        saddle-point search on the UMA potential (default: False).
         model_path (str): A path to a local UMA checkpoint file (e.g., uma-s-1p2.pt).
         model_name (str): A pretrained UMA model name to fetch from HuggingFace
-                          (license-gated) if no model_path is given (default: uma-s-1p1).
+                          (license-gated) if no model_path is given (default: uma-s-1p2).
         task_name (str): The UMA task name (default: omol).
         device (str): The torch device to use (default: cpu).
         fmax (float): The Sella force convergence criterion (default: 0.005).
@@ -242,7 +242,7 @@ def _get_uma_calculator(uma: dict):
             # license-gated (require a HuggingFace login + accepting Meta's license),
             # any failure here is caught by the caller and refinement is skipped.
             from fairchem.core import pretrained_mlip
-            _UMA_PREDICT_UNIT = pretrained_mlip.get_predict_unit(uma.get('model_name') or 'uma-s-1p1',
+            _UMA_PREDICT_UNIT = pretrained_mlip.get_predict_unit(uma.get('model_name') or 'uma-s-1p2',
                                                                  device=device)
     return FAIRChemCalculator(_UMA_PREDICT_UNIT, task_name=uma.get('task_name') or 'omol')
 

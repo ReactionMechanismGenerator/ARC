@@ -271,9 +271,12 @@ ASE_CALCULATORS_ENV = {'torchani': 'TANI_PYTHON',
                        'uma': 'UMA_PYTHON',
                        }
 
-# UMA (Universal Models for Atoms, Meta FAIR fairchem-core). The 'uma' calculator/level resolves
-# to the latest model implemented in ARC; older checkpoints (e.g. 'uma-s-1') are named explicitly.
-UMA_LATEST_MODEL = 'uma-s-1p1'
+# UMA (Universal Models for Atoms, Meta FAIR fairchem-core). The bare 'uma' calculator/level resolves
+# to ARC's default model below, 'uma-s-1p2' (latest small -- fastest, still SOTA on most benchmarks);
+# specific checkpoints are named explicitly, e.g. 'uma-m-1p1' (best-in-class/optimal medium, but
+# heavier), or the legacy 'uma-s-1p1'/'uma-s-1'. UMA_LATEST_MODEL is ARC's default (not necessarily
+# the newest checkpoint -- though here it also happens to be the latest small).
+UMA_LATEST_MODEL = 'uma-s-1p2'
 
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 
@@ -348,7 +351,7 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 kinbot_uma_settings = {
     'refine': False,
     'model_path': '',           # e.g., '/home/user/checkpoints/uma-s-1p2.pt'
-    'model_name': 'uma-s-1p1',  # used only if 'model_path' is empty
+    'model_name': 'uma-s-1p2',  # used only if 'model_path' is empty
     'task_name': 'omol',
     'device': 'cpu',
     'fmax': 0.005,              # Sella force convergence criterion
