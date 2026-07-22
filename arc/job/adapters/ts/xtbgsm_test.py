@@ -7,9 +7,12 @@ This module contains unit tests of the arc.job.adapters.ts.xtb_gsm module
 
 import os
 import shutil
+import tarfile
 import unittest
+from unittest.mock import patch
 
 from arc.common import ARC_TESTING_PATH
+from arc.job.adapter import JobAdapter
 from arc.job.adapters.ts.xtb_gsm import xTBGSMAdapter
 from arc.level import Level
 from arc.parser.parser import parse_trajectory
@@ -28,12 +31,16 @@ class TestxTBGSMAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        worker = os.environ.get('PYTEST_XDIST_WORKER', 'local')
         for i in range(10):
-            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, f'test_xTBAGSMdapter_{i}'),
+            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH,
+                                                           f'test_xTBAGSMdapter_{worker}_{i}'),
                                 ignore_errors=True)
         cls.job_1 = xTBGSMAdapter(project='test_1',
                                   job_type='tsg',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAGSMdapter_1'),
+                                  server='local',
+                                  project_directory=os.path.join(ARC_TESTING_PATH,
+                                                                 f'test_xTBAGSMdapter_{worker}_1'),
                                   reactions=[ARCReaction(r_species=[ARCSpecies(label='HNO', smiles='N=O')],
                                                          p_species=[ARCSpecies(label='HON', smiles='[N-]=[OH+]')])],
                                   )
@@ -46,7 +53,8 @@ class TestxTBGSMAdapter(unittest.TestCase):
                                                                 'add_node_tol': 0.5,
                                                                 'final_opt': 10,
                                                                 'nnodes': 9}}),
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAGSMdapter_2'),
+                                  project_directory=os.path.join(ARC_TESTING_PATH,
+                                                                 f'test_xTBAGSMdapter_{worker}_2'),
                                   reactions=[ARCReaction(r_species=[ARCSpecies(label='HNO', smiles='N=O')],
                                                          p_species=[ARCSpecies(label='HON', smiles='[N-]=[OH+]')])],
                                   )
@@ -65,8 +73,13 @@ class TestxTBGSMAdapter(unittest.TestCase):
                                   'source': 'path',
                                   'make_x': False},
                                  {'file_name': 'gsm.orca',
-                                  'local': os.path.join(self.job_1.xtb_gsm_scripts_path, 'gsm.orca'),
+                                  'local': os.path.join(self.job_1.local_path, 'gsm.orca'),
                                   'remote': os.path.join(self.job_1.remote_path, 'gsm.orca'),
+                                  'source': 'path',
+                                  'make_x': True},
+                                 {'file_name': 'gsm.orca.bin',
+                                  'local': os.path.join(self.job_1.xtb_gsm_scripts_path, 'gsm.orca'),
+                                  'remote': os.path.join(self.job_1.remote_path, 'gsm.orca.bin'),
                                   'source': 'path',
                                   'make_x': True},
                                  {'file_name': 'inpfileq',
@@ -77,13 +90,17 @@ class TestxTBGSMAdapter(unittest.TestCase):
                                  {'file_name': 'ograd',
                                   'local': os.path.join(self.job_1.xtb_gsm_scripts_path, 'ograd'),
                                   'remote': os.path.join(self.job_1.remote_path, 'ograd'),
-                                  'source': 'path', 'make_x': False},
+                                  'source': 'path', 'make_x': True},
                                  {'file_name': 'tm2orca.py',
                                   'local': os.path.join(self.job_1.xtb_gsm_scripts_path, 'tm2orca.py'),
                                   'remote': os.path.join(self.job_1.remote_path, 'tm2orca.py'),
                                   'source': 'path',
                                   'make_x': True}]
-        job_1_files_to_download = [{'file_name': 'stringfile.xyz0000',
+        job_1_files_to_download = [{'file_name': 'gsm_evidence.tar.gz',
+                                    'local': os.path.join(self.job_1.local_path, 'gsm_evidence.tar.gz'),
+                                    'remote': os.path.join(self.job_1.remote_path, 'gsm_evidence.tar.gz'),
+                                    'source': 'path', 'make_x': False},
+                                   {'file_name': 'stringfile.xyz0000',
                                     'local': os.path.join(self.job_1.local_path, 'stringfile.xyz0000'),
                                     'remote': os.path.join(self.job_1.remote_path, 'stringfile.xyz0000'),
                                     'source': 'path', 'make_x': False}]
@@ -92,6 +109,63 @@ class TestxTBGSMAdapter(unittest.TestCase):
 
         self.assertEqual(self.job_2.files_to_upload, list())
         self.assertEqual(self.job_2.files_to_download, list())
+
+    def test_queue_wrapper_archives_evidence_and_preserves_submit_contract(self):
+        """The legacy ``./gsm.orca`` command now invokes a binary and archives on exit."""
+        with open(self.job_1.gsm_orca_path) as handle:
+            wrapper = handle.read()
+        self.assertIn('trap collect_gsm_evidence EXIT', wrapper)
+        self.assertIn('./gsm.orca.bin', wrapper)
+        self.assertIn('gsm_evidence.tar.gz', wrapper)
+        self.assertIn('gsm_node_outputs', wrapper)
+        self.assertTrue(os.access(self.job_1.gsm_orca_path, os.X_OK))
+
+    def test_extract_downloaded_evidence_archive(self):
+        """A queue evidence archive restores the stringfile and per-node files."""
+        os.makedirs(self.job_1.gsm_node_outputs_path, exist_ok=True)
+        node_energy = os.path.join(self.job_1.gsm_node_outputs_path, 'node_1.energy')
+        with open(self.job_1.stringfile_path, 'w') as handle:
+            handle.write('string trajectory')
+        with open(node_energy, 'w') as handle:
+            handle.write('-1.23')
+        with tarfile.open(self.job_1.gsm_evidence_archive_path, 'w:gz') as archive:
+            archive.add(self.job_1.stringfile_path, arcname='stringfile.xyz0000')
+            archive.add(self.job_1.gsm_node_outputs_path, arcname='gsm_node_outputs')
+        os.unlink(self.job_1.stringfile_path)
+        shutil.rmtree(self.job_1.gsm_node_outputs_path)
+
+        self.assertTrue(self.job_1._extract_gsm_evidence_archive())
+        self.assertTrue(os.path.isfile(self.job_1.stringfile_path))
+        self.assertTrue(os.path.isfile(node_energy))
+
+    def test_missing_archive_preserves_legacy_stringfile(self):
+        """Old queued runs with only a stringfile remain consumable."""
+        if os.path.isfile(self.job_1.gsm_evidence_archive_path):
+            os.unlink(self.job_1.gsm_evidence_archive_path)
+        with open(self.job_1.stringfile_path, 'w') as handle:
+            handle.write('legacy trajectory')
+        self.assertFalse(self.job_1._extract_gsm_evidence_archive())
+        self.assertTrue(os.path.isfile(self.job_1.stringfile_path))
+
+    @patch.object(xTBGSMAdapter, '_extract_gsm_evidence_archive')
+    @patch.object(JobAdapter, 'download_files')
+    def test_queue_download_lifecycle_extracts_declared_archive(self, base_download, extract_archive):
+        """Queued completion downloads declared files before extracting node evidence."""
+        self.job_1.download_files()
+        base_download.assert_called_once_with()
+        extract_archive.assert_called_once_with()
+
+    def test_archive_extraction_rejects_path_traversal(self):
+        """Downloaded archives cannot write outside the local job directory."""
+        source = os.path.join(self.job_1.local_path, 'unsafe_source')
+        with open(source, 'w') as handle:
+            handle.write('unsafe')
+        with tarfile.open(self.job_1.gsm_evidence_archive_path, 'w:gz') as archive:
+            archive.add(source, arcname='../gsm_node_outputs/escaped.energy')
+        with self.assertLogs('arc', level='WARNING'):
+            self.assertFalse(self.job_1._extract_gsm_evidence_archive())
+        self.assertFalse(os.path.exists(os.path.join(os.path.dirname(self.job_1.local_path),
+                                                    'gsm_node_outputs', 'escaped.energy')))
 
     def test_write_input_file(self):
         """Test writing the initial0000.xyz file"""
@@ -110,6 +184,22 @@ H      -1.24880926   -0.46263779    0.00000000
         with open(self.job_1.scratch_initial0000_path, 'r') as f:
             actual_string = f.read()
         self.assertEqual(actual_string, expected_string)
+
+    def test_incore_scripts_are_executable(self):
+        """Test executability of scripts invoked directly by the GSM driver."""
+        self.job_2.write_input_file()
+        self.assertTrue(os.access(self.job_2.gsm_orca_path, os.X_OK))
+        self.assertTrue(os.access(self.job_2.ograd_path, os.X_OK))
+        self.assertTrue(os.access(self.job_2.tm2orca_path, os.X_OK))
+
+    def test_ograd_preserves_node_artifacts(self):
+        """Test that the gradient wrapper preserves raw per-node xTB results."""
+        with open(os.path.join(self.job_1.xtb_gsm_scripts_path, 'ograd'), 'r') as f:
+            ograd = f.read()
+        self.assertIn('gsm_node_outputs', ograd)
+        self.assertIn('${node_label}.energy', ograd)
+        self.assertIn('${node_label}.gradient', ograd)
+        self.assertIn('${node_label}.xtbout', ograd)
 
     def test_set_inpfileq_keywords(self):
         """Test the set_inpfileq_keywords() method."""

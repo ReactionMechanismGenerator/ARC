@@ -4,16 +4,21 @@ An adapter for parsing Orca log files.
 
 from abc import ABC
 
+import glob
 import numpy as np
+import os
 import pandas as pd
 import re
 
-from arc.common import SYMBOL_BY_NUMBER
+from arc.common import SYMBOL_BY_NUMBER, get_logger
 from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import str_to_xyz, xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
-from arc.parser.parser import _get_lines_from_file
+from arc.parser.parser import _get_lines_from_file, s_squared_expected_from_multiplicity
+
+
+logger = get_logger()
 
 
 class OrcaParser(ESSAdapter, ABC):
@@ -163,6 +168,121 @@ class OrcaParser(ESSAdapter, ABC):
         # Not implemented for Orca.
         return None, None
 
+    def _locate_hess_file(self) -> str | None:
+        """
+        Locate the sibling ``.hess`` file that Orca writes alongside the log.
+
+        Orca stores the Cartesian Hessian in a separate ``.hess`` file rather
+        than in the ``.out`` log. ARC downloads it as ``input.hess`` into the
+        job's local directory next to ``output.out`` (see
+        ``arc/job/adapter.py`` -> ``local_path_to_hess_file`` and
+        ``arc/job/adapters/orca.py`` -> ``files_to_download``). Prefer that
+        canonical name, then fall back to a unique ``*.hess`` sibling.
+
+        Returns: str | None
+            The path to the ``.hess`` file, or ``None`` if none is reachable.
+        """
+        directory = os.path.dirname(os.path.abspath(self.log_file_path))
+        canonical = os.path.join(directory, 'input.hess')
+        if os.path.isfile(canonical):
+            return canonical
+        candidates = sorted(glob.glob(os.path.join(directory, '*.hess')))
+        if len(candidates) == 1:
+            return candidates[0]
+        # Zero (nothing to parse) or ambiguous (>1) — decline rather than guess.
+        return None
+
+    def parse_cartesian_hessian_lower_triangle(self) -> list[float] | None:
+        """
+        Parse the Cartesian Hessian from the sibling ``.hess`` file and return
+        the packed lower triangle (including the diagonal), row-major, i.e.
+        ``[H[i][j] for i in range(3N) for j in range(i + 1)]``.
+
+        The Orca ``$hessian`` block stores the full (symmetric) ``3N x 3N``
+        matrix natively in atomic units (hartree/bohr²), paged in column
+        groups. Values are kept in their native hartree/bohr² units — no SI
+        conversion is applied (contrast Arkane's ``load_force_constant_matrix``,
+        which multiplies by ``4.35974417e-18 / 5.291772108e-11 ** 2``).
+
+        Returns: list[float] | None
+            The lower triangle in hartree/bohr² (length ``3N(3N+1)/2``), or
+            ``None`` if no ``.hess`` is reachable, the block is absent/malformed,
+            or it describes fewer than two atoms (``3N < 6``).
+        """
+        hess_path = self._locate_hess_file()
+        if hess_path is None:
+            return None
+        with open(hess_path, 'r') as f:
+            lines = f.readlines()
+
+        # Find the ``$hessian`` block; the next non-empty line is the integer
+        # dimension (3N), followed by paged blocks: a header row of 0-based
+        # column indices (all-integer tokens) then one line per matrix row
+        # ``<row_index> <val> ...``.
+        start = None
+        for idx, line in enumerate(lines):
+            if line.strip() == '$hessian':
+                start = idx + 1
+                break
+        if start is None:
+            return None
+        # Skip blank lines to the dimension line.
+        while start < len(lines) and not lines[start].strip():
+            start += 1
+        if start >= len(lines):
+            return None
+        try:
+            n_rows = int(lines[start].strip())
+        except ValueError:
+            return None
+        if n_rows < 6:
+            # Single atom (3N == 3) or empty — no meaningful Cartesian Hessian.
+            return None
+
+        matrix = np.zeros((n_rows, n_rows), dtype=np.float64)
+        seen = np.zeros((n_rows, n_rows), dtype=bool)
+        col_indices: list[int] = []
+        for line in lines[start + 1:]:
+            tokens = line.split()
+            if not tokens:
+                continue
+            if tokens[0].startswith('$'):
+                # Next section (e.g. ``$vibrational_frequencies``) — done.
+                break
+            if all(tok.isdigit() for tok in tokens):
+                # Page header: the 0-based column indices for the rows below.
+                col_indices = [int(tok) for tok in tokens]
+                continue
+            if not col_indices or not tokens[0].isdigit():
+                continue
+            row = int(tokens[0])
+            values = tokens[1:]
+            if row >= n_rows:
+                continue
+            for k, value in enumerate(values):
+                if k >= len(col_indices):
+                    break
+                col = col_indices[k]
+                if col >= n_rows:
+                    continue
+                try:
+                    matrix[row, col] = float(value)
+                except ValueError:
+                    return None
+                seen[row, col] = True
+
+        # Require at least the full lower triangle to have been populated.
+        lower_triangle: list[float] = []
+        for i in range(n_rows):
+            for j in range(i + 1):
+                if not (seen[i, j] or seen[j, i]):
+                    return None
+                # Prefer the explicitly-seen entry; fall back to the symmetric
+                # partner when only the upper triangle carried the value.
+                value = matrix[i, j] if seen[i, j] else matrix[j, i]
+                lower_triangle.append(float(value))
+        return lower_triangle
+
     def parse_t1(self) -> float | None:
         """
         Parse the T1 parameter from a CC calculation.
@@ -178,6 +298,57 @@ class OrcaParser(ESSAdapter, ABC):
                     except (ValueError, IndexError):
                         continue
         return None
+
+    def parse_s_squared(self) -> dict[str, float | None] | None:
+        """
+        Parse the S**2 spin-contamination diagnostic from an ORCA UHF/UKS log.
+
+        ORCA prints, for an unrestricted reference::
+
+            Expectation value of <S**2>     :     0.754185
+            Ideal value S*(S+1) for S=0.5   :     0.750000
+
+        The value of record is the *last* (converged / final-SCF) pair on the
+        log. Restricted (closed-shell) references don't print these lines, so
+        this returns ``None`` for them. ORCA has no spin-contaminant
+        annihilation step, so ``s_squared_annihilated`` is always ``None``.
+        The ideal value is taken from the ``Ideal value S*(S+1)`` line when
+        present (that is exactly the expected ``S(S+1)``), else from the
+        parsed ``Multiplicity`` line.
+
+        Returns: dict[str, float | None] | None
+            ``{'s_squared': float, 's_squared_expected': float | None,
+               's_squared_annihilated': None}`` or ``None``.
+        """
+        s_squared, s_squared_expected, multiplicity = None, None, None
+        for line in _get_lines_from_file(self.log_file_path):
+            if 'Expectation value of <S**2>' in line:
+                match = re.search(r':\s*([-+]?\d*\.?\d+)', line)
+                if match:
+                    try:
+                        s_squared = float(match.group(1))
+                    except ValueError:
+                        continue
+            elif 'Ideal value S*(S+1)' in line:
+                match = re.search(r':\s*([-+]?\d*\.?\d+)', line)
+                if match:
+                    try:
+                        s_squared_expected = float(match.group(1))
+                    except ValueError:
+                        continue
+            elif 'Multiplicity' in line and 'Mult' in line:
+                match = re.search(r'\.\.\.\.\s*(\d+)', line)
+                if match:
+                    multiplicity = int(match.group(1))
+        if s_squared is None:
+            return None
+        if s_squared_expected is None:
+            s_squared_expected = s_squared_expected_from_multiplicity(multiplicity)
+        return {
+            's_squared': s_squared,
+            's_squared_expected': s_squared_expected,
+            's_squared_annihilated': None,
+        }
 
     def parse_e_elect(self) -> float | None:
         """
@@ -360,6 +531,121 @@ class OrcaParser(ESSAdapter, ABC):
                 if m:
                     return f'ORCA {m.group(1)}'
         return None
+
+
+_ORCA_CONSTRAINT_COORDINATES: dict[str, tuple[str, int]] = {
+    'C': ('cartesian', 1),
+    'B': ('distance', 2),
+    'A': ('angle', 3),
+    'D': ('dihedral', 4),
+}
+
+
+def parse_orca_constraints(file_path: str) -> list[dict]:
+    """Parse held-fixed constraints from an ORCA input deck (best-effort).
+
+    Recognises the standard ORCA ``%geom Constraints`` block::
+
+        %geom Constraints
+          { B 0 1 1.4 C }
+          { A 0 1 2 90.0 C }
+          { D 0 1 2 3 180.0 C }
+          { C 0 C }
+        end
+
+    Notes / known limitations:
+        - ORCA atom indices remain in their native 0-based convention; each
+          record reports ``index_base: 0`` explicitly.
+        - ARC's ORCA adapter does not currently emit ``%geom Constraints``
+          blocks (only ``%geom Scan``). This parser is therefore mainly
+          defensive — it handles user-supplied decks and any future ARC
+          emission. Scan blocks are *not* parsed as constraints.
+        - Variants like ``optimize { B i j C }`` (single-coordinate form)
+          and ``Constraints` blocks scattered across multiple ``%geom``
+          sections are recognised; everything else is ignored with a
+          debug log rather than failing the whole parse.
+
+    Returns ``[]`` on file read errors or when no recognised
+    ``Constraints`` block is found.
+    """
+    try:
+        with open(file_path, 'r') as f:
+            text = f.read()
+    except (OSError, IOError) as exc:
+        logger.warning("parse_orca_constraints: cannot read %s: %s",
+                       file_path, exc)
+        return []
+
+    constraints: list[dict] = []
+    # Find every Constraints block: from 'Constraints' up to the matching
+    # 'end' (case-insensitive). ORCA blocks are not nested.
+    pattern = re.compile(r'Constraints(.*?)end', re.IGNORECASE | re.DOTALL)
+    for match in pattern.finditer(text):
+        block = match.group(1)
+        for raw in block.splitlines():
+            record = _parse_orca_constraint_line(raw)
+            if record is not None:
+                constraints.append(record)
+    return constraints
+
+
+def _parse_orca_constraint_line(line: str) -> dict | None:
+    """Parse one ``{ B i j v C }``-style ORCA constraint line into a record.
+
+    ORCA constraint syntax inside ``%geom Constraints``::
+
+        { <letter> <atom indices...> [<value>] C }
+
+    The trailing ``C`` flags the coordinate as constrained. ``value`` is
+    optional. Atom indices remain 0-based, as written by ORCA. Unparseable
+    lines return ``None`` and are skipped silently at debug level so the rest
+    of the block still parses.
+    """
+    stripped = line.strip()
+    if not stripped or stripped.startswith('#'):
+        return None
+    # Tolerate either '{' or no braces (rare hand-written variants).
+    inner = stripped.strip('{}').strip()
+    if not inner:
+        return None
+    tokens = inner.split()
+    if len(tokens) < 2:
+        return None
+    letter = tokens[0].upper()
+    entry = _ORCA_CONSTRAINT_COORDINATES.get(letter)
+    if entry is None:
+        logger.debug("parse_orca_constraints: skipping unrecognised letter "
+                     "%s in line: %s", letter, line)
+        return None
+    coordinate_type, expected_n = entry
+
+    if len(tokens) < 1 + expected_n:
+        logger.debug("parse_orca_constraints: too few atom tokens for letter "
+                     "%s (need %d): %s", letter, expected_n, line)
+        return None
+
+    try:
+        atom_indices = [int(tok) for tok in tokens[1:1 + expected_n]]
+    except ValueError:
+        logger.debug("parse_orca_constraints: non-integer atom index in: %s",
+                     line)
+        return None
+    target_value: float | None = None
+    rest = tokens[1 + expected_n:]
+    for tok in rest:
+        if tok.upper() == 'C':
+            break
+        try:
+            target_value = float(tok)
+        except ValueError:
+            continue
+
+    return {
+        'coordinate_type': coordinate_type,
+        'atom_indices': atom_indices,
+        'index_base': 0,
+        'target_value': target_value,
+    }
 
 
 register_ess_adapter('orca', OrcaParser)

@@ -15,6 +15,7 @@ Advanced GSM settings: https://github.com/ZimmermanGroup/molecularGSM/wiki#items
 import datetime
 import os
 import shutil
+import tarfile
 from typing import TYPE_CHECKING
 
 from mako.template import Template
@@ -36,6 +37,24 @@ if TYPE_CHECKING:
 
 
 logger = get_logger()
+
+GSM_EVIDENCE_ARCHIVE = 'gsm_evidence.tar.gz'
+GSM_QUEUE_BINARY = 'gsm.orca.bin'
+GSM_QUEUE_WRAPPER = """#!/bin/bash
+set -o pipefail
+
+collect_gsm_evidence() {
+    local members=()
+    [[ -f stringfile.xyz0000 ]] && members+=(stringfile.xyz0000)
+    [[ -d gsm_node_outputs ]] && members+=(gsm_node_outputs)
+    if [[ ${#members[@]} -gt 0 ]]; then
+        tar -czf gsm_evidence.tar.gz "${members[@]}"
+    fi
+}
+
+trap collect_gsm_evidence EXIT
+./gsm.orca.bin
+"""
 
 input_filenames, output_filenames, servers, submit_filenames, xtb_gsm_settings = \
     settings['input_filenames'], settings['output_filenames'], settings['servers'], settings['submit_filenames'], \
@@ -235,6 +254,7 @@ class xTBGSMAdapter(JobAdapter):
             safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'ograd'), destination=self.ograd_path)
             safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'tm2orca.py'), destination=self.tm2orca_path)
             change_mode(mode='+x', file_name=self.gsm_orca_path)
+            change_mode(mode='+x', file_name=self.ograd_path)
             change_mode(mode='+x', file_name=self.tm2orca_path)
 
     def set_files(self) -> None:
@@ -258,6 +278,7 @@ class xTBGSMAdapter(JobAdapter):
         if self.execution_type != 'incore':
             # we need a submit file for single or array jobs (either submitted to local or via SSH)
             self.write_submit_script()
+            self._write_queue_gsm_wrapper()
             self.files_to_upload.append(self.get_file_property_dictionary(
                 file_name=submit_filenames[servers[self.server]['cluster_soft']]))
             # 1.1 initial0000.xyz
@@ -265,15 +286,22 @@ class xTBGSMAdapter(JobAdapter):
                 file_name='initial0000.xyz',
                 local=os.path.join(self.local_path, 'scratch', 'initial0000.xyz'),
                 remote=os.path.join(self.remote_path, 'scratch', 'initial0000.xyz')))
-            # 1.2 gsm.orca
+            # 1.2 gsm.orca queue wrapper and renamed GSM binary. Keeping the
+            # wrapper name preserves existing site-specific submit templates.
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='gsm.orca',
                                                                           make_x=True,
-                                                                          local=os.path.join(self.xtb_gsm_scripts_path, 'gsm.orca')))
+                                                                          local=self.gsm_orca_path))
+            self.files_to_upload.append(self.get_file_property_dictionary(file_name=GSM_QUEUE_BINARY,
+                                                                          make_x=True,
+                                                                          local=os.path.join(
+                                                                              self.xtb_gsm_scripts_path,
+                                                                              'gsm.orca')))
             # 1.3 inpfileq
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='inpfileq',
                                                                           local=os.path.join(self.xtb_gsm_scripts_path, 'inpfileq')))
             # 1.4 ograd
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='ograd',
+                                                                          make_x=True,
                                                                           local=os.path.join(self.xtb_gsm_scripts_path, 'ograd')))
             # 1.5 tm2orca.py
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='tm2orca.py',
@@ -291,8 +319,59 @@ class xTBGSMAdapter(JobAdapter):
         if self.iterate_by and os.path.isfile(os.path.join(self.local_path, 'data.hdf5')):
             self.files_to_download.append(self.get_file_property_dictionary(file_name='data.hdf5'))
         elif self.execution_type != 'incore':
-            # 2.2. stringfile
+            # 2.2. The archive transfers the stringfile and raw node evidence
+            # in one SFTP operation. Keep the direct stringfile download as a
+            # compatibility fallback for jobs started by older ARC versions.
+            self.files_to_download.append(self.get_file_property_dictionary(file_name=GSM_EVIDENCE_ARCHIVE))
             self.files_to_download.append(self.get_file_property_dictionary(file_name='stringfile.xyz0000'))
+
+    def _write_queue_gsm_wrapper(self) -> None:
+        """Write the queue wrapper that archives scientific GSM artifacts on exit."""
+        with open(self.gsm_orca_path, 'w') as handle:
+            handle.write(GSM_QUEUE_WRAPPER)
+        change_mode(mode='+x', file_name=self.gsm_orca_path)
+
+    def _extract_gsm_evidence_archive(self) -> bool:
+        """Safely extract a downloaded GSM evidence archive into the job directory.
+
+        Returns ``True`` when a valid archive was extracted. Invalid, missing,
+        and legacy runs return ``False``; callers can continue using the
+        separately downloaded ``stringfile.xyz0000``.
+        """
+        if not os.path.isfile(self.gsm_evidence_archive_path):
+            return False
+        try:
+            with tarfile.open(self.gsm_evidence_archive_path, mode='r:gz') as archive:
+                members = archive.getmembers()
+                for member in members:
+                    normalized = os.path.normpath(member.name)
+                    if normalized.startswith('.' + os.sep):
+                        normalized = normalized[2:]
+                    traverses = (
+                        os.path.isabs(member.name)
+                        or normalized == '..'
+                        or normalized.startswith('..' + os.sep)
+                    )
+                    allowed = (
+                        normalized == 'stringfile.xyz0000'
+                        or normalized == 'gsm_node_outputs'
+                        or normalized.startswith('gsm_node_outputs' + os.sep)
+                    )
+                    if traverses or not allowed or member.issym() or member.islnk() \
+                            or not (member.isfile() or member.isdir()):
+                        raise ValueError(f'Unsafe or unexpected GSM evidence archive member: {member.name}')
+                archive.extractall(path=self.local_path, members=members)
+            return True
+        except (OSError, tarfile.TarError, ValueError):
+            logger.warning('Could not extract GSM evidence archive %s; using legacy artifacts if available.',
+                           self.gsm_evidence_archive_path)
+            return False
+
+    def download_files(self):
+        """Download declared results, then materialize archived node evidence locally."""
+        super().download_files()
+        if self.execution_type != 'incore':
+            self._extract_gsm_evidence_archive()
 
     def set_additional_file_paths(self) -> None:
         """
@@ -306,6 +385,8 @@ class xTBGSMAdapter(JobAdapter):
         self.tm2orca_path = os.path.join(self.local_path, 'tm2orca.py')
         self.scratch_initial0000_path = os.path.join(self.local_path, 'scratch', 'initial0000.xyz')
         self.stringfile_path = os.path.join(self.local_path, 'stringfile.xyz0000')
+        self.gsm_node_outputs_path = os.path.join(self.local_path, 'gsm_node_outputs')
+        self.gsm_evidence_archive_path = os.path.join(self.local_path, GSM_EVIDENCE_ARCHIVE)
 
     def set_inpfileq_keywords(self) -> dict:
         """
@@ -393,6 +474,7 @@ class xTBGSMAdapter(JobAdapter):
             tsg.initial_xyz = traj[int((len(traj) - 1) / 2) + 1]
             tsg.execution_time = self.final_time - self.initial_time
             tsg.success = True
+            tsg.log_path = self.stringfile_path
         self.reactions[0].ts_species.ts_guesses.append(tsg)
 
     def cleanup_files(self):

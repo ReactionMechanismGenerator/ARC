@@ -1467,5 +1467,28 @@ class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
             self.build_scheduler(rxn, r + p + [collider], 'adaptive_collision')
 
 
+class TestTsGuessPathProvenance(unittest.TestCase):
+    """Tests method-specific routing of TS path-search artifacts."""
+
+    def test_method_specific_path_keys(self):
+        from arc.scheduler import _ts_guess_paths_key
+
+        self.assertEqual(_ts_guess_paths_key('orca_neb'), 'neb')
+        self.assertEqual(_ts_guess_paths_key(' xTB-GSM '), 'gsm')
+        self.assertIsNone(_ts_guess_paths_key('gcn'))
+        self.assertIsNone(_ts_guess_paths_key(None))
+
+    def test_merged_guess_path_provenance(self):
+        from arc.scheduler import _ts_guess_path_provenance
+
+        guess = TSGuess(index=0, method='gcn', success=True, xyz='C 0 0 0')
+        guess.method_sources = ['gcn', 'xtb-gsm']
+        guess.method_source_paths = {'xtb-gsm': '/run/stringfile.xyz0000'}
+        self.assertEqual(
+            _ts_guess_path_provenance(guess),
+            ('gsm', '/run/stringfile.xyz0000'),
+        )
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

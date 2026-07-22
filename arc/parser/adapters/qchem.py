@@ -12,7 +12,7 @@ from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
-from arc.parser.parser import _get_lines_from_file
+from arc.parser.parser import _get_lines_from_file, s_squared_expected_from_multiplicity
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -123,6 +123,53 @@ class QChemParser(ESSAdapter, ABC):
         """
         # Not implemented for Q-Chem.
         return None
+
+    def parse_s_squared(self) -> dict[str, float | None] | None:
+        """
+        Parse the S**2 spin-contamination diagnostic from a Q-Chem UHF/UKS log.
+
+        Q-Chem prints, for an unrestricted reference, a line such as::
+
+            <S^2> = 0.7572
+
+        The value of record is the *last* such line on the log (the converged
+        SCF). Restricted (closed-shell) references don't print ``<S^2>``, so
+        this returns ``None`` for them. Q-Chem has no spin-contaminant
+        annihilation step, so ``s_squared_annihilated`` is always ``None``.
+        The ideal ``S(S+1)`` is computed from the multiplicity read off the
+        echoed ``$molecule`` block (``<charge> <multiplicity>``).
+
+        Returns: dict[str, float | None] | None
+            ``{'s_squared': float, 's_squared_expected': float | None,
+               's_squared_annihilated': None}`` or ``None``.
+        """
+        lines = _get_lines_from_file(self.log_file_path)
+        s_squared, multiplicity = None, None
+        in_molecule = False
+        for line in lines:
+            if '<S^2>' in line:
+                match = re.search(r'<S\^2>\s*=\s*([-+]?\d*\.?\d+)', line)
+                if match:
+                    try:
+                        s_squared = float(match.group(1))
+                    except ValueError:
+                        continue
+            elif multiplicity is None:
+                if '$molecule' in line:
+                    in_molecule = True
+                elif in_molecule and line.strip():
+                    tokens = line.split()
+                    if len(tokens) >= 2:
+                        token = tokens[1]
+                        multiplicity = int(token) if token.lstrip('+-').isdigit() else None
+                    in_molecule = False
+        if s_squared is None:
+            return None
+        return {
+            's_squared': s_squared,
+            's_squared_expected': s_squared_expected_from_multiplicity(multiplicity),
+            's_squared_annihilated': None,
+        }
 
     def parse_e_elect(self) -> float | None:
         """

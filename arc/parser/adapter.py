@@ -198,12 +198,45 @@ class ESSAdapter(ABC):
         """
         pass
 
+    def parse_1d_scan_energies_hartree(self) -> tuple[list[float] | None, list[float] | None]:
+        """
+        Parse the 1D torsion scan absolute electronic energies in Hartree.
+
+        Default returns ``(None, None)`` so adapters that haven't implemented
+        Hartree-preserving extraction don't break the new
+        :func:`parse_1d_scan_full_result` wrapper. Callers must treat absence as
+        "absolute energies unavailable for this ESS" and not as an error.
+
+        Returns: tuple[list[float] | None, list[float] | None]
+            The absolute electronic energy in Hartree and the dihedral scan angle
+            in degrees, with the same point-filtering applied as
+            :meth:`parse_1d_scan_energies`.
+        """
+        return None, None
+
     def parse_opt_steps(self) -> int | None:
         """
         Parse the number of geometry optimization steps from an opt job output file.
 
         Returns: int | None
             The number of optimization cycles, or ``None`` if not an opt job or not parseable.
+        """
+        return None
+
+    def parse_s_squared(self) -> dict[str, float | None] | None:
+        """
+        Parse the S**2 spin-contamination diagnostic from an unrestricted-reference ESS output.
+
+        Only meaningful for unrestricted/open-shell calculations (restricted/closed-shell
+        references do not print an ``<S**2>`` value). Adapters that don't implement this
+        (or restricted/closed-shell logs) return ``None`` — the caller treats ``None`` as
+        "no spin diagnostic available for this calc" and omits the block entirely.
+
+        Returns: dict[str, float | None] | None
+            ``{'s_squared': float, 's_squared_expected': float | None,
+               's_squared_annihilated': float | None}`` when an ``<S**2>`` value was parsed,
+            else ``None``. ``s_squared`` is always present (and finite) when the dict is
+            returned; the other two are ``None`` when the ESS doesn't report them.
         """
         return None
 

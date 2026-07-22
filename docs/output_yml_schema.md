@@ -13,6 +13,7 @@ the job was not requested, or the data is not applicable (e.g. monoatomic specie
 
 ```
 output.yml
+├── schema_version: "1.1"
 ├── project
 ├── arc_version
 ├── arc_git_commit?
@@ -29,6 +30,8 @@ output.yml
 ├── bac_type?
 ├── atom_energy_corrections?
 ├── bond_additivity_corrections?
+├── tckdb_evidence?
+│   └── path, schema_name, schema_version, document_id
 │
 ├── species: []
 │   └── label, original_label, charge, multiplicity, converged
@@ -39,10 +42,22 @@ output.yml
 │       ├── opt_n_steps?, opt_final_energy_hartree?
 │       ├── freq_n_imag?, imag_freq_cm1?
 │       ├── opt_log?, freq_log?, sp_log?
+│       ├── opt_constraints?, freq_constraints?, sp_constraints?
+│       │   └── [{coordinate_type, atom_indices, index_base, target_value?}, ...]
+│       ├── rotor_scans?: []
+│       │   └── key, source_log?, constraints?, result
+│       │       ├── dimension, relaxed, zero_energy_reference_hartree?
+│       │       ├── coordinate: {coordinate_type, atom_indices, index_base, unit, ...}
+│       │       └── samples: [{source_index, angle_degrees,
+│       │                      relative_energy_kj_mol,
+│       │                      electronic_energy_hartree?, geometry_xyz?}, ...]
+│       ├── energy_corrections?: []
+│       │   └── correction_type, model, level_of_theory?, total,
+│       │       components?, parameter_table?
 │       ├── ess_versions?
 │       ├── thermo?
 │       │   ├── h298_kj_mol, s298_j_mol_k, tmin_k, tmax_k
-│       │   ├── cp_data?: [{temperature_k, cp_j_mol_k}, ...]
+│       │   ├── thermo_points?: [{temperature_k, cp_j_mol_k, h_kj_mol, s_j_mol_k, g_kj_mol}, ...]
 │       │   ├── nasa_low?: {tmin_k, tmax_k, coeffs}
 │       │   └── nasa_high?: {tmin_k, tmax_k, coeffs}
 │       └── statmech?
@@ -50,12 +65,14 @@ output.yml
 │           ├── is_linear, external_symmetry, point_group?
 │           ├── rigid_rotor_kind, harmonic_frequencies_cm1?
 │           └── torsions: []
-│               └── symmetry_number, treatment, atom_indices, pivot_atoms, barrier_kj_mol?
+│               └── symmetry_number, treatment, atom_indices, pivot_atoms,
+│                   barrier_kj_mol?, source_scan_key?
 │
 ├── transition_states: []
 │   └── (all species fields, plus:)
 │       ├── chosen_ts_method?, successful_ts_methods?
-│       ├── neb_log?, irc_logs: [], irc_converged?
+│       ├── neb_log?, gsm_log?, irc_logs: [], irc_log_directions: [], irc_converged?
+│       ├── neb_log?, gsm_log?, irc_logs: [], irc_converged?
 │       └── rxn_label
 │
 └── reactions: []
@@ -73,11 +90,20 @@ output.yml
 
 | Field | Type | Description |
 |---|---|---|
+| `schema_version` | `str` | Output contract version; `1.1` adds the optional evidence descriptor |
 | `project` | `str` | ARC project name |
 | `arc_version` | `str` | ARC version string |
 | `arc_git_commit` | `str?` | ARC repo HEAD commit hash |
 | `arkane_git_commit` | `str?` | RMG-Py (Arkane) repo HEAD commit hash |
 | `datetime_completed` | `str` | Completion timestamp (`YYYY-MM-DD HH:MM`) |
+| `tckdb_evidence` | `dict?` | Descriptor for `tckdb_evidence.json`, present only after the sidecar was written successfully |
+
+The descriptor binds `output.yml` to the parser-neutral evidence sidecar with
+`path`, `schema_name`, `schema_version`, and a shared UUID4 `document_id`.
+ARC writes the sidecar first and `output.yml` second so consumers can reject a
+stale or interrupted pair by comparing document IDs. The evidence file contains
+best-effort, versioned Hessian, IRC, and GSM facts parsed by ARC; it contains no
+TCKDB upload request objects.
 
 ## Levels of Theory
 
@@ -97,6 +123,13 @@ output.yml
 ## Species
 
 `species` is a list of entries, one per non-TS species.
+
+Calculation constraints, rotor scans, and energy corrections are deliberately
+tool-neutral. Constraint and scan coordinates retain their source atom indices
+with an explicit `index_base`; scan samples retain source ordering and explicit
+units; correction records retain the applied model, total, components, level
+of theory, and native parameter table. Consumers own any database enum,
+one-based-index, calculation-DAG, or payload nesting conversion.
 
 ### Identity
 
@@ -160,16 +193,19 @@ All paths are relative to the project directory.
 | `s298_j_mol_k` | `float` | Standard entropy at 298 K (J/(mol K)) |
 | `tmin_k` | `float` | Minimum temperature (K) |
 | `tmax_k` | `float` | Maximum temperature (K) |
-| `cp_data` | `list?` | Tabulated heat capacity (see below) |
+| `thermo_points` | `list?` | Tabulated per-temperature thermochemistry (see below) |
 | `nasa_low` | `dict?` | Low-temperature NASA polynomial |
 | `nasa_high` | `dict?` | High-temperature NASA polynomial |
 
-**`cp_data`** entries:
+**`thermo_points`** entries (one per evaluation temperature; `temperature_k` is required, all others are optional but emitted by default when produced via `arc/scripts/save_arkane_thermo.py`):
 
 | Field | Type | Description |
 |---|---|---|
 | `temperature_k` | `float` | Temperature (K) |
-| `cp_j_mol_k` | `float` | Heat capacity at constant pressure (J/(mol K)) |
+| `cp_j_mol_k` | `float?` | Heat capacity at constant pressure (J/(mol K)) |
+| `h_kj_mol`    | `float?` | Enthalpy at this temperature (kJ/mol) |
+| `s_j_mol_k`   | `float?` | Entropy at this temperature (J/(mol K)) |
+| `g_kj_mol`    | `float?` | Gibbs free energy at this temperature (kJ/mol) |
 
 **`nasa_low` / `nasa_high`**:
 
@@ -218,8 +254,13 @@ All paths are relative to the project directory.
 | `imag_freq_cm1` | `float?` | Imaginary frequency (cm-1) |
 | `chosen_ts_method` | `str?` | The TS search method that was selected |
 | `successful_ts_methods` | `list[str]?` | All TS methods that succeeded |
+| `ts_guesses` | `list[dict]` | Sanitized provenance for the chosen guess: `index`, `chosen`, `method`, and merged `method_sources` |
 | `neb_log` | `str?` | Run-relative path to NEB log |
+| `gsm_log` | `str?` | Run-relative path to the selected GSM stringfile |
+| `neb_log` | `str?` | Run-relative path to NEB log (set when chosen TS method is `orca_neb`) |
+| `gsm_log` | `str?` | Run-relative path to GSM stringfile (set when chosen TS method is `xtb_gsm`) |
 | `irc_logs` | `list[str]` | Run-relative paths to IRC logs |
+| `irc_log_directions` | `list[str?]` | Forward/reverse direction in lockstep with `irc_logs` |
 | `irc_converged` | `bool?` | Whether IRC converged (`null` if IRC was not requested) |
 | `rxn_label` | `str` | Reaction label this TS belongs to |
 | `thermo` | `null` | Always `null` for transition states |

@@ -2,6 +2,7 @@
 Tests for the arc.output module (consolidated output.yml writer).
 """
 
+import json
 import os
 import shutil
 import tempfile
@@ -12,7 +13,12 @@ from arc.common import ARC_PATH
 from arc.level import Level
 from arc.common import ARC_TESTING_PATH
 from arc.output import (
+    _build_energy_corrections_for_species,
+    _build_rotor_scans,
+    _build_scan_result_for_rotor,
     _compute_point_groups,
+    _compute_species_corrections,
+    _evidence_status_counts,
     _get_arkane_git_commit,
     _get_energy_corrections,
     _get_ess_versions,
@@ -22,6 +28,7 @@ from arc.output import (
     _level_to_dict,
     _make_rel_path,
     _parse_opt_log,
+    _parse_spin_diagnostic,
     _parse_zpe,
     _resolve_freq_scale_factor_source,
     _rxn_to_dict,
@@ -30,7 +37,7 @@ from arc.output import (
     _thermo_to_dict,
     write_output_yml,
 )
-from arc.species.species import ThermoData
+from arc.species.species import TSGuess, ThermoData
 
 
 class TestLevelToDict(unittest.TestCase):
@@ -172,7 +179,7 @@ class TestThermoToDict(unittest.TestCase):
         self.assertEqual(result['s298_j_mol_k'], 230.1)
         self.assertEqual(result['tmin_k'], 300)
         self.assertEqual(result['tmax_k'], 3000)
-        self.assertIsNone(result['cp_data'])
+        self.assertIsNone(result['thermo_points'])
         self.assertIsNone(result['nasa_low'])
         self.assertIsNone(result['nasa_high'])
 
@@ -187,9 +194,9 @@ class TestThermoToDict(unittest.TestCase):
 
     def test_thermo_with_cp_data(self):
         cp = [{'temperature_k': 300.0, 'cp_j_mol_k': 35.1}, {'temperature_k': 400.0, 'cp_j_mol_k': 40.5}]
-        thermo = ThermoData(H298=-10.0, S298=200.0, Tmin=(300, 'K'), Tmax=(2000, 'K'), cp_data=cp)
+        thermo = ThermoData(H298=-10.0, S298=200.0, Tmin=(300, 'K'), Tmax=(2000, 'K'), thermo_points=cp)
         result = _thermo_to_dict(thermo)
-        self.assertEqual(result['cp_data'], cp)
+        self.assertEqual(result['thermo_points'], cp)
 
     def test_tmin_tmax_scalar(self):
         """Tmin/Tmax can be plain numbers (not tuples)."""
@@ -368,20 +375,23 @@ class TestParseOptLog(unittest.TestCase):
     def test_gaussian_opt_log(self):
         """Parse a real Gaussian opt log for step count and final energy."""
         opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
-        n_steps, e_hartree = _parse_opt_log(opt_path, '/dummy')
+        n_steps, e_hartree, final_xyz = _parse_opt_log(opt_path, '/dummy')
         self.assertEqual(n_steps, 4)
         self.assertIsNotNone(e_hartree)
         self.assertAlmostEqual(e_hartree, -116.986089069, places=6)
+        self.assertIsNotNone(final_xyz)
 
     def test_missing_file(self):
-        n_steps, e_hartree = _parse_opt_log('/nonexistent/file.log', '/tmp')
+        n_steps, e_hartree, final_xyz = _parse_opt_log('/nonexistent/file.log', '/tmp')
         self.assertIsNone(n_steps)
         self.assertIsNone(e_hartree)
+        self.assertIsNone(final_xyz)
 
     def test_none_path(self):
-        n_steps, e_hartree = _parse_opt_log(None, '/tmp')
+        n_steps, e_hartree, final_xyz = _parse_opt_log(None, '/tmp')
         self.assertIsNone(n_steps)
         self.assertIsNone(e_hartree)
+        self.assertIsNone(final_xyz)
 
     def test_parse_zpe_from_freq_log(self):
         """Parse ZPE from a real Gaussian freq log."""
@@ -402,6 +412,50 @@ class TestParseOptLog(unittest.TestCase):
         from arc.parser.parser import parse_opt_steps
         opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
         self.assertEqual(parse_opt_steps(opt_path), 4)
+
+
+class TestParseSpinDiagnostic(unittest.TestCase):
+    """Tests for _parse_spin_diagnostic (output.yml S**2 plumbing)."""
+
+    def test_open_shell_gaussian_doublet(self):
+        """Open-shell doublet: block with s_squared, expected (from mult), annihilated."""
+        sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=2, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7535)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertAlmostEqual(sd['s_squared_annihilated'], 0.75)
+
+    def test_expected_recomputed_from_arc_multiplicity(self):
+        """s_squared_expected is authoritative from ARC's multiplicity (triplet -> 2.0)."""
+        sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'TSs', 'TS_freq.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=3, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 2.0153)
+        self.assertAlmostEqual(sd['s_squared_expected'], 2.0)
+
+    def test_closed_shell_returns_none(self):
+        """Restricted/closed-shell log (no <S**2>) -> None (block omitted)."""
+        sp = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
+        self.assertIsNone(_parse_spin_diagnostic(sp, None, None, multiplicity=1, project_directory='/dummy'))
+
+    def test_fallback_to_freq_when_sp_absent(self):
+        """When the sp log is absent, falls back to the freq log."""
+        freq = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        sd = _parse_spin_diagnostic(None, freq, None, multiplicity=2, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7535)
+
+    def test_no_paths_returns_none(self):
+        self.assertIsNone(_parse_spin_diagnostic(None, None, None, multiplicity=2, project_directory='/dummy'))
+
+    def test_orca_open_shell_no_annihilation_key(self):
+        """ORCA: annihilated is None -> the key is omitted from the emitted block."""
+        sp = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=2, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertNotIn('s_squared_annihilated', sd)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
 
 
 class TestParseEssVersion(unittest.TestCase):
@@ -692,6 +746,105 @@ class TestTsWithSmiles(unittest.TestCase):
         result = _spc_to_dict(spc, output_dict, '/abs')
         self.assertIsNone(result['smiles'])
         self.assertIsNone(result['formula'])
+
+    def test_ts_path_logs_and_irc_directions(self):
+        spc = MagicMock()
+        spc.label = 'TS_paths'
+        spc.original_label = None
+        spc.charge = 0
+        spc.multiplicity = 1
+        spc.is_ts = True
+        spc.mol = None
+        spc.final_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0, 0, 0),)}
+        spc.initial_xyz = None
+        spc.is_monoatomic.return_value = False
+        spc.e_elect = None
+        spc._is_linear = False
+        spc.optical_isomers = 1
+        spc.external_symmetry = 1
+        spc.freqs = [-1000.0, 100.0]
+        spc.rotors_dict = None
+        spc.thermo = None
+        spc.rxn_label = 'A <=> B'
+        spc.chosen_ts_method = 'xTB-GSM'
+        spc.successful_methods = ['xTB-GSM']
+        spc.chosen_ts = None
+        spc.ts_guesses = []
+        output_dict = {'TS_paths': {
+            'convergence': True,
+            'paths': {
+                'gsm': '/run/gsm/stringfile.xyz0000',
+                'neb': '',
+                'irc': ['/run/irc/forward.log', '/run/irc/reverse.log'],
+                'irc_directions': ['forward', 'reverse'],
+            },
+            'job_types': {'irc': True},
+        }}
+        result = _spc_to_dict(spc, output_dict, '/run')
+        self.assertEqual(result['gsm_log'], 'gsm/stringfile.xyz0000')
+        self.assertIsNone(result['neb_log'])
+        self.assertEqual(result['irc_log_directions'], ['forward', 'reverse'])
+
+    def test_merged_ts_guess_recovers_path_artifact_by_index(self):
+        spc = MagicMock()
+        spc.label = 'TS_merged'
+        spc.original_label = None
+        spc.charge = 0
+        spc.multiplicity = 1
+        spc.is_ts = True
+        spc.mol = None
+        spc.final_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0, 0, 0),)}
+        spc.initial_xyz = None
+        spc.is_monoatomic.return_value = False
+        spc.e_elect = None
+        spc._is_linear = False
+        spc.optical_isomers = 1
+        spc.external_symmetry = 1
+        spc.freqs = [-1000.0, 100.0]
+        spc.rotors_dict = None
+        spc.thermo = None
+        spc.rxn_label = 'A <=> B'
+        spc.chosen_ts_method = 'gcn'
+        spc.successful_methods = ['gcn', 'xTB-GSM']
+        guess = TSGuess(index=7, method='gcn', success=True, xyz='C 0 0 0')
+        guess.method_sources = ['gcn', 'xtb-gsm']
+        guess.method_source_paths = {'xtb-gsm': '/run/gsm/stringfile.xyz0000'}
+        spc.chosen_ts = 7
+        spc.ts_guesses = [guess]
+        output_dict = {'TS_merged': {
+            'convergence': True,
+            'paths': {'gsm': '', 'neb': '', 'irc': []},
+            'job_types': {},
+        }}
+        result = _spc_to_dict(spc, output_dict, '/run')
+        self.assertEqual(result['gsm_log'], 'gsm/stringfile.xyz0000')
+        self.assertIsNone(result['neb_log'])
+        self.assertEqual(result['ts_guesses'], [{
+            'index': 7,
+            'chosen': True,
+            'method': 'gcn',
+            'method_sources': ['gcn', 'xtb-gsm'],
+        }])
+
+
+class TestEvidenceStatusCounts(unittest.TestCase):
+    """Tests concise evidence-write diagnostics."""
+
+    def test_counts_only_known_evidence_envelopes(self):
+        evidence = {'records': [
+            {'record_kind': 'species', 'label': 'A',
+             'freq_hessian': {'status': 'available'}},
+            {'record_kind': 'transition_state', 'label': 'TS0',
+             'freq_hessian': {'status': 'unavailable'},
+             'irc': {'status': 'available'},
+             'gsm': {'status': 'unavailable'}},
+            {'record_kind': 'species', 'label': 'B', 'other': {'status': 'available'}},
+        ]}
+        self.assertEqual(_evidence_status_counts(evidence), {
+            'freq_hessian': {'available': 1, 'unavailable': 1},
+            'irc': {'available': 1, 'unavailable': 0},
+            'gsm': {'available': 0, 'unavailable': 1},
+        })
 
 
 class TestRxnToDict(unittest.TestCase):
@@ -1026,6 +1179,13 @@ class TestWriteOutputYml(unittest.TestCase):
         out_path = os.path.join(self.tmp_dir, 'output', 'output.yml')
         self.assertTrue(os.path.isfile(out_path))
         doc = read_yaml_file(out_path)
+        self.assertEqual(doc['schema_version'], '1.1')
+        self.assertEqual(doc['tckdb_evidence']['path'], 'tckdb_evidence.json')
+        evidence_path = os.path.join(self.tmp_dir, 'output', 'tckdb_evidence.json')
+        self.assertTrue(os.path.isfile(evidence_path))
+        with open(evidence_path) as handle:
+            evidence = json.load(handle)
+        self.assertEqual(evidence['document_id'], doc['tckdb_evidence']['document_id'])
         self.assertEqual(doc['project'], 'test_project')
         self.assertEqual(doc['arc_git_commit'], 'def456')
         self.assertEqual(doc['arkane_git_commit'], 'abc123')
@@ -1124,6 +1284,42 @@ class TestWriteOutputYml(unittest.TestCase):
         leftover = [f for f in os.listdir(out_dir) if f.endswith('.tmp')]
         self.assertEqual(leftover, [])
 
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output.build_tckdb_evidence', side_effect=RuntimeError('evidence failed'))
+    def test_evidence_failure_still_writes_output(self, mock_build, mock_pg):
+        spc = self._make_spc_mock()
+        write_output_yml(
+            project='evidence_failure',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': spc},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+        )
+        from arc.common import read_yaml_file
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertEqual(doc['schema_version'], '1.1')
+        self.assertNotIn('tckdb_evidence', doc)
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    def test_evidence_is_replaced_before_output(self, mock_pg):
+        spc = self._make_spc_mock()
+        real_replace = os.replace
+        destinations = []
+
+        def recording_replace(source, destination):
+            destinations.append(os.path.basename(destination))
+            return real_replace(source, destination)
+
+        with patch('os.replace', side_effect=recording_replace):
+            write_output_yml(
+                project='replace_order',
+                project_directory=self.tmp_dir,
+                species_dict={'CH4': spc},
+                reactions=[],
+                output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+            )
+        self.assertEqual(destinations[-2:], ['tckdb_evidence.json', 'output.yml'])
+
 
 class TestGetPointGroupsScript(unittest.TestCase):
     """Tests for arc/scripts/get_point_groups.py helper functions (imported directly)."""
@@ -1185,6 +1381,920 @@ class TestGetPointGroupsScript(unittest.TestCase):
         finally:
             if added:
                 sys.path.remove(scripts_dir)
+
+
+class TestBuildAppliedCorrectionsForSpecies(unittest.TestCase):
+    """Direct tests for `_build_energy_corrections_for_species`.
+
+    Stubs the rmg_env script's per-label result so we don't depend on the
+    Arkane subprocess; the helper's job is purely shape-translation.
+    """
+
+    def _lot(self):
+        return Level(method='wb97xd3', basis='def2tzvp', software='qchem')
+
+    def _aec_block(self):
+        return {
+            'value': -0.0234,
+            'value_unit': 'hartree',
+            'components': [
+                {'component_kind': 'atom', 'key': 'C', 'multiplicity': 1,
+                 'parameter_value': -37.84993993, 'parameter_unit': 'hartree',
+                 'contribution_value': -0.015},
+                {'component_kind': 'atom', 'key': 'H', 'multiplicity': 4,
+                 'parameter_value': -0.49991749, 'parameter_unit': 'hartree',
+                 'contribution_value': -0.008},
+            ],
+        }
+
+    def _pbac_block(self):
+        return {
+            'value': -0.694,
+            'value_unit': 'kcal_mol',
+            'bac_type': 'p',
+            'components': [
+                {'component_kind': 'bond', 'key': 'C-H', 'multiplicity': 4,
+                 'parameter_value': -0.1735, 'parameter_unit': 'kcal_mol',
+                 'contribution_value': -0.694},
+            ],
+        }
+
+    def _mbac_block(self):
+        return {
+            'value': -0.056,
+            'value_unit': 'kcal_mol',
+            'bac_type': 'm',
+        }
+
+    def test_aec_total_emitted(self):
+        sc = {'CH4': {'aec': self._aec_block()}}
+        out = _build_energy_corrections_for_species('CH4', sc, self._lot(), 'p')
+        roles = [e['correction_type'] for e in out]
+        self.assertIn('atom_energy', roles)
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertAlmostEqual(aec['total']['value'], -0.0234)
+        self.assertEqual(aec['total']['unit'], 'hartree')
+        self.assertEqual(aec['model'], 'arkane_atom_energy')
+
+    def test_aec_components_sum_to_total(self):
+        # Use values that arithmetically sum exactly so the test
+        # asserts the producer doesn't drop or rescale rows.
+        block = {
+            'value': -0.030,
+            'value_unit': 'hartree',
+            'components': [
+                {'component_kind': 'atom', 'key': 'C', 'multiplicity': 1,
+                 'parameter_value': -37.85, 'parameter_unit': 'hartree',
+                 'contribution_value': -0.018},
+                {'component_kind': 'atom', 'key': 'H', 'multiplicity': 4,
+                 'parameter_value': -0.5, 'parameter_unit': 'hartree',
+                 'contribution_value': -0.012},
+            ],
+        }
+        sc = {'X': {'aec': block}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), None)
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        total = sum(c['contribution_value'] for c in aec['components'])
+        self.assertAlmostEqual(total, aec['total']['value'], places=6)
+
+    def test_pbac_total_and_components(self):
+        sc = {'CH4': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species('CH4', sc, self._lot(), 'p')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(bac['model'], 'petersson')
+        self.assertEqual(bac['total']['unit'], 'kcal_mol')
+        self.assertEqual(len(bac['components']), 1)
+        self.assertEqual(bac['components'][0]['key'], 'C-H')
+
+    def test_mbac_total_only_no_components(self):
+        sc = {'CH4': {'aec': self._aec_block(), 'bac': self._mbac_block()}}
+        out = _build_energy_corrections_for_species('CH4', sc, self._lot(), 'm')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(bac['model'], 'melius')
+        self.assertEqual(bac['components'], [])
+
+    def test_pbac_omits_components_when_param_missing(self):
+        block = self._pbac_block()
+        block['components'][0]['parameter_value'] = None
+        sc = {'X': {'aec': self._aec_block(), 'bac': block}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        # Components dropped entirely (partial decomposition would mislead).
+        self.assertEqual(bac['components'], [])
+
+    def test_units_are_explicit(self):
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
+        units = {e['correction_type']: e['total']['unit'] for e in out}
+        self.assertEqual(units['atom_energy'], 'hartree')
+        self.assertEqual(units['bond_additivity'], 'kcal_mol')
+
+    def test_missing_correction_omits_silently(self):
+        # AEC failed (no 'aec' key), BAC succeeded → only BAC emitted.
+        sc = {'X': {'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
+        roles = [e['correction_type'] for e in out]
+        self.assertEqual(roles, ['bond_additivity'])
+
+    def test_no_data_returns_empty_list(self):
+        out = _build_energy_corrections_for_species('X', {}, self._lot(), 'p')
+        self.assertEqual(out, [])
+
+    def test_bac_type_none_omits_bac(self):
+        # Even if a BAC block is present, bac_type=None means no BAC role.
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), None)
+        roles = [e['correction_type'] for e in out]
+        self.assertEqual(roles, ['atom_energy'])
+
+    # ---- scheme parameter tables (atom_params / bond_params) ----
+
+    def test_aec_scheme_includes_atom_params_from_run_table(self):
+        # ARC's run-level atom_energy_corrections dict is the source of
+        # truth for AEC scheme parameters; without atom_params the
+        # downstream energy_correction_scheme_atom_param table never gets
+        # populated even though the applied row lands. Sorted-by-element
+        # for deterministic output.yml.
+        aec_table = {'C': -37.84706, 'H': -0.50066}
+        sc = {'X': {'aec': self._aec_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', aec_table=aec_table, bac_table=None,
+        )
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertEqual(
+            aec['parameter_table']['values'],
+            {'C': -37.84706, 'H': -0.50066},
+        )
+
+    def test_pbac_scheme_includes_bond_params_from_run_table(self):
+        bac_table = {'C-H': -0.17350, 'C=O': -2.63454}
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', aec_table=None, bac_table=bac_table,
+        )
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(
+            bac['parameter_table']['values'],
+            {'C-H': -0.17350, 'C=O': -2.63454},
+        )
+
+    def test_mbac_scheme_omits_params(self):
+        # Per spec: Melius BAC parameters are atom-pair / length / neighbor /
+        # molecular and don't fit SchemeBondParamPayload's bond-key shape.
+        # The producer must NOT fabricate or coerce them — emit total only.
+        bac_table = {'C-H': -0.17350}  # would coerce, but we must not
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._mbac_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'm', aec_table=None, bac_table=bac_table,
+        )
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(bac['model'], 'melius')
+        self.assertNotIn('parameter_table', bac)
+
+    def test_aec_scheme_omits_atom_params_when_table_missing(self):
+        # Backward compat: when aec_table isn't supplied (caller predates
+        # this fix, or output.yml was written without it), the scheme still
+        # has identity but no atom_params field — schema treats it as []
+        # via the default factory.
+        sc = {'X': {'aec': self._aec_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', aec_table=None, bac_table=None,
+        )
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertNotIn('parameter_table', aec)
+
+    def test_atom_params_sorted_for_determinism(self):
+        # Stable insertion order matters for the idempotency hash
+        # downstream consumers compute over the payload.
+        aec_table = {'O': -75.07, 'H': -0.5, 'C': -37.85}
+        sc = {'X': {'aec': self._aec_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), None, aec_table=aec_table, bac_table=None,
+        )
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertEqual(list(aec['parameter_table']['values']), ['C', 'H', 'O'])
+
+
+class TestComputeSpeciesCorrections(unittest.TestCase):
+    """Tests for `_compute_species_corrections` orchestration (subprocess call)."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
+        os.makedirs(os.path.join(self.tmp_dir, 'output'), exist_ok=True)
+
+    def _spc(self, label='CH4'):
+        spc = MagicMock()
+        spc.label = label
+        spc.multiplicity = 1
+        spc.bond_corrections = {'C-H': 4}
+        spc.final_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                         'isotopes': (12, 1, 1, 1, 1),
+                         'coords': ((0, 0, 0), (0.6, 0.6, 0.6),
+                                    (-0.6, -0.6, 0.6), (-0.6, 0.6, -0.6),
+                                    (0.6, -0.6, -0.6))}
+        spc.initial_xyz = None
+        return spc
+
+    def test_returns_empty_when_lot_is_none(self):
+        out = _compute_species_corrections({'CH4': self._spc()}, None, 'p', self.tmp_dir)
+        self.assertEqual(out, {})
+
+    def _patch_lot_key(self, key="LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')"):
+        return [
+            patch('arc.output.get_qm_corrections_files', return_value=['/fake/data.py']),
+            patch('arc.output.find_best_across_files', return_value=key),
+        ]
+
+    def test_returns_empty_when_no_species_have_xyz(self):
+        spc = self._spc()
+        spc.final_xyz = None
+        spc.initial_xyz = None
+        lot = Level(method='wb97xd3', basis='def2tzvp', software='qchem')
+        patches = self._patch_lot_key()
+        for p in patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in patches])
+        with patch('arc.output.execute_command') as mock_exec:
+            out = _compute_species_corrections({'CH4': spc}, lot, 'p', self.tmp_dir)
+        self.assertEqual(out, {})
+        mock_exec.assert_not_called()
+
+    def test_invokes_subprocess_with_batched_input(self):
+        lot = Level(method='wb97xd3', basis='def2tzvp', software='qchem')
+        patches = self._patch_lot_key()
+        for p in patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in patches])
+        with patch('arc.output.execute_command', return_value=('', '')) as mock_exec, \
+             patch('arc.output.read_yaml_file', return_value={'species': [
+                 {'label': 'CH4',
+                  'aec': {'value': -0.02, 'value_unit': 'hartree', 'components': []},
+                  'bac': {'value': -0.7, 'value_unit': 'kcal_mol', 'components': []}}
+             ]}), \
+             patch('arc.output.save_yaml_file') as mock_save:
+            out = _compute_species_corrections(
+                {'CH4': self._spc()}, lot, 'p', self.tmp_dir,
+            )
+        # Subprocess was called once
+        self.assertEqual(mock_exec.call_count, 1)
+        # Result keyed by label
+        self.assertIn('CH4', out)
+        self.assertEqual(out['CH4']['aec']['value'], -0.02)
+        self.assertEqual(out['CH4']['bac']['value'], -0.7)
+        # Subprocess input batched all species
+        save_call = mock_save.call_args
+        content = save_call[1].get('content') or save_call[0][1]
+        self.assertEqual(content['level_of_theory'],
+                          "LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')")
+        self.assertEqual(content['bac_type'], 'p')
+        self.assertEqual(len(content['species']), 1)
+        self.assertEqual(content['species'][0]['label'], 'CH4')
+        self.assertEqual(content['species'][0]['atoms'], {'C': 1, 'H': 4})
+        self.assertEqual(content['species'][0]['bonds'], {'C-H': 4})
+        self.assertEqual(content['species'][0]['multiplicity'], 1)
+
+    def test_returns_empty_when_lot_key_not_in_database(self):
+        lot = Level(method='unknown', basis='unknown')
+        patches = [patch('arc.output.get_qm_corrections_files', return_value=['/fake/data.py']),
+                   patch('arc.output.find_best_across_files', return_value=None)]
+        for p in patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in patches])
+        with patch('arc.output.execute_command') as mock_exec:
+            out = _compute_species_corrections({'CH4': self._spc()}, lot, 'p', self.tmp_dir)
+        self.assertEqual(out, {})
+        mock_exec.assert_not_called()
+
+    def test_subprocess_failure_returns_empty(self):
+        lot = Level(method='wb97xd3', basis='def2tzvp', software='qchem')
+        patches = self._patch_lot_key()
+        for p in patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in patches])
+        with patch('arc.output.execute_command', side_effect=RuntimeError('boom')):
+            out = _compute_species_corrections(
+                {'CH4': self._spc()}, lot, 'p', self.tmp_dir,
+            )
+        self.assertEqual(out, {})
+
+
+class TestScanCalculations(unittest.TestCase):
+    """Tests for tool-neutral rotor-scan result export.
+
+    Covers two layers:
+    - ``_build_scan_result_for_rotor`` preserves scientific scan facts,
+      returning ``None`` when the input is unusable.
+    - ``_build_rotor_scans`` aggregates across ``rotors_dict`` and
+      filters non-1D / failed / unparseable rotors.
+    - ``_get_torsions`` attaches ``source_scan_key`` only when
+      the corresponding scan log is on disk.
+    """
+
+    SCAN_LOG = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'sBuOH.out')
+
+    def _rotor(self, **overrides) -> dict:
+        """Build a rotor-dict with sensible defaults; override per-test."""
+        rotor: dict = {
+            'success': True,
+            'scan': [1, 2, 3, 4],
+            'pivots': [2, 3],
+            'symmetry': 3,
+            'type': 'HinderedRotor',
+            'scan_path': self.SCAN_LOG,
+            'dimensions': 1,
+        }
+        rotor.update(overrides)
+        return rotor
+
+    def test_build_scan_result_happy_path(self):
+        """Real Gaussian scan log → fully populated scan_result dict."""
+        result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        self.assertEqual(result['dimension'], 1)
+        self.assertTrue(result['relaxed'])
+        # zero_energy_reference_hartree = min absolute energy on the curve.
+        self.assertIsInstance(result['zero_energy_reference_hartree'], float)
+        # One coordinate, dihedral, atoms 1–4, 1-based, with symmetry.
+        coord = result['coordinate']
+        self.assertEqual(coord['coordinate_type'], 'dihedral')
+        self.assertEqual(coord['atom_indices'], [1, 2, 3, 4])
+        self.assertEqual(coord['index_base'], 1)
+        self.assertEqual(coord['unit'], 'degree')
+        self.assertEqual(coord['symmetry_number'], 3)
+        self.assertEqual(coord['sample_count'], len(result['samples']))
+        # Samples carry source index, angle, energies, and ARC-format geometry
+        # text straight from ``parse_1d_scan_full_result()['geometries']``.
+        self.assertGreater(len(result['samples']), 0)
+        first = result['samples'][0]
+        self.assertEqual(first['source_index'], 0)
+        self.assertIn('angle_degrees', first)
+        self.assertIn('relative_energy_kj_mol', first)
+        self.assertIn('electronic_energy_hartree', first)
+        self.assertNotIn('xyz', first)
+        # First point's relative energy ≈ 0 by zero-shift convention.
+        self.assertAlmostEqual(first['relative_energy_kj_mol'], 1.5753056e-05,
+                               places=6)
+
+    def test_build_scan_result_no_log(self):
+        """Empty scan_path → None, never an exception."""
+        rotor = self._rotor(scan_path='')
+        self.assertIsNone(_build_scan_result_for_rotor(rotor, '/tmp/project'))
+
+    def test_build_scan_result_missing_log(self):
+        """Path that doesn't resolve to a real file → None."""
+        rotor = self._rotor(scan_path='/nonexistent/does/not/exist.log')
+        self.assertIsNone(_build_scan_result_for_rotor(rotor, '/tmp/project'))
+
+    def test_build_scan_result_malformed_atom_indices(self):
+        """Non-quartet ``scan`` field → None (no fabricated atom list)."""
+        rotor = self._rotor(scan=[1, 2, 3])  # only 3 atoms
+        self.assertIsNone(_build_scan_result_for_rotor(rotor, '/tmp/project'))
+
+    def test_build_scan_result_parser_failure_returns_none(self):
+        """Exceptions in the scan-result parser surface as ``None`` (no crash)."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   side_effect=Exception('boom')):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNone(result)
+
+    def test_build_scan_result_missing_relative_energies_returns_none(self):
+        """Parser returning empty energies → None, even with angles present."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value={
+                       'angles_deg': [0.0, 90.0],
+                       'relative_energies_kj_mol': None,
+                       'absolute_energies_hartree': None,
+                       'zero_energy_reference_hartree': None,
+                       'geometries': None,
+                   }):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNone(result)
+
+    def test_build_scan_calculations_emits_one_per_rotor(self):
+        """Two successful 1D rotors → two scan_rotor_<i> entries."""
+        spc = MagicMock()
+        spc.rotors_dict = {0: self._rotor(), 1: self._rotor()}
+        calcs = _build_rotor_scans(spc, '/tmp/project')
+        self.assertEqual(len(calcs), 2)
+        self.assertEqual(calcs[0]['key'], 'scan_rotor_0')
+        self.assertEqual(calcs[1]['key'], 'scan_rotor_1')
+        self.assertIn('source_log', calcs[0])
+        self.assertEqual(calcs[0]['result']['dimension'], 1)
+
+    def test_build_scan_calculations_skips_failed_rotor(self):
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: self._rotor(),                     # ok
+            1: self._rotor(success=False),        # filtered
+        }
+        calcs = _build_rotor_scans(spc, '/tmp/project')
+        self.assertEqual([c['key'] for c in calcs], ['scan_rotor_0'])
+
+    def test_build_scan_calculations_skips_nd(self):
+        """ND rotors are deferred — only 1D scans are emitted today."""
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: self._rotor(),                  # 1D, ok
+            1: self._rotor(dimensions=2),      # ND, skipped
+        }
+        calcs = _build_rotor_scans(spc, '/tmp/project')
+        self.assertEqual([c['key'] for c in calcs], ['scan_rotor_0'])
+
+    def test_build_scan_calculations_skips_unparseable(self):
+        """Unparseable scan (no log on disk) → no calc, no exception."""
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: self._rotor(scan_path=''),  # log missing → skipped
+            1: self._rotor(),              # ok
+        }
+        calcs = _build_rotor_scans(spc, '/tmp/project')
+        self.assertEqual([c['key'] for c in calcs], ['scan_rotor_1'])
+
+    def test_get_torsions_attaches_scan_key_when_log_present(self):
+        """``source_scan_calculation_key`` matches the scan calc key only when log resolves."""
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: {
+                'success': True,
+                'scan': [1, 2, 3, 4],
+                'pivots': [2, 3],
+                'symmetry': 3,
+                'type': 'HinderedRotor',
+                'scan_path': self.SCAN_LOG,
+                'dimensions': 1,
+            },
+            7: {  # intentional non-contiguous index — keys must use the dict key.
+                'success': True,
+                'scan': [5, 6, 7, 8],
+                'pivots': [6, 7],
+                'symmetry': 1,
+                'type': 'HinderedRotor',
+                'scan_path': '',
+                'dimensions': 1,
+            },
+        }
+        torsions = _get_torsions(spc, '/tmp/project')
+        self.assertEqual(len(torsions), 2)
+        self.assertEqual(torsions[0]['source_scan_key'], 'scan_rotor_0')
+        # Second rotor has no scan log on disk → no fabricated key.
+        self.assertIsNone(torsions[1]['source_scan_key'])
+
+    # ---- per-sample scan geometries ----
+    #
+    # ARC's parser wrapper already returns aligned per-step xyz dicts.
+    # ``_build_scan_result_for_rotor`` preserves them as ARC-format text.
+
+    def _stub_parsed(self, *, n_points=3, geometries='aligned'):
+        """Build a parser-wrapper return value with controllable geometry alignment.
+
+        ``geometries`` is one of:
+          - ``'aligned'``   : list of length n_points, each a valid xyz dict.
+          - ``'mismatch'``  : list of length n_points + 1.
+          - ``'none'``      : ``None`` (parser returned no geometries).
+          - ``'malformed'`` : valid count, but one entry is malformed.
+        """
+        valid_xyz = {
+            'symbols': ('C', 'H'),
+            'isotopes': (12, 1),
+            'coords': ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
+        }
+        if geometries == 'aligned':
+            geom_list = [valid_xyz for _ in range(n_points)]
+        elif geometries == 'mismatch':
+            geom_list = [valid_xyz for _ in range(n_points + 1)]
+        elif geometries == 'none':
+            geom_list = None
+        elif geometries == 'malformed':
+            geom_list = [valid_xyz for _ in range(n_points)]
+            geom_list[1] = {'symbols': (), 'isotopes': (), 'coords': ()}
+        else:
+            raise ValueError(geometries)
+        return {
+            'angles_deg': [i * 30.0 for i in range(n_points)],
+            'relative_energies_kj_mol': [0.0] * n_points,
+            'absolute_energies_hartree': [-100.0] * n_points,
+            'zero_energy_reference_hartree': -100.0,
+            'geometries': geom_list,
+        }
+
+    def test_scan_points_include_geometry_when_aligned(self):
+        """Aligned geometries → every point carries ``geometry.xyz_text``."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=3)):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result['samples']), 3)
+        for point in result['samples']:
+            self.assertIn('geometry_xyz', point)
+            xyz_text = point['geometry_xyz']
+            lines = xyz_text.splitlines()
+            self.assertEqual(len(lines), 2)
+
+    def test_scan_point_geometry_uses_only_xyz_text_no_db_id(self):
+        """No ``geometry_id`` (or any DB id) anywhere under scan_result."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=3)):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        forbidden = {'geometry_id', 'existing_geometry_id', 'id'}
+        for point in result['samples']:
+            geom = point.get('geometry_xyz')
+            self.assertIsInstance(geom, str)
+            for k in forbidden:
+                self.assertNotIn(k, point, msg=f"{k} leaked onto scan point")
+        # Top-level scan_result also has no DB ids.
+        for k in forbidden:
+            self.assertNotIn(k, result)
+
+    def test_scan_points_omit_geometry_when_geometries_missing(self):
+        """Parser returned ``geometries=None`` → no point carries a geometry,
+        no warning, scan_result still emitted with energies and angles."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=3, geometries='none')):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        for point in result['samples']:
+            self.assertNotIn('geometry', point)
+
+    def test_scan_points_omit_geometry_uniformly_on_length_mismatch(self):
+        """Length mismatch → drop geometries from ALL points (not partial)
+        and log a warning. The scan_result itself still uploads."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=3, geometries='mismatch')):
+            with self.assertLogs('arc', level='WARNING') as cm:
+                result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        for point in result['samples']:
+            self.assertNotIn('geometry', point)
+        self.assertTrue(any('does not match scan-point count' in m for m in cm.output),
+                        msg=f"expected mismatch warning, got: {cm.output}")
+
+    # ---- requested scan-grid metadata (TCKDB calc_scan_coordinate fields) ----
+
+    def test_scan_coord_includes_step_size_from_gaussian_header(self):
+        """Real Gaussian scan log → step_size + resolution_degrees populated
+        from the parsed ModRedundant header (not from the completed-point
+        spacing). The fixture log has ``S N 8.0`` in its header."""
+        result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        coord = result['coordinate']
+        self.assertIn('requested_step_size', coord)
+        # ARC writes ``S 360/scan_res scan_res``; for the sBuOH fixture the
+        # requested step size is 8 degrees.
+        self.assertAlmostEqual(coord['requested_step_size'], 8.0, places=6)
+
+    def test_scan_coord_step_size_independent_from_completed_count(self):
+        """``step_count`` reflects the *completed* points, ``step_size`` the
+        *requested* grid — they're sourced separately and must not be
+        coupled (a partially-failed scan would otherwise emit a misleading
+        derived step_size). Spot-check both come from independent data."""
+        result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        coord = result['coordinate']
+        # step_count is the point count we actually parsed; step_size is
+        # the requested grid spacing. Their product covers the requested
+        # range only when no points dropped.
+        self.assertEqual(coord['sample_count'], len(result['samples']))
+        self.assertGreater(coord['requested_step_size'], 0.0)
+
+    def test_scan_coord_omits_grid_metadata_for_non_gaussian(self):
+        """``parse_scan_args`` raising NotImplementedError (ORCA, etc.) →
+        step_size / resolution_degrees absent, no exception, scan_result
+        still produced."""
+        with patch('arc.output.parse_scan_args',
+                   side_effect=NotImplementedError('ORCA path')):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)
+        self.assertNotIn('resolution_degrees', coord)
+
+    def test_scan_coord_omits_grid_metadata_when_parser_raises(self):
+        """Generic parser failure (corrupt log, etc.) → grid fields absent,
+        no exception."""
+        with patch('arc.output.parse_scan_args',
+                   side_effect=RuntimeError('boom')):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)
+        self.assertNotIn('resolution_degrees', coord)
+
+    def test_scan_coord_omits_grid_metadata_when_step_size_zero(self):
+        """``parse_scan_args`` returns step_size=0 by default when the
+        ModRedundant block isn't matched — must be treated as 'unknown',
+        not as a literal 0-degree step (which would be nonsense and
+        violate the schema's intent)."""
+        stub = {'scan': [1, 2, 3, 4], 'freeze': [], 'step': 0,
+                'step_size': 0, 'n_atom': 0}
+        with patch('arc.output.parse_scan_args', return_value=stub):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)
+        self.assertNotIn('resolution_degrees', coord)
+
+    def test_scan_coord_grid_metadata_does_not_affect_points(self):
+        """Independence: completed-point coordinate_values aren't touched
+        by the requested-grid plumbing."""
+        with patch('arc.output.parse_scan_args',
+                   return_value={'scan': [1, 2, 3, 4], 'freeze': [],
+                                 'step': 36, 'step_size': 10.0, 'n_atom': 0}):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        # Points still carry their actual coordinate_value list; step_size
+        # didn't propagate into per-point data.
+        self.assertGreater(len(result['samples']), 0)
+        for point in result['samples']:
+            self.assertIn('angle_degrees', point)
+
+    # ---- start_value / end_value (TCKDB requested-grid endpoints) ----
+    #
+    # The dihedral is read from the input geometry the rotor scan was
+    # launched against. Gaussian's ModRedundant ``S`` syntax encodes
+    # ``end_value = start_value + step_size * (step_count - 1)``;
+    # we emit both values continuous (no [-180, 180] wrap) so a full
+    # rotation lands at start + 360, not back at start.
+
+    @staticmethod
+    def _input_xyz_for_dihedral(start_dihedral_deg: float):
+        """Build a minimal 5-atom xyz whose 1-2-3-4 dihedral, as
+        measured by :func:`calculate_dihedral_angle` (the same helper
+        the production code uses), equals ``start_dihedral_deg`` in the
+        0-360 convention. The internal rotation is offset by -270° to
+        compensate for the helper's right-hand-rule sign choice.
+        """
+        import math as _math
+        rad = _math.radians(start_dihedral_deg - 270.0)
+        return {
+            'symbols': ('C', 'C', 'C', 'C', 'H'),
+            'isotopes': (12, 12, 12, 12, 1),
+            'coords': (
+                (0.0, 0.0, 1.0),
+                (1.0, 0.0, 0.0),
+                (2.0, 0.0, 0.0),
+                (3.0, _math.cos(rad), _math.sin(rad)),
+                (4.0, 0.0, 0.0),
+            ),
+        }
+
+    def test_scan_start_value_computed_from_input_geometry(self):
+        """Input geometry → ``start_value`` matches the dihedral on the
+        scan atom quartet."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        result = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=xyz,
+        )
+        coord = result['coordinate']
+        self.assertIn('requested_start', coord)
+        # The fixture's offset compensates for the helper's right-hand
+        # rule, so 60° in → 60° out.
+        self.assertAlmostEqual(coord['requested_start'], 60.0, places=4)
+
+    def test_scan_end_value_extends_continuously_from_start(self):
+        """``end_value = start_value + step_size * (step_count - 1)`` —
+        not wrapped, so a 46-point 8° scan from 60° lands at 60 + 360 = 420°,
+        NOT back at 60° and NOT mod-360'd to 60°."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        result = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=xyz,
+        )
+        coord = result['coordinate']
+        # Real Gaussian fixture: step_size=8, len(points)=46 → +360 span.
+        expected_end = coord['requested_start'] + coord['requested_step_size'] * (
+            coord['sample_count'] - 1
+        )
+        self.assertAlmostEqual(coord['requested_end'], expected_end, places=6)
+        # Not wrapped: a full-rotation scan exceeds 360°, never re-folds.
+        self.assertGreater(coord['requested_end'], 360.0)
+
+    def test_scan_end_value_is_not_wrapped_into_minus_180_180(self):
+        """Continuity contract: even when start is near 180°, the end
+        value must not flip sign by wrapping into [-180, 180]."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(170.0)
+        result = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=xyz,
+        )
+        coord = result['coordinate']
+        # 170 + 360 = 530 — must NOT have folded to -190 or 170.
+        self.assertGreater(coord['requested_end'], 360.0)
+        self.assertGreater(coord['requested_end'] - coord['requested_start'],
+                           coord['requested_step_size'] * 0.99)
+
+    def test_scan_start_end_absent_when_input_geometry_missing(self):
+        """No ``input_xyz`` and no parser fallback → fields stay absent."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        # Patch out both sources: input_xyz=None and parsed geometries=None.
+        with patch('arc.output.parse_1d_scan_full_result') as p:
+            from arc.parser.parser import parse_1d_scan_full_result as real
+            parsed = real(self.SCAN_LOG)
+            parsed['geometries'] = None  # kill the fallback
+            p.return_value = parsed
+            result = _build_scan_result_for_rotor(
+                rotor, '/tmp/project', input_xyz=None,
+            )
+        coord = result['coordinate']
+        self.assertNotIn('requested_start', coord)
+        self.assertNotIn('requested_end', coord)
+
+    def test_scan_start_end_absent_when_step_size_unknown(self):
+        """Without step_size we can't compute end_value, so we omit BOTH
+        rather than emit a half-populated range."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        with patch('arc.output.parse_scan_args',
+                   side_effect=NotImplementedError('non-Gaussian')):
+            result = _build_scan_result_for_rotor(
+                rotor, '/tmp/project', input_xyz=xyz,
+            )
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)  # confirms the precondition
+        self.assertNotIn('requested_start', coord)
+        self.assertNotIn('requested_end', coord)
+
+    def test_scan_start_end_absent_when_step_size_zero(self):
+        """``parse_scan_args`` returning step_size=0 → no end_value
+        possible, omit both."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        stub = {'scan': [1, 2, 3, 4], 'freeze': [], 'step': 0,
+                'step_size': 0, 'n_atom': 0}
+        with patch('arc.output.parse_scan_args', return_value=stub):
+            result = _build_scan_result_for_rotor(
+                rotor, '/tmp/project', input_xyz=xyz,
+            )
+        coord = result['coordinate']
+        self.assertNotIn('requested_start', coord)
+        self.assertNotIn('requested_end', coord)
+
+    def test_scan_start_end_absent_when_dihedral_calc_raises(self):
+        """A failed dihedral calculation logs a warning, omits start/end,
+        and does NOT abort the rest of scan_result emission."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        with patch('arc.output.calculate_dihedral_angle',
+                   side_effect=RuntimeError('atom missing')):
+            with self.assertLogs('arc', level='WARNING') as cm:
+                result = _build_scan_result_for_rotor(
+                    rotor, '/tmp/project', input_xyz=xyz,
+                )
+        # scan_result is still emitted (energies + step_size + points all there).
+        self.assertIsNotNone(result)
+        coord = result['coordinate']
+        self.assertNotIn('requested_start', coord)
+        self.assertNotIn('requested_end', coord)
+        self.assertIn('requested_step_size', coord)  # other grid fields untouched
+        self.assertGreater(len(result['samples']), 0)
+        self.assertTrue(any('dihedral calculation failed' in m for m in cm.output),
+                        msg=f"expected dihedral-failure warning, got: {cm.output}")
+
+    def test_scan_point_coordinate_values_unchanged_by_start_end_addition(self):
+        """``points[i].coordinate_values`` must remain whatever
+        ``parse_1d_scan_full_result`` reported, regardless of start/end."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        result_with = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=xyz,
+        )
+        result_without = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=None,
+        )
+        # Same number of points, same coordinate_values per point.
+        self.assertEqual(len(result_with['samples']), len(result_without['samples']))
+        for p_with, p_without in zip(result_with['samples'], result_without['samples']):
+            self.assertEqual(p_with['angle_degrees'], p_without['angle_degrees'])
+
+    def test_scan_falls_back_to_parsed_first_frame_when_input_xyz_missing(self):
+        """When ``input_xyz`` is None but the parser returned aligned
+        geometries, the first frame is a documented fallback for the
+        input dihedral (Gaussian ModRedundant freezes the scan dihedral
+        at the input value, so the first frame's dihedral IS the
+        requested start)."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        result = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=None,
+        )
+        coord = result['coordinate']
+        # Real Gaussian fixture has ``geometries`` populated, so the
+        # fallback resolves and start/end are emitted.
+        self.assertIn('requested_start', coord)
+        self.assertIn('requested_end', coord)
+
+    def test_scan_points_omit_geometry_uniformly_on_serialization_failure(self):
+        """One unserializable xyz dict → drop geometries from ALL points,
+        warn once. Energies/angles still flow through."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=3, geometries='malformed')):
+            with self.assertLogs('arc', level='WARNING') as cm:
+                result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        # No partial coverage: nothing carries a geometry.
+        for point in result['samples']:
+            self.assertNotIn('geometry', point)
+        self.assertTrue(
+            any('serialization failed' in m or 'empty text' in m for m in cm.output),
+            msg=f"expected serialization warning, got: {cm.output}",
+        )
+
+
+class TestScanConstraintDispatch(unittest.TestCase):
+    """Software-aware dispatch for rotor-scan constraint extraction.
+
+    The scheduler stamps ``scan_software`` onto each rotor when a scan
+    job completes (``arc/scheduler.py``). ``_parse_scan_constraints``
+    consumes that hint to call the right parser; everything else
+    degrades gracefully without failing payload generation.
+    """
+
+    SCAN_LOG = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'sBuOH.out')
+
+    def _rotor(self, **overrides) -> dict:
+        rotor: dict = {
+            'success': True,
+            'scan': [1, 2, 3, 4],
+            'pivots': [2, 3],
+            'symmetry': 1,
+            'type': 'HinderedRotor',
+            'scan_path': self.SCAN_LOG,
+            'dimensions': 1,
+            'scan_software': '',
+        }
+        rotor.update(overrides)
+        return rotor
+
+    def test_gaussian_hint_routes_to_gaussian_parser(self):
+        from arc.output import _parse_scan_constraints
+        sentinel = [{'coordinate_type': 'distance', 'atom_indices': [1, 2],
+                     'index_base': 1, 'target_value': None}]
+        with patch('arc.parser.adapters.gaussian.parse_gaussian_constraints',
+                   return_value=sentinel) as gauss, \
+             patch('arc.parser.adapters.orca.parse_orca_constraints') as orca:
+            result = _parse_scan_constraints(
+                self._rotor(scan_software='gaussian'), '/tmp/project',
+            )
+        self.assertEqual(result, sentinel)
+        gauss.assert_called_once_with(self.SCAN_LOG)
+        orca.assert_not_called()
+
+    def test_orca_hint_routes_to_orca_parser(self):
+        from arc.output import _parse_scan_constraints
+        sentinel = [{'coordinate_type': 'dihedral',
+                     'atom_indices': [0, 1, 2, 3], 'index_base': 0,
+                     'target_value': 90.0}]
+        with patch('arc.parser.adapters.orca.parse_orca_constraints',
+                   return_value=sentinel) as orca, \
+             patch('arc.parser.adapters.gaussian.parse_gaussian_constraints') as gauss:
+            result = _parse_scan_constraints(
+                self._rotor(scan_software='orca'), '/tmp/project',
+            )
+        self.assertEqual(result, sentinel)
+        orca.assert_called_once_with(self.SCAN_LOG)
+        gauss.assert_not_called()
+
+    def test_missing_software_falls_back_to_gaussian(self):
+        # Empty / missing ``scan_software`` preserves the historical
+        # behavior: try Gaussian (the only software with ModRedundant
+        # emission). Restart files written before this field landed
+        # therefore keep producing constraints rather than silently
+        # losing them.
+        from arc.output import _parse_scan_constraints
+        with patch('arc.parser.adapters.gaussian.parse_gaussian_constraints',
+                   return_value=[]) as gauss:
+            rotor_no_field = self._rotor()
+            rotor_no_field.pop('scan_software', None)
+            _parse_scan_constraints(rotor_no_field, '/tmp/project')
+            _parse_scan_constraints(self._rotor(scan_software=''), '/tmp/project')
+        self.assertEqual(gauss.call_count, 2)
+
+    def test_unknown_software_returns_empty_list_no_parser_call(self):
+        from arc.output import _parse_scan_constraints
+        with patch('arc.parser.adapters.gaussian.parse_gaussian_constraints') as gauss, \
+             patch('arc.parser.adapters.orca.parse_orca_constraints') as orca:
+            result = _parse_scan_constraints(
+                self._rotor(scan_software='qchem'), '/tmp/project',
+            )
+        self.assertEqual(result, [])
+        gauss.assert_not_called()
+        orca.assert_not_called()
+
+    def test_parser_exception_degrades_to_empty_list(self):
+        from arc.output import _parse_scan_constraints
+        with patch('arc.parser.adapters.gaussian.parse_gaussian_constraints',
+                   side_effect=RuntimeError('parser crashed')):
+            result = _parse_scan_constraints(
+                self._rotor(scan_software='gaussian'), '/tmp/project',
+            )
+        self.assertEqual(result, [])
+
+    def test_missing_scan_path_returns_empty_list(self):
+        # Defensive: never invoke a parser without a real path.
+        from arc.output import _parse_scan_constraints
+        rotor = self._rotor(scan_path='', scan_software='gaussian')
+        with patch('arc.parser.adapters.gaussian.parse_gaussian_constraints') as gauss:
+            self.assertEqual(_parse_scan_constraints(rotor, '/tmp/project'), [])
+            gauss.assert_not_called()
 
 
 if __name__ == '__main__':

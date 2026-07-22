@@ -7,6 +7,7 @@ This module contains unit tests for the parser functions
 
 import numpy as np
 import os
+import shutil
 import unittest
 
 import arc.parser.parser as parser
@@ -582,6 +583,91 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 3)
 
+    def test_parse_gsm_stringfile_energies(self):
+        """Test parsing the per-frame comment-line energies of a GSM stringfile."""
+        import tempfile
+
+        # 1. The real fixture: ARC's molecularGSM build writes 0.000000 for
+        #    every comment line (the "no energy emitted" case). The parser
+        #    faithfully returns those zeros; the caller applies the sentinel.
+        path = os.path.join(ARC_TESTING_PATH, 'stringfile.xyz0000')
+        energies = parser.parse_gsm_stringfile_energies(path)
+        self.assertEqual(energies, [0.0] * 9)
+
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+
+        # 2. An energy-bearing stringfile (relative kcal/mol, first node 0):
+        #    the parser returns the per-frame floats in frame order.
+        expected = [0.0, 3.5, 12.4, 8.1, 1.2]
+        energetic = os.path.join(tmp_dir, 'stringfile.xyz0000')
+        with open(energetic, 'w') as f:
+            for e in expected:
+                f.write(f' 1\n {e:.6f}\n C 0.0 0.0 0.0\n')
+        parsed = parser.parse_gsm_stringfile_energies(energetic)
+        self.assertEqual(len(parsed), len(expected))
+        for got, exp in zip(parsed, expected):
+            self.assertAlmostEqual(got, exp)
+
+        # 3. A geometry-only trajectory (non-numeric comment line) is not an
+        #    energy-bearing stringfile → None (never a partial list).
+        geom_only = os.path.join(tmp_dir, 'geom.xyz')
+        with open(geom_only, 'w') as f:
+            f.write(' 1\n frame 0\n C 0.0 0.0 0.0\n 1\n frame 1\n C 0.0 0.0 0.1\n')
+        self.assertIsNone(parser.parse_gsm_stringfile_energies(geom_only))
+
+        # 4. A missing file → None.
+        self.assertIsNone(parser.parse_gsm_stringfile_energies('/no/such/stringfile.xyz0000'))
+
+    def test_parse_irc_path_gaussian_forward(self):
+        """parse_irc_path emits per-point energy, RC, grads, direction, and xyz."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertIsNotNone(points)
+        # Gaussian's Point Number: 0 has no CURRENT STRUCTURE block — the
+        # rich parser correctly skips it; 50 stepped points remain.
+        self.assertEqual(len(points), 50)
+        first = points[0]
+        self.assertEqual(first['point_number'], 1)
+        self.assertEqual(first['direction'], 'forward')
+        self.assertAlmostEqual(first['electronic_energy_hartree'], -303.578211343)
+        self.assertAlmostEqual(first['reaction_coordinate'], 0.07236)
+        self.assertAlmostEqual(first['max_gradient'], 0.007275026)
+        self.assertAlmostEqual(first['rms_gradient'], 0.002502813)
+        self.assertEqual(len(first['xyz']['symbols']), 8)
+        self.assertEqual(
+            [point['reaction_coordinate'] for point in points],
+            sorted(point['reaction_coordinate'] for point in points),
+        )
+        self.assertEqual({point['direction'] for point in points}, {'forward'})
+        # Reaction coordinate increases monotonically along a single
+        # Gaussian IRC branch (cumulative path length).
+        rcs = [p['reaction_coordinate'] for p in points]
+        self.assertEqual(rcs, sorted(rcs))
+        # Every emitted point inherits the FORWARD label.
+        self.assertEqual(
+            sorted({p['direction'] for p in points}),
+            ['forward'],
+        )
+
+    def test_parse_irc_path_gaussian_reverse_direction(self):
+        """The REVERSE branch fixture flips per-point direction labels."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out')
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertIsNotNone(points)
+        self.assertEqual(
+            sorted({p['direction'] for p in points}),
+            ['reverse'],
+        )
+
+    def test_parse_irc_path_failed_log_returns_none(self):
+        """A truncated/failed IRC log yields None — the upstream upload
+        path interprets this as "no rich data" and falls back to the
+        geometry-only parser without aborting the upload."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'irc_failed.out')
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertIsNone(points)
+
     def test_parse_1d_scan_coords(self):
         """Test parsing the optimized coordinates of a torsion scan at each optimization point"""
         path_1 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2.out')
@@ -638,6 +724,56 @@ H      -1.69381305    0.40788834    0.90078104"""
         path = os.path.join(ARC_TESTING_PATH, 'mockter.yml')
         t1 = parser.parse_t1(path)
         self.assertEqual(t1, 0.0002)
+
+    def test_parse_s_squared(self):
+        """Test parsing the S**2 spin-contamination diagnostic"""
+        # Gaussian, open-shell doublet (UwB97XD): <S**2>=0.7535, expected 0.75, annihilated 0.75.
+        path = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7535)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertAlmostEqual(sd['s_squared_annihilated'], 0.75)
+
+        # Gaussian, open-shell triplet: <S**2>=2.0153, expected 2.0, annihilated 2.0001.
+        path = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'TSs', 'TS_freq.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 2.0153)
+        self.assertAlmostEqual(sd['s_squared_expected'], 2.0)
+        self.assertAlmostEqual(sd['s_squared_annihilated'], 2.0001)
+
+        # Gaussian, closed-shell/restricted: no <S**2> printed -> None.
+        path = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
+        self.assertIsNone(parser.parse_s_squared(path))
+
+        # ORCA, open-shell doublet: last converged <S**2>=0.762333, Ideal value 0.75, no annihilation.
+        path = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.762333)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertIsNone(sd['s_squared_annihilated'])
+
+        # Q-Chem, open-shell doublet: <S^2> = 0.7572, expected from multiplicity, no annihilation.
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'NO3_freq_QChem_fails_on_cclib.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7572)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertIsNone(sd['s_squared_annihilated'])
+
+        # Malformed / non-ESS path -> None (no crash).
+        path = os.path.join(ARC_TESTING_PATH, 'mockter.yml')
+        self.assertIsNone(parser.parse_s_squared(path))
+
+    def test_s_squared_expected_from_multiplicity(self):
+        """Test the ideal S(S+1) helper"""
+        self.assertEqual(parser.s_squared_expected_from_multiplicity(2), 0.75)
+        self.assertEqual(parser.s_squared_expected_from_multiplicity(3), 2.0)
+        self.assertEqual(parser.s_squared_expected_from_multiplicity(1), 0.0)
+        self.assertIsNone(parser.s_squared_expected_from_multiplicity(None))
+        self.assertIsNone(parser.s_squared_expected_from_multiplicity(0))
 
     def test_parse_e_elect(self):
         """Test parsing the electronic energy from a single-point job output file"""

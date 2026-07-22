@@ -72,6 +72,33 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
+_TS_GUESS_METHOD_TO_PATHS_KEY = {
+    'orca_neb': 'neb',
+    'xtb_gsm': 'gsm',
+    'xtb-gsm': 'gsm',
+}
+
+
+def _ts_guess_paths_key(method: object) -> str | None:
+    """Return the result-path slot associated with a TS-guess method."""
+    if not isinstance(method, str):
+        return None
+    return _TS_GUESS_METHOD_TO_PATHS_KEY.get(method.strip().lower())
+
+
+def _ts_guess_path_provenance(tsg: object) -> tuple[str | None, str | None]:
+    """Return the method-specific result slot and artifact path for a TS guess."""
+    key = _ts_guess_paths_key(getattr(tsg, 'method', None))
+    log_path = getattr(tsg, 'log_path', None)
+    if key and log_path:
+        return key, log_path
+    source_paths = getattr(tsg, 'method_source_paths', None) or {}
+    for source in (getattr(tsg, 'method_sources', None) or []):
+        source_key = _ts_guess_paths_key(source)
+        if source_key and source_paths.get(source):
+            return source_key, source_paths[source]
+    return None, None
+
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
     default_job_types, default_ts_adapters, max_ess_trsh, max_rotor_trsh, rotor_scan_resolution, servers_dict = \
     settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], \
@@ -1330,8 +1357,9 @@ class Scheduler(object):
                     self.run_composite_job(label)
                 self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
                 self.species_dict[label].successful_methods = [self.species_dict[label].ts_guesses[0].method]
-                if getattr(self.species_dict[label].ts_guesses[0], 'log_path', None):
-                    self.output[label]['paths']['neb'] = self.species_dict[label].ts_guesses[0].log_path
+                paths_key, log_path = _ts_guess_path_provenance(self.species_dict[label].ts_guesses[0])
+                if paths_key and log_path:
+                    self.output[label]['paths'][paths_key] = log_path
 
     def run_opt_job(self, label: str, fine: bool = False):
         """
@@ -2376,8 +2404,9 @@ class Scheduler(object):
                     self.species_dict[label].initial_xyz = tsg.opt_xyz
                     self.species_dict[label].final_xyz = None
                     self.species_dict[label].ts_guesses_exhausted = False
-                    if getattr(tsg, 'log_path', None):
-                        self.output[label]['paths']['neb'] = tsg.log_path
+                    paths_key, log_path = _ts_guess_path_provenance(tsg)
+                    if paths_key and log_path:
+                        self.output[label]['paths'][paths_key] = log_path
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
@@ -2923,6 +2952,9 @@ class Scheduler(object):
             job (JobAdapter): The IRC job object.
         """
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
+        self.output[label]['paths'].setdefault('irc_directions', list()).append(
+            getattr(job, 'irc_direction', None)
+        )
         index = 1
         if len(self.output[label]['paths']['irc']) == 2:
             index = 2
@@ -3782,7 +3814,10 @@ class Scheduler(object):
                     logger.info(f'Deleted job {job_name}')
                     job.delete()
         self.running_jobs[label] = list()
-        self.output[label]['paths'] = {key: '' if key != 'irc' else list() for key in self.output[label]['paths'].keys()}
+        self.output[label]['paths'] = {
+            key: list() if key in ('irc', 'irc_directions') else ''
+            for key in self.output[label]['paths'].keys()
+        }
         for job_type in self.output[label]['job_types']:
             # rotors and bde are initialised to True (see initialize_output_dict) because
             # species with no torsional modes / no BDE targets should not be blocked from
@@ -4069,8 +4104,12 @@ class Scheduler(object):
                     if species.is_ts:
                         if 'irc' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['irc'] = list()
+                        if 'irc_directions' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['irc_directions'] = list()
                         if 'neb' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['neb'] = ''
+                        if 'gsm' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['gsm'] = ''
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:

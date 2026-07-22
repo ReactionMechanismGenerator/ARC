@@ -6,11 +6,50 @@ ARC - Automatic Rate Calculator
 """
 
 import argparse
+from functools import lru_cache
 import logging
 import os
 
 from arc.common import read_yaml_file
 from arc.main import ARC
+
+
+logger = logging.getLogger('arc')
+
+
+@lru_cache(maxsize=1)
+def _warn_missing_tckdb_package() -> None:
+    """Log the optional-adapter warning at most once per ARC process."""
+    logger.warning(
+        'TCKDB upload requested, but the optional standalone tckdb-arc package is not installed; '
+        'continuing without upload.'
+    )
+
+
+def run_tckdb_upload(tckdb_settings: dict, project_directory: str) -> None:
+    """Run the optional standalone TCKDB adapter after ARC completes."""
+    if tckdb_settings.get('enabled') is False:
+        return
+    try:
+        import tckdb_arc
+    except ModuleNotFoundError as exc:
+        if exc.name == 'tckdb_arc':
+            _warn_missing_tckdb_package()
+            return
+        raise
+    from tckdb_arc.adapter import TCKDBAdapter
+    from tckdb_arc.config import TCKDBConfig
+    from tckdb_arc.sweep import run_upload_sweep
+
+    config = TCKDBConfig.from_dict(tckdb_settings)
+    if config is None:
+        return
+    adapter = TCKDBAdapter(config, project_directory=project_directory)
+    run_upload_sweep(
+        adapter=adapter,
+        project_directory=project_directory,
+        tckdb_config=config,
+    )
 
 
 def parse_command_line_arguments(command_line_args=None):
@@ -59,8 +98,11 @@ def main():
     input_dict['verbose'] = input_dict['verbose'] if 'verbose' in input_dict else verbose
     if 'project_directory' not in input_dict or not input_dict['project_directory']:
         input_dict['project_directory'] = project_directory
+    tckdb_settings = input_dict.pop('tckdb', None)
     arc_object = ARC(**input_dict)
     arc_object.execute()
+    if tckdb_settings:
+        run_tckdb_upload(tckdb_settings, arc_object.project_directory)
 
 
 if __name__ == '__main__':

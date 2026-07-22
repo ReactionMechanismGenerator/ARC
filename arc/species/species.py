@@ -1373,6 +1373,7 @@ class ARCSpecies(object):
                                  'trsh_counter': 0,
                                  'trsh_methods': list(),
                                  'scan_path': '',
+                                 'scan_software': '',
                                  'directed_scan_type': key,
                                  'directed_scan': dict(),
                                  'dimensions': 0,
@@ -1641,6 +1642,17 @@ class ARCSpecies(object):
                     cluster_tsg.method_sources = TSGuess._normalize_method_sources(
                         (cluster_tsg.method_sources or []) + (tsg.method_sources or [])
                     )
+                    if getattr(cluster_tsg, 'method_source_paths', None) is None:
+                        cluster_tsg.method_source_paths = dict()
+                    for source_tsg in (cluster_tsg, tsg):
+                        for source, source_log in (
+                            getattr(source_tsg, 'method_source_paths', None) or {}
+                        ).items():
+                            cluster_tsg.method_source_paths.setdefault(source, source_log)
+                        source_method = getattr(source_tsg, 'method', None)
+                        source_log = getattr(source_tsg, 'log_path', None)
+                        if source_method and source_log:
+                            cluster_tsg.method_source_paths.setdefault(source_method, source_log)
                     break
             else:
                 tsg.cluster = [tsg.index]
@@ -2396,6 +2408,9 @@ class TSGuess(object):
             self.energy = energy
             self.cluster = cluster
             self.log_path = log_path
+            self.method_source_paths = dict()
+            if self.log_path is not None:
+                self.method_source_paths[self.method] = self.log_path
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
@@ -2503,6 +2518,8 @@ class TSGuess(object):
                 ts_dict['errors'] = self.errors
             if self.log_path is not None:
                 ts_dict['log_path'] = self.log_path
+            if self.method_source_paths:
+                ts_dict['method_source_paths'] = dict(self.method_source_paths)
         return ts_dict
 
     def from_dict(self, ts_dict: dict):
@@ -2539,6 +2556,15 @@ class TSGuess(object):
             self.execution_time = datetime.timedelta(seconds=0)
         self.family = ts_dict['family'] if 'family' in ts_dict else None
         self.log_path = ts_dict['log_path'] if 'log_path' in ts_dict else None
+        if isinstance(ts_dict.get('method_source_paths'), dict):
+            self.method_source_paths = {
+                str(method).lower(): path
+                for method, path in ts_dict['method_source_paths'].items()
+            }
+        else:
+            self.method_source_paths = dict()
+            if self.log_path is not None:
+                self.method_source_paths[self.method] = self.log_path
         self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
 
     def process_xyz(self,
@@ -2640,7 +2666,7 @@ class ThermoData(object):
                  comment='',
                  nasa_low=None,
                  nasa_high=None,
-                 cp_data=None,
+                 thermo_points=None,
                  ):
         """
         Args:
@@ -2656,7 +2682,10 @@ class ThermoData(object):
             comment (str): Additional comments or description
             nasa_low (dict): Low-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
             nasa_high (dict): High-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
-            cp_data (list): Tabulated Cp: list of {temperature_k, cp_j_mol_k} dicts.
+            thermo_points (list): Tabulated per-temperature thermochemistry:
+                list of dicts with ``temperature_k``, ``cp_j_mol_k``,
+                ``h_kj_mol``, ``s_j_mol_k``, ``g_kj_mol``. Older field
+                name was ``cp_data`` (Cp-only).
         """
         self.H298 = H298
         self.S298 = S298
@@ -2670,7 +2699,7 @@ class ThermoData(object):
         self.comment = comment
         self.nasa_low = nasa_low
         self.nasa_high = nasa_high
-        self.cp_data = cp_data
+        self.thermo_points = thermo_points
 
     def __repr__(self):
         """
@@ -2704,7 +2733,7 @@ class ThermoData(object):
         return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
                              self.Cp0, self.CpInf, self.Tmin, self.Tmax,
                              self.data, self.comment,
-                             self.nasa_low, self.nasa_high, self.cp_data))
+                             self.nasa_low, self.nasa_high, self.thermo_points))
 
     def update(self, data: dict):
         """
