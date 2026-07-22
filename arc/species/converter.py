@@ -449,7 +449,7 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None) -> dict:
     return xyz_dict
 
 
-def species_to_sdf_file(species: ARCSpecies,
+def species_to_sdf_file(species: 'ARCSpecies',
                         path: str,
                         ):
     """
