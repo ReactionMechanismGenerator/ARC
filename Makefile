@@ -35,6 +35,7 @@ help:
 	@echo "  install-kinbot   Install KinBot"
 	@echo "  install-sella    Install Sella"
 	@echo "  install-xtb      Install xTB"
+	@echo "  install-crest    Install CREST"
 	@echo "  install-torchani Install TorchANI"
 	@echo "  install-uma      Install UMA (fairchem MLIP, gated model; users only, not CI)"
 	@echo "  install-ob       Install OpenBabel"
@@ -96,6 +97,9 @@ install-sella:
 
 install-xtb:
 	bash $(DEVTOOLS_DIR)/install_xtb.sh
+
+install-crest:
+	bash $(DEVTOOLS_DIR)/install_crest.sh
 
 install-torchani:
 	bash $(DEVTOOLS_DIR)/install_torchani.sh
