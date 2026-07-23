@@ -2401,6 +2401,11 @@ class Scheduler(object):
         Determine the most likely TS conformer.
         Save the resulting xyz as the ``.initial_xyz`` attribute of the TS Species.
 
+        A successful guess credits its method and every method listed in its ``method_sources``
+        to the species' ``successful_methods``, deduplicated case-insensitively. A guess's method
+        is appended to ``unsuccessful_methods`` only if it was not credited, compared
+        case-insensitively as well.
+
         Args:
             label (str): The TS species label.
         """
@@ -2411,9 +2416,14 @@ class Scheduler(object):
             # Only run this block once, not every time a TS is selecting a different guess.
             for tsg in self.species_dict[label].ts_guesses:
                 if tsg.success:
-                    self.species_dict[label].successful_methods.append(tsg.method)
+                    recorded = [method.lower() for method in self.species_dict[label].successful_methods]
+                    for method in [tsg.method] + list(tsg.method_sources or []):
+                        if method.lower() not in recorded:
+                            self.species_dict[label].successful_methods.append(method)
+                            recorded.append(method.lower())
+            successful_lower = [method.lower() for method in self.species_dict[label].successful_methods]
             for tsg in self.species_dict[label].ts_guesses:
-                if tsg.method not in self.species_dict[label].successful_methods:
+                if tsg.method.lower() not in successful_lower:
                     self.species_dict[label].unsuccessful_methods.append(tsg.method)
             message = f'\nAll TS guesses for {label} terminated.'
             if self.species_dict[label].successful_methods and not self.species_dict[label].unsuccessful_methods:
