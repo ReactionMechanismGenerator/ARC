@@ -9,11 +9,18 @@ import copy
 import itertools
 import os
 import shutil
+import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from arc.common import ARC_TESTING_PATH, almost_equal_coords
+from arc.common import ARC_TESTING_PATH, almost_equal_coords, get_single_bond_length
 from arc.family import get_reaction_family_products
-from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
+from arc.job.adapters.ts.heuristics import (ABSOLUTE_BOND_LENGTH_PARTNERS,
+                                            BREAKING_BOND_LENGTH,
+                                            DEFAULT_BOND_STRETCH,
+                                            FORMING_BOND_LENGTH,
+                                            HeuristicsAdapter,
                                             are_h_abs_wells_reversed,
                                             combine_coordinates_with_redundant_atoms,
                                             determine_glue_params,
@@ -22,6 +29,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_modified_params_from_zmat_2,
                                             get_new_map_based_on_zmat_1,
                                             get_new_zmat_2_map,
+                                            set_zmat_bond,
                                             stretch_zmat_bond,
                                             get_main_reactant_and_water_from_hydrolysis_reaction,
                                             setup_zmat_indices,
@@ -32,14 +40,37 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             check_ts_bonds,
                                             h_abstraction,
                                             )
+from arc.job.adapters.ts.seed_hub import (H_ATOM_BOND_CUTOFF,
+                                          _get_h_abs_atoms_from_xyz,
+                                          _h_atom_bond_cutoff,
+                                          _is_valid_h_abs_atom_assignment,
+                                          get_h_abs_atoms,
+                                          get_h_abs_atoms_from_reaction,
+                                          get_ts_seeds,
+                                          get_wrapper_constraints,
+                                          )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
-from arc.species.species import ARCSpecies
+from arc.species.species import ARCSpecies, TSGuess
+from arc.species.vectors import calculate_angle, calculate_distance
 from arc.species.zmat import _compare_zmats, get_parameter_from_atom_indices
 
 from arc.species.species import check_isomorphism
 from arc.species.zmat import remove_zmat_atom_0
 from arc.species.converter import relocate_zmat_dummy_atoms_to_the_end
+
+EXPECTED_BREAKING_BOND_LENGTH = 1.29
+EXPECTED_FORMING_BOND_LENGTH = 1.36
+EXPECTED_DEFAULT_BOND_STRETCH = 1.2
+
+H2S_XYZ = """S 0.0000000 0.0000000 0.1030000
+H 0.0000000 0.9616000 -0.8240000
+H 0.0000000 -0.9616000 -0.8240000"""
+HS_XYZ = """S 0.0000000 0.0000000 0.0000000
+H 0.0000000 0.0000000 1.3400000"""
+HBR_XYZ = """H 0.0000000 0.0000000 0.0000000
+Br 0.0000000 0.0000000 1.4100000"""
+BR_XYZ = """Br 0.0000000 0.0000000 0.0000000"""
 
 
 class TestHeuristicsAdapter(unittest.TestCase):
@@ -457,6 +488,157 @@ H      -3.45360689    0.15275707   -0.76116277""")
                       'map': {0: 7, 1: 2, 2: 1, 3: 3, 4: 'X9', 5: 0, 6: 'X10', 7: 4, 8: 'X11', 9: 5, 10: 6, 11: 'X12',
                               12: 8}}
 
+    def assert_h_abs_reactive_core(self, xyz, a, h, b, a2=180.0, msg='',
+                                   breaking=EXPECTED_BREAKING_BOND_LENGTH,
+                                   forming=EXPECTED_FORMING_BOND_LENGTH):
+        """
+        Assert that an H abstraction TS guess has the expected reactive core A-H...B.
+
+        Args:
+            xyz (dict): The Cartesian coordinates of the TS guess.
+            a (int): The 0-index of the donor atom A.
+            h (int): The 0-index of the migrating hydrogen atom H.
+            b (int): The 0-index of the acceptor atom B.
+            a2 (float, optional): The expected A-H-B angle in degrees.
+            msg (str, optional): An identifying message reported on an assertion failure.
+            breaking (float, optional): The expected A-H distance in Angstrom.
+            forming (float, optional): The expected H-B distance in Angstrom.
+        """
+        self.assertEqual(xyz['symbols'][h], 'H', msg=msg)
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[a, h]),
+                               breaking, places=3, msg=f'{msg} (breaking A-H bond)')
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[h, b]),
+                               forming, places=3, msg=f'{msg} (forming H-B bond)')
+        self.assertAlmostEqual(calculate_angle(coords=xyz, atoms=[a, h, b]), a2, places=2, msg=f'{msg} (A-H-B angle)')
+
+    def expected_stretched_bond(self, xyz, atoms):
+        """
+        Return the length a well bond takes under the default multiplicative stretch.
+
+        Args:
+            xyz (dict): The Cartesian coordinates of the well.
+            atoms (list): The 0-indices of the two bonded atoms.
+
+        Returns:
+            float: The stretched bond length in Angstrom.
+        """
+        return EXPECTED_DEFAULT_BOND_STRETCH * calculate_distance(coords=xyz, atoms=atoms)
+
+    def test_bond_length_constants(self):
+        """Test the H abstraction reactive-core bond length constants and the element rule that applies them."""
+        self.assertAlmostEqual(BREAKING_BOND_LENGTH, EXPECTED_BREAKING_BOND_LENGTH, places=6)
+        self.assertAlmostEqual(FORMING_BOND_LENGTH, EXPECTED_FORMING_BOND_LENGTH, places=6)
+        self.assertLess(BREAKING_BOND_LENGTH, FORMING_BOND_LENGTH)
+        self.assertAlmostEqual(DEFAULT_BOND_STRETCH, EXPECTED_DEFAULT_BOND_STRETCH, places=6)
+        self.assertEqual(set(ABSOLUTE_BOND_LENGTH_PARTNERS), {'C', 'N', 'O'})
+        for symbol in ABSOLUTE_BOND_LENGTH_PARTNERS:
+            self.assertGreater(BREAKING_BOND_LENGTH, get_single_bond_length(symbol, 'H'))
+        for symbol in ('H', 'S', 'Si', 'P', 'Br', 'I'):
+            self.assertNotIn(symbol, ABSOLUTE_BOND_LENGTH_PARTNERS)
+
+    def test_set_zmat_bond(self):
+        """Test the set_zmat_bond() function."""
+        zmat2_copy = copy.deepcopy(self.zmat_2)
+        self.assertNotAlmostEqual(self.zmat_2['vars']['R_2_1'], 1.29, places=3)
+        set_zmat_bond(zmat=zmat2_copy, indices=(1, 0), length=1.29)
+        self.assertAlmostEqual(zmat2_copy['vars']['R_2_1'], 1.29, places=10)
+        set_zmat_bond(zmat=zmat2_copy, indices=(1, 0), length=1.36)
+        self.assertAlmostEqual(zmat2_copy['vars']['R_2_1'], 1.36, places=10)
+
+    def test_h_abstraction_reactive_core_distances(self):
+        """Test that h_abstraction() places the reactive core at the empirical absolute distances."""
+        ch4 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
+        ch3 = ARCSpecies(label='CH3', smiles='[CH3]', xyz=self.ch3_xyz)
+        oh = ARCSpecies(label='OH', smiles='[OH]', xyz=self.oh_xyz)
+        h2o = ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz)
+        c2h6 = ARCSpecies(label='C2H6', smiles='CC', xyz=self.c2h6_xyz)
+        c2h5 = ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz)
+        for label, rxn in [('CH4 + OH', ARCReaction(r_species=[ch4, oh], p_species=[ch3, h2o])),
+                           ('C2H6 + OH', ARCReaction(r_species=[c2h6, oh], p_species=[c2h5, h2o]))]:
+            seeds = h_abstraction(reaction=rxn, dihedral_increment=120)
+            self.assertGreater(len(seeds), 0)
+            for i, seed in enumerate(seeds):
+                reactive_atoms = seed['metadata']['reactive_atoms']
+                self.assert_h_abs_reactive_core(xyz=seed['xyz'],
+                                                a=reactive_atoms['A'],
+                                                h=reactive_atoms['H'],
+                                                b=reactive_atoms['B'],
+                                                msg=f'{label} seed {i}',
+                                                )
+
+    def test_h_abstraction_bond_lengths_are_element_aware(self):
+        """
+        Test that a C/N/O partner takes the absolute reactive-core distance while any other partner
+        takes the multiplicative stretch of its well bond.
+
+        An H-atom acceptor gets a forming H...H bond of about 0.90 A (1.2 times the H2 bond) rather than the
+        1.36 A absolute prior. An S-H or H-Br bond, whose equilibrium length exceeds the absolute priors, ends up
+        longer than the equilibrium bond, not shorter. The two bonds of a seed are treated independently.
+        """
+        ch4 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
+        ch3 = ARCSpecies(label='CH3', smiles='[CH3]', xyz=self.ch3_xyz)
+        oh = ARCSpecies(label='OH', smiles='[OH]', xyz=self.oh_xyz)
+        h2o = ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz)
+        h2s = ARCSpecies(label='H2S', smiles='S', xyz=H2S_XYZ)
+        hs = ARCSpecies(label='HS', smiles='[SH]', xyz=HS_XYZ)
+        hbr = ARCSpecies(label='HBr', smiles='Br', xyz=HBR_XYZ)
+        br = ARCSpecies(label='Br', smiles='[Br]', xyz=BR_XYZ)
+        h2_bond = self.expected_stretched_bond(xyz=self.h2_xyz, atoms=[0, 1])
+        sh_bond = self.expected_stretched_bond(xyz=h2s.get_xyz(), atoms=[0, 1])
+        hbr_bond = self.expected_stretched_bond(xyz=hbr.get_xyz(), atoms=[0, 1])
+        self.assertAlmostEqual(h2_bond, 0.8968, places=3)
+        self.assertGreater(sh_bond, get_single_bond_length('S', 'H'))
+        self.assertGreater(hbr_bond, get_single_bond_length('H', 'Br'))
+        cases = [('CH4 + OH', ARCReaction(r_species=[ch4, oh], p_species=[ch3, h2o]), 'C', 'O',
+                  EXPECTED_BREAKING_BOND_LENGTH, EXPECTED_FORMING_BOND_LENGTH),
+                 ('CH4 + H', ARCReaction(r_species=[ch4, self.h], p_species=[ch3, self.h2]), 'C', 'H',
+                  EXPECTED_BREAKING_BOND_LENGTH, h2_bond),
+                 ('H2 + O', ARCReaction(r_species=[self.h2, self.o], p_species=[self.h, self.oh]), 'H', 'O',
+                  h2_bond, EXPECTED_FORMING_BOND_LENGTH),
+                 ('CH4 + HS', ARCReaction(r_species=[ch4, hs], p_species=[ch3, h2s]), 'C', 'S',
+                  EXPECTED_BREAKING_BOND_LENGTH, sh_bond),
+                 ('H2S + CH3', ARCReaction(r_species=[h2s, ch3], p_species=[hs, ch4]), 'S', 'C',
+                  sh_bond, EXPECTED_FORMING_BOND_LENGTH),
+                 ('CH4 + Br', ARCReaction(r_species=[ch4, br], p_species=[ch3, hbr]), 'C', 'Br',
+                  EXPECTED_BREAKING_BOND_LENGTH, hbr_bond),
+                 ('HBr + CH3', ARCReaction(r_species=[hbr, ch3], p_species=[br, ch4]), 'Br', 'C',
+                  hbr_bond, EXPECTED_FORMING_BOND_LENGTH),
+                 ]
+        for label, rxn, symbol_a, symbol_b, breaking, forming in cases:
+            with self.subTest(reaction=label):
+                self.assertEqual(rxn.family, 'H_Abstraction')
+                seeds = h_abstraction(reaction=rxn, dihedral_increment=120)
+                self.assertGreater(len(seeds), 0)
+                for i, seed in enumerate(seeds):
+                    reactive_atoms = seed['metadata']['reactive_atoms']
+                    self.assertEqual(seed['xyz']['symbols'][reactive_atoms['A']], symbol_a)
+                    self.assertEqual(seed['xyz']['symbols'][reactive_atoms['B']], symbol_b)
+                    self.assert_h_abs_reactive_core(xyz=seed['xyz'],
+                                                    a=reactive_atoms['A'],
+                                                    h=reactive_atoms['H'],
+                                                    b=reactive_atoms['B'],
+                                                    msg=f'{label} seed {i}',
+                                                    breaking=breaking,
+                                                    forming=forming,
+                                                    )
+
+    def test_h_abstraction_explicit_stretch_is_multiplicative_for_every_element(self):
+        """Test that an explicit stretch factor multiplies the well bond regardless of the partner element."""
+        ch4 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
+        ch3 = ARCSpecies(label='CH3', smiles='[CH3]', xyz=self.ch3_xyz)
+        oh = ARCSpecies(label='OH', smiles='[OH]', xyz=self.oh_xyz)
+        h2o = ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz)
+        stretched_seed = h_abstraction(reaction=ARCReaction(r_species=[ch4, oh], p_species=[ch3, h2o]),
+                                       r1_stretch=1.2, r2_stretch=1.2, dihedral_increment=120)[0]
+        reactive_atoms = stretched_seed['metadata']['reactive_atoms']
+        self.assertAlmostEqual(calculate_distance(coords=stretched_seed['xyz'],
+                                                  atoms=[reactive_atoms['H'], reactive_atoms['B']]),
+                               1.1628, places=3)
+        self.assertAlmostEqual(calculate_distance(coords=stretched_seed['xyz'],
+                                                  atoms=[reactive_atoms['A'], reactive_atoms['H']]),
+                               1.2 * calculate_distance(coords=ch4.get_xyz(), atoms=[0, reactive_atoms['H']]),
+                               places=3)
+
     def test_heuristics_for_h_abstraction_1(self):
         """
         Test that ARC can generate TS guesses based on heuristics for H Abstraction reactions.
@@ -476,10 +658,15 @@ H      -3.45360689    0.15275707   -0.76116277""")
         self.assertEqual(rxn1.ts_species.charge, 0)
         self.assertEqual(rxn1.ts_species.multiplicity, 3)
         self.assertEqual(len(rxn1.ts_species.ts_guesses), 2)
+        self.assertEqual(rxn1.ts_species.ts_guesses[0].initial_xyz['symbols'], ('H', 'H', 'O'))
+        h2_bond = self.expected_stretched_bond(xyz=self.h2_xyz, atoms=[0, 1])
+        self.assert_h_abs_reactive_core(xyz=rxn1.ts_species.ts_guesses[0].initial_xyz, a=0, h=1, b=2, msg='H2 + O',
+                                        breaking=h2_bond)
         expected_xyz = {'symbols': ('H', 'H', 'O'), 'isotopes': (1, 1, 16),
-                        'coords': ((0.0, 0.0, -1.8806939503689344),
-                                   (0.0, 0.0, -0.9839219710369642), (0.0, 0.0, 0.1804968455295033))}
-        self.assertTrue(almost_equal_coords(rxn1.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
+                        'coords': ((0.0, 0.0, -2.0543866904407775),
+                                   (0.0, 0.0, -1.1576147111088073), (0.0, 0.0, 0.20238528889119278))}
+        self.assertTrue(almost_equal_coords(rxn1.ts_species.ts_guesses[0].initial_xyz, expected_xyz,
+                                            rtol=1e-3, atol=1e-3))
 
         # H + OH <=> H2 + O
         rxn2 = ARCReaction(r_species=[self.h, self.oh], p_species=[self.h2, self.o])
@@ -493,11 +680,8 @@ H      -3.45360689    0.15275707   -0.76116277""")
         heuristics_2.execute_incore()
         self.assertEqual(len(rxn2.ts_species.ts_guesses), 1)
         self.assertEqual(rxn2.ts_species.ts_guesses[0].initial_xyz['symbols'], ('H', 'O', 'H'))
-        expected_xyz = {'symbols': ('H', 'O', 'H'), 'isotopes': (1, 16, 1),
-                        'coords': ((0.0, 0.0, 1.8806939503689346),
-                                   (0.0, 0.0, -0.1804968455295031),
-                                   (0.0, 0.0, 0.9839219710369642))}
-        self.assertTrue(almost_equal_coords(rxn2.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
+        self.assert_h_abs_reactive_core(xyz=rxn2.ts_species.ts_guesses[0].initial_xyz, a=1, h=2, b=0, msg='H + OH',
+                                        forming=h2_bond)
 
         # OH + H <=> H2 + O
         rxn3 = ARCReaction(r_species=[self.oh, self.h], p_species=[self.h2, self.o])
@@ -511,11 +695,8 @@ H      -3.45360689    0.15275707   -0.76116277""")
         heuristics_3.execute_incore()
         self.assertEqual(len(rxn3.ts_species.ts_guesses), 1)
         self.assertEqual(rxn3.ts_species.ts_guesses[0].initial_xyz['symbols'], ('O', 'H', 'H'))
-        expected_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
-                        'coords': ((0.0, 0.0, -0.1804968455295031),
-                                   (0.0, 0.0, 0.9839219710369642),
-                                   (0.0, 0.0, 1.8806939503689346))}
-        self.assertTrue(almost_equal_coords(rxn3.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
+        self.assert_h_abs_reactive_core(xyz=rxn3.ts_species.ts_guesses[0].initial_xyz, a=0, h=1, b=2, msg='OH + H',
+                                        forming=h2_bond)
 
         # CH4 + H <=> CH3 + H2
         ch4 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
@@ -540,14 +721,9 @@ H      -3.45360689    0.15275707   -0.76116277""")
         self.assertEqual(rxn4.ts_species.multiplicity, 2)
         self.assertEqual(len(rxn4.ts_species.ts_guesses), 4)  # No dihedral scans for H attacking at 180 degrees.
         self.assertTrue(rxn4.ts_species.ts_guesses[0].success)
-        expected_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1, 1),
-                        'coords': ((-0.14348351563387568, 3.0646463033967564e-08, 1.4446001062040636e-09),
-                                   (1.1671558180910826, -1.5372222794685086e-07, -1.0128514993379412e-07),
-                                   (-0.5075499920716767, -0.5148677050021889, -0.8917769786794892),
-                                   (-0.5075499920716767, -0.5148677050021889, 0.8917772176782378),
-                                   (-0.5075499920716767, 1.0297354786962867, 1.666119475718375e-08),
-                                   (2.063927797423041, -2.798718649055232e-07, -1.7157539600187732e-07))}
-        self.assertTrue(almost_equal_coords(rxn4.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
+        self.assertEqual(rxn4.ts_species.ts_guesses[0].initial_xyz['symbols'], ('C', 'H', 'H', 'H', 'H', 'H'))
+        self.assert_h_abs_reactive_core(xyz=rxn4.ts_species.ts_guesses[0].initial_xyz, a=0, h=1, b=5, msg='CH4 + H',
+                                        forming=h2_bond)
 
     def test_h_abstraction_with_empty_product_dicts(self):
         """
@@ -730,36 +906,26 @@ H      -3.45360689    0.15275707   -0.76116277""")
         self.assertEqual(rxn8.ts_species.charge, 0)
         self.assertEqual(rxn8.ts_species.multiplicity, 3)
         self.assertEqual(len(rxn8.ts_species.ts_guesses), 6)
-        self.assertTrue(almost_equal_coords(rxn8.ts_species.ts_guesses[0].initial_xyz,
-                                            {'symbols': ('N', 'C', 'O', 'N', 'H', 'H'),
-                                             'isotopes': (14, 12, 16, 14, 1, 1),
-                                             'coords': (
-                                                 (-3.657596721635545e-09, 0.08876698337705413, 0.9329034620293603),
-                                                 (-3.657596721635545e-09, 0.8029731964901674, 0.005816759497990542),
-                                                 (9.609228590831403e-09, 1.4947776654181317, -0.9420542025729876),
-                                                 (-3.657596721635545e-09, -2.2452231277287726, 0.16101001965294726),
-                                                 (-3.657596721635545e-09, -1.0762904363668742, 0.547597552628467),
-                                                 (-3.657596721635545e-09, -2.2452231277287726, -0.8649899620469162))}))
-        self.assertTrue(almost_equal_coords(rxn8.ts_species.ts_guesses[1].initial_xyz,
-                                            {'symbols': ('N', 'C', 'O', 'N', 'H', 'H'),
-                                             'isotopes': (14, 12, 16, 14, 1, 1),
-                                             'coords': ((0.7304309896785263, 0.4813753237349452, -0.26044855417424406),
-                                                        (-0.22605518455485318, 0.6753956743209286, 0.3853614572987496),
-                                                        (-1.2013936879956266, 0.8535814918821567, 1.0130695121236126),
-                                                        (0.7304309896785263, -1.8526147873708816, -1.032341996550657),
-                                                        (0.7304309896785263, -0.6836820960089831, -0.6457544635751373),
-                                                        (0.7304309896785263, -1.8526147873708816,
-                                                         -2.0583419782505206))}))
-        self.assertTrue(almost_equal_coords(rxn8.ts_species.ts_guesses[2].initial_xyz,
-                                            {'symbols': ('N', 'C', 'O', 'N', 'H', 'H'),
-                                             'isotopes': (14, 12, 16, 14, 1, 1),
-                                             'coords': (
-                                                 (-0.7304309882994099, 0.48137532979234665, -0.26044855803662603),
-                                                 (0.22605518593396912, 0.6753956803783296, 0.3853614534363681),
-                                                 (1.201393684372416, 0.8535814759681686, 1.0130695222708512),
-                                                 (-0.7304309882994099, -1.8526147813134801, -1.032342000413039),
-                                                 (-0.7304309882994099, -0.6836820899515816, -0.6457544674375193),
-                                                 (-0.7304309882994099, -1.8526147813134801, -2.0583419821129025))}))
+        seeds = h_abstraction(reaction=rxn8, dihedral_increment=120)
+        self.assertEqual(len(seeds), len(rxn8.ts_species.ts_guesses))
+        for i, (seed, ts_guess) in enumerate(zip(seeds, rxn8.ts_species.ts_guesses)):
+            self.assertEqual(ts_guess.initial_xyz['symbols'], ('N', 'C', 'O', 'N', 'H', 'H'))
+            self.assertEqual(ts_guess.initial_xyz['isotopes'], (14, 12, 16, 14, 1, 1))
+            self.assertTrue(almost_equal_coords(ts_guess.initial_xyz, seed['xyz']))
+            reactive_atoms = seed['metadata']['reactive_atoms']
+            self.assertEqual(reactive_atoms['A'], 3)
+            self.assertEqual(reactive_atoms['B'], 0)
+            self.assertIn(reactive_atoms['H'], [4, 5])
+            self.assert_h_abs_reactive_core(xyz=ts_guess.initial_xyz,
+                                            a=reactive_atoms['A'],
+                                            h=reactive_atoms['H'],
+                                            b=reactive_atoms['B'],
+                                            msg=f'NCO + NH2 guess {i}',
+                                            )
+        for i, j in itertools.combinations(range(len(rxn8.ts_species.ts_guesses)), 2):
+            self.assertFalse(almost_equal_coords(rxn8.ts_species.ts_guesses[i].initial_xyz,
+                                                 rxn8.ts_species.ts_guesses[j].initial_xyz),
+                             msg=f'NCO + NH2 guesses {i} and {j} are not unique')
 
     def test_heuristics_for_h_abstraction_6(self):
         # butenylnebzene + CCOO <=> butenylnebzene_rad + CCOOH
@@ -949,6 +1115,19 @@ H      -3.45360689    0.15275707   -0.76116277""")
         h2o = ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz)
         rxn12 = ARCReaction(r_species=[nh3, oh], p_species=[nh2, h2o])
         self.assertEqual(rxn12.family, 'H_Abstraction')
+        raw_seeds = h_abstraction(reaction=rxn12, dihedral_increment=60)
+        expected_reactive_atoms = [
+            {'A': product_dict['r_label_map']['*1'],
+             'H': product_dict['r_label_map']['*2'],
+             'B': product_dict['r_label_map']['*3']}
+            for product_dict in rxn12.product_dicts
+        ]
+        for seed in raw_seeds:
+            reactive_atoms = seed['metadata']['reactive_atoms']
+            self.assertIn(reactive_atoms, expected_reactive_atoms)
+            self.assertTrue(seed['xyz']['symbols'][reactive_atoms['H']].startswith('H'))
+            self.assertFalse(seed['xyz']['symbols'][reactive_atoms['A']].startswith('H'))
+            self.assertFalse(seed['xyz']['symbols'][reactive_atoms['B']].startswith('H'))
         heuristics_12 = HeuristicsAdapter(job_type='tsg',
                                           reactions=[rxn12],
                                           testing=True,
@@ -1293,7 +1472,13 @@ H      -3.45360689    0.15275707   -0.76116277""")
                              ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'))
 
     def test_combine_coordinates_with_redundant_atoms(self):
-        """Test the combine_coordinates_with_redundant_atoms() function."""
+        """
+        Test the combine_coordinates_with_redundant_atoms() function.
+
+        With O and C partners the reactive core takes the absolute distances; an explicit
+        multiplicative stretch of 1.2 reproduces the geometry of the multiplicative-only builder.
+        """
+        expected_symbols = ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'H', 'H', 'H', 'H', 'H')
         ts_xyz = combine_coordinates_with_redundant_atoms(
             xyz_1=self.ccooh_xyz,
             xyz_2=self.c2h6_xyz,
@@ -1304,6 +1489,26 @@ H      -3.45360689    0.15275707   -0.76116277""")
             h2=5,
             c=2,
             d=0,
+            a2=180,
+            d2=None,
+            d3=0,
+            reactants_reversed=False,
+        )
+        self.assertEqual(ts_xyz['symbols'], expected_symbols)
+        self.assert_h_abs_reactive_core(xyz=ts_xyz, a=3, h=9, b=11, a2=180.0, msg='CCOOH + C2H6, a2 = 180')
+
+        ts_xyz_stretched = combine_coordinates_with_redundant_atoms(
+            xyz_1=self.ccooh_xyz,
+            xyz_2=self.c2h6_xyz,
+            mol_1=ARCSpecies(label='CCOOH', smiles='CCOO', xyz=self.ccooh_xyz).mol,
+            mol_2=ARCSpecies(label='C2H6', smiles='CC', xyz=self.c2h6_xyz).mol,
+            reactant_2=ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz),
+            h1=9,
+            h2=5,
+            c=2,
+            d=0,
+            r1_stretch=1.2,
+            r2_stretch=1.2,
             a2=180,
             d2=None,
             d3=0,
@@ -1329,7 +1534,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                        (-2.5339216518555596, -0.010500763584261032, -0.3074446156924231),
                        (-1.3956300152903744, -1.5298551170593468, 2.099824519093628),
                        (-2.320130400140207, -0.017878639343882265, 2.183641197255159))}
-        self.assertTrue(almost_equal_coords(ts_xyz, expected_xyz))
+        self.assertTrue(almost_equal_coords(ts_xyz_stretched, expected_xyz, rtol=1e-3, atol=1e-3))
 
         ts_xyz = combine_coordinates_with_redundant_atoms(xyz_1=self.ccooh_xyz,
                                                           xyz_2=self.c2h6_xyz,
@@ -1348,6 +1553,29 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                                           d3=120,
                                                           reactants_reversed=False,
                                                           )
+        self.assertEqual(ts_xyz['symbols'], expected_symbols)
+        self.assert_h_abs_reactive_core(xyz=ts_xyz, a=3, h=9, b=11, a2=150.0, msg='CCOOH + C2H6, a2 = 150')
+
+        ts_xyz_stretched = combine_coordinates_with_redundant_atoms(xyz_1=self.ccooh_xyz,
+                                                                    xyz_2=self.c2h6_xyz,
+                                                                    mol_1=ARCSpecies(label='CCOOH', smiles='CCOO',
+                                                                                     xyz=self.ccooh_xyz).mol,
+                                                                    mol_2=ARCSpecies(label='C2H6', smiles='CC',
+                                                                                     xyz=self.c2h6_xyz).mol,
+                                                                    reactant_2=ARCSpecies(label='C2H5',
+                                                                                          smiles='C[CH2]',
+                                                                                          xyz=self.c2h5_xyz),
+                                                                    h1=9,
+                                                                    h2=5,
+                                                                    c=2,
+                                                                    d=0,
+                                                                    r1_stretch=1.2,
+                                                                    r2_stretch=1.2,
+                                                                    a2=150,
+                                                                    d2=30,
+                                                                    d3=120,
+                                                                    reactants_reversed=False,
+                                                                    )
         expected_xyz = {
             'symbols': ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'H', 'H', 'H', 'H', 'H'),
             'isotopes': (12, 12, 16, 16, 1, 1, 1, 1, 1, 1, 12, 12, 1, 1, 1, 1, 1),
@@ -1368,7 +1596,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                        (-0.6957522841048858, -2.2546439158856977, 1.860657306122405),
                        (-2.5436577650309165, -0.1202574787360858, 0.6653623387328302),
                        (-1.2481402862001663, -0.961958946530624, -0.20697484805157007))}
-        self.assertTrue(almost_equal_coords(ts_xyz, expected_xyz))
+        self.assertTrue(almost_equal_coords(ts_xyz_stretched, expected_xyz, rtol=1e-3, atol=1e-3))
 
     def test_get_new_zmat2_map(self):
         """Test the get_new_zmat_2_map() function."""
@@ -2255,6 +2483,69 @@ H      -0.30139889    0.23142254    3.12085495"""
         result = check_ts_bonds(initial_xyz, [7, 8, 9, 2, 4])
         self.assertTrue(result)
 
+    def test_execute_incore_propagates_the_seed_method_and_family(self):
+        """A seed's ``method`` and ``family`` reach the TSGuess and the saved geometry filename."""
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        rxn = ARCReaction(r_species=[self.h2, self.o], p_species=[self.h, self.oh])
+        seed_xyz = str_to_xyz("""H 0.0 0.0 -1.90
+                                 H 0.0 0.0 -0.98
+                                 O 0.0 0.0  0.18""")
+        seed = {'xyz': seed_xyz,
+                'method': 'Heuristics-XY',
+                'family': 'XY_Addition_MultipleBond',
+                'source_adapter': 'heuristics',
+                'metadata': {}}
+        heuristics = HeuristicsAdapter(job_type='tsg',
+                                       reactions=[rxn],
+                                       testing=True,
+                                       project='test',
+                                       project_directory=project_directory,
+                                       dihedral_increment=120,
+                                       )
+        with patch('arc.job.adapters.ts.heuristics.get_ts_seeds', return_value=[seed]):
+            heuristics.execute_incore()
+        self.assertEqual(len(rxn.ts_species.ts_guesses), 1)
+        ts_guess = rxn.ts_species.ts_guesses[0]
+        self.assertEqual(ts_guess.method, 'heuristics-xy')
+        self.assertEqual(ts_guess.family, 'XY_Addition_MultipleBond')
+        self.assertEqual(ts_guess.method_index, 0)
+        self.assertTrue(ts_guess.success)
+        self.assertTrue(almost_equal_coords(ts_guess.initial_xyz, seed_xyz))
+        self.assertTrue(os.path.isfile(os.path.join(heuristics.local_path, 'Heuristics-XY_0.xyz')))
+
+    def test_execute_incore_merges_a_duplicate_seed_into_an_existing_guess(self):
+        """A seed identical to an existing successful guess adds a source instead of a new guess."""
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        rxn = ARCReaction(r_species=[self.h2, self.o], p_species=[self.h, self.oh])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, charge=rxn.charge, multiplicity=rxn.multiplicity)
+        seed_xyz = str_to_xyz("""H 0.0 0.0 -1.90
+                                 H 0.0 0.0 -0.98
+                                 O 0.0 0.0  0.18""")
+        existing = TSGuess(method='GCN', method_index=0, success=True, xyz=seed_xyz)
+        rxn.ts_species.append_ts_guess(existing)
+        seed = {'xyz': seed_xyz,
+                'method': 'Heuristics',
+                'family': rxn.family,
+                'source_adapter': 'heuristics',
+                'metadata': {}}
+        heuristics = HeuristicsAdapter(job_type='tsg',
+                                       reactions=[rxn],
+                                       testing=True,
+                                       project='test',
+                                       project_directory=project_directory,
+                                       dihedral_increment=120,
+                                       )
+        with patch('arc.job.adapters.ts.heuristics.get_ts_seeds', return_value=[seed]):
+            heuristics.execute_incore()
+        self.assertEqual(len(rxn.ts_species.ts_guesses), 1)
+        merged = rxn.ts_species.ts_guesses[0]
+        self.assertEqual(merged.method, 'gcn')
+        self.assertIn('heuristics', merged.method_sources)
+        self.assertIn('gcn', merged.method_sources)
+        self.assertFalse(os.path.isfile(os.path.join(heuristics.local_path, 'Heuristics_0.xyz')))
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -2263,6 +2554,409 @@ H      -0.30139889    0.23142254    3.12085495"""
         """
         for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile'):
             shutil.rmtree(os.path.join(ARC_TESTING_PATH, sub), ignore_errors=True)
+
+
+class TestHeuristicsHub(unittest.TestCase):
+    """Unit tests for shared heuristic seed and CREST-constraint helpers."""
+
+    def test_get_ts_seeds_h_abstraction(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        with patch('arc.job.adapters.ts.heuristics.h_abstraction',
+                   return_value=[{'xyz': {'symbols': ('H',), 'coords': ((0.0, 0.0, 0.0),), 'isotopes': (1,)},
+                                  'method': 'Heuristics',
+                                  'metadata': {'source': 'reaction_mapping'}}]):
+            seeds = get_ts_seeds(reaction=rxn, base_adapter='heuristics', dihedral_increment=60)
+        self.assertEqual(len(seeds), 1)
+        self.assertEqual(seeds[0]['family'], 'H_Abstraction')
+        self.assertEqual(seeds[0]['method'], 'Heuristics')
+        self.assertEqual(seeds[0]['source_adapter'], 'heuristics')
+        self.assertEqual(seeds[0]['metadata'], {'source': 'reaction_mapping'})
+
+    def test_get_ts_seeds_hydrolysis(self):
+        rxn = SimpleNamespace(family='carbonyl_based_hydrolysis')
+        xyz = {'symbols': ('O',), 'coords': ((0.0, 0.0, 0.0),), 'isotopes': (16,)}
+        with patch('arc.job.adapters.ts.heuristics.hydrolysis',
+                   return_value=([xyz], ['carbonyl_based_hydrolysis'], [[0, 1, 2]])):
+            seeds = get_ts_seeds(reaction=rxn, base_adapter='heuristics')
+        self.assertEqual(len(seeds), 1)
+        self.assertEqual(seeds[0]['family'], 'carbonyl_based_hydrolysis')
+        self.assertEqual(seeds[0]['xyz'], xyz)
+        self.assertEqual(seeds[0]['metadata'], {'indices': [0, 1, 2]})
+
+    def test_get_wrapper_constraints_crest(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        xyz = str_to_xyz("""O 0.0000 0.0000 0.0000
+                            H 0.0000 0.0000 0.9600
+                            O 0.9000 0.0000 0.0000""")
+        seed = {'xyz': xyz, 'family': rxn.family}
+        constraints = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+        self.assertIsInstance(constraints, dict)
+        self.assertLessEqual({'A', 'H', 'B', 'atoms', 'distance_pairs', 'angle_atoms'}, set(constraints))
+        self.assertEqual(
+            (constraints['A'], constraints['H'], constraints['B']),
+            constraints['angle_atoms'],
+        )
+        self.assertEqual(len(constraints['atoms']), 3)
+        self.assertEqual(len(constraints['distance_pairs']), 2)
+
+    def test_get_wrapper_constraints_crest_symmetric_oh_oh(self):
+        """The transferring H must be bracketed by the two O atoms in either atom ordering."""
+        rxn = SimpleNamespace(family='H_Abstraction')
+        seeds_and_expected_atoms = [
+            (str_to_xyz("""O 0.00000000 -0.02752832 -1.20590500
+                            H 0.00000000 -0.02752832 -0.03383145
+                            O 0.00000000 -0.02752832  1.12142787
+                            H 0.00000000  0.90131726  1.37454478"""), 1),
+            (str_to_xyz("""O 0.00000000 -0.02752832  1.12142787
+                            H 0.00000000  0.90131726  1.37454478
+                            O 0.00000000 -0.02752832 -1.20590500
+                            H 0.00000000 -0.02752832 -0.03383145"""), 3),
+        ]
+        for xyz, expected_h_atom in seeds_and_expected_atoms:
+            with self.subTest(symbols=xyz['symbols']):
+                seed = {
+                    'xyz': xyz,
+                    'family': rxn.family,
+                    'metadata': {'reactive_atoms': {'A': 0, 'H': expected_h_atom, 'B': 2}},
+                }
+                constraints = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+                self.assertEqual(constraints['angle_atoms'][1], expected_h_atom)
+                self.assertSetEqual({constraints['angle_atoms'][0], constraints['angle_atoms'][2]}, {0, 2})
+                self.assertFalse(xyz['symbols'][constraints['angle_atoms'][0]].startswith('H'))
+                self.assertFalse(xyz['symbols'][constraints['angle_atoms'][2]].startswith('H'))
+
+    def test_get_wrapper_constraints_crest_supports_abstraction_by_an_h_atom(self):
+        """R-H + H <=> R + H2: the acceptor may itself be a hydrogen.
+
+        Only the transferred atom has to be a hydrogen. CREST constraints are index-based, so
+        requiring a heavy acceptor silently excluded every abstraction by an H atom.
+        """
+        rxn = SimpleNamespace(family='H_Abstraction')
+        xyz = str_to_xyz("""C  0.0000 0.0000 0.0000
+                            H  1.0300 0.0000 -0.3600
+                            H -0.5100 -0.8900 -0.3600
+                            H -0.5100 0.8900 -0.3600
+                            H  0.0000 0.0000 1.3000
+                            H  0.0000 0.0000 2.2000""")
+        seed = {'xyz': xyz, 'family': rxn.family,
+                'metadata': {'reactive_atoms': {'A': 0, 'H': 4, 'B': 5}}}
+        constraints = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+        self.assertIsNotNone(constraints)
+        self.assertEqual(constraints['atoms'], (0, 4, 5))
+        self.assertEqual(constraints['distance_pairs'], ((0, 4), (4, 5)))
+        self.assertEqual(constraints['angle_atoms'], (0, 4, 5))
+
+    def test_get_wrapper_constraints_crest_rejects_hydrogen_as_heavy_atom(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        xyz = str_to_xyz("""O -1.0000 0.0000 0.0000
+                            H  0.0000 0.0000 0.0000
+                            O  1.0000 0.0000 0.0000
+                            H  2.0000 0.0000 0.0000""")
+        seed = {
+            'xyz': xyz,
+            'family': rxn.family,
+            'metadata': {'reactive_atoms': {'A': 0, 'H': 1, 'B': 3}},
+        }
+        self.assertIsNone(get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed))
+
+    def test_get_ts_seeds_preserves_invalid_explicit_reactive_atoms(self):
+        """Do not hide an invalid generator mapping with the geometric compatibility fallback."""
+        rxn = SimpleNamespace(family='H_Abstraction')
+        xyz = str_to_xyz("""O -1.0000 0.0000 0.0000
+                            H  0.0000 0.0000 0.0000
+                            O  1.0000 0.0000 0.0000
+                            H  2.0000 0.0000 0.0000""")
+        invalid_atoms = {'A': 0, 'H': 1, 'B': 3}
+        with patch('arc.job.adapters.ts.heuristics.h_abstraction', return_value=[{
+            'xyz': xyz,
+            'method': 'Heuristics',
+            'metadata': {'reactive_atoms': invalid_atoms},
+        }]):
+            seed = get_ts_seeds(reaction=rxn, base_adapter='heuristics')[0]
+        self.assertEqual(seed['metadata']['reactive_atoms'], invalid_atoms)
+        self.assertIsNone(get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed))
+
+    def test_get_wrapper_constraints_crest_prefers_explicit_reactive_atoms(self):
+        """Explicit generator metadata wins when distances would select a spectator hydrogen."""
+        rxn = SimpleNamespace(family='H_Abstraction')
+        xyz = str_to_xyz("""O -1.0000 0.0000 0.0000
+                            H  0.0000 0.0000 0.0000
+                            O  1.0000 0.0000 0.0000
+                            H  0.0000 1.5000 0.0000""")
+        seed = {
+            'xyz': xyz,
+            'family': rxn.family,
+            'metadata': {'reactive_atoms': {'A': 0, 'H': 3, 'B': 2}},
+        }
+        self.assertEqual(
+            get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed),
+            {
+                'A': 0,
+                'H': 3,
+                'B': 2,
+                'atoms': (0, 3, 2),
+                'distance_pairs': ((0, 3), (3, 2)),
+                'angle_atoms': (0, 3, 2),
+            },
+        )
+
+    def test_get_wrapper_constraints_crest_xy_addition(self):
+        """XY constraints follow the exact family-label mapping for both seed orderings."""
+        rxn = SimpleNamespace(family='XY_Addition_MultipleBond')
+        xyz = str_to_xyz("""C 0.0 0.0  0.667
+                            C 0.0 0.0 -0.667
+                            H 0.0 1.6  0.667
+                            Cl 0.0 2.1 -0.667""")
+        for reactive_atoms in (
+            {'*1': 1, '*2': 0, '*3': 2, '*4': 3},
+            {'*1': 0, '*2': 1, '*3': 2, '*4': 3},
+        ):
+            with self.subTest(reactive_atoms=reactive_atoms):
+                seed = {
+                    'xyz': xyz,
+                    'family': rxn.family,
+                    'metadata': {'reactive_atoms': reactive_atoms},
+                }
+                self.assertEqual(
+                    get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed),
+                    {
+                        'atoms': tuple(reactive_atoms[label] for label in ('*1', '*2', '*3', '*4')),
+                        'distance_pairs': (
+                            (reactive_atoms['*1'], reactive_atoms['*3']),
+                            (reactive_atoms['*2'], reactive_atoms['*4']),
+                            (reactive_atoms['*3'], reactive_atoms['*4']),
+                        ),
+                    },
+                )
+
+    def test_get_wrapper_constraints_crest_rejects_invalid_explicit_xy_atoms(self):
+        """Do not infer an XY mapping when explicit generator metadata is invalid."""
+        rxn = SimpleNamespace(family='XY_Addition_MultipleBond')
+        xyz = str_to_xyz("""C 0.0 0.0  0.667
+                            C 0.0 0.0 -0.667
+                            H 0.0 1.6  0.667
+                            Cl 0.0 2.1 -0.667""")
+        invalid_atoms = {'*1': 0, '*2': 1, '*3': 2, '*4': 2}
+        with patch('arc.job.adapters.ts.xy_addition.xy_addition', return_value=[{
+            'xyz': xyz,
+            'method': 'Heuristics-XY',
+            'metadata': {'reactive_atoms': invalid_atoms},
+        }]):
+            seed = get_ts_seeds(reaction=rxn)[0]
+        self.assertEqual(seed['metadata']['reactive_atoms'], invalid_atoms)
+        self.assertIsNone(get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed))
+
+    def test_get_wrapper_constraints_crest_unsupported_family(self):
+        rxn = SimpleNamespace(family='carbonyl_based_hydrolysis')
+        xyz = str_to_xyz("""O 0.0000 0.0000 0.0000
+                            H 0.0000 0.0000 0.9600
+                            H 0.9000 0.0000 0.0000""")
+        seed = {'xyz': xyz, 'family': rxn.family}
+        atoms = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+        self.assertIsNone(atoms)
+
+    def test_h_atom_bond_cutoff_brackets_a_bound_hydrogen(self):
+        """An H is a valid free H just past a carbon's bonding cutoff and bound just below it.
+
+        Carbon's cutoff is ``H_ATOM_BOND_CUTOFF``, the floor of every element-specific cutoff, and
+        the two cases sit 0.05 A on either side of it, so widening or narrowing it changes one of
+        them.
+        """
+        self.assertAlmostEqual(H_ATOM_BOND_CUTOFF, 1.5, delta=1e-9)
+        self.assertAlmostEqual(_h_atom_bond_cutoff('C'), H_ATOM_BOND_CUTOFF, delta=1e-9)
+        for neighbour_distance, expected in ((H_ATOM_BOND_CUTOFF - 0.05, False),
+                                             (H_ATOM_BOND_CUTOFF + 0.05, True)):
+            with self.subTest(neighbour_distance=neighbour_distance):
+                xyz = str_to_xyz(f"""H 0.0 0.0 0.0
+                                     H 0.0 0.0 1.6
+                                     O 0.0 0.0 2.6
+                                     C {neighbour_distance} 0.0 0.0""")
+                self.assertEqual(_is_valid_h_abs_atom_assignment(xyz=xyz, atoms={'A': 0, 'H': 1, 'B': 2}),
+                                 expected)
+
+    def test_h_atom_bond_cutoff_is_element_aware(self):
+        """The bonding cutoff widens with the estimated X--H bond length, never below the floor.
+
+        The rows cover each source the cutoff can draw on: the floor, ARC's tabulated single bond
+        length, the covalent radii sum, and the largest radius of an element that is tabulated only
+        per spin state.
+        """
+        for symbol, expected in (('H', 1.5),
+                                 ('C', 1.5),
+                                 ('Cl', 1.5),
+                                 ('Si', 1.702),
+                                 ('I', 1.8745),
+                                 ('Ge', 1.7365),
+                                 ('Sn', 1.955),
+                                 ('Fe', 2.1045),
+                                 ):
+            with self.subTest(symbol=symbol):
+                self.assertAlmostEqual(_h_atom_bond_cutoff(symbol), expected, places=4)
+        for symbol in ('Xx', 26):
+            with self.subTest(symbol=symbol):
+                self.assertAlmostEqual(_h_atom_bond_cutoff(symbol), H_ATOM_BOND_CUTOFF, delta=1e-9)
+
+    def test_a_long_heavy_element_hydride_bond_is_not_a_free_h(self):
+        """A hydrogen at a Ge--H, Sn--H, I--H or Fe--H bond length is bound, not a free H radical.
+
+        All four bonds are longer than ``H_ATOM_BOND_CUTOFF``, so a single flat cutoff reads them
+        as free hydrogens. The distances are experimental bond lengths, and the free counter-case
+        sits at a non-bonded separation from the same element.
+        """
+        for symbol, bond_length, free_distance in (('Ge', 1.53, 2.50),
+                                                   ('Sn', 1.70, 2.70),
+                                                   ('I', 1.61, 2.60),
+                                                   ('Fe', 1.55, 2.60),
+                                                   ):
+            for neighbour_distance, expected in ((bond_length, False), (free_distance, True)):
+                with self.subTest(symbol=symbol, neighbour_distance=neighbour_distance):
+                    xyz = str_to_xyz(f"""H 0.0 0.0 0.0
+                                         H 0.0 0.0 1.6
+                                         O 0.0 0.0 2.6
+                                         {symbol} {neighbour_distance} 0.0 0.0""")
+                    self.assertEqual(_is_valid_h_abs_atom_assignment(xyz=xyz, atoms={'A': 0, 'H': 1, 'B': 2}),
+                                     expected)
+
+    def test_h_abs_atom_selection_tie_break_keeps_the_first_hydrogen(self):
+        """When two hydrogens tie on the sum of the distances to their partners, the first is kept.
+
+        Each hydrogen is a free H atom, so the candidate partners of either are the other hydrogen
+        and the two oxygens. Both hydrogens reach the same partner-distance sum of 4.236 A, and the
+        lower index wins.
+        """
+        xyz = str_to_xyz("""O -2.0  0.0 0.0
+                            O  2.0  0.0 0.0
+                            H  0.0  1.0 0.0
+                            H  0.0 -1.0 0.0""")
+        self.assertEqual(_get_h_abs_atoms_from_xyz(xyz), {'H': 2, 'A': 3, 'B': 0})
+
+    def test_h_abs_atoms_resolve_a_free_h_reactant(self):
+        """A free H atom is a valid H-abstraction reactant, as in CH4 + H <=> CH3 + H2.
+
+        The only heavy atom of this TS is the methyl carbon, so searching for the two partners of
+        the transferred hydrogen among the heavy atoms alone leaves fewer than two candidates and
+        resolves no triad at all. The three methyl hydrogens are bound to the carbon and stay
+        excluded.
+        """
+        xyz = str_to_xyz("""C  0.000  0.000  0.000
+                            H  0.000  0.000  1.290
+                            H  1.028  0.000 -0.363
+                            H -0.514  0.890 -0.363
+                            H -0.514 -0.890 -0.363
+                            H  0.000  0.000  2.650""")
+        self.assertEqual(_get_h_abs_atoms_from_xyz(xyz), {'H': 1, 'A': 0, 'B': 5})
+        self.assertTrue(_is_valid_h_abs_atom_assignment(xyz=xyz, atoms={'A': 0, 'H': 1, 'B': 5}))
+        rxn = SimpleNamespace(family='H_Abstraction')
+        constraints = get_wrapper_constraints(wrapper='crest',
+                                              reaction=rxn,
+                                              seed={'xyz': xyz, 'family': 'H_Abstraction'},
+                                              )
+        self.assertEqual(constraints['atoms'], (0, 1, 5))
+        self.assertEqual(constraints['distance_pairs'], ((0, 1), (1, 5)))
+        self.assertEqual(constraints['angle_atoms'], (0, 1, 5))
+
+    def test_get_h_abs_atoms_from_xyz_without_two_partner_atoms(self):
+        """A geometry with fewer than two candidate partners has no A--H--B triad.
+
+        Water has three atoms and still yields no triad: each of its hydrogens is bound to the
+        oxygen, so it is a spectator rather than a free H atom that the other could take as a
+        partner. The two hydrogens of this equilibrium geometry are 1.514 A apart, past the cutoff
+        of a hydrogen neighbour, so it is the oxygen at 0.958 A that binds them.
+        """
+        xyz = str_to_xyz("""O 0.0 0.0 0.0
+                            H 0.0 0.0 0.97""")
+        self.assertIsNone(_get_h_abs_atoms_from_xyz(xyz))
+        water = str_to_xyz("""O 0.0000  0.0000  0.1173
+                              H 0.0000  0.7572 -0.4692
+                              H 0.0000 -0.7572 -0.4692""")
+        self.assertGreater(calculate_distance(coords=water['coords'], atoms=[1, 2]), H_ATOM_BOND_CUTOFF)
+        self.assertIsNone(_get_h_abs_atoms_from_xyz(water))
+
+    def test_h_abs_atoms_follow_the_reaction_atom_labels(self):
+        """
+        The A/H/B triad is taken from the reaction's atom labels, and the nearest-partner geometry
+        rule is only a fallback for a reaction without them.
+
+        The transferring hydrogen of this seed sits 1.5 A from each oxygen, while a spectator
+        hydrogen sits 1.0 A from both, so the geometry alone would pin the spectator.
+        """
+        xyz = str_to_xyz("""O -1.0000 0.0000 0.0000
+                            H  0.0000 0.0000 0.0000
+                            O  1.0000 0.0000 0.0000
+                            H  0.0000 1.5000 0.0000""")
+        labelled = SimpleNamespace(family='H_Abstraction',
+                                   product_dicts=[{'family': 'H_Abstraction',
+                                                   'r_label_map': {'*1': 0, '*2': 3, '*3': 2}}])
+        self.assertEqual(get_h_abs_atoms_from_reaction(reaction=labelled, xyz=xyz), {'A': 0, 'H': 3, 'B': 2})
+        self.assertEqual(get_h_abs_atoms(reaction=labelled, xyz=xyz), {'A': 0, 'H': 3, 'B': 2})
+        self.assertEqual(_get_h_abs_atoms_from_xyz(xyz), {'H': 1, 'A': 0, 'B': 2})
+        unlabelled = SimpleNamespace(family='H_Abstraction')
+        self.assertIsNone(get_h_abs_atoms_from_reaction(reaction=unlabelled, xyz=xyz))
+        self.assertEqual(get_h_abs_atoms(reaction=unlabelled, xyz=xyz), {'H': 1, 'A': 0, 'B': 2})
+        constraints = get_wrapper_constraints(wrapper='crest', reaction=labelled, seed={'xyz': xyz})
+        self.assertEqual(constraints['atoms'], (0, 3, 2))
+
+    def test_h_abs_atoms_pick_the_labelled_hydrogen_nearest_to_its_partners(self):
+        """
+        Of several equivalent hydrogens the atom labels enumerate, the one closest to A and B in
+        the seed is taken, and a label set that is not a valid triad in the seed is ignored.
+        """
+        xyz = str_to_xyz("""C  0.000  0.000  0.000
+                            H  0.000  0.000  1.290
+                            H  1.028  0.000 -0.363
+                            H -0.514  0.890 -0.363
+                            H -0.514 -0.890 -0.363
+                            O  0.000  0.000  2.650
+                            H  0.900  0.000  2.970""")
+        def product_dict(r_label_map):
+            return {'family': 'H_Abstraction', 'r_label_map': r_label_map}
+
+        reaction = SimpleNamespace(family='H_Abstraction',
+                                   product_dicts=[product_dict({'*1': 0, '*2': h, '*3': 5})
+                                                  for h in (4, 3, 2, 1)]
+                                                 + [product_dict({'*1': 0, '*2': 6, '*3': 5}),
+                                                    product_dict({'*1': 0, '*2': 0, '*3': 5})])
+        self.assertEqual(get_h_abs_atoms_from_reaction(reaction=reaction, xyz=xyz), {'A': 0, 'H': 1, 'B': 5})
+        invalid_only = SimpleNamespace(family='H_Abstraction',
+                                       product_dicts=[product_dict({'*1': 0, '*2': 0, '*3': 5}),
+                                                      product_dict({'*1': 0, '*3': 5}),
+                                                      {}])
+        self.assertIsNone(get_h_abs_atoms_from_reaction(reaction=invalid_only, xyz=xyz))
+        self.assertEqual(get_h_abs_atoms(reaction=invalid_only, xyz=xyz), {'H': 1, 'A': 0, 'B': 5})
+
+    def test_h_abs_atoms_skip_reverse_discovered_and_foreign_product_dicts(self):
+        """
+        A product dict discovered in reverse, whose labels index the products, or one of another
+        family contributes no candidate, even where its triad would be valid in the seed and win the
+        nearest-partner tiebreak.
+        """
+        xyz = str_to_xyz("""C  0.000  0.000  0.000
+                            H  0.000  0.000  1.290
+                            H  1.028  0.000 -0.363
+                            H -0.514  0.890 -0.363
+                            H -0.514 -0.890 -0.363
+                            O  0.000  0.000  2.650
+                            H  0.900  0.000  2.970""")
+        forward = {'family': 'H_Abstraction', 'r_label_map': {'*1': 0, '*2': 2, '*3': 5},
+                   'discovered_in_reverse': False}
+        reverse = {'family': 'H_Abstraction', 'r_label_map': {'*1': 0, '*2': 1, '*3': 5},
+                   'discovered_in_reverse': True}
+        foreign = {'family': 'intra_H_migration', 'r_label_map': {'*1': 0, '*2': 1, '*3': 5}}
+        reaction = SimpleNamespace(family='H_Abstraction', product_dicts=[reverse, foreign, forward])
+        self.assertEqual(get_h_abs_atoms_from_reaction(reaction=reaction, xyz=xyz), {'A': 0, 'H': 2, 'B': 5})
+        skipped_only = SimpleNamespace(family='H_Abstraction', product_dicts=[reverse, foreign])
+        self.assertIsNone(get_h_abs_atoms_from_reaction(reaction=skipped_only, xyz=xyz))
+        self.assertEqual(get_h_abs_atoms(reaction=skipped_only, xyz=xyz), {'H': 1, 'A': 0, 'B': 5})
+
+    def test_get_ts_seeds_unsupported_adapter(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        with self.assertRaises(ValueError):
+            get_ts_seeds(reaction=rxn, base_adapter='gcn')
+
+    def test_get_wrapper_constraints_unsupported_wrapper(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        with self.assertRaises(ValueError):
+            get_wrapper_constraints(wrapper='foo_wrapper', reaction=rxn, seed={})
 
 
 if __name__ == '__main__':
