@@ -10,6 +10,8 @@ import itertools
 import os
 import shutil
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from arc.common import ARC_TESTING_PATH, almost_equal_coords
 from arc.family import get_reaction_family_products
@@ -28,9 +30,11 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_neighbors_by_electronegativity,
                                             get_matching_dihedrals,
                                             generate_dihedral_variants,
+                                            h_abstraction,
                                             check_dao_angle,
                                             check_ts_bonds,
                                             )
+from arc.job.adapters.ts.seed_hub import get_ts_seeds, get_wrapper_constraints
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
 from arc.species.species import ARCSpecies
@@ -937,6 +941,19 @@ H      -3.45360689    0.15275707   -0.76116277""")
         h2o = ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz)
         rxn12 = ARCReaction(r_species=[nh3, oh], p_species=[nh2, h2o])
         self.assertEqual(rxn12.family, 'H_Abstraction')
+        raw_seeds = h_abstraction(reaction=rxn12, dihedral_increment=60)
+        expected_reactive_atoms = [
+            {'A': product_dict['r_label_map']['*1'],
+             'H': product_dict['r_label_map']['*2'],
+             'B': product_dict['r_label_map']['*3']}
+            for product_dict in rxn12.product_dicts
+        ]
+        for seed in raw_seeds:
+            reactive_atoms = seed['metadata']['reactive_atoms']
+            self.assertIn(reactive_atoms, expected_reactive_atoms)
+            self.assertTrue(seed['xyz']['symbols'][reactive_atoms['H']].startswith('H'))
+            self.assertFalse(seed['xyz']['symbols'][reactive_atoms['A']].startswith('H'))
+            self.assertFalse(seed['xyz']['symbols'][reactive_atoms['B']].startswith('H'))
         heuristics_12 = HeuristicsAdapter(job_type='tsg',
                                           reactions=[rxn12],
                                           testing=True,
@@ -2251,6 +2268,195 @@ H      -0.30139889    0.23142254    3.12085495"""
         """
         for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile'):
             shutil.rmtree(os.path.join(ARC_TESTING_PATH, sub), ignore_errors=True)
+
+
+class TestHeuristicsHub(unittest.TestCase):
+    """Unit tests for shared heuristic seed and CREST-constraint helpers."""
+
+    def test_get_ts_seeds_h_abstraction(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        with patch('arc.job.adapters.ts.heuristics.h_abstraction',
+                   return_value=[{'xyz': {'symbols': ('H',), 'coords': ((0.0, 0.0, 0.0),), 'isotopes': (1,)},
+                                  'method': 'Heuristics',
+                                  'metadata': {'source': 'reaction_mapping'}}]):
+            seeds = get_ts_seeds(reaction=rxn, base_adapter='heuristics', dihedral_increment=60)
+        self.assertEqual(len(seeds), 1)
+        self.assertEqual(seeds[0]['family'], 'H_Abstraction')
+        self.assertEqual(seeds[0]['method'], 'Heuristics')
+        self.assertEqual(seeds[0]['source_adapter'], 'heuristics')
+        self.assertEqual(seeds[0]['metadata'], {'source': 'reaction_mapping'})
+
+    def test_get_ts_seeds_hydrolysis(self):
+        rxn = SimpleNamespace(family='carbonyl_based_hydrolysis')
+        xyz = {'symbols': ('O',), 'coords': ((0.0, 0.0, 0.0),), 'isotopes': (16,)}
+        with patch('arc.job.adapters.ts.heuristics.hydrolysis',
+                   return_value=([xyz], ['carbonyl_based_hydrolysis'], [[0, 1, 2]])):
+            seeds = get_ts_seeds(reaction=rxn, base_adapter='heuristics')
+        self.assertEqual(len(seeds), 1)
+        self.assertEqual(seeds[0]['family'], 'carbonyl_based_hydrolysis')
+        self.assertEqual(seeds[0]['xyz'], xyz)
+        self.assertEqual(seeds[0]['metadata'], {'indices': [0, 1, 2]})
+
+    def test_get_wrapper_constraints_crest(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        xyz = str_to_xyz("""O 0.0000 0.0000 0.0000
+                            H 0.0000 0.0000 0.9600
+                            O 0.9000 0.0000 0.0000""")
+        seed = {'xyz': xyz, 'family': rxn.family}
+        constraints = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+        self.assertIsInstance(constraints, dict)
+        self.assertTrue({'A', 'H', 'B', 'atoms', 'distance_pairs', 'angle_atoms'} <= set(constraints))
+        self.assertEqual(
+            (constraints['A'], constraints['H'], constraints['B']),
+            constraints['angle_atoms'],
+        )
+        self.assertEqual(len(constraints['atoms']), 3)
+        self.assertEqual(len(constraints['distance_pairs']), 2)
+
+    def test_get_wrapper_constraints_crest_symmetric_oh_oh(self):
+        """The transferring H must be bracketed by the two O atoms in either atom ordering."""
+        rxn = SimpleNamespace(family='H_Abstraction')
+        seeds_and_expected_atoms = [
+            (str_to_xyz("""O 0.00000000 -0.02752832 -1.20590500
+                            H 0.00000000 -0.02752832 -0.03383145
+                            O 0.00000000 -0.02752832  1.12142787
+                            H 0.00000000  0.90131726  1.37454478"""), 1),
+            (str_to_xyz("""O 0.00000000 -0.02752832  1.12142787
+                            H 0.00000000  0.90131726  1.37454478
+                            O 0.00000000 -0.02752832 -1.20590500
+                            H 0.00000000 -0.02752832 -0.03383145"""), 3),
+        ]
+        for xyz, expected_h_atom in seeds_and_expected_atoms:
+            with self.subTest(symbols=xyz['symbols']):
+                seed = {
+                    'xyz': xyz,
+                    'family': rxn.family,
+                    'metadata': {'reactive_atoms': {'A': 0, 'H': expected_h_atom, 'B': 2}},
+                }
+                constraints = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+                self.assertEqual(constraints['angle_atoms'][1], expected_h_atom)
+                self.assertSetEqual({constraints['angle_atoms'][0], constraints['angle_atoms'][2]}, {0, 2})
+                self.assertFalse(xyz['symbols'][constraints['angle_atoms'][0]].startswith('H'))
+                self.assertFalse(xyz['symbols'][constraints['angle_atoms'][2]].startswith('H'))
+
+    def test_get_wrapper_constraints_crest_rejects_hydrogen_as_heavy_atom(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        xyz = str_to_xyz("""O -1.0000 0.0000 0.0000
+                            H  0.0000 0.0000 0.0000
+                            O  1.0000 0.0000 0.0000
+                            H  2.0000 0.0000 0.0000""")
+        seed = {
+            'xyz': xyz,
+            'family': rxn.family,
+            'metadata': {'reactive_atoms': {'A': 0, 'H': 1, 'B': 3}},
+        }
+        self.assertIsNone(get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed))
+
+    def test_get_ts_seeds_preserves_invalid_explicit_reactive_atoms(self):
+        """Do not hide an invalid generator mapping with the geometric compatibility fallback."""
+        rxn = SimpleNamespace(family='H_Abstraction')
+        xyz = str_to_xyz("""O -1.0000 0.0000 0.0000
+                            H  0.0000 0.0000 0.0000
+                            O  1.0000 0.0000 0.0000
+                            H  2.0000 0.0000 0.0000""")
+        invalid_atoms = {'A': 0, 'H': 1, 'B': 3}
+        with patch('arc.job.adapters.ts.heuristics.h_abstraction', return_value=[{
+            'xyz': xyz,
+            'method': 'Heuristics',
+            'metadata': {'reactive_atoms': invalid_atoms},
+        }]):
+            seed = get_ts_seeds(reaction=rxn, base_adapter='heuristics')[0]
+        self.assertEqual(seed['metadata']['reactive_atoms'], invalid_atoms)
+        self.assertIsNone(get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed))
+
+    def test_get_wrapper_constraints_crest_prefers_explicit_reactive_atoms(self):
+        """Explicit generator metadata wins when distances would select a spectator hydrogen."""
+        rxn = SimpleNamespace(family='H_Abstraction')
+        xyz = str_to_xyz("""O -1.0000 0.0000 0.0000
+                            H  0.0000 0.0000 0.0000
+                            O  1.0000 0.0000 0.0000
+                            H  0.0000 1.5000 0.0000""")
+        seed = {
+            'xyz': xyz,
+            'family': rxn.family,
+            'metadata': {'reactive_atoms': {'A': 0, 'H': 3, 'B': 2}},
+        }
+        self.assertEqual(
+            get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed),
+            {
+                'A': 0,
+                'H': 3,
+                'B': 2,
+                'atoms': (0, 3, 2),
+                'distance_pairs': ((0, 3), (3, 2)),
+                'angle_atoms': (0, 3, 2),
+            },
+        )
+
+    def test_get_wrapper_constraints_crest_xy_addition(self):
+        """XY constraints follow the exact family-label mapping for both seed orderings."""
+        rxn = SimpleNamespace(family='XY_Addition_MultipleBond')
+        xyz = str_to_xyz("""C 0.0 0.0  0.667
+                            C 0.0 0.0 -0.667
+                            H 0.0 1.6  0.667
+                            Cl 0.0 2.1 -0.667""")
+        for reactive_atoms in (
+            {'*1': 1, '*2': 0, '*3': 2, '*4': 3},
+            {'*1': 0, '*2': 1, '*3': 2, '*4': 3},
+        ):
+            with self.subTest(reactive_atoms=reactive_atoms):
+                seed = {
+                    'xyz': xyz,
+                    'family': rxn.family,
+                    'metadata': {'reactive_atoms': reactive_atoms},
+                }
+                self.assertEqual(
+                    get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed),
+                    {
+                        'atoms': tuple(reactive_atoms[label] for label in ('*1', '*2', '*3', '*4')),
+                        'distance_pairs': (
+                            (reactive_atoms['*1'], reactive_atoms['*3']),
+                            (reactive_atoms['*2'], reactive_atoms['*4']),
+                            (reactive_atoms['*3'], reactive_atoms['*4']),
+                        ),
+                    },
+                )
+
+    def test_get_wrapper_constraints_crest_rejects_invalid_explicit_xy_atoms(self):
+        """Do not infer an XY mapping when explicit generator metadata is invalid."""
+        rxn = SimpleNamespace(family='XY_Addition_MultipleBond')
+        xyz = str_to_xyz("""C 0.0 0.0  0.667
+                            C 0.0 0.0 -0.667
+                            H 0.0 1.6  0.667
+                            Cl 0.0 2.1 -0.667""")
+        invalid_atoms = {'*1': 0, '*2': 1, '*3': 2, '*4': 2}
+        with patch('arc.job.adapters.ts.xy_addition.xy_addition', return_value=[{
+            'xyz': xyz,
+            'method': 'Heuristics-XY',
+            'metadata': {'reactive_atoms': invalid_atoms},
+        }]):
+            seed = get_ts_seeds(reaction=rxn)[0]
+        self.assertEqual(seed['metadata']['reactive_atoms'], invalid_atoms)
+        self.assertIsNone(get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed))
+
+    def test_get_wrapper_constraints_crest_unsupported_family(self):
+        rxn = SimpleNamespace(family='carbonyl_based_hydrolysis')
+        xyz = str_to_xyz("""O 0.0000 0.0000 0.0000
+                            H 0.0000 0.0000 0.9600
+                            H 0.9000 0.0000 0.0000""")
+        seed = {'xyz': xyz, 'family': rxn.family}
+        atoms = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+        self.assertIsNone(atoms)
+
+    def test_get_ts_seeds_unsupported_adapter(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        with self.assertRaises(ValueError):
+            get_ts_seeds(reaction=rxn, base_adapter='gcn')
+
+    def test_get_wrapper_constraints_unsupported_wrapper(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        with self.assertRaises(ValueError):
+            get_wrapper_constraints(wrapper='foo_wrapper', reaction=rxn, seed={})
 
 
 if __name__ == '__main__':
