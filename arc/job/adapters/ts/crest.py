@@ -281,7 +281,6 @@ class CrestAdapter(JobAdapter):
                                        success=True,
                                        family=rxn.family,
                                        xyz=xyz,
-                                       level={'method': 'gfn2-xtb', 'software': 'crest'},
                                        )
                     rxn.ts_species.ts_guesses.append(ts_guess)
                     save_geo(xyz=xyz,

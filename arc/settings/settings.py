@@ -9,7 +9,6 @@ import glob
 import os
 import string
 import sys
-import shutil
 from arc.settings.crest import (
     find_crest_executable,
     find_highest_version_in_directory,

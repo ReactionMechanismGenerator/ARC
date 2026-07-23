@@ -2305,7 +2305,7 @@ class TestHeuristicsHub(unittest.TestCase):
         seed = {'xyz': xyz, 'family': rxn.family}
         constraints = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
         self.assertIsInstance(constraints, dict)
-        self.assertTrue({'A', 'H', 'B', 'atoms', 'distance_pairs', 'angle_atoms'} <= set(constraints))
+        self.assertLessEqual({'A', 'H', 'B', 'atoms', 'distance_pairs', 'angle_atoms'}, set(constraints))
         self.assertEqual(
             (constraints['A'], constraints['H'], constraints['B']),
             constraints['angle_atoms'],

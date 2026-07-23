@@ -6,7 +6,7 @@ import math
 import numpy as np
 import os
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Optional
 from collections.abc import Iterable
 
 from ase import Atoms
