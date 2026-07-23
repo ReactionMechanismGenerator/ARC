@@ -20,6 +20,7 @@ from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 import arc.species.converter as converter
 from arc.common import (ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists,
                         almost_equal_lists, distance_matrix)
+from arc.constants import angstrom_to_bohr
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
 from arc.species.perceive import perceive_molecule_from_xyz
@@ -791,6 +792,25 @@ H      3.654100    0.340300    0.057100"""
         self.assertEqual(xyz_t2, self.xyz2['Turbomole'])
         self.assertEqual(xyz_t6, self.xyz6['Turbomole'])
         self.assertEqual(xyz_t6_eht, self.xyz6['Turbomole eht'])
+
+    def test_xyz_to_turbomol_format_in_bohr(self):
+        """Test that xyz_to_turbomol_format() writes Bohr coordinates under a plain $coord header."""
+        xyz = self.xyz6['dict']
+        bohr = converter.xyz_to_turbomol_format(xyz_dict=xyz, units='bohr')
+        lines = bohr.splitlines()
+        self.assertEqual(lines[0], '$coord')
+        self.assertEqual(lines[-1], '$end')
+        self.assertTrue(bohr.endswith('$end\n'))
+        self.assertEqual(len(lines), len(xyz['symbols']) + 2)
+        for line, symbol, coord in zip(lines[1:-1], xyz['symbols'], xyz['coords']):
+            tokens = line.split()
+            self.assertEqual(tokens[3], symbol.lower())
+            for value, expected in zip(tokens[:3], coord):
+                self.assertAlmostEqual(float(value), expected * angstrom_to_bohr, delta=1e-8)
+        self.assertEqual(converter.xyz_to_turbomol_format(xyz_dict=xyz, units='angstrom'),
+                         converter.xyz_to_turbomol_format(xyz_dict=xyz))
+        with self.assertRaises(ConverterError):
+            converter.xyz_to_turbomol_format(xyz_dict=xyz, units='nm')
 
     def test_xyz_to_coords_and_element_numbers(self):
         """Test the xyz_to_coords_and_element_numbers() function."""

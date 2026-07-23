@@ -13,6 +13,14 @@ Todo:
     - use FF or TorchANI to only retain guesses with reasonable energies
     - Think: two H sites on a CH2 element, one being abstracted. On which one in the reactant do we put the abstractor?
       Can/should we try both?
+
+``BREAKING_BOND_LENGTHS`` and ``FORMING_BOND_LENGTHS`` map an element to the absolute distance (in Angstrom) of a
+reactive bond of an H_Abstraction TS seed A-H...B: the breaking A--H bond is keyed on the donor element A, and the
+forming H--B bond on the acceptor element B. The values are the per-element medians of the breaking and forming bond
+lengths over a dataset of 1670 DFT-optimized H-abstraction transition states. A bond whose partner element has no
+entry is set to the respective bond of the reactant or product well multiplied by ``DEFAULT_BOND_STRETCH``. The two
+bonds are treated independently, so one side of a seed may take the absolute distance while the other takes the
+multiplicative stretch.
 """
 
 import copy
@@ -26,6 +34,7 @@ from arc.common import (ARC_PATH, almost_equal_coords, get_angle_in_180_range, g
 from arc.family import get_reaction_family_products
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
+from arc.job.adapters.ts.xy_addition import xy_addition
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import (compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz,
@@ -45,6 +54,10 @@ FAMILY_SETS = {'hydrolysis_set_1': ['carbonyl_based_hydrolysis', 'ether_hydrolys
                'hydrolysis_set_2': ['nitrile_hydrolysis']}
 
 DIHEDRAL_INCREMENT = 30
+
+BREAKING_BOND_LENGTHS = {'C': 1.31, 'N': 1.23, 'O': 1.19}
+FORMING_BOND_LENGTHS = {'C': 1.37, 'N': 1.30, 'O': 1.26}
+DEFAULT_BOND_STRETCH = 1.2
 
 ELECTRONEGATIVITIES = read_yaml_file(os.path.join(ARC_PATH, 'data', 'electronegativity.yml'))
 
@@ -258,54 +271,51 @@ class HeuristicsAdapter(JobAdapter):
                                             multiplicity=rxn.multiplicity,
                                             )
 
-            xyzs = list()
-            tsg, families = None, None
-            if rxn.family == 'H_Abstraction':
-                tsg = TSGuess(method='Heuristics')
-                tsg.tic()
-                xyzs = h_abstraction(reaction=rxn, dihedral_increment=self.dihedral_increment)
-                tsg.tok()
+            tsg = TSGuess(method='Heuristics')
+            tsg.tic()
+            xyzs = get_heuristics_seeds(reaction=rxn, dihedral_increment=self.dihedral_increment)
+            tsg.tok()
+            if not xyzs:
+                logger.warning(f'Heuristics TS search failed to generate any valid TS guesses for {rxn.label}.')
+                continue
 
-            if rxn.family in FAMILY_SETS['hydrolysis_set_1'] or rxn.family in FAMILY_SETS['hydrolysis_set_2']:
-                try:
-                    tsg = TSGuess(method='Heuristics')
-                    tsg.tic()
-                    xyzs, families, indices = hydrolysis(reaction=rxn)
-                    tsg.tok()
-                    if not xyzs:
-                        logger.warning(f'Heuristics TS search failed to generate any valid TS guesses for {rxn.label}.')
-                        continue
-                except ValueError as e:
-                    logger.warning(f'Heuristics TS search could not generate a hydrolysis TS guess for {rxn.label}: {e}')
+            for method_index, xyz_entry in enumerate(xyzs):
+                xyz = xyz_entry.get('xyz')
+                method_label = xyz_entry.get('method', 'Heuristics')
+                family = xyz_entry.get('family', rxn.family)
+                if xyz is None:
                     continue
-
-            for method_index, xyz in enumerate(xyzs):
                 unique = True
                 for other_tsg in rxn.ts_species.ts_guesses:
                     if almost_equal_coords(xyz, other_tsg.initial_xyz):
-                        if 'heuristics' not in other_tsg.method.lower():
-                            other_tsg.method += ' and Heuristics'
+                        existing_sources = getattr(other_tsg, 'method_sources', None)
+                        if existing_sources is not None:
+                            combined_sources = list(existing_sources) + [method_label]
+                        else:
+                            combined_sources = [other_tsg.method, method_label]
+                        other_tsg.method_sources = TSGuess._normalize_method_sources(combined_sources)
                         unique = False
                         break
                 if unique:
-                    ts_guess = TSGuess(method='Heuristics',
+                    ts_guess = TSGuess(method=method_label,
                                        method_index=method_index,
                                        t0=tsg.t0,
                                        execution_time=tsg.execution_time,
                                        success=True,
-                                       family=rxn.family if families is None else families[method_index],
+                                       family=family,
                                        xyz=xyz,
                                        )
                     rxn.ts_species.append_ts_guess(ts_guess)
                     save_geo(xyz=xyz,
                              path=self.local_path,
-                             filename=f'Heuristics_{method_index}',
+                             filename=f'{method_label}_{method_index}',
                              format_='xyz',
-                             comment=f'Heuristics {method_index}, family: {rxn.family}',
+                             comment=f'{method_label} {method_index}, family: {family}',
                              )
 
             if len(self.reactions) < 5:
-                successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'heuristics' in tsg.method])
+                successes = len([tsg for tsg in rxn.ts_species.ts_guesses
+                                 if tsg.success and 'heuristics' in tsg.method.lower()])
                 if successes:
                     logger.info(f'Heuristics successfully found {successes} TS guesses for {rxn.label}.')
                 else:
@@ -330,8 +340,8 @@ def combine_coordinates_with_redundant_atoms(xyz_1: dict[str, Any],
                                              h2: int,
                                              c: int | None = None,
                                              d: int | None = None,
-                                             r1_stretch: float = 1.2,
-                                             r2_stretch: float = 1.2,
+                                             r1_stretch: float | None = None,
+                                             r2_stretch: float | None = None,
                                              a2: float = 180.0,
                                              d2: float | None = None,
                                              d3: float | None = None,
@@ -359,13 +369,13 @@ def combine_coordinates_with_redundant_atoms(xyz_1: dict[str, Any],
                             ('R_1_0', None, None),  # 1, atom C
                             ('R_2_1', 'A_2_1_0', None),  # 2
                             ('R_3_2', 'A_3_2_0', 'D_3_2_0_1'),  # 3
-                            ('R_4_3' * r1_stretch, 'A_4_3_2', 'D_4_3_2_1')),  # 4, H1
+                            ('R_4_3', 'A_4_3_2', 'D_4_3_2_1')),  # 4, H1, R_4_3 is the breaking bond
                  'vars': {...},
                  'map': {...}}
 
         zmat2 = {'symbols': ('H', 'H', 'H', 'H', 'C'),
                  'coords': ((None, None, None),  # H2, redundant H atom, will be united with H1
-                            ('R_5_4' * r2_stretch, a2 (B-H-A) = 'A_5_4_0', d2 (B-H-A-C) = 'D_5_4_0_1'),  # 5, atom B
+                            ('R_5_4', a2 (B-H-A) = 'A_5_4_0', d2 (B-H-A-C) = 'D_5_4_0_1'),  # 5, B, forming bond
                             ('R_6_5', 'A_6_5_4', d3 (D-B-H-A) = 'D_6_5_4_0'),  # 6, atom D
                             ('R_7_6', 'A_7_6_4', 'D_7_6_4_5'),  # 7
                             ('R_8_7', 'A_8_7_6', 'D_8_7_6_5')),  # 8
@@ -385,10 +395,14 @@ def combine_coordinates_with_redundant_atoms(xyz_1: dict[str, Any],
                            (atom C).
         d (int | None): The 0-index of an atom in ``xyz2`` connected to either B or H2 which is neither B nor H2
                            (atom D).
-        r1_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
-                                      atom ``h1`` in ``xyz1`` (bond A-H1).
-        r2_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
-                                      atom ``h2`` in ``xyz2`` (bond B-H2).
+        r1_stretch (float | None, optional): The factor by which to multiply (stretch/shrink) the bond length to the
+                                            terminal atom ``h1`` in ``xyz1`` (bond A-H1). If ``None``, the bond is set
+                                            to ``BREAKING_BOND_LENGTHS`` of atom A's element if it has an entry, and
+                                            is multiplied by ``DEFAULT_BOND_STRETCH`` otherwise.
+        r2_stretch (float | None, optional): The factor by which to multiply (stretch/shrink) the bond length to the
+                                            terminal atom ``h2`` in ``xyz2`` (bond B-H2). If ``None``, the bond is set
+                                            to ``FORMING_BOND_LENGTHS`` of atom B's element if it has an entry, and
+                                            is multiplied by ``DEFAULT_BOND_STRETCH`` otherwise.
         a2 (float, optional): The angle (in degrees) in the combined structure between atoms B-H-A (angle B-H-A).
         d2 (float | None): The dihedral angle (in degrees) between atoms B-H-A-C (dihedral B-H-A-C).
                               This argument must be given only if the a2 angle is not linear,
@@ -409,9 +423,18 @@ def combine_coordinates_with_redundant_atoms(xyz_1: dict[str, Any],
     is_a2_linear, is_mol_1_linear, a, b = _validate_combine_coordinates_with_redundant_atoms_args(
         xyz_1, xyz_2, mol_1, mol_2, h1, h2, a2, d2, d3, c, d)
     zmat_1, zmat_2 = generate_the_two_constrained_zmats(xyz_1, xyz_2, mol_1, mol_2, h1, h2, a, b, c, d)
-    # Stretch the A--H1 and B--H2 bonds.
-    stretch_zmat_bond(zmat=zmat_1, indices=(h1, a), stretch=r1_stretch)
-    stretch_zmat_bond(zmat=zmat_2, indices=(b, h2), stretch=r2_stretch)
+    set_reactive_bond(zmat=zmat_1,
+                      indices=(h1, a),
+                      partner_symbol=xyz_1['symbols'][a],
+                      lengths=BREAKING_BOND_LENGTHS,
+                      stretch=r1_stretch,
+                      )
+    set_reactive_bond(zmat=zmat_2,
+                      indices=(b, h2),
+                      partner_symbol=xyz_2['symbols'][b],
+                      lengths=FORMING_BOND_LENGTHS,
+                      stretch=r2_stretch,
+                      )
     add_dummy = is_a2_linear and len(zmat_1['symbols']) > 2 and not is_mol_1_linear
     glue_params = determine_glue_params(zmat=zmat_1,
                                         add_dummy=add_dummy,
@@ -551,6 +574,49 @@ def stretch_zmat_bond(zmat: dict,
     """
     param = get_parameter_from_atom_indices(zmat=zmat, indices=indices, xyz_indexed=True)
     zmat['vars'][param] *= stretch
+
+
+def set_zmat_bond(zmat: dict,
+                  indices: tuple[int, int],
+                  length: float):
+    """
+    Set a bond in a zmat to an absolute length.
+
+    Args:
+        zmat (dict): The zmat to process.
+        indices (tuple): A length 2 tuple with the 0-indices of the xyz (not zmat) atoms representing the bond to set.
+        length (float): The bond length to set, in Angstrom.
+    """
+    param = get_parameter_from_atom_indices(zmat=zmat, indices=indices, xyz_indexed=True)
+    zmat['vars'][param] = length
+
+
+def set_reactive_bond(zmat: dict,
+                      indices: tuple[int, int],
+                      partner_symbol: str,
+                      lengths: dict[str, float],
+                      stretch: float | None = None,
+                      ) -> None:
+    """
+    Set a reactive bond of an H_Abstraction TS seed in a zmat.
+
+    With an explicit ``stretch``, the bond length is multiplied by it. Otherwise the bond is set to
+    ``lengths[partner_symbol]`` if ``partner_symbol`` has an entry, and is multiplied by ``DEFAULT_BOND_STRETCH``
+    if it does not.
+
+    Args:
+        zmat (dict): The zmat to process.
+        indices (tuple): A length 2 tuple with the 0-indices of the xyz (not zmat) atoms representing the bond to set.
+        partner_symbol (str): The element symbol of the partner of the transferred hydrogen in this bond.
+        lengths (dict[str, float]): The absolute bond lengths in Angstrom, keyed by the partner element.
+        stretch (float | None, optional): An explicit factor by which to multiply the bond length instead.
+    """
+    if stretch is not None:
+        stretch_zmat_bond(zmat=zmat, indices=indices, stretch=stretch)
+    elif partner_symbol in lengths:
+        set_zmat_bond(zmat=zmat, indices=indices, length=lengths[partner_symbol])
+    else:
+        stretch_zmat_bond(zmat=zmat, indices=indices, stretch=DEFAULT_BOND_STRETCH)
 
 
 def determine_glue_params(zmat: dict,
@@ -854,8 +920,8 @@ def are_h_abs_wells_reversed(rxn: ARCReaction,
 
 
 def h_abstraction(reaction: ARCReaction,
-                  r1_stretch: float = 1.2,
-                  r2_stretch: float = 1.2,
+                  r1_stretch: float | None = None,
+                  r2_stretch: float | None = None,
                   a2: float = 180,
                   dihedral_increment: int | None = None,
                   ) -> list[dict]:
@@ -864,15 +930,23 @@ def h_abstraction(reaction: ARCReaction,
 
     Args:
         reaction: An ARCReaction instance.
-        r1_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
-                                      atom ``h1`` in ``xyz1`` (bond A-H1) relative to the respective well.
-        r2_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
-                                      atom ``h2`` in ``xyz2`` (bond B-H2) relative to the respective well.
+        r1_stretch (float | None, optional): The factor by which to multiply (stretch/shrink) the bond length to the
+                                            terminal atom ``h1`` in ``xyz1`` (bond A-H1) relative to the respective
+                                            well. If ``None``, the bond is set to ``BREAKING_BOND_LENGTHS`` of atom
+                                            A's element if it has an entry, and is multiplied by
+                                            ``DEFAULT_BOND_STRETCH`` otherwise.
+        r2_stretch (float | None, optional): The factor by which to multiply (stretch/shrink) the bond length to the
+                                            terminal atom ``h2`` in ``xyz2`` (bond B-H2) relative to the respective
+                                            well. If ``None``, the bond is set to ``FORMING_BOND_LENGTHS`` of atom
+                                            B's element if it has an entry, and is multiplied by
+                                            ``DEFAULT_BOND_STRETCH`` otherwise.
         a2 (float, optional): The angle (in degrees) in the combined structure between atoms B-H-A (angle B-H-A).
         dihedral_increment (int, optional): The dihedral increment to use for B-H-A-C and D-B-H-C dihedral scans.
 
     Returns: list[dict]
-        Entries are Cartesian coordinates of TS guesses for all reactions. Returns an empty list if
+        One entry per unique TS guess, holding its Cartesian coordinates under ``xyz``, the ``method`` label
+        ``'Heuristics'``, and under ``metadata`` the ``reactive_atoms`` mapping of the donor ``A``, the transferred
+        hydrogen ``H`` and the acceptor ``B`` to their reactant atom indices. Returns an empty list if
         ``reaction.product_dicts`` is empty (i.e., no matching H_Abstraction family products were identified).
     """
     xyz_guesses = list()
@@ -883,6 +957,11 @@ def h_abstraction(reaction: ARCReaction,
         return xyz_guesses
     reactants_reversed, products_reversed = are_h_abs_wells_reversed(rxn=reaction, product_dict=reaction.product_dicts[0])
     for product_dict in reaction.product_dicts:
+        reactive_atoms = {
+            'A': product_dict['r_label_map']['*1'],
+            'H': product_dict['r_label_map']['*2'],
+            'B': product_dict['r_label_map']['*3'],
+        }
         # Identify R1H and R2H in the "R1H + R2 <=> R1 + R2H" or "R2 + R1H <=> R2H + R1" reaction
         # The expected RMG atom labels are: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2).
         # They appear in each product_dict under the 'r_label_map' key.
@@ -956,8 +1035,51 @@ def h_abstraction(reaction: ARCReaction,
                 else:
                     # This TS is unique, and has no atom collisions.
                     zmats.append(zmat_guess)
-                    xyz_guesses.append(xyz_guess)
+                    xyz_guesses.append({
+                        'xyz': xyz_guess,
+                        'method': 'Heuristics',
+                        'metadata': {'reactive_atoms': reactive_atoms},
+                    })
     return xyz_guesses
+
+
+def get_heuristics_seeds(reaction: 'ARCReaction',
+                         dihedral_increment: int | None = None,
+                         ) -> list[dict]:
+    """
+    Return the TS seeds the heuristics builders generate for a reaction.
+
+    ``H_Abstraction`` seeds come from :func:`h_abstraction`, hydrolysis seeds from :func:`hydrolysis` (none, with a
+    warning, when it raises a ``ValueError``), and ``XY_Addition_MultipleBond`` seeds from
+    :func:`arc.job.adapters.ts.xy_addition.xy_addition`. Any other family yields no seeds.
+
+    Args:
+        reaction (ARCReaction): The reaction.
+        dihedral_increment (int, optional): The dihedral scan increment of the H_Abstraction builder.
+
+    Returns:
+        list[dict]: Seed entries holding the ``xyz``, ``method``, ``family`` and ``metadata`` keys. The metadata of
+                    a hydrolysis seed holds its ``indices``, and that of the other seeds what their builder reports.
+    """
+    if reaction.family == 'H_Abstraction':
+        entries = h_abstraction(reaction=reaction, dihedral_increment=dihedral_increment)
+    elif reaction.family in FAMILY_SETS['hydrolysis_set_1'] + FAMILY_SETS['hydrolysis_set_2']:
+        try:
+            xyzs, families, indices = hydrolysis(reaction=reaction)
+        except ValueError as e:
+            logger.warning(f'Heuristics TS search could not generate a hydrolysis TS guess for {reaction.label}: {e}')
+            return list()
+        return [{'xyz': xyz, 'method': 'Heuristics', 'family': family, 'metadata': {'indices': idx}}
+                for xyz, family, idx in zip(xyzs, families, indices)]
+    elif reaction.family == 'XY_Addition_MultipleBond':
+        entries = xy_addition(reaction=reaction)
+    else:
+        return list()
+    return [{'xyz': entry['xyz'],
+             'method': entry.get('method', 'Heuristics'),
+             'family': reaction.family,
+             'metadata': dict(entry.get('metadata') or dict()),
+             } for entry in entries]
 
 
 def hydrolysis(reaction: ARCReaction) -> tuple[list[dict], list[dict], list[int]]:
