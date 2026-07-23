@@ -1112,6 +1112,106 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertIsNone(failed.energy)
         self.assertEqual(sched.output['TS_single']['paths']['neb'], good.log_path)
 
+    def _make_ts_scheduler(self, label: str, project: str, folder: str, ts_guesses: list) -> Scheduler:
+        """
+        Create a Scheduler holding a single TS species with the given TS guesses.
+
+        Args:
+            label (str): The TS species label.
+            project (str): The project name.
+            folder (str): The name of the project folder under ARC's Projects directory.
+            ts_guesses (list): The TSGuess object instances to assign to the TS species.
+
+        Returns:
+            Scheduler: The scheduler instance.
+        """
+        ts_spc = ARCSpecies(label=label, is_ts=True, multiplicity=1, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = ts_guesses
+        project_directory = os.path.join(ARC_PATH, 'Projects', folder)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        return Scheduler(project=project, ess_settings=self.ess_settings,
+                         species_list=[ts_spc],
+                         opt_level=Level(repr=default_levels_of_theory['opt']),
+                         freq_level=Level(repr=default_levels_of_theory['freq']),
+                         sp_level=Level(repr=default_levels_of_theory['sp']),
+                         ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                         project_directory=project_directory,
+                         testing=True,
+                         job_types=self.job_types1,
+                         )
+
+    def test_determine_most_likely_ts_conformer_credits_all_method_sources(self):
+        """Test that every method source of a successful TS guess is reported as a successful method."""
+        xyz_1 = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        xyz_2 = str_to_xyz("""N       0.92779059    0.52946178    0.00000000
+        H       1.84402049    1.05819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.93779059    1.25790192    0.75426890""")
+        xyz_3 = str_to_xyz("""N       0.95779059    0.55946178    0.00000000
+        H       1.88402049    1.09819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.96779059    1.28790192    0.78426890""")
+        merged = TSGuess(index=0, method='heuristics', success=True, energy=100.0, xyz=xyz_1,
+                         execution_time='0:00:01')
+        merged.method_sources = ['heuristics', 'crest']
+        merged.opt_xyz = xyz_1
+        merged.imaginary_freqs = [-500.0]
+        sourceless = TSGuess(index=1, method='xtb_gsm', success=True, energy=120.0, xyz=xyz_2,
+                             execution_time='0:00:01')
+        sourceless.method_sources = None
+        sourceless.opt_xyz = xyz_2
+        sourceless.imaginary_freqs = [-400.0]
+        failed = TSGuess(index=2, method='AutoTST', success=False, xyz=xyz_3, execution_time='0:00:01')
+
+        label = 'TS_method_sources'
+        sched = self._make_ts_scheduler(label=label, project='test_ts_method_sources',
+                                        folder='arc_project_for_testing_delete_after_usage_method_sources',
+                                        ts_guesses=[merged, sourceless, failed])
+        sched.determine_most_likely_ts_conformer(label=label)
+
+        successful_methods = sched.species_dict[label].successful_methods
+        unsuccessful_methods = sched.species_dict[label].unsuccessful_methods
+        self.assertEqual(successful_methods, ['heuristics', 'crest', 'xtb_gsm'])
+        self.assertEqual(unsuccessful_methods, ['autotst'])
+        self.assertNotIn('crest', unsuccessful_methods)
+        self.assertNotIn('heuristics', unsuccessful_methods)
+        self.assertNotIn('xtb_gsm', unsuccessful_methods)
+
+    def test_determine_most_likely_ts_conformer_dedups_methods_case_insensitively(self):
+        """Test that a method credited under different letter cases is reported once and never as unsuccessful."""
+        xyz_1 = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        xyz_2 = str_to_xyz("""N       0.92779059    0.52946178    0.00000000
+        H       1.84402049    1.05819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.93779059    1.25790192    0.75426890""")
+        upper = TSGuess(index=0, method='crest', success=True, energy=100.0, xyz=xyz_1,
+                        execution_time='0:00:01')
+        upper.method = 'CREST'
+        upper.opt_xyz = xyz_1
+        upper.imaginary_freqs = [-500.0]
+        lower = TSGuess(index=1, method='crest', success=True, energy=120.0, xyz=xyz_2,
+                        execution_time='0:00:01')
+        lower.opt_xyz = xyz_2
+        lower.imaginary_freqs = [-400.0]
+
+        label = 'TS_case_dedup'
+        sched = self._make_ts_scheduler(label=label, project='test_ts_case_dedup',
+                                        folder='arc_project_for_testing_delete_after_usage_case_dedup',
+                                        ts_guesses=[upper, lower])
+        sched.determine_most_likely_ts_conformer(label=label)
+
+        successful_methods = sched.species_dict[label].successful_methods
+        unsuccessful_methods = sched.species_dict[label].unsuccessful_methods
+        self.assertEqual(len(successful_methods), 1)
+        self.assertEqual(successful_methods[0].lower(), 'crest')
+        self.assertEqual(unsuccessful_methods, list())
+
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
         """Test that switch_ts resets job_types, convergence, cleans up IRC species, and clears pending pipes."""

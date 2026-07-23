@@ -73,10 +73,10 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', '
                              'R_Addition_MultipleBond': ['autotst', 'kinbot', 'goflow', 'rits', 'linear'],
                              'Retroene': ['kinbot', 'goflow', 'rits', 'linear'],
                              'Singlet_Carbene_Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
-                             'XY_Addition_MultipleBond': ['goflow', 'rits', 'linear'],
+                             'XY_Addition_MultipleBond': ['crest', 'goflow', 'rits', 'linear'],
                              'XY_elimination_hydroxyl': ['goflow', 'rits', 'linear'],
-                             'carbonyl_based_hydrolysis': ['heuristics'],
-                             'ether_hydrolysis': ['heuristics'],
+                             'carbonyl_based_hydrolysis': ['heuristics', 'crest'],
+                             'ether_hydrolysis': ['heuristics', 'crest'],
                              'halocarbene_recombination': ['goflow', 'rits', 'linear'],
                              'halocarbene_recombination_double': ['goflow', 'rits', 'linear'],
                              'intra_H_migration': ['autotst', 'gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
@@ -88,7 +88,7 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', '
                              'intra_substitutionS_cyclization': ['goflow', 'rits', 'linear'],
                              'intra_substitutionS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'lone_electron_pair_bond': ['goflow', 'rits', 'linear'],
-                             'nitrile_hydrolysis': ['heuristics']
+                             'nitrile_hydrolysis': ['heuristics', 'crest']
                              }
 
 all_families_ts_adapters = []
