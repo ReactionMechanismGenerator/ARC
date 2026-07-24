@@ -1,0 +1,664 @@
+"""
+Utilities for running CREST within ARC.
+
+Separated from heuristics so CREST can be conditionally imported and reused.
+"""
+
+import datetime
+import math
+import os
+import time
+from typing import TYPE_CHECKING, List, Optional, Union
+
+from arc.common import almost_equal_coords, get_logger
+from arc.imports import settings, submit_scripts
+from arc.job.adapter import JobAdapter
+from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
+from arc.job.adapters.ts.heuristics import DIHEDRAL_INCREMENT
+from arc.job.adapters.ts.seed_hub import get_backup_ts_seeds, get_ts_seeds, get_wrapper_constraints
+from arc.job.factory import register_job_adapter
+from arc.job.local import check_job_status, submit_job
+from arc.plotter import save_geo
+from arc.species.converter import reorder_xyz_string, xyz_file_format_to_xyz, xyz_to_str
+from arc.species.species import ARCSpecies, TSGuess
+
+if TYPE_CHECKING:
+    from arc.level import Level
+    from arc.reaction import ARCReaction
+
+logger = get_logger()
+
+MAX_CHECK_INTERVAL_SECONDS = 100
+
+CREST_PATH = settings.get("CREST_PATH", None)
+CREST_ENV_PATH = settings.get("CREST_ENV_PATH", None)
+SERVERS = settings.get("servers", {})
+
+
+def crest_available() -> bool:
+    """
+    Return whether CREST is configured for use.
+    """
+    return bool(SERVERS.get("local")) and bool(CREST_PATH or CREST_ENV_PATH)
+
+
+class CrestAdapter(JobAdapter):
+    """
+    A class for executing CREST TS conformer searches based on heuristics-generated guesses.
+    """
+
+    def __init__(self,
+                 project: str,
+                 project_directory: str,
+                 job_type: Union[List[str], str],
+                 args: Optional[dict] = None,
+                 bath_gas: Optional[str] = None,
+                 checkfile: Optional[str] = None,
+                 conformer: Optional[int] = None,
+                 constraints: Optional[List] = None,
+                 cpu_cores: Optional[str] = None,
+                 dihedral_increment: Optional[float] = None,
+                 dihedrals: Optional[List[float]] = None,
+                 directed_scan_type: Optional[str] = None,
+                 ess_settings: Optional[dict] = None,
+                 ess_trsh_methods: Optional[List[str]] = None,
+                 execution_type: Optional[str] = None,
+                 fine: bool = False,
+                 initial_time: Optional[Union['datetime.datetime', str]] = None,
+                 irc_direction: Optional[str] = None,
+                 job_id: Optional[int] = None,
+                 job_memory_gb: float = 14.0,
+                 job_name: Optional[str] = None,
+                 job_num: Optional[int] = None,
+                 job_server_name: Optional[str] = None,
+                 job_status: Optional[List[Union[dict, str]]] = None,
+                 level: Optional['Level'] = None,
+                 max_job_time: Optional[float] = None,
+                 run_multi_species: bool = False,
+                 reactions: Optional[List['ARCReaction']] = None,
+                 rotor_index: Optional[int] = None,
+                 server: Optional[str] = None,
+                 server_nodes: Optional[list] = None,
+                 queue: Optional[str] = None,
+                 attempted_queues: Optional[List[str]] = None,
+                 species: Optional[List[ARCSpecies]] = None,
+                 testing: bool = False,
+                 times_rerun: int = 0,
+                 torsions: Optional[List[List[int]]] = None,
+                 tsg: Optional[int] = None,
+                 xyz: Optional[dict] = None,
+                 ):
+
+        self.incore_capacity = 50
+        self.job_adapter = 'crest'
+        self.command = None
+        self.execution_type = execution_type or 'incore'
+
+        if reactions is None:
+            raise ValueError('Cannot execute TS CREST without ARCReaction object(s).')
+
+        dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
+
+        _initialize_adapter(obj=self,
+                            is_ts=True,
+                            project=project,
+                            project_directory=project_directory,
+                            job_type=job_type,
+                            args=args,
+                            bath_gas=bath_gas,
+                            checkfile=checkfile,
+                            conformer=conformer,
+                            constraints=constraints,
+                            cpu_cores=cpu_cores,
+                            dihedral_increment=dihedral_increment,
+                            dihedrals=dihedrals,
+                            directed_scan_type=directed_scan_type,
+                            ess_settings=ess_settings,
+                            ess_trsh_methods=ess_trsh_methods,
+                            fine=fine,
+                            initial_time=initial_time,
+                            irc_direction=irc_direction,
+                            job_id=job_id,
+                            job_memory_gb=job_memory_gb,
+                            job_name=job_name,
+                            job_num=job_num,
+                            job_server_name=job_server_name,
+                            job_status=job_status,
+                            level=level,
+                            max_job_time=max_job_time,
+                            run_multi_species=run_multi_species,
+                            reactions=reactions,
+                            rotor_index=rotor_index,
+                            server=server,
+                            server_nodes=server_nodes,
+                            queue=queue,
+                            attempted_queues=attempted_queues,
+                            species=species,
+                            testing=testing,
+                            times_rerun=times_rerun,
+                            torsions=torsions,
+                            tsg=tsg,
+                            xyz=xyz,
+                            )
+
+    def write_input_file(self) -> None:
+        pass
+
+    def set_files(self) -> None:
+        pass
+
+    def set_additional_file_paths(self) -> None:
+        pass
+
+    def set_input_file_memory(self) -> None:
+        pass
+
+    def execute_incore(self):
+        self._log_job_execution()
+        self.initial_time = self.initial_time if self.initial_time else datetime.datetime.now()
+
+        supported_families = [key for key, val in ts_adapters_by_rmg_family.items() if 'crest' in val]
+
+        self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
+        for rxn in self.reactions:
+            if rxn.family not in supported_families:
+                logger.warning(f'The CREST TS search adapter does not support the {rxn.family} reaction family.')
+                continue
+            if any(spc.get_xyz() is None for spc in rxn.r_species + rxn.p_species):
+                logger.warning(f'The CREST TS search adapter cannot process a reaction if 3D coordinates of '
+                               f'some/all of its reactants/products are missing.\nNot processing {rxn}.')
+                continue
+            if not crest_available():
+                logger.warning('CREST is not available. Skipping CREST TS search.')
+                break
+
+            if _crest_reactive_core_covers_molecule(rxn):
+                logger.info(
+                    f'Skipping CREST TS search for {rxn.label}: the reactive core spans essentially '
+                    f'the entire molecule (<=1 spectator atom), so CREST has no conformational degrees '
+                    f'of freedom to sample. Deferring to the other TS-search methods.'
+                )
+                continue
+
+            if rxn.ts_species is None:
+                rxn.ts_species = ARCSpecies(label='TS',
+                                            is_ts=True,
+                                            charge=rxn.charge,
+                                            multiplicity=rxn.multiplicity,
+                                            )
+
+            tsg = TSGuess(method='CREST')
+            tsg.tic()
+
+            crest_job_dirs = []
+            crest_references = {}
+            xyz_guesses = get_ts_seeds(
+                reaction=rxn,
+                base_adapter='heuristics',
+                dihedral_increment=self.dihedral_increment,
+            )
+            if not xyz_guesses:
+                # Backup path: CREST's own heuristic seed construction produced nothing
+                # (e.g. a linear/cumulene reactive center such as HCCO that the heuristic
+                # Z-matrix builder cannot assemble). Seed CREST instead from a successful
+                # TS guess that another adapter (e.g. AutoTST) already generated for this
+                # TS. Those guesses are on rxn.ts_species.ts_guesses because the incore TS
+                # adapters run sequentially with CREST last. CREST only needs a seed
+                # geometry plus the family reactive-atom constraints, and the constraints
+                # are re-derived from the seed geometry below, so an external guess is a
+                # valid seed. The feedback-loop guard (exclude_method='crest') ensures
+                # CREST is never seeded from a prior CREST result.
+                xyz_guesses = get_backup_ts_seeds(rxn, exclude_method='crest')
+                if xyz_guesses:
+                    logger.info(
+                        f'CREST heuristic seed construction failed for {rxn.label}; falling back to '
+                        f'{len(xyz_guesses)} external TS guess(es) as CREST seed(s).'
+                    )
+            if not xyz_guesses:
+                logger.warning(f'CREST TS search failed to generate any seed guesses for {rxn.label}.')
+                tsg.tok()
+                continue
+
+            for iteration, xyz_entry in enumerate(xyz_guesses):
+                xyz_guess = xyz_entry.get("xyz")
+                family = xyz_entry.get("family", rxn.family)
+                if xyz_guess is None:
+                    continue
+
+                crest_constraints = get_wrapper_constraints(
+                    wrapper='crest',
+                    reaction=rxn,
+                    seed=xyz_entry,
+                )
+                if not crest_constraints:
+                    logger.warning(
+                        f"Could not determine CREST constraint atoms for {rxn.label} crest seed {iteration} "
+                        f"(family: {family}). Skipping this CREST seed."
+                    )
+                    continue
+
+                crest_job_dir = crest_ts_conformer_search(
+                    xyz_guess,
+                    constraints=crest_constraints,
+                    path=self.local_path,
+                    xyz_crest_int=iteration,
+                )
+                crest_job_dirs.append(crest_job_dir)
+                crest_references[crest_job_dir] = {
+                    'xyz': xyz_guess,
+                    'constraints': crest_constraints,
+                }
+
+            if not crest_job_dirs:
+                logger.warning(f'CREST TS search failed to prepare any jobs for {rxn.label}.')
+                tsg.tok()
+                continue
+
+            crest_jobs = submit_crest_jobs(crest_job_dirs)
+            monitor_crest_jobs(crest_jobs)
+            xyz_guesses_crest = process_completed_jobs(crest_jobs, crest_references=crest_references)
+            tsg.tok()
+
+            for method_index, xyz in enumerate(xyz_guesses_crest):
+                if xyz is None:
+                    continue
+                unique = True
+                for other_tsg in rxn.ts_species.ts_guesses:
+                    if almost_equal_coords(xyz, other_tsg.initial_xyz):
+                        if hasattr(other_tsg, "method_sources"):
+                            other_tsg.method_sources = other_tsg._normalize_method_sources(
+                                (other_tsg.method_sources or []) + ["crest"]
+                            )
+                        unique = False
+                        break
+                if unique:
+                    # CREST is run without an explicit method flag, i.e., at its GFN2-xTB default.
+                    ts_guess = TSGuess(method='CREST',
+                                       index=len(rxn.ts_species.ts_guesses),
+                                       method_index=method_index,
+                                       t0=tsg.t0,
+                                       execution_time=tsg.execution_time,
+                                       success=True,
+                                       family=rxn.family,
+                                       xyz=xyz,
+                                       )
+                    rxn.ts_species.ts_guesses.append(ts_guess)
+                    save_geo(xyz=xyz,
+                             path=self.local_path,
+                             filename=f'CREST_{method_index}',
+                             format_='xyz',
+                             comment=f'CREST {method_index}, family: {rxn.family}',
+                             )
+
+            if len(self.reactions) < 5:
+                successes = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'crest' in tsg.method.lower()]
+                if successes:
+                    logger.info(f'CREST successfully found {len(successes)} TS guesses for {rxn.label}.')
+                else:
+                    logger.info(f'CREST did not find any successful TS guesses for {rxn.label}.')
+
+        self.final_time = datetime.datetime.now()
+
+    def execute_queue(self):
+        self.execute_incore()
+
+
+def _crest_reactive_core_covers_molecule(rxn: 'ARCReaction') -> bool:
+    """
+    Return whether the CREST reactive core spans essentially the whole molecule.
+
+    For H_Abstraction the reactive core is the three-center A--H--B triad. When the TS has
+    at most one atom outside that triad there are no meaningful spectator conformational
+    degrees of freedom for CREST metadynamics to sample, so CREST cannot improve on the
+    heuristic seed and should be skipped (the other TS-search methods still cover the case).
+
+    This is intentionally conservative: it only returns ``True`` for H_Abstraction systems
+    with <=1 spectator atom (i.e. total atom count <= 4), never for systems that retain
+    real spectator degrees of freedom.
+    """
+    if getattr(rxn, 'family', None) != 'H_Abstraction':
+        return False
+    reactant_species = getattr(rxn, 'r_species', None) or []
+    atom_counts = [getattr(spc, 'number_of_atoms', None) for spc in reactant_species]
+    if not atom_counts or any(count is None for count in atom_counts):
+        return False
+    reactive_core_size = 3  # the A--H--B triad
+    return (sum(atom_counts) - reactive_core_size) <= 1
+
+
+def crest_ts_conformer_search(
+    xyz_guess: dict,
+    a_atom: Optional[int] = None,
+    h_atom: Optional[int] = None,
+    b_atom: Optional[int] = None,
+    path: str = "",
+    xyz_crest_int: int = 0,
+    constraints: Optional[dict] = None,
+) -> str:
+    """
+    Prepare a CREST TS conformer search job:
+    - Write coords.ref and constraints.inp
+    - Write a PBS/HTCondor submit script using submit_scripts["local"]["crest"]
+    - Return the CREST job directory path
+    """
+    if constraints is None:
+        if not all(isinstance(atom, int) for atom in (a_atom, h_atom, b_atom)):
+            raise ValueError('CREST requires either a constraint specification or legacy A, H, and B atom indices.')
+        constraints = {
+            'atoms': (a_atom, h_atom, b_atom),
+            'distance_pairs': ((a_atom, h_atom), (h_atom, b_atom)),
+            'angle_atoms': (a_atom, h_atom, b_atom),
+        }
+
+    path = os.path.join(path, f"crest_{xyz_crest_int}")
+    os.makedirs(path, exist_ok=True)
+
+    # --- coords.ref ---
+    symbols = xyz_guess["symbols"]
+    converted_coords = reorder_xyz_string(
+        xyz_str=xyz_to_str(xyz_guess),
+        reverse_atoms=True,
+        convert_to="bohr",
+    )
+    coords_ref_content = f"$coord\n{converted_coords}\n$end\n"
+    coords_ref_path = os.path.join(path, "coords.ref")
+    with open(coords_ref_path, "w") as f:
+        f.write(coords_ref_content)
+
+    # --- constraints.inp ---
+    num_atoms = len(symbols)
+    # CREST uses 1-based indices.
+    participating_atoms = tuple(atom + 1 for atom in constraints['atoms'])
+    distance_pairs = tuple((atom_1 + 1, atom_2 + 1)
+                           for atom_1, atom_2 in constraints['distance_pairs'])
+
+    # The three-center H-abstraction path additionally pins the heavy--heavy (A--B)
+    # separation and the A--H--B bridge angle. Without them GFN2-xTB metadynamics can
+    # collapse a linear A...H...B seed into a bent A--B minimum on small double-radical
+    # PESs, and the post-CREST angle guard then rejects the result. ``angle_atoms`` is
+    # present only for the H-abstraction (three-center) case; the XY four-center path
+    # does not set it and is intentionally left unchanged.
+    angle_atoms = constraints.get('angle_atoms')
+    heavy_heavy_pair = None
+    angle_triad = None
+    if angle_atoms is not None:
+        angle_triad = tuple(atom + 1 for atom in angle_atoms)  # (A, H, B), 1-based
+        heavy_heavy_pair = (angle_triad[0], angle_triad[2])    # (A, B), 1-based
+
+    # All atoms outside the reactive zone go into the metadynamics atom list.
+    list_of_atoms_numbers_not_participating_in_reaction = [
+        i for i in range(1, num_atoms + 1) if i not in participating_atoms
+    ]
+
+    constraints_path = os.path.join(path, "constraints.inp")
+    with open(constraints_path, "w") as f:
+        f.write("$constrain\n")
+        f.write(f"  atoms: {', '.join(map(str, participating_atoms))}\n")
+        f.write("  force constant: 0.5\n")
+        f.write("  reference=coords.ref\n")
+        for atom_1, atom_2 in distance_pairs:
+            f.write(f"  distance: {atom_1}, {atom_2}, auto\n")
+        if heavy_heavy_pair is not None:
+            f.write(f"  distance: {heavy_heavy_pair[0]}, {heavy_heavy_pair[1]}, auto\n")
+        if angle_triad is not None:
+            f.write(f"  angle: {angle_triad[0]}, {angle_triad[1]}, {angle_triad[2]}, auto\n")
+        f.write("$metadyn\n")
+        if list_of_atoms_numbers_not_participating_in_reaction:
+            f.write(
+                f'  atoms: {", ".join(map(str, list_of_atoms_numbers_not_participating_in_reaction))}\n'
+            )
+        f.write("$end\n")
+
+    # --- build CREST command string ---
+    # Example: crest coords.ref --cinp constraints.inp --noreftopo -T 8
+    local_server = SERVERS.get("local", {})
+    cpus = int(local_server.get("cpus", 8))
+    if CREST_ENV_PATH:
+        crest_exe = "crest"
+    else:
+        crest_exe = CREST_PATH if CREST_PATH is not None else "crest"
+
+    commands = [
+        crest_exe,
+        "coords.ref",
+        "--cinp constraints.inp",
+        "--noreftopo",
+        f"-T {cpus}",
+    ]
+    command = " ".join(commands)
+
+    # --- activation line (optional) ---
+    activation_line = CREST_ENV_PATH or ""
+
+    if SERVERS.get("local") is not None:
+        cluster_soft = SERVERS["local"]["cluster_soft"].lower()
+        local_templates = submit_scripts.get("local", {})
+        crest_template = local_templates.get("crest")
+        crest_job_template = local_templates.get("crest_job")
+
+        if cluster_soft in ["condor", "htcondor"]:
+            # HTCondor branch with a built-in fallback template.
+            if crest_template is None:
+                crest_template = (
+                    "universe = vanilla\n"
+                    "executable = job.sh\n"
+                    "output = out.txt\n"
+                    "error = err.txt\n"
+                    "log = log.txt\n"
+                    "request_cpus = {cpus}\n"
+                    "request_memory = {memory}\n"
+                    "JobBatchName = {name}\n"
+                    "queue\n"
+                )
+            if crest_job_template is None:
+                crest_job_template = (
+                    "#!/bin/bash -l\n"
+                    "{activation_line}\n"
+                    "cd {path}\n"
+                    "{commands}\n"
+                )
+            sub_job = crest_template
+            format_params = {
+                "name": f"crest_{xyz_crest_int}",
+                "cpus": cpus,
+                "memory": int(SERVERS["local"].get("memory", 32.0) * 1024),
+            }
+            sub_job = sub_job.format(**format_params)
+
+            with open(
+                os.path.join(path, settings["submit_filenames"]["HTCondor"]), "w"
+            ) as f:
+                f.write(sub_job)
+
+            crest_job = crest_job_template.format(
+                path=path,
+                activation_line=activation_line,
+                commands=command,
+            )
+
+            with open(os.path.join(path, "job.sh"), "w") as f:
+                f.write(crest_job)
+            os.chmod(os.path.join(path, "job.sh"), 0o700)
+
+            # Pre-create out/err for any status checkers that expect them
+            for fname in ("out.txt", "err.txt"):
+                fpath = os.path.join(path, fname)
+                if not os.path.exists(fpath):
+                    with open(fpath, "w") as f:
+                        f.write("")
+                    os.chmod(fpath, 0o600)
+
+        elif cluster_soft == "pbs":
+            # PBS branch with a built-in fallback template.
+            if crest_template is None:
+                crest_template = (
+                    "#!/bin/bash -l\n"
+                    "#PBS -q {queue}\n"
+                    "#PBS -N {name}\n"
+                    "#PBS -l select=1:ncpus={cpus}:mem={memory}gb\n"
+                    "#PBS -o out.txt\n"
+                    "#PBS -e err.txt\n\n"
+                    "{activation_line}\n"
+                    "cd {path}\n"
+                    "{commands}\n"
+                )
+            sub_job = crest_template
+            format_params = {
+                "queue": SERVERS["local"].get("queue", "alon_q"),
+                "name": f"crest_{xyz_crest_int}",
+                "cpus": cpus,
+                # 'memory' is in GB for the template: mem={memory}gb
+                "memory": int(
+                    SERVERS["local"].get("memory", 32)
+                    if SERVERS["local"].get("memory", 32) < 60
+                    else 40
+                ),
+                "activation_line": activation_line,
+                "path": path,
+                "commands": command,
+            }
+            sub_job = sub_job.format(**format_params)
+
+            submit_filename = settings["submit_filenames"]["PBS"]  # usually 'submit.sh'
+            submit_path = os.path.join(path, submit_filename)
+            with open(submit_path, "w") as f:
+                f.write(sub_job)
+            os.chmod(submit_path, 0o700)
+
+        else:
+            raise ValueError(f"Unsupported cluster_soft for CREST: {cluster_soft!r}")
+
+    return path
+
+
+def submit_crest_jobs(crest_paths: List[str]) -> dict:
+    """
+    Submit CREST jobs to the server.
+
+    Args:
+        crest_paths (List[str]): List of paths to the CREST directories.
+
+    Returns:
+        dict: A dictionary containing job IDs as keys and their statuses as values.
+    """
+    crest_jobs = {}
+    for crest_path in crest_paths:
+        job_status, job_id = submit_job(path=crest_path)
+        logger.debug(f"CREST job {job_id} submitted for {crest_path}")
+        crest_jobs[job_id] = {"path": crest_path, "status": job_status}
+    if crest_jobs:
+        job_ids = list(crest_jobs.keys())
+        parent = os.path.dirname(crest_paths[0])
+        logger.info(f"Submitted {len(job_ids)} CREST jobs ({job_ids[0]}-{job_ids[-1]}) for {parent}")
+    return crest_jobs
+
+
+def monitor_crest_jobs(crest_jobs: dict, check_interval: int = 300) -> None:
+    """
+    Monitor CREST jobs until they are complete.
+
+    Args:
+        crest_jobs (dict): Dictionary containing job information (job ID, path, and status).
+        check_interval (int): Time interval (in seconds) to wait between status checks.
+    """
+    while True:
+        all_done = True
+        for job_id, job_info in crest_jobs.items():
+            if job_info["status"] not in ["done", "failed"]:
+                try:
+                    job_info["status"] = check_job_status(job_id)  # Update job status
+                except Exception as e:
+                    logger.error(f"Error checking job status for job {job_id}: {e}")
+                    job_info["status"] = "failed"
+                if job_info["status"] not in ["done", "failed"]:
+                    all_done = False
+        if all_done:
+            break
+        time.sleep(min(check_interval, MAX_CHECK_INTERVAL_SECONDS))
+
+
+def process_completed_jobs(crest_jobs: dict, crest_references: dict) -> list:
+    """
+    Process the completed CREST jobs and update XYZ guesses.
+
+    Args:
+        crest_jobs (dict): Dictionary containing job information.
+        crest_references (dict): Reference seed geometry and constraint specification, keyed by CREST path.
+    """
+    xyz_guesses = []
+    for job_id, job_info in crest_jobs.items():
+        crest_path = job_info["path"]
+        if job_info["status"] == "done":
+            crest_best_path = os.path.join(crest_path, "crest_best.xyz")
+            if os.path.exists(crest_best_path):
+                with open(crest_best_path, "r") as f:
+                    content = f.read()
+                xyz_guess = xyz_file_format_to_xyz(content)
+                reference = crest_references.get(crest_path)
+                if reference is None:
+                    logger.warning(f"Rejecting unvalidated CREST geometry from {crest_path}: reference data is missing.")
+                    continue
+                if not _preserves_reactive_constraints(
+                    xyz=xyz_guess,
+                    reference_xyz=reference['xyz'],
+                    constraints=reference['constraints'],
+                ):
+                    logger.warning(
+                        f"Rejecting CREST geometry from {crest_path}: it does not preserve the reactive constraints."
+                    )
+                    continue
+                xyz_guesses.append(xyz_guess)
+            else:
+                logger.error(f"crest_best.xyz not found in {crest_path}")
+        elif job_info["status"] == "failed":
+            logger.error(f"CREST job failed for {crest_path}")
+
+    return xyz_guesses
+
+
+def _preserves_reactive_constraints(xyz: dict, reference_xyz: dict, constraints: dict) -> bool:
+    """Return whether a CREST geometry preserves the seed's constrained reactive zone."""
+    symbols = xyz.get('symbols') if isinstance(xyz, dict) else None
+    reference_symbols = reference_xyz.get('symbols') if isinstance(reference_xyz, dict) else None
+    if not symbols or symbols != reference_symbols or not isinstance(constraints, dict):
+        return False
+    try:
+        atoms = tuple(constraints['atoms'])
+        distance_pairs = tuple(tuple(pair) for pair in constraints['distance_pairs'])
+        if (not atoms or len(set(atoms)) != len(atoms)
+                or any(not isinstance(atom, int) or not 0 <= atom < len(symbols) for atom in atoms)
+                or any(len(pair) != 2 or pair[0] not in atoms or pair[1] not in atoms
+                       for pair in distance_pairs)):
+            return False
+        for atom_1, atom_2 in distance_pairs:
+            distance = math.dist(xyz['coords'][atom_1], xyz['coords'][atom_2])
+            reference_distance = math.dist(reference_xyz['coords'][atom_1], reference_xyz['coords'][atom_2])
+            if abs(distance - reference_distance) > max(0.5, reference_distance * 0.5):
+                return False
+        angle_atoms = constraints.get('angle_atoms')
+        if angle_atoms is not None:
+            atom_1, vertex, atom_2 = angle_atoms
+            angle = _get_angle(xyz['coords'][atom_1], xyz['coords'][vertex], xyz['coords'][atom_2])
+            reference_angle = _get_angle(
+                reference_xyz['coords'][atom_1],
+                reference_xyz['coords'][vertex],
+                reference_xyz['coords'][atom_2],
+            )
+            if abs(angle - reference_angle) > 30.0:
+                return False
+    except (IndexError, KeyError, TypeError, ValueError):
+        return False
+    return True
+
+
+def _get_angle(point_1: tuple, vertex: tuple, point_2: tuple) -> float:
+    """Return the angle in degrees for ``point_1``--``vertex``--``point_2``."""
+    vector_1 = tuple(coord - center for coord, center in zip(point_1, vertex))
+    vector_2 = tuple(coord - center for coord, center in zip(point_2, vertex))
+    norm_product = math.sqrt(sum(coord ** 2 for coord in vector_1) * sum(coord ** 2 for coord in vector_2))
+    if not norm_product:
+        raise ValueError('Cannot determine an angle from a zero-length vector.')
+    cosine = sum(coord_1 * coord_2 for coord_1, coord_2 in zip(vector_1, vector_2)) / norm_product
+    return math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
+
+register_job_adapter('crest', CrestAdapter)

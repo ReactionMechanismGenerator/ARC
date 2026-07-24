@@ -3174,6 +3174,7 @@ class TestTSGuess(unittest.TestCase):
         ts_dict = self.tsg1.as_dict()
         tsg = TSGuess(ts_dict=ts_dict)
         self.assertEqual(tsg.method, 'autotst')
+        self.assertEqual(tsg.method_sources, ['autotst'])
         ts_dict_for_report = self.tsg1.as_dict(for_report=True)
         self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_sources', 'method_index', 'success', 'index',
                                                            'conformer_index', 'initial_xyz', 'opt_xyz'])
