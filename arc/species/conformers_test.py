@@ -6,7 +6,9 @@ This module contains unit tests of the arc.species.conformers module
 """
 
 import unittest
+import unittest.mock
 
+from rdkit.Chem import AllChem
 from rdkit.Chem import rdMolTransforms as rdMT
 
 import arc.species.conformers as conformers
@@ -738,6 +740,61 @@ O       1.40839617    0.14303696    0.00000000"""
                                       (-1.3810417536025885, 0.3110671844664584, 0.0),
                                       (1.3837220069472413, 0.29891869317576875, 0.0))}]
         self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs2))
+
+    def test_rdkit_force_field_optimization_always_raises(self):
+        """Test that rdkit_force_field terminates (does not hang) when MMFF optimization always raises."""
+        xyz = """S      -0.19093478    0.57933906    0.00000000
+O      -1.21746139   -0.72237602    0.00000000
+O       1.40839617    0.14303696    0.00000000"""
+        spc = ARCSpecies(label='SO2', smiles='O=S=O', xyz=xyz)
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=1, xyz=xyz)
+        # A real RDKit call that always raises on every invocation is not readily constructible,
+        # so this single test patches ``Chem.AllChem.MMFFOptimizeMolecule`` to always raise a
+        # ``RuntimeError``. This is the one test in this file that uses ``unittest.mock``.
+        with unittest.mock.patch.object(conformers.Chem.AllChem, 'MMFFOptimizeMolecule',
+                                        side_effect=RuntimeError('mock MMFF failure')):
+            xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s',
+                                                           optimize=True)
+        # The function must return promptly (not hang) and must not raise.
+        self.assertIsInstance(xyzs, list)
+        self.assertIsInstance(energies, list)
+
+    def test_rdkit_force_field_ff_is_none(self):
+        """Test that rdkit_force_field does not raise when MMFFGetMoleculeForceField returns None."""
+        xyz = """S      -0.19093478    0.57933906    0.00000000
+O      -1.21746139   -0.72237602    0.00000000
+O       1.40839617    0.14303696    0.00000000"""
+        spc = ARCSpecies(label='SO2', smiles='O=S=O', xyz=xyz)
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=1, xyz=xyz)
+        # MMFFGetMoleculeForceField returning None is not easily reproducible with a real
+        # molecule that otherwise has valid MMFF properties, so this test patches it directly.
+        # try_uff is disabled to isolate the ``ff is None`` guard from the UFF fallback path.
+        with unittest.mock.patch.object(conformers.Chem.AllChem, 'MMFFGetMoleculeForceField',
+                                        return_value=None):
+            xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s',
+                                                           optimize=True, try_uff=False)
+        self.assertEqual(xyzs, [])
+        self.assertEqual(energies, [])
+
+    def test_rdkit_force_field_optimization_failure_skips_conformer(self):
+        """Test that a conformer whose MMFF optimization fails is skipped, not reported as optimized"""
+        xyz = """S      -0.19093478    0.57933906    0.00000000
+O      -1.21746139   -0.72237602    0.00000000
+O       1.40839617    0.14303696    0.00000000"""
+        spc = ARCSpecies(label='SO2', smiles='O=S=O', xyz=xyz)
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=1, xyz=xyz)
+        # A real RDKit call that always raises on every invocation is not readily constructible,
+        # so ``Chem.AllChem.MMFFOptimizeMolecule`` is patched to always raise a ``RuntimeError``.
+        # ``try_uff`` is disabled so the fallback path does not mask the skip behavior being tested.
+        with unittest.mock.patch.object(conformers.Chem.AllChem, 'MMFFOptimizeMolecule',
+                                        side_effect=RuntimeError('mock MMFF failure')):
+            xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s',
+                                                           optimize=True, try_uff=False)
+        # The only conformer failed to optimize and there is no fallback available, so neither
+        # list should contain an entry for it (a pre-fix bug reported it anyway, as though the
+        # unoptimized geometry's incidental FF energy were the result of a successful optimization).
+        self.assertEqual(xyzs, [])
+        self.assertEqual(energies, [])
 
     def test_determine_rotors(self):
         """Test determining the rotors"""

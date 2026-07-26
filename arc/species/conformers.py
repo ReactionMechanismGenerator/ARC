@@ -44,6 +44,7 @@ from itertools import product
 from openbabel import openbabel as ob
 from openbabel import pybel as pyb
 from rdkit import Chem
+from rdkit.Chem import AllChem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
 import arc.molecule.group as gr
@@ -1460,7 +1461,7 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
                              f'Got {type(mol)} for {label}')
     if num_confs is not None:
         try:
-            Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
+            AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
         except:
             logger.warning(f'Could not embed conformers using RDKit for {label}')
             return None
@@ -1557,35 +1558,43 @@ def rdkit_force_field(label: str,
     xyzs, energies = list(), list()
     if rd_mol is None:
         return xyzs, energies
+    mol_properties = AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field)
     for i in range(rd_mol.GetNumConformers()):
+        optimization_failed = False
         if optimize:
             v, j = 1, 0
             while v == 1 and j < 200:  # v == 1: continue, v == 0: enough steps, v == -1: unable to set up
                 try:
-                    v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol,
-                                                          mmffVariant=force_field,
-                                                          confId=i,
-                                                          maxIters=500,
-                                                          ignoreInterfragInteractions=False,
-                                                          )
-                except:
-                    pass
+                    v = AllChem.MMFFOptimizeMolecule(rd_mol,
+                                                     mmffVariant=force_field,
+                                                     confId=i,
+                                                     maxIters=500,
+                                                     ignoreInterfragInteractions=False,
+                                                     )
+                except (RuntimeError, ValueError) as e:
+                    logger.debug(f'MMFF optimization failed for {label} conformer {i}: {e}')
+                    optimization_failed = True
+                    break
                 else:
                     j += 1
-        mol_properties = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field)
+        if optimize and optimization_failed:
+            # The FF optimization did not run to completion, skip this conformer so it does not get reported
+            # as optimized; the UFF/OpenBabel fallback below may still pick it up if all conformers fail.
+            continue
         if mol_properties is not None:
-            ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mol_properties, confId=i)
-            if optimize:
-                energies.append(ff.CalcEnergy())
-            xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
+            ff = AllChem.MMFFGetMoleculeForceField(rd_mol, mol_properties, confId=i)
+            if not optimize or ff is not None:
+                if optimize:
+                    energies.append(ff.CalcEnergy())
+                xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
     if not len(xyzs) and 'MMFF' in force_field and try_uff:
         output = None
         if optimize:
             try:
-                output = Chem.AllChem.UFFOptimizeMoleculeConfs(rd_mol,
-                                                               maxIters=200,
-                                                               ignoreInterfragInteractions=True,
-                                                               )
+                output = AllChem.UFFOptimizeMoleculeConfs(rd_mol,
+                                                          maxIters=200,
+                                                          ignoreInterfragInteractions=True,
+                                                          )
             except (RuntimeError, ValueError):
                 if try_ob:
                     logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers '
@@ -1596,10 +1605,18 @@ def rdkit_force_field(label: str,
                                                                                optimize=optimize,
                                                                                )
                     return xyzs, energies
+                logger.warning(f'Both the MMFF and the UFF optimizations failed for {label} and the OpenBabel '
+                               f'fall back is disabled, not reporting any conformers.')
+                return xyzs, energies
         for i in range(rd_mol.GetNumConformers()):
-            if output is not None and output[i][0] == 0:  # The optimization converged.
+            if output is None:
+                # Optimization was not requested, so there are no energies to report;
+                # keep all conformer geometries. A failed optimization returns above instead,
+                # so that unoptimized geometries are never reported as optimized ones.
+                xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
+            elif output[i][0] == 0:  # The optimization converged.
                 energies.append(output[i][1])
-            xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
+                xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
     return xyzs, energies
 
 
