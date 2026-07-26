@@ -9,10 +9,14 @@ import argparse
 from functools import lru_cache
 import logging
 import os
+import sys
 from urllib.parse import urlsplit
+
+from pydantic import ValidationError
 
 from arc.common import read_yaml_file
 from arc.main import ARC
+from arc.schema import validate_input_dict
 
 
 logger = logging.getLogger('arc')
@@ -139,8 +143,10 @@ def main():
     input_file = args.file
     project_directory = os.path.abspath(os.path.dirname(args.file))
     input_dict = read_yaml_file(path=input_file, project_directory=project_directory)
-    if 'project' not in list(input_dict.keys()):
-        raise ValueError('A project name must be provided!')
+    if not isinstance(input_dict, dict):
+        print(f'Invalid ARC input file "{input_file}": expected a top-level mapping of ARC '
+              f'options, got {type(input_dict).__name__}.', file=sys.stderr)
+        sys.exit(1)
 
     verbose = logging.INFO
     if args.debug:
@@ -155,7 +161,12 @@ def main():
         logger.info("The 'tckdb' block configures the post-run upload only and is not part of the "
                     "ARC project, so it is not saved to restart.yml and a run restarted from that "
                     "file uploads nothing. Re-run from the input file to upload.")
-    arc_object = ARC(**input_dict)
+    try:
+        validated_input_dict = validate_input_dict(input_dict)
+    except (ValidationError, TypeError) as e:
+        print(f'Invalid ARC input file "{input_file}":\n{e}', file=sys.stderr)
+        sys.exit(1)
+    arc_object = ARC(**validated_input_dict)
     arc_object.execute()
     if tckdb_settings is not None:
         try:
