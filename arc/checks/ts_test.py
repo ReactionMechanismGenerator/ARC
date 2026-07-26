@@ -847,7 +847,7 @@ class TestTSChecks(unittest.TestCase):
         xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
         # Use wrong product species
         rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
-                          p_species=[ARCSpecies(label='P_wrong', smiles='CC', xyz=xyz_2)])
+                          p_species=[ARCSpecies(label='P_wrong', smiles='O=C(O)C[O]', multiplicity=2)])
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
         ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
         self.assertFalse(rxn.ts_species.ts_checks['IRC'])
