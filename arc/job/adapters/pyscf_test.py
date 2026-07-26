@@ -77,6 +77,20 @@ class TestPySCFAdapter(unittest.TestCase):
         self.assertEqual(settings['method'], 'wb97m-v')
         self.assertEqual(settings['basis'], 'def2tzvp')
         self.assertIn('memory_mb', settings)
+        self.assertIn('device', settings)
+        self.assertIn('fine', settings)
+
+    def test_device_can_be_requested_per_job(self):
+        """Test that an explicit device keyword overrides the default device."""
+        job = PySCFAdapter(execution_type='incore',
+                           job_type='sp',
+                           project='test_gpu',
+                           project_directory=os.path.join(self.project_directory, 'test_gpu'),
+                           level=Level(repr='wb97m-v/def2tzvp'),
+                           species=[ARCSpecies(label='H2O', xyz=self.job_1.xyz)],
+                           args={'keyword': {'device': 'gpu'}},
+                           testing=True)
+        self.assertEqual(job.determine_settings()['device'], 'gpu')
 
     def test_level_takes_precedence_over_conflicting_keyword(self):
         """Test that the job's level, not a conflicting args keyword, sets method/basis.

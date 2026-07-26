@@ -433,6 +433,9 @@ RITS_PYTHON = find_executable('rits_env')
 ARC_PYTHON = find_executable('arc_env')
 XTB_PYTHON = find_executable('xtb_env')
 PYSCF_PYTHON = find_executable('pyscf_env')
+# Device PySCF runs on: 'cpu', or 'gpu' to use an NVIDIA GPU via gpu4pyscf (which must be
+# installed in pyscf_env). Closed-shell analytic Hessians always fall back to the CPU.
+PYSCF_DEVICE = 'cpu'
 RMG_ENV_NAME = 'rmg_env'
 RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')

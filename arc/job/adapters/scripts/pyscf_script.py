@@ -12,6 +12,11 @@ Level of theory is taken from the input (ARC routes wb97m-v/def2-tzvp here). Clo
 species use RKS with an analytic Hessian for frequencies; open-shell species use UKS with a
 numerical Hessian (central finite difference of analytic gradients), because PySCF has no
 analytic Hessian for NLC (VV10) functionals in the unrestricted case.
+
+Setting ``device: gpu`` runs the SCF, the gradients and the geometry optimization on an NVIDIA
+GPU through gpu4pyscf. Closed-shell analytic Hessians always fall back to the CPU, since
+gpu4pyscf's Hessian is currently broken (it is not NLC-specific: plain hybrids fail too).
+Open-shell numerical Hessians stay on the GPU, as they only need SCF energies and gradients.
 """
 
 import argparse
@@ -23,6 +28,11 @@ import yaml
 from pyscf import dft, gto, lib
 from pyscf.geomopt.geometric_solver import optimize
 from pyscf.hessian import thermo
+
+try:
+    from gpu4pyscf import dft as gpu_dft
+except ImportError:
+    gpu_dft = None
 
 # Physical constants (CODATA 2018), hard-coded so this script needs no ARC imports.
 HARTREE2KJMOL = 2625.4996394798254
@@ -60,6 +70,19 @@ def save_yaml_file(path, content):
     """
     with open(path, 'w') as f:
         f.write(yaml.dump(data=content, default_flow_style=False))
+
+
+def to_numpy(array):
+    """
+    Return a NumPy view of an array that may live on the GPU.
+
+    Args:
+        array: A NumPy or CuPy array.
+
+    Returns:
+        np.ndarray: The array as a NumPy array.
+    """
+    return np.asarray(array.get() if hasattr(array, 'get') else array)
 
 
 def normalize_basis(basis):
@@ -138,7 +161,13 @@ def make_mf(mol, xc, multiplicity, settings=None):
         The configured PySCF mean-field object.
     """
     settings = settings or dict()
-    mf = dft.UKS(mol) if int(multiplicity) > 1 else dft.RKS(mol)
+    module = dft
+    if str(settings.get('device', 'cpu')).lower() in ('gpu', 'cuda'):
+        if gpu_dft is not None:
+            module = gpu_dft
+        else:
+            print('Requested device "gpu" but gpu4pyscf is not installed; falling back to the CPU.')
+    mf = module.UKS(mol) if int(multiplicity) > 1 else module.RKS(mol)
     mf.xc = xc.lower()
     mf.verbose = 0
     fine = bool(settings.get('fine', False))
@@ -184,7 +213,7 @@ def get_dipole_debye(mf):
     Returns:
         float: The dipole magnitude in Debye.
     """
-    dip = mf.dip_moment(unit='Debye', verbose=0)
+    dip = to_numpy(mf.dip_moment(unit='Debye', verbose=0))
     return float(np.linalg.norm(np.asarray(dip, dtype=float)))
 
 
@@ -276,7 +305,7 @@ def numerical_hessian(mf, disp_ang=NUM_HESS_DISP_ANG, settings=None):
                 m.build(False, False)
                 mf_d = make_mf(m, mf.xc, mol.spin + 1, settings=settings)
                 mf_d.kernel()
-                grads[sign] = mf_d.nuc_grad_method().kernel()
+                grads[sign] = to_numpy(mf_d.nuc_grad_method().kernel())
             hess[a, :, x, :] = (grads[1] - grads[-1]) / (2 * d)
     return 0.5 * (hess + hess.transpose(1, 0, 3, 2))
 
@@ -288,6 +317,10 @@ def run_freq(mf, multiplicity, settings=None):
     Closed-shell species use the analytic Hessian; open-shell species use a numerical Hessian.
     Imaginary frequencies are returned as negative reals (ARC convention).
 
+    The analytic Hessian always runs on the CPU: gpu4pyscf's Hessian raises an assertion error
+    for both NLC functionals and plain hybrids. The numerical Hessian only needs SCF energies
+    and gradients, so it stays on whichever device was requested.
+
     Args:
         mf: A converged mean-field object.
         multiplicity (int): The spin multiplicity.
@@ -296,10 +329,15 @@ def run_freq(mf, multiplicity, settings=None):
     Returns:
         dict: Keys ``freqs`` (cm^-1), ``modes``, and ``zpe`` (kJ/mol).
     """
+    settings = settings or dict()
     if int(multiplicity) > 1:
         hess = numerical_hessian(mf, settings=settings)
     else:
-        hess = mf.Hessian().kernel()
+        cpu_settings = dict(settings, device='cpu')
+        mf_cpu = make_mf(mf.mol, mf.xc, multiplicity, settings=cpu_settings)
+        mf_cpu.kernel()
+        hess = mf_cpu.Hessian().kernel()
+    hess = to_numpy(hess)
     results = thermo.harmonic_analysis(mf.mol, hess)
     raw = np.asarray(results['freq_wavenumber'], dtype=complex)
     freqs = [float(f.real) if abs(f.imag) < 1e-6 else -float(abs(f.imag)) for f in raw]

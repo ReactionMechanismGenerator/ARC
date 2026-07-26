@@ -18,7 +18,7 @@ from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
 from arc.job.env_run import run_in_conda_env
 from arc.job.factory import register_job_adapter
-from arc.settings.settings import PYSCF_PYTHON
+from arc.settings.settings import PYSCF_DEVICE, PYSCF_PYTHON
 
 if TYPE_CHECKING:
     from arc.level import Level
@@ -191,6 +191,7 @@ class PySCFAdapter(JobAdapter):
                 settings_dict[key] = level_value
         settings_dict.setdefault('memory_mb', int(self.job_memory_gb * 1024))
         settings_dict.setdefault('fine', self.fine)
+        settings_dict.setdefault('device', PYSCF_DEVICE)
         if self.cpu_cores:
             settings_dict.setdefault('cpu_cores', self.cpu_cores)
         return settings_dict
