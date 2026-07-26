@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
+import math
 import unittest
+
+import numpy as np
 
 from arc.exceptions import InchiException
 from arc.molecule.element import get_element, element_list
@@ -2775,6 +2778,224 @@ multiplicity 2
         self.assertEqual(len(mol.get_all_edges()), 2)
         mol.remove_van_der_waals_bonds()
         self.assertEqual(len(mol.get_all_edges()), 1)
+
+
+def _mol_from_coords(symbols: list, coords: list) -> Molecule:
+    """
+    Build a Molecule from element symbols and Cartesian coordinates.
+
+    Args:
+        symbols (list): Element symbols, one per atom.
+        coords (list): Cartesian coordinates (x, y, z) per atom, in Angstrom.
+
+    Returns:
+        Molecule: The molecule with atoms placed at the given coordinates (no bonds).
+    """
+    mol = Molecule()
+    for symbol, coord in zip(symbols, coords):
+        atom = Atom(element=get_element(symbol))
+        atom.coords = np.array(coord, np.float64)
+        mol.add_atom(atom)
+    return mol
+
+
+def _bond_index_pairs(mol: Molecule) -> set:
+    """
+    Get the set of bonded atom-index pairs of a molecule, indices in ``mol.atoms`` order.
+
+    Args:
+        mol (Molecule): The molecule to inspect.
+
+    Returns:
+        set: Frozenset pairs of ``(i, j)`` with ``i < j`` for every bond.
+    """
+    atoms = mol.atoms
+    index = {id(atom): i for i, atom in enumerate(atoms)}
+    pairs = set()
+    for atom1 in atoms:
+        for atom2 in mol.get_bonds(atom1):
+            i, j = index[id(atom1)], index[id(atom2)]
+            pairs.add((min(i, j), max(i, j)))
+    return pairs
+
+
+def _reference_connect_the_dots(atoms: list, critical_distance_factor: float = 0.45) -> list:
+    """
+    Reference reimplementation of the original, pre-vectorization nested-loop bond-finding
+    algorithm from ``connect_the_dots`` (as it exists on the ``main`` branch), used to pin
+    that the vectorized version in this branch did not shift any bond set.
+
+    Args:
+        atoms (list): Atoms with populated ``coords`` and ``element`` attributes.
+        critical_distance_factor (float): Fudge factor applied to the sum of covalent radii.
+
+    Returns:
+        list: Sorted ``(i, j)`` index pairs (``i < j``, in ``atoms`` order) for every bond found.
+    """
+    index = {id(atom): i for i, atom in enumerate(atoms)}
+    sorted_atoms = sorted(atoms, key=lambda x: x.coords[2])
+    pairs = []
+    for i, atom1 in enumerate(sorted_atoms):
+        for atom2 in sorted_atoms[i + 1:]:
+            critical_distance = (atom1.element.cov_radius + atom2.element.cov_radius
+                                  + critical_distance_factor) ** 2
+            z_boundary = (atom1.coords[2] - atom2.coords[2]) ** 2
+            if z_boundary > 16.0:
+                break
+            distance_squared = sum((atom1.coords - atom2.coords) ** 2)
+            if distance_squared > critical_distance or distance_squared < 0.40:
+                continue
+            i1, i2 = index[id(atom1)], index[id(atom2)]
+            pairs.append((min(i1, i2), max(i1, i2)))
+    return sorted(pairs)
+
+
+class TestConnectTheDots(unittest.TestCase):
+    """
+    Contains unit tests for the Molecule.connect_the_dots() method.
+    """
+
+    def test_single_atom(self):
+        """Test that a 1-atom molecule does not crash and has no bonds"""
+        mol = _mol_from_coords(['H'], [(0.0, 0.0, 0.0)])
+        mol.connect_the_dots(raise_atomtype_exception=False)
+        self.assertEqual(_bond_index_pairs(mol), set())
+
+    def test_h2(self):
+        """Test a 2-atom H2 molecule at the equilibrium bond length gets one bond"""
+        mol = _mol_from_coords(['H', 'H'], [(0.0, 0.0, 0.0), (0.0, 0.0, 0.74)])
+        mol.connect_the_dots(raise_atomtype_exception=False)
+        self.assertEqual(_bond_index_pairs(mol), {(0, 1)})
+
+    def test_methane(self):
+        """Test a small hydrocarbon (methane) bonds each H to the central C, and not to each other"""
+        d = 0.629
+        symbols = ['C', 'H', 'H', 'H', 'H']
+        coords = [
+            (0.0, 0.0, 0.0),
+            (d, d, d),
+            (-d, -d, d),
+            (-d, d, -d),
+            (d, -d, -d),
+        ]
+        mol = _mol_from_coords(symbols, coords)
+        mol.connect_the_dots(raise_atomtype_exception=False)
+        self.assertEqual(_bond_index_pairs(mol), {(0, 1), (0, 2), (0, 3), (0, 4)})
+
+    def test_heteroatom_ring(self):
+        """Test a 3-membered ring with a heteroatom (oxirane heavy-atom skeleton) bonds around the ring"""
+        side = 1.45
+        symbols = ['C', 'C', 'O']
+        coords = [
+            (0.0, 0.0, 0.0),
+            (side, 0.0, 0.0),
+            (side / 2.0, side * math.sin(math.pi / 3.0), 0.0),
+        ]
+        mol = _mol_from_coords(symbols, coords)
+        mol.connect_the_dots(raise_atomtype_exception=False)
+        self.assertEqual(_bond_index_pairs(mol), {(0, 1), (0, 2), (1, 2)})
+
+    def test_separated_fragments_no_inter_fragment_bonds(self):
+        """Test two H2 fragments separated by more than 4 Angstrom produce no inter-fragment bonds"""
+        symbols = ['H', 'H', 'H', 'H']
+        coords = [
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.74),
+            (0.0, 0.0, 10.0),
+            (0.0, 0.0, 10.74),
+        ]
+        mol = _mol_from_coords(symbols, coords)
+        mol.connect_the_dots(raise_atomtype_exception=False)
+        self.assertEqual(_bond_index_pairs(mol), {(0, 1), (2, 3)})
+
+    def test_empty_molecule(self):
+        """Test that an empty (0-atom) molecule does not crash"""
+        mol = Molecule()
+        mol.connect_the_dots(raise_atomtype_exception=False)
+        self.assertEqual(_bond_index_pairs(mol), set())
+
+    def test_nan_coordinate_raises(self):
+        """Test that a NaN coordinate raises a clear error instead of silently changing the bond set"""
+        mol = _mol_from_coords(['H', 'H'], [(0.0, 0.0, 0.0), (0.0, 0.0, float('nan'))])
+        with self.assertRaises(ValueError):
+            mol.connect_the_dots(raise_atomtype_exception=False)
+
+    def test_inf_coordinate_raises(self):
+        """Test that an infinite coordinate raises a clear error instead of silently changing the bond set"""
+        mol = _mol_from_coords(['H', 'H'], [(0.0, 0.0, 0.0), (0.0, 0.0, float('inf'))])
+        with self.assertRaises(ValueError):
+            mol.connect_the_dots(raise_atomtype_exception=False)
+
+    def test_non_3d_coordinate_raises(self):
+        """Test that a non-3-dimensional coordinate raises a clear ValueError rather than an
+        opaque TypeError from the vectorized mask expression"""
+        mol = _mol_from_coords(['H', 'H'], [(0.0, 0.0), (0.0, 0.74)])
+        with self.assertRaises(ValueError):
+            mol.connect_the_dots(raise_atomtype_exception=False)
+
+    def test_idempotent_on_already_bonded_molecule(self):
+        """Test that calling connect_the_dots() twice on an already-bonded molecule succeeds and
+        reproduces the same bond set (regression test: iterating get_bonds() as if it returned
+        bonds, rather than its .values(), previously raised a TypeError on the second call)"""
+        d = 0.629
+        symbols = ['C', 'H', 'H', 'H', 'H']
+        coords = [(0.0, 0.0, 0.0), (d, d, d), (-d, -d, d), (-d, d, -d), (d, -d, -d)]
+        mol = _mol_from_coords(symbols, coords)
+        mol.connect_the_dots(raise_atomtype_exception=False)
+        first = _bond_index_pairs(mol)
+        mol.connect_the_dots(raise_atomtype_exception=False)
+        second = _bond_index_pairs(mol)
+        self.assertEqual(first, {(0, 1), (0, 2), (0, 3), (0, 4)})
+        self.assertEqual(first, second)
+
+    def test_bonds_unchanged_for_methane_and_ring(self):
+        """Test the bond set produced for methane and a heteroatom ring is unchanged by the refactor"""
+        d = 0.629
+        symbols = ['C', 'H', 'H', 'H', 'H']
+        coords = [(0.0, 0.0, 0.0), (d, d, d), (-d, -d, d), (-d, d, -d), (d, -d, -d)]
+        mol = _mol_from_coords(symbols, coords)
+        mol.connect_the_dots(raise_atomtype_exception=False)
+        self.assertEqual(_bond_index_pairs(mol), {(0, 1), (0, 2), (0, 3), (0, 4)})
+
+        side = 1.45
+        symbols = ['C', 'C', 'O']
+        coords = [
+            (0.0, 0.0, 0.0),
+            (side, 0.0, 0.0),
+            (side / 2.0, side * math.sin(math.pi / 3.0), 0.0),
+        ]
+        mol = _mol_from_coords(symbols, coords)
+        mol.connect_the_dots(raise_atomtype_exception=False)
+        self.assertEqual(_bond_index_pairs(mol), {(0, 1), (0, 2), (1, 2)})
+
+    def test_connect_the_dots_matches_original_nested_loop_algorithm(self):
+        """Test that Molecule.connect_the_dots() (vectorized) finds the same bonds as a reference
+        reimplementation of the original pre-vectorization nested-loop algorithm, across several
+        geometries with genuine z-spread (flat z=0 geometries would not exercise the original
+        algorithm's z_boundary early-break)"""
+        rng = np.random.default_rng(42)
+        geometries = [
+            # Methane: substantial z-spread among the tetrahedral H atoms.
+            (['C', 'H', 'H', 'H', 'H'],
+             [(0.0, 0.0, 0.0), (0.629, 0.629, 0.629), (-0.629, -0.629, 0.629),
+              (-0.629, 0.629, -0.629), (0.629, -0.629, -0.629)]),
+            # A bent C-C-O chain.
+            (['C', 'C', 'O'], [(0.0, 0.0, 0.0), (1.45, 0.0, 0.3), (0.7, 1.2, -0.4)]),
+            # Two well-separated H2 pairs along z, to exercise the >16.0 A^2 early break.
+            (['H', 'H', 'H', 'H'],
+             [(0.0, 0.0, 0.0), (0.0, 0.0, 0.74), (0.0, 0.0, 10.0), (0.0, 0.0, 10.74)]),
+        ]
+        for num_atoms in (6, 15):
+            symbols = [str(s) for s in rng.choice(['C', 'H', 'O', 'N'], size=num_atoms)]
+            coords = [tuple(row) for row in rng.uniform(-2.5, 2.5, size=(num_atoms, 3))]
+            geometries.append((symbols, coords))
+
+        for symbols, coords in geometries:
+            mol = _mol_from_coords(symbols, coords)
+            expected = _reference_connect_the_dots(mol.atoms)
+            mol.connect_the_dots(raise_atomtype_exception=False)
+            actual = sorted(_bond_index_pairs(mol))
+            self.assertEqual(actual, expected)
 
 
 if __name__ == '__main__':
