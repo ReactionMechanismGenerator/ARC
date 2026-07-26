@@ -360,8 +360,8 @@ def xyz_to_dmat(xyz_dict: dict) -> np.ndarray | None:
     if xyz_dict is None or isinstance(xyz_dict, dict) and any(not val for val in xyz_dict.values()):
         return None
     xyz_dict = check_xyz_dict(xyz_dict)
-    dmat = distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
-                           b=np.array(xyz_to_coords_list(xyz_dict)))
+    coords = np.array(xyz_to_coords_list(xyz_dict))
+    dmat = distance_matrix(a=coords, b=coords)
     return dmat
 
 
@@ -2008,12 +2008,14 @@ def cluster_confs_by_rmsd(xyzs: Iterable[dict[str, tuple]],
         tuple[dict[str, tuple]]: Conformers with distinctive geometries.
     """
     xyzs = tuple(xyzs)
-    distinct_xyzs = [xyzs[0]]
-    for xyz in xyzs:
-        rmsd_list = [compare_confs(xyz, distinct_xyz, rmsd_score=True) for distinct_xyz in tuple(distinct_xyzs)]
-        if all([rmsd > rmsd_threshold for rmsd in tuple(rmsd_list)]):
-            distinct_xyzs.append(xyz)
-    return tuple(distinct_xyzs)
+    triu_dmats = [np.triu(xyz_to_dmat(xyz)) for xyz in xyzs]
+    distinct_indices = [0]
+    for i, xyz in enumerate(xyzs):
+        if all(compare_confs(xyz, xyzs[j], rmsd_score=True, skip_conversion=True,
+                             dmat1=triu_dmats[i], dmat2=triu_dmats[j]) > rmsd_threshold
+               for j in tuple(distinct_indices)):
+            distinct_indices.append(i)
+    return tuple(xyzs[i] for i in distinct_indices)
 
 
 def ics_to_scan_constraints(ics: list,
