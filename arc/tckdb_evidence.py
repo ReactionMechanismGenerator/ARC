@@ -378,8 +378,33 @@ def build_tckdb_evidence(*, output_doc: Mapping[str, Any], project_directory: st
     return evidence
 
 
+def _fsync_directory(directory: Path) -> None:
+    """Flush a directory entry so a completed rename survives a crash.
+
+    ``os.replace`` is atomic, but the new directory entry is not durable until
+    the containing directory is itself synced. Not every platform or filesystem
+    permits opening or syncing a directory (notably Windows), so a failure here
+    is logged and skipped rather than failing a write that already succeeded.
+    """
+    try:
+        descriptor = os.open(directory, os.O_RDONLY)
+    except OSError:
+        logger.debug("Could not open directory %s to fsync it", directory, exc_info=True)
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        logger.debug("Could not fsync directory %s", directory, exc_info=True)
+    finally:
+        os.close(descriptor)
+
+
 def write_tckdb_evidence_atomic(*, evidence_doc: Mapping[str, Any], output_directory: str | Path) -> Path:
-    """Write deterministic strict JSON, fsync, and atomically replace the sidecar."""
+    """Write deterministic strict JSON, fsync, and atomically replace the sidecar.
+
+    Both the file contents and the parent directory entry are synced, so a
+    successfully returned path is durable across a crash.
+    """
     output_directory = Path(output_directory)
     output_directory.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(dir=output_directory, suffix=".tckdb_evidence.json.tmp")
@@ -391,6 +416,7 @@ def write_tckdb_evidence_atomic(*, evidence_doc: Mapping[str, Any], output_direc
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, target)
+        _fsync_directory(output_directory)
     except Exception:
         try:
             os.unlink(temporary)

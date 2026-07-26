@@ -2,6 +2,7 @@
 
 import json
 import math
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -257,6 +258,42 @@ class TestEvidenceProducer(unittest.TestCase):
         self.assertTrue(text.endswith("\n"))
         self.assertEqual(json.loads(text), document)
         self.assertFalse(any(item.name.endswith(".tmp") for item in self.root.iterdir()))
+
+    def test_atomic_write_fsyncs_the_parent_directory(self):
+        """The rename is only durable once the containing directory is synced."""
+        document = {
+            "schema_name": EVIDENCE_SCHEMA_NAME, "schema_version": "1.0", "document_id": DOC_ID,
+            "output_schema_version": "1.1", "producer": {"name": "ARC", "version": "x", "git_commit": None},
+            "records": [],
+        }
+        synced = []
+        real_fsync = os.fsync
+
+        def _recording_fsync(descriptor):
+            synced.append(os.fstat(descriptor).st_ino)
+            return real_fsync(descriptor)
+
+        with patch("arc.tckdb_evidence.os.fsync", side_effect=_recording_fsync):
+            write_tckdb_evidence_atomic(evidence_doc=document, output_directory=self.root)
+        self.assertIn(os.stat(self.root).st_ino, synced)
+
+    def test_atomic_write_survives_a_platform_that_cannot_fsync_directories(self):
+        """A directory sync that is unsupported must not fail a completed write."""
+        document = {
+            "schema_name": EVIDENCE_SCHEMA_NAME, "schema_version": "1.0", "document_id": DOC_ID,
+            "output_schema_version": "1.1", "producer": {"name": "ARC", "version": "x", "git_commit": None},
+            "records": [],
+        }
+        real_open = os.open
+
+        def _refuse_directories(path, flags, *args, **kwargs):
+            if os.path.isdir(path):
+                raise PermissionError("no directory handles")
+            return real_open(path, flags, *args, **kwargs)
+
+        with patch("arc.tckdb_evidence.os.open", side_effect=_refuse_directories):
+            path = write_tckdb_evidence_atomic(evidence_doc=document, output_directory=self.root)
+        self.assertEqual(json.loads(path.read_text()), document)
 
     def test_non_finite_cannot_be_serialized_and_temp_is_removed(self):
         with self.assertRaises(ValueError):
