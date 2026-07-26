@@ -708,6 +708,34 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_single_bond_length('N', 'N', 0, -1), 1.45)
         self.assertEqual(common.get_single_bond_length('Xx', 'Yy'), 1.75)  # default value for unknown elements
 
+    def test_distance_matrix(self):
+        """Test computing a Euclidean distance matrix between rows of two arrays"""
+        # trivial: a single atom
+        a = np.array([[0.0, 0.0, 0.0]])
+        np.testing.assert_array_equal(common.distance_matrix(a=a, b=a), np.zeros((1, 1)))
+
+        # trivial: two atoms
+        a = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+        np.testing.assert_array_equal(common.distance_matrix(a=a, b=a), np.array([[0.0, 1.0], [1.0, 0.0]]))
+
+        # normal case
+        a = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 2.0, 0.0]])
+        b = np.array([[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        expected = np.array([[0.0, 1.0], [1.0, np.sqrt(2)], [2.0, 1.0]])
+        np.testing.assert_allclose(common.distance_matrix(a=a, b=b), expected)
+
+        # non-square: a and b of different lengths (M != N)
+        a = np.random.rand(5, 3)
+        b = np.random.rand(3, 3)
+        dmat = common.distance_matrix(a=a, b=b)
+        self.assertEqual(dmat.shape, (5, 3))
+
+        # extreme/error case: ValueError on mismatched inner dimensions
+        a = np.array([[0.0, 0.0, 0.0]])
+        b = np.array([[0.0, 0.0]])
+        with self.assertRaises(ValueError):
+            common.distance_matrix(a=a, b=b)
+
     def test_get_bonds_from_dmat(self):
         """test getting bonds from a distance matrix"""
         dmat_1 = np.array([[0, 5, 2],

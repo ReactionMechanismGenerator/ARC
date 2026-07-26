@@ -17,7 +17,8 @@ from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 
 import arc.species.converter as converter
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
+from arc.common import (ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists,
+                        almost_equal_lists, distance_matrix)
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
 from arc.species.converter import order_mol_by_atom_map
@@ -810,6 +811,25 @@ H      3.654100    0.340300    0.057100"""
         self.assertTrue(almost_equal_lists(dmat1, self.xyz1['dmat']))
         self.assertTrue(almost_equal_lists(dmat2, self.xyz2['dmat']))
         self.assertTrue(almost_equal_lists(dmat3, self.xyz3['dmat']))
+
+        # trivial: a single atom
+        one_atom_xyz = {'symbols': ('H',), 'isotopes': (1,), 'coords': ((0.0, 0.0, 0.0),)}
+        one_atom_dmat = converter.xyz_to_dmat(xyz_dict=one_atom_xyz)
+        np.testing.assert_array_equal(one_atom_dmat, np.zeros((1, 1)))
+
+        # trivial: two atoms
+        two_atom_xyz = {'symbols': ('H', 'H'), 'isotopes': (1, 1),
+                        'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))}
+        two_atom_dmat = converter.xyz_to_dmat(xyz_dict=two_atom_xyz)
+        np.testing.assert_array_equal(two_atom_dmat, np.array([[0.0, 1.0], [1.0, 0.0]]))
+
+        # the dmat must be bitwise identical to calling distance_matrix directly on the coords
+        coords = np.array(converter.xyz_to_coords_list(self.xyz1['dict']))
+        expected_dmat1 = distance_matrix(a=coords, b=coords)
+        self.assertTrue(np.array_equal(dmat1, expected_dmat1))
+
+        # `None` input returns `None`
+        self.assertIsNone(converter.xyz_to_dmat(xyz_dict=None))
 
     def test_xyz_file_format_to_xyz(self):
         """Test getting the ARC xyz dictionary from an xyz file format"""
@@ -4774,14 +4794,56 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                             (-3.69226847, 4.12970364, 1.0893621),
                             (-4.52773502, 3.18138419, 0.05526659))}
 
+        # extra conformers for a larger clustering scenario
+        # near-duplicate of xyz_14
+        nco_10 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
+                  'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
+                  'coords': ((-3.60616665, 3.57051739, 1.67762912),
+                             (-3.13243719, 4.50463523, 1.45875867),
+                             (-4.25266183, 3.68770871, 2.52214684),
+                             (-2.60966081, 2.58831173, 1.97283775),
+                             (-3.01851627, 1.83896095, 2.41205367),
+                             (-4.39319614, 3.13587525, 0.51462835),
+                             (-5.35431488, 3.04821019, 0.77647869),
+                             (-4.30744813, 3.81180325, -0.21733382))}
+
+        # a wholly different conformer
+        nco_11 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
+                  'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
+                  'coords': ((1.0, 2.0, 3.0),
+                             (1.5, 2.5, 3.5),
+                             (2.0, 1.5, 4.0),
+                             (0.5, 0.5, 1.0),
+                             (0.0, -0.5, 0.5),
+                             (2.5, 2.0, 0.5),
+                             (3.5, 2.0, 1.0),
+                             (2.0, 3.0, 0.5))}
+
+        # near-duplicate of nco_11
+        nco_12 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
+                  'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
+                  'coords': ((1.00001, 2.00001, 3.00001),
+                             (1.5, 2.5, 3.5),
+                             (2.0, 1.5, 4.0),
+                             (0.5, 0.5, 1.0),
+                             (0.0, -0.5, 0.5),
+                             (2.5, 2.0, 0.5),
+                             (3.5, 2.0, 1.0),
+                             (2.0, 3.0, 0.5))}
+
         xyzs1 = [self.xyz_14, nco_2, nco_3, nco_4, nco_5]
-        self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs1)), 1)
+        self.assertEqual(converter.cluster_confs_by_rmsd(xyzs1), (self.xyz_14,))
 
         xyzs2 = [self.xyz_14, nco_2, nco_3, nco_4, nco_5, nco_6]
-        self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs2)), 2)
+        self.assertEqual(converter.cluster_confs_by_rmsd(xyzs2), (self.xyz_14, nco_6))
 
         xyzs3 = [self.xyz_14, nco_2, nco_6, nco_7, nco_8, nco_9]
-        self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs3)), 4)
+        self.assertEqual(converter.cluster_confs_by_rmsd(xyzs3), (self.xyz_14, nco_6, nco_7, nco_8))
+
+        # larger scenario with more conformers, some near-duplicates
+        xyzs4 = [self.xyz_14, nco_2, nco_3, nco_4, nco_10, nco_6, nco_7, nco_8, nco_9, nco_11, nco_12]
+        self.assertEqual(converter.cluster_confs_by_rmsd(xyzs4),
+                         (self.xyz_14, nco_6, nco_7, nco_8, nco_11))
 
     def test_distance_constraint(self):
         """Test the distance_constraint() function"""
