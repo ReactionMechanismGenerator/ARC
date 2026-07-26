@@ -2870,7 +2870,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">check_negative_freq</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                             <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                             <span class="n">job</span><span class="p">:</span> <span class="n">JobAdapter</span><span class="p">,</span>
-                            <span class="n">vibfreqs</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+                            <span class="n">vibfreqs</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
                             <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A helper function for determining the number of negative frequencies. Also logs appropriate errors.</span>
@@ -2879,8 +2879,16 @@
 <span class="sd">        Args:</span>
 <span class="sd">            label (str): The species label.</span>
 <span class="sd">            job (JobAdapter): The optimization job object.</span>
-<span class="sd">            vibfreqs (list): The vibrational frequencies.</span>
+<span class="sd">            vibfreqs (list | np.ndarray | None): The vibrational frequencies, or ``None`` if they could not be parsed.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">vibfreqs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not parse frequencies for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> from the freq job output file &#39;</span>
+                         <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">job</span><span class="o">.</span><span class="n">local_path_to_output_file</span><span class="si">}</span><span class="s1">. Treating the freq job as unsuccessful.&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">vibfreqs</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">is_ts</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">number_of_atoms</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The freq job for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> yielded no frequencies, but </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> is a polyatomic non-TS &#39;</span>
+                         <span class="sa">f</span><span class="s1">&#39;species and should have vibrational modes. Treating the freq job as unsuccessful.&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">False</span>
         <span class="n">neg_freqs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">freq</span> <span class="ow">in</span> <span class="n">vibfreqs</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">freq</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
