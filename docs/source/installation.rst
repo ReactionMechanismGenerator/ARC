@@ -127,6 +127,32 @@ create a token with read access to gated repositories. To also run the UMA model
 tests after installing, use ``bash devtools/install_uma.sh --test``.
 
 
+Install the TCKDB upload adapter (optional, work in progress)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+ARC can hand its results to `tckdb-adapters <https://github.com/calvinp0/tckdb-adapters>`_, a
+standalone package (``tckdb-arc``) that builds the upload payload and pushes it to TCKDB. The
+adapter is **under active development**, so both it and this installer should be expected to
+change.
+
+It is optional and deliberately **not** installed by ``make install-all`` or in CI. ARC runs
+normally without it: when a run requests a TCKDB upload and the package is absent, ARC logs a
+single warning and continues. A *broken* install (for example a missing ``tckdb-client``) is not
+swallowed — it raises, so the failure is visible rather than being misreported as "not installed".
+
+Unlike the other optional tools, the adapter is imported by ARC in-process, so it is installed
+into the **same** environment ARC runs from (``arc_env`` by default) rather than into an
+environment of its own::
+
+    make install-tckdb-arc    # or: bash devtools/install_tckdb_arc.sh
+
+The adapter and its ``tckdb-client`` dependency both require Python >= 3.11; the installer checks
+the target environment and refuses with a clear message rather than letting pip fail obscurely.
+Use ``--env <name>`` to target a different environment, ``--ref <branch-or-tag>`` to pin a
+revision, or ``--editable <path>`` to install from a local ``tckdb-adapters`` checkout when
+developing the adapter itself. See ``bash devtools/install_tckdb_arc.sh --help``.
+
+
 Create a ``.arc`` folder (optional but recommended)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -9,6 +9,7 @@ DEVTOOLS_DIR := devtools
 .PHONY: all help clean test test-unittests test-functional test-all \
         install-all install-ci install-rmg install-rmgdb install-autotst install-gcn \
         install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-uma install-ob \
+        install-tckdb-arc \
         lite check-env compile
 
 
@@ -38,6 +39,7 @@ help:
 	@echo "  install-torchani Install TorchANI"
 	@echo "  install-uma      Install UMA (fairchem MLIP, gated model; users only, not CI)"
 	@echo "  install-ob       Install OpenBabel"
+	@echo "  install-tckdb-arc  Install the optional TCKDB upload adapter (WIP; not in install-all)"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  lite             Run lite installation (no tests)"
@@ -104,6 +106,9 @@ install-torchani:
 # token) and heavy, so this is a manual, user-driven setup. See devtools/install_uma.sh.
 install-uma:
 	bash $(DEVTOOLS_DIR)/install_uma.sh
+
+install-tckdb-arc:
+	bash $(DEVTOOLS_DIR)/install_tckdb_arc.sh
 
 install-ob:
 	bash $(DEVTOOLS_DIR)/install_ob.sh
