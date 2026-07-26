@@ -205,6 +205,10 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.job3.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
         vibfreqs = parser.parse_frequencies(log_file_path=self.job3.local_path_to_output_file)
         self.assertTrue(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=vibfreqs))
+        # Unparsed frequencies (``None``) must be treated as an unsuccessful freq job, not crash.
+        self.assertFalse(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=None))
+        # An empty freqs list for a polyatomic non-TS species must not sneak through as successful.
+        self.assertFalse(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=list()))
 
     def test_determine_adaptive_level(self):
         """Test the determine_adaptive_level() method"""

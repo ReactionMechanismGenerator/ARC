@@ -53,8 +53,10 @@ class YAMLParser(ESSAdapter, ABC):
         Returns: np.ndarray | None
             The parsed frequencies (in cm^-1).
         """
-        freqs = self.data.get('freqs') or self.data.get('frequencies')
-        return np.array(freqs, dtype=np.float64) if freqs else None
+        freqs = self.data.get('freqs')
+        if freqs is None:
+            freqs = self.data.get('frequencies')
+        return np.array(freqs, dtype=np.float64) if freqs is not None else None
 
     def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """
