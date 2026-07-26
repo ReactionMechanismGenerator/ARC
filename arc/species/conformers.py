@@ -97,6 +97,9 @@ WELL_GAP = 20
 # The maximum number of times to iteratively search for the lowest conformer
 MAX_COMBINATION_ITERATIONS = 25
 
+# The force field energy improvement (in kcal/mol) below which the iterative base conformer descent has converged
+BASE_CONFORMER_ENERGY_TOL = 0.01
+
 # A threshold below which all combinations will be generated. Above it just samples of the entire search space.
 COMBINATION_THRESHOLD = 1000
 
@@ -539,7 +542,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                 if xyz is not None and energy is not None:
                     conformer = {'index': len_conformers + len(new_conformers) + len(newest_conformer_list),
                                  'xyz': xyz,
-                                 'FF energy': round(energy, 3),
+                                 'FF energy': energy,
                                  'source': f'Changing dihedrals on most stable conformer, iteration {i}',
                                  'torsion': tor,
                                  # The seed angle this conformer was generated from, not a measurement
@@ -565,14 +568,14 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                          'fl_distance': fl_distance1})
         new_conformers.extend(newest_conformer_list)
         if not newest_conformer_list:
-            newest_conformer_list = [lowest_conf_i]
-        lowest_conf_i = get_lowest_confs(label, newest_conformer_list, n=1)[0]
-        if lowest_conf_i['FF energy'] == base_energy \
-                and converter.compare_confs(lowest_conf_i['xyz'], base_xyz):
             break
-        elif lowest_conf_i['FF energy'] < base_energy:
+        lowest_conf_i = get_lowest_confs(label, newest_conformer_list, n=1)[0]
+        if lowest_conf_i['FF energy'] < base_energy - BASE_CONFORMER_ENERGY_TOL:
             base_energy = lowest_conf_i['FF energy']
-    if plot_path is not None:
+            base_xyz = lowest_conf_i['xyz']
+        else:
+            break
+    if plot_path is not None and lowest_conf_i is not None:
         logger.info(converter.xyz_to_str(lowest_conf_i['xyz']))
         arc.plotter.draw_structure(xyz=lowest_conf_i['xyz'])
         num_comb = arc.plotter.plot_torsion_angles(torsion_angles, multiple_sampling_points_dict,
@@ -584,8 +587,8 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
             else:
                 num_comb_str = str(num_comb)
             logger.info(f'Number of conformer combinations for {label} after reduction: {num_comb_str}')
-    if de_threshold is not None:
-        min_e = min([conf['FF energy'] for conf in new_conformers])
+    if de_threshold is not None and new_conformers:
+        min_e = min(conf['FF energy'] for conf in new_conformers)
         new_conformers = [conf for conf in new_conformers if conf['FF energy'] - min_e < de_threshold]
     if len(new_conformers) == 0 and len(new_conformers_no_energy) > 0:
         return new_conformers_no_energy

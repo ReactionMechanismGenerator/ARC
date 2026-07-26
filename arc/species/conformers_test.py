@@ -264,7 +264,11 @@ H      -1.22610851    0.40421362    1.35170355"""
         # minimum (previously missed since the dedup scan broke on the first dissimilar comparison instead
         # of continuing to scan the rest of the unsorted candidate list), so 3 of the formerly-listed
         # "new" conformers (dihedral -16.21, 43.79, and 154.68) are recognized as duplicates and dropped.
-        self.assertEqual(len(new_conformers), 6)
+        # A base_xyz descent fix (Fix 3) now advances the iterative search to the lowest conformer found
+        # (index 8, -1.81 kcal/mol) instead of re-sampling from the original base geometry forever, so a
+        # second iteration explores that conformer's neighborhood and adds 3 more conformers (indices 9-11)
+        # before converging.
+        self.assertEqual(len(new_conformers), 9)
         self.assertEqual(symmetries, {(2, 3, 1, 12): 1, (4, 2, 3, 1): 1, (9, 4, 2, 3): 3})
 
         expected_new_conformers = [{'index': 3,
@@ -374,11 +378,65 @@ H      -1.22610851    0.40421362    1.35170355"""
                                                        (2.57119398345943, -1.4643441268391801, 0.12763587638636842))},
                                     'FF energy': -1.81,
                                     'source': 'Changing dihedrals on most stable conformer, iteration 0',
-                                    'torsion': (2, 3, 1, 12), 'dihedral': 124.68}]
+                                    'torsion': (2, 3, 1, 12), 'dihedral': 124.68},
+                                   {'index': 9,
+                                    'xyz': {'symbols': ('O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                            'isotopes': (16, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
+                                            'coords': ((1.6983046527442671, 1.1900972080989811, 1.6162939392032971),
+                                                       (-0.17244492676486153, 0.20858313806778625, 0.4908209956890366),
+                                                       (0.5529043003047792, 1.5005272788149686, 0.8349108056619811),
+                                                       (-1.412537529308737, 0.46302528811348354, -0.34690680222576703),
+                                                       (0.5077977357303853, -0.46369861797665873, -0.045726165439835896),
+                                                       (-0.447767207505717, -0.31589972616664713, 1.4136920752897644),
+                                                       (0.8801106902596139, 2.0184906675915646, -0.07227353299108258),
+                                                       (-0.09268932222895988, 2.168947735640417, 1.4134922901046254),
+                                                       (-2.122787047693889, 1.1017684392149003, 0.1877651460903682),
+                                                       (-1.9138288559768164, -0.4816947166622084, -0.579447955536571),
+                                                       (-1.154136522915992, 0.951930571320023, -1.2916403855477867),
+                                                       (2.1406505365863713, 2.031582635884512, 1.8206839746593035))},
+                                    'FF energy': -1.81,
+                                    'source': 'Changing dihedrals on most stable conformer, iteration 1',
+                                    'torsion': (9, 4, 2, 3), 'dihedral': -59.41},
+                                   {'index': 10,
+                                    'xyz': {'symbols': ('O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                            'isotopes': (16, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
+                                            'coords': ((0.2133048094136362, -1.937523142944032, -0.630706792133181),
+                                                       (-0.19827700764894404, 0.15352265940118845, 0.4956393535567997),
+                                                       (0.8050988643706048, -0.6974404328415812, -0.27102441853443343),
+                                                       (-1.404289869573775, 0.5318744643843725, -0.3524060154546139),
+                                                       (-0.5518519277377316, -0.3977790862520241, 1.3746803730831296),
+                                                       (0.29428759918946046, 1.0659186047967542, 0.849311534075002),
+                                                       (1.137163155043566, -0.1876168793111392, -1.1811154086824152),
+                                                       (1.6787551392850717, -0.9022005065253916, 0.3557562076731675),
+                                                       (-2.0878272785448377, 1.1629880443808103, 0.22437038906526735),
+                                                       (-1.9577731292205425, -0.3550936796476166, -0.6762295170209632),
+                                                       (-1.0970456737952547, 1.0899059870710504, -1.2426439089439651),
+                                                       (0.8878665947034075, -2.4468984504640554, -1.111332825295866))},
+                                    'FF energy': -1.524,
+                                    'source': 'Changing dihedrals on most stable conformer, iteration 1',
+                                    'torsion': (4, 2, 3, 1), 'dihedral': -46.21},
+                                   {'index': 11,
+                                    'xyz': {'symbols': ('O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                            'isotopes': (16, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
+                                            'coords': ((0.8947079542484329, -0.40365585539158444, -1.7000064078038872),
+                                                       (-0.11013127803184038, 0.32419577992140974, 0.3666469250465987),
+                                                       (0.7852992931826135, -0.7012578245780545, -0.31549971939107196),
+                                                       (-1.5402636734365203, 0.2808106123156067, -0.15261795207994536),
+                                                       (-0.11316440430512786, 0.14248742452771704, 1.4469903649898437),
+                                                       (0.28947945852151, 1.3309501478611019, 0.19806747053681642),
+                                                       (1.7879645956036356, -0.6733246713342389, 0.12260666112272778),
+                                                       (0.38045808758359684, -1.712106148663243, -0.2026300326259789),
+                                                       (-2.1568196987979227, 1.0126172159480842, 0.37890346207291686),
+                                                       (-1.9819166935042074, -0.7091909027046144, -0.0004387883977886611),
+                                                       (-1.583786618587891, 0.5166055555204093, -1.220523833253807),
+                                                       (1.4759885616099593, -1.0775894606982477, -2.0917005406950016))},
+                                    'FF energy': -1.524,
+                                    'source': 'Changing dihedrals on most stable conformer, iteration 1',
+                                    'torsion': (4, 2, 3, 1), 'dihedral': 13.79}]
 
         for i, (new_conformer, expected_new_conformer) in enumerate(zip(new_conformers, expected_new_conformers)):
             self.assertEqual(new_conformer['index'], expected_new_conformer['index'])
-            self.assertEqual(new_conformer['FF energy'], expected_new_conformer['FF energy'])
+            self.assertAlmostEqual(new_conformer['FF energy'], expected_new_conformer['FF energy'], places=3)
             self.assertEqual(new_conformer['source'], expected_new_conformer['source'])
             self.assertEqual(new_conformer['torsion'], expected_new_conformer['torsion'])
             self.assertEqual(new_conformer['dihedral'], expected_new_conformer['dihedral'])
@@ -760,6 +818,61 @@ O       1.40839617    0.14303696    0.00000000"""
         # list should contain an entry for it (a pre-fix bug reported it anyway, as though the
         # unoptimized geometry's incidental FF energy were the result of a successful optimization).
         self.assertEqual(xyzs, [])
+        self.assertEqual(energies, [])
+
+    def test_rdkit_force_field_uff_fallback_keeps_xyzs_energies_aligned(self):
+        """Test that the UFF fallback keeps ``xyzs`` and ``energies`` index-aligned when only some
+        conformers converge"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3)
+        # Forcing the UFF fallback to run with a mix of converged and non-converged conformers is
+        # not readily reproducible with real MMFF/UFF calls, so ``MMFFGetMoleculeForceField`` is
+        # patched to return None (routing execution into the UFF fallback) and
+        # ``UFFOptimizeMoleculeConfs`` is patched to report conformer 1 (of 3) as not converged.
+        with unittest.mock.patch.object(conformers.Chem.AllChem, 'MMFFGetMoleculeForceField',
+                                        return_value=None), \
+                unittest.mock.patch.object(conformers.Chem.AllChem, 'UFFOptimizeMoleculeConfs',
+                                           return_value=[(0, -10.0), (1, 0.0), (0, -20.0)]):
+            xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s',
+                                                           optimize=True, try_uff=True)
+        # Conformer 1 did not converge, so it must be absent from both lists, keeping them
+        # index-aligned (a pre-fix bug appended its geometry to ``xyzs`` regardless).
+        self.assertEqual(energies, [-10.0, -20.0])
+        self.assertEqual(len(xyzs), 2)
+        expected_xyz_0 = conformers.read_rdkit_embedded_conformer_i(rd_mol, 0)
+        expected_xyz_2 = conformers.read_rdkit_embedded_conformer_i(rd_mol, 2)
+        self.assertTrue(almost_equal_coords_lists(xyzs[0], expected_xyz_0))
+        self.assertTrue(almost_equal_coords_lists(xyzs[1], expected_xyz_2))
+
+    def test_rdkit_force_field_uff_failure_without_openbabel_reports_nothing(self):
+        """Test that a failed UFF fallback with ``try_ob=False`` reports no conformers at all"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3)
+        # ``MMFFGetMoleculeForceField`` is patched to return None so execution routes into the UFF
+        # fallback, and ``UFFOptimizeMoleculeConfs`` is patched to raise so that fallback fails too.
+        with unittest.mock.patch.object(conformers.Chem.AllChem, 'MMFFGetMoleculeForceField',
+                                        return_value=None), \
+                unittest.mock.patch.object(conformers.Chem.AllChem, 'UFFOptimizeMoleculeConfs',
+                                           side_effect=RuntimeError('mock UFF failure')):
+            xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s',
+                                                          optimize=True, try_uff=True, try_ob=False)
+        # Optimization was requested but neither MMFF nor UFF delivered it, and OpenBabel is disabled.
+        # Returning geometries here would pass unoptimized structures off as optimized ones, so both
+        # lists must be empty (leaving the ``output is None`` branch to mean only "not optimizing").
+        self.assertEqual(xyzs, [])
+        self.assertEqual(energies, [])
+
+    def test_rdkit_force_field_unoptimized_keeps_geometries_in_uff_fallback(self):
+        """Test that ``optimize=False`` still yields all geometries (and no energies) via the UFF fallback"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3)
+        # ``MMFFGetMoleculeForceField`` is patched to return None so execution routes into the UFF
+        # fallback; with ``optimize=False`` no UFF call is made and the geometries are kept as-is.
+        with unittest.mock.patch.object(conformers.Chem.AllChem, 'MMFFGetMoleculeForceField',
+                                        return_value=None):
+            xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s',
+                                                          optimize=False, try_uff=True, try_ob=False)
+        self.assertEqual(len(xyzs), 3)
         self.assertEqual(energies, [])
 
     def test_determine_rotors(self):
@@ -1683,6 +1796,129 @@ O       1.40839617    0.14303696    0.00000000"""
             label='DCE', mol=dce_mol, base_xyz=dce_xyz, multiple_tors=[torsion],
             multiple_sampling_points=[[0, 260, 280]], max_combination_iterations=1, plot_path=None)
         self.assertEqual(len(new_conformers), 2)
+
+    def test_conformers_combinations_by_lowest_conformer_dedup_precompute_pin(self):
+        """Test that threading precomputed fl_distance1/dmat1 through the dedup scan does not
+        change which conformers are kept (pin regression test for the compare_confs_fl fix)"""
+        dce_spc = ARCSpecies(label='DCE', smiles='ClCCCl')
+        dce_xyz = dce_spc.get_xyz()
+        dce_mol = dce_spc.mol
+        torsions, _ = conformers.determine_rotors([dce_mol])
+        torsion = tuple(torsions[0])
+        new_conformers = conformers.conformers_combinations_by_lowest_conformer(
+            label='DCE', mol=dce_mol, base_xyz=dce_xyz, multiple_tors=[torsion],
+            multiple_sampling_points=[[0, 90, 180, 270]], max_combination_iterations=5, plot_path=None)
+        self.assertEqual(len(new_conformers), 3)
+        ff_energies = [round(conf['FF energy'], 4) for conf in new_conformers]
+        self.assertEqual(ff_energies, [6.2512, 5.0141, 6.2512])
+        dihedrals = [round(vectors.calculate_dihedral_angle(
+            coords=conf['xyz']['coords'], torsion=torsion, index=0)) for conf in new_conformers]
+        self.assertEqual(dihedrals, [6, 24, 338])
+        for conf in new_conformers:
+            self.assertEqual(conf['source'], 'Changing dihedrals on most stable conformer, iteration 0')
+
+    def test_conformers_combinations_by_lowest_conformer_base_xyz_descends(self):
+        """Test that the iterative search advances base_xyz to the lowest conformer found so far"""
+        confs = [{'index': 0, 'xyz': {'symbols': ('O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                      'isotopes': (16, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
+                                      'coords': ((1.49632323, 0.74450682, 0.93344565),
+                                                 (-0.27411342, -0.73369536, 0.23273076),
+                                                 (1.00918754, -0.0158525, -0.16288919),
+                                                 (-1.40106678, 0.23458846, 0.56318695),
+                                                 (-0.08785698, -1.36178955, 1.11163236),
+                                                 (-0.59069375, -1.38959579, -0.58564668),
+                                                 (0.83747022, 0.65606977, -1.00993468),
+                                                 (1.77546073, -0.7455614, -0.44289977),
+                                                 (-1.14379759, 0.86897309, 1.41716858),
+                                                 (-2.31108163, -0.31832139, 0.81688419),
+                                                 (-1.62427975, 0.88145943, -0.29124479),
+                                                 (2.31444818, 1.17921842, 0.63815656))}}]
+        torsions = [[9, 4, 2, 3], [4, 2, 3, 1], [2, 3, 1, 12]]
+        spc1 = ARCSpecies(label='propanol', smiles='CCCO', xyz=confs[0]['xyz'])
+        new_conformers = conformers.conformers_combinations_by_lowest_conformer(
+            label='propanol', mol=spc1.mol, base_xyz=confs[0]['xyz'], multiple_tors=[tuple(tor) for tor in torsions],
+            multiple_sampling_points=[[-179.42, -119.42, -59.42, 0.58, 60.58, 120.58, 180.58],
+                                       [-179.79, -119.79, -59.79, 0.21, 60.21, 120.21, 180.21],
+                                       [-179.71, -119.71, -59.71, 0.29, 60.29, 120.29, 180.29]],
+            max_combination_iterations=25, plot_path=None)
+        base_energy = round(conformers.get_force_field_energies(
+            'propanol', spc1.mol, num_confs=None, xyz=confs[0]['xyz'], optimize=True, suppress_warning=True)[1][0], 3)
+        self.assertTrue(any(conf['FF energy'] < base_energy for conf in new_conformers))
+        self.assertTrue(any('iteration 1' in conf['source'] for conf in new_conformers))
+
+    def test_conformers_combinations_by_lowest_conformer_terminates_early(self):
+        """Test that the search stops once no further improvement is found, well before max iterations"""
+        dce_spc = ARCSpecies(label='DCE', smiles='ClCCCl')
+        dce_xyz = dce_spc.get_xyz()
+        dce_mol = dce_spc.mol
+        torsions, _ = conformers.determine_rotors([dce_mol])
+        torsion = tuple(torsions[0])
+        new_conformers = conformers.conformers_combinations_by_lowest_conformer(
+            label='DCE', mol=dce_mol, base_xyz=dce_xyz, multiple_tors=[torsion],
+            multiple_sampling_points=[[0, 120, 240]], max_combination_iterations=25, plot_path=None)
+        max_iteration = max(int(conf['source'].rsplit(' ', 1)[-1]) for conf in new_conformers)
+        self.assertLess(max_iteration, 25)
+
+    def test_conformers_combinations_by_lowest_conformer_none_ff_energy_does_not_raise(self):
+        """Test that a species for which RDKit sometimes fails to compute an FF energy does not raise"""
+        spc = ARCSpecies(label='spc_1', smiles='[O]OOC=CC#CCO')
+        xyz = spc.get_xyz()
+        mol = spc.mol
+        torsions, _ = conformers.determine_rotors([mol])
+        multiple_sampling_points = [[0, 90, 180, 270] for _ in torsions]
+        new_conformers = conformers.conformers_combinations_by_lowest_conformer(
+            label='spc_1', mol=mol, base_xyz=xyz, multiple_tors=[tuple(tor) for tor in torsions],
+            multiple_sampling_points=multiple_sampling_points, max_combination_iterations=25, plot_path=None)
+        self.assertGreater(len(new_conformers), 0)
+
+    def test_conformers_combinations_by_lowest_conformer_respects_energy_tolerance(self):
+        """Test that the descent advances only on improvements exceeding BASE_CONFORMER_ENERGY_TOL.
+
+        An improvement larger than the tolerance must move base_xyz and trigger a further
+        iteration; one smaller than it must terminate the descent, since a difference below the
+        tolerance is within force field noise and not a physically meaningful step downhill.
+        Driving the comparison to a precise energy gap is impractical with a real force field, so
+        ``get_force_field_energies`` and ``change_dihedrals_and_force_field_it`` are mocked to
+        deliver exact values on either side of the threshold.
+        """
+        base_energy = 10.0
+        xyz_a = converter.str_to_xyz('H 0 0 0\nH 0 0 1.0')
+
+        for improvement, expected_calls in ((5 * conformers.BASE_CONFORMER_ENERGY_TOL, 2),
+                                            (0.5 * conformers.BASE_CONFORMER_ENERGY_TOL, 1)):
+            call_count = {'n': 0}
+
+            def fake_change_dihedrals(*args, **kwargs):
+                call_count['n'] += 1
+                return [xyz_a], [base_energy - improvement]
+
+            with unittest.mock.patch.object(conformers, 'get_force_field_energies',
+                                            return_value=(None, [base_energy])), \
+                 unittest.mock.patch.object(conformers, 'change_dihedrals_and_force_field_it',
+                                            side_effect=fake_change_dihedrals):
+                new_conformers = conformers.conformers_combinations_by_lowest_conformer(
+                    label='H2', mol=self.mol0, base_xyz=xyz_a, multiple_tors=[(1, 2, 3, 4)],
+                    multiple_sampling_points=[[0]], max_combination_iterations=2, plot_path=None)
+            self.assertEqual(call_count['n'], expected_calls)
+            self.assertEqual(len(new_conformers), 1)
+            self.assertAlmostEqual(new_conformers[0]['FF energy'], base_energy - improvement, places=4)
+
+    def test_conformers_combinations_by_lowest_conformer_all_collisions_first_iteration(self):
+        """Test that an all-colliding first iteration (empty newest_conformer_list) does not raise.
+
+        Reliably constructing a real molecule for which every trial dihedral collides on the very
+        first iteration is impractical, so ``change_dihedrals_and_force_field_it`` is mocked to
+        simulate that scenario (all returned xyz's are None). This exercises the early ``break``
+        that leaves ``lowest_conf_i`` at its initial ``None`` and ``new_conformers`` empty, guarding
+        both the ``plot_path`` dereference and the ``de_threshold`` reduction against that case.
+        """
+        with unittest.mock.patch.object(conformers, 'change_dihedrals_and_force_field_it',
+                                        return_value=([None, None], [None, None])):
+            new_conformers = conformers.conformers_combinations_by_lowest_conformer(
+                label='CCO', mol=self.mol0, base_xyz=self.spc0.get_xyz(), multiple_tors=[(1, 2, 3, 4)],
+                multiple_sampling_points=[[0, 180]], de_threshold=5.0,
+                plot_path='/nonexistent/should/never/be/used')
+        self.assertEqual(new_conformers, [])
 
     def test_get_lowest_confs(self):
         """Test getting the n lowest conformers"""
