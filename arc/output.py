@@ -1212,21 +1212,26 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         d['thermo'] = None
 
     # ── statistical mechanics ────────────────────────────────────────────────
-    if not is_mono and converged:
-        pg = (point_groups or {}).get(label)
-        d['statmech'] = _statmech_to_dict(spc, project_directory, point_group=pg)
-    else:
-        d['statmech'] = None
-
-    # ── additional calculations (rotor scans, etc.) ─────────────────────────
     # Bundle-local calcs that aren't part of the opt → freq → sp chain. The
     # field is a list (possibly empty) so consumers can iterate without a
     # None-guard. Currently populated only for converged non-monoatomic
     # species with successful 1D rotor scans; everything else gets ``[]``.
+    # Computed ahead of the statmech section so the torsions can be told which
+    # scan records exist rather than predicting it independently; the fields are
+    # still assigned in contract order below.
+    rotor_scans = _build_rotor_scans(spc, project_directory) if not is_mono and converged else []
+
     if not is_mono and converged:
-        d['rotor_scans'] = _build_rotor_scans(spc, project_directory)
+        pg = (point_groups or {}).get(label)
+        d['statmech'] = _statmech_to_dict(
+            spc, project_directory, point_group=pg,
+            scan_keys={entry['key'] for entry in rotor_scans},
+        )
     else:
-        d['rotor_scans'] = []
+        d['statmech'] = None
+
+    # ── additional calculations (rotor scans, etc.) ─────────────────────────
+    d['rotor_scans'] = rotor_scans
 
     return d
 
@@ -1291,8 +1296,16 @@ def _thermo_to_dict(thermo) -> dict:
     return t
 
 
-def _statmech_to_dict(spc, project_directory: str, point_group: str | None = None) -> dict:
-    """Build the statmech sub-section for a non-monoatomic converged species/TS."""
+def _statmech_to_dict(spc,
+                      project_directory: str,
+                      point_group: str | None = None,
+                      scan_keys: set[str] | None = None,
+                      ) -> dict:
+    """Build the statmech sub-section for a non-monoatomic converged species/TS.
+
+    ``scan_keys`` is forwarded to :func:`_get_torsions`; see that function for
+    why passing the already-built ``rotor_scans`` keys avoids a redundant parse.
+    """
     # Use the cached private attribute to avoid triggering a geometry re-read
     is_linear = spc._is_linear
 
@@ -1317,22 +1330,31 @@ def _statmech_to_dict(spc, project_directory: str, point_group: str | None = Non
         'point_group': point_group,
         'rigid_rotor_kind': rotor_kind,
         'harmonic_frequencies_cm1': [float(f) for f in freqs] if freqs is not None else None,
-        'torsions': _get_torsions(spc, project_directory),
+        'torsions': _get_torsions(spc, project_directory, scan_keys=scan_keys),
     }
 
 
-def _get_torsions(spc, project_directory: str) -> list[dict]:
+def _get_torsions(spc, project_directory: str, scan_keys: set[str] | None = None) -> list[dict]:
     """Build the torsions list from spc.rotors_dict.
 
     Each emitted torsion carries a ``source_scan_key`` (e.g.
-    ``"scan_rotor_3"``) when its scan log is on disk and parseable. The key
-    matches the ARC-local key used by :func:`_build_rotor_scans`,
-    so consumers can resolve the torsion's underlying scan record.
-    Rotors whose scan log is missing or fails to parse get the field set to
-    ``None`` rather than fabricating a key that points at no calc.
+    ``"scan_rotor_3"``) only when :func:`_build_rotor_scans` actually emits a
+    record under that key, so a torsion can never reference a scan record that
+    is absent from ``rotor_scans``. Rotors with no corresponding record get the
+    field set to ``None`` rather than fabricating a key that points at no calc.
+
+    Args:
+        spc: The species whose ``rotors_dict`` is being rendered.
+        project_directory (str): The run's project directory.
+        scan_keys (Optional[set[str]]): The keys :func:`_build_rotor_scans`
+            emitted for this species. When ``None`` the keys are derived here
+            via the same builder, which costs an extra parse; callers that
+            already built the records should pass them in.
     """
     if not getattr(spc, 'rotors_dict', None):
         return []
+    if scan_keys is None:
+        scan_keys = {entry['key'] for entry in _build_rotor_scans(spc, project_directory)}
     torsions = []
     for rotor_index, rotor in spc.rotors_dict.items():
         if rotor.get('success') is not True:
@@ -1342,10 +1364,8 @@ def _get_torsions(spc, project_directory: str) -> list[dict]:
         symmetry = rotor.get('symmetry', 1)
         rotor_type = rotor.get('type', 'HinderedRotor')
         treatment = 'free_rotor' if 'Free' in str(rotor_type) else 'hindered_rotor'
-        scan_key = (
-            f'scan_rotor_{rotor_index}'
-            if _scan_log_is_parseable(rotor, project_directory) else None
-        )
+        candidate_key = f'scan_rotor_{rotor_index}'
+        scan_key = candidate_key if candidate_key in scan_keys else None
         torsions.append({
             'symmetry_number': symmetry,
             'treatment': treatment,
@@ -1372,11 +1392,6 @@ def _resolve_scan_path(rotor: dict, project_directory: str) -> str | None:
     if not os.path.isfile(scan_path):
         return None
     return scan_path
-
-
-def _scan_log_is_parseable(rotor: dict, project_directory: str) -> bool:
-    """Cheap presence-check for a usable 1D scan log on disk."""
-    return _resolve_scan_path(rotor, project_directory) is not None
 
 
 def _get_rotor_barrier(rotor: dict, project_directory: str) -> float | None:
@@ -1439,25 +1454,44 @@ def _build_rotor_scans(spc, project_directory: str) -> list[dict]:
     input_xyz = getattr(spc, 'final_xyz', None) or getattr(spc, 'initial_xyz', None)
     out: list[dict] = []
     for rotor_index, rotor in spc.rotors_dict.items():
-        if rotor.get('success') is not True:
-            continue
-        if rotor.get('dimensions', 1) != 1:
-            continue
-        scan_result = _build_scan_result_for_rotor(
-            rotor, project_directory, input_xyz=input_xyz,
+        entry = _build_rotor_scan_entry(
+            rotor_index, rotor, project_directory, input_xyz=input_xyz,
         )
-        if scan_result is None:
-            continue
-        scan_constraints = _parse_scan_constraints(rotor, project_directory)
-        entry = {
-            'key': f'scan_rotor_{rotor_index}',
-            'source_log': _make_rel_path(_resolve_scan_path(rotor, project_directory), project_directory),
-            'result': scan_result,
-        }
-        if scan_constraints:
-            entry['constraints'] = scan_constraints
-        out.append(entry)
+        if entry is not None:
+            out.append(entry)
     return out
+
+
+def _build_rotor_scan_entry(rotor_index,
+                            rotor: dict,
+                            project_directory: str,
+                            input_xyz: dict | None = None,
+                            ) -> dict | None:
+    """Return the ``rotor_scans`` record for a single rotor, or ``None``.
+
+    Single source of truth for whether a rotor yields a scan record.
+    :func:`_build_rotor_scans` uses it to emit records and :func:`_get_torsions`
+    uses it to decide whether a torsion may reference ``scan_rotor_<i>``, so the
+    two cannot drift apart and leave dangling references.
+    """
+    if rotor.get('success') is not True:
+        return None
+    if rotor.get('dimensions', 1) != 1:
+        return None
+    scan_result = _build_scan_result_for_rotor(
+        rotor, project_directory, input_xyz=input_xyz,
+    )
+    if scan_result is None:
+        return None
+    entry = {
+        'key': f'scan_rotor_{rotor_index}',
+        'source_log': _make_rel_path(_resolve_scan_path(rotor, project_directory), project_directory),
+        'result': scan_result,
+    }
+    scan_constraints = _parse_scan_constraints(rotor, project_directory)
+    if scan_constraints:
+        entry['constraints'] = scan_constraints
+    return entry
 
 
 def _parse_scan_constraints(rotor: dict, project_directory: str) -> list[dict]:

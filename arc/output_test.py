@@ -1840,6 +1840,49 @@ class TestScanCalculations(unittest.TestCase):
         # Second rotor has no scan log on disk → no fabricated key.
         self.assertIsNone(torsions[1]['source_scan_key'])
 
+    def test_get_torsions_no_scan_key_for_multidimensional_rotor(self):
+        """An ND rotor emits no scan record, so its torsion must not reference one."""
+        spc = MagicMock()
+        spc.rotors_dict = {0: self._rotor(dimensions=2)}
+        self.assertEqual([c['key'] for c in _build_rotor_scans(spc, '/tmp/project')], [])
+        torsions = _get_torsions(spc, '/tmp/project')
+        self.assertEqual(len(torsions), 1)
+        self.assertIsNone(torsions[0]['source_scan_key'])
+
+    def test_get_torsions_no_scan_key_when_scan_log_unparseable(self):
+        """A 1D rotor whose log exists but does not parse must not reference a record."""
+        handle = tempfile.NamedTemporaryFile(mode='w', suffix='.out', delete=False)
+        handle.write('not a scan log\n')
+        handle.close()
+        self.addCleanup(os.remove, handle.name)
+        spc = MagicMock()
+        spc.rotors_dict = {0: self._rotor(scan_path=handle.name)}
+        self.assertEqual([c['key'] for c in _build_rotor_scans(spc, '/tmp/project')], [])
+        torsions = _get_torsions(spc, '/tmp/project')
+        self.assertEqual(len(torsions), 1)
+        self.assertIsNone(torsions[0]['source_scan_key'])
+
+    def test_every_torsion_scan_key_resolves_to_a_record(self):
+        """The contract invariant: no source_scan_key without a matching rotor_scans record."""
+        handle = tempfile.NamedTemporaryFile(mode='w', suffix='.out', delete=False)
+        handle.write('not a scan log\n')
+        handle.close()
+        self.addCleanup(os.remove, handle.name)
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: self._rotor(),                          # 1D, parseable → record
+            1: self._rotor(dimensions=2),              # ND → no record
+            2: self._rotor(scan_path=handle.name),     # unparseable → no record
+            3: self._rotor(scan_path=''),              # no log → no record
+        }
+        scans = _build_rotor_scans(spc, '/tmp/project')
+        emitted = {entry['key'] for entry in scans}
+        self.assertEqual(emitted, {'scan_rotor_0'})
+        referenced = {t['source_scan_key'] for t in _get_torsions(spc, '/tmp/project')
+                      if t['source_scan_key'] is not None}
+        self.assertEqual(referenced, emitted)
+        self.assertTrue(referenced.issubset(emitted))
+
     # ---- per-sample scan geometries ----
     #
     # ARC's parser wrapper already returns aligned per-step xyz dicts.
