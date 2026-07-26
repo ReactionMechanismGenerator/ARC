@@ -1,8 +1,11 @@
 """Tests for the optional standalone adapter hook in ARC.py."""
 
+import contextlib
 import importlib.util
+import io
 import os
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import MagicMock, patch
@@ -245,6 +248,45 @@ class TestStandaloneTCKDBHook(unittest.TestCase):
             project_directory='/project',
             tckdb_config=config,
         )
+
+
+class TestInvalidInputReporting(unittest.TestCase):
+    """Tests that a malformed input file is reported through the validation seam, not as a traceback."""
+
+    def _run_main_on(self, content: str) -> str:
+        """
+        Write ``content`` to an input file, run ``main()`` on it, and return what reached stderr.
+
+        Args:
+            content (str): The YAML text to write as the ARC input file.
+
+        Returns:
+            str: Everything ``main()`` printed to stderr before exiting.
+        """
+        module = _load_arc_cli()
+        with tempfile.TemporaryDirectory() as directory:
+            input_file = os.path.join(directory, 'input.yml')
+            with open(input_file, 'w') as f:
+                f.write(content)
+            stderr = io.StringIO()
+            with patch.object(sys, 'argv', ['ARC.py', input_file]), \
+                    contextlib.redirect_stderr(stderr), \
+                    self.assertRaises(SystemExit) as context:
+                module.main()
+        self.assertEqual(context.exception.code, 1)
+        return stderr.getvalue()
+
+    def test_a_missing_project_name_exits_one_instead_of_raising(self):
+        """A missing 'project' is a validation error like any other, not an uncaught ValueError."""
+        stderr = self._run_main_on('species:\n  - label: H2\n    smiles: "[H][H]"\n')
+        self.assertIn('Invalid ARC input file', stderr)
+        self.assertIn('project', stderr)
+
+    def test_an_unknown_top_level_key_exits_one(self):
+        """The same seam reports a typo'd top-level key, which is what the missing-project path joins."""
+        stderr = self._run_main_on('project: test\nprojcet_directory: /tmp\n')
+        self.assertIn('Invalid ARC input file', stderr)
+        self.assertIn('projcet_directory', stderr)
 
 
 if __name__ == '__main__':
