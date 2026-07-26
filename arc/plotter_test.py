@@ -8,6 +8,7 @@ This module contains unit tests for the plotter functions
 import os
 import shutil
 import unittest
+from unittest.mock import patch
 
 import arc.plotter as plotter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file, safe_copy_file
@@ -218,6 +219,12 @@ H      -1.16115119    0.31478894   -0.81506145
         plotter.save_irc_traj_animation(irc_f_path, irc_r_path, out_path)
         self.assertTrue(os.path.isfile(out_path))
 
+    def test_draw_kinetics_plots_bare_scalar_t_max(self):
+        """Regression test: a bare scalar T_max must be used as-is, not silently replaced by T_min
+        (a prior bug normalized T_max to (T_min, 'K') instead of (T_max, 'K'))"""
+        with patch.object(plotter.np, 'linspace') as mock_linspace:
+            plotter.draw_kinetics_plots(rxn_list=[], T_min=500, T_max=3000, T_count=10)
+        mock_linspace.assert_called_once_with(500, 3000, 10)
 
     @classmethod
     def tearDownClass(cls):
