@@ -4622,6 +4622,47 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertTrue(converter.compare_confs(occco_1, occco_5))
         self.assertAlmostEqual(converter.compare_confs(occco_1, occco_5, rmsd_score=True), 0.0, places=4)
 
+    def test_compare_confs_fl(self):
+        """Test that compare_confs_fl gives identical results with and without precomputed fl_distance1/dmat1"""
+        xyz1 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                'isotopes': (12, 1, 1, 1, 1),
+                'coords': ((0.0, 0.0, 0.0),
+                           (0.6300326, 0.6300326, 0.6300326),
+                           (-0.6300326, -0.6300326, 0.6300326),
+                           (-0.6300326, 0.6300326, -0.6300326),
+                           (0.6300326, -0.6300326, -0.6300326))}
+        conf_similar = {'xyz': {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                                 'isotopes': (12, 1, 1, 1, 1),
+                                 'coords': ((0.0, 0.0, 0.0),
+                                            (0.630032999999999999, 0.6300326, 0.6300326),
+                                            (-0.6300326, -0.6300326, 0.6300326),
+                                            (-0.6300326, 0.6300326, -0.6300326),
+                                            (0.6300326, -0.6300326, -0.6300326))}}
+        conf_dissimilar = {'xyz': {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                                    'isotopes': (12, 1, 1, 1, 1),
+                                    'coords': ((0.0, 0.0, 0.0),
+                                               (1.5, 1.5, 1.5),
+                                               (-0.6300326, -0.6300326, 0.6300326),
+                                               (-0.6300326, 0.6300326, -0.6300326),
+                                               (0.6300326, -0.6300326, -0.6300326))}}
+        for conf2 in (dict(conf_similar, fl_distance=None, dmat=None), dict(conf_dissimilar, fl_distance=None, dmat=None)):
+            conf2_no_precompute = dict(conf2)
+            fl_distance1_a, dmat1_a, out_a, similar_a = converter.compare_confs_fl(xyz1, conf2_no_precompute)
+
+            conf2_with_precompute = dict(conf2)
+            fl_distance1_precomputed = np.linalg.norm(
+                np.array(xyz1['coords'][0]) - np.array(xyz1['coords'][-1]))
+            dmat1_precomputed = converter.xyz_to_dmat(xyz1)
+            fl_distance1_b, dmat1_b, out_b, similar_b = converter.compare_confs_fl(
+                xyz1, conf2_with_precompute, fl_distance1=fl_distance1_precomputed, dmat1=dmat1_precomputed)
+
+            self.assertEqual(similar_a, similar_b)
+            self.assertAlmostEqual(fl_distance1_a, fl_distance1_b, 6)
+            self.assertEqual(out_a['fl_distance'] is None, out_b['fl_distance'] is None)
+            if similar_a:
+                np.testing.assert_array_almost_equal(dmat1_a, dmat1_b)
+                np.testing.assert_array_almost_equal(out_a['dmat'], out_b['dmat'])
+
     def test_check_isomorphism(self):
         """Test checking for molecule isomorphism"""
         mol1 = Molecule(smiles='[O-][N+]#N')

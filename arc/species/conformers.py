@@ -521,15 +521,19 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         for tor, sampling_points in zip(multiple_tors, multiple_sampling_points):
             xyzs, energies = change_dihedrals_and_force_field_it(label, mol, xyz=base_xyz, torsions=[tor],
                                                                  new_dihedrals=[[sp] for sp in sampling_points],
-                                                                 force_field=force_field, optimize=False)
+                                                                 force_field=force_field)
             newest_conformers_dict[tor] = list()  # Keys are torsions for plotting.
             for xyz, energy, dihedral in zip(xyzs, energies, sampling_points):
                 exists = False
                 dmat1, fl_distance1 = None, None
                 for conf in new_conformers + newest_conformer_list:
-                    fl_distance1, dmat1, conf, similar = converter.compare_confs_fl(xyz,conf)
+                    # compare_confs_fl() returns ``dmat1`` unchanged on the dissimilar path and a
+                    # computed one on the similar path, so it is only ever None while it has not
+                    # been needed yet.
+                    fl_distance1, dmat1, conf, similar = converter.compare_confs_fl(
+                        xyz, conf, fl_distance1=fl_distance1, dmat1=dmat1)
                     if not similar:
-                        break
+                        continue
                     if converter.compare_confs(xyz, conf['xyz'], skip_conversion=True, dmat1=dmat1, dmat2=conf['dmat']):
                         exists = True
                         break
@@ -539,6 +543,8 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                                  'FF energy': round(energy, 3),
                                  'source': f'Changing dihedrals on most stable conformer, iteration {i}',
                                  'torsion': tor,
+                                 # The seed angle this conformer was generated from, not a measurement
+                                 # of 'xyz' (see change_dihedrals_and_force_field_it).
                                  'dihedral': round(dihedral, 2),
                                  'dmat': dmat1,
                                  'fl_distance': fl_distance1}
@@ -612,7 +618,7 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
 
     if multiple_tors:
         xyzs, energies = change_dihedrals_and_force_field_it(label, mol, xyz=base_xyz, torsions=multiple_tors,
-                                                             new_dihedrals=product_combinations, optimize=True,
+                                                             new_dihedrals=product_combinations,
                                                              force_field=force_field)
         for xyz, energy in zip(xyzs, energies):
             if xyz is not None:
@@ -713,7 +719,8 @@ def generate_force_field_conformers(label,
     return conformers
 
 
-def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals, optimize=True, force_field='MMFF94s'):
+def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals, optimize=None,
+                                        force_field='MMFF94s'):
     """
     Change dihedrals of specified torsions according to the new dihedrals specified, and get FF energies.
 
@@ -727,13 +734,22 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
     generated conformer are kept.
     We assume that each list entry in new_dihedrals is of the length of the torsions list (2 in the example).
 
+    Note that each requested dihedral is a *seed* for the force field minimization, not a constraint: the
+    torsion is set rigidly and the resulting geometry is then relaxed, so the returned conformer's actual
+    dihedral may differ from the requested one (the minimum of a torsional well does not generally sit on
+    the sampling grid). The returned xyz and energy always describe the same relaxed structure.
+
     Args:
         label (str): The species' label.
         mol (Molecule): The RMG molecule with the connectivity information.
         xyz (dict): The base 3D geometry to be changed.
         torsions (list): Entries are torsion tuples for which the dihedral will be changed relative to xyz.
         new_dihedrals (list): Entries are same size lists of dihedral angles (floats) corresponding to the torsions.
-        optimize (bool, optional): Whether to optimize the coordinates using FF. True to optimize.
+        optimize (bool, optional): Deprecated and ignored. Kept only so that legacy positional calls
+                                   (which used to bind this argument to the removed ``optimize`` parameter)
+                                   do not silently corrupt ``force_field``. The returned geometry is always
+                                   the FF-optimized one, matching the returned energy. If a caller passes a
+                                   value explicitly, a deprecation warning is logged.
         force_field (str, optional): The type of force field to use.
 
     Returns:
@@ -741,6 +757,9 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
             - The conformer FF energies corresponding to the list of dihedrals.
             - The conformer xyz geometries corresponding to the list of dihedrals.
     """
+    if optimize is not None:
+        logger.warning('The "optimize" argument of change_dihedrals_and_force_field_it is deprecated and ignored; '
+                       'the returned geometry is always FF-optimized to match the returned energy.')
     if isinstance(xyz, str):
         xyz = converter.str_to_xyz(xyz)
 
@@ -767,10 +786,7 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
                                                 force_field=force_field, suppress_warning=True)
         if energy and xyz_:
             energies.append(energy[0])
-            if optimize:
-                xyzs.append(xyz_[0])
-            else:
-                xyzs.append(xyz_dihedrals)
+            xyzs.append(xyz_[0])
         else:
             energies.append(None)
             xyzs.append(xyz_dihedrals)
