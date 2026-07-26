@@ -579,7 +579,7 @@ def _get_ess_versions(paths: dict, project_directory: str) -> dict[str, str] | N
 
 def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> tuple:
     """
-    Look up the AEC (per-atom, Hartree) and BAC (per-bond, kJ/mol) values
+    Look up the AEC (per-atom, Hartree) and BAC (per-bond, kcal/mol) values
     that Arkane used from the RMG database for the given level of theory.
 
     Finds the AEC and BAC keys independently via fuzzy matching in their
@@ -773,6 +773,16 @@ def _compute_species_corrections(
                 logger.debug(f'Failed to remove temporary file {p!r}', exc_info=True)
 
 
+# Native units of the parameter tables themselves, which are a property of the
+# Arkane data the tables are read from and not of the per-species total: atom
+# energies are Hartree (arkane.encorr.corr.get_atom_correction) and Petersson
+# BAC parameters are kcal/mol (arkane.encorr.bac returns kcal/mol). Labelling a
+# parameter table with the total block's unit would couple two independent
+# sources and mislabel every parameter should they ever diverge.
+_AEC_TABLE_UNIT = 'hartree'
+_BAC_TABLE_UNIT = 'kcal_mol'
+
+
 def _build_energy_corrections_for_species(
     label: str,
     species_corrections: dict[str, dict],
@@ -807,7 +817,7 @@ def _build_energy_corrections_for_species(
         }
         if aec_table:
             correction['parameter_table'] = {
-                'unit': aec_block.get('value_unit', 'hartree'),
+                'unit': _AEC_TABLE_UNIT,
                 'values': {str(k): float(v) for k, v in sorted(aec_table.items())},
             }
         applied.append(correction)
@@ -832,7 +842,7 @@ def _build_energy_corrections_for_species(
         }
         if bac_type == 'p' and bac_table:
             correction['parameter_table'] = {
-                'unit': bac_block.get('value_unit', 'kcal_mol'),
+                'unit': _BAC_TABLE_UNIT,
                 'values': {str(k): float(v) for k, v in sorted(bac_table.items())},
             }
         applied.append(correction)

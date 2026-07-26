@@ -1538,6 +1538,30 @@ class TestBuildAppliedCorrectionsForSpecies(unittest.TestCase):
             {'C-H': -0.17350, 'C=O': -2.63454},
         )
 
+    def test_parameter_table_unit_is_the_table_unit_not_the_total_unit(self):
+        """Parameter tables carry their own source unit, not the total block's.
+
+        The values come from the Arkane AEC/BAC tables (Hartree and kcal/mol
+        respectively) while ``total.unit`` describes the per-species total. The
+        two are independent, so a divergent total unit must not relabel the
+        per-parameter values.
+        """
+        aec_block = self._aec_block()
+        aec_block['value_unit'] = 'kj_mol'
+        bac_block = self._pbac_block()
+        bac_block['value_unit'] = 'kj_mol'
+        sc = {'X': {'aec': aec_block, 'bac': bac_block}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p',
+            aec_table={'C': -37.84706}, bac_table={'C-H': -0.17350},
+        )
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(aec['parameter_table']['unit'], 'hartree')
+        self.assertEqual(bac['parameter_table']['unit'], 'kcal_mol')
+        self.assertEqual(aec['total']['unit'], 'kj_mol')
+        self.assertEqual(bac['total']['unit'], 'kj_mol')
+
     def test_mbac_scheme_omits_params(self):
         # Per spec: Melius BAC parameters are atom-pair / length / neighbor /
         # molecular and don't fit SchemeBondParamPayload's bond-key shape.
