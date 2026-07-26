@@ -88,7 +88,7 @@ CONFS_VS_TORSIONS = {(0, 1): 75,
 # The resolution (in degrees) for scanning smeared wells
 SMEARED_SCAN_RESOLUTIONS = 30.0
 
-# An energy threshold (in kJ/mol) above which wells in a torsion will not be considered (rel. to the most stable well)
+# An energy threshold (in kcal/mol) above which wells in a torsion will not be considered (rel. to the most stable well)
 DE_THRESHOLD = 5.
 
 # The gap (in degrees) that defines different wells
@@ -184,9 +184,9 @@ def generate_conformers(mol_list: list[Molecule] | Molecule,
         multiplicity (int, optional): The species multiplicity. Used to perceive a molecule from xyz.
         num_confs_to_generate (int, optional): The number of conformers to generate (can be determined automatically)
         n_confs (int, optional): The number of conformers to return.
-        e_confs (float, optional): The energy threshold in kJ/mol above the lowest energy conformer
+        e_confs (float, optional): The energy threshold in kcal/mol above the lowest energy conformer
                                    below which all (unique) generated conformers will be returned.
-        de_threshold (float, optional): Energy threshold (in kJ/mol) above which wells will not be considered.
+        de_threshold (float, optional): Energy threshold (in kcal/mol) above which wells will not be considered.
         smeared_scan_res (float, optional): The resolution (in degrees) for scanning smeared wells.
         combination_threshold (int, optional): A threshold below which all combinations will be generated.
         force_field (str, optional): The type of force field to use (MMFF94, MMFF94s, UFF, GAFF).
@@ -333,7 +333,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         max_combination_iterations (int, optional): The max num of times to iteratively search for the lowest conformer.
         diastereomers (list, optional): Entries are xyz's in a dictionary format or conformer structures
                                         representing specific diastereomers to keep.
-        de_threshold (float, optional): An energy threshold (in kJ/mol) above which wells in a torsion
+        de_threshold (float, optional): An energy threshold (in kcal/mol) above which wells in a torsion
                                         will not be considered.
 
     Returns:
@@ -442,7 +442,7 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
         multiple_sampling_points (list): Entries are lists of dihedral angles (sampling points), respectively correspond
                                          to torsions in multiple_tors.
         len_conformers (int, optional): The length of the existing conformers list (for consecutive numbering).
-        de_threshold (float, optional): An energy threshold (in kJ/mol) above which wells in a torsion
+        de_threshold (float, optional): An energy threshold (in kcal/mol) above which wells in a torsion
                                         will not be considered.
         force_field (str, optional): The type of force field to use.
         max_combination_iterations (int, optional): The max num of times to iteratively search for the lowest conformer.
@@ -494,7 +494,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         multiple_sampling_points (list): Entries are lists of dihedral angles (sampling points), respectively correspond
                                          to torsions in multiple_tors.
         len_conformers (int, optional): The length of the existing conformers list (for consecutive numbering).
-        de_threshold (float, optional): An energy threshold (in kJ/mol) above which wells in a torsion
+        de_threshold (float, optional): An energy threshold (in kcal/mol) above which wells in a torsion
                                         will not be considered.
         force_field (str, optional): The type of force field to use.
         max_combination_iterations (int, optional): The max num of times to iteratively search for the lowest conformer.
@@ -1112,7 +1112,7 @@ def get_lowest_confs(label: str,
         label (str): The species' label.
         confs (dict, list): Entries are either conformer dictionaries or a length two list of xyz coordinates and energy
         n (int, optional): Number of lowest conformers to return.
-        e (float, optional): The energy threshold above the lowest energy conformer in kJ/mol
+        e (float, optional): The energy threshold above the lowest energy conformer in kcal/mol
                              below which all conformers will be returned.
         energy (str, optional): The energy attribute to search by. Currently only 'FF energy' is supported.
 
@@ -1227,7 +1227,7 @@ def get_force_field_energies(label: str,
     Returns:
         tuple[list, list]:
             - Entries are xyz coordinates, each in a dict format.
-            - Entries are the FF energies (in kJ/mol).
+            - Entries are the FF energies (in kcal/mol).
     """
     xyzs, energies = list(), list()
     if force_field.lower() in ['mmff94', 'mmff94s', 'uff']:
@@ -1271,7 +1271,7 @@ def openbabel_force_field_on_rdkit_conformers(label, rd_mol, force_field='MMFF94
     Returns:
         tuple[list, list]:
             - Entries are optimized xyz's in a dictionary format.
-            - Entries are float numbers representing the energies (in kJ/mol).
+            - Entries are float numbers representing the energies (in kcal/mol).
     """
     xyzs, energies = list(), list()
     if not rd_mol.GetNumConformers():
@@ -1329,7 +1329,7 @@ def mix_rdkit_and_openbabel_force_field(label,
     Returns:
         tuple[list, list]:
             - Entries are optimized xyz's in a list format.
-            - Entries are float numbers representing the energies in kJ/mol.
+            - Entries are float numbers representing the energies in kcal/mol.
     """
     xyzs, energies = list(), list()
     rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
@@ -1375,7 +1375,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
     Returns:
         tuple[list, list]:
             - Entries are optimized xyz's in a list format.
-            - Entries are float numbers representing the energies in kJ/mol.
+            - Entries are float numbers representing the energies in kcal/mol.
     """
     xyzs, energies = list(), list()
     ff = ob.OBForceField.FindForceField(force_field)
