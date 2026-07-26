@@ -15,8 +15,14 @@ All QA, troubleshooting, and downstream branching remain in mother ARC.
 import json
 import os
 import stat
+import subprocess
 import sys
 import time
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 import arc.parser.parser as parser
 from arc.common import get_logger
@@ -196,6 +202,8 @@ class PipeRun:
         cpus = self.tasks[0].required_cores if self.tasks else 1
         memory_mb = self.tasks[0].required_memory_mb if self.tasks else 4096
         array_size = min(self.max_workers, len(self.tasks)) if self.tasks else self.max_workers
+        if self.cluster_software == 'local':
+            array_size = min(array_size, local_worker_limit(cpus, memory_mb))
         return cpus, memory_mb, array_size
 
     def _build_env_preamble(self) -> str:
@@ -226,9 +234,13 @@ class PipeRun:
             lines.append(engine_setup)
         scratch_base = pipe_settings.get('scratch_base', '')
         if scratch_base:
-            lines.append(
-                f'export TMPDIR="{scratch_base}/${{PBS_JOBID%%[*}}/$PBS_ARRAY_INDEX"\nmkdir -p "$TMPDIR"'
-            )
+            # Each worker needs its own scratch directory. Without a queueing system there is no
+            # job id to key it on, so fall back to the run id and the worker id.
+            if self.cluster_software == 'local':
+                subdir = f'{self.run_id}/$WORKER_ID'
+            else:
+                subdir = '${PBS_JOBID%%[*}/$PBS_ARRAY_INDEX'
+            lines.append(f'export TMPDIR="{scratch_base}/{subdir}"\nmkdir -p "$TMPDIR"')
         return '\n'.join(lines)
 
     def write_submit_script(self) -> str:
@@ -284,6 +296,8 @@ class PipeRun:
             Tuple[str, str]: ``(job_status, job_id)`` — ``'submitted'`` on
                 success, ``'errored'`` on failure.
         """
+        if self.cluster_software == 'local':
+            return self.submit_locally()
         import shutil as _shutil
         from arc.imports import settings as _settings
         submit_command = _settings['submit_command']
@@ -305,6 +319,35 @@ class PipeRun:
             submit_filename=filename,
         )
         return job_status, job_id
+
+    def submit_locally(self):
+        """
+        Launch the worker pool locally, without a queueing system.
+
+        Runs the generated ``submit.sh`` in a detached session so the pool keeps running
+        independently of ARC's own process. Completion is detected the same way as for a
+        queued pipe run, by reconciling the per-task state files under ``pipe_root``, so
+        the returned identifier is only used for bookkeeping.
+
+        Returns:
+            Tuple[str, str]: ``(job_status, job_id)`` — ``('running', <pid>)`` on success,
+                ``('errored', None)`` on failure.
+        """
+        submit_path = os.path.join(self.pipe_root, 'submit.sh')
+        if not os.path.isfile(submit_path):
+            logger.error(f'Cannot launch a local pipe run, {submit_path} does not exist.')
+            return 'errored', None
+        try:
+            process = subprocess.Popen(['bash', submit_path],
+                                       stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL,
+                                       cwd=self.pipe_root,
+                                       start_new_session=True)
+        except Exception as e:
+            logger.error(f'Could not launch the local pipe worker pool: {e}')
+            return 'errored', None
+        logger.info(f'Launched a local pipe worker pool for {self.run_id} (pid {process.pid}).')
+        return 'running', str(process.pid)
 
     def reconcile(self) -> dict[str, int]:
         """
@@ -770,15 +813,46 @@ def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):
 # ===========================================================================
 
 
+def local_worker_limit(cpus_per_worker: int, memory_mb_per_worker: int) -> int:
+    """
+    Determine how many pipe workers may run concurrently on this machine.
+
+    Without a queueing system nothing else throttles the pool, so the worker count is bounded
+    by both the core count and the available memory. ``pipe_settings['local_max_workers']``
+    overrides the derived value when set.
+
+    Args:
+        cpus_per_worker (int): Cores each worker is allowed to use.
+        memory_mb_per_worker (int): Memory each worker is expected to need, in MB.
+
+    Returns:
+        int: The maximum number of concurrent local workers (at least 1).
+    """
+    configured = (settings.get('pipe_settings') or dict()).get('local_max_workers')
+    if configured:
+        return max(1, int(configured))
+    by_cores = (os.cpu_count() or 1) // max(1, int(cpus_per_worker))
+    limit = by_cores
+    if memory_mb_per_worker and psutil is not None:
+        by_memory = int(psutil.virtual_memory().available / (1024 ** 2) // memory_mb_per_worker)
+        limit = min(limit, by_memory)
+    return max(1, limit)
+
+
 def derive_cluster_software(ess_settings: dict, job_adapter: str) -> str:
     """
     Heuristic: derive cluster software from the first server configured
     for this engine in ess_settings. Mirrors how run_job() picks its server.
 
     Returns a lowercase identifier matching the ``pipe_submit`` template keys
-    (e.g., ``'slurm'``, ``'pbs'``, ``'sge'``, ``'htcondor'``).
+    (e.g., ``'slurm'``, ``'pbs'``, ``'sge'``, ``'htcondor'``, ``'local'``).
     Maps ``'oge'`` to ``'sge'`` for template compatibility.
+
+    ``pipe_settings['run_locally']`` forces the ``'local'`` backend, which runs the array as a
+    pool of background worker processes on this machine instead of submitting it to a queue.
     """
+    if (settings.get('pipe_settings') or dict()).get('run_locally'):
+        return 'local'
     cs_alias = {'oge': 'sge'}
     for server_name in ess_settings.get(job_adapter, []):
         if server_name in servers_dict and 'cluster_soft' in servers_dict[server_name]:

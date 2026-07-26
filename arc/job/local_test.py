@@ -107,6 +107,20 @@ class TestLocal(unittest.TestCase):
                     local.submit_job(path='.', cluster_soft='pbs', submit_cmd='qsub', submit_filename='submit.sh')
         self.assertIn('compute node', str(cm.exception))
 
+    def test_check_running_jobs_ids_without_a_queueing_system(self):
+        """Test that a machine with no queueing system reports no queue job IDs"""
+        for cluster_soft in ['local', 'Local']:
+            with patch.dict(local.servers, {'local': {'cluster_soft': cluster_soft}}):
+                with patch('arc.job.local.execute_command') as mock_execute:
+                    self.assertEqual(local.check_running_jobs_ids(), list())
+                mock_execute.assert_not_called()
+
+    def test_check_running_jobs_ids_unsupported_cluster_software(self):
+        """Test that an unrecognized cluster software is still rejected"""
+        with patch.dict(local.servers, {'local': {'cluster_soft': 'no_such_scheduler'}}):
+            with self.assertRaises(ValueError):
+                local.check_running_jobs_ids()
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

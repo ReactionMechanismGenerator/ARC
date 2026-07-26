@@ -767,6 +767,9 @@ class JobAdapter(ABC):
         """
         content = ''
         cluster_soft = servers[self.server]['cluster_soft'].lower()
+        if cluster_soft == 'local':
+            # No queueing system, so there are no scheduler stdout/stderr files to collect.
+            return
         if cluster_soft in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
             local_file_path_1 = os.path.join(self.local_path, 'out.txt')
             local_file_path_2 = os.path.join(self.local_path, 'err.txt')

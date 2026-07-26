@@ -182,6 +182,10 @@ def check_running_jobs_ids() -> list[str]:
         list[str]: List of job IDs.
     """
     cluster_soft = servers['local']['cluster_soft'].lower()
+    if cluster_soft == 'local':
+        # This machine has no queueing system, so there are no queue job IDs to report.
+        # Jobs here run in-core (e.g., PySCF) or as a local pipe worker pool.
+        return list()
     if cluster_soft not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
         raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
     cmd = check_status_command[servers['local']['cluster_soft']]

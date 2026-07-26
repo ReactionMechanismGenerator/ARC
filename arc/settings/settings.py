@@ -64,8 +64,12 @@ servers = {
         'un': '<username>',
         'key': 'path_to_rsa_key',
     },
+    # The machine ARC itself runs on. A 'local' server entry is required for any ESS that runs
+    # in-core (e.g., 'pyscf'), since ARC validates every ESS's server against this dictionary.
+    # Set 'cluster_soft' to 'local' on a workstation with no queueing system: jobs then run
+    # in-core or as a local pipe worker pool rather than being submitted to a queue.
     'local': {
-        'cluster_soft': 'HTCondor',
+        'cluster_soft': 'HTCondor',  # or 'Slurm'/'PBS'/'OGE'/'SGE', or 'local' if there is no queue
         'un': '<username>',
         'cpus': 48,
         'queues': {'':''},  # {'queue_name':'HH:MM:SS'}
@@ -346,6 +350,11 @@ pipe_settings = {
     'enabled': False,          # Set to True to enable pipe mode (it is off by default, use it for large compute campaigns).
     'min_tasks': 10,           # Minimum batch size to trigger pipe mode.
     'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
+    'run_locally': False,      # Run the pipe array as a local pool of worker processes instead of
+                               # submitting it to a queue. Use on a workstation with no queueing
+                               # system (e.g., to parallelize local PySCF jobs).
+    'local_max_workers': None, # Concurrent local workers. None derives a limit from the available
+                               # cores and memory; set an int to override.
     'max_attempts': 3,         # Retry budget per task before terminal failure.
     'lease_duration_hrs': 1,   # Worker lease duration in hours (default 1h).
     'env_setup': {},           # Engine-specific shell setup commands, e.g.,

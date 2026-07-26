@@ -14,7 +14,7 @@ import unittest
 
 from arc.job.adapters.mockter import MockAdapter
 from arc.job.pipe.pipe_state import TaskState, PipeRunState, TaskSpec, read_task_state, update_task_state
-from arc.job.pipe.pipe_run import PipeRun
+from arc.job.pipe.pipe_run import PipeRun, local_worker_limit
 from arc.level import Level
 from arc.species import ARCSpecies
 
@@ -169,6 +169,28 @@ class TestPipeRunWriteSubmitScript(unittest.TestCase):
         with open(path) as f:
             content = f.read()
         self.assertIn('queue 12', content)
+
+    def test_local_content(self):
+        """A local pipe run renders a plain background worker pool, with no queue directives."""
+        run = self._make_run('local', max_workers=4, n_tasks=4)
+        path = run.write_submit_script()
+        self.assertEqual(os.path.basename(path), 'submit.sh')
+        with open(path) as f:
+            content = f.read()
+        self.assertIn('-m arc.scripts.pipe_worker', content)
+        self.assertIn('for WORKER_ID in $(seq 1', content)
+        self.assertIn('wait', content)
+        self.assertIn('export OMP_NUM_THREADS=', content)
+        self.assertNotIn('#SBATCH', content)
+        self.assertNotIn('#PBS', content)
+
+    def test_local_worker_count_is_capped_by_machine(self):
+        """The local pool never exceeds what the machine can run concurrently."""
+        run = self._make_run('local', max_workers=1000, n_tasks=1000)
+        _, _, array_size = run._submission_resources()
+        self.assertLessEqual(array_size, local_worker_limit(run.tasks[0].required_cores,
+                                                            run.tasks[0].required_memory_mb))
+        self.assertGreaterEqual(array_size, 1)
 
     def test_overwrite_is_safe(self):
         run = self._make_run('slurm')
