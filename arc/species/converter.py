@@ -14,7 +14,7 @@ from openbabel import openbabel as ob
 from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
-from rdkit.Chem import AllChem, SDWriter
+from rdkit.Chem import SDWriter
 from rdkit.Chem.rdchem import AtomValenceException
 from scipy.optimize import brentq, minimize
 
@@ -1671,11 +1671,12 @@ def rdkit_conf_from_mol(mol: Molecule,
         xyz (dict): The xyz coordinates of the conformer, atoms must be ordered as in ``mol``.
 
     Raises:
-        ConverterError: if ``xyz`` is of wrong type.
+        ConverterError: if ``xyz`` is of wrong type, or if the number of coordinates in ``xyz`` does not
+                        match the number of atoms in ``mol``.
 
     Returns:
         tuple:
-            - Conformer: An RDKit Conformer object.
+            - Conformer: An RDKit Conformer object with atom positions set directly from ``xyz``.
             - RDMol: An RDKit Molecule object.
     """
     if mol is None:
@@ -1684,15 +1685,17 @@ def rdkit_conf_from_mol(mol: Molecule,
         raise ConverterError('The xyz argument seem to be of wrong type. Expected a dictionary, '
                              'got\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
     rd_mol = to_rdkit_mol(mol=mol, remove_h=False)
-    try:
-        AllChem.EmbedMolecule(rd_mol)
-    except:
-        pass
-    conf = None
-    if rd_mol.GetNumConformers():
-        conf = rd_mol.GetConformer(id=0)
-        for i in range(rd_mol.GetNumAtoms()):
-            conf.SetAtomPosition(i, xyz['coords'][i])  # reset atom coordinates
+    num_atoms = rd_mol.GetNumAtoms()
+    num_coords = len(xyz['coords'])
+    if num_coords != num_atoms:
+        raise ConverterError(f'The number of coordinates ({num_coords}) does not match the number of '
+                             f'atoms in the molecule ({num_atoms}).')
+    rd_conf = Chem.Conformer(num_atoms)
+    rd_conf.Set3D(True)
+    for i in range(num_atoms):
+        rd_conf.SetAtomPosition(i, xyz['coords'][i])
+    conf_id = rd_mol.AddConformer(rd_conf, assignId=True)
+    conf = rd_mol.GetConformer(id=conf_id)
     return conf, rd_mol
 
 

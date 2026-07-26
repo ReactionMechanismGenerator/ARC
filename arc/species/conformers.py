@@ -395,8 +395,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         for torsion, dihedral in zip(single_tors, single_sampling_point):
             torsion_0_indexed = [tor - 1 for tor in torsion]
             conf, rd_mol = converter.rdkit_conf_from_mol(mol, base_xyz)
-            if conf is not None:
-                base_xyz = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
+            base_xyz = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
 
         new_conformers.extend(generate_conformer_combinations(
             label=label, mol=mol_list[0], base_xyz=base_xyz, hypothetical_num_comb=hypothetical_num_comb,
@@ -759,9 +758,8 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
         xyz_dihedrals = xyz
         for torsion, dihedral in zip(torsions, dihedrals):
             conf, rd_mol = converter.rdkit_conf_from_mol(mol, xyz_dihedrals)
-            if conf is not None:
-                torsion_0_indexed = [tor - 1 for tor in torsion]
-                xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
+            torsion_0_indexed = [tor - 1 for tor in torsion]
+            xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
         xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
                                                 force_field=force_field, suppress_warning=True)
         if energy and xyz_:
