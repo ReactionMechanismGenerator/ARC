@@ -3523,6 +3523,41 @@ R1=1.0912"""
         self.assertTrue(conf.Is3D())
         self.assertEqual(rd_mol.GetNumAtoms(), 5)
 
+    def test_rdkit_conf_from_mol_coordinates_pinned(self):
+        """Test that rdkit_conf_from_mol() always returns a conformer whose positions equal the input xyz exactly."""
+        species_smiles = {
+            'trivial': 'O=C=O',  # a small, trivial linear species
+            'normal': 'CCCC',  # a small alkane
+            'wild_type': 'c1ccc2ccccc2c1O',  # a fused aromatic ring system with a heteroatom (naphthol)
+            'extreme': 'C12(CC3)CC(CC1)CC3C2',  # a strained, cage-like polycyclic structure
+        }
+        for label, smiles in species_smiles.items():
+            # 'extreme' is chosen such that RDKit's ETKDG embedding (even with useRandomCoords) fails to
+            # converge on a conformer; arbitrary, distinguishable coordinates are used instead of an
+            # embedding-derived geometry so the test does not depend on ETKDG succeeding.
+            spc = ARCSpecies(label=label, smiles=smiles)
+            rd_mol_for_xyz = converter.to_rdkit_mol(mol=spc.mol, remove_h=False)
+            symbols = tuple(atom.GetSymbol() for atom in rd_mol_for_xyz.GetAtoms())
+            coords = tuple((i * 0.5, i * 0.3 + 1.0, i * 0.7 - 2.0) for i in range(len(symbols)))
+            xyz = {'symbols': symbols, 'isotopes': None, 'coords': coords}
+            conf, rd_mol = converter.rdkit_conf_from_mol(mol=spc.mol, xyz=xyz)
+            self.assertIsNotNone(conf)
+            self.assertTrue(conf.Is3D())
+            self.assertEqual(rd_mol.GetNumAtoms(), len(symbols))
+            for i in range(rd_mol.GetNumAtoms()):
+                pos = conf.GetAtomPosition(i)
+                self.assertEqual((pos.x, pos.y, pos.z), coords[i])
+
+    def test_rdkit_conf_from_mol_coords_length_mismatch(self):
+        """Test that rdkit_conf_from_mol() raises ConverterError when xyz has fewer coords than atoms."""
+        spc = ARCSpecies(label='ethane', smiles='CC')
+        rd_mol_for_xyz = converter.to_rdkit_mol(mol=spc.mol, remove_h=False)
+        symbols = tuple(atom.GetSymbol() for atom in rd_mol_for_xyz.GetAtoms())
+        short_coords = tuple((i * 0.5, i * 0.3 + 1.0, i * 0.7 - 2.0) for i in range(len(symbols) - 1))
+        xyz = {'symbols': symbols[:-1], 'isotopes': None, 'coords': short_coords}
+        with self.assertRaises(ConverterError):
+            converter.rdkit_conf_from_mol(mol=spc.mol, xyz=xyz)
+
     def test_s_bonds_mol_from_xyz(self):
         """Test creating a molecule with only single bonds from xyz"""
         xyz1 = converter.str_to_xyz("""S      -0.06618943   -0.12360663   -0.07631983
