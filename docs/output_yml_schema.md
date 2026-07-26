@@ -72,7 +72,6 @@ output.yml
 │   └── (all species fields, plus:)
 │       ├── chosen_ts_method?, successful_ts_methods?
 │       ├── neb_log?, gsm_log?, irc_logs: [], irc_log_directions: [], irc_converged?
-│       ├── neb_log?, gsm_log?, irc_logs: [], irc_converged?
 │       └── rxn_label
 │
 └── reactions: []
@@ -255,10 +254,8 @@ All paths are relative to the project directory.
 | `chosen_ts_method` | `str?` | The TS search method that was selected |
 | `successful_ts_methods` | `list[str]?` | All TS methods that succeeded |
 | `ts_guesses` | `list[dict]` | Sanitized provenance for the chosen guess: `index`, `chosen`, `method`, and merged `method_sources` |
-| `neb_log` | `str?` | Run-relative path to NEB log |
-| `gsm_log` | `str?` | Run-relative path to the selected GSM stringfile |
-| `neb_log` | `str?` | Run-relative path to NEB log (set when chosen TS method is `orca_neb`) |
-| `gsm_log` | `str?` | Run-relative path to GSM stringfile (set when chosen TS method is `xtb_gsm`) |
+| `neb_log` | `str?` | Run-relative path to the NEB log. Taken from the run's `neb` path slot, falling back to the chosen TS guess's log when that guess's method is `orca_neb` |
+| `gsm_log` | `str?` | Run-relative path to the selected GSM stringfile. Taken from the run's `gsm` path slot, falling back to the chosen TS guess's log when that guess's method is `xtb_gsm` |
 | `irc_logs` | `list[str]` | Run-relative paths to IRC logs |
 | `irc_log_directions` | `list[str?]` | Forward/reverse direction in lockstep with `irc_logs` |
 | `irc_converged` | `bool?` | Whether IRC converged (`null` if IRC was not requested) |
