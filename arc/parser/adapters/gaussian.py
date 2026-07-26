@@ -665,7 +665,30 @@ class GaussianParser(ESSAdapter, ABC):
         return traj if traj else None
 
     def parse_irc_path(self) -> list[dict] | None:
-        """Parse structured data for each converged point in a Gaussian IRC path."""
+        """
+        Parse the IRC path with per-point structured data.
+
+        Walks the Gaussian log once and emits one record per converged IRC point that
+        carries a CURRENT STRUCTURE block. Records are in file order. The TS seed
+        (``Point Number: 0``) has no structure block in Gaussian logs and is therefore
+        not emitted; the caller is expected to supply a TS reference energy separately.
+
+        Returns:
+            Optional[list[dict]]: One dict per converged IRC point, or ``None`` if the
+            log contains none. Any value may be ``None`` if absent from the log:
+
+              - ``point_number`` (int): Gaussian's per-branch index.
+              - ``direction`` (str): ``'forward'`` or ``'reverse'``, taken from the
+                ``Point Number N in FORWARD/REVERSE path direction`` announcement that
+                precedes the converged block. ``None`` if no announcement was seen yet.
+              - ``electronic_energy_hartree`` (float): the most recent ``SCF Done``
+                energy preceding the converged block.
+              - ``max_gradient`` (float): max Cartesian force (Hartree/Bohr).
+              - ``rms_gradient`` (float): RMS Cartesian force.
+              - ``reaction_coordinate`` (float): ``NET REACTION COORDINATE UP TO THIS
+                POINT`` (sqrt(amu)*bohr in Gaussian's mass-weighted convention).
+              - ``xyz`` (dict): the parsed Cartesian geometry in ARC's xyz dict shape.
+        """
         lines = _get_lines_from_file(self.log_file_path)
         number = r"[-+]?\d*\.?\d+(?:[EDed][-+]?\d+)?"
         energy_re = re.compile(r"SCF Done:\s+E\([^)]*\)\s*=\s*(" + number + r")")
@@ -766,156 +789,6 @@ class GaussianParser(ESSAdapter, ABC):
                 'xyz': xyz,
             })
             i = p + 1 if p < coordinate_end else k
-        """
-        Parse the IRC path with per-point structured data.
-
-        Walks the Gaussian log once and emits one record per converged
-        IRC point that carries a CURRENT STRUCTURE block. Records are in
-        file order — the TS seed (Point Number: 0) has no structure block
-        in Gaussian logs and is therefore not emitted; the caller is
-        expected to supply a TS reference energy separately.
-
-        Returns: list[dict] | None
-            A list of point dicts. Keys (any may be ``None`` if absent
-            from the log):
-
-              - ``point_number`` (int): Gaussian's per-branch index.
-              - ``direction`` (str | None): ``'forward'`` / ``'reverse'``,
-                taken from the ``Point Number N in FORWARD/REVERSE path
-                direction.`` announcement that precedes the converged
-                block. ``None`` if no announcement was seen yet.
-              - ``electronic_energy_hartree`` (float | None): the most
-                recent ``SCF Done`` energy preceding the converged block.
-              - ``max_gradient`` (float | None): max Cartesian force
-                (Hartrees/Bohr).
-              - ``rms_gradient`` (float | None): RMS Cartesian force.
-              - ``reaction_coordinate`` (float | None): ``NET REACTION
-                COORDINATE UP TO THIS POINT`` (sqrt(amu)*bohr in
-                Gaussian's mass-weighted convention).
-              - ``xyz`` (dict | None): the parsed Cartesian geometry,
-                in ARC's standard xyz dict shape.
-        """
-        lines = _get_lines_from_file(self.log_file_path)
-        num_pat = r"[-+]?\d*\.?\d+(?:[EDed][-+]?\d+)?"
-        energy_re = re.compile(r"SCF Done:\s+E\([^)]*\)\s*=\s*(" + num_pat + r")")
-        forces_re = re.compile(
-            r"Cartesian Forces:\s+Max\s+(" + num_pat + r")\s+RMS\s+(" + num_pat + r")"
-        )
-        dir_re = re.compile(
-            r"Point Number\s+\d+\s+in\s+(FORWARD|REVERSE)\s+path direction"
-        )
-        point_re = re.compile(r"Point Number:\s+(\d+)\s+Path Number:\s+(\d+)")
-        rc_re = re.compile(
-            r"NET REACTION COORDINATE UP TO THIS POINT\s*=\s*(" + num_pat + r")"
-        )
-
-        def _to_float(text: str) -> float | None:
-            try:
-                return float(text.replace('D', 'E').replace('d', 'e'))
-            except (ValueError, TypeError):
-                return None
-
-        points: list[dict] = []
-        cur_dir: str | None = None
-        last_energy: float | None = None
-        last_max_grad: float | None = None
-        last_rms_grad: float | None = None
-
-        i = 0
-        n = len(lines)
-        while i < n:
-            line = lines[i]
-            m = energy_re.search(line)
-            if m:
-                last_energy = _to_float(m.group(1))
-                i += 1
-                continue
-            m = forces_re.search(line)
-            if m:
-                last_max_grad = _to_float(m.group(1))
-                last_rms_grad = _to_float(m.group(2))
-                i += 1
-                continue
-            m = dir_re.search(line)
-            if m:
-                cur_dir = m.group(1).lower()
-                i += 1
-                continue
-            m = point_re.search(line)
-            if m:
-                point_num = int(m.group(1))
-                # Look for CURRENT STRUCTURE within a small window. Gaussian
-                # emits the converged-point block as
-                #   Point Number: N    Path Number: M
-                #                 CURRENT STRUCTURE
-                #                 Cartesian Coordinates (Ang):
-                # Point 0 (the TS seed) has no CURRENT STRUCTURE block —
-                # we skip it; the caller supplies a TS reference energy
-                # outside of this parser.
-                j = i + 1
-                window_end = min(j + 6, n)
-                struct_start = None
-                while j < window_end:
-                    if 'CURRENT STRUCTURE' in lines[j]:
-                        struct_start = j
-                        break
-                    j += 1
-                if struct_start is None:
-                    i += 1
-                    continue
-                # Walk past two dashed boundary lines, then read coord
-                # rows (atom_index atomic_number x y z) until the closing
-                # dashed line.
-                k = struct_start + 1
-                dash_count = 0
-                while k < n and dash_count < 2:
-                    if '----' in lines[k]:
-                        dash_count += 1
-                    k += 1
-                coords: list[list[float]] = []
-                numbers: list[int] = []
-                while k < n and '----' not in lines[k]:
-                    parts = lines[k].split()
-                    if len(parts) >= 5:
-                        try:
-                            atomic_num = int(parts[1])
-                            x, y, z = float(parts[2]), float(parts[3]), float(parts[4])
-                        except (ValueError, IndexError):
-                            k += 1
-                            continue
-                        coords.append([x, y, z])
-                        numbers.append(atomic_num)
-                    k += 1
-                xyz = (
-                    xyz_from_data(coords=np.array(coords), numbers=numbers)
-                    if coords and numbers
-                    else None
-                )
-                # NET REACTION COORDINATE shows up within ~6 lines after
-                # the closing dashed boundary; cap the lookahead so we
-                # never spill into the next point's block.
-                rc: float | None = None
-                rc_end = min(k + 8, n)
-                p = k
-                while p < rc_end:
-                    rc_match = rc_re.search(lines[p])
-                    if rc_match:
-                        rc = _to_float(rc_match.group(1))
-                        break
-                    p += 1
-                points.append({
-                    "point_number": point_num,
-                    "direction": cur_dir,
-                    "electronic_energy_hartree": last_energy,
-                    "max_gradient": last_max_grad,
-                    "rms_gradient": last_rms_grad,
-                    "reaction_coordinate": rc,
-                    "xyz": xyz,
-                })
-                i = p + 1 if p < rc_end else k
-                continue
-            i += 1
-
         return points or None
 
     def parse_scan_conformers(self) -> pd.DataFrame | None:
