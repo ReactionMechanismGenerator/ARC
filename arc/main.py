@@ -15,7 +15,8 @@ import shutil
 import time
 from IPython.display import display
 
-from arc.common import (VERSION,
+from arc.common import (ARC_INPUT_SCHEMA_VERSION,
+                        VERSION,
                         ARC_PATH,
                         check_ess_settings,
                         delete_check_files,
@@ -30,7 +31,7 @@ from arc.common import (VERSION,
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.level import Level, assign_frequency_scale_factor
-from arc.job.factory import _registered_job_adapters
+from arc.job.factory import get_registered_job_adapters
 from arc.job.ssh import SSHClient
 from arc.output import write_output_yml
 from arc.processor import process_arc_project, resolve_neb_level
@@ -147,6 +148,10 @@ class ARC(object):
         ts_adapters (list, optional): Entries represent different TS adapters.
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
         skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
+        schema_version (int, optional): The input schema version read from a restart file.
+                                        Accepted for restart compatibility and ignored.
+        arc_version (str, optional): The ARC version that wrote a restart file.
+                                     Accepted for restart compatibility and ignored.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -269,6 +274,8 @@ class ARC(object):
                  verbose=logging.INFO,
                  report_e_elect: bool | None = False,
                  skip_nmd: bool | None = False,
+                 schema_version: int | None = None,
+                 arc_version: str | None = None,
                  ):
 
         if project is None:
@@ -325,8 +332,9 @@ class ARC(object):
         self.ts_adapters = ts_adapters
         self.report_e_elect = report_e_elect
         self.skip_nmd = skip_nmd
+        registered_job_adapters = get_registered_job_adapters()
         for ts_adapter in self.ts_adapters or list():
-            if ts_adapter.lower() not in _registered_job_adapters.keys():
+            if ts_adapter.lower() not in registered_job_adapters.keys():
                 raise InputError(f'Unknown TS adapter: "{ts_adapter}"')
 
         # attributes related to level of theory specifications
@@ -430,6 +438,8 @@ class ARC(object):
         A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.
         """
         restart_dict = dict()
+        restart_dict['schema_version'] = ARC_INPUT_SCHEMA_VERSION
+        restart_dict['arc_version'] = VERSION
         if self.adaptive_levels is not None:
             restart_dict['adaptive_levels'] = [
                 {'atom_range': [atom_range[0], atom_range[1]],

@@ -8,9 +8,13 @@ ARC - Automatic Rate Calculator
 import argparse
 import logging
 import os
+import sys
+
+from pydantic import ValidationError
 
 from arc.common import read_yaml_file
 from arc.main import ARC
+from arc.schema import validate_input_dict
 
 
 def parse_command_line_arguments(command_line_args=None):
@@ -48,7 +52,11 @@ def main():
     input_file = args.file
     project_directory = os.path.abspath(os.path.dirname(args.file))
     input_dict = read_yaml_file(path=input_file, project_directory=project_directory)
-    if 'project' not in list(input_dict.keys()):
+    if not isinstance(input_dict, dict):
+        print(f'Invalid ARC input file "{input_file}": expected a top-level mapping of ARC '
+              f'options, got {type(input_dict).__name__}.', file=sys.stderr)
+        sys.exit(1)
+    if 'project' not in input_dict:
         raise ValueError('A project name must be provided!')
 
     verbose = logging.INFO
@@ -59,7 +67,12 @@ def main():
     input_dict['verbose'] = input_dict['verbose'] if 'verbose' in input_dict else verbose
     if 'project_directory' not in input_dict or not input_dict['project_directory']:
         input_dict['project_directory'] = project_directory
-    arc_object = ARC(**input_dict)
+    try:
+        validated_input_dict = validate_input_dict(input_dict)
+    except (ValidationError, TypeError) as e:
+        print(f'Invalid ARC input file "{input_file}":\n{e}', file=sys.stderr)
+        sys.exit(1)
+    arc_object = ARC(**validated_input_dict)
     arc_object.execute()
 
 
