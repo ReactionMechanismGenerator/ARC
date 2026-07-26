@@ -1,0 +1,12 @@
+name: pyscf_env
+channels:
+  - conda-forge
+dependencies:
+  - python =3.11
+  - numpy
+  - pyyaml
+  - setuptools
+  - pip
+  - pip:
+      - pyscf==2.14.0
+      - pyscf-dispersion==1.5.0

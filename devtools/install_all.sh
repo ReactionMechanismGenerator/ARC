@@ -105,6 +105,7 @@ if [[ $SKIP_EXT == false ]]; then
         [TorchANI]=install_torchani.sh
         [GoFlow]=install_goflow.sh
         [RitS]=install_rits.sh
+        [PySCF]=install_pyscf.sh
     )
 
     # Optionally drop GoFlow — used by `make install-ci` since CI runs GoFlow in its own lane
@@ -125,6 +126,7 @@ if [[ $SKIP_EXT == false ]]; then
        [install_autotst.sh]="--conda"
        [install_goflow.sh]="--cpu --no-ckpt-check"
        [install_rits.sh]="--cpu --no-ckpt-check"
+       [install_pyscf.sh]="--cuda --gpu"
         # add more later, e.g.  [install_xtb.sh]="--cuda --prefix"
     )
 

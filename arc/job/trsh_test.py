@@ -6,11 +6,13 @@ This module contains unit tests of the arc.job.trsh module
 """
 
 import os
+import shutil
+import tempfile
 import unittest
 from unittest.mock import patch
 
 import arc.job.trsh as trsh
-from arc.common import ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, save_yaml_file
 from arc.exceptions import TrshError
 from arc.imports import settings
 from arc.parser.parser import parse_1d_scan_energies
@@ -1087,6 +1089,47 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('maytal_q', result.keys())
         self.assertIn('48:00:00', result.values())
         self.assertTrue(success)
+
+    def test_determine_ess_status_of_a_yaml_output(self):
+        """Test determining the status of an in-core adapter that reports results via YAML.
+
+        These adapters write ARC's internal schema rather than a text log, so the per-software
+        textual error signatures do not apply and the job's own ``success`` key is authoritative.
+        """
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            path = os.path.join(tmp_dir, 'output.yml')
+
+            save_yaml_file(path=path, content={'schema_version': 1, 'adapter': 'pyscf',
+                                               'success': True, 'sp': -397940.79})
+            status, keywords, error, line = trsh.determine_ess_status(
+                output_path=path, species_label='H2O2', job_type='opt', software='pyscf')
+            self.assertEqual(status, 'done')
+            self.assertEqual(keywords, list())
+            self.assertEqual(error, '')
+
+            save_yaml_file(path=path, content={'schema_version': 1, 'adapter': 'pyscf',
+                                               'success': False, 'error': 'SCF did not converge'})
+            status, keywords, error, line = trsh.determine_ess_status(
+                output_path=path, species_label='H2O2', job_type='opt', software='pyscf')
+            self.assertEqual(status, 'errored')
+            self.assertEqual(error, 'SCF did not converge')
+
+            # Adapters predating the ``success`` key (ase, torchani, openbabel) write an ``error``
+            # key only on failure, so a missing ``success`` must not be read as a failure.
+            save_yaml_file(path=path, content={'xyz': {'symbols': ('O', 'O')}, 'energy': -1.5})
+            status, keywords, error, line = trsh.determine_ess_status(
+                output_path=path, species_label='H2O2', job_type='opt', software='ase')
+            self.assertEqual(status, 'done')
+            self.assertEqual(error, '')
+
+            save_yaml_file(path=path, content={'error': 'Optimization failed: boom'})
+            status, keywords, error, line = trsh.determine_ess_status(
+                output_path=path, species_label='H2O2', job_type='opt', software='ase')
+            self.assertEqual(status, 'errored')
+            self.assertEqual(error, 'Optimization failed: boom')
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

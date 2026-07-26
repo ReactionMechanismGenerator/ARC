@@ -69,7 +69,6 @@ class JobEnum(str, Enum):
     Consider adding the following adapters:
         - ESS:
             - cosmo
-            - PySCF (https://pyscf.org/user/geomopt.html)
             - TS opt via pysisyphus (https://pysisyphus.readthedocs.io/en/dev/tsoptimization.html)
             - onedmin
             - openbabel
@@ -99,6 +98,7 @@ class JobEnum(str, Enum):
     molpro = 'molpro'
     orca = 'orca'
     psi4 = 'psi4'
+    pyscf = 'pyscf'
     qchem = 'qchem'
     terachem = 'terachem'
     torchani = 'torchani'

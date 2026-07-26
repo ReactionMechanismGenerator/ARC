@@ -93,10 +93,11 @@ global_ess_settings = {
     'openbabel': 'local',
     'orca_neb': 'local',
     'ase': 'local',
+    'pyscf': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase']
+supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase', 'pyscf']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 # Note: 'goflow' and 'rits' are intentionally NOT in the default — their envs
@@ -132,6 +133,9 @@ levels_ess = {
     'xtb': ['xtb', 'gfn'],
     'torchani': ['torchani'],
     'openbabel': ['mmff94s', 'mmff94', 'gaff', 'uff', 'ghemical'],
+    # Note: 'pyscf' is deliberately not listed here. Adding a phrase such as 'wb97m-v' would
+    # silently re-route levels that currently run on QChem/Gaussian to the local PySCF adapter.
+    # PySCF is opt-in: request it explicitly (e.g. Level(..., software='pyscf')).
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
@@ -181,6 +185,7 @@ input_filenames = {'ase': 'input.yml',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
                    'xtb': 'input.sh',
+                   'pyscf': 'input.yml',
                    }
 
 output_filenames = {'ase': 'output.yml',
@@ -199,6 +204,7 @@ output_filenames = {'ase': 'output.yml',
                     'torchani': 'output.yml',
                     'xtb': 'output.out',
                     'openbabel':'output.yml',
+                    'pyscf': 'output.yml',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
@@ -426,6 +432,7 @@ GOFLOW_PYTHON = find_executable('goflow_env')
 RITS_PYTHON = find_executable('rits_env')
 ARC_PYTHON = find_executable('arc_env')
 XTB_PYTHON = find_executable('xtb_env')
+PYSCF_PYTHON = find_executable('pyscf_env')
 RMG_ENV_NAME = 'rmg_env'
 RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')
