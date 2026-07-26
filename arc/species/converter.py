@@ -1911,6 +1911,8 @@ def compare_zmats(z1, z2, r_tol=0.01, a_tol=2, d_tol=2, verbose=False, symmetric
 def compare_confs_fl(xyz1: dict,
                      conf2: dict,
                      rtol: float = 0.01,
+                     fl_distance1: float | None = None,
+                     dmat1: np.ndarray | None = None,
                      ) -> tuple[float, np.ndarray | None, dict, bool]:
     """
     Compare two Cartesian coordinates representing conformers using first and last atom distances. If the distances are the same,
@@ -1922,6 +1924,13 @@ def compare_confs_fl(xyz1: dict,
         xyz1 (dict): Conformer 1.
         conf2 (dict): Conformer 2.
         rtol (float): The relative tolerance parameter (see Notes).
+        fl_distance1 (float, optional): A precomputed first/last atom distance for ``xyz1``. Since ``xyz1`` is
+                                        typically invariant across repeated calls (e.g., a caller scanning many
+                                        ``conf2`` candidates against the same ``xyz1``), passing this in avoids
+                                        recomputing it on every call.
+        dmat1 (np.ndarray, optional): A precomputed distance matrix for ``xyz1``, passed in for the same reason
+                                      as ``fl_distance1``. Only used (and only needs to be provided) once a prior
+                                      call has already found the two conformers similar.
 
     Returns:
         Tuple containing distances and matrices:
@@ -1932,14 +1941,15 @@ def compare_confs_fl(xyz1: dict,
     conf2['fl_distance'] = conf2.get('fl_distance')
     conf2['dmat'] = conf2.get('dmat')
     xyz1, xyz2 = check_xyz_dict(xyz1), check_xyz_dict(conf2['xyz'])
-    dmat1 = None
-    fl_distance1 = np.linalg.norm(np.array(xyz1['coords'][0]) - np.array(xyz1['coords'][-1]))
+    if fl_distance1 is None:
+        fl_distance1 = np.linalg.norm(np.array(xyz1['coords'][0]) - np.array(xyz1['coords'][-1]))
     if conf2['fl_distance'] is None:
         conf2['fl_distance'] = np.linalg.norm(np.array(xyz2['coords'][0]) - np.array(xyz2['coords'][-1]))
     if not np.isclose(fl_distance1, conf2['fl_distance'], rtol=rtol):
         return fl_distance1, dmat1, conf2, similar
     similar = True
-    dmat1 = xyz_to_dmat(xyz1)
+    if dmat1 is None:
+        dmat1 = xyz_to_dmat(xyz1)
     if conf2['dmat'] is None:
         conf2['dmat'] = xyz_to_dmat(xyz2)
     return fl_distance1, dmat1, conf2, similar
