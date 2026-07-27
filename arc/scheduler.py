@@ -2683,7 +2683,7 @@ class Scheduler(object):
     def check_negative_freq(self,
                             label: str,
                             job: JobAdapter,
-                            vibfreqs: list | np.ndarray,
+                            vibfreqs: list | np.ndarray | None,
                             ):
         """
         A helper function for determining the number of negative frequencies. Also logs appropriate errors.
@@ -2692,8 +2692,16 @@ class Scheduler(object):
         Args:
             label (str): The species label.
             job (JobAdapter): The optimization job object.
-            vibfreqs (list): The vibrational frequencies.
+            vibfreqs (list | np.ndarray | None): The vibrational frequencies, or ``None`` if they could not be parsed.
         """
+        if vibfreqs is None:
+            logger.error(f'Could not parse frequencies for {label} from the freq job output file '
+                         f'{job.local_path_to_output_file}. Treating the freq job as unsuccessful.')
+            return False
+        if len(vibfreqs) == 0 and not self.species_dict[label].is_ts and self.species_dict[label].number_of_atoms > 1:
+            logger.error(f'The freq job for {label} yielded no frequencies, but {label} is a polyatomic non-TS '
+                         f'species and should have vibrational modes. Treating the freq job as unsuccessful.')
+            return False
         neg_freqs = list()
         for freq in vibfreqs:
             if freq < 0:
