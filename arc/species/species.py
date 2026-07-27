@@ -477,6 +477,9 @@ class ARCSpecies(object):
                         self.multiplicity = self.mol.multiplicity
                     if self.charge is None:
                         self.charge = self.mol.get_net_charge()
+                    if multiplicity is not None and number_of_radicals is None and not adjlist \
+                            and self.mol.multiplicity != multiplicity:
+                        self.reconcile_mol_multiplicity()
             if regen_mol and not (self.mol is not None and self.keep_mol):
                 # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
                 # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
@@ -1489,6 +1492,49 @@ class ARCSpecies(object):
                                     mol=mol,
                                     )
             self.initial_xyz = new_xyz
+
+    def reconcile_mol_multiplicity(self):
+        """
+        Reconcile the ``.mol`` graph with a user-provided ``self.multiplicity`` that is lower than
+        the spin state perceived from a spin-agnostic descriptor (SMILES or InChI), by pairing
+        two radical electrons that sit on the *same* atom into a lone pair.
+
+        SMILES and InChI do not encode electron spin, so RMG perceives a default spin state
+        (e.g. ``[CH2]`` is perceived as triplet methylene, with two radicals on the carbon). When
+        the user requests a lower multiplicity (e.g. the singlet carbene), those same-atom radicals
+        are the ones meant to pair into a lone pair.
+
+        This deliberately handles ONLY same-atom pairing. Radicals on *different* atoms that are
+        overall spin-paired form an open-shell singlet (e.g. a singlet biradical) — a valid state
+        that must NOT be collapsed; such species are declared with ``number_of_radicals`` and are
+        filtered out before this method is called. If the requested multiplicity cannot be reached
+        purely by same-atom pairing, the molecule is left untouched (the caller keeps the perceived
+        structure, i.e. the pre-existing behavior).
+        """
+        perceived_multiplicity = self.mol.multiplicity
+        needed_pairs = (self.mol.get_radical_count() - (self.multiplicity - 1)) / 2
+        if needed_pairs <= 0 or needed_pairs != int(needed_pairs):
+            return
+        needed_pairs = int(needed_pairs)
+        available_pairs = sum(atom.radical_electrons // 2 for atom in self.mol.atoms)
+        if available_pairs < needed_pairs:
+            return
+        for atom in sorted(self.mol.atoms, key=lambda a: a.radical_electrons, reverse=True):
+            while needed_pairs and atom.radical_electrons >= 2:
+                atom.decrement_radical()
+                atom.decrement_radical()
+                atom.increment_lone_pairs()
+                needed_pairs -= 1
+        self.mol.multiplicity = self.multiplicity
+        self.mol.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
+        if all(atom.id == -1 for atom in self.mol.atoms):
+            self.mol.assign_atom_ids()
+        resonance = generate_resonance_structures_safely(self.mol.copy(deep=True), save_order=True)
+        if resonance and resonance[0].multiplicity == self.multiplicity:
+            self.mol = resonance[0]
+        logger.info(f'Reconciled species {self.label!r} to the requested multiplicity '
+                    f'{self.multiplicity} (its SMILES/InChI was perceived as multiplicity '
+                    f'{perceived_multiplicity}).')
 
     def determine_multiplicity(self,
                                smiles: str,

@@ -64,6 +64,8 @@ class TestParser(unittest.TestCase):
         yml_freqs_path = os.path.join(ARC_TESTING_PATH, 'freq', 'output.yml')
         vibspectrum_path = os.path.join(ARC_TESTING_PATH, 'freq', 'vibspectrum')
         mock_path = os.path.join(ARC_TESTING_PATH, 'mockter.yml')
+        empty_freqs_path = os.path.join(ARC_TESTING_PATH, 'freq', 'mockter_empty_freqs.yml')
+        no_freqs_path = os.path.join(ARC_TESTING_PATH, 'freq', 'yml_no_freqs.yml')
 
         no3_freqs = parser.parse_frequencies(log_file_path=no3_path)  # Q-Chem
         c2h6_freqs = parser.parse_frequencies(log_file_path=c2h6_path)  # Q-Chem
@@ -81,6 +83,8 @@ class TestParser(unittest.TestCase):
         yml_freqs = parser.parse_frequencies(log_file_path=yml_freqs_path)
         vibspectrum_freqs = parser.parse_frequencies(log_file_path=vibspectrum_path)  # xTB
         mock_freqs = parser.parse_frequencies(log_file_path=mock_path)  # Mockter
+        empty_freqs = parser.parse_frequencies(log_file_path=empty_freqs_path)  # YAML with an empty freqs list
+        no_freqs = parser.parse_frequencies(log_file_path=no_freqs_path)  # YAML with no freqs key
 
         np.testing.assert_almost_equal(no3_freqs,
                                        np.array([-390.08, -389.96, 822.75, 1113.23, 1115.24, 1195.35], np.float64))
@@ -143,6 +147,12 @@ class TestParser(unittest.TestCase):
         np.testing.assert_almost_equal(vibspectrum_freqs, np.array([4225.72], np.float64))
 
         np.testing.assert_almost_equal(mock_freqs, np.array([-500., 520., 540.], np.float64))
+        # An empty freqs list must parse to an empty array (not None), so a diatomic/linear species
+        # is not silently dropped and does not crash the scheduler's negative-frequency check.
+        self.assertIsNotNone(empty_freqs)
+        self.assertEqual(len(empty_freqs), 0)
+        # A genuinely missing freqs key must still parse to None (a real parse failure).
+        self.assertIsNone(no_freqs)
 
     def test_parse_normal_mode_displacement(self):
         """Test parsing frequencies and normal mode displacements"""
