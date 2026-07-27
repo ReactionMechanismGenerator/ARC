@@ -7,14 +7,19 @@ This module contains unit tests of the arc.job.adapters.ts.heuristics module
 
 import copy
 import itertools
+import json
 import os
 import shutil
 import tempfile
+import subprocess
 import unittest
+from unittest import mock
 from unittest.mock import patch
 
 from arc.common import almost_equal_coords
 from arc.family import get_reaction_family_products
+from arc.imports import settings
+from arc.job.adapters.ts import uma_sp_worker
 from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             are_h_abs_wells_reversed,
                                             combine_coordinates_with_redundant_atoms,
@@ -37,8 +42,11 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             load_family_parameters,
                                             check_sn2_ts_bonds,
                                             has_nitrile_group,
+                                            filter_ts_guesses_with_uma_sp,
+                                            remove_duplicate_ts_guesses,
                                             )
 from arc.reaction import ARCReaction
+from arc.settings.settings import UMA_LATEST_MODEL
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calculate_distance
@@ -1411,7 +1419,8 @@ H      -0.00000000   -0.75477000   -0.47632400""")
                                     testing=True,
                                     project='test',
                                     project_directory=os.path.join(self.scratch_dir, 'heuristics_qasn2'))
-        adapter.execute_incore()
+        with mock.patch.dict(settings, {'UMA_TS_GUESS_PREFILTER': False}):
+            adapter.execute_incore()
         self.assertEqual(rxn.family, 'qa_sn2')
         self.assertTrue(rxn.ts_species.is_ts)
         self.assertGreater(len(rxn.ts_species.ts_guesses), 0)
@@ -2503,6 +2512,148 @@ H      -0.30139889    0.23142254    3.12085495"""
         self.assertFalse(has_nitrile_group(ARCSpecies(label='acetylene', smiles='C#C')))
         # False: methylamine — has N, single bonds only
         self.assertFalse(has_nitrile_group(ARCSpecies(label='methylamine', smiles='CN')))
+
+    @staticmethod
+    def _uma_proc(returncode=0, stdout='', stderr=''):
+        """Build a stand-in for the ``subprocess.run`` CompletedProcess result."""
+        m = mock.Mock()
+        m.returncode = returncode
+        m.stdout = stdout
+        m.stderr = stderr
+        return m
+
+    def _uma_guesses(self, n):
+        """``n`` TS-guess xyz dicts of distinct geometries (an O-H bond stretched in steps) + their family labels."""
+        xyzs = list()
+        for i in range(n):
+            xyz = copy.deepcopy(self.h2o_xyz)
+            coords = [list(coord) for coord in xyz['coords']]
+            coords[1][0] += 0.1 * i
+            xyz['coords'] = tuple(tuple(coord) for coord in coords)
+            xyzs.append(xyz)
+        families = [f'qa_sn2_{i}' for i in range(n)]
+        return xyzs, families
+
+    def test_remove_duplicate_ts_guesses(self):
+        """Test that only TS guesses of the same geometry, up to atom labels, are removed."""
+        xyzs, families = self._uma_guesses(3)
+        relabeled = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+                     'coords': (xyzs[1]['coords'][0], xyzs[1]['coords'][2], xyzs[1]['coords'][1])}
+        out_xyzs, out_families = remove_duplicate_ts_guesses(xyzs + [copy.deepcopy(xyzs[0]), relabeled],
+                                                             families + ['dup_0', 'dup_1'])
+        self.assertEqual(out_xyzs, xyzs)
+        self.assertEqual(out_families, families)
+        # A mirror image has the same energy and leads to the mirror-image TS, so it is also removed.
+        mirror = {'symbols': xyzs[2]['symbols'], 'isotopes': xyzs[2]['isotopes'],
+                  'coords': tuple((-x, y, z) for x, y, z in xyzs[2]['coords'])}
+        out_xyzs, _ = remove_duplicate_ts_guesses(xyzs + [mirror], families + ['mirror'])
+        self.assertEqual(out_xyzs, xyzs)
+        # The same geometry with an isotope label on a different atom is a different guess
+        labeled = dict(xyzs[1], isotopes=(16, 2, 1))
+        relabeled_d = dict(xyzs[1], isotopes=(16, 1, 2))
+        out_xyzs, _ = remove_duplicate_ts_guesses([labeled, copy.deepcopy(labeled), relabeled_d], ['a', 'b', 'c'])
+        self.assertEqual(len(out_xyzs), 2)
+        # Guesses that differ by more than the tolerance are all kept.
+        out_xyzs, _ = remove_duplicate_ts_guesses(xyzs, families, tol=0.05)
+        self.assertEqual(len(out_xyzs), 3)
+
+    @mock.patch.dict(settings, {'UMA_TS_GUESS_PREFILTER': True})
+    def test_filter_ts_guesses_with_uma_sp(self):
+        """Test filter_ts_guesses_with_uma_sp`` behaviors, one ``subTest`` per case."""
+        mod = filter_ts_guesses_with_uma_sp.__module__
+
+        # No-op cases: <= top_k guesses, subprocess must never be touched.
+        for case, n in (('no_cut_below_top_k', 4), ('no_cut_exactly_top_k', 5)):
+            with self.subTest(case=case):
+                xyzs, families = self._uma_guesses(n)
+                with mock.patch.dict(settings, {'UMA_PYTHON': '/fake/uma/python'}), \
+                        mock.patch(f'{mod}.subprocess.run') as run:
+                    out_xyzs, out_families = filter_ts_guesses_with_uma_sp(xyzs, families)
+                run.assert_not_called()
+                self.assertEqual(out_xyzs, xyzs)
+                self.assertEqual(out_families, families)
+
+        # The pre-filter is off by default -> forward all distinct guesses with a warning, never shell out.
+        with self.subTest(case='off_by_default'):
+            xyzs, families = self._uma_guesses(8)
+            with mock.patch.dict(settings, {'UMA_TS_GUESS_PREFILTER': False}), \
+                    mock.patch.dict(settings, {'UMA_PYTHON': '/fake/uma/python'}), \
+                    mock.patch(f'{mod}.subprocess.run') as run, \
+                    self.assertLogs('arc', level='WARNING') as logs:
+                out_xyzs, out_families = filter_ts_guesses_with_uma_sp(xyzs, families)
+            run.assert_not_called()
+            self.assertEqual(out_xyzs, xyzs)
+            self.assertEqual(out_families, families)
+            self.assertTrue(any('UMA SP pre-filter is off' in line for line in logs.output))
+
+        # No uma_env (UMA_PYTHON is None) -> forward all distinct guesses with a warning, never shell out.
+        with self.subTest(case='fail_safe_uma_absent'):
+            xyzs, families = self._uma_guesses(8)
+            with mock.patch.dict(settings, {'UMA_PYTHON': None}), \
+                    mock.patch(f'{mod}.subprocess.run') as run, \
+                    self.assertLogs('arc', level='WARNING') as logs:
+                out_xyzs, out_families = filter_ts_guesses_with_uma_sp(xyzs + [copy.deepcopy(xyzs[0])],
+                                                                       families + ['duplicate'])
+            run.assert_not_called()
+            self.assertEqual(out_xyzs, xyzs)
+            self.assertEqual(out_families, families)
+            self.assertTrue(any('Forwarding all 8 TS guesses unranked' in line for line in logs.output))
+
+        # Worker present but its result is unusable -> forward all.
+        partial = json.dumps({f'guess_{i}': float(i) for i in range(5)})  # missing 5,6,7
+        for case, run_kwargs in (
+            ('fail_safe_nonzero_exit',
+             {'return_value': self._uma_proc(returncode=1, stderr='boom')}),
+            ('fail_safe_partial_scoring',
+             {'return_value': self._uma_proc(stdout=partial)}),
+            ('fail_safe_bad_json',
+             {'return_value': self._uma_proc(stdout='not json at all')}),
+            ('fail_safe_subprocess_exception',
+             {'side_effect': subprocess.TimeoutExpired(cmd='uma', timeout=1)}),
+        ):
+            with self.subTest(case=case):
+                xyzs, families = self._uma_guesses(8)
+                with mock.patch.dict(settings, {'UMA_PYTHON': '/fake/uma/python'}), \
+                        mock.patch(f'{mod}.subprocess.run', **run_kwargs):
+                    out_xyzs, out_families = filter_ts_guesses_with_uma_sp(xyzs, families)
+                self.assertEqual(out_xyzs, xyzs)
+                self.assertEqual(out_families, families)
+
+        # Keep the top_k lowest-energy guesses, in original index order.
+        with self.subTest(case='keeps_top_k_lowest_energy_in_original_order'):
+            xyzs, families = self._uma_guesses(8)
+            # Lowest 5 energies are indices 0,2,3,5,6; indices 1, 4, and 7 are the three highest.
+            energies = {'guess_0': 0.0, 'guess_1': 9.0, 'guess_2': 1.0, 'guess_3': 2.0,
+                        'guess_4': 8.0, 'guess_5': 3.0, 'guess_6': 4.0, 'guess_7': 5.0}
+            with mock.patch.dict(settings, {'UMA_PYTHON': '/fake/uma/python'}), \
+                    mock.patch(f'{mod}.subprocess.run',
+                               return_value=self._uma_proc(stdout=json.dumps(energies))) as run:
+                out_xyzs, out_families = filter_ts_guesses_with_uma_sp(
+                    xyzs, families, charge=0, multiplicity=1)
+            run.assert_called_once()
+            kept = [0, 2, 3, 5, 6]
+            self.assertEqual(out_xyzs, [xyzs[i] for i in kept])
+            self.assertEqual(out_families, [families[i] for i in kept])
+
+        # Charge/multiplicity are passed through to the worker argv (UMA omol conditioning), in the positions
+        # the worker reads them, checked with the worker's own argument parser.
+        with self.subTest(case='worker_invoked_with_charge_and_multiplicity'):
+            xyzs, families = self._uma_guesses(8)
+            energies = json.dumps({f'guess_{i}': float(i) for i in range(8)})
+            with mock.patch.dict(settings, {'UMA_PYTHON': '/fake/uma/python'}), \
+                    mock.patch(f'{mod}.subprocess.run',
+                               return_value=self._uma_proc(stdout=energies)) as run:
+                filter_ts_guesses_with_uma_sp(xyzs, families, charge=1, multiplicity=2, device='cuda')
+            argv = run.call_args[0][0]
+            self.assertEqual(argv[0], '/fake/uma/python')
+            self.assertEqual(os.path.realpath(argv[1]), os.path.realpath(uma_sp_worker.__file__))
+            self.assertEqual(argv[3:], ['1', '2', UMA_LATEST_MODEL, 'cuda'])
+            xyz_dir, charge, multiplicity, model, device = uma_sp_worker.parse_args(argv[1:])
+            self.assertEqual(xyz_dir, argv[2])
+            self.assertEqual(charge, 1)
+            self.assertEqual(multiplicity, 2)
+            self.assertEqual(model, UMA_LATEST_MODEL)
+            self.assertEqual(device, 'cuda')
 
 
 if __name__ == '__main__':
