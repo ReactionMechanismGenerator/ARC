@@ -157,7 +157,7 @@ def _initialize_adapter(obj: JobAdapter,
     obj.project = project
     obj.project_directory = project_directory
     if obj.project_directory and not os.path.isdir(obj.project_directory):
-        os.makedirs(obj.project_directory)
+        os.makedirs(obj.project_directory, exist_ok=True)
 
     obj.additional_job_info = None
     obj.args = args or dict()
