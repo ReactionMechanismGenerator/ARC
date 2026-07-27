@@ -12,8 +12,9 @@ from mako.template import Template
 
 import arc.plotter as plotter
 from arc.common import ARC_PATH, get_logger, read_yaml_file
-from arc.exceptions import InputError
+from arc.exceptions import AtomTypeError, InputError
 from arc.imports import incore_commands, settings
+from arc.molecule.molecule import Molecule
 from arc.job.local import execute_command
 from arc.statmech.adapter import StatmechAdapter
 from arc.statmech.factory import register_statmech_adapter
@@ -57,7 +58,11 @@ bondCorrectionType = '${bac_type}'
 % endif
 
 % for spc in species_list:
-% if spc['smiles']:
+% if spc.get('adjlist'):
+species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''},
+        structure=adjacencyList(\"\"\"
+${spc['adjlist']}\"\"\"))
+% elif spc['smiles']:
 species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''},
         structure=SMILES('${spc['smiles']}'), spinMultiplicity=${spc['multiplicity']})
 % else:
@@ -334,9 +339,25 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         species_list = list()
         for spc in self.species:
             if e0_only or spc.compute_thermo:
+                smiles = spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else ''
+                adjlist = ''
+                if smiles:
+                    # SMILES cannot encode a lone-pair singlet (e.g. a singlet carbene [CH2]): re-perceiving
+                    # the SMILES yields unpaired radicals whose count clashes with the multiplicity (Hund's
+                    # rule) when Arkane saves the thermo library, crashing the whole thermo step. When the
+                    # SMILES does not round-trip to the same multiplicity, emit the lossless adjacency list.
+                    perceived_mult = None
+                    try:
+                        perceived_mult = Molecule(smiles=smiles).multiplicity
+                    except (ValueError, AtomTypeError):
+                        perceived_mult = None
+                    if perceived_mult != spc.mol.multiplicity:
+                        adjlist = spc.mol.copy(deep=True).to_adjacency_list()
+                        smiles = ''
                 species_list.append({'label': spc.label,
                                      'path': spc.yml_path or os.path.join(statmech_dir, 'species', f'{spc.label}.py'),
-                                     'smiles': spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else '',
+                                     'smiles': smiles,
+                                     'adjlist': adjlist,
                                      'multiplicity': spc.multiplicity,
                                      })
         ts_list = [{'label': rxn.ts_species.label,
@@ -565,33 +586,94 @@ fi' '''
                                        shell=True,
                                        no_fail=True,
                                        executable='/bin/bash')
-    if std_err:
-        ignorable_phrases = [
-            "Open Babel Warning",
-            "Accepted unusual valence",
-            "==============================",
-            "pjrt_executable.cc",
-        ]
 
-        real_errors = []
-        for line in std_err:
-            line = line.strip()
-            if not line:
-                continue
-            if not any(phrase in line for phrase in ignorable_phrases):
-                real_errors.append(line)
-
-        if real_errors:
-            logger.info(f'Arkane run failed with errors:\n{std_err}')
-            return False
-
+    # The authoritative success signal is whether Arkane wrote
+    # ``output.py``. Stderr content alone is unreliable — upstream tools
+    # (OpenBabel, Arkane's ``git rev-parse`` provenance stamp, JAX/XLA's
+    # TPU probe) emit lines that look like errors but don't represent
+    # failure, and using stderr-non-empty as a gate caused us to discard
+    # complete Arkane runs (see the kinetics caller, which bails on a
+    # False return). The classification below is now advisory: if stderr
+    # has lines that don't match a known-cosmetic pattern, we log them
+    # at WARNING so they're visible without making them load-bearing.
+    real_errors = _classify_arkane_stderr(std_err)
     output_file = os.path.join(statmech_dir, 'output.py')
-    if not os.path.isfile(output_file):
-        logger.error(f'Arkane run finished but {output_file} was not created. Check stdout/stderr.')
+    output_present = os.path.isfile(output_file)
+
+    if real_errors and output_present:
+        logger.warning(
+            "Arkane emitted errors but still produced output.py (proceeding): %s",
+            _summarize_arkane_stderr(real_errors),
+        )
+    elif real_errors and not output_present:
+        # Genuine failure: stderr has real errors AND no output. Log the salient error (the full
+        # traceback is preserved in the run directory's stderr.log if a deeper look is needed).
+        logger.error("Arkane run failed: %s", _summarize_arkane_stderr(real_errors))
+
+    if not output_present:
+        logger.error(
+            f'Arkane run finished but {output_file} was not created. '
+            'Check stdout/stderr.'
+        )
         return False
 
     logger.debug(f'Arkane run completed:\n{std_out}')
     return True
+
+
+# Cosmetic stderr lines from upstream tools that Arkane shells out to.
+# Tracking these explicitly (rather than accepting all stderr) keeps the
+# WARNING log signal-rich: if a NEW source of stderr noise appears, it
+# shows up loudly until we either fix it or add it here.
+_ARKANE_STDERR_IGNORABLE_PHRASES: tuple[str, ...] = (
+    "Open Babel Warning",
+    "Accepted unusual valence",
+    "==============================",
+    "pjrt_executable.cc",
+    # Arkane runs `git rev-parse` to stamp its output with the
+    # RMG-database commit; when run from a non-git CWD (the
+    # common case under conda-installed databases) git emits
+    # this and Arkane carries on regardless.
+    "fatal: not a git repository",
+)
+
+
+def _classify_arkane_stderr(std_err: list[str] | None) -> list[str]:
+    """Return the subset of ``std_err`` lines that aren't known cosmetic noise.
+
+    Used by :func:`run_arkane` for advisory logging only — the boolean
+    success signal is whether Arkane produced ``output.py``, not whether
+    this list is empty.
+    """
+    if not std_err:
+        return []
+    real: list[str] = []
+    for line in std_err:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not any(phrase in stripped for phrase in _ARKANE_STDERR_IGNORABLE_PHRASES):
+            real.append(stripped)
+    return real
+
+
+def _summarize_arkane_stderr(real_errors: list[str]) -> str:
+    """Condense classified Arkane stderr to the salient error line for logging.
+
+    Arkane failures surface as a full Python traceback; dumping every line into arc.log is noise,
+    especially when Arkane still produced output.py (e.g. a first attempt that failed on the Eckart
+    barrier and was retried). Return the actual exception line — the informative part — plus a count
+    of the remaining lines, rather than the whole traceback.
+    """
+    if not real_errors:
+        return ''
+    # Prefer the Python exception line, e.g. "ValueError: ...". Skip the conda wrapper's own
+    # "ERROR conda.cli..." line, which only reports that the child process exited non-zero.
+    exception_lines = [ln for ln in real_errors
+                       if re.match(r'^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):', ln)]
+    salient = exception_lines[-1] if exception_lines else real_errors[-1]
+    extra = len(real_errors) - 1
+    return salient + (f' [+{extra} more stderr line(s)]' if extra > 0 else '')
 
 
 def clean_output_directory(species_path: str,  # todo
