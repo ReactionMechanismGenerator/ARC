@@ -28,6 +28,14 @@ from arc.job.ssh_pool import (
 from arc.level import Level
 from arc.species import ARCSpecies
 
+# Scratch project directories, scoped to the pytest-xdist worker: the class cleanups rmtree these
+# trees, so a shared path lets one worker delete fixtures out from under another worker's test.
+_WORKER = os.environ.get('PYTEST_XDIST_WORKER', 'main')
+JOB_ADAPTER_DIRS = tuple(f'test_JobAdapter{suffix}_{_WORKER}'
+                         for suffix in ('', '_scan', '_ServerTimeLimit'))
+JOB_ADAPTER_DIR, JOB_ADAPTER_SCAN_DIR, JOB_ADAPTER_STL_DIR = (
+    os.path.join(ARC_TESTING_PATH, name) for name in JOB_ADAPTER_DIRS)
+
 servers, submit_filenames = settings['servers'], settings['submit_filenames']
 
 
@@ -95,13 +103,13 @@ class TestJobAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        for dir_name in ('test_JobAdapter', 'test_JobAdapter_scan', 'test_JobAdapter_ServerTimeLimit'):
+        for dir_name in JOB_ADAPTER_DIRS:
             cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, dir_name), ignore_errors=True)
         cls.job_1 = GaussianAdapter(execution_type='queue',
                                     job_type='conf_opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                    project_directory=JOB_ADAPTER_DIR,
                                     species=[ARCSpecies(label='spc1',
                                                         xyz=['O 0 0 1',
                                                              'O 0 0 2',
@@ -130,7 +138,7 @@ class TestJobAdapter(unittest.TestCase):
                                     job_type='opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                    project_directory=JOB_ADAPTER_DIR,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
@@ -157,7 +165,7 @@ class TestJobAdapter(unittest.TestCase):
                                     torsions=[[1, 2, 3, 4]],
                                     level=Level(method='wb97xd', basis='def2-tzvp'),
                                     project='test_scans',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_scan'),
+                                    project_directory=JOB_ADAPTER_SCAN_DIR,
                                     species=[cls.spc_3a, cls.spc_3b, cls.spc_3c, cls.spc_3d, cls.spc_3e, cls.spc_3f],
                                     testing=True,
                                     )
@@ -165,12 +173,12 @@ class TestJobAdapter(unittest.TestCase):
                                     job_type='opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                    project_directory=JOB_ADAPTER_DIR,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
         # Copy the PBS time limit fixture into the directory structure the adapter expects.
-        stl_dir = os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit')
+        stl_dir = JOB_ADAPTER_STL_DIR
         err_dest = os.path.join(stl_dir, 'calcs', 'Species', 'spc1', 'opt_101')
         os.makedirs(err_dest, exist_ok=True)
         shutil.copy(os.path.join(ARC_TESTING_PATH, 'server', 'pbs', 'timelimit', 'err.txt'),
@@ -268,7 +276,7 @@ class TestJobAdapter(unittest.TestCase):
                               job_type='opt',
                               level=Level(method='cbs-qb3'),
                               project='test',
-                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                              project_directory=JOB_ADAPTER_DIR,
                               species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                               server='server2',
                               job_memory_gb=300,
@@ -315,7 +323,7 @@ class TestJobAdapter(unittest.TestCase):
                                         job_type='opt',
                                         level=Level(method='cbs-qb3'),
                                         project='test',
-                                        project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                        project_directory=JOB_ADAPTER_DIR,
                                         species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                         testing=True,
                                         args={'keyword': {'general': 'val_tst_1 val_tst_2     val_tst_3'},
