@@ -202,6 +202,40 @@ class TestRunInCondaEnv(unittest.TestCase):
             )
         self.assertTrue(mock_run.call_args.kwargs.get('check'))
 
+    def test_default_inherits_parent_environment(self):
+        """Without strip_pythonpath the child inherits the parent env untouched (env=None)."""
+        with patch('arc.job.env_run._detect_launcher',
+                   return_value=('/opt/conda/bin/conda', ['--no-capture-output'])), \
+                patch('arc.job.env_run.subprocess.run',
+                      return_value=_completed()) as mock_run:
+            run_in_conda_env(
+                '/opt/conda/envs/ts_gcn/bin/python',
+                '/path/to/gcn.py',
+            )
+        self.assertIsNone(mock_run.call_args.kwargs.get('env'))
+
+    def test_strip_pythonpath_removes_only_pythonpath(self):
+        """strip_pythonpath drops PYTHONPATH from the child env and keeps everything else,
+        so a stale source checkout on the caller's PYTHONPATH cannot shadow the target
+        env's installed package."""
+        parent_env = {'PATH': '/usr/bin', 'HOME': '/home/u',
+                      'PYTHONPATH': '/home/u/Code/KinBot-2.0.6'}
+        with patch('arc.job.env_run._detect_launcher',
+                   return_value=('/opt/conda/bin/conda', ['--no-capture-output'])), \
+                patch('arc.job.env_run.subprocess.run',
+                      return_value=_completed()) as mock_run, \
+                patch.dict('arc.job.env_run.os.environ', parent_env, clear=True):
+            run_in_conda_env(
+                '/opt/conda/envs/kinbot_env/bin/python',
+                '/path/to/kinbot_script.py',
+                strip_pythonpath=True,
+            )
+        child_env = mock_run.call_args.kwargs.get('env')
+        self.assertIsNotNone(child_env)
+        self.assertNotIn('PYTHONPATH', child_env)
+        self.assertEqual(child_env['PATH'], '/usr/bin')
+        self.assertEqual(child_env['HOME'], '/home/u')
+
     def test_failure_logs_warning_with_captured_streams(self):
         completed = _completed(returncode=2, stdout='partial output\n',
                                stderr='Traceback...\nValueError: boom\n')
