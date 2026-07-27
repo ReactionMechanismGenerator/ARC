@@ -221,6 +221,20 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(error, "")
         self.assertEqual(line, "")
 
+        # test detection of a normally terminated Orca NEB-TS job.
+        # NEB logs switch to SOSCF right after the
+        # ***  Starting incremental Fock matrix formation  ***
+        # line, so the first SCF iteration energy is several lines further down, past a separator line
+        # that holds a single token. The SCF parser must skip such lines rather than fail on them.
+        path = os.path.join(ARC_TESTING_PATH, "neb", "neb_res.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="test", job_type="tsg", software="orca"
+        )
+        self.assertEqual(status, "done")
+        self.assertEqual(keywords, list())
+        self.assertEqual(error, "")
+        self.assertEqual(line, "")
+
         # test detection of SCF energy diverge issue
         path = os.path.join(self.base_path["orca"], "orca_scf_blow_up_error.log")
         status, keywords, error, line = trsh.determine_ess_status(
@@ -387,6 +401,78 @@ class TestTrsh(unittest.TestCase):
         )
         self.assertEqual(error, expected_error_msg)
         self.assertIn("This wavefunction IS NOT FULLY CONVERGED!", line)
+
+    def _write_temp_log(self, content: str, prefix: str) -> str:
+        """A helper that writes ``content`` to a temporary log file and schedules its removal."""
+        fd, log_path = tempfile.mkstemp(suffix='.log', prefix=prefix)
+        with os.fdopen(fd, 'w') as f:
+            f.write(content)
+        self.addCleanup(lambda: os.remove(log_path) if os.path.isfile(log_path) else None)
+        return log_path
+
+    def test_determine_ess_status_orca_scf_energies_unavailable(self):
+        """
+        Test that determine_ess_status() reports 'done' for a normally terminated Orca job whose SCF
+        block cannot be mined for the initial/final energy pair used by the divergence heuristic.
+
+        The heuristic needs BOTH energies; whenever either is missing there is nothing to compare and
+        a normally terminated job must simply be reported as done (never raise).
+        """
+        # (i) An incremental-Fock marker with no parseable iteration line after it.
+        # The forward scan runs off the end of the file without ever assigning an initial energy;
+        # the comment at the scan site promises it gives up quietly, and this pins that promise.
+        no_iteration_line_log = (
+            'ORCA-Dummy single point\n'
+            '\n'
+            'SCF ITERATIONS\n'
+            '--------------\n'
+            'ITER       Energy         Delta-E        Max-DP      RMS-DP      [F,P]     Damp\n'
+            '               ***  Starting incremental Fock matrix formation  ***\n'
+            '                              *** Initializing SOSCF ***\n'
+            '---------------------------------------S-O-S-C-F--------------------------------------\n'
+            '\n'
+            '                             ****ORCA TERMINATED NORMALLY****\n'
+            'TOTAL RUN TIME: 0 days 0 hours 0 minutes 3 seconds 12 msec\n'
+        )
+        log_path = self._write_temp_log(no_iteration_line_log, 'orca_no_scf_iteration_line_')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=log_path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "done")
+        self.assertEqual(keywords, list())
+        self.assertEqual(error, "")
+        self.assertEqual(line, "")
+
+        # (ii) A parseable iteration line, but no 'TOTAL SCF ENERGY' header anywhere in the log.
+        # The initial energy is assigned while the final one is not, so the ratio cannot be formed.
+        # Before the guard required both energies this read an unassigned local and raised
+        # UnboundLocalError out of determine_ess_status, which no caller catches.
+        no_total_scf_energy_log = (
+            'ORCA-Dummy single point\n'
+            '\n'
+            'SCF ITERATIONS\n'
+            '--------------\n'
+            'ITER       Energy         Delta-E        Max-DP      RMS-DP      [F,P]     Damp\n'
+            '               ***  Starting incremental Fock matrix formation  ***\n'
+            '                              *** Initializing SOSCF ***\n'
+            '---------------------------------------S-O-S-C-F--------------------------------------\n'
+            'Iteration    Energy (Eh)           Delta-E    RMSDP     MaxDP     MaxGrad    Time(sec)\n'
+            '--------------------------------------------------------------------------------------\n'
+            '    1    -116.9662711301396314     0.00e+00  2.36e-04  1.29e-03  3.15e-04     0.2\n'
+            '    2    -116.9662893922658782    -1.83e-05  1.15e-04  7.34e-04  4.10e-04     0.1\n'
+            '                 **** Energy Check signals convergence ****\n'
+            '\n'
+            '                             ****ORCA TERMINATED NORMALLY****\n'
+            'TOTAL RUN TIME: 0 days 0 hours 0 minutes 3 seconds 12 msec\n'
+        )
+        log_path = self._write_temp_log(no_total_scf_energy_log, 'orca_no_total_scf_energy_')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=log_path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "done")
+        self.assertEqual(keywords, list())
+        self.assertEqual(error, "")
+        self.assertEqual(line, "")
 
     def test_trsh_ess_job(self):
         """Test the trsh_ess_job() function"""
