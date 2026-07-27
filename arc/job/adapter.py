@@ -380,7 +380,7 @@ class JobAdapter(ABC):
         self.local_path_to_xyz = None
 
         if not os.path.isdir(self.local_path):
-            os.makedirs(self.local_path)
+            os.makedirs(self.local_path, exist_ok=True)
 
         if self.server is not None:
             # Parentheses don't play well in folder names:
