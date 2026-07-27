@@ -979,7 +979,7 @@ class JobAdapter(ABC):
                         species_label=self.species_label,
                         job_type=self.job_type,
                         job_log=self.additional_job_info,
-                        software=self.job_adapter,
+                        software=self.ess_software,
                     )
                 except FileNotFoundError:
                     status, keywords, error, line = '', '', '', ''
