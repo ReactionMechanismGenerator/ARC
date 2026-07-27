@@ -23,12 +23,6 @@ from arc.plotter import save_geo
 from arc.species.converter import rdkit_conf_from_mol, str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
-HAS_GCN = True
-try:
-    from inference import inference
-except (ImportError, ModuleNotFoundError):
-    HAS_GCN = False
-
 if TYPE_CHECKING:
     from arc.level import Level
     from arc.reaction import ARCReaction
@@ -41,6 +35,20 @@ DIHEDRAL_INCREMENT = 10
 GCN_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'gcn_script.py')
 
 logger = get_logger()
+
+
+def gcn_available() -> bool:
+    """
+    Determine whether the GCN subprocess boundary is usable:
+    the ``ts_gcn`` environment's Python interpreter (``TS_GCN_PYTHON``)
+    resolves to an existing executable, and the standalone GCN script exists.
+
+    Returns:
+        bool: Whether GCN can be executed.
+    """
+    return (TS_GCN_PYTHON is not None
+            and os.path.isfile(TS_GCN_PYTHON)
+            and os.path.isfile(GCN_SCRIPT_PATH))
 
 
 class GCNAdapter(JobAdapter):
@@ -272,6 +280,13 @@ class GCNAdapter(JobAdapter):
         Args:
             exe_type (str, optional): Whether to execute 'incore' or 'queue'.
         """
+        if not gcn_available():
+            logger.warning(f'GCN is not available: TS_GCN_PYTHON is {TS_GCN_PYTHON}, '
+                           f'expected the python executable of the "ts_gcn" environment '
+                           f'(and {GCN_SCRIPT_PATH} must exist). '
+                           f'Install it via devtools/install_gcn.sh (see {self.url}). '
+                           f'Skipping GCN TS guesses for {self.reactions[0].label}.')
+            return
         self._log_job_execution()
         rxn = self.reactions[0]
         if not rxn.is_isomerization():
@@ -370,12 +385,13 @@ def run_subprocess_locally(direction: str,
     # leak into the child (see arc/job/env_run.py).
     output = run_in_conda_env(
         TS_GCN_PYTHON, GCN_SCRIPT_PATH,
-        '--r_sdf_path', product_path,
-        '--p_sdf_path', reactant_path,
+        '--r_sdf_path', reactant_path,
+        '--p_sdf_path', product_path,
         '--ts_xyz_path', ts_path,
     )
     if output.returncode:
-        logger.warning(f'GCN subprocess ran in the reverse direction did not '
+        direction_str = 'forward' if direction == 'F' else 'reverse'
+        logger.warning(f'GCN subprocess run in the {direction_str} direction did not '
                        f'give a successful return code for {ts_species}.\n'
                        f'Got return code: {output.returncode}\n'
                        f'stdout: {output.stdout}\n'
