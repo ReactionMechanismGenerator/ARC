@@ -15,6 +15,11 @@ from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames
 from arc.species import ARCSpecies
 
+# Writable scratch project directories, scoped to the pytest-xdist worker. setUpClass runs once per
+# worker that receives any test of this class and tearDownClass rmtree's these trees, so a path shared
+# between workers lets one worker delete the input files out from under another worker's running test.
+_WORKER = os.environ.get('PYTEST_XDIST_WORKER', 'main')
+
 
 class TestMolproAdapter(unittest.TestCase):
     """
@@ -30,7 +35,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='CCSD(T)-F12', basis='cc-pVTZ-f12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_1'),
+                                  project_directory=os.path.join(ARC_TESTING_PATH, f'test_MolproAdapter_1_{_WORKER}'),
                                   species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                   testing=True,
                                   )
@@ -38,7 +43,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='opt',
                                   level=Level(method='CCSD(T)', basis='cc-pVQZ'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_2'),
+                                  project_directory=os.path.join(ARC_TESTING_PATH, f'test_MolproAdapter_2_{_WORKER}'),
                                   species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                   testing=True,
                                   )
@@ -46,7 +51,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MRCI', basis='aug-cc-pvtz-f12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_3'),
+                                  project_directory=os.path.join(ARC_TESTING_PATH, f'test_MolproAdapter_3_{_WORKER}'),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -57,7 +62,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MRCI-F12', basis='aug-cc-pvtz-f12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_4'),
+                                  project_directory=os.path.join(ARC_TESTING_PATH, f'test_MolproAdapter_4_{_WORKER}'),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -68,7 +73,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MP2_CASSCF_MRCI-F12', basis='aug-cc-pVTZ-F12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_5'),
+                                  project_directory=os.path.join(ARC_TESTING_PATH, f'test_MolproAdapter_5_{_WORKER}'),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -79,7 +84,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MP2_CASSCF_RS2C', basis='aug-cc-pVTZ'),  # CASPT2
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_6'),
+                                  project_directory=os.path.join(ARC_TESTING_PATH, f'test_MolproAdapter_6_{_WORKER}'),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -90,7 +95,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MP2_CASSCF_RS2C', basis='aug-cc-pVTZ'),  # CASPT2
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_7'),
+                                  project_directory=os.path.join(ARC_TESTING_PATH, f'test_MolproAdapter_7_{_WORKER}'),
                                   species=[ARCSpecies(label='N', xyz=["""N     0.0    0.0    0.0"""],
                                                       multiplicity=3,
                                                       active={'occ': [3, 1, 1, 0, 1, 0, 0, 0],

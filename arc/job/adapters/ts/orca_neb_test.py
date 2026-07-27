@@ -31,11 +31,15 @@ class TestOrcaNEB(unittest.TestCase):
         """
         cls.maxDiff = None
         
-        cls.project_directory = os.path.join(ARC_TESTING_PATH, 'test_OrcaNEBAdapter')
+        # setUpClass runs once per pytest-xdist worker that receives any test of this class, so a
+        # single shared path would let one worker rmtree the project directory out from under
+        # another worker's running test. Scope the directory to the worker to keep them disjoint.
+        cls.project_directory = os.path.join(ARC_TESTING_PATH,
+                                             f'test_OrcaNEBAdapter_{os.environ.get("PYTEST_XDIST_WORKER", "main")}')
         if os.path.exists(cls.project_directory):
-            shutil.rmtree(cls.project_directory)
+            shutil.rmtree(cls.project_directory, ignore_errors=True)
         cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
-        os.makedirs(cls.project_directory)
+        os.makedirs(cls.project_directory, exist_ok=True)
 
         # Mock objects for both orca_neb and orca/adapter modules
         mock_input_filenames = {'orca_neb': 'input.in', 'orca': 'input.in'}
