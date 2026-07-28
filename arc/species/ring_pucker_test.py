@@ -80,6 +80,26 @@ class TestRingPucker(unittest.TestCase):
             ring_coords = ring_pucker.ideal_pucker_geometry(5, label)
             self.assertEqual(ring_pucker.classify_pucker(ring_coords), label)
 
+    def test_non_finite_ring_coords_raise_ring_pucker_error(self):
+        """A NaN or infinite coordinate must fail rather than produce a plausible-looking label.
+
+        Non-finite input does not reach the degeneracy check: it makes the fitted normal's norm
+        NaN, and ``NaN < _NORMAL_EPS`` is False, so a 6-ring would be returned as the entirely
+        plausible 'half-chair' with all-NaN Cremer-Pople parameters. The geometric ring-order
+        check does not catch it either, for the same reason: ``NaN > max_bond`` is False."""
+        chair = ring_pucker.ideal_pucker_geometry(6, 'chair')
+        for bad_value in (float('nan'), float('inf'), float('-inf')):
+            for row, col in ((0, 2), (3, 0)):
+                ring_coords = np.array(chair, dtype=float)
+                ring_coords[row][col] = bad_value
+                for func in (ring_pucker.ring_mean_plane, ring_pucker.puckering_amplitude,
+                             ring_pucker.cremer_pople_params, ring_pucker.classify_pucker,
+                             ring_pucker.pucker_state_id):
+                    with self.assertRaises(ring_pucker.RingPuckerError,
+                                           msg=f'{func.__name__} accepted {bad_value} at '
+                                               f'[{row}][{col}]'):
+                        func(ring_coords)
+
     def test_planar_hexagon_classifies_as_planar(self):
         """A perfectly planar hexagon classifies as 'planar' rather than a definite pucker state."""
         angles = np.linspace(0.0, 2.0 * np.pi, num=6, endpoint=False)
