@@ -37,10 +37,12 @@ Module workflow::
 
 import copy
 import logging
+import math
 import sys
 import time
 from itertools import product
 
+import numpy as np
 from openbabel import openbabel as ob
 from openbabel import pybel as pyb
 from rdkit import Chem
@@ -59,7 +61,7 @@ from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
 from arc.molecule.resonance import generate_resonance_structures_safely
 import arc.plotter
-from arc.species import converter, vectors
+from arc.species import converter, ring_pucker, vectors
 from arc.species.perceive import perceive_molecule_from_xyz
 
 
@@ -1799,6 +1801,230 @@ def determine_smallest_atom_index_in_scan(atom1: Atom,
             if atom_index < smallest_index:
                 smallest_index = atom_index
     return smallest_index + 1
+
+
+def optimize_conformer_with_frozen_ring(mol, seed_xyz, ring_atom_indices, force_field='MMFF94s'):
+    """Polish a ring-pucker seed geometry with a two-stage constrained force-field optimization.
+
+    Stage 1 freezes the ring atoms and relaxes everything else, so the seed's ring pucker (which
+    an unconstrained optimization would otherwise erase) is preserved while substituents settle
+    into a sane local geometry. Stage 2 then removes the constraint and polishes the whole
+    molecule, landing in the local minimum belonging to that pucker's basin.
+
+    Stage 1's convergence is not required to proceed (it is only a pre-relax under the ring
+    constraint), but stage 2 must converge (``ForceField.Minimize`` returning 0) or the seed is
+    dropped rather than returning an unreliable geometry/energy. Isotopes from ``seed_xyz`` are
+    preserved on the returned xyz.
+
+    Args:
+        mol (Molecule): The RMG Molecule providing connectivity.
+        seed_xyz (dict): The seed xyz dict to optimize; atoms must be ordered as in ``mol``.
+        ring_atom_indices (Sequence[int]): Indices of the ring atoms to freeze during stage 1.
+        force_field (str, optional): The MMFF variant to use ('MMFF94' or 'MMFF94s'); any other
+            value uses UFF directly.
+
+    Returns:
+        Optional[Tuple[dict, float]]: The polished xyz dict and its force-field energy (kcal/mol),
+            or ``None`` if no force field could be parameterized for this molecule, or if the
+            unconstrained stage-2 minimization did not converge.
+    """
+    _, rd_mol = converter.rdkit_conf_from_mol(mol, seed_xyz)
+    if 'MMFF' in force_field:
+        mol_properties = AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field)
+        ff = AllChem.MMFFGetMoleculeForceField(rd_mol, mol_properties) if mol_properties is not None else None
+        ff2_getter = lambda: AllChem.MMFFGetMoleculeForceField(rd_mol, mol_properties)
+    else:
+        ff = AllChem.UFFGetMoleculeForceField(rd_mol)
+        ff2_getter = lambda: AllChem.UFFGetMoleculeForceField(rd_mol)
+    if ff is None:
+        ff = AllChem.UFFGetMoleculeForceField(rd_mol)
+        ff2_getter = lambda: AllChem.UFFGetMoleculeForceField(rd_mol)
+    if ff is None:
+        logger.debug('Could not set up an MMFF or UFF force field for this molecule; skipping this ring-pucker seed.')
+        return None
+    for ring_atom_index in ring_atom_indices:
+        ff.AddFixedPoint(ring_atom_index)
+    try:
+        v, j = 1, 0
+        while v == 1 and j < 200:
+            v = ff.Minimize(maxIts=500)
+            j += 1
+    except (RuntimeError, ValueError) as e:
+        logger.debug(f'Frozen-ring force-field minimization failed: {e}')
+        return None
+    ff2 = ff2_getter()
+    if ff2 is None:
+        return None
+    try:
+        v, j = 1, 0
+        while v == 1 and j < 200:
+            v = ff2.Minimize(maxIts=500)
+            j += 1
+    except (RuntimeError, ValueError) as e:
+        logger.debug(f'Unconstrained polishing force-field minimization failed: {e}')
+        return None
+    if v == 1:
+        logger.debug('Unconstrained polishing force-field minimization did not converge; dropping this ring-pucker seed.')
+        return None
+    energy = ff2.CalcEnergy()
+    polished_xyz = read_rdkit_embedded_conformer_i(rd_mol, 0)
+    if seed_xyz.get('isotopes') is not None:
+        polished_xyz = converter.xyz_from_data(coords=polished_xyz['coords'],
+                                               symbols=polished_xyz['symbols'],
+                                               isotopes=seed_xyz['isotopes'])
+    return polished_xyz, energy
+
+
+def ring_pucker_seed_conformers(label, mol, ring_atom_indices, base_xyz, amplitudes=None,
+                                force_field='MMFF94s') -> tuple:
+    """Generate ring-pucker seed conformers for a single monocyclic ring.
+
+    For each canonical Cremer-Pople pucker state of the ring (see
+    ``ring_pucker.canonical_pucker_states``) and each of its two ring-flip poles, the ring atoms
+    are displaced along the ring's mean normal to match the ideal pucker's out-of-plane pattern,
+    while every substituent atom is rigidly translated together with the ring atom it is attached
+    to, preserving all substituent bond lengths exactly. Each raw seed is then polished with
+    ``optimize_conformer_with_frozen_ring``: the ring is frozen for a first optimization stage so
+    an unconstrained force-field minimization cannot erase the seed's pucker and relax it back to
+    the base geometry's basin, then a second, unconstrained stage polishes the whole molecule.
+
+    Only monocyclic rings are supported; fused, bridged, or spiro rings are gated out (returning
+    empty lists) rather than silently mishandled. ``ring_atom_indices`` are validated to be in
+    ring-connectivity order both by molecular-graph adjacency (consecutive entries must be bonded
+    in ``mol``) and, complementarily, by geometric distance; either check failing raises. Every
+    seed returned by ``optimize_conformer_with_frozen_ring`` is kept as-is (that helper already
+    only returns force-field-converged geometries); no additional energy-based deduplication is
+    applied here, as that responsibility belongs to the downstream distance-matrix dedup. A seed
+    whose optimization raises unexpectedly is skipped rather than aborting the whole call.
+
+    Args:
+        label (str): The species label.
+        mol (Molecule): The RMG Molecule providing connectivity; ``mol.atoms`` must be ordered
+            consistently with ``base_xyz['coords']`` and ``base_xyz['symbols']``.
+        ring_atom_indices (Sequence[int]): Indices into ``base_xyz['coords']`` of the ring
+            atoms, in ring-connectivity order (consecutive entries bonded, last bonded back to
+            the first).
+        base_xyz (dict): An existing 3D geometry xyz dict for the whole molecule.
+        amplitudes (dict, optional): A label -> Q (Angstrom) override mapping; must contain a
+            finite value for every label in ``ring_pucker.canonical_pucker_states(n)``. Defaults
+            to ``ring_pucker.DEFAULT_PUCKER_AMPLITUDES``.
+        force_field (str, optional): The MMFF variant to use for the constrained optimization.
+
+    Returns:
+        tuple[list, list]:
+            - Entries are polished xyz dicts, one per (pucker state, ring-flip pole) pair that
+              was successfully optimized.
+            - Entries are the corresponding force-field energies (kcal/mol).
+
+    Raises:
+        ConformerError: If ``mol`` and ``base_xyz`` are inconsistent in size or atom order, if
+            ``ring_atom_indices`` contains duplicate or out-of-range indices, if
+            ``ring_atom_indices`` are not in ring-connectivity order per the molecular graph, or
+            if ``amplitudes`` is missing a finite value for a required pucker state.
+        RingPuckerError: If ``ring_atom_indices`` are not in ring-connectivity order per the
+            geometric distance check.
+    """
+    coords = np.array(base_xyz['coords'], dtype=float)
+    if len(mol.atoms) != len(coords) or len(mol.atoms) != len(base_xyz['symbols']):
+        raise ConformerError(f'Inconsistent sizes for {label}: mol has {len(mol.atoms)} atoms, base_xyz has '
+                             f'{len(coords)} coords and {len(base_xyz["symbols"])} symbols.')
+    for i, atom in enumerate(mol.atoms):
+        if atom.element.symbol != base_xyz['symbols'][i]:
+            raise ConformerError(f'Atom order mismatch for {label} at index {i}: mol atom is '
+                                 f'{atom.element.symbol}, base_xyz symbol is {base_xyz["symbols"][i]}.')
+
+    ring_idx = list(ring_atom_indices)
+    if len(set(ring_idx)) != len(ring_idx):
+        raise ConformerError(f'ring_atom_indices for {label} must not contain duplicates, got {ring_idx}.')
+    if any(idx < 0 or idx >= len(mol.atoms) for idx in ring_idx):
+        raise ConformerError(f'ring_atom_indices for {label} are out of range: {ring_idx}.')
+
+    n = len(ring_idx)
+    if n not in (5, 6):
+        return list(), list()
+
+    atom_to_index = {id(atom): i for i, atom in enumerate(mol.atoms)}
+    ring_set = set(ring_idx)
+
+    for sssr_ring in mol.get_deterministic_sssr():
+        sssr_ring_set = {atom_to_index[id(atom)] for atom in sssr_ring}
+        if sssr_ring_set != ring_set and sssr_ring_set & ring_set:
+            return list(), list()  # fused/bridged/spiro ring; not yet supported
+
+    for ring_atom_index in ring_idx:
+        ring_atom = mol.atoms[ring_atom_index]
+        n_ring_neighbors = sum(1 for neighbor in ring_atom.edges.keys()
+                               if atom_to_index[id(neighbor)] in ring_set)
+        if n_ring_neighbors != 2:
+            return list(), list()  # not a clean monocyclic cycle
+
+    for p, ring_atom_index in enumerate(ring_idx):
+        ring_atom = mol.atoms[ring_atom_index]
+        next_atom = mol.atoms[ring_idx[(p + 1) % n]]
+        if next_atom not in ring_atom.edges:
+            raise ConformerError(f'ring_atom_indices for {label} are not in ring-connectivity order: '
+                                 f'atoms at indices {ring_atom_index} and {ring_idx[(p + 1) % n]} are not bonded.')
+
+    ring_coords = coords[ring_idx]
+    ring_pucker.validate_ring_order(ring_coords)
+    centroid, normal, z_real = ring_pucker.ring_mean_plane(ring_coords)
+
+    anchor_of = dict()
+    for p, ring_atom_index in enumerate(ring_idx):
+        ring_atom = mol.atoms[ring_atom_index]
+        stack = [neighbor for neighbor in ring_atom.edges.keys()
+                 if atom_to_index[id(neighbor)] not in ring_set]
+        while stack:
+            atom = stack.pop()
+            atom_index = atom_to_index[id(atom)]
+            if atom_index in ring_set:
+                continue
+            if atom_index in anchor_of:
+                if anchor_of[atom_index] != p:
+                    return list(), list()  # reachable from two anchors; bridged, not supported
+                continue
+            anchor_of[atom_index] = p
+            stack.extend(atom.edges.keys())
+
+    amplitude_map = amplitudes if amplitudes is not None else ring_pucker.DEFAULT_PUCKER_AMPLITUDES
+    for label_state in ring_pucker.canonical_pucker_states(n):
+        if label_state not in amplitude_map or not math.isfinite(amplitude_map[label_state]):
+            raise ConformerError(f'amplitudes for {label} is missing a finite value for pucker state '
+                                 f'"{label_state}"; got {amplitude_map}.')
+
+    raw_seeds = list()
+    for label_state in ring_pucker.canonical_pucker_states(n):
+        for sign in (1, -1):
+            q = sign * amplitude_map[label_state]
+            z_target = ring_pucker.ideal_pucker_geometry(n, label_state, amplitude=q)[:, 2]
+
+            new_coords = coords.copy()
+            for p, ring_atom_index in enumerate(ring_idx):
+                delta_p = (z_target[p] - z_real[p]) * normal
+                new_coords[ring_atom_index] += delta_p
+                for atom_index, anchor_p in anchor_of.items():
+                    if anchor_p == p:
+                        new_coords[atom_index] += delta_p
+
+            raw_seeds.append(converter.xyz_from_data(
+                coords=[tuple(row) for row in new_coords],
+                symbols=base_xyz['symbols'],
+                isotopes=base_xyz.get('isotopes'),
+            ))
+
+    xyzs, energies = list(), list()
+    for raw_seed in raw_seeds:
+        try:
+            result = optimize_conformer_with_frozen_ring(mol, raw_seed, ring_idx, force_field=force_field)
+        except (RuntimeError, ValueError) as e:
+            logger.debug(f'Optimizing a ring-pucker seed for {label} failed unexpectedly: {e}')
+            continue
+        if result is None:
+            continue
+        polished_xyz, energy = result
+        xyzs.append(polished_xyz)
+        energies.append(energy)
+    return xyzs, energies
 
 
 def to_group(mol, atom_indices):
