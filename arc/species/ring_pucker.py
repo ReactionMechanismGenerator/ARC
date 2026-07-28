@@ -134,3 +134,47 @@ def cremer_pople_params(ring_coords: Sequence[Sequence[float]]) -> CremerPoplePa
         theta_deg=theta_deg,
         phi_deg=phi_deg,
     )
+
+
+def classify_pucker(ring_coords: Sequence[Sequence[float]]) -> str:
+    """Classify a ring's Cremer-Pople puckering coordinates into a canonical pucker state.
+
+    Args:
+        ring_coords (Sequence[Sequence[float]]): Cartesian coordinates of the ring atoms, in
+            ring-connectivity order.
+
+    Returns:
+        str: 'chair', 'boat', or 'twist-boat' for a 6-ring; 'envelope' or 'twist' for a 5-ring.
+    """
+    n = len(ring_coords)
+    params = cremer_pople_params(ring_coords)
+
+    if n == 6:
+        if params.theta_deg <= 45.0 or params.theta_deg >= 135.0:
+            return 'chair'
+        phi = params.phi_deg % 360.0
+        k = int(round(phi / 30.0)) % 12
+        return 'boat' if k % 2 == 0 else 'twist-boat'
+
+    if n == 5:
+        phi2 = params.phi2_deg % 360.0
+        k = int(round(phi2 / 18.0)) % 20
+        return 'envelope' if k % 2 == 0 else 'twist'
+
+    raise RingPuckerError(f'classify_pucker only supports 5- and 6-membered rings, got a {n}-membered ring.')
+
+
+def canonical_pucker_states(ring_size: int) -> List[str]:
+    """Enumerate the discrete canonical pucker states of a given ring size.
+
+    Args:
+        ring_size (int): The number of atoms in the ring, 5 or 6.
+
+    Returns:
+        List[str]: The canonical pucker state labels.
+    """
+    if ring_size == 6:
+        return ['chair', 'boat', 'twist-boat']
+    if ring_size == 5:
+        return ['envelope', 'twist']
+    raise RingPuckerError(f'canonical_pucker_states only supports 5- and 6-membered rings, got ring_size={ring_size}.')
