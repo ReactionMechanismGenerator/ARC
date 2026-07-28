@@ -428,6 +428,16 @@ class TestCommon(unittest.TestCase):
         job_types_initialized = common.initialize_job_types(job_types)
         self.assertEqual(job_types_expected, job_types_initialized)
 
+    def test_initialize_job_types_does_not_mutate_global(self):
+        """Test that initialize_job_types() does not mutate the module-level default_job_types dict.
+        It used to alias the global when job_types was None and then delete 'fine_grid' from it,
+        corrupting the defaults for every subsequent reader in the process."""
+        default_before = copy.deepcopy(common.default_job_types)
+        common.initialize_job_types(None)
+        common.initialize_job_types(None, specific_job_type='bde')
+        self.assertIn('fine_grid', common.default_job_types)
+        self.assertEqual(default_before, common.default_job_types)
+
     def test_initialize_job_with_specific_job_type(self):
         """Test the initialize_job_types() function"""
         specific_job_type = 'freq'
