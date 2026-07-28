@@ -109,6 +109,17 @@ COMBINATION_THRESHOLD = 1000
 # The maximum number of ETKDGv3 conformers kept as ring-conformer bases in deduce_new_conformers()
 ETKDG_MAX_BASES = 6
 
+# The maximum number of conformers the ETKDGv3 ring backstop embeds and force-field optimizes.
+# This bounds the backstop independently of the main pass's num_confs, which reaches 7500 and is
+# further multiplied by the number of chiral centers; ETKDG_MAX_BASES only trims the results
+# afterwards, so without this cap the backstop doubles the cost of the whole conformer search.
+# Measured, not guessed: the lowest ETKDGv3 force-field energy plateaus by ~200 embeddings for
+# every CP-unsupported ring probed. Rigid rings (cycloheptane, cyclooctane, decalin, norbornane,
+# cyclohexanone) are already converged at 10, while flexible substituted ones still improve up to
+# 200 (butyl-decalin 19.16 -> 10.84 kcal/mol between 10 and 100; heptylcycloheptane 12.99 -> 10.97
+# between 10 and 200) and gain nothing by 500.
+ETKDG_MAX_CONFS = 200
+
 # The maximum number of (pucker state x pole) combinations across independent rings above which
 # the ring-pucker cross product is skipped in favor of puckering each ring independently
 PUCKER_MAX_CROSS_COMBINATIONS = 36
@@ -429,23 +440,12 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         if etkdg_conformers:
             diastereomeric_conformers = diastereomeric_conformers + get_lowest_confs(
                 label, etkdg_conformers, n=ETKDG_MAX_BASES)
-    num_pucker_bases = sum(1 for conformer in diastereomeric_conformers if conformer.get('source') == 'ring pucker')
-    num_etkdg_bases = sum(1 for conformer in diastereomeric_conformers if conformer.get('source') == 'ETKDGv3')
-    pucker_combination_threshold = max(1, combination_threshold // (num_pucker_bases + 1))
-    etkdg_combination_threshold = max(1, combination_threshold // (num_etkdg_bases + 1))
     new_conformers = list()
     for diastereomeric_conformer in diastereomeric_conformers:
         # set symmetric (single well) torsions to the mean of the well
         if 'chirality' in diastereomeric_conformer and diastereomeric_conformer['chirality'] != dict():
             logger.info(f"Considering diastereomer {diastereomeric_conformer['chirality']}")
         base_xyz = diastereomeric_conformer['xyz']  # base_xyz is modified within the loop below
-        source = diastereomeric_conformer.get('source')
-        if source == 'ring pucker':
-            base_combination_threshold = pucker_combination_threshold
-        elif source == 'ETKDGv3':
-            base_combination_threshold = etkdg_combination_threshold
-        else:
-            base_combination_threshold = combination_threshold
         for torsion, dihedral in zip(single_tors, single_sampling_point):
             torsion_0_indexed = [tor - 1 for tor in torsion]
             conf, rd_mol = converter.rdkit_conf_from_mol(mol, base_xyz)
@@ -454,7 +454,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         new_conformers.extend(generate_conformer_combinations(
             label=label, mol=mol_list[0], base_xyz=base_xyz, hypothetical_num_comb=hypothetical_num_comb,
             multiple_tors=multiple_tors, multiple_sampling_points=multiple_sampling_points,
-            combination_threshold=base_combination_threshold, len_conformers=len(conformers), force_field=force_field,
+            combination_threshold=combination_threshold, len_conformers=len(conformers), force_field=force_field,
             max_combination_iterations=max_combination_iterations, plot_path=plot_path, torsion_angles=torsion_angles,
             multiple_sampling_points_dict=multiple_sampling_points_dict, wells_dict=wells_dict,
             de_threshold=de_threshold, symmetries=symmetries))
@@ -756,23 +756,25 @@ def generate_force_field_conformers(label,
                                    'FF energy': energy,
                                    'source': force_field})
     if mol_has_ring_unsupported_by_cp(mol_list[0]):
-        for mol in mol_list:
-            etkdg_xyzs, etkdg_energies = list(), list()
-            try:
-                etkdg_xyzs, etkdg_energies = get_force_field_energies(label,
-                                                                      mol,
-                                                                      num_confs=num_confs,
-                                                                      force_field=force_field,
-                                                                      use_etkdg_v3=True,
-                                                                      )
-            except ValueError as e:
-                logger.warning(f'Could not generate ETKDGv3 conformers for {label}, failed with: {e}')
-            if etkdg_xyzs:
-                for xyz, energy in zip(etkdg_xyzs, etkdg_energies):
-                    conformers.append({'xyz': xyz,
-                                       'index': len(conformers),
-                                       'FF energy': energy,
-                                       'source': 'ETKDGv3'})
+        # Resonance structures share one 3D skeleton, so a single ETKDGv3 embedding pass on
+        # mol_list[0] suffices; embedding every resonance structure would only duplicate cost.
+        etkdg_xyzs, etkdg_energies = list(), list()
+        num_etkdg_confs = min(num_confs, ETKDG_MAX_CONFS)
+        try:
+            etkdg_xyzs, etkdg_energies = get_force_field_energies(label,
+                                                                  mol_list[0],
+                                                                  num_confs=num_etkdg_confs,
+                                                                  force_field=force_field,
+                                                                  use_etkdg_v3=True,
+                                                                  )
+        except ValueError as e:
+            logger.warning(f'Could not generate ETKDGv3 conformers for {label}, failed with: {e}')
+        if etkdg_xyzs:
+            for xyz, energy in zip(etkdg_xyzs, etkdg_energies):
+                conformers.append({'xyz': xyz,
+                                   'index': len(conformers),
+                                   'FF energy': energy,
+                                   'source': 'ETKDGv3'})
     # User guesses
     if xyzs is not None and xyzs:
         if not isinstance(xyzs, list):
@@ -2316,12 +2318,57 @@ def ring_is_saturated(mol, ring):
     return True
 
 
+def _ring_is_fully_aromatic(mol, ring):
+    """Check whether a ring is aromatic, per RDKit's Hueckel-rule aromaticity perception.
+
+    Relies on ``Molecule.get_aromatic_rings()`` rather than inspecting RMG bond orders directly,
+    since a molecule parsed straight from SMILES may still be Kekulized (alternating single and
+    double in-ring bonds, e.g. benzene) rather than carrying RMG's canonical benzene bond type.
+    Called with ``save_order=True`` so that ``mol.atoms`` keeps its original ordering; the caller's
+    atom indices (e.g. into a base geometry's coordinate array) must remain valid afterward.
+
+    Args:
+        mol (Molecule): The RMG Molecule providing connectivity.
+        ring (list): A connectivity-ordered list of ring Atom objects, as returned by
+            ``mol.get_deterministic_sssr()``.
+
+    Returns:
+        bool: ``True`` if ``ring`` is aromatic, ``False`` otherwise.
+    """
+    aromatic_rings, _ = mol.get_aromatic_rings(rings=[list(ring)], save_order=True)
+    return bool(aromatic_rings)
+
+
+def _ring_has_exocyclic_multiple_bond(ring):
+    """Check whether any ring atom bears a double or triple bond to a non-ring atom.
+
+    Args:
+        ring (list): A connectivity-ordered list of ring Atom objects, as returned by
+            ``mol.get_deterministic_sssr()``.
+
+    Returns:
+        bool: ``True`` if any ring atom has a double or triple bond to an atom outside the
+            ring (e.g. a ketone or amide carbonyl, an exocyclic alkene), ``False`` otherwise.
+    """
+    ring_atoms = set(ring)
+    for atom in ring:
+        for other_atom, bond in atom.bonds.items():
+            if other_atom not in ring_atoms and (bond.is_double() or bond.is_triple()):
+                return True
+    return False
+
+
 def mol_has_ring_unsupported_by_cp(mol):
     """Check whether a molecule contains a ring the Cremer-Pople seeder cannot handle.
 
     The CP seeder only supports isolated (non-fused, non-bridged, non-spiro), saturated
-    rings of size 5 or 6. Any ring violating one of these conditions makes this return
-    ``True``, signaling that the ETKDGv3 ring-aware embedding backstop should also run.
+    rings of size 5 or 6 that carry no exocyclic sp2 substituent. A ring signals the ETKDGv3
+    ring-aware embedding backstop (returns ``True``) if it is fused/bridged/spiro, larger than
+    6, or (at size 5 or 6) has in-ring unsaturation or an exocyclic double/triple bond (e.g.
+    cyclohexanone, a lactam, cyclohexene), since CP only seeds chair/boat/twist-boat states and
+    misses the resulting half-chair minimum. Fully aromatic rings are excluded (``False``): they
+    have no pucker freedom, so the backstop would only add cost with no benefit. Rings smaller
+    than 5 are likewise excluded: their pucker freedom is negligible.
 
     Args:
         mol (Molecule): The RMG Molecule providing connectivity.
@@ -2335,13 +2382,20 @@ def mol_has_ring_unsupported_by_cp(mol):
     atom_to_index = {id(atom): i for i, atom in enumerate(mol.atoms)}
     ring_sets = [{atom_to_index[id(atom)] for atom in ring} for ring in sssr]
     for ring, ring_set in zip(sssr, ring_sets):
-        if len(ring) not in (5, 6):
+        # Checked before the fusion test below: a fully aromatic ring has no pucker freedom even
+        # when fused, so a fully aromatic fused system (naphthalene) must not pay for the backstop.
+        # A mixed aromatic/saturated fused system is still caught when its non-aromatic ring is
+        # visited, since that ring overlaps this one.
+        if _ring_is_fully_aromatic(mol, ring):
+            continue
+        if any(other_set is not ring_set and other_set & ring_set for other_set in ring_sets):
             return True
-        if not ring_is_saturated(mol, ring):
+        if len(ring) < 5:
+            continue
+        if len(ring) > 6:
             return True
-        for other_set in ring_sets:
-            if other_set is not ring_set and other_set & ring_set:
-                return True
+        if not ring_is_saturated(mol, ring) or _ring_has_exocyclic_multiple_bond(ring):
+            return True
     return False
 
 
@@ -2523,7 +2577,13 @@ def ring_pucker_base_conformers(label, mol, base_conformers, force_field='MMFF94
     if not sssr:
         return list()
 
-    rings = [ring for ring in sssr if len(ring) in (5, 6) and ring_is_saturated(mol, ring)]
+    # Matches what mol_has_ring_unsupported_by_cp() treats as CP-supported, exocyclic multiple bond
+    # included: a cyclohexanone or lactam ring has its minimum at a half-chair the canonical wheel
+    # never visits, so seeding it costs the pucker work and still needs the ETKDGv3 backstop that
+    # ring already triggers. Measured on cyclohexanone, delta-lactam, 4-methylcyclohexanone and
+    # cyclopentanone: dropping these seeds leaves the lowest FF energy unchanged to 4 decimals.
+    rings = [ring for ring in sssr if len(ring) in (5, 6) and ring_is_saturated(mol, ring)
+             and not _ring_has_exocyclic_multiple_bond(ring)]
     if not rings:
         return list()
 
