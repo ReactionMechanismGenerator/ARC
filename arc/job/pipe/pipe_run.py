@@ -203,6 +203,10 @@ class PipeRun:
         memory_mb = self.tasks[0].required_memory_mb if self.tasks else 4096
         array_size = min(self.max_workers, len(self.tasks)) if self.tasks else self.max_workers
         if self.cluster_software == 'local':
+            # Cap each worker's cores at the local CPU budget so a single worker cannot exceed it
+            # (the submit script exports these as OMP/MKL/OPENBLAS_NUM_THREADS and ARC_PIPE_LOCAL_CPUS),
+            # then size the pool from the capped value so workers x cores stays within the budget.
+            cpus = max(1, min(cpus, local_cpu_budget()))
             array_size = min(array_size, local_worker_limit(cpus, memory_mb))
         return cpus, memory_mb, array_size
 
@@ -813,13 +817,77 @@ def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):
 # ===========================================================================
 
 
+def local_cpu_budget() -> int:
+    """
+    Determine the total number of CPU cores ARC may use for local (queueless) execution.
+
+    This is the single global CPU limit for a machine with no queueing system: the ``cpus`` field
+    of the local server. It is the same ceiling the in-core ESS path already applies per job (see
+    ``JobAdapter.set_cpu_and_mem``), so one number bounds both the in-core jobs and the local worker
+    pool. The server named ``'local'`` is preferred (matching how the submit script resolves it);
+    otherwise the first server whose ``cluster_soft`` is ``'local'`` is used. When no such server is
+    configured, or its ``cpus`` is missing or not a positive integer, fall back to the machine's
+    physical core count.
+
+    Returns:
+        int: The core budget for local execution (at least 1).
+    """
+    def _is_local(server: dict) -> bool:
+        return isinstance(server, dict) and str(server.get('cluster_soft', '')).strip().lower() == 'local'
+
+    server = servers_dict.get('local')
+    if not _is_local(server):
+        server = next((s for s in servers_dict.values() if _is_local(s)), None)
+    if isinstance(server, dict):
+        try:
+            cpus = int(server.get('cpus'))
+        except (TypeError, ValueError):
+            cpus = 0
+        if cpus > 0:
+            return cpus
+    return max(1, os.cpu_count() or 1)
+
+
+def worker_cpu_cores(env: dict | None = None) -> int | None:
+    """
+    Resolve the CPU-core count a local pipe worker should pin its reconstructed job to.
+
+    The local submit script exports the budget-capped per-worker cores (see ``_submission_resources``)
+    as ``ARC_PIPE_LOCAL_CPUS``. A worker reconstructs its in-core job in a fresh process with no server
+    context, so ``set_cpu_and_mem`` would otherwise fall back to the default ``job_cpu_cores`` and an
+    engine that pins its own threads (e.g. PySCF's ``lib.num_threads``) could exceed the local CPU
+    budget. Reading the capped value back from the environment carries it into the reconstructed job,
+    so the same one number bounds the worker's actual thread count.
+
+    A dedicated variable is used rather than ``OMP_NUM_THREADS`` so that only local pipe workers are
+    affected: queue submit templates do not set it, so a queued worker keeps ARC's default allocation
+    and never picks up an ambient ``OMP_NUM_THREADS`` from the login shell.
+
+    Args:
+        env (dict, optional): Environment mapping to read (defaults to ``os.environ``).
+
+    Returns:
+        int | None: The capped core count, or ``None`` if unset/unparseable (the caller then falls
+        back to ARC's default core allocation).
+    """
+    env = os.environ if env is None else env
+    raw = env.get('ARC_PIPE_LOCAL_CPUS')
+    if not raw:
+        return None
+    try:
+        cores = int(str(raw).split(',')[0])
+    except (ValueError, IndexError):
+        return None
+    return cores if cores > 0 else None
+
+
 def local_worker_limit(cpus_per_worker: int, memory_mb_per_worker: int) -> int:
     """
     Determine how many pipe workers may run concurrently on this machine.
 
-    Without a queueing system nothing else throttles the pool, so the worker count is bounded
-    by both the core count and the available memory. ``pipe_settings['local_max_workers']``
-    overrides the derived value when set.
+    Without a queueing system nothing else throttles the pool, so the worker count is bounded by
+    both the CPU budget (see ``local_cpu_budget``) and the available memory.
+    ``pipe_settings['local_max_workers']`` overrides the derived value when set.
 
     Args:
         cpus_per_worker (int): Cores each worker is allowed to use.
@@ -831,7 +899,7 @@ def local_worker_limit(cpus_per_worker: int, memory_mb_per_worker: int) -> int:
     configured = (settings.get('pipe_settings') or dict()).get('local_max_workers')
     if configured:
         return max(1, int(configured))
-    by_cores = (os.cpu_count() or 1) // max(1, int(cpus_per_worker))
+    by_cores = local_cpu_budget() // max(1, int(cpus_per_worker))
     limit = by_cores
     if memory_mb_per_worker and psutil is not None:
         by_memory = int(psutil.virtual_memory().available / (1024 ** 2) // memory_mb_per_worker)

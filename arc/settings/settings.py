@@ -68,6 +68,10 @@ servers = {
     # in-core (e.g., 'pyscf'), since ARC validates every ESS's server against this dictionary.
     # Set 'cluster_soft' to 'local' on a workstation with no queueing system: jobs then run
     # in-core or as a local pipe worker pool rather than being submitted to a queue.
+    # When 'cluster_soft' is 'local', 'cpus' is the single machine-wide CPU budget: it both caps
+    # the cores any one in-core job may use and bounds the local worker pool (workers x cores/worker
+    # <= cpus). Set it below the physical core count to leave headroom (e.g., 'cpus': 12 on a
+    # 16-core box). 'pipe_settings['local_max_workers']' can override the derived worker count.
     'local': {
         'cluster_soft': 'HTCondor',  # or 'Slurm'/'PBS'/'OGE'/'SGE', or 'local' if there is no queue
         'un': '<username>',
@@ -353,8 +357,10 @@ pipe_settings = {
     'run_locally': False,      # Run the pipe array as a local pool of worker processes instead of
                                # submitting it to a queue. Use on a workstation with no queueing
                                # system (e.g., to parallelize local PySCF jobs).
-    'local_max_workers': None, # Concurrent local workers. None derives a limit from the available
-                               # cores and memory; set an int to override.
+    'local_max_workers': None, # Concurrent local workers. None derives a limit from the local CPU
+                               # budget (the 'local' server's 'cpus') and available memory. Set an
+                               # int to override; note an explicit value wins outright and can exceed
+                               # the CPU budget, so total cores may pass servers['local']['cpus'].
     'max_attempts': 3,         # Retry budget per task before terminal failure.
     'lease_duration_hrs': 1,   # Worker lease duration in hours (default 1h).
     'env_setup': {},           # Engine-specific shell setup commands, e.g.,
