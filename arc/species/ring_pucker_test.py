@@ -56,6 +56,23 @@ class TestRingPucker(unittest.TestCase):
         q_from_params = np.sqrt(params.q2 ** 2 + params.q3 ** 2)
         self.assertAlmostEqual(q_direct, q_from_params, places=6)
 
+    def test_classify_pucker_chair_like_hexagon(self):
+        """A hexagon with strictly alternating out-of-plane displacements classifies as a chair."""
+        ring_coords = _puckered_hexagon()
+        self.assertEqual(ring_pucker.classify_pucker(ring_coords), 'chair')
+
+    def test_canonical_pucker_states_for_6_and_5_rings(self):
+        """canonical_pucker_states returns the expected discrete labels for 6- and 5-rings."""
+        self.assertEqual(ring_pucker.canonical_pucker_states(6), ['chair', 'boat', 'twist-boat'])
+        self.assertEqual(ring_pucker.canonical_pucker_states(5), ['envelope', 'twist'])
+
+    def test_canonical_pucker_states_raises_for_unsupported_ring_size(self):
+        """canonical_pucker_states raises RingPuckerError for ring sizes other than 5 or 6."""
+        with self.assertRaises(ring_pucker.RingPuckerError):
+            ring_pucker.canonical_pucker_states(4)
+        with self.assertRaises(ring_pucker.RingPuckerError):
+            ring_pucker.canonical_pucker_states(7)
+
 
 if __name__ == '__main__':
     unittest.main()
