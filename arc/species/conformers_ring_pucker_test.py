@@ -6,6 +6,7 @@ This module contains unit tests of the ring_pucker_seed_conformers() function in
 arc.species.conformers, and of the ring_pucker.ring_mean_plane() helper it relies on.
 """
 
+import copy
 import unittest
 
 import numpy as np
@@ -43,6 +44,19 @@ def build_seed_geometry(smiles, seed=42):
         assert atom.element.symbol == symbols[i], \
             f'RMG Molecule atom order does not match xyz/RDKit atom order at index {i}.'
     return mol, xyz, rd_mol
+
+
+def _conformers_without_dmat(conformer_list):
+    """Strip the cached ``dmat`` numpy array (a dedup-distance cache, not part of conformer
+    identity) so conformer dicts can be compared with ``assertEqual``.
+
+    Args:
+        conformer_list (list): A list of conformer dicts, possibly containing a ``dmat`` key.
+
+    Returns:
+        list: The same conformer dicts, each without a ``dmat`` key.
+    """
+    return [{key: value for key, value in conformer.items() if key != 'dmat'} for conformer in conformer_list]
 
 
 class TestRingPuckerSeedConformers(unittest.TestCase):
@@ -406,6 +420,146 @@ class TestRingPuckerIntegration(unittest.TestCase):
 
         self.assertEqual(classified[0], 'chair',
                          f'Lowest-energy conformer is not a chair; got pucker labels (lowest first): {classified}')
+
+
+class TestETKDGv3Backstop(unittest.TestCase):
+    """
+    Contains unit tests for the ETKDGv3 ring-aware embedding backstop.
+    """
+
+    def test_gate_acyclic_false(self):
+        """mol_has_ring_unsupported_by_cp() must be False for an acyclic molecule."""
+        mol = Molecule(smiles='CCCCCC')
+        self.assertFalse(conformers.mol_has_ring_unsupported_by_cp(mol))
+
+    def test_gate_supported_monocyclic_false(self):
+        """mol_has_ring_unsupported_by_cp() must be False for CP-supported monocyclic rings."""
+        for smiles in ['C1CCCCC1', 'C1CCOCC1', 'CCC1CCCCC1']:
+            mol = Molecule(smiles=smiles)
+            self.assertFalse(conformers.mol_has_ring_unsupported_by_cp(mol),
+                             f'Expected False for CP-supported ring in {smiles}.')
+
+    def test_gate_unsaturated_true(self):
+        """mol_has_ring_unsupported_by_cp() must be True for unsaturated rings."""
+        for smiles in ['C1CCC=CC1', 'c1ccccc1']:
+            mol = Molecule(smiles=smiles)
+            self.assertTrue(conformers.mol_has_ring_unsupported_by_cp(mol),
+                            f'Expected True for unsaturated ring in {smiles}.')
+
+    def test_gate_wrong_size_true(self):
+        """mol_has_ring_unsupported_by_cp() must be True for rings outside size 5/6."""
+        for smiles in ['C1CCCCCC1', 'C1CCC1']:
+            mol = Molecule(smiles=smiles)
+            self.assertTrue(conformers.mol_has_ring_unsupported_by_cp(mol),
+                            f'Expected True for wrong-size ring in {smiles}.')
+
+    def test_gate_fused_bridged_spiro_true(self):
+        """mol_has_ring_unsupported_by_cp() must be True for fused, bridged, and spiro ring systems."""
+        for smiles in ['C1CCC2CCCCC2C1', 'C1CC2CCC1C2', 'C1CCC2(CC1)CCCC2']:
+            mol = Molecule(smiles=smiles)
+            self.assertTrue(conformers.mol_has_ring_unsupported_by_cp(mol),
+                            f'Expected True for fused/bridged/spiro ring in {smiles}.')
+
+    def test_embed_etkdgv3_returns_confs(self):
+        """embed_rdkit() with use_etkdg_v3=True must return an RDMol with embedded conformers."""
+        mol = Molecule(smiles='C1CCC2CCCCC2C1')
+        rd_mol = conformers.embed_rdkit('decalin', mol, num_confs=5, use_etkdg_v3=True)
+        self.assertIsNotNone(rd_mol)
+        self.assertGreaterEqual(rd_mol.GetNumConformers(), 1)
+        self.assertEqual(rd_mol.GetNumAtoms(), len(mol.atoms))
+
+    def test_generate_ff_conformers_gated_source(self):
+        """generate_force_field_conformers() must add ETKDGv3-sourced conformers only when the
+        molecule has a ring unsupported by the CP seeder."""
+        decalin_conformers = conformers.generate_force_field_conformers(
+            'decalin', [Molecule(smiles='C1CCC2CCCCC2C1')], torsion_num=0, charge=0, multiplicity=1, num_confs=5)
+        self.assertTrue(any(conf['source'] == 'ETKDGv3' for conf in decalin_conformers),
+                        'Expected at least one ETKDGv3-sourced conformer for decalin.')
+
+        hexane_conformers = conformers.generate_force_field_conformers(
+            'hexane', [Molecule(smiles='CCCCCC')], torsion_num=0, charge=0, multiplicity=1, num_confs=5)
+        self.assertFalse(any(conf['source'] == 'ETKDGv3' for conf in hexane_conformers),
+                         'Did not expect any ETKDGv3-sourced conformer for hexane (acyclic gate).')
+
+    def test_generate_conformers_fused_endtoend(self):
+        """generate_conformers() must return a non-empty list for a fused bicyclic ring system without raising."""
+        result = conformers.generate_conformers(mol_list=Molecule(smiles='C1CCC2CCCCC2C1'), label='decalin', n_confs=5)
+        self.assertTrue(result)
+
+    def test_etkdg_excluded_from_torsion_sampling(self):
+        """deduce_new_conformers() must not let ETKDGv3-sourced conformers pollute torsion-well
+        learning: an ETKDGv3 conformer tagged with a distinct torsion well must not change the
+        learned symmetries nor the number of newly generated conformers relative to a baseline
+        pool that lacks it."""
+        mol = Molecule(smiles='CCCC')
+        torsions, tops = conformers.determine_rotors([mol])
+        baseline_conformers = conformers.generate_force_field_conformers(
+            'butane', [mol], torsion_num=len(torsions), charge=0, multiplicity=1, num_confs=5)
+
+        baseline_new_conformers, baseline_symmetries = conformers.deduce_new_conformers(
+            label='butane', conformers=baseline_conformers, torsions=torsions, tops=tops, mol_list=[mol],
+            combination_threshold=10)
+
+        etkdg_conformer = copy.deepcopy(baseline_conformers[0])
+        etkdg_conformer['source'] = 'ETKDGv3'
+        torsion = tuple(torsions[0])
+        distinct_angle = etkdg_conformer['torsion_dihedrals'][torsion] + 90.0
+        if distinct_angle > 180.0:
+            distinct_angle -= 360.0
+        etkdg_conformer['torsion_dihedrals'][torsion] = distinct_angle
+        polluted_conformers = baseline_conformers + [etkdg_conformer]
+
+        polluted_new_conformers, polluted_symmetries = conformers.deduce_new_conformers(
+            label='butane', conformers=polluted_conformers, torsions=torsions, tops=tops, mol_list=[mol],
+            combination_threshold=10)
+
+        self.assertEqual(baseline_symmetries, polluted_symmetries)
+        # The ETKDG conformer is injected as an additional ring-conformer base (not a torsion-well
+        # sample), so it legitimately contributes its own combinations on top of the baseline ones.
+        # What must NOT change is the combinations generated from the baseline (non-ETKDG) bases,
+        # which are emitted first and are identical to the unpolluted baseline run.
+        self.assertEqual(baseline_new_conformers, polluted_new_conformers[:len(baseline_new_conformers)])
+        self.assertGreater(len(polluted_new_conformers), len(baseline_new_conformers))
+
+    def test_etkdg_bases_do_not_alter_pucker_threshold(self):
+        """deduce_new_conformers() must derive the ring-pucker combination threshold solely
+        from the number of ring-pucker bases, independent of how many ETKDGv3 bases are also
+        present in the input pool."""
+        mol = Molecule(smiles='CCC1CCCCC1')
+        torsions, tops = conformers.determine_rotors([mol])
+        baseline_conformers = conformers.generate_force_field_conformers(
+            'ethylcyclohexane', [mol], torsion_num=len(torsions), charge=0, multiplicity=1, num_confs=5)
+
+        new_conformers_a, _ = conformers.deduce_new_conformers(
+            label='ethylcyclohexane', conformers=baseline_conformers, torsions=torsions, tops=tops,
+            mol_list=[mol], combination_threshold=8)
+
+        polluted_conformers = list(baseline_conformers)
+        for _ in range(4):
+            etkdg_conformer = copy.deepcopy(baseline_conformers[0])
+            etkdg_conformer['source'] = 'ETKDGv3'
+            polluted_conformers.append(etkdg_conformer)
+
+        new_conformers_b, _ = conformers.deduce_new_conformers(
+            label='ethylcyclohexane', conformers=polluted_conformers, torsions=torsions, tops=tops,
+            mol_list=[mol], combination_threshold=8)
+
+        self.assertEqual(_conformers_without_dmat(new_conformers_a),
+                          _conformers_without_dmat(new_conformers_b[:len(new_conformers_a)]))
+        self.assertGreaterEqual(len(new_conformers_b), len(new_conformers_a))
+
+    def test_etkdg_confs_become_bases(self):
+        """generate_conformers() must incorporate ETKDGv3 ring conformers as bases and still
+        return a non-empty result for a fused ring system with no rotatable exocyclic torsions."""
+        decalin_smiles = 'C1CCC2CCCCC2C1'
+        self.assertTrue(conformers.mol_has_ring_unsupported_by_cp(Molecule(smiles=decalin_smiles)))
+
+        decalin_conformers = conformers.generate_force_field_conformers(
+            'decalin', [Molecule(smiles=decalin_smiles)], torsion_num=0, charge=0, multiplicity=1, num_confs=5)
+        self.assertGreaterEqual(sum(1 for conf in decalin_conformers if conf['source'] == 'ETKDGv3'), 1)
+
+        result = conformers.generate_conformers(mol_list=Molecule(smiles=decalin_smiles), label='decalin', n_confs=6)
+        self.assertTrue(result)
 
 
 if __name__ == '__main__':

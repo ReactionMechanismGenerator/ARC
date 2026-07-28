@@ -106,6 +106,9 @@ BASE_CONFORMER_ENERGY_TOL = 0.01
 # A threshold below which all combinations will be generated. Above it just samples of the entire search space.
 COMBINATION_THRESHOLD = 1000
 
+# The maximum number of ETKDGv3 conformers kept as ring-conformer bases in deduce_new_conformers()
+ETKDG_MAX_BASES = 6
+
 # Consolidation tolerances for Z matrices
 CONSOLIDATION_TOLS = {'R': 1e-2, 'A': 1e-2, 'D': 1e-2}
 
@@ -344,6 +347,13 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
             - The deduced conformers.
             - Keys are torsion tuples.
     """
+    etkdg_conformers = [conformer for conformer in conformers if conformer.get('source') == 'ETKDGv3']
+    non_etkdg_conformers = [conformer for conformer in conformers if conformer.get('source') != 'ETKDGv3']
+    if etkdg_conformers and non_etkdg_conformers:
+        conformers = non_etkdg_conformers
+    else:
+        etkdg_conformers = list()
+
     smeared_scan_res = smeared_scan_res or SMEARED_SCAN_RESOLUTIONS
     if not any(['torsion_dihedrals' in conformer for conformer in conformers]):
         conformers = determine_dihedrals(conformers, torsions)
@@ -395,16 +405,26 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
                                                          diastereomers=diastereomers)
     diastereomeric_conformers = diastereomeric_conformers + ring_pucker_base_conformers(
         label, mol, diastereomeric_conformers, force_field=force_field)
+    if etkdg_conformers:
+        diastereomeric_conformers = diastereomeric_conformers + get_lowest_confs(
+            label, etkdg_conformers, n=ETKDG_MAX_BASES)
     num_pucker_bases = sum(1 for conformer in diastereomeric_conformers if conformer.get('source') == 'ring pucker')
+    num_etkdg_bases = sum(1 for conformer in diastereomeric_conformers if conformer.get('source') == 'ETKDGv3')
     pucker_combination_threshold = max(1, combination_threshold // (num_pucker_bases + 1))
+    etkdg_combination_threshold = max(1, combination_threshold // (num_etkdg_bases + 1))
     new_conformers = list()
     for diastereomeric_conformer in diastereomeric_conformers:
         # set symmetric (single well) torsions to the mean of the well
         if 'chirality' in diastereomeric_conformer and diastereomeric_conformer['chirality'] != dict():
             logger.info(f"Considering diastereomer {diastereomeric_conformer['chirality']}")
         base_xyz = diastereomeric_conformer['xyz']  # base_xyz is modified within the loop below
-        base_combination_threshold = pucker_combination_threshold \
-            if diastereomeric_conformer.get('source') == 'ring pucker' else combination_threshold
+        source = diastereomeric_conformer.get('source')
+        if source == 'ring pucker':
+            base_combination_threshold = pucker_combination_threshold
+        elif source == 'ETKDGv3':
+            base_combination_threshold = etkdg_combination_threshold
+        else:
+            base_combination_threshold = combination_threshold
         for torsion, dihedral in zip(single_tors, single_sampling_point):
             torsion_0_indexed = [tor - 1 for tor in torsion]
             conf, rd_mol = converter.rdkit_conf_from_mol(mol, base_xyz)
@@ -715,6 +735,24 @@ def generate_force_field_conformers(label,
                                    'index': len(conformers),
                                    'FF energy': energy,
                                    'source': force_field})
+    if mol_has_ring_unsupported_by_cp(mol_list[0]):
+        for mol in mol_list:
+            etkdg_xyzs, etkdg_energies = list(), list()
+            try:
+                etkdg_xyzs, etkdg_energies = get_force_field_energies(label,
+                                                                      mol,
+                                                                      num_confs=num_confs,
+                                                                      force_field=force_field,
+                                                                      use_etkdg_v3=True,
+                                                                      )
+            except ValueError as e:
+                logger.warning(f'Could not generate ETKDGv3 conformers for {label}, failed with: {e}')
+            if etkdg_xyzs:
+                for xyz, energy in zip(etkdg_xyzs, etkdg_energies):
+                    conformers.append({'xyz': xyz,
+                                       'index': len(conformers),
+                                       'FF energy': energy,
+                                       'source': 'ETKDGv3'})
     # User guesses
     if xyzs is not None and xyzs:
         if not isinstance(xyzs, list):
@@ -1314,6 +1352,7 @@ def get_force_field_energies(label: str,
                              optimize: bool = True,
                              try_ob: bool = False,
                              suppress_warning: bool = False,
+                             use_etkdg_v3: bool = False,
                              ) -> tuple[list, list]:
     """
     Determine force field energies using RDKit.
@@ -1330,6 +1369,7 @@ def get_force_field_energies(label: str,
         optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
         try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``True`` by default.
         suppress_warning (bool, optional): Whether to suppress OpenBabel warnings. ``False`` by default.
+        use_etkdg_v3 (bool, optional): Whether to embed using ETKDGv3 params (ring-aware backstop). ``False`` by default.
 
     Raises:
         ConformerError: If conformers could not be generated.
@@ -1341,7 +1381,7 @@ def get_force_field_energies(label: str,
     """
     xyzs, energies = list(), list()
     if force_field.lower() in ['mmff94', 'mmff94s', 'uff']:
-        rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
+        rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz, use_etkdg_v3=use_etkdg_v3)
         if rd_mol is not None:
             xyzs, energies = rdkit_force_field(label,
                                                rd_mol,
@@ -1566,7 +1606,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
     return xyzs, energies
 
 
-def embed_rdkit(label, mol, num_confs=None, xyz=None):
+def embed_rdkit(label, mol, num_confs=None, xyz=None, use_etkdg_v3=False):
     """
     Generate unoptimized conformers in RDKit. If ``xyz`` is not given, random conformers will be generated.
 
@@ -1575,6 +1615,8 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
         mol (RMG Molecule or RDKit RDMol): The molecule object with connectivity and bond order information.
         num_confs (int, optional): The number of random 3D conformations to generate.
         xyz (dict, optional): The 3D coordinates.
+        use_etkdg_v3 (bool, optional): Whether to embed using ETKDGv3 params (ring-aware backstop) instead of
+            the plain embedding call. Only applies when ``num_confs`` is given. ``False`` by default.
 
     Returns:
         RDMol | None: An RDKIt molecule with embedded conformers.
@@ -1588,7 +1630,17 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
     else:
         raise ConformerError(f'Argument mol can be either an RMG Molecule or an RDKit RDMol object. '
                              f'Got {type(mol)} for {label}')
-    if num_confs is not None:
+    if num_confs is not None and use_etkdg_v3:
+        params = AllChem.ETKDGv3()
+        params.randomSeed = 1
+        params.enforceChirality = True
+        params.useSmallRingTorsions = True
+        try:
+            AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, params=params)
+        except Exception:
+            logger.warning(f'Could not embed ETKDGv3 conformers using RDKit for {label}')
+            return None
+    elif num_confs is not None:
         try:
             AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
         except:
@@ -2160,6 +2212,35 @@ def ring_is_saturated(mol, ring):
         if bond.is_double() or bond.is_benzene() or bond.is_triple():
             return False
     return True
+
+
+def mol_has_ring_unsupported_by_cp(mol):
+    """Check whether a molecule contains a ring the Cremer-Pople seeder cannot handle.
+
+    The CP seeder only supports isolated (non-fused, non-bridged, non-spiro), saturated
+    rings of size 5 or 6. Any ring violating one of these conditions makes this return
+    ``True``, signaling that the ETKDGv3 ring-aware embedding backstop should also run.
+
+    Args:
+        mol (Molecule): The RMG Molecule providing connectivity.
+
+    Returns:
+        bool: ``True`` if at least one ring in ``mol`` is not CP-supported, ``False`` otherwise.
+    """
+    sssr = mol.get_deterministic_sssr()
+    if not sssr:
+        return False
+    atom_to_index = {id(atom): i for i, atom in enumerate(mol.atoms)}
+    ring_sets = [{atom_to_index[id(atom)] for atom in ring} for ring in sssr]
+    for ring, ring_set in zip(sssr, ring_sets):
+        if len(ring) not in (5, 6):
+            return True
+        if not ring_is_saturated(mol, ring):
+            return True
+        for other_set in ring_sets:
+            if other_set is not ring_set and other_set & ring_set:
+                return True
+    return False
 
 
 def ring_pucker_base_conformers(label, mol, base_conformers, force_field='MMFF94s'):
