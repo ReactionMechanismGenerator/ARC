@@ -562,5 +562,46 @@ class TestETKDGv3Backstop(unittest.TestCase):
         self.assertTrue(result)
 
 
+class TestAcyclicRegressionGuard(unittest.TestCase):
+    """
+    Guards that the ring-pucker and ETKDGv3 machinery is inert on acyclic molecules,
+    keeping the acyclic conformer-generation path identical to the pre-feature behavior.
+    """
+
+    ACYCLIC_SPECIES = [('heptane', 'CCCCCCC'),
+                       ('hexanol', 'CCCCCCO'),
+                       ('iso_octane', 'CC(C)CC(C)(C)C'),
+                       ('glycerol', 'OCC(O)CO')]
+
+    def test_ring_machinery_inert_on_acyclic_molecules(self):
+        """mol_has_ring_unsupported_by_cp() and ring_pucker_base_conformers() must be no-ops for acyclic molecules."""
+        for label, smiles in self.ACYCLIC_SPECIES:
+            mol, base_conformers = build_base_conformers(smiles, seed=0)
+            self.assertFalse(conformers.mol_has_ring_unsupported_by_cp(mol),
+                             f'Expected False for acyclic {label}.')
+            result = conformers.ring_pucker_base_conformers(label=label, mol=mol,
+                                                            base_conformers=base_conformers)
+            self.assertEqual(result, [], f'Expected no ring-pucker bases for acyclic {label}.')
+
+    def test_generate_conformers_has_no_ring_sources_on_acyclic_molecules(self):
+        """generate_conformers() must not emit ETKDGv3- or ring-pucker-sourced conformers for acyclic molecules."""
+        for label, smiles in self.ACYCLIC_SPECIES:
+            lowest_confs, all_confs = conformers.generate_conformers(
+                mol_list=Molecule(smiles=smiles), label=label, n_confs=10, return_all_conformers=True)
+            self.assertTrue(lowest_confs, f'Expected a non-empty lowest conformers list for {label}.')
+            for conf in lowest_confs + all_confs:
+                self.assertNotIn(conf.get('source'), ('ETKDGv3', 'ring pucker'),
+                                 f'Unexpected {conf.get("source")}-sourced conformer for acyclic {label}.')
+
+    def test_heptane_generate_conformers_deterministic(self):
+        """Two independent generate_conformers() calls on heptane must return identical FF energies."""
+        energies = list()
+        for _ in range(2):
+            lowest_confs = conformers.generate_conformers(mol_list=Molecule(smiles='CCCCCCC'),
+                                                          label='heptane', n_confs=10)
+            energies.append([conf['FF energy'] for conf in lowest_confs])
+        self.assertEqual(energies[0], energies[1])
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
