@@ -454,6 +454,14 @@ class Scheduler(object):
                 rxn.check_done_opt_r_n_p()
             logger.info('\n\n')
 
+        # Pipe mode: coordinator manages run lifecycle, planner handles family routing.
+        # These MUST be constructed before the restart loop below, which can call
+        # run_scan_jobs() -> self.pipe_planner.try_pipe_rotor_scans_1d() while restarting
+        # a project with pending rotor scans. Both constructors only store references,
+        # so building them this early is safe.
+        self.pipe_coordinator = PipeCoordinator(self)
+        self.pipe_planner = PipePlanner(self, self.pipe_coordinator)
+
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
                 raise SpeciesError(f"Each species in 'species_list' must be an ARCSpecies object. "
@@ -563,9 +571,8 @@ class Scheduler(object):
                 if species.is_ts:
                     # This is a TS loaded from a YAML file
                     species.ts_conf_spawned = True
-        # Pipe mode: coordinator manages run lifecycle, planner handles family routing
-        self.pipe_coordinator = PipeCoordinator(self)
-        self.pipe_planner = PipePlanner(self, self.pipe_coordinator)
+        # ``pipe_coordinator`` / ``pipe_planner`` are constructed earlier in __init__,
+        # above the restart loop that can call run_scan_jobs() and dereference them.
         # Backward-compatible alias to coordinator-owned state.
         # ``active_pipes`` is owned and mutated by ``PipeCoordinator``; this alias
         # exists so that scheduler-level loop conditions (``while ... or self.active_pipes``)
