@@ -511,18 +511,43 @@ class TestETKDGv3Backstop(unittest.TestCase):
                              f'Expected False for CP-supported ring in {smiles}.')
 
     def test_gate_unsaturated_true(self):
-        """mol_has_ring_unsupported_by_cp() must be True for unsaturated rings."""
-        for smiles in ['C1CCC=CC1', 'c1ccccc1']:
+        """mol_has_ring_unsupported_by_cp() must be True for in-ring-unsaturated, non-aromatic rings."""
+        for smiles in ['C1CCC=CC1']:
             mol = Molecule(smiles=smiles)
             self.assertTrue(conformers.mol_has_ring_unsupported_by_cp(mol),
                             f'Expected True for unsaturated ring in {smiles}.')
 
+    def test_gate_exocyclic_sp2_true(self):
+        """mol_has_ring_unsupported_by_cp() must be True for saturated 5/6 rings bearing an
+        exocyclic sp2 atom (ketone, lactam), since CP cannot seed the resulting half-chair."""
+        for smiles in ['O=C1CCCCC1', 'O=C1CCCCN1']:
+            mol = Molecule(smiles=smiles)
+            self.assertTrue(conformers.mol_has_ring_unsupported_by_cp(mol),
+                            f'Expected True for exocyclic-sp2-bearing ring in {smiles}.')
+
+    def test_gate_fully_aromatic_false(self):
+        """mol_has_ring_unsupported_by_cp() must be False for a fully aromatic ring (no pucker
+        freedom), and must not be forced True by an aromatic ring fused only through a
+        substituent bond to a clean saturated ring."""
+        for smiles in ['c1ccccc1', 'c1ccccc1C1CCCCC1']:
+            mol = Molecule(smiles=smiles)
+            self.assertFalse(conformers.mol_has_ring_unsupported_by_cp(mol),
+                             f'Expected False for {smiles}.')
+
     def test_gate_wrong_size_true(self):
-        """mol_has_ring_unsupported_by_cp() must be True for rings outside size 5/6."""
-        for smiles in ['C1CCCCCC1', 'C1CCC1']:
+        """mol_has_ring_unsupported_by_cp() must be True for rings larger than 6, which CP does
+        not support at all."""
+        for smiles in ['C1CCCCCC1']:
             mol = Molecule(smiles=smiles)
             self.assertTrue(conformers.mol_has_ring_unsupported_by_cp(mol),
                             f'Expected True for wrong-size ring in {smiles}.')
+
+    def test_gate_small_ring_false(self):
+        """mol_has_ring_unsupported_by_cp() must be False for rings smaller than 5, whose pucker
+        freedom is negligible and which the backstop need not cover."""
+        mol = Molecule(smiles='C1CCC1')
+        self.assertFalse(conformers.mol_has_ring_unsupported_by_cp(mol),
+                         'Expected False for a small (4-membered) ring.')
 
     def test_gate_fused_bridged_spiro_true(self):
         """mol_has_ring_unsupported_by_cp() must be True for fused, bridged, and spiro ring systems."""
@@ -592,32 +617,33 @@ class TestETKDGv3Backstop(unittest.TestCase):
         self.assertEqual(baseline_new_conformers, polluted_new_conformers[:len(baseline_new_conformers)])
         self.assertGreater(len(polluted_new_conformers), len(baseline_new_conformers))
 
-    def test_etkdg_bases_do_not_alter_pucker_threshold(self):
-        """deduce_new_conformers() must derive the ring-pucker combination threshold solely
-        from the number of ring-pucker bases, independent of how many ETKDGv3 bases are also
-        present in the input pool."""
+    def test_pucker_and_etkdg_bases_receive_full_combination_threshold(self):
+        """deduce_new_conformers() must pass the full, undivided combination_threshold to
+        generate_conformer_combinations() for every base regardless of source. The prior
+        mechanism divided the threshold by (num_pucker_bases + 1) / (num_etkdg_bases + 1),
+        which could silently flip a pucker/ETKDG base onto the lossy iterative-combination
+        path and risk missing the global minimum; it was removed (C5), and cost is now bounded
+        by the base-count caps (PUCKER_MAX_BASES, PUCKER_MAX_CROSS_BASE_CONFORMERS) instead."""
         mol = Molecule(smiles='CCC1CCCCC1')
         torsions, tops = conformers.determine_rotors([mol])
         baseline_conformers = conformers.generate_force_field_conformers(
             'ethylcyclohexane', [mol], torsion_num=len(torsions), charge=0, multiplicity=1, num_confs=5)
 
-        new_conformers_a, _ = conformers.deduce_new_conformers(
-            label='ethylcyclohexane', conformers=baseline_conformers, torsions=torsions, tops=tops,
-            mol_list=[mol], combination_threshold=8)
+        captured_thresholds = list()
+        original_generate_combinations = conformers.generate_conformer_combinations
 
-        polluted_conformers = list(baseline_conformers)
-        for _ in range(4):
-            etkdg_conformer = copy.deepcopy(baseline_conformers[0])
-            etkdg_conformer['source'] = 'ETKDGv3'
-            polluted_conformers.append(etkdg_conformer)
+        def _capture(*args, **kwargs):
+            captured_thresholds.append(kwargs.get('combination_threshold'))
+            return original_generate_combinations(*args, **kwargs)
 
-        new_conformers_b, _ = conformers.deduce_new_conformers(
-            label='ethylcyclohexane', conformers=polluted_conformers, torsions=torsions, tops=tops,
-            mol_list=[mol], combination_threshold=8)
+        with patch.object(conformers, 'generate_conformer_combinations', side_effect=_capture):
+            conformers.deduce_new_conformers(
+                label='ethylcyclohexane', conformers=baseline_conformers, torsions=torsions, tops=tops,
+                mol_list=[mol], combination_threshold=8)
 
-        self.assertEqual(_conformers_without_dmat(new_conformers_a),
-                          _conformers_without_dmat(new_conformers_b[:len(new_conformers_a)]))
-        self.assertGreaterEqual(len(new_conformers_b), len(new_conformers_a))
+        self.assertTrue(captured_thresholds)
+        self.assertTrue(all(threshold == 8 for threshold in captured_thresholds),
+                        f'Expected every base to receive the full combination_threshold; got {captured_thresholds}.')
 
     def test_etkdg_confs_become_bases(self):
         """generate_conformers() must incorporate ETKDGv3 ring conformers as bases and still
