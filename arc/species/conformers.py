@@ -393,12 +393,18 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
 
     diastereomeric_conformers = get_lowest_diastereomers(label=label, mol=mol, conformers=conformers,
                                                          diastereomers=diastereomers)
+    diastereomeric_conformers = diastereomeric_conformers + ring_pucker_base_conformers(
+        label, mol, diastereomeric_conformers, force_field=force_field)
+    num_pucker_bases = sum(1 for conformer in diastereomeric_conformers if conformer.get('source') == 'ring pucker')
+    pucker_combination_threshold = max(1, combination_threshold // (num_pucker_bases + 1))
     new_conformers = list()
     for diastereomeric_conformer in diastereomeric_conformers:
         # set symmetric (single well) torsions to the mean of the well
         if 'chirality' in diastereomeric_conformer and diastereomeric_conformer['chirality'] != dict():
             logger.info(f"Considering diastereomer {diastereomeric_conformer['chirality']}")
         base_xyz = diastereomeric_conformer['xyz']  # base_xyz is modified within the loop below
+        base_combination_threshold = pucker_combination_threshold \
+            if diastereomeric_conformer.get('source') == 'ring pucker' else combination_threshold
         for torsion, dihedral in zip(single_tors, single_sampling_point):
             torsion_0_indexed = [tor - 1 for tor in torsion]
             conf, rd_mol = converter.rdkit_conf_from_mol(mol, base_xyz)
@@ -408,7 +414,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         new_conformers.extend(generate_conformer_combinations(
             label=label, mol=mol_list[0], base_xyz=base_xyz, hypothetical_num_comb=hypothetical_num_comb,
             multiple_tors=multiple_tors, multiple_sampling_points=multiple_sampling_points,
-            combination_threshold=combination_threshold, len_conformers=len(conformers), force_field=force_field,
+            combination_threshold=base_combination_threshold, len_conformers=len(conformers), force_field=force_field,
             max_combination_iterations=max_combination_iterations, plot_path=plot_path, torsion_angles=torsion_angles,
             multiple_sampling_points_dict=multiple_sampling_points_dict, wells_dict=wells_dict,
             de_threshold=de_threshold, symmetries=symmetries))
@@ -2127,6 +2133,95 @@ def ring_pucker_seed_conformers(label, mol, ring_atom_indices, base_xyz, amplitu
         xyzs.append(polished_xyz)
         energies.append(energy)
     return xyzs, energies
+
+
+def ring_is_saturated(mol, ring):
+    """Check whether a ring is free of aromatic, double, or triple in-ring bonds.
+
+    Non-raising by construction: consecutive ring atoms that are not bonded to each other
+    (a malformed ring) are treated as not saturated rather than raising.
+
+    Args:
+        mol (Molecule): The RMG Molecule providing connectivity.
+        ring (list): A connectivity-ordered list of ring Atom objects, as returned by
+            ``mol.get_deterministic_sssr()``.
+
+    Returns:
+        bool: ``True`` if every consecutive pair of ring atoms (including the closing pair) is
+            connected by a single bond, ``False`` if any is aromatic, double, or triple, or if
+            consecutive ring atoms are not bonded.
+    """
+    n = len(ring)
+    for i in range(n):
+        atom1, atom2 = ring[i], ring[(i + 1) % n]
+        bond = atom1.bonds.get(atom2)
+        if bond is None:
+            return False
+        if bond.is_double() or bond.is_benzene() or bond.is_triple():
+            return False
+    return True
+
+
+def ring_pucker_base_conformers(label, mol, base_conformers, force_field='MMFF94s'):
+    """Generate ring-pucker variant base geometries for every eligible ring, for every base conformer.
+
+    Unlike seeding a single base geometry after the torsion machinery has run, this returns
+    pucker-variant BASE geometries (one per (base conformer x ring x pucker state) combination)
+    meant to be fed alongside the diastereomer bases into the torsion-combination machinery, so
+    that every ring-pucker state also gets its exocyclic torsions enumerated. Acyclic molecules
+    are gated out immediately after the single ``get_deterministic_sssr()`` call, so this function
+    costs nothing extra on the acyclic path. Each 5- or 6-membered, fully saturated ring in the
+    SSSR is seeded via ``ring_pucker_seed_conformers``; fused, bridged, or spiro rings are
+    hard-gated out internally by that function and yield no seeds.
+
+    Note:
+        When a molecule has more than one independent ring, each ring is puckered against the
+        base geometry while all other rings are left at their base conformation; the cross
+        product of pucker states across independent rings is not generated here (deferred to a
+        later milestone).
+
+    Args:
+        label (str): The species' label.
+        mol (Molecule): The RMG Molecule providing connectivity, atom-order-matched to the xyz
+            dicts in ``base_conformers``.
+        base_conformers (list): Entries are conformer dictionaries, each with an 'xyz' key and,
+            optionally, a 'chirality' key.
+        force_field (str, optional): The MMFF variant to use for the constrained optimization.
+
+    Returns:
+        list: Ring-pucker base conformer dictionaries, each with 'xyz', 'FF energy', and 'source'
+            keys (and a 'chirality' key if the originating base conformer had one). Empty if
+            ``base_conformers`` is empty or ``mol`` is acyclic.
+    """
+    if not base_conformers:
+        return list()
+    sssr = mol.get_deterministic_sssr()
+    if not sssr:
+        return list()
+
+    rings = [ring for ring in sssr if len(ring) in (5, 6) and ring_is_saturated(mol, ring)]
+    if not rings:
+        return list()
+
+    atom_to_index = {id(atom): i for i, atom in enumerate(mol.atoms)}
+
+    pucker_bases = list()
+    for base in base_conformers:
+        base_xyz = base['xyz']
+        for ring in rings:
+            ring_indices = [atom_to_index[id(atom)] for atom in ring]
+            try:
+                xyzs, energies = ring_pucker_seed_conformers(label, mol, ring_indices, base_xyz,
+                                                              force_field=force_field)
+            except (ConformerError, ring_pucker.RingPuckerError) as e:
+                logger.debug(f'Ring-pucker seeding failed for a ring in {label}: {e}')
+                continue
+            for xyz, energy in zip(xyzs, energies):
+                conf = {'xyz': xyz, 'FF energy': energy, 'source': 'ring pucker'}
+                if 'chirality' in base:
+                    conf['chirality'] = base['chirality']
+                pucker_bases.append(conf)
+    return pucker_bases
 
 
 def to_group(mol, atom_indices):

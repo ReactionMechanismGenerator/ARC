@@ -16,6 +16,7 @@ import arc.species.conformers as conformers
 import arc.species.converter as converter
 import arc.species.ring_pucker as ring_pucker
 from arc.exceptions import ConformerError
+from arc.molecule.molecule import Molecule
 from arc.species.perceive import perceive_molecule_from_xyz
 
 
@@ -240,6 +241,171 @@ class TestRingPuckerSeedConformers(unittest.TestCase):
         amplitude_from_plane = float(np.sqrt(np.sum(z ** 2)))
         amplitude_from_cp = ring_pucker.puckering_amplitude(ring_coords)
         self.assertAlmostEqual(amplitude_from_plane, amplitude_from_cp, places=6)
+
+
+def build_base_conformers(smiles, seed=0):
+    """Build a one-entry base conformer list (as ``generate_conformers`` would hold internally).
+
+    Args:
+        smiles (str): The SMILES string of the molecule.
+        seed (int): The RDKit embedding random seed.
+
+    Returns:
+        tuple: (mol, base_conformers) where ``mol`` is an RMG Molecule and ``base_conformers``
+            is a list with a single conformer dictionary with 'xyz' and 'FF energy' keys.
+    """
+    mol, xyz, _ = build_seed_geometry(smiles, seed=seed)
+    base_conformers = [{'xyz': xyz, 'index': 0, 'FF energy': 0.0, 'source': 'test'}]
+    return mol, base_conformers
+
+
+class TestRingPuckerBaseConformers(unittest.TestCase):
+    """
+    Contains unit tests for ring_pucker_base_conformers() and ring_is_saturated().
+    """
+
+    def test_acyclic_molecule_returns_empty(self):
+        """An acyclic molecule (n-butane) with a non-empty base list must return an empty list."""
+        mol, base_conformers = build_base_conformers('CCCC', seed=0)
+        result = conformers.ring_pucker_base_conformers(label='butane', mol=mol,
+                                                         base_conformers=base_conformers)
+        self.assertEqual(result, [])
+
+    def test_cyclohexane_returns_base_conformers(self):
+        """Cyclohexane, given one base conformer, must return a non-empty list of well-formed dicts."""
+        mol, base_conformers = build_base_conformers('C1CCCCC1', seed=0)
+        result = conformers.ring_pucker_base_conformers(label='cyclohexane', mol=mol,
+                                                         base_conformers=base_conformers)
+        self.assertGreater(len(result), 0)
+        num_atoms = len(mol.atoms)
+        for conf in result:
+            self.assertIn('xyz', conf)
+            self.assertIn('FF energy', conf)
+            self.assertIsInstance(conf['FF energy'], float)
+            self.assertEqual(conf['source'], 'ring pucker')
+            self.assertEqual(len(conf['xyz']['coords']), num_atoms)
+
+    def test_multiple_bases_yield_more_than_single_base(self):
+        """Two base conformers must yield more pucker bases than a single base conformer."""
+        mol, xyz, _ = build_seed_geometry('C1CCCCC1', seed=0)
+        _, xyz_alt, _ = build_seed_geometry('C1CCCCC1', seed=1)
+        base_one = [{'xyz': xyz, 'index': 0, 'FF energy': 0.0, 'source': 'test'}]
+        base_two = base_one + [{'xyz': xyz_alt, 'index': 1, 'FF energy': 0.0, 'source': 'test'}]
+
+        result_one = conformers.ring_pucker_base_conformers(label='cyclohexane', mol=mol,
+                                                             base_conformers=base_one)
+        result_two = conformers.ring_pucker_base_conformers(label='cyclohexane', mol=mol,
+                                                             base_conformers=base_two)
+        self.assertGreater(len(result_two), len(result_one))
+
+    def test_benzene_aromatic_ring_returns_empty(self):
+        """An aromatic ring (benzene) must be skipped, returning an empty list."""
+        mol, base_conformers = build_base_conformers('c1ccccc1', seed=0)
+        result = conformers.ring_pucker_base_conformers(label='benzene', mol=mol,
+                                                         base_conformers=base_conformers)
+        self.assertEqual(result, [])
+
+    def test_cyclohexene_unsaturated_ring_returns_empty(self):
+        """A ring with an in-ring C=C double bond (cyclohexene) must be skipped."""
+        mol, base_conformers = build_base_conformers('C1=CCCCC1', seed=0)
+        result = conformers.ring_pucker_base_conformers(label='cyclohexene', mol=mol,
+                                                         base_conformers=base_conformers)
+        self.assertEqual(result, [])
+
+    def test_decalin_fused_ring_returns_empty(self):
+        """A fused bicyclic system (decalin) must return an empty list."""
+        mol, base_conformers = build_base_conformers('C1CCC2CCCCC2C1', seed=0)
+        result = conformers.ring_pucker_base_conformers(label='decalin', mol=mol,
+                                                         base_conformers=base_conformers)
+        self.assertEqual(result, [])
+
+    def test_empty_base_conformers_returns_empty(self):
+        """An empty base_conformers list must short-circuit to an empty list."""
+        mol, _ = build_base_conformers('C1CCCCC1', seed=0)
+        result = conformers.ring_pucker_base_conformers(label='cyclohexane', mol=mol, base_conformers=[])
+        self.assertEqual(result, [])
+
+    def test_chirality_propagated_to_pucker_bases(self):
+        """A 'chirality' key on a base conformer dict must be copied onto every returned dict."""
+        mol, xyz, _ = build_seed_geometry('C1CCCCC1', seed=0)
+        chirality = {0: 'R'}
+        base_conformers = [{'xyz': xyz, 'index': 0, 'FF energy': 0.0, 'source': 'test', 'chirality': chirality}]
+        result = conformers.ring_pucker_base_conformers(label='cyclohexane', mol=mol,
+                                                         base_conformers=base_conformers)
+        self.assertGreater(len(result), 0)
+        for conf in result:
+            self.assertIn('chirality', conf)
+            self.assertEqual(conf['chirality'], chirality)
+
+    def test_ring_is_saturated(self):
+        """ring_is_saturated() must be True for cyclohexane, False for benzene and cyclohexene."""
+        mol, _ = build_base_conformers('C1CCCCC1', seed=0)
+        sssr = mol.get_deterministic_sssr()
+        self.assertEqual(len(sssr), 1)
+        self.assertTrue(conformers.ring_is_saturated(mol, sssr[0]))
+
+        mol_benzene, _ = build_base_conformers('c1ccccc1', seed=0)
+        sssr_benzene = mol_benzene.get_deterministic_sssr()
+        self.assertFalse(conformers.ring_is_saturated(mol_benzene, sssr_benzene[0]))
+
+        mol_ene, _ = build_base_conformers('C1=CCCCC1', seed=0)
+        sssr_ene = mol_ene.get_deterministic_sssr()
+        self.assertFalse(conformers.ring_is_saturated(mol_ene, sssr_ene[0]))
+
+
+class TestRingPuckerIntegration(unittest.TestCase):
+    """
+    Integration tests confirming that ring-pucker base geometries flow through
+    deduce_new_conformers() / generate_conformers() and that the chair global
+    minimum is recovered for cyclohexane.
+    """
+
+    def test_cyclohexane_chair_recovered_via_generate_conformers(self):
+        """generate_conformers() on cyclohexane must return a chair as the lowest conformer."""
+        mol = Molecule(smiles='C1CCCCC1')
+        lowest_confs = conformers.generate_conformers(mol_list=mol, label='cyclohexane', n_confs=5)
+        self.assertGreater(len(lowest_confs), 0)
+
+        classified = list()
+        for conf in lowest_confs:
+            xyz = conf['xyz']
+            perceived_mol = perceive_molecule_from_xyz(xyz)
+            for ring in perceived_mol.get_deterministic_sssr():
+                if len(ring) == 6:
+                    ring_indices = [perceived_mol.atoms.index(atom) for atom in ring]
+                    ring_coords = np.array(xyz['coords'])[ring_indices]
+                    classified.append(ring_pucker.classify_pucker(ring_coords))
+                    break
+
+        self.assertIn('chair', classified, f'No chair conformer recovered; got pucker labels: {classified}')
+        self.assertEqual(classified[0], 'chair',
+                         f'Lowest-energy conformer is not a chair; got pucker labels (lowest first): {classified}')
+
+    def test_ethylcyclohexane_pucker_times_rotamer(self):
+        """A substituted ring must recover the chair global minimum together with exocyclic rotamers.
+
+        This exercises the fix that routes ring-pucker base geometries through the exocyclic-torsion
+        combination machinery: the returned ensemble should hold several chair conformers that differ
+        in their side-chain rotamers, with the lowest-energy conformer being a chair.
+        """
+        mol = Molecule(smiles='CCC1CCCCC1')
+        lowest_confs = conformers.generate_conformers(mol_list=mol, label='ethylcyclohexane', n_confs=10)
+        self.assertGreaterEqual(len(lowest_confs), 2,
+                                'Expected multiple (pucker x rotamer) conformers for ethylcyclohexane.')
+
+        classified = list()
+        for conf in lowest_confs:
+            xyz = conf['xyz']
+            perceived_mol = perceive_molecule_from_xyz(xyz)
+            for ring in perceived_mol.get_deterministic_sssr():
+                if len(ring) == 6:
+                    ring_indices = [perceived_mol.atoms.index(atom) for atom in ring]
+                    ring_coords = np.array(xyz['coords'])[ring_indices]
+                    classified.append(ring_pucker.classify_pucker(ring_coords))
+                    break
+
+        self.assertEqual(classified[0], 'chair',
+                         f'Lowest-energy conformer is not a chair; got pucker labels (lowest first): {classified}')
 
 
 if __name__ == '__main__':
