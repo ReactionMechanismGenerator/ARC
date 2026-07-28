@@ -121,6 +121,13 @@ PUCKER_MAX_BASES = 12
 # seeding, to bound worst-case FF-opt cost when many diastereomeric bases are supplied
 PUCKER_MAX_CROSS_BASE_CONFORMERS = 4
 
+# A fixed seed and Gaussian scale (Angstrom) for the deterministic symmetry-breaking jitter
+# applied before stage-2 minimization in optimize_conformer_with_frozen_ring(), so a
+# force-field saddle point (e.g. a symmetric boat pucker) relaxes into a real basin instead of
+# being reported as spuriously converged
+SYMMETRY_BREAKING_JITTER_SEED = 20260728
+SYMMETRY_BREAKING_JITTER_SCALE = 1e-3
+
 # Consolidation tolerances for Z matrices
 CONSOLIDATION_TOLS = {'R': 1e-2, 'A': 1e-2, 'D': 1e-2}
 
@@ -1203,6 +1210,9 @@ def get_lowest_confs(label: str,
         raise ConformerError(f'confs could either be a list of dictionaries or a list of lists. '
                              f'Got a list of {type(confs[0])}s for {label}')
 
+    if not conformer_list:
+        return list()
+
     conformer_list.sort(key=lambda conformer: conformer[energy], reverse=False)
     if e is not None:
         min_e = min([conf[energy] for conf in conformer_list])
@@ -1290,6 +1300,14 @@ def ring_conformer_metric(label: str,
 
     conformers_copy = [copy.copy(conf) for conf in conformers]
     distinct_minima = get_lowest_confs(label, conformers_copy, n=None, e=e)
+    if not distinct_minima:
+        return {'status': 'empty',
+                'arc_dedup_unique_confs': 0,
+                'min_energy': None,
+                'global_min_hit': None if reference_conformer is None else False,
+                'min_delta_e': None,
+                'arc_dedup_pucker_labels': collections.Counter(),
+                'pucker_state_ids': collections.Counter()}
 
     ring_coords_list = [np.array(conf['xyz']['coords'])[ring_atom_indices] for conf in distinct_minima]
     min_energy = min(conf['FF energy'] for conf in distinct_minima)
@@ -1988,6 +2006,11 @@ def optimize_conformer_with_frozen_ring(mol, seed_xyz, ring_atom_indices, force_
     dropped rather than returning an unreliable geometry/energy. Isotopes from ``seed_xyz`` are
     preserved on the returned xyz.
 
+    A symmetric pucker seed (e.g. a boat) can sit exactly on a force-field saddle point, where
+    ``Minimize`` reports spurious zero-gradient convergence instead of relaxing into a real
+    basin. To break that symmetry, a small fixed-seed deterministic jitter is applied to every
+    atom's coordinates right before the stage-2 unconstrained minimization.
+
     Args:
         mol (Molecule): The RMG Molecule providing connectivity.
         seed_xyz (dict): The seed xyz dict to optimize; atoms must be ordered as in ``mol``.
@@ -2024,6 +2047,12 @@ def optimize_conformer_with_frozen_ring(mol, seed_xyz, ring_atom_indices, force_
     except (RuntimeError, ValueError) as e:
         logger.debug(f'Frozen-ring force-field minimization failed: {e}')
         return None
+    rd_conf = rd_mol.GetConformer()
+    jitter = np.random.default_rng(SYMMETRY_BREAKING_JITTER_SEED).normal(
+        scale=SYMMETRY_BREAKING_JITTER_SCALE, size=(rd_conf.GetNumAtoms(), 3))
+    for i in range(rd_conf.GetNumAtoms()):
+        pos = rd_conf.GetAtomPosition(i)
+        rd_conf.SetAtomPosition(i, (pos.x + jitter[i, 0], pos.y + jitter[i, 1], pos.z + jitter[i, 2]))
     ff2 = ff2_getter()
     if ff2 is None:
         return None
@@ -2035,7 +2064,7 @@ def optimize_conformer_with_frozen_ring(mol, seed_xyz, ring_atom_indices, force_
     except (RuntimeError, ValueError) as e:
         logger.debug(f'Unconstrained polishing force-field minimization failed: {e}')
         return None
-    if v == 1:
+    if v != 0:
         logger.debug('Unconstrained polishing force-field minimization did not converge; dropping this ring-pucker seed.')
         return None
     energy = ff2.CalcEnergy()
@@ -2310,6 +2339,48 @@ def mol_has_ring_unsupported_by_cp(mol):
     return False
 
 
+def _seed_rings_independently(label, mol, base_conformers, ring_index_lists, force_field='MMFF94s'):
+    """Pucker each ring in ``ring_index_lists`` independently against each base conformer,
+    leaving all other rings at their base conformation.
+
+    Only the lowest-FF-energy ``PUCKER_MAX_CROSS_BASE_CONFORMERS`` entries of ``base_conformers``
+    are seeded, and the combined result is capped at the lowest-FF-energy ``PUCKER_MAX_BASES``
+    entries, mirroring the bounds ``_ring_pucker_cross_product_bases`` applies to its own
+    combinatorial path, so this per-ring path cannot become an uncapped, unbounded seeding path.
+
+    Args:
+        label (str): The species' label.
+        mol (Molecule): The RMG Molecule providing connectivity.
+        base_conformers (list): Entries are conformer dictionaries, each with an 'xyz' and an
+            'FF energy' key, and optionally a 'chirality' key.
+        ring_index_lists (list): Ring-connectivity-ordered atom index lists, one per ring to seed.
+        force_field (str, optional): The MMFF variant to use for the constrained optimization.
+
+    Returns:
+        list: Ring-pucker base conformer dictionaries, each with 'xyz', 'FF energy', and 'source'
+            keys (and a 'chirality' key if the originating base conformer had one).
+    """
+    pucker_bases = list()
+    sorted_bases = sorted(base_conformers, key=lambda base: base['FF energy'])
+    for base in sorted_bases[:PUCKER_MAX_CROSS_BASE_CONFORMERS]:
+        base_xyz = base['xyz']
+        for ring_indices in ring_index_lists:
+            try:
+                xyzs, energies = ring_pucker_seed_conformers(label, mol, ring_indices, base_xyz,
+                                                              force_field=force_field)
+            except (ConformerError, ring_pucker.RingPuckerError) as e:
+                logger.debug(f'Ring-pucker seeding failed for a ring in {label}: {e}')
+                continue
+            for xyz, energy in zip(xyzs, energies):
+                conf = {'xyz': xyz, 'FF energy': energy, 'source': 'ring pucker'}
+                if 'chirality' in base:
+                    conf['chirality'] = base['chirality']
+                pucker_bases.append(conf)
+    if len(pucker_bases) > PUCKER_MAX_BASES:
+        pucker_bases = get_lowest_confs(label, pucker_bases, n=PUCKER_MAX_BASES)
+    return pucker_bases
+
+
 def _ring_pucker_cross_product_bases(label, mol, base_conformers, ring_index_lists, atom_to_index,
                                      force_field='MMFF94s'):
     """Generate the cross product of pucker-state/pole combinations across independent rings.
@@ -2361,18 +2432,8 @@ def _ring_pucker_cross_product_bases(label, mol, base_conformers, ring_index_lis
                 break
             plans.append(plan)
         if len(plans) != len(ring_index_lists):
-            for ring_indices in ring_index_lists:
-                try:
-                    xyzs, energies = ring_pucker_seed_conformers(label, mol, ring_indices, base_xyz,
-                                                                  force_field=force_field)
-                except (ConformerError, ring_pucker.RingPuckerError) as e:
-                    logger.debug(f'Ring-pucker seeding failed for a ring in {label}: {e}')
-                    continue
-                for xyz, energy in zip(xyzs, energies):
-                    conf = {'xyz': xyz, 'FF energy': energy, 'source': 'ring pucker'}
-                    if 'chirality' in base:
-                        conf['chirality'] = base['chirality']
-                    pucker_bases.append(conf)
+            pucker_bases.extend(_seed_rings_independently(label, mol, [base], ring_index_lists,
+                                                           force_field=force_field))
             continue
 
         amplitude_map = ring_pucker.DEFAULT_PUCKER_AMPLITUDES
@@ -2432,9 +2493,10 @@ def ring_pucker_base_conformers(label, mol, base_conformers, force_field='MMFF94
         ``_ring_pucker_cross_product_bases``), freezing the union of all ring atom indices during
         FF polishing, and the combined bases are capped at ``PUCKER_MAX_BASES``. Otherwise (a
         single eligible ring, fused/non-independent rings, or an over-cap combination count),
-        each eligible ring is puckered independently against every base conformer, via
-        ``ring_pucker_seed_conformers``, while all other rings are left at their base
-        conformation.
+        each eligible ring is puckered independently against the lowest-FF-energy
+        ``PUCKER_MAX_CROSS_BASE_CONFORMERS`` base conformers, via ``_seed_rings_independently``
+        (which wraps ``ring_pucker_seed_conformers``), while all other rings are left at their
+        base conformation; this path is capped at ``PUCKER_MAX_BASES`` as well.
 
     Args:
         label (str): The species' label.
@@ -2480,22 +2542,7 @@ def ring_pucker_base_conformers(label, mol, base_conformers, force_field='MMFF94
                 pucker_bases = get_lowest_confs(label, pucker_bases, n=PUCKER_MAX_BASES)
             return pucker_bases
 
-    pucker_bases = list()
-    for base in base_conformers:
-        base_xyz = base['xyz']
-        for ring_indices in ring_index_lists:
-            try:
-                xyzs, energies = ring_pucker_seed_conformers(label, mol, ring_indices, base_xyz,
-                                                              force_field=force_field)
-            except (ConformerError, ring_pucker.RingPuckerError) as e:
-                logger.debug(f'Ring-pucker seeding failed for a ring in {label}: {e}')
-                continue
-            for xyz, energy in zip(xyzs, energies):
-                conf = {'xyz': xyz, 'FF energy': energy, 'source': 'ring pucker'}
-                if 'chirality' in base:
-                    conf['chirality'] = base['chirality']
-                pucker_bases.append(conf)
-    return pucker_bases
+    return _seed_rings_independently(label, mol, base_conformers, ring_index_lists, force_field=force_field)
 
 
 def to_group(mol, atom_indices):

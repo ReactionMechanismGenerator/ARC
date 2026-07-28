@@ -225,6 +225,57 @@ class TestRingPuckerSeedConformers(unittest.TestCase):
             self.assertAlmostEqual(energy_before, energy_after, delta=1e-3,
                                    msg=f'Returned conformer was not converged: {energy_before} -> {energy_after}')
 
+    def test_frozen_ring_drops_seed_when_stage_two_could_not_be_set_up(self):
+        """RDKit's ForceField.Minimize() convention is v==1 not-converged / v==0 converged /
+        v==-1 could-not-set-up. A v==-1 stage-2 result means the force field never actually ran,
+        so its CalcEnergy() must not be trusted as a converged geometry/energy; the seed must be
+        dropped (None returned), just like the v==1 not-converged case."""
+        mol, xyz, rd_mol = build_seed_geometry('C1CCCCC1', seed=0)
+        ring_atom_indices = list(rd_mol.GetRingInfo().AtomRings()[0])
+
+        real_get_ff = AllChem.MMFFGetMoleculeForceField
+        call_count = {'n': 0}
+
+        class _CouldNotSetUpForceField:
+            """Proxies a real RDKit ForceField but forces Minimize() to report v==-1."""
+
+            def __init__(self, real_ff):
+                self._real_ff = real_ff
+
+            def Minimize(self, *args, **kwargs):
+                return -1
+
+            def __getattr__(self, name):
+                return getattr(self._real_ff, name)
+
+        def fake_get_ff(*args, **kwargs):
+            call_count['n'] += 1
+            real_ff = real_get_ff(*args, **kwargs)
+            if call_count['n'] == 1:
+                return real_ff
+            return _CouldNotSetUpForceField(real_ff)
+
+        with patch('arc.species.conformers.AllChem.MMFFGetMoleculeForceField', side_effect=fake_get_ff):
+            result = conformers.optimize_conformer_with_frozen_ring(mol, xyz, ring_atom_indices)
+        self.assertIsNone(result)
+
+    def test_no_boat_saddle_survives_seeding(self):
+        """A symmetric boat seed sits exactly on the boat<->twist-boat saddle; MMFF's Minimize()
+        reports spurious zero-gradient convergence there. Stage-2 polishing must symmetry-break
+        the geometry before minimizing so no returned conformer is stuck at the boat saddle."""
+        mol, xyz, rd_mol = build_seed_geometry('C1CCCCC1', seed=0)
+        ring_atom_indices = list(rd_mol.GetRingInfo().AtomRings()[0])
+
+        xyzs, energies = conformers.ring_pucker_seed_conformers(
+            label='cyclohexane', mol=mol, ring_atom_indices=ring_atom_indices, base_xyz=xyz)
+        self.assertGreater(len(xyzs), 0)
+
+        labels = list()
+        for conf_xyz in xyzs:
+            ring_coords = np.array(conf_xyz['coords'])[ring_atom_indices]
+            labels.append(ring_pucker.classify_pucker(ring_coords))
+        self.assertNotIn('boat', labels, f'A boat saddle point survived polishing: {labels}.')
+
     def test_wrong_cyclic_order_raises(self):
         """Ring indices permuted out of connectivity order must raise ConformerError."""
         mol, xyz, rd_mol = build_seed_geometry('C1CCCCC1', seed=0)
@@ -312,6 +363,25 @@ class TestRingPuckerBaseConformers(unittest.TestCase):
         result_two = conformers.ring_pucker_base_conformers(label='cyclohexane', mol=mol,
                                                              base_conformers=base_two)
         self.assertGreater(len(result_two), len(result_one))
+
+    def test_many_base_conformers_are_capped(self):
+        """The per-ring fallback path (the only path a monocyclic molecule can take) must be
+        bounded by the same caps as the cross-product path: only the lowest-FF-energy
+        PUCKER_MAX_CROSS_BASE_CONFORMERS bases are seeded, and the combined result is capped at
+        PUCKER_MAX_BASES, so it cannot become an uncapped, unbounded seeding path."""
+        mol, xyz, _ = build_seed_geometry('C1CCCCC1', seed=0)
+        base_conformers = [{'xyz': xyz, 'index': i, 'FF energy': float(i), 'source': 'test'}
+                           for i in range(20)]
+
+        real_seed_conformers = conformers.ring_pucker_seed_conformers
+        with patch('arc.species.conformers.ring_pucker_seed_conformers',
+                   side_effect=real_seed_conformers) as mock_seed:
+            result = conformers.ring_pucker_base_conformers(label='cyclohexane', mol=mol,
+                                                             base_conformers=base_conformers)
+
+        self.assertLessEqual(len(result), conformers.PUCKER_MAX_BASES)
+        # A single ring means one ring_pucker_seed_conformers() call per seeded base.
+        self.assertLessEqual(mock_seed.call_count, conformers.PUCKER_MAX_CROSS_BASE_CONFORMERS)
 
     def test_benzene_aromatic_ring_returns_empty(self):
         """An aromatic ring (benzene) must be skipped, returning an empty list."""
@@ -718,15 +788,16 @@ class TestMultiRingPuckerCrossProduct(unittest.TestCase):
         ring_pucker_base_conformers()'s output for monocyclic molecules, since a single ring never
         enters the cross-product branch (len(rings) >= 2 is required).
 
-        Expected values were captured by running the pre-refactor code on cyclohexane and
+        Expected values were captured by running the pre-refactor code (with the C1/I1
+        boat-saddle and stage-2-convergence fixes already applied) on cyclohexane and
         ethylcyclohexane (seed=0) and recording the count, sorted energies, and sorted per-ring
         pucker-label multiset of the returned bases.
         """
         expectations = {
             'C1CCCCC1': (6,
-                        [-3.5609335504711908, -3.5609335386754166, 2.3688122497580313,
-                         2.3688122521247186, 2.3688122547992005, 3.1109672025603166],
-                        ['boat', 'chair', 'chair', 'twist-boat', 'twist-boat', 'twist-boat']),
+                        [-3.560933543826419, -3.5609335388281274, 2.368812249372664,
+                         2.368812251039314, 2.36881225349556, 2.368812276414472],
+                        ['chair', 'chair', 'twist-boat', 'twist-boat', 'twist-boat', 'twist-boat']),
             'CCC1CCCCC1': (6,
                           [1.4392077902597649, 2.912038796820865, 7.1730842828369346,
                            7.637111955719528, 9.15401445063019, 9.154014451655334],
