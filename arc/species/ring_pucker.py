@@ -68,15 +68,22 @@ class CremerPopleParams:
     phi_deg: Optional[float] = None
 
 
-def _ring_z_displacements(ring_coords: Sequence[Sequence[float]]) -> Tuple[np.ndarray, int]:
-    """Compute the Cremer-Pople out-of-plane displacements z_j of a ring.
+def ring_mean_plane(ring_coords: Sequence[Sequence[float]]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute the Cremer-Pople mean plane of a ring.
 
     Args:
         ring_coords (Sequence[Sequence[float]]): Cartesian coordinates of the ring atoms, in
             ring-connectivity order.
 
     Returns:
-        Tuple[np.ndarray, int]: The z_j displacements (length N array) and the ring size N.
+        Tuple[np.ndarray, np.ndarray, np.ndarray]: The mean-plane centroid r0 (length-3 array),
+        the unit normal vector n-hat (length-3 array), and the per-atom out-of-plane
+        displacements z_j (length-N array), all in the input coordinate frame.
+
+    Raises:
+        RingPuckerError: If ``ring_coords`` is not an (N x 3) array with N >= 3, or if the
+            fitted ring-plane normal is numerically degenerate (the ring points are collinear,
+            degenerate, or not supplied in ring-connectivity order).
     """
     coords = np.asarray(ring_coords, dtype=float)
     if coords.ndim != 2 or coords.shape[1] != 3 or coords.shape[0] < 3:
@@ -97,7 +104,22 @@ def _ring_z_displacements(ring_coords: Sequence[Sequence[float]]) -> Tuple[np.nd
             'collinear, degenerate, or not supplied in ring-connectivity order).')
     normal = normal / normal_norm
     z = shifted @ normal
-    return z, n
+    return r0, normal, z
+
+
+def _ring_z_displacements(ring_coords: Sequence[Sequence[float]]) -> Tuple[np.ndarray, int]:
+    """Compute the Cremer-Pople out-of-plane displacements z_j of a ring.
+
+    Args:
+        ring_coords (Sequence[Sequence[float]]): Cartesian coordinates of the ring atoms, in
+            ring-connectivity order.
+
+    Returns:
+        Tuple[np.ndarray, int]: The z_j displacements (length N array) and the ring size N.
+    """
+    coords = np.asarray(ring_coords, dtype=float)
+    _, _, z = ring_mean_plane(ring_coords)
+    return z, coords.shape[0]
 
 
 def validate_ring_order(ring_coords: Sequence[Sequence[float]], max_bond: float = 2.2) -> None:
