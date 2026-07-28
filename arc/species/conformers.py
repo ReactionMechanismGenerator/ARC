@@ -114,11 +114,22 @@ ETKDG_MAX_BASES = 6
 PUCKER_MAX_CROSS_COMBINATIONS = 36
 
 # The maximum number of combined ring-pucker bases kept after the cross product in
-# ring_pucker_base_conformers()
-PUCKER_MAX_BASES = 12
+# ring_pucker_base_conformers(). The 5-ring Cremer-Pople phase wheel has 20 entries and the
+# 6-ring wheel has 14; a cap of 20 lets a single ring's full wheel survive, since selection
+# here sorts by pre-torsion force-field energy and a lower cap could drop a distinct 5-ring
+# phase whose torsion-packed child conformer is actually the global minimum. This selection
+# happens at the cheap MMFF force-field level; the trade-off is downstream cost: COMBINATION_THRESHOLD
+# bounds torsion enumeration PER base conformer (not globally), so each surviving pucker base adds
+# its own bounded torsion enumeration and the total downstream work scales with the number of kept
+# pucker bases (up to PUCKER_MAX_BASES). The cap is the deterministic bound on that fan-out.
+PUCKER_MAX_BASES = 20
 
 # The maximum number of (lowest-energy) base conformers that receive cross-product pucker
-# seeding, to bound worst-case FF-opt cost when many diastereomeric bases are supplied
+# seeding, to bound worst-case FF-opt cost when many diastereomeric bases are supplied. Only
+# the lowest-FF-energy PUCKER_MAX_CROSS_BASE_CONFORMERS incoming base conformers get
+# pucker-seeded; any additional/higher-energy base conformers still flow UNpuckered into
+# torsion enumeration. This is a deliberate pre-torsion cost bound, not a guarantee of full
+# pucker coverage over all base conformers.
 PUCKER_MAX_CROSS_BASE_CONFORMERS = 4
 
 # A fixed seed and Gaussian scale (Angstrom) for the deterministic symmetry-breaking jitter
@@ -2147,7 +2158,7 @@ def _ring_pucker_plan(label, mol, ring_atom_indices, coords, atom_to_index):
             'anchor_of': anchor_of}
 
 
-def _displace_ring_pucker(coords, plan, label_state, sign, amplitude_map):
+def _displace_ring_pucker(coords, plan, label_state, phase_deg, pole_sign, amplitude_map):
     """Rigidly displace a ring and its anchored substituents to match an ideal pucker geometry.
 
     Args:
@@ -2156,7 +2167,10 @@ def _displace_ring_pucker(coords, plan, label_state, sign, amplitude_map):
         plan (dict): A ring-pucker plan as returned by ``_ring_pucker_plan``.
         label_state (str): A canonical Cremer-Pople pucker state label for ``plan['n']``-membered
             rings (see ``ring_pucker.canonical_pucker_states``).
-        sign (int): The ring-flip pole, either ``1`` or ``-1``.
+        phase_deg (Optional[float]): The Cremer-Pople phase angle to seed an equatorial
+            ``label_state`` at (see ``ring_pucker.ideal_pucker_geometry``), or ``None`` to use
+            that label's single canonical phase (or, for 'chair', to ignore phase entirely).
+        pole_sign (int): The ring-flip pole, either ``1`` or ``-1``.
         amplitude_map (dict): A label -> Q (Angstrom) mapping containing a finite value for
             ``label_state``.
 
@@ -2166,8 +2180,8 @@ def _displace_ring_pucker(coords, plan, label_state, sign, amplitude_map):
             match the ideal pucker's out-of-plane pattern; all substituent bond lengths are
             preserved exactly.
     """
-    q = sign * amplitude_map[label_state]
-    z_target = ring_pucker.ideal_pucker_geometry(plan['n'], label_state, amplitude=q)[:, 2]
+    q = pole_sign * amplitude_map[label_state]
+    z_target = ring_pucker.ideal_pucker_geometry(plan['n'], label_state, amplitude=q, phase_deg=phase_deg)[:, 2]
 
     new_coords = coords.copy()
     for p, ring_atom_index in enumerate(plan['ring_idx']):
@@ -2183,11 +2197,12 @@ def ring_pucker_seed_conformers(label, mol, ring_atom_indices, base_xyz, amplitu
                                 force_field='MMFF94s') -> tuple:
     """Generate ring-pucker seed conformers for a single monocyclic ring.
 
-    For each canonical Cremer-Pople pucker state of the ring (see
-    ``ring_pucker.canonical_pucker_states``) and each of its two ring-flip poles, the ring atoms
-    are displaced along the ring's mean normal to match the ideal pucker's out-of-plane pattern,
-    while every substituent atom is rigidly translated together with the ring atom it is attached
-    to, preserving all substituent bond lengths exactly. Each raw seed is then polished with
+    For every entry of the ring's full Cremer-Pople pucker phase wheel (see
+    ``ring_pucker.canonical_pucker_wheel``: both chair poles plus all 12 equatorial phase bins
+    for a 6-ring, or all 20 pseudorotation phase bins for a 5-ring), the ring atoms are displaced
+    along the ring's mean normal to match the ideal pucker's out-of-plane pattern, while every
+    substituent atom is rigidly translated together with the ring atom it is attached to,
+    preserving all substituent bond lengths exactly. Each raw seed is then polished with
     ``optimize_conformer_with_frozen_ring``: the ring is frozen for a first optimization stage so
     an unconstrained force-field minimization cannot erase the seed's pucker and relax it back to
     the base geometry's basin, then a second, unconstrained stage polishes the whole molecule.
@@ -2249,14 +2264,13 @@ def ring_pucker_seed_conformers(label, mol, ring_atom_indices, base_xyz, amplitu
                                  f'"{label_state}"; got {amplitude_map}.')
 
     raw_seeds = list()
-    for label_state in ring_pucker.canonical_pucker_states(plan['n']):
-        for sign in (1, -1):
-            new_coords = _displace_ring_pucker(coords, plan, label_state, sign, amplitude_map)
-            raw_seeds.append(converter.xyz_from_data(
-                coords=[tuple(row) for row in new_coords],
-                symbols=base_xyz['symbols'],
-                isotopes=base_xyz.get('isotopes'),
-            ))
+    for label_state, phase_deg, pole_sign in ring_pucker.canonical_pucker_wheel(plan['n']):
+        new_coords = _displace_ring_pucker(coords, plan, label_state, phase_deg, pole_sign, amplitude_map)
+        raw_seeds.append(converter.xyz_from_data(
+            coords=[tuple(row) for row in new_coords],
+            symbols=base_xyz['symbols'],
+            isotopes=base_xyz.get('isotopes'),
+        ))
 
     xyzs, energies = list(), list()
     for raw_seed in raw_seeds:
@@ -2381,10 +2395,18 @@ def _seed_rings_independently(label, mol, base_conformers, ring_index_lists, for
     """Pucker each ring in ``ring_index_lists`` independently against each base conformer,
     leaving all other rings at their base conformation.
 
+    Each ring is seeded via ``ring_pucker_seed_conformers``, which enumerates that ring's full
+    Cremer-Pople phase wheel (``ring_pucker.canonical_pucker_wheel``).
+
     Only the lowest-FF-energy ``PUCKER_MAX_CROSS_BASE_CONFORMERS`` entries of ``base_conformers``
-    are seeded, and the combined result is capped at the lowest-FF-energy ``PUCKER_MAX_BASES``
-    entries, mirroring the bounds ``_ring_pucker_cross_product_bases`` applies to its own
-    combinatorial path, so this per-ring path cannot become an uncapped, unbounded seeding path.
+    are seeded, and the combined result is capped at ``PUCKER_MAX_BASES`` entries by COUNT only
+    (``get_lowest_confs(..., e=None)``), mirroring the bound ``_ring_pucker_cross_product_bases``
+    applies to its own combinatorial path, so this per-ring path cannot become an uncapped,
+    unbounded seeding path. ``get_lowest_confs`` dedups by geometric DISTANCE between conformer
+    geometries, not by pucker-phase identity, so the cap keeps the lowest-FF-energy conformers that
+    are distinct-by-geometric-distance up to the count budget; it is not guaranteed to preserve
+    pucker-phase diversity. The actual, post-torsion energy-based selection of the eventual winner
+    belongs to the downstream ``get_lowest_confs`` call instead.
 
     Args:
         label (str): The species' label.
@@ -2400,6 +2422,8 @@ def _seed_rings_independently(label, mol, base_conformers, ring_index_lists, for
     """
     pucker_bases = list()
     sorted_bases = sorted(base_conformers, key=lambda base: base['FF energy'])
+    # Only the lowest-energy PUCKER_MAX_CROSS_BASE_CONFORMERS bases get seeded here; the rest
+    # flow unpuckered into torsion enumeration (see the constant's definition for why).
     for base in sorted_bases[:PUCKER_MAX_CROSS_BASE_CONFORMERS]:
         base_xyz = base['xyz']
         for ring_indices in ring_index_lists:
@@ -2415,7 +2439,7 @@ def _seed_rings_independently(label, mol, base_conformers, ring_index_lists, for
                     conf['chirality'] = base['chirality']
                 pucker_bases.append(conf)
     if len(pucker_bases) > PUCKER_MAX_BASES:
-        pucker_bases = get_lowest_confs(label, pucker_bases, n=PUCKER_MAX_BASES)
+        pucker_bases = get_lowest_confs(label, pucker_bases, n=PUCKER_MAX_BASES, e=None)
     return pucker_bases
 
 
@@ -2426,7 +2450,14 @@ def _ring_pucker_cross_product_bases(label, mol, base_conformers, ring_index_lis
     For every base conformer, a plan (see ``_ring_pucker_plan``) is built once per ring from the
     base's own (undisplaced) geometry, and every combination of (pucker state, ring-flip pole)
     across all rings in ``ring_index_lists`` is applied as a sequence of rigid per-ring
-    displacements. Each combined raw seed is then polished with
+    displacements. Unlike the single-ring path (``ring_pucker_seed_conformers``), which enumerates
+    the full Cremer-Pople phase wheel per ring, this cross-product path intentionally keeps the
+    original reduced per-ring option set (each canonical pucker state x each of its two ring-flip
+    poles, i.e. ``ring_pucker.canonical_pucker_states`` x {+1, -1}, NOT
+    ``ring_pucker.canonical_pucker_wheel``): the combination count is already multiplicative
+    across rings, and enumerating the full wheel here would blow the ``PUCKER_MAX_CROSS_COMBINATIONS``
+    cap for even two 6-rings (14**2 = 196 vs. the 36-combination cap), silently falling back to
+    the coarser per-ring path instead. Each combined raw seed is then polished with
     ``optimize_conformer_with_frozen_ring``, freezing the union of all rings' atom indices so an
     unconstrained force-field minimization cannot relax either ring's pucker back into the base
     geometry's basin. A base conformer for which any ring's plan fails to build falls back to
@@ -2455,6 +2486,8 @@ def _ring_pucker_cross_product_bases(label, mol, base_conformers, ring_index_lis
     """
     pucker_bases = list()
     sorted_bases = sorted(base_conformers, key=lambda base: base['FF energy'])
+    # Only the lowest-energy PUCKER_MAX_CROSS_BASE_CONFORMERS bases get seeded here; the rest
+    # flow unpuckered into torsion enumeration (see the constant's definition for why).
     for base in sorted_bases[:PUCKER_MAX_CROSS_BASE_CONFORMERS]:
         base_xyz = base['xyz']
         coords = np.array(base_xyz['coords'], dtype=float)
@@ -2490,7 +2523,7 @@ def _ring_pucker_cross_product_bases(label, mol, base_conformers, ring_index_lis
         for combo in product(*per_ring_options):
             new_coords = coords
             for plan, (label_state, sign) in zip(plans, combo):
-                new_coords = _displace_ring_pucker(new_coords, plan, label_state, sign, amplitude_map)
+                new_coords = _displace_ring_pucker(new_coords, plan, label_state, None, sign, amplitude_map)
             raw_seed = converter.xyz_from_data(
                 coords=[tuple(row) for row in new_coords],
                 symbols=base_xyz['symbols'],
@@ -2526,15 +2559,29 @@ def ring_pucker_base_conformers(label, mol, base_conformers, force_field='MMFF94
     Note:
         When the molecule has two or more eligible rings that are mutually independent (each is
         disjoint from every other SSSR ring) and their total (pucker state x pole) combination
-        count is at most ``PUCKER_MAX_CROSS_COMBINATIONS``, the full cross product of pucker
-        states across all independent rings is generated per base conformer (via
-        ``_ring_pucker_cross_product_bases``), freezing the union of all ring atom indices during
-        FF polishing, and the combined bases are capped at ``PUCKER_MAX_BASES``. Otherwise (a
-        single eligible ring, fused/non-independent rings, or an over-cap combination count),
+        count is at most ``PUCKER_MAX_CROSS_COMBINATIONS``, the result is the UNION of two seed
+        sources per base conformer: the cross product of pucker states across all independent
+        rings, generated simultaneously (via ``_ring_pucker_cross_product_bases``, which
+        intentionally keeps a REDUCED per-ring option set to stay within the combination cap, and
+        freezes the union of all ring atom indices during FF polishing), and each eligible ring
+        puckered independently across its own full Cremer-Pople phase wheel (via
+        ``_seed_rings_independently``, while all other rings are left at their base
+        conformation). For two or more mutually independent rings, this union is NOT a full
+        cross product of each ring's per-ring phase wheel (that would be combinatorially
+        infeasible, e.g. 14**2 or 20**2 combinations for two rings); it is the union of a REDUCED
+        simultaneous cross product with the per-ring full-wheel independent seeds, capped by
+        count. Consequence: a global minimum that requires two independent rings to
+        SIMULTANEOUSLY sit at non-canonical phases is not guaranteed to be seeded (considered
+        rare; the single-ring path already has full wheel coverage). The union is capped at
+        ``PUCKER_MAX_BASES`` entries by COUNT only, via ``get_lowest_confs``, which dedups by
+        geometric DISTANCE between conformer geometries rather than by pucker-phase identity: the
+        cap keeps the lowest-FF-energy conformers that are distinct-by-geometric-distance up to
+        the count budget, without guaranteeing pucker-phase diversity; the actual, post-torsion
+        energy-based selection of the eventual winner is deferred to downstream steps. Otherwise
+        (a single eligible ring, fused/non-independent rings, or an over-cap combination count),
         each eligible ring is puckered independently against the lowest-FF-energy
         ``PUCKER_MAX_CROSS_BASE_CONFORMERS`` base conformers, via ``_seed_rings_independently``
-        (which wraps ``ring_pucker_seed_conformers``), while all other rings are left at their
-        base conformation; this path is capped at ``PUCKER_MAX_BASES`` as well.
+        alone; this path is likewise capped at ``PUCKER_MAX_BASES`` by count.
 
     Args:
         label (str): The species' label.
@@ -2574,11 +2621,14 @@ def ring_pucker_base_conformers(label, mol, base_conformers, force_field='MMFF94
         for ring in rings:
             n_combos *= 2 * len(ring_pucker.canonical_pucker_states(len(ring)))
         if n_combos <= PUCKER_MAX_CROSS_COMBINATIONS:
-            pucker_bases = _ring_pucker_cross_product_bases(label, mol, base_conformers, ring_index_lists,
-                                                             atom_to_index, force_field=force_field)
-            if len(pucker_bases) > PUCKER_MAX_BASES:
-                pucker_bases = get_lowest_confs(label, pucker_bases, n=PUCKER_MAX_BASES)
-            return pucker_bases
+            cross_bases = _ring_pucker_cross_product_bases(label, mol, base_conformers, ring_index_lists,
+                                                            atom_to_index, force_field=force_field)
+            independent_bases = _seed_rings_independently(label, mol, base_conformers, ring_index_lists,
+                                                           force_field=force_field)
+            pucker_bases = cross_bases + independent_bases
+            if not pucker_bases:
+                return pucker_bases
+            return get_lowest_confs(label, pucker_bases, n=PUCKER_MAX_BASES, e=None)
 
     return _seed_rings_independently(label, mol, base_conformers, ring_index_lists, force_field=force_field)
 

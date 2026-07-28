@@ -80,6 +80,97 @@ class TestRingPucker(unittest.TestCase):
             ring_coords = ring_pucker.ideal_pucker_geometry(5, label)
             self.assertEqual(ring_pucker.classify_pucker(ring_coords), label)
 
+    def test_canonical_pucker_wheel_6_ring_has_2_chair_plus_12_equatorial(self):
+        """canonical_pucker_wheel(6) enumerates 2 chair poles plus all 12 equatorial phase bins,
+        with labels derived from phase via the same binning classify_pucker uses."""
+        wheel = ring_pucker.canonical_pucker_wheel(6)
+        self.assertEqual(len(wheel), 14)
+        self.assertEqual(wheel[0], ('chair', None, 1))
+        self.assertEqual(wheel[1], ('chair', None, -1))
+
+        equatorial = wheel[2:]
+        self.assertEqual(len(equatorial), 12)
+        expected_phases = [float(30 * j) for j in range(12)]
+        self.assertEqual([entry[1] for entry in equatorial], expected_phases)
+        self.assertTrue(all(pole == 1 for _, _, pole in equatorial))
+        expected_labels = ['boat' if j % 2 == 0 else 'twist-boat' for j in range(12)]
+        self.assertEqual([entry[0] for entry in equatorial], expected_labels)
+
+    def test_canonical_pucker_wheel_5_ring_has_20_equatorial_entries(self):
+        """canonical_pucker_wheel(5) enumerates all 20 pseudorotation phase bins, no chair/pole."""
+        wheel = ring_pucker.canonical_pucker_wheel(5)
+        self.assertEqual(len(wheel), 20)
+        expected_phases = [float(18 * j) for j in range(20)]
+        self.assertEqual([entry[1] for entry in wheel], expected_phases)
+        self.assertTrue(all(pole == 1 for _, _, pole in wheel))
+        expected_labels = ['envelope' if j % 2 == 0 else 'twist' for j in range(20)]
+        self.assertEqual([entry[0] for entry in wheel], expected_labels)
+
+    def test_canonical_pucker_wheel_raises_for_unsupported_ring_size(self):
+        """canonical_pucker_wheel raises RingPuckerError for ring sizes other than 5 or 6."""
+        with self.assertRaises(ring_pucker.RingPuckerError):
+            ring_pucker.canonical_pucker_wheel(4)
+        with self.assertRaises(ring_pucker.RingPuckerError):
+            ring_pucker.canonical_pucker_wheel(7)
+
+    def test_wheel_equatorial_entries_round_trip_through_classify_pucker(self):
+        """Every equatorial (label, phase_deg, pole) entry of the wheel must classify back to its
+        own label when built via ideal_pucker_geometry(phase_deg=...); this pins the generator's
+        and analyzer's phi2 conventions to agree at every bin (the real C6/C7 proof)."""
+        for ring_size in (6, 5):
+            for label, phase_deg, _pole in ring_pucker.canonical_pucker_wheel(ring_size):
+                if phase_deg is None:
+                    continue
+                ring_coords = ring_pucker.ideal_pucker_geometry(ring_size, label, phase_deg=phase_deg)
+                self.assertEqual(ring_pucker.classify_pucker(ring_coords), label,
+                                 f'ring_size={ring_size}, phase_deg={phase_deg}')
+
+    def test_wheel_covers_all_phase_bins_via_pucker_state_id(self):
+        """The distinct pucker_state_id values over the equatorial wheel must number 12 (6-ring)
+        and 20 (5-ring), proving full phase-bin coverage rather than degenerate collapse."""
+        ids_6 = set()
+        for label, phase_deg, _pole in ring_pucker.canonical_pucker_wheel(6):
+            if phase_deg is None:
+                continue
+            ring_coords = ring_pucker.ideal_pucker_geometry(6, label, phase_deg=phase_deg)
+            ids_6.add(ring_pucker.pucker_state_id(ring_coords))
+        self.assertEqual(len(ids_6), 12)
+
+        ids_5 = set()
+        for label, phase_deg, _pole in ring_pucker.canonical_pucker_wheel(5):
+            ring_coords = ring_pucker.ideal_pucker_geometry(5, label, phase_deg=phase_deg)
+            ids_5.add(ring_pucker.pucker_state_id(ring_coords))
+        self.assertEqual(len(ids_5), 20)
+
+    def test_ideal_pucker_geometry_mismatched_phase_raises(self):
+        """Passing a phase_deg whose derived label disagrees with the requested equatorial label
+        must raise, rather than silently building the wrong (mislabeled) geometry."""
+        with self.assertRaises(ring_pucker.RingPuckerError):
+            ring_pucker.ideal_pucker_geometry(6, 'boat', phase_deg=30.0)
+        # Consistent phase/label combination must not raise.
+        ring_pucker.ideal_pucker_geometry(6, 'twist-boat', phase_deg=30.0)
+
+    def test_ideal_pucker_geometry_negative_amplitude_equals_phase_plus_180(self):
+        """Dropping the equatorial sign loop is justified by amplitude sign being equivalent to a
+        180-degree phase shift: ideal_pucker_geometry(amplitude=-Q, phase=phi) must match
+        ideal_pucker_geometry(amplitude=+Q, phase=(phi+180)%360) at the correctly derived labels."""
+        q = 0.65
+        for ring_size in (6, 5):
+            step = 30 if ring_size == 6 else 18
+            # Both bin-center phases (multiples of step) and a non-bin-center offset (step / 2,
+            # i.e. mid-bin rather than a wheel point) are checked, so the equivalence is proven
+            # for arbitrary phases, not only the discrete wheel centers.
+            phis = list(range(0, 360, step)) + [phi0 + step / 2.0 for phi0 in range(0, 360, step)]
+            for phi in phis:
+                label_a = ring_pucker.pucker_label_from_phase(ring_size, phi)
+                phi_shifted = (phi + 180) % 360
+                label_b = ring_pucker.pucker_label_from_phase(ring_size, phi_shifted)
+                coords_neg = ring_pucker.ideal_pucker_geometry(
+                    ring_size, label_a, amplitude=-q, phase_deg=float(phi))
+                coords_pos = ring_pucker.ideal_pucker_geometry(
+                    ring_size, label_b, amplitude=q, phase_deg=float(phi_shifted))
+                np.testing.assert_allclose(coords_neg[:, 2], coords_pos[:, 2], atol=1e-9)
+
     def test_planar_hexagon_classifies_as_planar(self):
         """A perfectly planar hexagon classifies as 'planar' rather than a definite pucker state."""
         angles = np.linspace(0.0, 2.0 * np.pi, num=6, endpoint=False)
@@ -128,6 +219,23 @@ class TestRingPucker(unittest.TestCase):
         self.assertIn(label, ('boat', 'twist-boat'))
         # Pin the exact deterministic outcome of the half-open bin logic at the boundary.
         self.assertEqual(label, 'boat')
+
+    def test_pucker_label_from_phase_bin_edge_is_self_consistent_with_classify_pucker(self):
+        """A phase exactly on a bin edge (6-ring: 15.0 deg; 5-ring: 9.0 deg) must round-trip:
+        the label ``pucker_label_from_phase`` derives at the edge must be the same label
+        ``classify_pucker`` assigns to a ring actually built at that edge phase, and
+        ``ideal_pucker_geometry`` must accept the (label, phase_deg) pair without raising
+        ``RingPuckerError`` (which it would if the two functions disagreed on the bin edge).
+        """
+        for ring_size, edge_phase_deg in ((6, 15.0), (5, 9.0)):
+            label = ring_pucker.pucker_label_from_phase(ring_size, edge_phase_deg)
+            ring_coords = ring_pucker.ideal_pucker_geometry(
+                ring_size, label, amplitude=0.6, phase_deg=edge_phase_deg)
+            round_trip_label = ring_pucker.classify_pucker(ring_coords)
+            self.assertEqual(round_trip_label, label,
+                             f'ring_size={ring_size}, edge_phase_deg={edge_phase_deg}: '
+                             f'pucker_label_from_phase gave {label!r} but classify_pucker on the '
+                             f'built geometry gave {round_trip_label!r}.')
 
     def test_degenerate_collinear_ring_raises_ring_pucker_error(self):
         """A collinear ring of points has no well-defined ring normal and raises RingPuckerError."""
