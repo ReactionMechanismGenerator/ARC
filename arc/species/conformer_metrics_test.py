@@ -234,6 +234,25 @@ class TestRingConformerMetric(unittest.TestCase):
         metric = conformers.ring_conformer_metric('cyclohexane', mol, pool, ring_atom_indices)
         self.assertEqual(metric['status'], 'ok')
 
+    def test_empty_status_when_all_conformers_lack_ff_energy(self):
+        """A non-empty conformer list whose entries are all filtered out by get_lowest_confs()
+        (because they carry no usable 'FF energy') must not raise, and must report the same
+        empty-result dict as an outright empty conformer list."""
+        pool, ring_atom_indices, mol = build_cyclohexane_pool()
+        none_energy_pool = [{'xyz': conf['xyz'], 'FF energy': None} for conf in pool]
+        metric = conformers.ring_conformer_metric('cyclohexane', mol, none_energy_pool, ring_atom_indices)
+        self.assertEqual(metric['status'], 'empty')
+        self.assertEqual(metric['arc_dedup_unique_confs'], 0)
+        self.assertIsNone(metric['min_energy'])
+        self.assertIsNone(metric['global_min_hit'])
+        self.assertIsNone(metric['min_delta_e'])
+
+        no_energy_key_pool = [{'xyz': conf['xyz']} for conf in pool]
+        metric = conformers.ring_conformer_metric('cyclohexane', mol, no_energy_key_pool, ring_atom_indices)
+        self.assertEqual(metric['status'], 'empty')
+        self.assertEqual(metric['arc_dedup_unique_confs'], 0)
+        self.assertIsNone(metric['min_energy'])
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
