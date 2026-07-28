@@ -35,6 +35,7 @@ Module workflow::
 
 """
 
+import collections
 import copy
 import logging
 import math
@@ -1163,6 +1164,107 @@ def get_lowest_confs(label: str,
                 else:
                     break
     return lowest_confs
+
+
+def ring_conformer_metric(label: str,
+                          mol: Molecule,
+                          conformers: dict | list,
+                          ring_atom_indices: list,
+                          e: float = 6.0,
+                          reference_conformer: dict | None = None,
+                          rmsd_tol: float = 0.125,
+                          e_tol: float = 0.5,
+                          ) -> dict:
+    """
+    Score a ring conformer ensemble by its global-minimum recovery, with Cremer-Pople pucker
+    diagnostics attached.
+
+    PRIMARY metric fields: ``global_min_hit`` and ``min_delta_e``. ``global_min_hit`` is
+    ``True`` iff any distinct conformer within the ``e`` energy window of the lowest-energy
+    conformer matches ``reference_conformer`` by both a symmetry/automorphism-aware RMSD
+    (``AllChem.GetBestRMS``, tolerance ``rmsd_tol``) and energy (tolerance ``e_tol``).
+
+    SECONDARY/diagnostic fields: ``arc_dedup_unique_confs``, ``arc_dedup_pucker_labels``, and
+    ``pucker_state_ids``. All three are derived from ARC's own distance-matrix dedup in
+    ``get_lowest_confs``, which is NOT symmetry-reduced: e.g. for unsubstituted cyclohexane it
+    will double-count the two ring-flip chair poles as 2 "unique" conformers even though they
+    are the same conformer by symmetry. A fair published ARC-vs-CREST unique-conformer COUNT
+    comparison requires applying one consistent automorphism-aware dedup to both tools' outputs;
+    that is deferred to the benchmark stage and is not done here.
+
+    Args:
+        label (str): The species' label.
+        mol (Molecule): The RMG Molecule object with connectivity, atoms ordered as in the
+                        conformers' xyz.
+        conformers (dict, list): Entries are either conformer dictionaries or a length two list
+                                 of xyz coordinates and energy, as accepted by
+                                 ``get_lowest_confs``.
+        ring_atom_indices (list): Indices of the ring atoms within each conformer's xyz, in
+                                  ring-connectivity order.
+        e (float, optional): The energy window in kcal/mol above the minimum, within which
+                             conformers are considered for ``global_min_hit`` and counted in
+                             ``arc_dedup_unique_confs``.
+        reference_conformer (dict, optional): A ``{'xyz': ..., 'FF energy': ...}`` reference
+                                              (e.g., a known global minimum) to compare the
+                                              recovered minima against.
+        rmsd_tol (float, optional): The symmetry-aware RMSD tolerance in Angstrom for a
+                                    ``global_min_hit`` match (CREGEN's default rthr).
+        e_tol (float, optional): The energy tolerance in kcal/mol for a ``global_min_hit`` match.
+
+    Returns:
+        dict: Keys ``status`` ('ok' or 'empty'), ``arc_dedup_unique_confs`` (int),
+             ``min_energy`` (float or ``None``), ``global_min_hit`` (bool or ``None``),
+             ``min_delta_e`` (float or ``None``), ``arc_dedup_pucker_labels``
+             (collections.Counter), and ``pucker_state_ids`` (collections.Counter).
+    """
+    if not conformers:
+        return {'status': 'empty',
+                'arc_dedup_unique_confs': 0,
+                'min_energy': None,
+                'global_min_hit': None if reference_conformer is None else False,
+                'min_delta_e': None,
+                'arc_dedup_pucker_labels': collections.Counter(),
+                'pucker_state_ids': collections.Counter()}
+
+    num_atoms = len(conformers[0]['xyz']['coords']) if isinstance(conformers[0], dict) \
+        else len(conformers[0][0]['coords'])
+    if any(not 0 <= idx < num_atoms for idx in ring_atom_indices):
+        raise ConformerError(f'ring_atom_indices out of range for {label}: got {ring_atom_indices} '
+                             f'for {num_atoms} atoms.')
+
+    conformers_copy = [copy.copy(conf) for conf in conformers]
+    distinct_minima = get_lowest_confs(label, conformers_copy, n=None, e=e)
+
+    ring_coords_list = [np.array(conf['xyz']['coords'])[ring_atom_indices] for conf in distinct_minima]
+    min_energy = min(conf['FF energy'] for conf in distinct_minima)
+
+    global_min_hit = None
+    min_delta_e = None
+    if reference_conformer is not None:
+        reference_energy = reference_conformer['FF energy']
+        min_delta_e = min_energy - reference_energy
+        _, reference_rd_mol = converter.rdkit_conf_from_mol(mol, reference_conformer['xyz'])
+        global_min_hit = False
+        for conf in distinct_minima:
+            if abs(conf['FF energy'] - reference_energy) > e_tol:
+                continue
+            _, candidate_rd_mol = converter.rdkit_conf_from_mol(mol, conf['xyz'])
+            try:
+                rmsd = AllChem.GetBestRMS(candidate_rd_mol, reference_rd_mol)
+            except RuntimeError as e_rms:
+                logger.debug(f'GetBestRMS failed for {label}: {e_rms}')
+                continue
+            if rmsd <= rmsd_tol:
+                global_min_hit = True
+                break
+
+    return {'status': 'ok',
+            'arc_dedup_unique_confs': len(distinct_minima),
+            'min_energy': min_energy,
+            'global_min_hit': global_min_hit,
+            'min_delta_e': min_delta_e,
+            'arc_dedup_pucker_labels': ring_pucker.pucker_label_counts(ring_coords_list),
+            'pucker_state_ids': collections.Counter(ring_pucker.pucker_state_id(rc) for rc in ring_coords_list)}
 
 
 def get_torsion_angles(label, conformers, torsions, mol_list=None, tops=None):
