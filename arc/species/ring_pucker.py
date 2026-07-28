@@ -17,6 +17,7 @@ silently produce a meaningless Cremer-Pople decomposition unless ``validate_ring
 used to catch it first.
 """
 
+import collections
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
@@ -364,3 +365,61 @@ def ideal_pucker_geometry(ring_size: int, label: str, amplitude: Optional[float]
         z = z + (q_half / np.sqrt(ring_size)) * ((-1.0) ** idx)
 
     return np.column_stack([x, y, z])
+
+
+def pucker_state_id(ring_coords: Sequence[Sequence[float]]) -> str:
+    """Compute a fine-grained (phase-resolved) pucker state identifier.
+
+    This is a TERTIARY diagnostic: unlike ``classify_pucker``, which collapses conformers into
+    a handful of coarse Cremer-Pople labels, this function additionally bins the puckering
+    phase angle so that, e.g., the ~6 distinct boats or ~6 distinct twist-boats of a 6-ring are
+    distinguished from one another. Planar and chair/half-chair conformers, for which the phase
+    angle is meaningless or degenerate, are returned unbinned.
+
+    Args:
+        ring_coords (Sequence[Sequence[float]]): Cartesian coordinates of the ring atoms, in
+                                                  ring-connectivity order.
+
+    Returns:
+        str: A pucker state id, either a bare coarse label ('planar', 'chair', 'half-chair') or
+             a phase-binned label of the form ``f'{label}@{bin_deg}'``.
+
+    Note:
+        The phase bin is computed from ``ring_coords`` in the given ring-atom order and is NOT
+        canonicalized under ring automorphisms: e.g. ``'twist-boat@30'`` and ``'twist-boat@210'``
+        may in fact be symmetry-equivalent states for a symmetric ring, but this function will
+        report them as distinct ids. This is a diagnostic label, not a canonical conformer
+        identity.
+    """
+    label = classify_pucker(ring_coords)
+    if label in ('planar', 'chair', 'half-chair'):
+        return label
+    params = cremer_pople_params(ring_coords)
+    n = len(ring_coords)
+    if n == 6:
+        phi = params.phi_deg % 360.0
+        bin_width_deg = 30.0
+        num_bins = 12
+    else:
+        phi = params.phi2_deg % 360.0
+        bin_width_deg = 18.0
+        num_bins = 20
+    k = _half_open_bin_index(phi, bin_width_deg, num_bins)
+    bin_deg = int(round(k * bin_width_deg))
+    return f'{label}@{bin_deg}'
+
+
+def pucker_label_counts(ring_coords_iterable) -> collections.Counter:
+    """Count the coarse Cremer-Pople pucker labels of an iterable of ring geometries.
+
+    This is a SECONDARY diagnostic that annotates a conformer set with its distribution of
+    coarse pucker labels; it is not a conformer-identity or coverage metric on its own.
+
+    Args:
+        ring_coords_iterable: An iterable of ring-coordinate arrays, each in ring-connectivity
+                              order.
+
+    Returns:
+        collections.Counter: A counter of ``classify_pucker(...)`` results.
+    """
+    return collections.Counter(classify_pucker(ring_coords) for ring_coords in ring_coords_iterable)
