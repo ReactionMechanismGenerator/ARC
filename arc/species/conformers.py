@@ -109,6 +109,18 @@ COMBINATION_THRESHOLD = 1000
 # The maximum number of ETKDGv3 conformers kept as ring-conformer bases in deduce_new_conformers()
 ETKDG_MAX_BASES = 6
 
+# The maximum number of (pucker state x pole) combinations across independent rings above which
+# the ring-pucker cross product is skipped in favor of puckering each ring independently
+PUCKER_MAX_CROSS_COMBINATIONS = 36
+
+# The maximum number of combined ring-pucker bases kept after the cross product in
+# ring_pucker_base_conformers()
+PUCKER_MAX_BASES = 12
+
+# The maximum number of (lowest-energy) base conformers that receive cross-product pucker
+# seeding, to bound worst-case FF-opt cost when many diastereomeric bases are supplied
+PUCKER_MAX_CROSS_BASE_CONFORMERS = 4
+
 # Consolidation tolerances for Z matrices
 CONSOLIDATION_TOLS = {'R': 1e-2, 'A': 1e-2, 'D': 1e-2}
 
@@ -2035,6 +2047,119 @@ def optimize_conformer_with_frozen_ring(mol, seed_xyz, ring_atom_indices, force_
     return polished_xyz, energy
 
 
+def _ring_pucker_plan(label, mol, ring_atom_indices, coords, atom_to_index):
+    """Validate a candidate ring and build its pucker-displacement plan.
+
+    Args:
+        label (str): The species label.
+        mol (Molecule): The RMG Molecule providing connectivity.
+        ring_atom_indices (Sequence[int]): Indices into ``coords`` of the ring atoms, in
+            ring-connectivity order (consecutive entries bonded, last bonded back to the first).
+        coords (np.ndarray): The whole-molecule Cartesian coordinates, shape (n_atoms, 3).
+        atom_to_index (dict): A mapping of ``id(atom)`` to index into ``mol.atoms``.
+
+    Returns:
+        dict or None: A plan with keys ``ring_idx`` (list), ``n`` (int), ``centroid``,
+            ``normal``, ``z_real`` (as returned by ``ring_pucker.ring_mean_plane``), and
+            ``anchor_of`` (a mapping of non-ring atom index to the ring position index whose
+            rigid displacement it should follow); or ``None`` if ``ring_atom_indices`` is not a
+            5- or 6-membered ring, is fused/bridged/spiro with another SSSR ring, is not a clean
+            monocyclic cycle, or has a substituent reachable from two different ring anchors.
+
+    Raises:
+        ConformerError: If ``ring_atom_indices`` contains duplicate or out-of-range indices, or
+            are not in ring-connectivity order per the molecular graph.
+        RingPuckerError: If ``ring_atom_indices`` are not in ring-connectivity order per the
+            geometric distance check.
+    """
+    ring_idx = list(ring_atom_indices)
+    if len(set(ring_idx)) != len(ring_idx):
+        raise ConformerError(f'ring_atom_indices for {label} must not contain duplicates, got {ring_idx}.')
+    if any(idx < 0 or idx >= len(mol.atoms) for idx in ring_idx):
+        raise ConformerError(f'ring_atom_indices for {label} are out of range: {ring_idx}.')
+
+    n = len(ring_idx)
+    if n not in (5, 6):
+        return None
+
+    ring_set = set(ring_idx)
+
+    for sssr_ring in mol.get_deterministic_sssr():
+        sssr_ring_set = {atom_to_index[id(atom)] for atom in sssr_ring}
+        if sssr_ring_set != ring_set and sssr_ring_set & ring_set:
+            return None  # fused/bridged/spiro ring; not yet supported
+
+    for ring_atom_index in ring_idx:
+        ring_atom = mol.atoms[ring_atom_index]
+        n_ring_neighbors = sum(1 for neighbor in ring_atom.edges.keys()
+                               if atom_to_index[id(neighbor)] in ring_set)
+        if n_ring_neighbors != 2:
+            return None  # not a clean monocyclic cycle
+
+    for p, ring_atom_index in enumerate(ring_idx):
+        ring_atom = mol.atoms[ring_atom_index]
+        next_atom = mol.atoms[ring_idx[(p + 1) % n]]
+        if next_atom not in ring_atom.edges:
+            raise ConformerError(f'ring_atom_indices for {label} are not in ring-connectivity order: '
+                                 f'atoms at indices {ring_atom_index} and {ring_idx[(p + 1) % n]} are not bonded.')
+
+    ring_coords = coords[ring_idx]
+    ring_pucker.validate_ring_order(ring_coords)
+    centroid, normal, z_real = ring_pucker.ring_mean_plane(ring_coords)
+
+    anchor_of = dict()
+    for p, ring_atom_index in enumerate(ring_idx):
+        ring_atom = mol.atoms[ring_atom_index]
+        stack = [neighbor for neighbor in ring_atom.edges.keys()
+                 if atom_to_index[id(neighbor)] not in ring_set]
+        while stack:
+            atom = stack.pop()
+            atom_index = atom_to_index[id(atom)]
+            if atom_index in ring_set:
+                continue
+            if atom_index in anchor_of:
+                if anchor_of[atom_index] != p:
+                    return None  # reachable from two anchors; bridged, not supported
+                continue
+            anchor_of[atom_index] = p
+            stack.extend(atom.edges.keys())
+
+    return {'ring_idx': ring_idx, 'n': n, 'centroid': centroid, 'normal': normal, 'z_real': z_real,
+            'anchor_of': anchor_of}
+
+
+def _displace_ring_pucker(coords, plan, label_state, sign, amplitude_map):
+    """Rigidly displace a ring and its anchored substituents to match an ideal pucker geometry.
+
+    Args:
+        coords (np.ndarray): The whole-molecule Cartesian coordinates to displace from, shape
+            (n_atoms, 3). Not modified in place.
+        plan (dict): A ring-pucker plan as returned by ``_ring_pucker_plan``.
+        label_state (str): A canonical Cremer-Pople pucker state label for ``plan['n']``-membered
+            rings (see ``ring_pucker.canonical_pucker_states``).
+        sign (int): The ring-flip pole, either ``1`` or ``-1``.
+        amplitude_map (dict): A label -> Q (Angstrom) mapping containing a finite value for
+            ``label_state``.
+
+    Returns:
+        np.ndarray: A new whole-molecule coordinate array, shape (n_atoms, 3), with the ring and
+            its anchored substituents rigidly displaced along the ring's mean-plane normal to
+            match the ideal pucker's out-of-plane pattern; all substituent bond lengths are
+            preserved exactly.
+    """
+    q = sign * amplitude_map[label_state]
+    z_target = ring_pucker.ideal_pucker_geometry(plan['n'], label_state, amplitude=q)[:, 2]
+
+    new_coords = coords.copy()
+    for p, ring_atom_index in enumerate(plan['ring_idx']):
+        delta_p = (z_target[p] - plan['z_real'][p]) * plan['normal']
+        new_coords[ring_atom_index] += delta_p
+        for atom_index, anchor_p in plan['anchor_of'].items():
+            if anchor_p == p:
+                new_coords[atom_index] += delta_p
+    return new_coords
+
+
 def ring_pucker_seed_conformers(label, mol, ring_atom_indices, base_xyz, amplitudes=None,
                                 force_field='MMFF94s') -> tuple:
     """Generate ring-pucker seed conformers for a single monocyclic ring.
@@ -2093,79 +2218,21 @@ def ring_pucker_seed_conformers(label, mol, ring_atom_indices, base_xyz, amplitu
             raise ConformerError(f'Atom order mismatch for {label} at index {i}: mol atom is '
                                  f'{atom.element.symbol}, base_xyz symbol is {base_xyz["symbols"][i]}.')
 
-    ring_idx = list(ring_atom_indices)
-    if len(set(ring_idx)) != len(ring_idx):
-        raise ConformerError(f'ring_atom_indices for {label} must not contain duplicates, got {ring_idx}.')
-    if any(idx < 0 or idx >= len(mol.atoms) for idx in ring_idx):
-        raise ConformerError(f'ring_atom_indices for {label} are out of range: {ring_idx}.')
-
-    n = len(ring_idx)
-    if n not in (5, 6):
+    atom_to_index = {id(atom): i for i, atom in enumerate(mol.atoms)}
+    plan = _ring_pucker_plan(label, mol, ring_atom_indices, coords, atom_to_index)
+    if plan is None:
         return list(), list()
 
-    atom_to_index = {id(atom): i for i, atom in enumerate(mol.atoms)}
-    ring_set = set(ring_idx)
-
-    for sssr_ring in mol.get_deterministic_sssr():
-        sssr_ring_set = {atom_to_index[id(atom)] for atom in sssr_ring}
-        if sssr_ring_set != ring_set and sssr_ring_set & ring_set:
-            return list(), list()  # fused/bridged/spiro ring; not yet supported
-
-    for ring_atom_index in ring_idx:
-        ring_atom = mol.atoms[ring_atom_index]
-        n_ring_neighbors = sum(1 for neighbor in ring_atom.edges.keys()
-                               if atom_to_index[id(neighbor)] in ring_set)
-        if n_ring_neighbors != 2:
-            return list(), list()  # not a clean monocyclic cycle
-
-    for p, ring_atom_index in enumerate(ring_idx):
-        ring_atom = mol.atoms[ring_atom_index]
-        next_atom = mol.atoms[ring_idx[(p + 1) % n]]
-        if next_atom not in ring_atom.edges:
-            raise ConformerError(f'ring_atom_indices for {label} are not in ring-connectivity order: '
-                                 f'atoms at indices {ring_atom_index} and {ring_idx[(p + 1) % n]} are not bonded.')
-
-    ring_coords = coords[ring_idx]
-    ring_pucker.validate_ring_order(ring_coords)
-    centroid, normal, z_real = ring_pucker.ring_mean_plane(ring_coords)
-
-    anchor_of = dict()
-    for p, ring_atom_index in enumerate(ring_idx):
-        ring_atom = mol.atoms[ring_atom_index]
-        stack = [neighbor for neighbor in ring_atom.edges.keys()
-                 if atom_to_index[id(neighbor)] not in ring_set]
-        while stack:
-            atom = stack.pop()
-            atom_index = atom_to_index[id(atom)]
-            if atom_index in ring_set:
-                continue
-            if atom_index in anchor_of:
-                if anchor_of[atom_index] != p:
-                    return list(), list()  # reachable from two anchors; bridged, not supported
-                continue
-            anchor_of[atom_index] = p
-            stack.extend(atom.edges.keys())
-
     amplitude_map = amplitudes if amplitudes is not None else ring_pucker.DEFAULT_PUCKER_AMPLITUDES
-    for label_state in ring_pucker.canonical_pucker_states(n):
+    for label_state in ring_pucker.canonical_pucker_states(plan['n']):
         if label_state not in amplitude_map or not math.isfinite(amplitude_map[label_state]):
             raise ConformerError(f'amplitudes for {label} is missing a finite value for pucker state '
                                  f'"{label_state}"; got {amplitude_map}.')
 
     raw_seeds = list()
-    for label_state in ring_pucker.canonical_pucker_states(n):
+    for label_state in ring_pucker.canonical_pucker_states(plan['n']):
         for sign in (1, -1):
-            q = sign * amplitude_map[label_state]
-            z_target = ring_pucker.ideal_pucker_geometry(n, label_state, amplitude=q)[:, 2]
-
-            new_coords = coords.copy()
-            for p, ring_atom_index in enumerate(ring_idx):
-                delta_p = (z_target[p] - z_real[p]) * normal
-                new_coords[ring_atom_index] += delta_p
-                for atom_index, anchor_p in anchor_of.items():
-                    if anchor_p == p:
-                        new_coords[atom_index] += delta_p
-
+            new_coords = _displace_ring_pucker(coords, plan, label_state, sign, amplitude_map)
             raw_seeds.append(converter.xyz_from_data(
                 coords=[tuple(row) for row in new_coords],
                 symbols=base_xyz['symbols'],
@@ -2175,7 +2242,7 @@ def ring_pucker_seed_conformers(label, mol, ring_atom_indices, base_xyz, amplitu
     xyzs, energies = list(), list()
     for raw_seed in raw_seeds:
         try:
-            result = optimize_conformer_with_frozen_ring(mol, raw_seed, ring_idx, force_field=force_field)
+            result = optimize_conformer_with_frozen_ring(mol, raw_seed, plan['ring_idx'], force_field=force_field)
         except (RuntimeError, ValueError) as e:
             logger.debug(f'Optimizing a ring-pucker seed for {label} failed unexpectedly: {e}')
             continue
@@ -2243,23 +2310,131 @@ def mol_has_ring_unsupported_by_cp(mol):
     return False
 
 
+def _ring_pucker_cross_product_bases(label, mol, base_conformers, ring_index_lists, atom_to_index,
+                                     force_field='MMFF94s'):
+    """Generate the cross product of pucker-state/pole combinations across independent rings.
+
+    For every base conformer, a plan (see ``_ring_pucker_plan``) is built once per ring from the
+    base's own (undisplaced) geometry, and every combination of (pucker state, ring-flip pole)
+    across all rings in ``ring_index_lists`` is applied as a sequence of rigid per-ring
+    displacements. Each combined raw seed is then polished with
+    ``optimize_conformer_with_frozen_ring``, freezing the union of all rings' atom indices so an
+    unconstrained force-field minimization cannot relax either ring's pucker back into the base
+    geometry's basin. A base conformer for which any ring's plan fails to build falls back to
+    per-ring seeding (via ``ring_pucker_seed_conformers``) for that base only, so pucker seeds for
+    the other, successfully-planned rings are not lost. A base conformer missing a finite pucker
+    amplitude for some ring's canonical states is skipped entirely.
+
+    Only the lowest-FF-energy ``PUCKER_MAX_CROSS_BASE_CONFORMERS`` entries of ``base_conformers``
+    receive cross-product (or per-ring fallback) pucker seeding, bounding worst-case FF-opt cost;
+    the rest are not seeded here but are otherwise unaffected.
+
+    Args:
+        label (str): The species' label.
+        mol (Molecule): The RMG Molecule providing connectivity.
+        base_conformers (list): Entries are conformer dictionaries, each with an 'xyz' and an
+            'FF energy' key, and optionally a 'chirality' key.
+        ring_index_lists (list): Ring-connectivity-ordered atom index lists, one per independent
+            eligible ring.
+        atom_to_index (dict): A mapping of ``id(atom)`` to index into ``mol.atoms``.
+        force_field (str, optional): The MMFF variant to use for the constrained optimization.
+
+    Returns:
+        list: Ring-pucker base conformer dictionaries, each with 'xyz', 'FF energy', and 'source'
+            keys (and a 'chirality' key if the originating base conformer had one), one per (base
+            conformer, combination) pair that was successfully optimized.
+    """
+    pucker_bases = list()
+    sorted_bases = sorted(base_conformers, key=lambda base: base['FF energy'])
+    for base in sorted_bases[:PUCKER_MAX_CROSS_BASE_CONFORMERS]:
+        base_xyz = base['xyz']
+        coords = np.array(base_xyz['coords'], dtype=float)
+
+        plans = list()
+        for ring_indices in ring_index_lists:
+            try:
+                plan = _ring_pucker_plan(label, mol, ring_indices, coords, atom_to_index)
+            except (ConformerError, ring_pucker.RingPuckerError) as e:
+                logger.debug(f'Ring-pucker planning failed for a ring in {label}: {e}')
+                plan = None
+            if plan is None:
+                break
+            plans.append(plan)
+        if len(plans) != len(ring_index_lists):
+            for ring_indices in ring_index_lists:
+                try:
+                    xyzs, energies = ring_pucker_seed_conformers(label, mol, ring_indices, base_xyz,
+                                                                  force_field=force_field)
+                except (ConformerError, ring_pucker.RingPuckerError) as e:
+                    logger.debug(f'Ring-pucker seeding failed for a ring in {label}: {e}')
+                    continue
+                for xyz, energy in zip(xyzs, energies):
+                    conf = {'xyz': xyz, 'FF energy': energy, 'source': 'ring pucker'}
+                    if 'chirality' in base:
+                        conf['chirality'] = base['chirality']
+                    pucker_bases.append(conf)
+            continue
+
+        amplitude_map = ring_pucker.DEFAULT_PUCKER_AMPLITUDES
+        per_ring_options = list()
+        for plan in plans:
+            states = ring_pucker.canonical_pucker_states(plan['n'])
+            if any(state not in amplitude_map or not math.isfinite(amplitude_map[state]) for state in states):
+                per_ring_options = None
+                break
+            per_ring_options.append([(state, sign) for state in states for sign in (1, -1)])
+        if per_ring_options is None:
+            continue
+
+        union_ring_idx = list({idx for plan in plans for idx in plan['ring_idx']})
+
+        for combo in product(*per_ring_options):
+            new_coords = coords
+            for plan, (label_state, sign) in zip(plans, combo):
+                new_coords = _displace_ring_pucker(new_coords, plan, label_state, sign, amplitude_map)
+            raw_seed = converter.xyz_from_data(
+                coords=[tuple(row) for row in new_coords],
+                symbols=base_xyz['symbols'],
+                isotopes=base_xyz.get('isotopes'),
+            )
+            try:
+                result = optimize_conformer_with_frozen_ring(mol, raw_seed, union_ring_idx,
+                                                              force_field=force_field)
+            except (RuntimeError, ValueError) as e:
+                logger.debug(f'Optimizing a multi-ring-pucker seed for {label} failed unexpectedly: {e}')
+                continue
+            if result is None:
+                continue
+            polished_xyz, energy = result
+            conf = {'xyz': polished_xyz, 'FF energy': energy, 'source': 'ring pucker'}
+            if 'chirality' in base:
+                conf['chirality'] = base['chirality']
+            pucker_bases.append(conf)
+    return pucker_bases
+
+
 def ring_pucker_base_conformers(label, mol, base_conformers, force_field='MMFF94s'):
     """Generate ring-pucker variant base geometries for every eligible ring, for every base conformer.
 
     Unlike seeding a single base geometry after the torsion machinery has run, this returns
-    pucker-variant BASE geometries (one per (base conformer x ring x pucker state) combination)
-    meant to be fed alongside the diastereomer bases into the torsion-combination machinery, so
-    that every ring-pucker state also gets its exocyclic torsions enumerated. Acyclic molecules
-    are gated out immediately after the single ``get_deterministic_sssr()`` call, so this function
-    costs nothing extra on the acyclic path. Each 5- or 6-membered, fully saturated ring in the
-    SSSR is seeded via ``ring_pucker_seed_conformers``; fused, bridged, or spiro rings are
-    hard-gated out internally by that function and yield no seeds.
+    pucker-variant BASE geometries meant to be fed alongside the diastereomer bases into the
+    torsion-combination machinery, so that every ring-pucker state also gets its exocyclic
+    torsions enumerated. Acyclic molecules are gated out immediately after the single
+    ``get_deterministic_sssr()`` call, so this function costs nothing extra on the acyclic path.
+    Each 5- or 6-membered, fully saturated ring in the SSSR is eligible; fused, bridged, or spiro
+    rings are hard-gated out internally and yield no seeds.
 
     Note:
-        When a molecule has more than one independent ring, each ring is puckered against the
-        base geometry while all other rings are left at their base conformation; the cross
-        product of pucker states across independent rings is not generated here (deferred to a
-        later milestone).
+        When the molecule has two or more eligible rings that are mutually independent (each is
+        disjoint from every other SSSR ring) and their total (pucker state x pole) combination
+        count is at most ``PUCKER_MAX_CROSS_COMBINATIONS``, the full cross product of pucker
+        states across all independent rings is generated per base conformer (via
+        ``_ring_pucker_cross_product_bases``), freezing the union of all ring atom indices during
+        FF polishing, and the combined bases are capped at ``PUCKER_MAX_BASES``. Otherwise (a
+        single eligible ring, fused/non-independent rings, or an over-cap combination count),
+        each eligible ring is puckered independently against every base conformer, via
+        ``ring_pucker_seed_conformers``, while all other rings are left at their base
+        conformation.
 
     Args:
         label (str): The species' label.
@@ -2285,12 +2460,30 @@ def ring_pucker_base_conformers(label, mol, base_conformers, force_field='MMFF94
         return list()
 
     atom_to_index = {id(atom): i for i, atom in enumerate(mol.atoms)}
+    ring_index_lists = [[atom_to_index[id(atom)] for atom in ring] for ring in rings]
+
+    all_ring_sets = [{atom_to_index[id(atom)] for atom in ring} for ring in sssr]
+    eligible_ring_sets = [set(indices) for indices in ring_index_lists]
+    independent = len(rings) >= 2 and all(
+        not any(other_set != ring_set and other_set & ring_set for other_set in all_ring_sets)
+        for ring_set in eligible_ring_sets
+    )
+
+    if independent:
+        n_combos = 1
+        for ring in rings:
+            n_combos *= 2 * len(ring_pucker.canonical_pucker_states(len(ring)))
+        if n_combos <= PUCKER_MAX_CROSS_COMBINATIONS:
+            pucker_bases = _ring_pucker_cross_product_bases(label, mol, base_conformers, ring_index_lists,
+                                                             atom_to_index, force_field=force_field)
+            if len(pucker_bases) > PUCKER_MAX_BASES:
+                pucker_bases = get_lowest_confs(label, pucker_bases, n=PUCKER_MAX_BASES)
+            return pucker_bases
 
     pucker_bases = list()
     for base in base_conformers:
         base_xyz = base['xyz']
-        for ring in rings:
-            ring_indices = [atom_to_index[id(atom)] for atom in ring]
+        for ring_indices in ring_index_lists:
             try:
                 xyzs, energies = ring_pucker_seed_conformers(label, mol, ring_indices, base_xyz,
                                                               force_field=force_field)

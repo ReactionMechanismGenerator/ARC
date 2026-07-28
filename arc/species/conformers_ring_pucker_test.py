@@ -8,6 +8,7 @@ arc.species.conformers, and of the ring_pucker.ring_mean_plane() helper it relie
 
 import copy
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from rdkit import Chem
@@ -601,6 +602,193 @@ class TestAcyclicRegressionGuard(unittest.TestCase):
                                                           label='heptane', n_confs=10)
             energies.append([conf['FF energy'] for conf in lowest_confs])
         self.assertEqual(energies[0], energies[1])
+
+
+class TestMultiRingPuckerCrossProduct(unittest.TestCase):
+    """
+    Contains unit tests for the bounded multi-independent-ring pucker cross product in
+    ring_pucker_base_conformers().
+    """
+
+    def test_dicyclohexyl_cross_product_covers_both_rings_chair(self):
+        """Both independent 6-rings of dicyclohexyl must be simultaneously recoverable as chairs.
+
+        Seed 5 embeds/MMFF-optimizes to a base geometry where BOTH rings classify as
+        'twist-boat' (confirmed against the pre-cross-product code: it returns 12 per-ring
+        pucker bases, none of which have both rings 'chair' simultaneously). The single-ring
+        seeder can only pucker one ring at a time against this base, so it cannot produce a
+        combined (chair, chair) state; only the cross product can.
+        """
+        mol, xyz, rd_mol = build_seed_geometry('C1CCC(CC1)C1CCCCC1', seed=5)
+        ring_index_lists = [list(ring) for ring in rd_mol.GetRingInfo().AtomRings()]
+        self.assertEqual(len(ring_index_lists), 2)
+
+        base_conformers = [{'xyz': xyz, 'index': 0, 'FF energy': 0.0, 'source': 'test'}]
+        result = conformers.ring_pucker_base_conformers(label='dicyclohexyl', mol=mol,
+                                                         base_conformers=base_conformers)
+        self.assertGreater(len(result), 0)
+
+        both_chair = False
+        for conf in result:
+            coords = np.array(conf['xyz']['coords'])
+            labels = [ring_pucker.classify_pucker(coords[ring_indices]) for ring_indices in ring_index_lists]
+            if all(pucker_label == 'chair' for pucker_label in labels):
+                both_chair = True
+                break
+        self.assertTrue(both_chair, 'Expected a combined (chair, chair) base among the cross-product results.')
+
+    def test_cross_product_falls_back_to_per_ring_when_a_ring_plan_fails(self):
+        """A base for which one ring's plan fails to build must not be dropped outright; the
+        cross product must fall back to per-ring seeding for that base so the other ring's pucker
+        seeds are not lost.
+
+        This guards the P2a coverage-regression fix in _ring_pucker_cross_product_bases: the
+        pre-fix code did `continue` on the whole base whenever any single ring's plan came back
+        None, silently dropping seeds for rings that DID plan successfully. Ring B's plan is
+        forced to fail via a monkeypatched _ring_pucker_plan; ring A's real plan is left intact,
+        and the test asserts ring A still shows displaced (non-base) pucker geometry among the
+        returned bases, rather than the whole base being skipped.
+        """
+        mol, xyz, rd_mol = build_seed_geometry('C1CCC(CC1)C1CCCCC1', seed=5)
+        ring_index_lists = [list(ring) for ring in rd_mol.GetRingInfo().AtomRings()]
+        self.assertEqual(len(ring_index_lists), 2)
+        ring_a, ring_b = ring_index_lists
+        ring_b_set = frozenset(ring_b)
+
+        real_plan = conformers._ring_pucker_plan
+
+        def fake_plan(label, mol, ring_atom_indices, coords, atom_to_index):
+            if frozenset(ring_atom_indices) == ring_b_set:
+                return None
+            return real_plan(label, mol, ring_atom_indices, coords, atom_to_index)
+
+        base_conformers = [{'xyz': xyz, 'index': 0, 'FF energy': 0.0, 'source': 'test'}]
+        with patch('arc.species.conformers._ring_pucker_plan', side_effect=fake_plan):
+            result = conformers.ring_pucker_base_conformers(label='dicyclohexyl', mol=mol,
+                                                             base_conformers=base_conformers)
+
+        self.assertGreater(len(result), 0)
+        ring_pucker_results = [conf for conf in result if conf.get('source') == 'ring pucker']
+        self.assertGreater(len(ring_pucker_results), 0)
+
+        base_coords = np.array(xyz['coords'])
+        displaced = False
+        for conf in ring_pucker_results:
+            coords = np.array(conf['xyz']['coords'])
+            if not np.allclose(coords[ring_a], base_coords[ring_a], atol=1e-3):
+                displaced = True
+                break
+        self.assertTrue(displaced, 'Expected ring A to still be puckered via the per-ring fallback.')
+
+    def test_cross_product_bounded_by_cap(self):
+        """The number of returned dicyclohexyl pucker bases must never exceed PUCKER_MAX_BASES."""
+        mol, base_conformers = build_base_conformers('C1CCC(CC1)C1CCCCC1', seed=5)
+        result = conformers.ring_pucker_base_conformers(label='dicyclohexyl', mol=mol,
+                                                         base_conformers=base_conformers)
+        self.assertLessEqual(len(result), conformers.PUCKER_MAX_BASES)
+
+    def test_cross_product_base_conformer_count_bounded(self):
+        """Only PUCKER_MAX_CROSS_BASE_CONFORMERS of the supplied base conformers may receive
+        cross-product pucker seeding, bounding worst-case FF-opt cost.
+
+        Eight duplicated dicyclohexyl base conformer dicts (varying only in 'FF energy', a cheap
+        synthetic stand-in for real diastereomers) are supplied; the point is testing the count
+        bound, not diastereomer diversity. _ring_pucker_plan is wrapped (not replaced) so it still
+        does real per-ring planning, letting its call count serve as a proxy for how many bases
+        were processed: with both rings planning successfully every processed base costs exactly
+        len(ring_index_lists) == 2 calls.
+        """
+        mol, xyz, rd_mol = build_seed_geometry('C1CCC(CC1)C1CCCCC1', seed=5)
+        ring_index_lists = [list(ring) for ring in rd_mol.GetRingInfo().AtomRings()]
+        self.assertEqual(len(ring_index_lists), 2)
+
+        base_conformers = [{'xyz': xyz, 'index': i, 'FF energy': float(i), 'source': 'test'}
+                          for i in range(8)]
+
+        real_plan = conformers._ring_pucker_plan
+        with patch('arc.species.conformers._ring_pucker_plan', side_effect=real_plan) as mock_plan:
+            result = conformers.ring_pucker_base_conformers(label='dicyclohexyl', mol=mol,
+                                                             base_conformers=base_conformers)
+
+        self.assertEqual(mock_plan.call_count, conformers.PUCKER_MAX_CROSS_BASE_CONFORMERS * len(ring_index_lists))
+        self.assertLessEqual(len(result), conformers.PUCKER_MAX_BASES)
+
+    def test_monocyclic_unchanged_by_refactor(self):
+        """The single-ring refactor (extracting the displacement/plan helpers) must not change
+        ring_pucker_base_conformers()'s output for monocyclic molecules, since a single ring never
+        enters the cross-product branch (len(rings) >= 2 is required).
+
+        Expected values were captured by running the pre-refactor code on cyclohexane and
+        ethylcyclohexane (seed=0) and recording the count, sorted energies, and sorted per-ring
+        pucker-label multiset of the returned bases.
+        """
+        expectations = {
+            'C1CCCCC1': (6,
+                        [-3.5609335504711908, -3.5609335386754166, 2.3688122497580313,
+                         2.3688122521247186, 2.3688122547992005, 3.1109672025603166],
+                        ['boat', 'chair', 'chair', 'twist-boat', 'twist-boat', 'twist-boat']),
+            'CCC1CCCCC1': (6,
+                          [1.4392077902597649, 2.912038796820865, 7.1730842828369346,
+                           7.637111955719528, 9.15401445063019, 9.154014451655334],
+                          ['chair', 'chair', 'twist-boat', 'twist-boat', 'twist-boat', 'twist-boat']),
+        }
+        for smiles, (expected_count, expected_energies, expected_labels) in expectations.items():
+            mol, base_conformers = build_base_conformers(smiles, seed=0)
+            result = conformers.ring_pucker_base_conformers(label='monocyclic', mol=mol,
+                                                             base_conformers=base_conformers)
+            self.assertEqual(len(result), expected_count, f'Count mismatch for {smiles}.')
+            energies = sorted(conf['FF energy'] for conf in result)
+            for actual, expected in zip(energies, expected_energies):
+                self.assertAlmostEqual(actual, expected, delta=1e-6, msg=f'Energy mismatch for {smiles}.')
+
+            atom_to_index = {id(atom): i for i, atom in enumerate(mol.atoms)}
+            ring = [ring for ring in mol.get_deterministic_sssr() if len(ring) == 6][0]
+            ring_indices = [atom_to_index[id(atom)] for atom in ring]
+            labels = sorted(ring_pucker.classify_pucker(np.array(conf['xyz']['coords'])[ring_indices])
+                            for conf in result)
+            self.assertEqual(labels, expected_labels, f'Pucker label multiset mismatch for {smiles}.')
+
+    def test_fused_ring_still_returns_empty(self):
+        """A fused bicyclic system (decalin) must not enter the cross product and must still
+        return an empty list, exactly as the pre-cross-product code does (see also
+        TestRingPuckerBaseConformers.test_decalin_fused_ring_returns_empty)."""
+        mol, base_conformers = build_base_conformers('C1CCC2CCCCC2C1', seed=0)
+        result = conformers.ring_pucker_base_conformers(label='decalin', mol=mol,
+                                                         base_conformers=base_conformers)
+        self.assertEqual(result, [])
+
+    def test_three_independent_rings_falls_back_to_per_ring_path(self):
+        """When the combination count exceeds PUCKER_MAX_CROSS_COMBINATIONS, the cross product
+        must not be attempted; each ring is puckered independently against the base instead.
+
+        Tricyclohexylmethane (SMILES 'C(C1CCCCC1)(C1CCCCC1)C1CCCCC1') has three independent
+        6-rings, needing 6**3 = 216 (pucker state x pole) combinations -- well above the
+        36-combination cap -- so this exercises a real invocation of the >36-combos fallback
+        branch in ring_pucker_base_conformers() (the check at the top of that function, distinct
+        from _ring_pucker_cross_product_bases' own per-base "a ring's plan failed" fallback added
+        for the P2a fix). _ring_pucker_cross_product_bases is mocked only to assert it is never
+        called -- confirming the branch decision -- while the per-ring path itself (three real
+        ring_pucker_seed_conformers() calls) still runs for real and is asserted to yield seeds.
+        Embedding tricyclohexylmethane and running the real per-ring path took ~2s locally, well
+        under the ~15s budget, so no cheaper synthetic construction was needed.
+        """
+        mol, base_conformers = build_base_conformers('C(C1CCCCC1)(C1CCCCC1)C1CCCCC1', seed=0)
+        sssr = mol.get_deterministic_sssr()
+        rings = [ring for ring in sssr if len(ring) in (5, 6) and conformers.ring_is_saturated(mol, ring)]
+        self.assertEqual(len(rings), 3)
+
+        n_combos = 1
+        for ring in rings:
+            n_combos *= 2 * len(ring_pucker.canonical_pucker_states(len(ring)))
+        self.assertEqual(n_combos, 216)
+        self.assertGreater(n_combos, conformers.PUCKER_MAX_CROSS_COMBINATIONS)
+
+        with patch('arc.species.conformers._ring_pucker_cross_product_bases') as mock_cross:
+            result = conformers.ring_pucker_base_conformers(label='tricyclohexylmethane', mol=mol,
+                                                             base_conformers=base_conformers)
+
+        mock_cross.assert_not_called()
+        self.assertGreater(len(result), 0)
 
 
 if __name__ == '__main__':
