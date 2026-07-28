@@ -1200,8 +1200,12 @@ class Scheduler(object):
         ess_succeeded = job.job_status[1]['status'] == 'done'
         is_log_output = job.local_path_to_output_file.endswith('.log')
         is_yaml_output = job.local_path_to_output_file.endswith(('.yml', '.yaml'))
+        # Orca NEB writes its geometry before the post-processing that may then fail, so a
+        # non-zero exit does not imply there is nothing to read. Keyed on the adapter, not on
+        # the output file's extension, which several unrelated adapters share.
+        results_survive_ess_error = job.job_adapter == 'orca_neb'
         should_ingest = successful_server_termination \
-            and (is_yaml_output or (is_log_output and ess_succeeded))
+            and (is_yaml_output or (is_log_output and (ess_succeeded or results_survive_ess_error)))
         if should_ingest:
             for rxn in job.reactions:
                 rxn.ts_species.process_completed_tsg_queue_jobs(
@@ -1215,6 +1219,9 @@ class Scheduler(object):
             if ess_status['line']:
                 warning += f' Error line: "{ess_status["line"]}".'
             logger.warning(warning)
+            # troubleshoot_ess already handles tsg jobs but was never called with one.
+            if self.trsh_ess_jobs and job.times_rerun == 0:
+                self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
 
         if not any('tsg' in running_job for running_job in self.running_jobs.get(label, [])):
             logger.info(f'\nTS guess jobs for {label} terminated.\n')

@@ -11,6 +11,7 @@ class TestQST2SchedulerCompletion(unittest.TestCase):
     def test_ingestion_requires_ess_success_and_is_idempotent(self):
         """An errored queue TSG is reported, never parsed, and the last completion advances once."""
         scheduler = Scheduler.__new__(Scheduler)
+        scheduler.trsh_ess_jobs = False
         scheduler.running_jobs = {'TS0': ['tsg0', 'tsg1']}
         scheduler.run_conformer_jobs = MagicMock()
 
@@ -62,6 +63,7 @@ class TestQST2SchedulerCompletion(unittest.TestCase):
     def test_success_then_errored_qst2_ingests_once_and_advances_once(self):
         """A successful log finishing before the final errored QST2 job is retained exactly once."""
         scheduler = Scheduler.__new__(Scheduler)
+        scheduler.trsh_ess_jobs = False
         scheduler.running_jobs = {'TS0': ['tsg0', 'tsg1']}
         scheduler.run_conformer_jobs = MagicMock()
 
@@ -110,6 +112,7 @@ class TestQST2SchedulerCompletion(unittest.TestCase):
     def test_yaml_tsg_ingestion_does_not_require_ess_done(self):
         """Worker-produced YAML remains ingestible after a successful server termination."""
         scheduler = Scheduler.__new__(Scheduler)
+        scheduler.trsh_ess_jobs = False
         scheduler.running_jobs = {'TS0': ['tsg0']}
         scheduler.run_conformer_jobs = MagicMock()
         scheduler.end_job = MagicMock(return_value=True)
@@ -135,6 +138,50 @@ class TestQST2SchedulerCompletion(unittest.TestCase):
         yaml_rxn.ts_species.process_completed_tsg_queue_jobs.assert_called_once_with(
             path='/tmp/output.yml', method='gcn')
         scheduler.run_conformer_jobs.assert_called_once_with(labels=['TS0'])
+
+
+    def test_errored_tsg_job_is_troubleshot_once(self):
+        """An errored TS-guess job is offered to troubleshoot_ess, and only on its first run."""
+        for times_rerun, expected_calls in ((0, 1), (1, 0)):
+            scheduler = Scheduler.__new__(Scheduler)
+            scheduler.trsh_ess_jobs = True
+            scheduler.running_jobs = {'TS0': ['tsg0']}
+            scheduler.run_conformer_jobs = MagicMock()
+            scheduler.troubleshoot_ess = MagicMock()
+            scheduler.end_job = MagicMock(return_value=True)
+
+            job = MagicMock()
+            job.job_name, job.job_adapter = 'tsg0', 'qst2'
+            job.local_path_to_output_file = '/tmp/errored_trsh.log'
+            job.job_status = ['done', {'status': 'errored', 'keywords': ['SCF'],
+                                       'error': 'SCF failed', 'line': ''}]
+            job.times_rerun, job.reactions = times_rerun, [MagicMock()]
+
+            scheduler.process_completed_tsg_job(job=job, label='TS0', job_name='tsg0')
+            self.assertEqual(scheduler.troubleshoot_ess.call_count, expected_calls,
+                             msg=f'times_rerun={times_rerun}')
+
+    def test_orca_neb_is_ingested_despite_an_errored_status(self):
+        """Orca NEB writes its geometry before the step that fails, so it is still read."""
+        counts = {}
+        for adapter in ('orca_neb', 'qst2'):
+            scheduler = Scheduler.__new__(Scheduler)
+            scheduler.trsh_ess_jobs = False
+            scheduler.running_jobs = {'TS0': ['tsg0']}
+            scheduler.run_conformer_jobs = MagicMock()
+            scheduler.end_job = MagicMock(return_value=True)
+            rxn = MagicMock()
+            job = MagicMock()
+            job.job_name, job.job_adapter = 'tsg0', adapter
+            job.local_path_to_output_file = '/tmp/errored.log'
+            job.job_status = ['done', {'status': 'errored', 'keywords': ['Unknown'],
+                                       'error': 'terminated for an unknown reason', 'line': ''}]
+            job.times_rerun, job.reactions = 0, [rxn]
+            scheduler.process_completed_tsg_job(job=job, label='TS0', job_name='tsg0')
+            counts[adapter] = rxn.ts_species.process_completed_tsg_queue_jobs.call_count
+
+        self.assertEqual(counts['orca_neb'], 1, 'an errored NEB job still has a readable geometry')
+        self.assertEqual(counts['qst2'], 0, 'a failed QST2 job must stay excluded')
 
 
 if __name__ == '__main__':
