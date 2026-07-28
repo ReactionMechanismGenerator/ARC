@@ -80,6 +80,36 @@ class TestRingPucker(unittest.TestCase):
             ring_coords = ring_pucker.ideal_pucker_geometry(5, label)
             self.assertEqual(ring_pucker.classify_pucker(ring_coords), label)
 
+    def test_degenerate_collinear_ring_raises_ring_pucker_error(self):
+        """A collinear ring of points has no well-defined ring normal and raises RingPuckerError."""
+        ring_coords = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]
+        with self.assertRaises(ring_pucker.RingPuckerError):
+            ring_pucker.puckering_amplitude(ring_coords)
+
+    def test_invalid_ring_shape_raises_ring_pucker_error(self):
+        """Ring coordinates that are not an (N x 3) array with N >= 3 raise RingPuckerError."""
+        with self.assertRaises(ring_pucker.RingPuckerError):
+            ring_pucker.puckering_amplitude([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]])
+        with self.assertRaises(ring_pucker.RingPuckerError):
+            ring_pucker.puckering_amplitude([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+
+    def test_validate_ring_order_raises_for_scrambled_ring(self):
+        """A ring reindexed out of connectivity order fails the consecutive-bond-length check."""
+        ring_coords = np.asarray(ring_pucker.ideal_pucker_geometry(6, 'chair'))
+        scrambled = ring_coords[[0, 2, 4, 1, 3, 5]]
+        with self.assertRaises(ring_pucker.RingPuckerError):
+            ring_pucker.validate_ring_order(scrambled)
+        with self.assertRaises(ring_pucker.RingPuckerError):
+            ring_pucker.cremer_pople_params(scrambled)
+        with self.assertRaises(ring_pucker.RingPuckerError):
+            ring_pucker.puckering_amplitude(scrambled)
+
+    def test_validate_ring_order_passes_for_ideal_geometries(self):
+        """Ideal, connectivity-ordered ring geometries pass the consecutive-bond-length check."""
+        for ring_size, label in [(6, 'chair'), (6, 'boat'), (6, 'twist-boat'), (5, 'envelope'), (5, 'twist')]:
+            ring_coords = ring_pucker.ideal_pucker_geometry(ring_size, label)
+            ring_pucker.validate_ring_order(ring_coords)
+
     def test_rdkit_cyclohexane_classifies_as_chair(self):
         """An RDKit-embedded and MMFF-optimized cyclohexane classifies as a chair."""
         mol = Chem.MolFromSmiles('C1CCCCC1')

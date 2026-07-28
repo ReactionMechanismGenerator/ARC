@@ -8,6 +8,13 @@ Provides Cremer-Pople puckering coordinates and canonical pucker-state
 enumeration for 5- and 6-membered rings (and fused/bridged bicyclic systems).
 These are used to both seed ring-conformer sampling and to score ring-pucker
 coverage of a conformer ensemble in arc.species.conformers.
+
+Important: every function in this module that takes ``ring_coords`` assumes the atoms are
+supplied in ring-connectivity order (i.e., consecutive entries are bonded, and the last entry
+is bonded back to the first). Establishing and verifying that ordering is the caller's
+responsibility, not this module's; passing atoms in an arbitrary or scrambled order will
+silently produce a meaningless Cremer-Pople decomposition unless ``validate_ring_order`` is
+used to catch it first.
 """
 
 from dataclasses import dataclass, field
@@ -18,6 +25,11 @@ import numpy as np
 
 class RingPuckerError(Exception):
     """Raised when ring puckering analysis or generation fails."""
+
+
+#: Minimum acceptable norm of the fitted ring-plane normal vector before it is treated as
+#: numerically degenerate (e.g., collinear or otherwise ill-defined ring points).
+_NORMAL_EPS = 1e-8
 
 
 @dataclass
@@ -58,6 +70,9 @@ def _ring_z_displacements(ring_coords: Sequence[Sequence[float]]) -> Tuple[np.nd
         Tuple[np.ndarray, int]: The z_j displacements (length N array) and the ring size N.
     """
     coords = np.asarray(ring_coords, dtype=float)
+    if coords.ndim != 2 or coords.shape[1] != 3 or coords.shape[0] < 3:
+        raise RingPuckerError(
+            f'ring_coords must be an (N x 3) array with N >= 3, got shape {coords.shape}.')
     n = coords.shape[0]
     r0 = np.mean(coords, axis=0)
     shifted = coords - r0
@@ -66,13 +81,55 @@ def _ring_z_displacements(ring_coords: Sequence[Sequence[float]]) -> Tuple[np.nd
     r1 = np.sum(shifted * np.sin(angles)[:, None], axis=0)
     r2 = np.sum(shifted * np.cos(angles)[:, None], axis=0)
     normal = np.cross(r1, r2)
-    normal = normal / np.linalg.norm(normal)
+    normal_norm = np.linalg.norm(normal)
+    if normal_norm < _NORMAL_EPS:
+        raise RingPuckerError(
+            'Could not determine a well-defined ring-plane normal (the ring points are '
+            'collinear, degenerate, or not supplied in ring-connectivity order).')
+    normal = normal / normal_norm
     z = shifted @ normal
     return z, n
 
 
+def validate_ring_order(ring_coords: Sequence[Sequence[float]], max_bond: float = 2.2) -> None:
+    """Check that ring atoms are supplied in ring-connectivity order.
+
+    The Cremer-Pople decomposition computed by this module assumes that consecutive entries of
+    ``ring_coords`` are bonded to each other, and that the last entry is bonded back to the
+    first. This function does not know the true bonding pattern; it only heuristically checks
+    that every consecutive pair (including the closure bond) is within a plausible bonding
+    distance of each other. Establishing and verifying the true connectivity order is the
+    caller's responsibility, not this module's.
+
+    Args:
+        ring_coords (Sequence[Sequence[float]]): Cartesian coordinates of the ring atoms, in
+            ring-connectivity order.
+        max_bond (float): The maximum allowed distance (Angstrom) between consecutive ring atoms.
+
+    Returns:
+        None
+
+    Raises:
+        RingPuckerError: If any consecutive pair of ring atoms (including the closure bond)
+            exceeds ``max_bond``.
+    """
+    coords = np.asarray(ring_coords, dtype=float)
+    n = coords.shape[0]
+    for i in range(n):
+        j = (i + 1) % n
+        distance = float(np.linalg.norm(coords[i] - coords[j]))
+        if distance > max_bond:
+            raise RingPuckerError(
+                f'Ring atoms at indices {i} and {j} are {distance:.3f} Angstrom apart, exceeding '
+                f'max_bond={max_bond}; ring_coords do not appear to be in ring-connectivity order.')
+
+
 def puckering_amplitude(ring_coords: Sequence[Sequence[float]]) -> float:
     """Compute the total Cremer-Pople puckering amplitude of a single ring.
+
+    Important: ``ring_coords`` must be supplied in ring-connectivity order (consecutive entries
+    bonded, last bonded back to first). Establishing and verifying that order is the caller's
+    responsibility, not this module's.
 
     Args:
         ring_coords (Sequence[Sequence[float]]): Cartesian coordinates of the ring atoms, in
@@ -81,12 +138,17 @@ def puckering_amplitude(ring_coords: Sequence[Sequence[float]]) -> float:
     Returns:
         float: The total puckering amplitude Q (Angstrom), >= 0, 0 for a planar ring.
     """
+    validate_ring_order(ring_coords)
     z, _ = _ring_z_displacements(ring_coords)
     return float(np.sqrt(np.sum(z ** 2)))
 
 
 def cremer_pople_params(ring_coords: Sequence[Sequence[float]]) -> CremerPopleParams:
     """Compute the full set of Cremer-Pople puckering coordinates of a ring.
+
+    Important: ``ring_coords`` must be supplied in ring-connectivity order (consecutive entries
+    bonded, last bonded back to first). Establishing and verifying that order is the caller's
+    responsibility, not this module's.
 
     Args:
         ring_coords (Sequence[Sequence[float]]): Cartesian coordinates of the ring atoms, in
@@ -95,6 +157,7 @@ def cremer_pople_params(ring_coords: Sequence[Sequence[float]]) -> CremerPoplePa
     Returns:
         CremerPopleParams: The Cremer-Pople puckering coordinates of the ring.
     """
+    validate_ring_order(ring_coords)
     z, n = _ring_z_displacements(ring_coords)
     idx = np.arange(n)
     max_m = (n - 1) // 2
