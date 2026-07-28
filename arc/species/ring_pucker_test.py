@@ -80,6 +80,55 @@ class TestRingPucker(unittest.TestCase):
             ring_coords = ring_pucker.ideal_pucker_geometry(5, label)
             self.assertEqual(ring_pucker.classify_pucker(ring_coords), label)
 
+    def test_planar_hexagon_classifies_as_planar(self):
+        """A perfectly planar hexagon classifies as 'planar' rather than a definite pucker state."""
+        angles = np.linspace(0.0, 2.0 * np.pi, num=6, endpoint=False)
+        ring_coords = [[float(np.cos(a)), float(np.sin(a)), 0.0] for a in angles]
+        self.assertEqual(ring_pucker.classify_pucker(ring_coords), 'planar')
+
+    def test_near_planar_hexagon_with_tiny_noise_classifies_as_planar(self):
+        """A hexagon with a negligible (~1e-6 Angstrom) out-of-plane perturbation is still 'planar'."""
+        rng = np.random.default_rng(0)
+        angles = np.linspace(0.0, 2.0 * np.pi, num=6, endpoint=False)
+        ring_coords = np.array([[np.cos(a), np.sin(a), 0.0] for a in angles])
+        ring_coords = ring_coords + rng.normal(scale=1e-6, size=ring_coords.shape)
+        self.assertEqual(ring_pucker.classify_pucker(ring_coords), 'planar')
+
+    def test_hexagon_between_chair_and_boat_windows_classifies_as_half_chair(self):
+        """A hexagon with theta strictly between the tightened chair and boat/twist-boat windows
+        is classified as a half-chair rather than being lumped into 'chair'."""
+        ring_size = 6
+        amplitude = 0.6
+        theta_deg = 40.0
+        theta_rad = np.radians(theta_deg)
+        q2 = amplitude * np.sin(theta_rad)
+        q_half = amplitude * np.cos(theta_rad)
+        idx = np.arange(ring_size)
+        xy_angles = 2.0 * np.pi * idx / ring_size
+        x = ring_pucker.DEFAULT_RING_RADIUS * np.cos(xy_angles)
+        y = ring_pucker.DEFAULT_RING_RADIUS * np.sin(xy_angles)
+        z = (np.sqrt(2.0 / ring_size) * q2 * np.cos(2.0 * np.pi * 2 * idx / ring_size)
+             + (q_half / np.sqrt(ring_size)) * ((-1.0) ** idx))
+        ring_coords = np.column_stack([x, y, z])
+        self.assertEqual(ring_pucker.classify_pucker(ring_coords), 'half-chair')
+
+    def test_phi_exactly_on_bin_boundary_bins_deterministically(self):
+        """A phi value placed exactly on a 30-degree hexagon bin boundary bins deterministically."""
+        ring_size = 6
+        amplitude = 0.6
+        phi2_deg = 15.0
+        idx = np.arange(ring_size)
+        xy_angles = 2.0 * np.pi * idx / ring_size
+        x = ring_pucker.DEFAULT_RING_RADIUS * np.cos(xy_angles)
+        y = ring_pucker.DEFAULT_RING_RADIUS * np.sin(xy_angles)
+        phi2_rad = np.radians(phi2_deg)
+        z = np.sqrt(2.0 / ring_size) * amplitude * np.cos(phi2_rad + 2.0 * np.pi * 2 * idx / ring_size)
+        ring_coords = np.column_stack([x, y, z])
+        label = ring_pucker.classify_pucker(ring_coords)
+        self.assertIn(label, ('boat', 'twist-boat'))
+        # Pin the exact deterministic outcome of the half-open bin logic at the boundary.
+        self.assertEqual(label, 'boat')
+
     def test_degenerate_collinear_ring_raises_ring_pucker_error(self):
         """A collinear ring of points has no well-defined ring normal and raises RingPuckerError."""
         ring_coords = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]
