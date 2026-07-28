@@ -31,6 +31,15 @@ class RingPuckerError(Exception):
 #: numerically degenerate (e.g., collinear or otherwise ill-defined ring points).
 _NORMAL_EPS = 1e-8
 
+#: Total puckering amplitude Q (Angstrom) below which a ring is classified as 'planar' rather
+#: than assigned a definite pucker label.
+PLANARITY_AMPLITUDE_THRESHOLD = 0.1
+
+#: Small numerical tolerance (degrees) used when binning phi angles into half-open intervals,
+#: so that points that fall exactly on a bin boundary (subject to floating-point noise) bin
+#: deterministically instead of via round-half-to-even.
+_BIN_TOL_DEG = 1e-9
+
 
 @dataclass
 class CremerPopleParams:
@@ -199,6 +208,26 @@ def cremer_pople_params(ring_coords: Sequence[Sequence[float]]) -> CremerPoplePa
     )
 
 
+def _half_open_bin_index(value_deg: float, bin_width_deg: float, num_bins: int) -> int:
+    """Map an angle into a half-open bin index, with a small tolerance for boundary values.
+
+    Bin k covers the half-open interval [k * bin_width - bin_width / 2, k * bin_width +
+    bin_width / 2), wrapping around the full circle. A small numerical tolerance is applied so
+    that a value that falls exactly on a bin boundary (subject to floating-point noise) bins
+    deterministically, instead of via round-half-to-even.
+
+    Args:
+        value_deg (float): The angle in degrees.
+        bin_width_deg (float): The width of each bin in degrees.
+        num_bins (int): The number of bins spanning the full circle.
+
+    Returns:
+        int: The bin index in [0, num_bins).
+    """
+    shifted = value_deg + bin_width_deg / 2.0 - _BIN_TOL_DEG
+    return int(np.floor(shifted / bin_width_deg)) % num_bins
+
+
 def classify_pucker(ring_coords: Sequence[Sequence[float]]) -> str:
     """Classify a ring's Cremer-Pople puckering coordinates into a canonical pucker state.
 
@@ -207,21 +236,29 @@ def classify_pucker(ring_coords: Sequence[Sequence[float]]) -> str:
             ring-connectivity order.
 
     Returns:
-        str: 'chair', 'boat', or 'twist-boat' for a 6-ring; 'envelope' or 'twist' for a 5-ring.
+        str: For a 6-ring: 'chair', 'boat', 'twist-boat', or 'half-chair' (theta outside the
+            chair and boat/twist-boat windows). For a 5-ring: 'envelope' or 'twist'. For any
+            ring size, 'planar' if the total puckering amplitude Q is below
+            PLANARITY_AMPLITUDE_THRESHOLD, regardless of ring size.
     """
     n = len(ring_coords)
     params = cremer_pople_params(ring_coords)
 
+    if params.amplitude < PLANARITY_AMPLITUDE_THRESHOLD:
+        return 'planar'
+
     if n == 6:
-        if params.theta_deg <= 45.0 or params.theta_deg >= 135.0:
+        if params.theta_deg <= 30.0 or params.theta_deg >= 150.0:
             return 'chair'
-        phi = params.phi_deg % 360.0
-        k = int(round(phi / 30.0)) % 12
-        return 'boat' if k % 2 == 0 else 'twist-boat'
+        if abs(params.theta_deg - 90.0) <= 30.0:
+            phi = params.phi_deg % 360.0
+            k = _half_open_bin_index(phi, 30.0, 12)
+            return 'boat' if k % 2 == 0 else 'twist-boat'
+        return 'half-chair'
 
     if n == 5:
         phi2 = params.phi2_deg % 360.0
-        k = int(round(phi2 / 18.0)) % 20
+        k = _half_open_bin_index(phi2, 18.0, 20)
         return 'envelope' if k % 2 == 0 else 'twist'
 
     raise RingPuckerError(f'classify_pucker only supports 5- and 6-membered rings, got a {n}-membered ring.')
