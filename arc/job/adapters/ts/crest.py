@@ -372,18 +372,22 @@ def crest_ts_conformer_search(
     distance_pairs = tuple((atom_1 + 1, atom_2 + 1)
                            for atom_1, atom_2 in constraints['distance_pairs'])
 
-    # The three-center H-abstraction path additionally pins the heavy--heavy (A--B)
-    # separation and the A--H--B bridge angle. Without them GFN2-xTB metadynamics can
-    # collapse a linear A...H...B seed into a bent A--B minimum on small double-radical
-    # PESs, and the post-CREST angle guard then rejects the result. ``angle_atoms`` is
-    # present only for the H-abstraction (three-center) case; the XY four-center path
-    # does not set it and is intentionally left unchanged.
+    # A three-center path additionally pins the terminal--terminal separation and the
+    # bridge angle. For H-abstraction, without them GFN2-xTB metadynamics can collapse a
+    # linear A...H...B seed into a bent A--B minimum on small double-radical PESs, and the
+    # post-CREST angle guard then rejects the result. ``angle_atoms`` is present only for
+    # the three-center cases (H-abstraction, intra_NO2_ONO_conversion); the XY four-center
+    # path does not set it and is intentionally left unchanged. The terminal--terminal
+    # distance is skipped when it is already one of the explicit ``distance_pairs``
+    # (as it is for intra_NO2_ONO_conversion, where C--O is the forming bond).
     angle_atoms = constraints.get('angle_atoms')
     heavy_heavy_pair = None
     angle_triad = None
     if angle_atoms is not None:
-        angle_triad = tuple(atom + 1 for atom in angle_atoms)  # (A, H, B), 1-based
-        heavy_heavy_pair = (angle_triad[0], angle_triad[2])    # (A, B), 1-based
+        angle_triad = tuple(atom + 1 for atom in angle_atoms)
+        terminal_pair = (angle_triad[0], angle_triad[2])
+        if not any(set(pair) == set(terminal_pair) for pair in distance_pairs):
+            heavy_heavy_pair = terminal_pair
 
     # All atoms outside the reactive zone go into the metadynamics atom list.
     list_of_atoms_numbers_not_participating_in_reaction = [
