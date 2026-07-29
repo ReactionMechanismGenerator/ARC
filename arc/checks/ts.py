@@ -507,6 +507,16 @@ def check_irc_species_and_rxn(xyz_1: dict,
     bond-list comparison if perception fails for either endpoint or if the expected
     reactant/product ``Molecule`` objects are unavailable.
 
+    Sets ``rxn.ts_species.ts_checks['IRC']`` to ``True`` if the endpoints match the reactants
+    and products, to ``False`` only if a comparison was actually performed and the endpoints
+    did not match, and leaves it as ``None`` (unknown) if no comparison could be performed
+    (e.g., the expected connectivity of the reaction is unavailable). ``False`` means
+    "checked and failed", never "could not check".
+
+    A negative isomorphism result alone does not set ``False``: it is treated as inconclusive
+    and the bond-list comparison decides. The verdict remains ``None`` if that comparison
+    cannot be carried out.
+
     Args:
         xyz_1 (dict): The coordinates of IRC species 1.
         xyz_2 (dict): The coordinates of IRC species 2.
@@ -514,7 +524,7 @@ def check_irc_species_and_rxn(xyz_1: dict,
     """
     if rxn is None:
         return None
-    rxn.ts_species.ts_checks['IRC'] = False
+    rxn.ts_species.ts_checks['IRC'] = None
     xyz_1, xyz_2 = check_xyz_dict(xyz_1), check_xyz_dict(xyz_2)
 
     # Primary check: molecular graph isomorphism
@@ -541,8 +551,10 @@ def check_irc_species_and_rxn(xyz_1: dict,
     # Fallback: bond-list connectivity comparison
     try:
         r_bonds, p_bonds = rxn.get_bonds()
-    except Exception:
-        logger.debug('Could not get reaction bonds for IRC fallback check.')
+    except Exception as e:
+        logger.warning(f'Could not get the reaction bonds of {rxn} for the IRC fallback check, '
+                       f'got:\n{e.__class__.__name__}: {e}\n'
+                       f'The IRC check of {rxn.ts_species.label} is therefore left undetermined.')
         return
     dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
     dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1, elements=xyz_1['symbols'])
@@ -550,6 +562,8 @@ def check_irc_species_and_rxn(xyz_1: dict,
     if _check_equal_bonds_list(dmat_bonds_1, r_bonds) and _check_equal_bonds_list(dmat_bonds_2, p_bonds) \
             or _check_equal_bonds_list(dmat_bonds_2, r_bonds) and _check_equal_bonds_list(dmat_bonds_1, p_bonds):
         rxn.ts_species.ts_checks['IRC'] = True
+    else:
+        rxn.ts_species.ts_checks['IRC'] = False
 
 
 def _perceive_irc_fragments(xyz: dict,
