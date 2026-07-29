@@ -325,8 +325,8 @@ class OrcaAdapter(JobAdapter):
                 input_dict['job_type_1'] = 'OptTS'
                 self.add_to_args(val="""
 %geom
-Recalc_Hess 10   # calculate the Hessian at the beginning
-                   # and recalculate it after 10,20,... stepsend
+Recalc_Hess 10   # calculate the Hessian at the beginning and recalculate it after 10,20,... steps
+end
 """,
                                  key1='block')
             if 'dlpno' in self.level.method:

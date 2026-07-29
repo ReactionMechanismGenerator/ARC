@@ -423,7 +423,7 @@ end
         self.assertIn('tightopt', content.lower())
 
     def test_recalc_hess_in_optts(self):
-        """Test that OptTS job includes calc_Hess true in %geom block"""
+        """Test that OptTS job includes Recalc_Hess 10 in a properly closed %geom block"""
         job_optts = OrcaAdapter(execution_type='queue',
                                 job_type='opt',
                                 level=Level(method='wb97x-d3', basis='def2-tzvp'),
@@ -442,9 +442,11 @@ end
         job_optts.write_input_file()
         with open(os.path.join(job_optts.local_path, input_filenames[job_optts.job_adapter]), 'r') as f:
             content = f.read()
-        # Check that the file contains the %geom block with Calc_Hess and Recalc_Hess
+        # Check that the file contains the %geom block with Recalc_Hess, properly closed with 'end'
         self.assertIn('%geom', content)
-        self.assertIn('Calc_Hess true', content)
+        self.assertIn('Recalc_Hess 10', content)
+        geom_block = content.split('%geom', 1)[1]
+        self.assertIn('\nend\n', geom_block)
         # Check that it's an OptTS job
         self.assertIn('OptTS', content)
 
@@ -471,9 +473,8 @@ end
         # Check that it's a regular Opt job, not OptTS
         self.assertIn('!Opt', content)
         self.assertNotIn('OptTS', content)
-        # The %geom Calc_Hess block should NOT be present for regular opt
-        self.assertNotIn('Calc_Hess true', content)
-        self.assertNotIn('Recalc_Hess 5', content)
+        # The %geom Recalc_Hess block should NOT be present for regular opt
+        self.assertNotIn('Recalc_Hess 10', content)
 
     @classmethod
     def tearDownClass(cls):
