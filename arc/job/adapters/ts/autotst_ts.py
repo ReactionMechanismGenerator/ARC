@@ -212,6 +212,36 @@ class AutoTSTAdapter(JobAdapter):
         """
         pass
 
+    def save_subprocess_error_log(self,
+                                  output,
+                                  rxn: ARCReaction,
+                                  direction_str: str,
+                                  ) -> str | None:
+        """
+        Save the stdout and stderr of a failed AutoTST subprocess to a dedicated file
+        next to the job's output, keeping the (often lengthy) traceback out of arc.log.
+
+        Args:
+            output: The ``CompletedProcess`` instance returned by the AutoTST subprocess.
+            rxn (ARCReaction): The reaction for which AutoTST was executed.
+            direction_str (str): The direction in which AutoTST was executed, 'forward' or 'reverse'.
+
+        Returns:
+            Optional[str]: The path to which the details were written, ``None`` if writing failed.
+        """
+        err_path = os.path.join(os.path.dirname(self.output_path), 'autotst_err.log')
+        try:
+            os.makedirs(os.path.dirname(err_path), exist_ok=True)
+            with open(err_path, 'a') as f:
+                f.write(f'AutoTST subprocess for {rxn} in the {direction_str} direction '
+                        f'returned code {output.returncode} at {datetime.datetime.now()}\n')
+                f.write(f'stdout:\n{output.stdout}\n')
+                f.write(f'stderr:\n{output.stderr}\n\n')
+        except OSError as e:
+            logger.debug(f'Could not write the AutoTST subprocess error details to {err_path}, got:\n{e}')
+            return None
+        return err_path
+
     def execute_incore(self):
         """
         Execute a job incore.
@@ -263,11 +293,15 @@ class AutoTSTAdapter(JobAdapter):
 
                     if output.returncode:
                         direction_str = 'forward' if direction == 'F' else 'reverse'
-                        logger.warning(f'AutoTST subprocess did not give a successful return code for {rxn} '
-                                       f'in the {direction_str} direction.\n'
-                                       f'Got return code: {output.returncode}\n'
-                                       f'stdout: {output.stdout}\n'
-                                       f'stderr: {output.stderr}')
+                        err_path = self.save_subprocess_error_log(output=output,
+                                                                 rxn=rxn,
+                                                                 direction_str=direction_str,
+                                                                 )
+                        logger.warning(f'AutoTST subprocess for {rxn} in the {direction_str} direction returned '
+                                       f'code {output.returncode}, see {err_path} for details.'
+                                       if err_path is not None else
+                                       f'AutoTST subprocess for {rxn} in the {direction_str} direction returned '
+                                       f'code {output.returncode}.')
                     if os.path.isfile(self.output_path):
                         results = read_yaml_file(path=self.output_path)
                         if results:
