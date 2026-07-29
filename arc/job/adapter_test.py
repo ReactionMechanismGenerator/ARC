@@ -250,6 +250,28 @@ class TestJobAdapter(unittest.TestCase):
         self.assertEqual(self.job_4.submit_script_memory, expected_memory)
         self.job_4.server = 'local'
 
+    def test_set_cpu_and_mem_capping_warning(self):
+        """Test that the memory capping warning is well-phrased when no server is defined"""
+        job = GaussianAdapter(execution_type='incore',
+                              job_type='opt',
+                              job_memory_gb=42,
+                              level=Level(method='cbs-qb3'),
+                              project='test',
+                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                              species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                              testing=True,
+                              )
+        self.assertIsNone(job.server)
+        job.job_memory_gb = 42
+        with self.assertLogs('arc', level='WARNING') as cm:
+            job.set_cpu_and_mem()
+        message = '\n'.join(cm.output)
+        self.assertIn('exceeds', message)
+        self.assertIn('Setting it to 30.40 GB.', message)
+        self.assertNotIn('the the', message)
+        self.assertNotIn('on None', message)
+        self.assertAlmostEqual(job.job_memory_gb, 30.4)
+
     def test_repr(self):
         """Test the string representation of a job"""
         for job in [self.job_1, self.job_2, self.job_5]:
