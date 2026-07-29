@@ -1776,7 +1776,9 @@ class ARCSpecies(object):
             if perceived_mol is not None:
                 self.mol = perceived_mol
             else:
-                logger.error(f'Could not infer a 2D graph for species {self.label}')
+                logger.warning(f'Could not perceive a 2D graph from the geometry of species {self.label}. '
+                               f'Downstream checks which re-perceive the connectivity from the coordinates '
+                               f'may still succeed.')
 
     def process_xyz(self, xyz_list: list | str | dict):
         """
