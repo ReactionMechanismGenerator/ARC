@@ -152,6 +152,34 @@ class JobAdapter(ABC):
     An abstract class for job adapters.
     """
 
+    def __repr__(self) -> str:
+        """
+        A concise single-line representation of the job, used whenever a job instance is
+        interpolated into a log message. Only attributes that are set by ``_initialize_adapter``
+        are considered, all attributes are accessed defensively so that this method never raises,
+        and attributes which were not set are omitted rather than reported as ``None``.
+
+        Returns:
+            str: The string representation of the job.
+        """
+        descriptors = list()
+        for attribute, key in [('job_name', 'name'),
+                               ('job_num', 'num'),
+                               ('job_id', 'id'),
+                               ('job_adapter', 'adapter'),
+                               ('job_type', 'type'),
+                               ('execution_type', 'execution'),
+                               ('species_label', 'label'),
+                               ('server', 'server'),
+                               ]:
+            value = getattr(self, attribute, None)
+            if value is not None:
+                descriptors.append(f'{key}={value}')
+        status = getattr(self, 'job_status', None)
+        if isinstance(status, (list, tuple)) and len(status):
+            descriptors.append(f'status={status[0]}')
+        return f'{self.__class__.__name__}({", ".join(descriptors)})'
+
     @abstractmethod
     def write_input_file(self) -> None:
         """

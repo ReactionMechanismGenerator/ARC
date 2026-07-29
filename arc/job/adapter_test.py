@@ -250,6 +250,32 @@ class TestJobAdapter(unittest.TestCase):
         self.assertEqual(self.job_4.submit_script_memory, expected_memory)
         self.job_4.server = 'local'
 
+    def test_repr(self):
+        """Test the string representation of a job"""
+        for job in [self.job_1, self.job_2, self.job_5]:
+            representation = repr(job)
+            self.assertNotIn(' object at 0x', representation)
+            self.assertEqual(len(representation.splitlines()), 1)
+            self.assertIn('GaussianAdapter(', representation)
+            self.assertIn('adapter=gaussian', representation)
+            self.assertIn(f'name={job.job_name}', representation)
+            self.assertIn(f'type={job.job_type}', representation)
+            self.assertIn(f'label={job.species_label}', representation)
+        self.assertIn('execution=incore', repr(self.job_2))
+        self.assertIn('id=123456', repr(self.job_5))
+        self.assertIn('server=server3', repr(self.job_5))
+        self.assertNotIn('=None', repr(self.job_2))
+
+    def test_repr_of_a_minimally_populated_adapter(self):
+        """Test that the string representation does not raise when attributes were not set"""
+        job = GaussianAdapter.__new__(GaussianAdapter)
+        representation = repr(job)
+        self.assertEqual(representation, 'GaussianAdapter()')
+        self.assertNotIn(' object at 0x', representation)
+        job.job_name = 'opt_a1234'
+        job.job_status = ['running', {'status': 'running'}]
+        self.assertEqual(repr(job), 'GaussianAdapter(name=opt_a1234, status=running)')
+
     def test_set_file_paths(self):
         """Test setting up the job's paths"""
         self.assertEqual(self.job_1.local_path, os.path.join(self.job_1.project_directory, 'calcs', 'Species',
