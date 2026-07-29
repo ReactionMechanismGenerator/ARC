@@ -6,6 +6,7 @@ This module contains unit tests of the arc.species.atom_mapping_wf module
 """
 
 import unittest
+import unittest.mock as mock
 import numpy as np
 import os
 import itertools
@@ -504,6 +505,32 @@ class TestMappingEngine(unittest.TestCase):
                             H      -0.92134271   -0.74783968   -0.82281679
                             H      -1.04996634   -0.37234114    0.91874740
                             H       1.36260637    0.37153887   -0.86221771"""
+        cls.penta_1_2_diene_xyz = """C      -2.20579300   -0.47138300    0.00008800
+                                     C      -1.12951700    0.26186600    0.00004200
+                                     C      -0.05856100    1.00336000   -0.00000500
+                                     C       1.36944100    0.51049300   -0.00005700
+                                     C       1.53382200   -1.00469100   -0.00005100
+                                     H      -2.67513600   -0.78962500   -0.92471600
+                                     H      -2.67506400   -0.78961300    0.92493200
+                                     H      -0.19126000    2.08343300   -0.00000700
+                                     H       1.87718200    0.93950100   -0.87135500
+                                     H       1.87725000    0.93951600    0.87119400
+                                     H       1.06982400   -1.45280900   -0.88042600
+                                     H       1.06989300   -1.45279500    0.88036800
+                                     H       2.59095500   -1.27547900   -0.00009000"""
+        cls.propyne_xyz = """C       0.00000000    0.00000000    1.41812200
+                             C       0.00000000    0.00000000    0.21837000
+                             C       0.00000000    0.00000000   -1.23643100
+                             H       0.00000000    0.00000000    2.48019500
+                             H      -0.00000000    1.01981200   -1.62685500
+                             H       0.88318300   -0.50990600   -1.62685500
+                             H      -0.88318300   -0.50990600   -1.62685500"""
+        cls.ethylene_xyz = """C      -0.00000000    0.00000000    0.66237500
+                              C       0.00000000    0.00000000   -0.66237500
+                              H      -0.00000000    0.92138100    1.23241800
+                              H      -0.00000000   -0.92138100    1.23241800
+                              H       0.00000000    0.92138100   -1.23241800
+                              H      -0.00000000   -0.92138100   -1.23241800"""
         cls.ip1_xyz = """ C                  0.23537226    1.11846087   -0.01756422
                           H                  0.62797226    0.12368275   -0.05194069
                           H                  0.55388639    1.65778122   -0.88507924
@@ -1271,6 +1298,69 @@ class TestMappingEngine(unittest.TestCase):
         self.assertEqual(set(h_map.values()), to_atoms)
         self.assertEqual(len(h_map), 3)
         self.assertEqual(len(set(h_map.values())), 3)
+
+    def test_select_ch3_anchors_linear_molecule(self):
+        """Test that _select_ch3_anchors() returns non-colinear anchors for a linear molecule."""
+        spc = ARCSpecies(label='propyne', smiles='C#CC', multiplicity=1, xyz=self.propyne_xyz)
+        atoms = spc.mol.atoms
+        heavy_index = next(i for i in range(len(atoms))
+                           if not atoms[i].is_hydrogen()
+                           and len(engine._find_hydrogen_neighbors(i, atoms)) == 3)
+        backbone_map = {i: i for i in range(len(atoms)) if not atoms[i].is_hydrogen()}
+        a_index, b_index = engine._select_ch3_anchors(heavy_index, spc, backbone_map)
+        self.assertIsNotNone(a_index)
+        self.assertIsNotNone(b_index)
+        coords = spc.get_xyz()['coords']
+        x = np.array(coords[heavy_index], dtype=float)
+        v_xa = np.array(coords[a_index], dtype=float) - x
+        v_xb = np.array(coords[b_index], dtype=float) - x
+        cross_norm = np.linalg.norm(np.cross(v_xa / np.linalg.norm(v_xa), v_xb))
+        self.assertGreater(cross_norm, 1e-8)
+        e_x, e_y, e_z = engine._construct_local_axes(heavy_index, a_index, b_index, coords)
+        for vector in [e_x, e_y, e_z]:
+            self.assertTrue(np.all(np.isfinite(vector)))
+            self.assertAlmostEqual(float(np.linalg.norm(vector)), 1.0, places=6)
+        self.assertAlmostEqual(float(np.dot(e_x, e_y)), 0.0, places=6)
+        self.assertAlmostEqual(float(np.dot(e_x, e_z)), 0.0, places=6)
+        self.assertAlmostEqual(float(np.dot(e_y, e_z)), 0.0, places=6)
+
+    def test_map_xh3_group_returns_none_for_undefined_plane(self):
+        """Test that _map_xh3_group() returns None (and does not raise) when no local frame is possible."""
+        spc1 = ARCSpecies(label='ip1', smiles='CCC(C)C', xyz=self.ip1_xyz)
+        spc2 = ARCSpecies(label='ip2', smiles='CCC(C)C', xyz=self.ip2_xyz)
+        backbone_map = engine.identify_superimposable_candidates(engine.fingerprint(spc1), engine.fingerprint(spc2))[0]
+        heavy_idx_1 = 13
+        heavy_idx_2 = backbone_map[heavy_idx_1]
+
+        with mock.patch.object(engine, '_select_ch3_anchors', return_value=(None, None)):
+            self.assertIsNone(engine._map_xh3_group(heavy_idx_1, heavy_idx_2, spc1, spc2, backbone_map))
+
+        with mock.patch.object(engine, '_construct_local_axes',
+                               side_effect=ValueError("Anchors are colinear; cannot define unique plane.")):
+            self.assertIsNone(engine._map_xh3_group(heavy_idx_1, heavy_idx_2, spc1, spc2, backbone_map))
+            atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
+        self.assertEqual(len(atom_map), len(spc1.mol.atoms))
+        self.assertEqual(sorted(atom_map.values()), list(range(len(spc2.mol.atoms))))
+
+    def test_map_retroene_reaction_with_optimized_geometries(self):
+        """Test atom mapping a Retroene reaction whose product has a fully linear heavy-atom skeleton."""
+        rxn = ARCReaction(label='R1 <=> P1 + P2',
+                          r_species=[ARCSpecies(label='R1', smiles='C=C=CCC', multiplicity=1,
+                                                xyz=self.penta_1_2_diene_xyz)],
+                          p_species=[ARCSpecies(label='P1', smiles='C#CC', multiplicity=1, xyz=self.propyne_xyz),
+                                     ARCSpecies(label='P2', smiles='C=C', multiplicity=1, xyz=self.ethylene_xyz)])
+        self.assertEqual(rxn.family, 'Retroene')
+        self.assertIsNotNone(rxn.atom_map)
+        self.assertEqual(sorted(rxn.atom_map), list(range(13)))
+        self.assertTrue(engine.check_atom_map(rxn))
+
+        rxn_no_xyz = ARCReaction(label='R1 <=> P1 + P2',
+                                 r_species=[ARCSpecies(label='R1', smiles='C=C=CCC', multiplicity=1)],
+                                 p_species=[ARCSpecies(label='P1', smiles='C#CC', multiplicity=1),
+                                            ARCSpecies(label='P2', smiles='C=C', multiplicity=1)])
+        self.assertIsNotNone(rxn_no_xyz.atom_map)
+        self.assertEqual(sorted(rxn_no_xyz.atom_map), list(range(13)))
+        self.assertTrue(engine.check_atom_map(rxn_no_xyz))
 
     def test_map_hydrogens_for_ch4(self):
         """Test the map_hydrogens() function for a single heavy atom with only H's."""

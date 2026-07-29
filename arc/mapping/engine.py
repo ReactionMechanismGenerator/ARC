@@ -668,43 +668,101 @@ def _find_preferably_heavy_neighbor(heavy_index: int,
     return None
 
 
+def _anchors_define_a_plane(center_index: int,
+                            anchor_1_index: int,
+                            anchor_2_index: int,
+                            coords: list[tuple[float, float, float]],
+                            ) -> bool:
+    """
+    Check whether two anchors span a well-defined plane through a central atom.
+
+    This applies exactly the criterion used by ``_construct_local_axes``, so an anchor pair
+    accepted here is guaranteed not to make ``_construct_local_axes`` raise.
+
+    Args:
+        center_index (int): Index of the central atom X.
+        anchor_1_index (int): Index of the primary anchor A.
+        anchor_2_index (int): Index of the secondary anchor B.
+        coords (list[tuple[float, float, float]]): 3D coordinates for all atoms.
+
+    Returns: bool
+        Whether the X->A and X->B vectors are both non-degenerate and non-colinear.
+    """
+    if center_index is None or anchor_1_index is None or anchor_2_index is None:
+        return False
+    if any(index >= len(coords) for index in [center_index, anchor_1_index, anchor_2_index]):
+        return False
+    if anchor_1_index == anchor_2_index or center_index in [anchor_1_index, anchor_2_index]:
+        return False
+    x = np.array(coords[center_index], dtype=float)
+    v_xa = np.array(coords[anchor_1_index], dtype=float) - x
+    v_xb = np.array(coords[anchor_2_index], dtype=float) - x
+    norm_xa, norm_xb = np.linalg.norm(v_xa), np.linalg.norm(v_xb)
+    if norm_xa < 1e-8 or norm_xb < 1e-8:
+        return False
+    return bool(np.linalg.norm(np.cross(v_xa / norm_xa, v_xb)) >= 1e-8)
+
+
 def _select_ch3_anchors(heavy_index: int,
                         spc: ARCSpecies,
                         backbone_map: dict[int, int],
                         ) -> tuple[int | None, int | None]:
     """
     Select two anchors A and B for a XH3 center X (usually X is C) so that:
-      - A is the mapped heavy neighbor (C → A)
-      - B is a second anchor forming a non-linear angle B-A-X
+      - A is the mapped heavy neighbor (X → A)
+      - B is a second anchor forming a non-linear angle B-X-A
 
-    Strategy:
-      1) Identify the one heavy neighbor A of X.
-      2) B should preferably be a heavy atom, but can also be an H.
-      3) Fallback to any other heavy atom B ≠ X, A that gives a non‐linear angle.
-      4) Fallback to any hydrogen already present in backbone_map.
-      5) Fallback to any hydrogen.
+    Candidates for B are considered in the following priority order, and the first candidate
+    that is not colinear with the X→A axis is returned:
+      1) The preferably-heavy neighbor of A other than X.
+      2) Any other neighbor of A other than X.
+      3) Any atom bonded to X other than A (i.e., one of the XH3 hydrogens, which are
+         guaranteed to be off-axis for a genuine XH3 center).
+      4) Any remaining atom in the molecule.
+
+    The colinearity criterion is identical to the one enforced by ``_construct_local_axes``,
+    so a returned anchor pair can never make that function raise. Molecules with a linear
+    heavy-atom skeleton (e.g., propyne, where X→A and every heavy candidate B are colinear)
+    are therefore resolved via the hydrogen fallbacks.
 
     Args:
-        heavy_index: index of CH3 carbon in spc.mol.atoms
+        heavy_index: index of the XH3 carbon in spc.mol.atoms
         spc: ARCSpecies with rotors_dict and xyz
-        backbone_map: heavy-atom map C→C' in product
+        backbone_map: heavy-atom map X→X' in product
 
     Returns:
-        Tuple(A_index, B_index) or None, None if no valid anchors.
+        Tuple(A_index, B_index), or (None, None) if no valid anchors could be found.
     """
     A_index = _find_preferably_heavy_neighbor(heavy_index=heavy_index, spc=spc, partial_atom_map=backbone_map)
     if A_index is None:
         return None, None
-    B_index = _find_preferably_heavy_neighbor(heavy_index=A_index, spc=spc, partial_atom_map=backbone_map, exclude_index=heavy_index)
-    if B_index is None:
-        for atom in spc.mol.atoms[A_index].edges:
-            atom_index = spc.mol.atoms.index(atom)
-            if atom_index != heavy_index:
-                B_index = atom_index
-                break
-    if B_index is None:
+    xyz = spc.get_xyz()
+    if xyz is None:
         return None, None
-    return A_index, B_index
+    coords = xyz['coords']
+    candidates = list()
+    preferred = _find_preferably_heavy_neighbor(heavy_index=A_index, spc=spc,
+                                                partial_atom_map=backbone_map, exclude_index=heavy_index)
+    if preferred is not None:
+        candidates.append(preferred)
+    for atom in spc.mol.atoms[A_index].edges:
+        atom_index = spc.mol.atoms.index(atom)
+        if atom_index != heavy_index:
+            candidates.append(atom_index)
+    for atom in spc.mol.atoms[heavy_index].edges:
+        atom_index = spc.mol.atoms.index(atom)
+        if atom_index != A_index:
+            candidates.append(atom_index)
+    candidates.extend(range(len(spc.mol.atoms)))
+    seen = set()
+    for B_index in candidates:
+        if B_index in seen:
+            continue
+        seen.add(B_index)
+        if _anchors_define_a_plane(center_index=heavy_index, anchor_1_index=A_index,
+                                   anchor_2_index=B_index, coords=coords):
+            return A_index, B_index
+    return None, None
 
 
 def _construct_local_axes(center_idx: int,
@@ -861,18 +919,23 @@ def _map_xh3_group(heavy_idx_1: int,
         backbone_map (dict[int, int]): Existing backbone atom mapping.
 
     Returns:
-        dict[int, int] | None: Mapping from hydrogen indices in spc_1 to hydrogen indices in spc_2.
+        dict[int, int] | None: Mapping from hydrogen indices in spc_1 to hydrogen indices in spc_2,
+                               or None if no local frame could be constructed for either species.
     """
     anchors_1 = _select_ch3_anchors(heavy_idx_1, spc_1, backbone_map)
     anchors_2 = _select_ch3_anchors(heavy_index_2, spc_2, {val: key for key, val in backbone_map.items()})  # reverse map
 
-    if not anchors_1 or not anchors_2:
+    if not anchors_1 or not anchors_2 or any(anchor is None for anchor in list(anchors_1) + list(anchors_2)):
         return None
 
     coords_1, coords_2 = spc_1.get_xyz()['coords'], spc_2.get_xyz()['coords']
 
-    e_x1, e_y1, e_z1 = _construct_local_axes(heavy_idx_1, anchors_1[0], anchors_1[1], coords_1)
-    e_x2, e_y2, e_z2 = _construct_local_axes(heavy_index_2, anchors_2[0], anchors_2[1], coords_2)
+    try:
+        e_x1, e_y1, e_z1 = _construct_local_axes(heavy_idx_1, anchors_1[0], anchors_1[1], coords_1)
+        e_x2, e_y2, e_z2 = _construct_local_axes(heavy_index_2, anchors_2[0], anchors_2[1], coords_2)
+    except ValueError as e:
+        logger.debug(f"Could not construct a local frame for the XH3 group refinement: {e}")
+        return None
 
     hydrogens_1 = _find_hydrogen_neighbors(heavy_idx_1, spc_1.mol.atoms)
     hydrogens_2 = _find_hydrogen_neighbors(heavy_index_2, spc_2.mol.atoms)
@@ -1000,6 +1063,8 @@ def map_hydrogens(spc_1: ARCSpecies,
     """
     Atom map hydrogen atoms between two species with a known mapped heavy atom backbone.
     If only a single hydrogen atom is bonded to a given heavy atom, it is straight-forwardly mapped.
+    If the geometric refinement of an XH3 group fails (e.g., no local frame can be defined),
+    its three equivalent hydrogens are assigned in order, so that the resulting map remains complete.
 
     Args:
         spc_1 (ARCSpecies): Species 1.
@@ -1043,6 +1108,10 @@ def map_hydrogens(spc_1: ARCSpecies,
                 mapped = _map_xh3_group(heavy_index_1, heavy_index_2, spc_1, spc_2, atom_map)
                 if mapped:
                     atom_map.update(mapped)
+                else:
+                    atom_map[h_indices_1[0]] = h_indices_2[0]
+                    atom_map[h_indices_1[1]] = h_indices_2[1]
+                    atom_map[h_indices_1[2]] = h_indices_2[2]
     return atom_map
 
 
