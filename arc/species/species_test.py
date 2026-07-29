@@ -9,6 +9,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, check_that_all_entries_are_in_list
 from arc.species.converter import check_xyz_dict
@@ -1831,6 +1832,21 @@ H       1.32129900    0.71837500    0.38017700
         spc = ARCSpecies(label='TS0', adjlist=adj, xyz=xyz, is_ts=True, multiplicity=2, charge=0)
         self.assertFalse(any(bond.is_van_der_waals() for bond in spc.mol.get_all_edges()),
                          'TS ARCSpecies.mol should not retain vdW bonds from the input adjlist.')
+
+    def test_mol_from_xyz_failed_perception_is_a_warning(self):
+        """Test that a failed 2D graph perception is reported as a recoverable warning, not as an error."""
+        spc = ARCSpecies(label='IRC_TS0_1', smiles='CO')
+        xyz = spc.get_xyz()
+        spc.mol = None
+        with patch('arc.species.species.perceive_molecule_from_xyz', return_value=None):
+            with self.assertLogs('arc', level='WARNING') as cm:
+                spc.mol_from_xyz(xyz=xyz, get_cheap=False)
+        self.assertTrue(all(record.levelname == 'WARNING' for record in cm.records))
+        message = '\n'.join(cm.output)
+        self.assertIn('IRC_TS0_1', message)
+        self.assertIn('Could not perceive a 2D graph', message)
+        self.assertIn('may still succeed', message)
+        self.assertIsNone(spc.mol)
 
     def test_consistent_atom_order(self):
         """Test that the atom order is preserved whether starting from SMILES or from xyz"""
