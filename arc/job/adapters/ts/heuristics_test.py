@@ -36,6 +36,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             check_dao_angle,
                                             check_ts_bonds,
                                             )
+from arc.job.adapters.common import ts_adapters_by_rmg_family
 from arc.job.adapters.ts.seed_hub import get_ts_seeds, get_wrapper_constraints
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
@@ -2524,6 +2525,69 @@ class TestHeuristicsHub(unittest.TestCase):
             seed = get_ts_seeds(reaction=rxn)[0]
         self.assertEqual(seed['metadata']['reactive_atoms'], invalid_atoms)
         self.assertIsNone(get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed))
+
+    def test_intra_no2_ono_conversion_is_registered_for_crest(self):
+        """CREST is a registered TS adapter for the intra_NO2_ONO_conversion family."""
+        self.assertIn('crest', ts_adapters_by_rmg_family['intra_NO2_ONO_conversion'])
+
+    def test_get_wrapper_constraints_crest_no2_ono(self):
+        """The NO2 -> ONO constraints pin the breaking C-N, forming C-O, and retained N-O bonds."""
+        rxn = ARCReaction(label='R1 <=> P1',
+                          r_species=[ARCSpecies(label='R1', smiles='[O-][N+](=O)CC', multiplicity=1)],
+                          p_species=[ARCSpecies(label='P1', smiles='CCON=O', multiplicity=1)])
+        self.assertEqual(rxn.family, 'intra_NO2_ONO_conversion')
+        xyz = rxn.r_species[0].get_xyz()
+        seed = {'xyz': xyz, 'family': rxn.family, 'metadata': {}}
+        constraints = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+        self.assertIsInstance(constraints, dict)
+        self.assertLessEqual({'C', 'N', 'O', 'atoms', 'distance_pairs', 'angle_atoms'}, set(constraints))
+        c_atom, n_atom, o_atom = constraints['C'], constraints['N'], constraints['O']
+        self.assertEqual(len({c_atom, n_atom, o_atom}), 3)
+        self.assertEqual(xyz['symbols'][c_atom], 'C')
+        self.assertEqual(xyz['symbols'][n_atom], 'N')
+        self.assertEqual(xyz['symbols'][o_atom], 'O')
+        self.assertEqual(constraints['atoms'], (c_atom, n_atom, o_atom))
+        self.assertEqual(constraints['distance_pairs'],
+                         ((c_atom, n_atom), (c_atom, o_atom), (n_atom, o_atom)))
+        self.assertEqual(constraints['angle_atoms'], (c_atom, n_atom, o_atom))
+
+    def test_get_wrapper_constraints_crest_no2_ono_explicit_labels(self):
+        """Explicit RMG recipe labels on the seed metadata are honored for NO2 -> ONO."""
+        rxn = SimpleNamespace(family='intra_NO2_ONO_conversion')
+        xyz = str_to_xyz("""C 0.0000 0.0000 0.0000
+                            N 1.5000 0.0000 0.0000
+                            O 2.1000 1.0000 0.0000
+                            O 2.1000 -1.0000 0.0000""")
+        for reactive_atoms in ({'*1': 0, '*2': 1, '*3': 2}, {'C': 0, 'N': 1, 'O': 2}):
+            with self.subTest(reactive_atoms=reactive_atoms):
+                seed = {'xyz': xyz, 'family': rxn.family, 'metadata': {'reactive_atoms': reactive_atoms}}
+                self.assertEqual(
+                    get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed),
+                    {
+                        'C': 0,
+                        'N': 1,
+                        'O': 2,
+                        'atoms': (0, 1, 2),
+                        'distance_pairs': ((0, 1), (0, 2), (1, 2)),
+                        'angle_atoms': (0, 1, 2),
+                    },
+                )
+
+    def test_get_wrapper_constraints_crest_rejects_invalid_no2_ono_atoms(self):
+        """An invalid or incomplete NO2 -> ONO atom assignment returns None without raising."""
+        rxn = SimpleNamespace(family='intra_NO2_ONO_conversion')
+        xyz = str_to_xyz("""C 0.0000 0.0000 0.0000
+                            N 1.5000 0.0000 0.0000
+                            O 2.1000 1.0000 0.0000
+                            O 2.1000 -1.0000 0.0000""")
+        for reactive_atoms in ({'*1': 1, '*2': 0, '*3': 2},
+                               {'*1': 0, '*2': 1, '*3': 1},
+                               {'*1': 0, '*2': 1, '*3': 9},
+                               {'*1': 0, '*2': 1},
+                               None):
+            with self.subTest(reactive_atoms=reactive_atoms):
+                seed = {'xyz': xyz, 'family': rxn.family, 'metadata': {'reactive_atoms': reactive_atoms}}
+                self.assertIsNone(get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed))
 
     def test_get_wrapper_constraints_crest_unsupported_family(self):
         rxn = SimpleNamespace(family='carbonyl_based_hydrolysis')

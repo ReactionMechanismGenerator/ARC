@@ -80,7 +80,7 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'xtb_gsm', 'orca_ne
                              'halocarbene_recombination': ['linear'],
                              'halocarbene_recombination_double': ['linear'],
                              'intra_H_migration': ['autotst', 'gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
-                             'intra_NO2_ONO_conversion': ['gcn', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
+                             'intra_NO2_ONO_conversion': ['gcn', 'xtb_gsm', 'orca_neb', 'qst2', 'linear', 'crest'],
                              'intra_OH_migration': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
                              'intra_halogen_migration': ['xtb_gsm', 'orca_neb', 'qst2', 'linear'],
                              'intra_substitutionCS_cyclization': ['linear'],
