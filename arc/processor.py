@@ -7,7 +7,7 @@ import re
 import shutil
 
 import arc.plotter as plotter
-from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file
+from arc.common import ARC_PATH, get_logger, get_ts_validation_comment, read_yaml_file, save_yaml_file
 from arc.imports import settings
 from arc.level import Level
 from arc.job.local import execute_command
@@ -353,14 +353,21 @@ def compare_rates(rxns_for_kinetics_lib: list,
     """
     reactions_to_compare = list()  # reactions for which a rate was both calculated and estimated.
     reactions_kinetics_path = os.path.join(output_directory, 'RMG_kinetics.yml')
-    save_yaml_file(path=reactions_kinetics_path,
-                   content=[{'label': rxn.label,
-                             'reactants': [spc.mol.to_adjacency_list() for spc in rxn.r_species],
-                             'products': [spc.mol.to_adjacency_list() for spc in rxn.p_species],
-                             'dh_rxn298': rxn.dh_rxn298,
-                             'family': rxn.family,
-                             } for rxn in rxns_for_kinetics_lib],
-                   )
+    content = list()
+    for rxn in rxns_for_kinetics_lib:
+        rxn_content = {'label': rxn.label,
+                       'reactants': [spc.mol.to_adjacency_list() for spc in rxn.r_species],
+                       'products': [spc.mol.to_adjacency_list() for spc in rxn.p_species],
+                       'dh_rxn298': rxn.dh_rxn298,
+                       'family': rxn.family,
+                       }
+        ts_validation = get_ts_validation_comment(rxn.ts_species)
+        if ts_validation is not None:
+            rxn_content['ts_validation'] = ts_validation
+            logger.error(f'Reporting a rate coefficient for reaction {rxn.label} although its TS failed the IRC '
+                         f'check. {ts_validation}')
+        content.append(rxn_content)
+    save_yaml_file(path=reactions_kinetics_path, content=content)
     env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
     rmg_db_path = settings.get('RMG_DB_PATH') or ""
     shell_script = f"""if command -v micromamba &> /dev/null; then

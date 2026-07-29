@@ -1381,6 +1381,28 @@ class TestCommon(unittest.TestCase):
         time_str = '190:40:10'
         self.assertAlmostEqual(common.convert_to_hours(time_str), 190.66944444444442)
 
+    def test_get_ts_validation_comment(self):
+        """
+        Test the get_ts_validation_comment() function.
+        """
+        self.assertIsNone(common.get_ts_validation_comment(None))
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        self.assertIsNone(common.get_ts_validation_comment(ts))
+        ts.ts_checks['IRC'] = True
+        self.assertIsNone(common.get_ts_validation_comment(ts))
+        # A failed NMD check alone, without a failed IRC check, is not marked.
+        ts.ts_checks['IRC'] = None
+        ts.ts_checks['NMD'] = False
+        self.assertIsNone(common.get_ts_validation_comment(ts))
+        ts.ts_checks['IRC'] = False
+        comment = common.get_ts_validation_comment(ts)
+        self.assertIn(common.TS_IRC_FAILED_MARKER, comment)
+        self.assertIn('NMD', comment)
+        ts.ts_checks['NMD'] = True
+        comment = common.get_ts_validation_comment(ts)
+        self.assertIn(common.TS_IRC_FAILED_MARKER, comment)
+        self.assertNotIn('NMD', comment)
+
     def test_calculate_arrhenius_rate_coefficient(self):
         """
         Test the calculate_arrhenius_rate() function.

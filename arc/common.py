@@ -32,6 +32,7 @@ from arc.imports import settings
 
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom, Molecule
+    from arc.species.species import ARCSpecies
 
 logger = logging.getLogger('arc')
 logging.getLogger('matplotlib.font_manager').disabled = True
@@ -52,6 +53,9 @@ R = 8.31446261815324  # J/(mol*K)
 EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 4.184e+3}
 FULL_CIRCLE = 360.0
 HALF_CIRCLE = 180.0
+
+# A marker stamped onto any reported kinetics of a TS that was checked against its IRC endpoints and failed.
+TS_IRC_FAILED_MARKER = 'INVALID TS (failed IRC validation)'
 
 default_job_types, servers, supported_ess = settings['default_job_types'], settings['servers'], settings['supported_ess']
 
@@ -1832,6 +1836,39 @@ def convert_to_hours(time_str:str) -> float:
     """
     h, m, s = map(int, time_str.split(':'))
     return h + m / 60 + s / 3600
+
+
+def get_ts_validation_comment(ts_species: 'ARCSpecies | None') -> str | None:
+    """
+    Get a human-readable marker describing a positively-failed TS validation.
+
+    A rate coefficient computed for a TS whose IRC check failed does not describe the intended
+    reaction: the IRC endpoints were optimized and re-perceived, and they do not correspond to the
+    reactants and products. Such a rate is still reported by ARC (it is diagnostically valuable),
+    but every artifact that carries it must also carry this marker so that it cannot be mistaken
+    for a validated rate coefficient.
+
+    Only a ``ts_checks['IRC']`` value of ``False`` (checked and failed) produces a marker.
+    A value of ``None`` means the IRC check was not performed (e.g., IRC was not requested,
+    or the reaction connectivity was unavailable) and is treated as unknown, not as a failure.
+
+    Args:
+        ts_species (ARCSpecies, optional): The TS species of the reaction the rate was computed for.
+
+    Returns:
+        str | None: The marker, or ``None`` if the TS did not positively fail the IRC check.
+    """
+    ts_checks = getattr(ts_species, 'ts_checks', None) or dict()
+    if ts_checks.get('IRC', None) is not False:
+        return None
+    comment = f'{TS_IRC_FAILED_MARKER}: the optimized IRC endpoints of this TS do not correspond to the ' \
+              f'reactants and products of this reaction, therefore this rate coefficient does not describe ' \
+              f'this reaction and must not be used.'
+    other_failed_checks = sorted(key for key, val in ts_checks.items()
+                                 if key not in ['IRC', 'warnings'] and val is False)
+    if other_failed_checks:
+        comment += f' Additional TS checks that failed: {", ".join(other_failed_checks)}.'
+    return comment
 
 
 def calculate_arrhenius_rate_coefficient(A: int | float | Sequence[float] | np.ndarray,
