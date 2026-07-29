@@ -8,11 +8,13 @@ This module contains unit tests for the arc.checks.ts module
 import unittest
 import os
 import shutil
+from unittest.mock import patch
 
 import numpy as np
 
 import arc.checks.ts as ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists
+from arc.exceptions import ReactionError
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
@@ -851,6 +853,30 @@ class TestTSChecks(unittest.TestCase):
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
         ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
         self.assertFalse(rxn.ts_species.ts_checks['IRC'])
+
+    def test_check_irc_identical_endpoints(self):
+        """Test that two identical IRC endpoints are a positive IRC failure (False, not None)."""
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        # Both endpoints re-perceive as the product, the "TS" connects P <=> P.
+        ts.check_irc_species_and_rxn(xyz_1=xyz_2, xyz_2=xyz_2, rxn=rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], False)
+
+    def test_check_irc_unknown_if_no_comparison_was_performed(self):
+        """Test that the IRC check is None (unknown), not False, if no comparison could be performed."""
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        # Neither the isomorphism check nor the bond-list fallback can be carried out.
+        with patch.object(ts, '_perceive_irc_fragments', return_value=None), \
+                patch.object(rxn, 'get_bonds', side_effect=ReactionError('Cannot get bonds without an atom map.')):
+            ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+        self.assertIsNone(rxn.ts_species.ts_checks['IRC'])
 
     @classmethod
     def tearDownClass(cls):
