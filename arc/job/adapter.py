@@ -154,6 +154,34 @@ class JobAdapter(ABC):
     An abstract class for job adapters.
     """
 
+    def __repr__(self) -> str:
+        """
+        A concise single-line representation of the job, used whenever a job instance is
+        interpolated into a log message. Only attributes that are set by ``_initialize_adapter``
+        are considered, all attributes are accessed defensively so that this method never raises,
+        and attributes which were not set are omitted rather than reported as ``None``.
+
+        Returns:
+            str: The string representation of the job.
+        """
+        descriptors = list()
+        for attribute, key in [('job_name', 'name'),
+                               ('job_num', 'num'),
+                               ('job_id', 'id'),
+                               ('job_adapter', 'adapter'),
+                               ('job_type', 'type'),
+                               ('execution_type', 'execution'),
+                               ('species_label', 'label'),
+                               ('server', 'server'),
+                               ]:
+            value = getattr(self, attribute, None)
+            if value is not None:
+                descriptors.append(f'{key}={value}')
+        status = getattr(self, 'job_status', None)
+        if isinstance(status, (list, tuple)) and len(status):
+            descriptors.append(f'status={status[0]}')
+        return f'{self.__class__.__name__}({", ".join(descriptors)})'
+
     @abstractmethod
     def write_input_file(self) -> None:
         """
@@ -703,9 +731,10 @@ class JobAdapter(ABC):
         max_mem = servers[self.server].get('memory', None) if self.server is not None else 32.0  # Max memory per node in GB.
         job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
         if max_mem is not None and self.job_memory_gb > max_mem * job_max_server_node_memory_allocation:
+            node_str = f' on {self.server}' if self.server is not None else ''
             logger.warning(f'The memory for job {self.job_name} using {self.job_adapter} ({self.job_memory_gb} GB) '
-                           f'exceeds {100 * job_max_server_node_memory_allocation}% of the the maximum node memory on '
-                           f'{self.server}. Setting it to {job_max_server_node_memory_allocation * max_mem:.2f} GB.')
+                           f'exceeds {100 * job_max_server_node_memory_allocation}% of the maximum node memory'
+                           f'{node_str}. Setting it to {job_max_server_node_memory_allocation * max_mem:.2f} GB.')
             self.job_memory_gb = job_max_server_node_memory_allocation * max_mem
             total_submit_script_memory_mib = math.ceil(self.job_memory_gb * MEMORY_GB_TO_MIB * CAPPED_JOB_MEMORY_OVERHEAD)
             self.job_status[1]['keywords'].append('max_total_job_memory')  # Useful info when troubleshooting.
