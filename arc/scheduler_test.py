@@ -1278,6 +1278,52 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
             self.assertEqual(admit_unknown_family, expected_admission)
 
 
+class TestSchedulerTSReporting(unittest.TestCase):
+    """
+    Contains unit tests for the TS validation reporting of the Scheduler
+    (Scheduler.report_irc_verdict and Scheduler.report_omitted_ts_guesses).
+    """
+
+    @staticmethod
+    def make_rxn(irc_verdict):
+        """Return a reaction with a TS species whose IRC check has the given verdict."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                     ARCSpecies(label='CH4', smiles='C')],
+                          p_species=[ARCSpecies(label='H2', smiles='[H][H]'),
+                                     ARCSpecies(label='CH3', smiles='[CH3]')])
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True)
+        rxn.ts_species.populate_ts_checks()
+        rxn.ts_species.ts_checks['IRC'] = irc_verdict
+        return rxn
+
+    def test_report_irc_verdict_failed(self):
+        """A failed IRC check is reported as an error naming the reaction and the TS."""
+        with self.assertLogs('arc', level='DEBUG') as cm:
+            Scheduler.report_irc_verdict(ts_label='TS0', rxn=self.make_rxn(False))
+        errors = [record for record in cm.records if record.levelname == 'ERROR']
+        self.assertEqual(len(errors), 1)
+        self.assertIn('do NOT correspond', errors[0].getMessage())
+        self.assertIn('TS0', errors[0].getMessage())
+        self.assertIn('CH4', errors[0].getMessage())
+
+    def test_report_irc_verdict_passed(self):
+        """A passed IRC check is reported at the info level and not as an error."""
+        with self.assertLogs('arc', level='DEBUG') as cm:
+            Scheduler.report_irc_verdict(ts_label='TS0', rxn=self.make_rxn(True))
+        self.assertNotIn('ERROR', [record.levelname for record in cm.records])
+        infos = [record for record in cm.records if record.levelname == 'INFO']
+        self.assertEqual(len(infos), 1)
+        self.assertIn('correspond to the reactants and products', infos[0].getMessage())
+
+    def test_report_irc_verdict_undetermined(self):
+        """An undetermined IRC check, and a missing reaction, are reported at the debug level only."""
+        for rxn in [self.make_rxn(None), None]:
+            with self.assertLogs('arc', level='DEBUG') as cm:
+                Scheduler.report_irc_verdict(ts_label='TS0', rxn=rxn)
+            self.assertEqual([record.levelname for record in cm.records], ['DEBUG'])
+            self.assertIn('not performed', cm.records[0].getMessage())
+
+
 class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
     """
     Contains unit tests for the reaction-wide adaptive levels of theory logic
