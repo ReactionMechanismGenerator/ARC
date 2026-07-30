@@ -2444,6 +2444,145 @@ H       1.11582953    0.94384729   -0.10134685"""
         spc_3.cluster_tsgs()
         self.assertEqual(len(spc_3.ts_guesses), 6)
 
+    def test_cluster_tsgs_representative_is_order_independent(self):
+        """The surviving representative of a cluster must be its lowest-index member, regardless of
+        the order in which the guesses were appended. Queue TS-search jobs (orca_neb / qst2 / GCN)
+        complete in whatever order PBS returns them, and the survivor's geometry is what gets
+        DFT-optimized, so a first-seen rule made the optimized geometry queue-order dependent."""
+        xyz_a = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_b = """N       0.9177905899     0.5194617794     0.0000000010
+                   H       1.8140204898     1.0381941417     0.0000000055
+                   H      -0.4763167868     0.7509348792     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000010
+                   N      -1.4430010939     0.0274543357     0.0000000055
+                   H      -0.6371484821    -0.7497769124     0.0000000020
+                   H      -2.0093636433     0.0331190312    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # Near-duplicate of xyz_a.
+        xyz_c = """N       9.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # Distinct from xyz_a / xyz_b.
+
+        def make_guesses():
+            """The same four guesses (same indices, same geometries) on every call."""
+            return {0: TSGuess(index=0, method='gcn', success=True, xyz=xyz_a),
+                    1: TSGuess(index=1, method='kinbot', success=True, xyz=xyz_b),
+                    2: TSGuess(index=2, method='autotst', success=True, xyz=xyz_b),
+                    3: TSGuess(index=3, method='heuristics', success=True, xyz=xyz_c),
+                    }
+
+        results = list()
+        for arrival_order in ([0, 1, 2, 3], [2, 1, 3, 0], [3, 2, 1, 0], [1, 3, 0, 2]):
+            guesses = make_guesses()
+            spc = ARCSpecies(label='TS_order', is_ts=True)
+            spc.ts_guesses = [guesses[index] for index in arrival_order]
+            for tsg in spc.ts_guesses:
+                tsg.execution_time = '00:00:01'
+            spc.cluster_tsgs()
+            results.append(([tsg.index for tsg in spc.ts_guesses],
+                            [tsg.method for tsg in spc.ts_guesses],
+                            [sorted(tsg.cluster) for tsg in spc.ts_guesses],
+                            ))
+        # Two clusters: {0, 1, 2} represented by index 0, and {3} represented by index 3.
+        self.assertEqual(results[0], ([0, 3], ['gcn', 'heuristics'], [[0, 1, 2], [3]]))
+        # Every arrival order gives the identical outcome.
+        for result in results[1:]:
+            self.assertEqual(result, results[0])
+
+    def test_cluster_tsgs_logs_absorbed_duplicates(self):
+        """The clustering log message must name which guesses were absorbed into which survivor."""
+        xyz_a = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_b = """N       0.9177905899     0.5194617794     0.0000000010
+                   H       1.8140204898     1.0381941417     0.0000000055
+                   H      -0.4763167868     0.7509348792     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000010
+                   N      -1.4430010939     0.0274543357     0.0000000055
+                   H      -0.6371484821    -0.7497769124     0.0000000020
+                   H      -2.0093636433     0.0331190312    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # Near-duplicate of xyz_a.
+        spc = ARCSpecies(label='TS_log', is_ts=True)
+        spc.ts_guesses = [TSGuess(index=2, method='autotst', success=True, xyz=xyz_b),
+                          TSGuess(index=0, method='gcn', success=True, xyz=xyz_a),
+                          TSGuess(index=1, method='kinbot', success=True, xyz=xyz_b),
+                          ]
+        for tsg in spc.ts_guesses:
+            tsg.execution_time = '00:00:01'
+        with self.assertLogs('arc', level='INFO') as captured:
+            spc.cluster_tsgs()
+        message = '\n'.join(captured.output)
+        self.assertIn('Clustered 3 TS guesses for TS_log into 1 unique conformers', message)
+        self.assertIn('absorbed duplicates: 1, 2 into 0', message)
+        self.assertEqual(spc.ts_guesses[0].index, 0)
+        self.assertEqual(spc.ts_guesses[0].cluster, [0, 1, 2])
+
+    def test_cluster_tsgs_accumulates_absorbed_indices_over_passes(self):
+        """cluster_tsgs() runs once per arriving queue TS-guess job, so a survivor's absorbed
+        indices must accumulate rather than reset on every pass."""
+        xyz_a = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_b = """N       0.9177905899     0.5194617794     0.0000000010
+                   H       1.8140204898     1.0381941417     0.0000000055
+                   H      -0.4763167868     0.7509348792     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000010
+                   N      -1.4430010939     0.0274543357     0.0000000055
+                   H      -0.6371484821    -0.7497769124     0.0000000020
+                   H      -2.0093636433     0.0331190312    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # Near-duplicate of xyz_a.
+        spc = ARCSpecies(label='TS_passes', is_ts=True)
+        spc.ts_guesses = [TSGuess(index=0, method='gcn', success=True, xyz=xyz_a),
+                          TSGuess(index=1, method='kinbot', success=True, xyz=xyz_b),
+                          ]
+        for tsg in spc.ts_guesses:
+            tsg.execution_time = '00:00:01'
+        spc.cluster_tsgs()
+        self.assertEqual([tsg.index for tsg in spc.ts_guesses], [0])
+        self.assertEqual(spc.ts_guesses[0].cluster, [0, 1])
+        # A later queue job reports back, and clustering runs again.
+        late = TSGuess(index=spc.get_next_tsg_index(), method='orca_neb', success=True, xyz=xyz_b)
+        late.execution_time = '00:00:01'
+        self.assertEqual(late.index, 2)
+        spc.ts_guesses.append(late)
+        spc.cluster_tsgs()
+        self.assertEqual([tsg.index for tsg in spc.ts_guesses], [0])
+        self.assertEqual(spc.ts_guesses[0].cluster, [0, 1, 2])
+
+    def test_get_next_tsg_index(self):
+        """The next TS guess index must never collide with an index that clustering already assigned."""
+        spc = ARCSpecies(label='TS_next_index', is_ts=True)
+        self.assertEqual(spc.get_next_tsg_index(), 0)
+        spc.ts_guesses = [TSGuess(index=0, method='gcn', success=False),
+                          TSGuess(index=2, method='kinbot', success=False),
+                          TSGuess(index=4, method='autotst', success=False),
+                          ]
+        # len() would give 3, which after a clustering pass may still be free while 4 is taken.
+        self.assertEqual(spc.get_next_tsg_index(), 5)
+        spc.ts_guesses.append(TSGuess(method='heuristics', success=False))
+        self.assertEqual(spc.get_next_tsg_index(), 5)
+
     def test_cluster_tsgs_with_coordinate_less_guesses(self):
         """Clustering must tolerate coordinate-less TS guesses (e.g. failed kinbot/queue guesses
         whose job produced no parseable geometry). Reaction_08 benchmark crash: two such guesses

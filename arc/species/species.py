@@ -1628,28 +1628,79 @@ class ARCSpecies(object):
 
     def cluster_tsgs(self):
         """
-        Cluster TSGuesses.
+        Cluster near-duplicate TSGuesses, keeping one representative per cluster.
+
+        The representative of each cluster is its lowest-``index`` member, and the guesses are
+        traversed in ascending ``index`` order, so both the cluster memberships and the surviving
+        representative are independent of the order in which the guesses were appended to
+        ``self.ts_guesses``. This matters because the representative's geometry is what gets
+        optimized downstream: with the previous first-seen rule, TS-search jobs completing in a
+        different queue order could hand a different geometry to the optimizer for the very same
+        input. ``index`` is used rather than energy because most guesses still have
+        ``energy is None`` at clustering time.
+
+        Guesses with no ``index`` (``None``) sort last and keep their relative order.
+        Surviving guesses are NOT renumbered: their indices are provenance, so the resulting
+        index sequence may have gaps.
+
+        This method is called repeatedly as queue TS-search jobs report back, so a survivor's
+        ``cluster`` list accumulates across passes instead of being reset to the survivor's own
+        index each time -- otherwise every pass would discard the indices absorbed by the previous
+        ones.
         """
         if not self.is_ts or not len(self.ts_guesses):
             return None
+        ordered_tsgs = sorted(self.ts_guesses,
+                              key=lambda tsg: (tsg.index is None, tsg.index if tsg.index is not None else 0))
         cluster_tsgs = list()
-        for tsg in self.ts_guesses:
+        for tsg in ordered_tsgs:
             for cluster_tsg in cluster_tsgs:
                 if cluster_tsg.almost_equal_tsgs(tsg):
                     logger.debug(f"Similar TSGuesses found: {tsg.index} is similar to {cluster_tsg.index}")
-                    cluster_tsg.cluster.append(tsg.index)
+                    for index in (tsg.cluster if tsg.cluster else [tsg.index]):
+                        if index not in cluster_tsg.cluster:
+                            cluster_tsg.cluster.append(index)
                     cluster_tsg.method_sources = TSGuess._normalize_method_sources(
                         (cluster_tsg.method_sources or []) + (tsg.method_sources or [])
                     )
                     break
             else:
-                tsg.cluster = [tsg.index]
+                if not tsg.cluster:
+                    tsg.cluster = [tsg.index]
+                elif tsg.index not in tsg.cluster:
+                    tsg.cluster.append(tsg.index)
                 cluster_tsgs.append(tsg)
-        n_before = len([tsg for tsg in self.ts_guesses])
+        n_before = len(self.ts_guesses)
         self.ts_guesses = cluster_tsgs
         if len(cluster_tsgs) < n_before:
+            absorbed = {tsg.index: sorted(index for index in (tsg.cluster or list())
+                                          if index is not None and index != tsg.index)
+                        for tsg in cluster_tsgs}
+            absorbed_str = ', '.join(f'{", ".join(str(index) for index in indices)} into {kept}'
+                                     for kept, indices in absorbed.items() if indices)
             logger.info(f'Clustered {n_before} TS guesses for {self.label} '
-                        f'into {len(cluster_tsgs)} unique conformers.')
+                        f'into {len(cluster_tsgs)} unique conformers'
+                        f'{f" (absorbed duplicates: {absorbed_str})" if absorbed_str else ""}. '
+                        f'Surviving guesses keep their original indices, so the numbering may have gaps.')
+
+    def get_next_tsg_index(self) -> int:
+        """
+        Return the next unused TS guess index.
+
+        Not simply ``len(self.ts_guesses)``: clustering removes guesses while preserving the
+        indices of the survivors, so after a clustering pass ``len()`` can collide with an index
+        that is already in use (e.g. clustering 5 guesses down to indices [0, 2, 4] would hand out
+        index 3 and then 4 again). Duplicate indices would make the lowest-index cluster
+        representative ambiguous, and hence order-dependent again. Indices absorbed into a cluster
+        count as used too, so that a reused index cannot make an absorbed guess ambiguous either.
+
+        Returns:
+            int: An index greater than every index currently in use.
+        """
+        indices = list()
+        for tsg in self.ts_guesses:
+            indices.extend(index for index in [tsg.index] + list(tsg.cluster or list()) if index is not None)
+        return max(indices) + 1 if indices else 0
 
     def process_completed_tsg_queue_jobs(self, path: str):
         """
@@ -1669,7 +1720,7 @@ class ARCSpecies(object):
                           )
             if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
                 if tsg.index is None:
-                    tsg.index = len(self.ts_guesses)
+                    tsg.index = self.get_next_tsg_index()
                 self.ts_guesses.append(tsg)
             else:
                 # The queue TS-search job produced no usable geometry (nothing parseable, or
@@ -1687,7 +1738,7 @@ class ARCSpecies(object):
             for tsg in tsgs:
                 if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
                     if tsg.index is None:
-                        tsg.index = len(self.ts_guesses)
+                        tsg.index = self.get_next_tsg_index()
                     self.ts_guesses.append(tsg)
         self.cluster_tsgs()
 
