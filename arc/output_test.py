@@ -843,6 +843,37 @@ class TestSpcToDict(unittest.TestCase):
         self.assertEqual(len(result['irc_logs']), 2)
         self.assertTrue(result['irc_converged'])
 
+    def test_ts_checks_reported(self):
+        """The TS validation verdicts are surfaced, including a failed IRC check."""
+        spc = self._make_spc_mock(label='TS0', is_ts=True)
+        spc.rxn_label = 'A <=> B'
+        spc.thermo = None
+        spc.ts_checks = {'E0': True, 'e_elect': True, 'IRC': False, 'freq': True, 'NMD': True, 'warnings': ''}
+        output_dict = {'TS0': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertEqual(result['ts_checks'],
+                         {'E0': True, 'e_elect': True, 'IRC': False, 'freq': True, 'NMD': True, 'warnings': ''})
+        self.assertIsNot(result['ts_checks'], spc.ts_checks)
+
+    def test_ts_checks_empty_or_missing(self):
+        """An empty or non-dict ts_checks attribute is reported as null and does not raise."""
+        spc = self._make_spc_mock(label='TS0', is_ts=True)
+        spc.rxn_label = 'A <=> B'
+        spc.thermo = None
+        spc.ts_checks = dict()
+        output_dict = {'TS0': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        self.assertIsNone(_spc_to_dict(spc, output_dict, '/abs')['ts_checks'])
+        del spc.ts_checks
+        self.assertIsNone(_spc_to_dict(spc, output_dict, '/abs')['ts_checks'])
+
+    def test_ts_checks_not_reported_for_non_ts(self):
+        """A non-TS species has no ts_checks key and does not raise even if the attribute exists."""
+        spc = self._make_spc_mock()
+        spc.ts_checks = {'IRC': False}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertNotIn('ts_checks', result)
+
     def test_ts_irc_not_requested(self):
         spc = self._make_spc_mock(label='TS1', is_ts=True)
         spc.rxn_label = 'A <=> B'
@@ -1034,6 +1065,39 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertEqual(doc['species'][0]['label'], 'CH4')
         self.assertEqual(doc['reactions'], [])
         self.assertEqual(doc['transition_states'], [])
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_ts_checks_written(self, mock_arc_git, mock_arkane_git, mock_pg):
+        """The TS validation verdicts round-trip into the written output.yml."""
+        from arc.common import read_yaml_file
+        spc = self._make_spc_mock()
+        ts = self._make_spc_mock(label='TS0')
+        ts.is_ts = True
+        ts.mol = None
+        ts.thermo = None
+        ts.rxn_label = 'CH4 <=> CH3 + H'
+        ts.chosen_ts_method = 'autotst'
+        ts.successful_methods = ['autotst']
+        ts.ts_guesses = []
+        ts.chosen_ts = None
+        ts.ts_checks = {'E0': True, 'e_elect': True, 'IRC': False, 'freq': True, 'NMD': None, 'warnings': ''}
+
+        write_output_yml(
+            project='test_ts_checks',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': spc, 'TS0': ts},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}},
+                         'TS0': {'convergence': True, 'paths': {}, 'job_types': {}}},
+        )
+
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertEqual(len(doc['transition_states']), 1)
+        self.assertFalse(doc['transition_states'][0]['ts_checks']['IRC'])
+        self.assertIsNone(doc['transition_states'][0]['ts_checks']['NMD'])
+        self.assertNotIn('ts_checks', doc['species'][0])
 
     @patch('arc.output._compute_point_groups', return_value={})
     @patch('arc.output._get_arkane_git_commit', return_value=None)

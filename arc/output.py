@@ -528,6 +528,8 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         else:
             d['irc_converged'] = entry.get('job_types', {}).get('irc', False)
         d['rxn_label'] = spc.rxn_label
+        ts_checks = getattr(spc, 'ts_checks', None)
+        d['ts_checks'] = dict(ts_checks) if isinstance(ts_checks, dict) and ts_checks else None
 
     # ── thermochemistry (non-TS converged species only) ──────────────────────
     if not spc.is_ts and converged and spc.thermo is not None and spc.thermo.H298 is not None:
