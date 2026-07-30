@@ -3174,10 +3174,38 @@ class Scheduler(object):
         if len(self.output[ts_label]['paths']['irc']) == 2:
             irc_species_labels = self.species_dict[ts_label].irc_label.split()
             if all(self.output[irc_label]['paths']['geo'] for irc_label in irc_species_labels):
+                rxn = self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None)
                 check_irc_species_and_rxn(xyz_1=self.output[irc_species_labels[0]]['paths']['geo'],
                                           xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
-                                          rxn=self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None),
+                                          rxn=rxn,
                                           )
+                self.report_irc_verdict(ts_label=ts_label, rxn=rxn)
+
+    @staticmethod
+    def report_irc_verdict(ts_label: str, rxn: ARCReaction | None):
+        """
+        Report the verdict of the IRC check of a TS species.
+
+        This method only reports, it does not act on the verdict.
+
+        Args:
+            ts_label (str): The label of the TS species the IRC check was performed for.
+            rxn (ARCReaction, optional): The reaction the TS species belongs to.
+        """
+        ts_species = getattr(rxn, 'ts_species', None)
+        ts_checks = getattr(ts_species, 'ts_checks', None)
+        verdict = ts_checks.get('IRC', None) if isinstance(ts_checks, dict) else None
+        rxn_label = getattr(rxn, 'label', None) or 'unknown reaction'
+        if verdict is True:
+            logger.info(f'The optimized IRC endpoints of TS {ts_label} correspond to the reactants and products '
+                        f'of reaction {rxn_label}.')
+        elif verdict is False:
+            logger.error(f'The optimized IRC endpoints of TS {ts_label} do NOT correspond to the reactants and '
+                         f'products of reaction {rxn_label}. This TS does not connect the requested wells, '
+                         f'therefore any rate coefficient computed from it does not describe this reaction.')
+        else:
+            logger.debug(f'The IRC check for TS {ts_label} of reaction {rxn_label} was not performed, '
+                         f'or its result could not be determined.')
 
     def check_scan_job(self,
                        label: str,
