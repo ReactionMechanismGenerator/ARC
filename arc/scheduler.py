@@ -2580,6 +2580,7 @@ class Scheduler(object):
                                 f'{aux}')
                     # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
                     plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
+            self.report_omitted_ts_guesses(label=label)
             logger.info('\n')
             if self.species_dict[label].chosen_ts is None:
                 raise SpeciesError(f'Could not pair most stable conformer {selected_i} of {label} to a respective '
@@ -2603,6 +2604,30 @@ class Scheduler(object):
             )
             if len(self.species_dict[label].ts_guesses) <= 1:
                 self.species_dict[label].ts_guesses_exhausted = True
+
+    def report_omitted_ts_guesses(self, label: str):
+        """
+        Report the TS guesses that were omitted from the guess list reported for a TS species,
+        and the reason each one was omitted.
+
+        Guesses that did not succeed or that have no energy are not reported individually,
+        which leaves unexplained gaps in the reported guess indices. This method only reports,
+        the guesses are omitted either way.
+
+        Args:
+            label (str): The TS species label.
+        """
+        unsuccessful = [tsg.index for tsg in self.species_dict[label].ts_guesses if not tsg.success]
+        no_energy = [tsg.index for tsg in self.species_dict[label].ts_guesses
+                     if tsg.success and tsg.energy is None]
+        reasons = list()
+        if unsuccessful:
+            reasons.append(f'{", ".join(str(index) for index in unsuccessful)} '
+                           f'(the guess method or its optimization did not succeed)')
+        if no_energy:
+            reasons.append(f'{", ".join(str(index) for index in no_energy)} (no energy was obtained)')
+        if reasons:
+            logger.info(f'TS guesses not listed above for {label}: {"; ".join(reasons)}.')
 
     def parse_composite_geo(self,
                             label: str,
