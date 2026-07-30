@@ -2618,6 +2618,29 @@ class Scheduler(object):
                     f'{xyz_to_str(self.species_dict[spc_label].final_xyz)}\n')
         self.output[spc_label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
 
+    def get_chosen_tsg(self, label: str) -> TSGuess | None:
+        """
+        Get the TSGuess object of a TS species that is currently being optimized.
+
+        The ``chosen_ts`` attribute of an ARCSpecies object stores a ``TSGuess.index``, which is an identity
+        assigned to a TS guess when it is appended to the species. It is not a position in a list, and in
+        particular it is not the ``TSGuess.conformer_index`` attribute, which is the index of the conformer
+        optimization job spawned for the guess (i.e., a position in the list of *successful* TS guesses).
+        If ``chosen_ts`` is ``None``, no selection was made among several guesses, which happens when only a
+        single TS guess was successful and was sent directly to a geometry optimization.
+
+        Args:
+            label (str): The TS species label.
+
+        Returns:
+            TSGuess | None: The chosen TSGuess object, or ``None`` if it could not be determined.
+        """
+        if self.species_dict[label].chosen_ts is not None:
+            return next((tsg for tsg in self.species_dict[label].ts_guesses
+                         if tsg.index == self.species_dict[label].chosen_ts), None)
+        successful_tsgs = [tsg for tsg in self.species_dict[label].ts_guesses if tsg.success]
+        return successful_tsgs[0] if len(successful_tsgs) == 1 else None
+
     def check_freq_job(self,
                        label: str,
                        job: JobAdapter,
@@ -2723,12 +2746,21 @@ class Scheduler(object):
                 return True
         else:
             # This is a TS. Assign the imaginary frequencies to the respective TSGuess.
-            tsg = None
-            for tsg in self.species_dict[label].ts_guesses:
-                if tsg.conformer_index == self.species_dict[label].chosen_ts:
-                    tsg.imaginary_freqs = neg_freqs
-                    break
-            if tsg is not None and not check_imaginary_frequencies(tsg.imaginary_freqs):
+            chosen_tsg = self.get_chosen_tsg(label=label)
+            if chosen_tsg is None:
+                logger.warning(f'Could not match the chosen TS guess index {self.species_dict[label].chosen_ts} of '
+                               f'{label} to any of its TS guesses (available TS guess indices: '
+                               f'{[tsg.index for tsg in self.species_dict[label].ts_guesses]}). '
+                               f'The imaginary frequencies {neg_freqs} could not be attributed to a TS guess, '
+                               f'the frequency check for {label} is therefore considered unverified. '
+                               f'Searching for a better TS conformer...')
+                if 'imaginary freqs could not be attributed' not in self.output[label]['warnings']:
+                    self.output[label]['warnings'] += f'Warning: the imaginary freqs could not be attributed to a ' \
+                                                      f'TS guess ({neg_freqs}); '
+                self.switch_ts(label=label)
+                return False
+            chosen_tsg.imaginary_freqs = neg_freqs
+            if not check_imaginary_frequencies(chosen_tsg.imaginary_freqs):
                 # Imaginary frequencies are problematic, try choosing a different TSGuess, and optimize it.
                 add_text = f' major imaginary frequency between {LOWEST_MAJOR_TS_FREQ} and {HIGHEST_MAJOR_TS_FREQ}.' \
                     if len(neg_freqs) == 1 and (neg_freqs[0] < LOWEST_MAJOR_TS_FREQ
