@@ -517,6 +517,11 @@ def find_equivalent_atoms(reaction: ARCReaction,
     This is a tentative function that should be replaced when atom mapping returns a list.
     It is meant to suggest additional atoms that can move instead of the ones selected by the atom map.
 
+    ``identify_equivalent_atoms_in_molecule`` only finds equivalence within a single molecule, so for
+    repeated identical reactants (e.g. OH + OH) the atom map may pick one copy's atom while the TS uses
+    the other's. The cross-copy equivalence groups from ``get_repeated_species_atom_equivalences`` are
+    therefore added as well, letting NMD try the alternative mapping.
+
     Args:
         reaction (ARCReaction): The reaction for which equivalent atoms are searched.
         reactant_only (bool): Whether to search for equivalent atoms in the reactants only.
@@ -533,10 +538,6 @@ def find_equivalent_atoms(reaction: ARCReaction,
                                                                 inc=sum([len(r.mol.atoms) for r in reactants[:i]]),
                                                                 atom_map=None,
                                                                 ))
-    # Cross-molecule equivalence for repeated identical reactants (e.g. OH + OH): the corresponding
-    # atoms across the copies are equivalent. identify_equivalent_atoms_in_molecule only finds
-    # equivalence within a single molecule, so the atom map may pick one copy's atom while the TS
-    # uses the other's; add these groups so NMD can try the alternative mapping.
     r_eq_atoms.extend(get_repeated_species_atom_equivalences(reaction, well=0))
     if not reactant_only:
         for i, product in enumerate(products):

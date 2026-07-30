@@ -220,9 +220,6 @@ def process_arc_project(thermo_adapter: str,
         statmech_adapter.compute_thermo(e0_only=True)
     for spc in converged_species:
         if spc.thermo is not None and not _thermo_lib_has_isomorph(spc, species_for_thermo_lib):
-            # Skip a species whose molecular identity (structure + multiplicity) already appears in
-            # the library. Arkane rejects duplicate thermo entries (e.g. identical reactants such as
-            # OH + OH), which would otherwise abort the entire thermo library for the project.
             species_for_thermo_lib.append(spc)
         plotter.augment_arkane_yml_file_with_mol_repr(spc, output_directory)
     if species_for_thermo_lib:
@@ -276,14 +273,21 @@ def compare_thermo(species_for_thermo_lib: list,
     """
     Compare the calculated thermo with RMG's estimations or libraries.
 
+    RMG/Arkane route their normal startup logging (e.g. ``INFO:root:Loading thermodynamics library ...``,
+    ``WARNING:root:...``) to stderr, so a non-empty stderr does NOT imply that the script failed. Such
+    benign log chatter is demoted to debug; an error is reported only if genuine (non-log) content
+    remains on stderr, or if the deliverable was not actually produced (``execute_command`` does not
+    surface the return code here). If there is nothing to compare, the function returns early to avoid
+    a pointless RMG database load and the spurious error report that would follow it.
+
     Args:
         species_for_thermo_lib (list): Species for which thermochemical properties were computed.
         output_directory (str): The path to the project's output folder.
     """
     if not species_for_thermo_lib:
-        return  # nothing to compare; avoid a pointless RMG database load and a spurious error report.
+        return
     species_to_compare = list()  # species for which thermo was both calculated and estimated.
-    species_thermo_path = os.path.join(output_directory, 'RMG_thermo.yml')
+    species_thermo_path =os.path.join(output_directory, 'RMG_thermo.yml')
     save_yaml_file(path=species_thermo_path,
                    content=[{'label': spc.label, 'adjlist': spc.mol.copy(deep=True).to_adjacency_list()} for spc in species_for_thermo_lib])
     env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
@@ -301,10 +305,6 @@ def compare_thermo(species_for_thermo_lib: list,
                 ]
     stdout, stderr = execute_command(command=commands, no_fail=True)
     species_list = read_yaml_file(path=species_thermo_path) or list()
-    # RMG/Arkane route their normal startup logging (e.g. "INFO:root:Loading thermodynamics library ...",
-    # "WARNING:root:...") to stderr, so a non-empty stderr does NOT imply the script failed. Demote that
-    # benign log chatter to debug, and only report an error if genuine (non-log) content remains on stderr,
-    # or the deliverable wasn't actually produced (execute_command doesn't surface the return code here).
     stderr_lines = stderr or list()
     benign_log_regex = re.compile(r'^(INFO|WARNING|DEBUG):root')
     error_lines = [line for line in stderr_lines if line.strip() and not benign_log_regex.match(line.strip())]

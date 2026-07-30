@@ -236,7 +236,6 @@ class TestNMD(unittest.TestCase):
                           reactants=['OH', 'OH'], products=['H2O', 'O'])
         groups = nmd.get_repeated_species_atom_equivalences(rxn, well=0)
         self.assertEqual(sorted(sorted(g) for g in groups), [[0, 2], [1, 3]])
-        # A reaction with no repeated species yields no cross-copy groups.
         self.assertEqual(nmd.get_repeated_species_atom_equivalences(self.rxn_1, well=0), [])
 
     def test_analyze_ts_normal_mode_displacement_simple_rxns(self):

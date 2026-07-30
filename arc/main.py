@@ -674,6 +674,10 @@ class ARC(object):
     def save_project_info_file(self):
         """
         Save a project info file.
+
+        A species deleted mid-run (e.g. an IRC endpoint species whose TS did not converge) can linger
+        in ``self.species`` after being removed from ``self.output``. Such species are skipped rather
+        than reported, so the summary does not raise a ``KeyError`` against ``self.output``.
         """
         self.execution_time = time_lapse(t0=self.t0)
         path = os.path.join(self.project_directory, f'{self.project}.info')
@@ -709,8 +713,6 @@ class ARC(object):
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.species:
             if species.label not in self.output:
-                # A species deleted mid-run (e.g., an IRC endpoint species whose TS did not converge)
-                # can linger in self.species after being removed from self.output; don't report it.
                 continue
             descriptor = 'TS' if species.is_ts else 'Species'
             failed = '' if self.output[species.label]['convergence'] else ' (Failed!)'

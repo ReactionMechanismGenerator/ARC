@@ -64,7 +64,6 @@ class TestProcessor(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(output_directory, 'rate_plots.pdf')))
         self.assertTrue(os.path.isfile(os.path.join(output_directory, 'RMG_kinetics.yml')))
 
-
     def test_compare_thermo_ignores_benign_rmg_stderr(self):
         """Benign RMG INFO/WARNING stderr chatter must not be logged as an error when thermo was computed."""
         benign_stderr = ['INFO:root:Loading thermodynamics library from primaryThermoLibrary.py ...',
@@ -81,11 +80,11 @@ class TestProcessor(unittest.TestCase):
         self.assertFalse(any('Error while running RMG thermo script' in msg for msg in cm.output))
 
     def test_compare_thermo_reports_real_error(self):
-        """A genuine traceback on stderr (or a missing deliverable) must still be logged as an error."""
+        """A genuine traceback on stderr (or a missing deliverable) must still be logged as an error.
+        The deliverable here is seeded but never populated with h298/s298, i.e. a genuine failure."""
         real_stderr = ['INFO:root:Loading thermodynamics library ...',
                        'Traceback (most recent call last):',
                        'RuntimeError: RMG database failed to load']
-        # deliverable was seeded but never populated with h298/s298 -> genuine failure
         seeded_species = [{'label': 'CH4', 'adjlist': 'x'}]
         with mock.patch.object(processor, 'execute_command', return_value=([], real_stderr)), \
                 mock.patch.object(processor, 'save_yaml_file'), \
@@ -97,10 +96,11 @@ class TestProcessor(unittest.TestCase):
         self.assertTrue(any('Error while running RMG thermo script' in msg for msg in cm.output))
 
     def test_compare_thermo_reports_missing_deliverable(self):
-        """Benign-only stderr but an unpopulated deliverable (no h298/s298) must still log an error."""
+        """Benign-only stderr but an unpopulated deliverable (no h298/s298) must still log an error.
+        The deliverable is pre-seeded and never populated, i.e. the script failed."""
         benign_stderr = ['INFO:root:Loading thermodynamics library ...',
                          'WARNING:root:Setting a default value for tolerance.']
-        seeded_species = [{'label': 'CH4', 'adjlist': 'x'}]  # pre-seeded, never populated -> script failed
+        seeded_species = [{'label': 'CH4', 'adjlist': 'x'}]
         with mock.patch.object(processor, 'execute_command', return_value=([], benign_stderr)), \
                 mock.patch.object(processor, 'save_yaml_file'), \
                 mock.patch.object(processor, 'read_yaml_file', return_value=seeded_species), \

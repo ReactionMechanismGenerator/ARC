@@ -203,8 +203,11 @@ class TestARC(unittest.TestCase):
         species whose TS did not converge) must be skipped in the project info file, not crash it
         with a KeyError. Exercises the summary writer directly with a bare ARC instance — the fix is
         pure bookkeeping, so there is no need to construct a full ARC (which would drag in the Arkane
-        BAC tables and molecule perception this method never touches)."""
-        arc0 = ARC.__new__(ARC)  # bypass the heavy __init__; set only what save_project_info_file reads
+        BAC tables and molecule perception this method never touches). ``ARC.__new__`` bypasses the
+        heavy ``__init__``; only the attributes ``save_project_info_file`` reads are set. ``IRC_TS0_1``
+        stands for the deleted IRC species that dangles in ``self.species`` while absent from
+        ``self.output``, and ``save_project_info_file`` must not raise a ``KeyError`` on it."""
+        arc0 = ARC.__new__(ARC)
         arc0.t0 = time.time()
         arc0.__version__ = 'test'
         arc0.project = 'arc_info_test'
@@ -216,11 +219,10 @@ class TestARC(unittest.TestCase):
         for attr in ('conformer_opt_level', 'conformer_sp_level', 'ts_guess_level',
                      'opt_level', 'freq_level', 'sp_level', 'scan_level'):
             setattr(arc0, attr, '')
-        # A deleted IRC species dangling in self.species while absent from self.output.
         arc0.species = [SimpleNamespace(label='tst_spc', is_ts=False, run_time=None, mol=None),
                         SimpleNamespace(label='IRC_TS0_1', is_ts=False, run_time=None, mol=None)]
-        arc0.output = {'tst_spc': {'convergence': True}}  # deliberately no 'IRC_TS0_1' entry
-        arc0.save_project_info_file()  # must not raise KeyError
+        arc0.output = {'tst_spc': {'convergence': True}}
+        arc0.save_project_info_file()
         with open(os.path.join(arc0.project_directory, 'arc_info_test.info'), 'r') as f:
             content = f.read()
         self.assertIn('tst_spc', content)

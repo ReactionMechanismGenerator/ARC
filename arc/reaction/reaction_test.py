@@ -603,15 +603,15 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn2.get_species_count(label=n2h3.label, well=1), 2)
 
     def test_get_reactants_xyz_repeated_species(self):
-        """Test that a reactant appearing twice (e.g. OH + OH) contributes all of its atoms."""
+        """Test that a reactant appearing twice (e.g. OH + OH) contributes all of its atoms.
+        ``remove_dup_species`` collapses ``r_species`` to a single OH, but the combined reactant
+        geometry must still contain both OH molecules (4 atoms), matching the atom map length."""
         oh = ARCSpecies(label='R1', smiles='[OH]',
                         xyz={'coords': ((0.0, 0.0, 0.109), (0.0, 0.0, -0.868)),
                              'isotopes': (16, 1), 'symbols': ('O', 'H')})
         h2o = ARCSpecies(label='P1', smiles='O')
         o = ARCSpecies(label='P2', smiles='[O]')
         rxn = ARCReaction(r_species=[oh, oh], p_species=[h2o, o])
-        # remove_dup_species collapses r_species to a single OH, but the combined reactant geometry
-        # must still contain both OH molecules (4 atoms), matching the atom map length.
         self.assertEqual(len(rxn.r_species), 1)
         self.assertEqual(rxn.get_species_count(species=oh, well=0), 2)
         reactants_xyz = rxn.get_reactants_xyz(return_format='dict')
@@ -622,7 +622,8 @@ class TestARCReaction(unittest.TestCase):
         """Test that the reverse of a reaction with a repeated species (OH + OH <=> H2O + O) stays
         atom-balanced. remove_dup_species dedups rxn.reactants to ['R1'], so building the reverse
         from it (as consumers like the AutoTST adapter do) must re-expand by get_species_count, else
-        the reverse becomes the imbalanced 'P1 + P2 <=> R1'."""
+        the reverse becomes the imbalanced 'P1 + P2 <=> R1'. Constructing the reverse reaction below
+        must therefore not raise a "not atom balanced" error."""
         oh = ARCSpecies(label='R1', smiles='[OH]', multiplicity=2)
         h2o = ARCSpecies(label='P1', smiles='O', multiplicity=1)
         o = ARCSpecies(label='P2', smiles='[O]', multiplicity=3)
@@ -631,7 +632,7 @@ class TestARCReaction(unittest.TestCase):
         rev_products = [lbl for lbl in fwd.reactants for _ in range(fwd.get_species_count(label=lbl, well=0))]
         self.assertEqual(rev_products, ['R1', 'R1'])
         rev = ARCReaction(r_species=fwd.p_species, p_species=fwd.r_species,
-                          reactants=rev_reactants, products=rev_products)  # must not raise "not atom balanced"
+                          reactants=rev_reactants, products=rev_products)
         self.assertEqual(rev.label, 'P1 + P2 <=> R1 + R1')
 
     def test_get_reactants_and_products(self):

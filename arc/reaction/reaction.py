@@ -874,6 +874,11 @@ class ARCReaction(object):
         """
         Get a combined string/dict representation of the cartesian coordinates of all reactant species.
 
+        Each species is expanded by the number of times it participates in the reactant well, so that a
+        species appearing more than once (e.g. ``'A + A <=> ...'``, where ``remove_dup_species`` collapses
+        ``r_species`` to a single entry) still contributes all of its atoms and the combined geometry
+        matches the atom map. ``get_species_count`` is 1 in the common case, leaving it unchanged.
+
         Args:
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
                                  Default: ``'str'``.
@@ -885,10 +890,6 @@ class ARCReaction(object):
             Orient the fragments according to the reactive site.
         """
         xyz_dict = dict()
-        # Expand each species by the number of times it participates in the reactant well so that a
-        # species appearing more than once (e.g. 'A + A <=> ...', where remove_dup_species collapses
-        # r_species to a single entry) still contributes all of its atoms and the combined geometry
-        # matches the atom map. get_species_count is 1 in the common case, leaving it unchanged.
         reactants = [spc for spc in self.r_species
                      for _ in range(self.get_species_count(species=spc, well=0))]
         if len(reactants) == 1:
@@ -913,6 +914,9 @@ class ARCReaction(object):
         Get a combined string/dict representation of the cartesian coordinates of all product species.
         The resulting coordinates are ordered as the reactants using an atom map.
 
+        Each species is expanded by its count in the product well (see ``get_reactants_xyz``) so that a
+        repeated product contributes all of its atoms and the combined geometry matches the atom map.
+
         Args:
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
                                  Default: ``'str'``.
@@ -923,8 +927,6 @@ class ARCReaction(object):
         Todo:
             Orient the fragments according to the reactive site.
         """
-        # Expand each species by its count in the product well (see get_reactants_xyz) so that a
-        # repeated product contributes all of its atoms and the combined geometry matches the atom map.
         products = [spc for spc in self.p_species
                     for _ in range(self.get_species_count(species=spc, well=1))]
         if len(products) == 1:
