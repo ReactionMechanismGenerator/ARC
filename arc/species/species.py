@@ -1648,8 +1648,14 @@ class ARCSpecies(object):
         n_before = len([tsg for tsg in self.ts_guesses])
         self.ts_guesses = cluster_tsgs
         if len(cluster_tsgs) < n_before:
+            absorbed = {tsg.index: sorted(index for index in (tsg.cluster or list()) if index != tsg.index)
+                        for tsg in cluster_tsgs}
+            absorbed_str = ', '.join(f'{", ".join(str(index) for index in indices)} into {kept}'
+                                     for kept, indices in absorbed.items() if indices)
             logger.info(f'Clustered {n_before} TS guesses for {self.label} '
-                        f'into {len(cluster_tsgs)} unique conformers.')
+                        f'into {len(cluster_tsgs)} unique conformers'
+                        f'{f" (absorbed duplicates: {absorbed_str})" if absorbed_str else ""}. '
+                        f'Surviving guesses keep their original indices, so the numbering may have gaps.')
 
     def process_completed_tsg_queue_jobs(self, path: str):
         """
