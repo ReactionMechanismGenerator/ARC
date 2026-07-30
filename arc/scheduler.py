@@ -2348,9 +2348,14 @@ class Scheduler(object):
             xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
             energy = parser.parse_e_elect(log_file_path=job.local_path_to_output_file)
             if self.species_dict[label].is_ts:
-                self.species_dict[label].ts_guesses[i].energy = energy
-                self.species_dict[label].ts_guesses[i].opt_xyz = xyz
-                self.species_dict[label].ts_guesses[i].index = i
+                tsg = next((guess for guess in self.species_dict[label].ts_guesses
+                            if guess.conformer_index == i), None)
+                if tsg is None:
+                    logger.warning(f'Could not find TSGuess for conformer {i} of {label} '
+                                   f'(expected a matching conformer_index); skipping.')
+                    return False
+                tsg.energy = energy
+                tsg.opt_xyz = xyz
                 if energy is not None:
                     logger.debug(f'Energy for TSGuess {i} of {label} is {energy:.2f}')
                 else:
