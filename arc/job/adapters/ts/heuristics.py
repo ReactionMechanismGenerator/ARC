@@ -831,26 +831,31 @@ def find_distant_neighbor(mol: 'Molecule',
 
 def are_h_abs_wells_reversed(rxn: ARCReaction,
                              product_dict: dict,
-                             ) -> tuple[bool, bool]:
+                             ) -> tuple[bool, bool, bool]:
     """
     Determine whether the reactants or the products in an H_Abstraction reaction are reversed
     relative to the RMG template: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2)
+    ``reactants_reversed`` is True when the atom labeled *2 belongs to the reaction's second
+    reactant. ``products_reversed`` is True when the product bearing the atom labeled *2 is the
+    reaction's first product. ``dict_products_reversed`` is True when the atom labeled *2 belongs
+    to the first molecule of ``product_dict['products']``. The atom indices in ``product_dict``
+    are zero-based global indices into the concatenated wells.
 
     Args:
         rxn (ARCReaction): The ARCReaction object.
         product_dict (dict): The product dictionary.
 
     Returns:
-        tuple[bool, bool]: reactants_reversed, products_reversed.
+        tuple[bool, bool, bool]: reactants_reversed, products_reversed, dict_products_reversed.
     """
     r_star_2 = product_dict['r_label_map']['*2']
     p_star_2 = product_dict['p_label_map']['*2']
-    r_species, p_species = rxn.get_reactants_and_products(return_copies=True)
-    reactants_reversed = len(r_species[0].mol.atoms) < r_star_2
-    products_reversed = len(product_dict['products'][0].atoms) >= p_star_2
+    r_species, p_species = rxn.get_reactants_and_products(return_copies=False)
+    reactants_reversed = r_star_2 >= len(r_species[0].mol.atoms)
+    dict_products_reversed = p_star_2 < len(product_dict['products'][0].atoms)
     same_order_between_rxn_prods_and_dict_prods = p_species[0].is_isomorphic(product_dict['products'][0])
-    products_reversed = products_reversed == same_order_between_rxn_prods_and_dict_prods
-    return reactants_reversed, products_reversed
+    products_reversed = dict_products_reversed == same_order_between_rxn_prods_and_dict_prods
+    return reactants_reversed, products_reversed, dict_products_reversed
 
 
 def h_abstraction(reaction: ARCReaction,
@@ -861,6 +866,10 @@ def h_abstraction(reaction: ARCReaction,
                   ) -> list[dict]:
     """
     Generate TS guesses for reactions of the RMG ``H_Abstraction`` family.
+    The reactant/product ordering relative to the RMG template is determined per ``product_dict``:
+    with symmetric reactants (e.g. OH + OH) different product dicts place ``*2`` (the transferring
+    hydrogen) in different reactants, so a single reaction-level value would mis-index ``h1`` into
+    the wrong reactant.
 
     Args:
         reaction: An ARCReaction instance.
@@ -876,11 +885,12 @@ def h_abstraction(reaction: ARCReaction,
     """
     xyz_guesses = list()
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
-    reactants_reversed, products_reversed = are_h_abs_wells_reversed(rxn=reaction, product_dict=reaction.product_dicts[0])
     for product_dict in reaction.product_dicts:
         # Identify R1H and R2H in the "R1H + R2 <=> R1 + R2H" or "R2 + R1H <=> R2H + R1" reaction
         # The expected RMG atom labels are: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2).
         # They appear in each product_dict under the 'r_label_map' key.
+        reactants_reversed, products_reversed, dict_prods_reversed = are_h_abs_wells_reversed(
+            rxn=reaction, product_dict=product_dict)
         reactants, products = reaction.get_reactants_and_products(return_copies=False)
         reactant = reactants[int(reactants_reversed)]  # Get R(*1)-H(*2).
         reactant_2 = reactants[int(not reactants_reversed)]  # Get R(*3)j.
@@ -890,10 +900,9 @@ def h_abstraction(reaction: ARCReaction,
             # Don't modify dihedrals for an attacking H (or other linear radical) at a linear angle, C ~ A -- H1 - H2 -- H.
             dihedral_increment = 360
         h1 = product_dict['r_label_map']['*2']
-        if reactants_reversed and h1 >= len(reactants[0].mol.atoms):
+        if reactants_reversed:
             h1 -= len(reactants[0].mol.atoms)
         h2 = product_dict['p_label_map']['*2']
-        dict_prods_reversed = h2 < len(product_dict['products'][0].atoms)
         dict_product = product_dict['products'][int(not dict_prods_reversed)]  # Get R(*3)-H(*2) from the product_dict.
         product_atom_map = map_two_species(spc_1=dict_product, spc_2=product)
         if h2 >= len(product_atom_map):
