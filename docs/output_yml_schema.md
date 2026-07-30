@@ -56,7 +56,7 @@ output.yml
 │   └── (all species fields, plus:)
 │       ├── chosen_ts_method?, successful_ts_methods?
 │       ├── neb_log?, irc_logs: [], irc_converged?
-│       └── rxn_label
+│       └── rxn_label, ts_checks?
 │
 └── reactions: []
     └── label, reactant_labels, product_labels, family?, multiplicity, ts_label
@@ -222,6 +222,7 @@ All paths are relative to the project directory.
 | `irc_logs` | `list[str]` | Run-relative paths to IRC logs |
 | `irc_converged` | `bool?` | Whether IRC converged (`null` if IRC was not requested) |
 | `rxn_label` | `str` | Reaction label this TS belongs to |
+| `ts_checks` | `dict?` | TS validation verdicts, `null` if none were performed. Keys: `E0`, `e_elect`, `IRC`, `freq`, `NMD` (each `true`/`false`/`null` for passed/failed/not determined), and `warnings` (`str`) |
 | `thermo` | `null` | Always `null` for transition states |
 
 ---
