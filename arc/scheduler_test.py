@@ -1323,6 +1323,35 @@ class TestSchedulerTSReporting(unittest.TestCase):
             self.assertEqual([record.levelname for record in cm.records], ['DEBUG'])
             self.assertIn('not performed', cm.records[0].getMessage())
 
+    def test_report_omitted_ts_guesses(self):
+        """The TS guesses that are omitted from the reported guess list are named along with the reason."""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.ts_guesses = list()
+        for index, (success, energy) in enumerate([(True, 0.0), (False, None), (True, None), (True, 5.0),
+                                                   (False, None)]):
+            tsg = TSGuess(index=index, method='autotst')
+            tsg.success, tsg.energy = success, energy
+            ts.ts_guesses.append(tsg)
+        scheduler = Scheduler.__new__(Scheduler)
+        scheduler.species_dict = {'TS0': ts}
+        with self.assertLogs('arc', level='INFO') as cm:
+            scheduler.report_omitted_ts_guesses(label='TS0')
+        self.assertEqual(len(cm.records), 1)
+        message = cm.records[0].getMessage()
+        self.assertIn('TS guesses not listed above for TS0: 1, 4 (the guess method or its optimization did not '
+                      'succeed); 2 (no energy was obtained).', message)
+
+    def test_report_omitted_ts_guesses_none_omitted(self):
+        """Nothing is reported when every TS guess is listed."""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        tsg = TSGuess(index=0, method='autotst')
+        tsg.success, tsg.energy = True, 0.0
+        ts.ts_guesses = [tsg]
+        scheduler = Scheduler.__new__(Scheduler)
+        scheduler.species_dict = {'TS0': ts}
+        with self.assertNoLogs('arc', level='INFO'):
+            scheduler.report_omitted_ts_guesses(label='TS0')
+
 
 class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
     """
