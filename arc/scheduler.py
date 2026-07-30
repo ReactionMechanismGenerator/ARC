@@ -912,8 +912,9 @@ class Scheduler(object):
                     )
                     if not has_pending_pipe_work:
                         self.check_all_done(label)
-                    if not self.running_jobs[label]:
+                    if label in self.running_jobs and not self.running_jobs[label]:
                         # Delete the label only if it represents an empty entry.
+                        # It might already be gone, e.g., an IRC species deleted when its TS was switched.
                         del self.running_jobs[label]
 
             # Poll active pipe runs (per-run failures are handled inside poll_pipes).
@@ -3190,7 +3191,8 @@ class Scheduler(object):
 
     def check_irc_species(self, label: str):
         """
-        Check that the optimized geometry of the two species created from a TS IRC runs makes sense
+        Check that the optimized geometry of the two species created from a TS IRC runs makes sense.
+        A TS for which the IRC check positively failed is rejected, and a different TS guess is sought.
 
         Args:
             label (str): The label of one of the optimized IRC-resulting species.
@@ -3204,21 +3206,29 @@ class Scheduler(object):
                                           xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
                                           rxn=rxn,
                                           )
-                self.report_irc_verdict(ts_label=ts_label, rxn=rxn)
+                self.process_irc_verdict(ts_label=ts_label, rxn=rxn)
 
     @staticmethod
-    def report_irc_verdict(ts_label: str, rxn: ARCReaction | None):
+    def report_irc_verdict(ts_label: str,
+                           rxn: ARCReaction | None,
+                           ts_checks: dict | None = None,
+                           ) -> bool | None:
         """
         Report the verdict of the IRC check of a TS species.
 
-        This method only reports, it does not act on the verdict.
+        This method only reports, it does not act on the verdict; ``process_irc_verdict()`` acts on it.
 
         Args:
             ts_label (str): The label of the TS species the IRC check was performed for.
             rxn (ARCReaction, optional): The reaction the TS species belongs to.
+            ts_checks (dict, optional): The TS checks dictionary to read the verdict from,
+                                        taken from ``rxn.ts_species`` if not given.
+
+        Returns:
+            Optional[bool]: The reported IRC verdict.
         """
-        ts_species = getattr(rxn, 'ts_species', None)
-        ts_checks = getattr(ts_species, 'ts_checks', None)
+        if ts_checks is None:
+            ts_checks = getattr(getattr(rxn, 'ts_species', None), 'ts_checks', None)
         verdict = ts_checks.get('IRC', None) if isinstance(ts_checks, dict) else None
         rxn_label = getattr(rxn, 'label', None) or 'unknown reaction'
         if verdict is True:
@@ -3227,10 +3237,47 @@ class Scheduler(object):
         elif verdict is False:
             logger.error(f'The optimized IRC endpoints of TS {ts_label} do NOT correspond to the reactants and '
                          f'products of reaction {rxn_label}. This TS does not connect the requested wells, '
-                         f'therefore any rate coefficient computed from it does not describe this reaction.')
+                         f'therefore any rate coefficient computed from it does not describe this reaction.\n'
+                         f'Status is:\n{ts_checks}\n'
+                         f'Searching for a better TS conformer...')
         else:
             logger.debug(f'The IRC check for TS {ts_label} of reaction {rxn_label} was not performed, '
                          f'or its result could not be determined.')
+        return verdict
+
+    def process_irc_verdict(self,
+                            ts_label: str,
+                            rxn: ARCReaction | None,
+                            ):
+        """
+        Act on the verdict of the IRC check of a TS species.
+
+        The verdict is three-valued: ``True`` means the optimized IRC endpoints correspond to the
+        requested wells, ``False`` means they positively do not, and ``None`` means the check was not
+        performed or its result could not be determined (e.g., IRC jobs were not requested).
+        Only a ``False`` verdict rejects the TS, in which case a different TS guess is sought,
+        mirroring the treatment of a failed normal mode displacement check.
+        Reporting the verdict is delegated to ``report_irc_verdict()``.
+
+        Args:
+            ts_label (str): The label of the TS species the IRC check was performed for.
+            rxn (ARCReaction, optional): The reaction the TS species belongs to.
+        """
+        ts_species = self.species_dict.get(ts_label, None)
+        ts_checks = getattr(ts_species, 'ts_checks', None)
+        verdict = self.report_irc_verdict(ts_label=ts_label,
+                                          rxn=rxn,
+                                          ts_checks=ts_checks if isinstance(ts_checks, dict) else dict(),
+                                          )
+        if verdict is not False:
+            return
+        self.switch_ts(ts_label)
+        if ts_species.ts_guesses_exhausted or ts_species.chosen_ts is None:
+            rxn_label = getattr(rxn, 'label', None) or 'unknown reaction'
+            logger.error(f'Could not find a TS conformer for {ts_label} of reaction {rxn_label} '
+                         f'that passes the IRC check. Marking as unconverged.')
+            self.output[ts_label]['convergence'] = False
+            ts_species.ts_checks['IRC'] = False
 
     def check_scan_job(self,
                        label: str,
@@ -3476,9 +3523,10 @@ class Scheduler(object):
         """
         all_converged = True
         if label in self.output and not self.output[label]['convergence']:
-            # A TS that failed the E0 check should stay unconverged even if all jobs succeeded.
+            # A TS that failed the E0 or the IRC check should stay unconverged even if all jobs succeeded.
             if self.species_dict[label].is_ts \
-                    and getattr(self.species_dict[label], 'ts_checks', {}).get('E0') is False \
+                    and any(getattr(self.species_dict[label], 'ts_checks', {}).get(check) is False
+                            for check in ['E0', 'IRC']) \
                     and (self.species_dict[label].ts_guesses_exhausted
                          or self.species_dict[label].chosen_ts is None):
                 all_converged = False
