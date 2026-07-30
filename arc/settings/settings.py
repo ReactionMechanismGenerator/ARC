@@ -293,6 +293,17 @@ UMA_LATEST_MODEL = 'uma-s-1p2'
 
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 
+# The base random seed for the stochastic TS-search guess generators, so that a run with
+# identical inputs reproduces the same set of TS guesses. ARC derives a per-repetition seed
+# from it (base seed + repetition index), so repetitions still explore different starting
+# points while the overall set stays reproducible. This matches the RDKit ``randomSeed=1``
+# convention already used in arc/species/conformers.py and arc/molecule/draw.py, and can be
+# overridden in ~/.arc/settings.py to sample a different (but equally reproducible) set.
+# Currently honored by GCN (passed into the ts_gcn subprocess, which seeds python-random,
+# NumPy and PyTorch). CREST 2.12 exposes no seed flag of any kind, so its GFN2-xTB
+# metadynamics cannot be seeded from ARC and remains non-reproducible.
+TS_SEARCH_RANDOM_SEED = 1
+
 # A scan with better resolution (lower number here) takes more time to compute,
 # but the automatically-derived rotor symmetry number is more likely to be correct.
 rotor_scan_resolution = 8.0  # degrees. Default: 8.0

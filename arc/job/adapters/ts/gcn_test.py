@@ -7,6 +7,7 @@ This module contains unit tests of the arc.job.adapters.ts.gcn module
 
 import importlib.util
 import os
+import random
 import shutil
 import subprocess
 import unittest
@@ -51,7 +52,7 @@ def fake_run_in_conda_env_factory(returncode: int = 0, write_ts_file: bool = Tru
     it writes the TS xyz file passed via --ts_xyz_path (direction-dependent content)
     and returns a CompletedProcess with the requested return code.
     """
-    def fake_run_in_conda_env(python_executable, script_path, *script_args):
+    def fake_run_in_conda_env(python_executable, script_path, *script_args, **kwargs):
         args = list(script_args)
         ts_xyz_path = args[args.index('--ts_xyz_path') + 1]
         if write_ts_file:
@@ -148,6 +149,11 @@ class TestGCNAdapter(unittest.TestCase):
         self.assertEqual(flags['--r_sdf_path'], self.reactant_path)
         self.assertEqual(flags['--p_sdf_path'], self.product_path)
         self.assertEqual(flags['--ts_xyz_path'], self.ts_fwd_path)
+        self.assertEqual(flags['--seed'], str(ts_gcn.TS_SEARCH_RANDOM_SEED))
+        # PYTHONHASHSEED only takes effect before the child interpreter starts,
+        # so it must cross the boundary as an environment variable, not as a flag.
+        self.assertEqual(mock_run.call_args.kwargs['extra_env'],
+                         {'PYTHONHASHSEED': str(ts_gcn.TS_SEARCH_RANDOM_SEED)})
         self.assertEqual(len(ts_species.ts_guesses), 1)
         tsg = ts_species.ts_guesses[0]
         self.assertTrue(tsg.success)
@@ -198,6 +204,41 @@ class TestGCNAdapter(unittest.TestCase):
         self.assertEqual(rxn.ts_species.ts_guesses[0].method_direction, 'F')
         self.assertEqual(rxn.ts_species.ts_guesses[1].method_direction, 'R')
         self.assertTrue(all(tsg.success for tsg in rxn.ts_species.ts_guesses))
+
+    def test_execute_incore_seeds_every_repetition(self):
+        """Each incore repetition must get a distinct, reproducible seed derived from the setting."""
+        rxn = self.get_reaction()
+        project_dir = os.path.join(self.output_dir, 'project')
+        adapter = GCNAdapter(job_type='tsg',
+                             reactions=[rxn],
+                             testing=True,
+                             project='test_GCNAdapter',
+                             project_directory=project_dir,
+                             dihedral_increment=3,
+                             )
+        with patch.object(ts_gcn, 'TS_GCN_PYTHON', '/fake/envs/ts_gcn/bin/python'), \
+                patch.object(ts_gcn, 'gcn_available', return_value=True), \
+                patch.object(ts_gcn, 'run_in_conda_env',
+                             side_effect=fake_run_in_conda_env_factory()) as mock_run:
+            adapter.execute_incore()
+        self.assertEqual(mock_run.call_count, 6)  # 3 repetitions x 2 directions
+        seeds = [dict(zip(call.args[2::2], call.args[3::2]))['--seed'] for call in mock_run.call_args_list]
+        base = ts_gcn.TS_SEARCH_RANDOM_SEED
+        self.assertEqual(seeds, [str(base), str(base), str(base + 1), str(base + 1), str(base + 2), str(base + 2)])
+        hash_seeds = [call.kwargs['extra_env']['PYTHONHASHSEED'] for call in mock_run.call_args_list]
+        self.assertEqual(hash_seeds, seeds)
+
+    def test_queue_input_file_carries_the_seed(self):
+        """The queue (batch) mode crosses the subprocess boundary via input.yml, which must carry the seed."""
+        rxn = self.get_reaction()
+        adapter = self.get_adapter(rxn)
+        with patch.object(ts_gcn, 'TS_GCN_PYTHON', '/fake/envs/ts_gcn/bin/python'), \
+                patch.object(ts_gcn, 'gcn_available', return_value=True), \
+                patch.object(GCNAdapter, 'legacy_queue_execution') as mock_queue:
+            adapter.execute_gcn(exe_type='queue')
+        mock_queue.assert_called_once()
+        input_dict = read_yaml_file(adapter.yml_in_path)
+        self.assertEqual(input_dict['seed'], ts_gcn.TS_SEARCH_RANDOM_SEED)
 
     def test_execute_incore_gcn_unavailable(self):
         """Test that execution degrades gracefully (no crash, no subprocess) when the ts_gcn env is missing."""
@@ -262,6 +303,29 @@ class TestGCNScript(unittest.TestCase):
         self.assertEqual(args.r_sdf_path, 'r.sdf')
         self.assertEqual(args.p_sdf_path, 'p.sdf')
         self.assertEqual(args.ts_xyz_path, 'ts.xyz')
+        self.assertEqual(args.seed, self.gcn_script.DEFAULT_RANDOM_SEED)
+        args = self.gcn_script.parse_command_line_arguments(['--yml_in_path', 'input.yml', '--seed', '7'])
+        self.assertEqual(args.seed, 7)
+
+    def test_set_random_seeds(self):
+        """set_random_seeds() must make the RNGs GCN draws from reproducible."""
+        self.gcn_script.set_random_seeds(11)
+        first = [random.random() for _ in range(5)]
+        self.gcn_script.set_random_seeds(11)
+        self.assertEqual([random.random() for _ in range(5)], first)
+        self.gcn_script.set_random_seeds(12)
+        self.assertNotEqual([random.random() for _ in range(5)], first)
+
+    def test_run_gcn_seeds_before_inference(self):
+        """run_gcn() must seed the RNGs before every inference call, not once per interpreter."""
+        seeded = list()
+        original_set_random_seeds = self.gcn_script.set_random_seeds
+        self.gcn_script.set_random_seeds = lambda seed: seeded.append(seed)
+        self.addCleanup(setattr, self.gcn_script, 'set_random_seeds', original_set_random_seeds)
+        # import_inference() raises without the ts_gcn env, i.e. after the seeding call.
+        with self.assertRaises(ImportError):
+            self.gcn_script.run_gcn(r_sdf_path='r.sdf', p_sdf_path='p.sdf', ts_xyz_path='ts.xyz', seed=5)
+        self.assertEqual(seeded, [5])
 
     def test_initialize_gcn_run(self):
         """Test the batch (queue) mode: input dict in, TS guess list YAML out."""
@@ -273,7 +337,10 @@ class TestGCNScript(unittest.TestCase):
                       'repetitions': 2,
                       }
 
-        def fake_run_gcn(r_sdf_path, p_sdf_path, ts_xyz_path):
+        seeds = list()
+
+        def fake_run_gcn(r_sdf_path, p_sdf_path, ts_xyz_path, seed=None):
+            seeds.append(seed)
             with open(ts_xyz_path, 'w') as f:
                 f.write(TS_XYZ_F)
             return True
@@ -291,6 +358,12 @@ class TestGCNScript(unittest.TestCase):
             self.assertTrue(tsg['success'])
             # The two xyz header lines must be stripped.
             self.assertEqual(tsg['initial_xyz'].split()[0], 'O')
+        # Batch mode seeds every inference, deriving base seed + repetition index,
+        # so the two repetitions differ from each other but repeat between runs.
+        self.assertEqual(seeds, [self.gcn_script.DEFAULT_RANDOM_SEED,
+                                 self.gcn_script.DEFAULT_RANDOM_SEED,
+                                 self.gcn_script.DEFAULT_RANDOM_SEED + 1,
+                                 self.gcn_script.DEFAULT_RANDOM_SEED + 1])
 
     def test_import_inference_raises_informatively(self):
         """Without the ts_gcn env, import_inference() must raise an informative ImportError."""
