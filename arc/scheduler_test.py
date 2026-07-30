@@ -20,7 +20,7 @@ from arc.job.factory import job_factory
 from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.scheduler import (Scheduler, SchedulerError, species_has_freq, species_has_geo, species_has_sp,
-                           species_has_sp_and_freq)
+                           species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
@@ -881,7 +881,82 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                    project_directory=self.project_directory, job_num=202)
         job_at_limit.ess_trsh_methods = ['trsh_attempt'] * 24
         self.assertNotIn('ESS troubleshooting attempts exhausted', self.sched1.output[label]['errors'])
-     
+
+    def test_tsg_method_matches_adapter(self):
+        """Test matching a TSGuess method string to the TS-search adapter that produced it."""
+        self.assertTrue(tsg_method_matches_adapter('xTB-GSM', 'xtb_gsm'))
+        self.assertTrue(tsg_method_matches_adapter('KinBot-UMA', 'kinbot'))
+        self.assertTrue(tsg_method_matches_adapter('orca_neb', 'orca_neb'))
+        self.assertTrue(tsg_method_matches_adapter('qst2', 'qst2'))
+        self.assertTrue(tsg_method_matches_adapter('Linear (w=0.50, 0)', 'linear'))
+        self.assertFalse(tsg_method_matches_adapter('GCN', 'qst2'))
+        self.assertFalse(tsg_method_matches_adapter(None, 'qst2'))
+        self.assertFalse(tsg_method_matches_adapter('GCN', None))
+
+    def test_record_tsg_job_error(self):
+        """A tsg job number is an adapter number, not a position in ts_guesses.
+
+        Recording the error must never index ts_guesses by the job number: it must annotate the
+        guesses that adapter produced, and must not raise when it produced none.
+        """
+        ts_spc = ARCSpecies(label='TS_tsg_err', is_ts=True, multiplicity=1, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=0, method='GCN', success=False),
+                             TSGuess(index=1, method='xTB-GSM', success=False),
+                             ]
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_tsg_err')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_tsg_err', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        job = MagicMock()
+        job.job_name, job.job_adapter = 'tsg4', 'qst2'
+        sched.record_tsg_job_error(label='TS_tsg_err', job=job, output_error='Could not troubleshoot; ')
+        self.assertEqual([tsg.errors for tsg in ts_spc.ts_guesses], ['', ''])
+
+        job.job_name, job.job_adapter = 'tsg2', 'xtb_gsm'
+        sched.record_tsg_job_error(label='TS_tsg_err', job=job, output_error='Could not troubleshoot; ')
+        self.assertEqual(ts_spc.ts_guesses[0].errors, '')
+        self.assertIn('Could not troubleshoot', ts_spc.ts_guesses[1].errors)
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_run_ts_conformer_jobs_single_success_provenance(self, mock_run_opt):
+        """The provenance of a lone successful guess must describe that guess, not ts_guesses[0]."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_spc = ARCSpecies(label='TS_single', is_ts=True, multiplicity=1, charge=0, compute_thermo=False)
+        failed = TSGuess(index=0, method='qst2', success=False)
+        good = TSGuess(index=1, method='xTB-GSM', success=True, xyz=ts_xyz)
+        ts_spc.ts_guesses = [failed, good]
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_tsg_single')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        good.log_path = os.path.join(project_directory, 'stringfile.xyz0000')
+        sched = Scheduler(project='project_test_tsg_single', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.job_dict['TS_single'] = dict()
+        sched.run_ts_conformer_jobs(label='TS_single')
+        self.assertEqual(ts_spc.chosen_ts_method, 'xtb-gsm')
+        self.assertEqual(ts_spc.successful_methods, ['xtb-gsm'])
+        self.assertEqual(good.energy, 0.0)
+        self.assertIsNone(failed.energy)
+        self.assertEqual(sched.output['TS_single']['paths']['neb'], good.log_path)
+
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
         """Test that switch_ts resets job_types, convergence, cleans up IRC species, and clears pending pipes."""

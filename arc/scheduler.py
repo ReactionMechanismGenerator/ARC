@@ -81,6 +81,31 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
 WRONG_FREQ_MESSAGE = 'wrong number of negative frequencies; '
 
 
+def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> bool:
+    """
+    Determine whether a ``TSGuess.method`` was produced by a given TS-search adapter.
+
+    The two spellings differ (e.g. the ``xtb_gsm`` adapter labels its guesses ``'xTB-GSM'``,
+    ``kinbot`` labels them ``'KinBot'`` or ``'KinBot-UMA'``), so both strings are lower-cased
+    and stripped of ``'-'`` and ``'_'`` before testing for containment.
+
+    Args:
+        method (str, optional): The ``TSGuess.method`` string.
+        job_adapter (str, optional): The TS-search job adapter name.
+
+    Returns:
+        bool: Whether the guess was produced by this adapter.
+    """
+    if not method or not job_adapter:
+        return False
+
+    def normalize(text: str) -> str:
+        """Lower-case ``text`` and drop the separators that differ between the two spellings."""
+        return text.lower().replace('-', '').replace('_', '')
+
+    return normalize(job_adapter) in normalize(method)
+
+
 class Scheduler(object):
     """
     ARC's Scheduler class. Creates jobs, submits, checks status, troubleshoots.
@@ -1326,6 +1351,12 @@ class Scheduler(object):
         """
         Spawn opt jobs at the ts_guesses level of theory for the TS guesses.
 
+        When only a single guess succeeded, its geometry is optimized directly. The reported
+        provenance (relative energy, ``chosen_ts_method``, ``successful_methods`` and the guess
+        log path) is taken from that same guess rather than from ``ts_guesses[0]``: several TS
+        adapters append ``success=False`` guesses, so the first entry of ``ts_guesses`` is not
+        necessarily the guess whose coordinates are being optimized.
+
         Args:
             label (str): The TS species label.
         """
@@ -1370,17 +1401,18 @@ class Scheduler(object):
                     rxn = ' of reaction ' + self.species_dict[label].rxn_label
                 logger.info(f'Only one TS guess is available for species {label}{rxn}, '
                             f'using it for geometry optimization')
-                self.species_dict[label].ts_guesses[0].energy = 0.0  # Set relative energy to 0, no other guesses.
-                self.species_dict[label].initial_xyz = successful_tsgs[0].initial_xyz
+                chosen_tsg = successful_tsgs[0]
+                chosen_tsg.energy = 0.0
+                self.species_dict[label].initial_xyz = chosen_tsg.initial_xyz
                 self.species_dict[label].mol_from_xyz(get_cheap=False)
                 if not self.composite_method:
                     self.run_opt_job(label, fine=self.fine_only)
                 else:
                     self.run_composite_job(label)
-                self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
-                self.species_dict[label].successful_methods = [self.species_dict[label].ts_guesses[0].method]
-                if getattr(self.species_dict[label].ts_guesses[0], 'log_path', None):
-                    self.output[label]['paths']['neb'] = self.species_dict[label].ts_guesses[0].log_path
+                self.species_dict[label].chosen_ts_method = chosen_tsg.method
+                self.species_dict[label].successful_methods = [chosen_tsg.method]
+                if getattr(chosen_tsg, 'log_path', None):
+                    self.output[label]['paths']['neb'] = chosen_tsg.log_path
 
     def run_opt_job(self, label: str, fine: bool = False):
         """
@@ -3718,6 +3750,35 @@ class Scheduler(object):
         else:
             job.troubleshoot_server()
 
+    def record_tsg_job_error(self,
+                             label: str,
+                             job: JobAdapter,
+                             output_error: str,
+                             ):
+        """
+        Record an unrecoverable TS-search job error on the TS guesses that job produced.
+
+        A ``tsg<i>`` job name numbers the TS-search *adapter* that was dispatched for the
+        reaction, it is not a position in ``species.ts_guesses``: one adapter may contribute
+        several guesses or none at all, and guesses from other adapters are interleaved.
+        Using the job number as a list index therefore either annotates an unrelated guess or
+        raises an ``IndexError`` when the adapter number exceeds the number of guesses
+        generated so far. Match on the adapter that produced each guess instead.
+
+        Args:
+            label (str): The TS species label.
+            job (JobAdapter): The failed TS-search job.
+            output_error (str): The error string to record.
+        """
+        matched = False
+        for tsg in self.species_dict[label].ts_guesses:
+            if tsg_method_matches_adapter(getattr(tsg, 'method', None), job.job_adapter):
+                tsg.errors += f'; {output_error}'
+                matched = True
+        if not matched:
+            logger.debug(f'TS-search job {job.job_name} of {label} ({job.job_adapter}) generated no TS guess '
+                         f'to record the error "{output_error}" on.')
+
     def troubleshoot_ess(self,
                          label: str,
                          job: JobAdapter,
@@ -3808,7 +3869,7 @@ class Scheduler(object):
         for output_error in output_errors:
             self.output[label]['errors'] += output_error
             if 'Could not troubleshoot' in output_error and 'tsg' in job.job_name:
-                self.species_dict[label].ts_guesses[get_i_from_job_name(job.job_name)].errors += f'; {output_error}'
+                self.record_tsg_job_error(label=label, job=job, output_error=output_error)
         if remove_checkfile:
             self.species_dict[label].checkfile = None
         job.ess_trsh_methods = ess_trsh_methods
