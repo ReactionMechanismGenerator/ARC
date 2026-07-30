@@ -1975,6 +1975,15 @@ class ARCSpecies(object):
         """
         Process the user's input and add either to the .conformers attribute or to .ts_guesses.
 
+        For a TS, each user guess is given an explicit ``TSGuess.index``, continuing past the
+        highest index already in use. ``TSGuess.index`` is the guess's stable identity: it is what
+        ``cluster_tsgs()`` orders by, what ``ARCSpecies.chosen_ts`` / ``chosen_ts_list`` refer to,
+        and what keys the TS guess report. Leaving it ``None`` (the ``TSGuess`` default) makes a
+        user guess unselectable as the chosen TS. It is taken from ``get_next_tsg_index()`` rather
+        than from ``len(self.ts_guesses)`` because clustering removes guesses while preserving the
+        indices of the survivors (and of the guesses they absorbed), so the list length can collide
+        with an index already in use.
+
         Args:
             xyz_list (list, str, dict): Entries are either string-format, dict-format coordinates or file paths.
                                         (If there's only one entry, it could be given directly, not in a list)
@@ -2026,15 +2035,14 @@ class ARCSpecies(object):
                 self.conformers.extend(xyzs)
                 self.conformer_energies.extend(energies)
             else:
-                tsg_index = len(self.ts_guesses)
+                tsg_index = self.get_next_tsg_index()
                 for xyz, energy in zip(xyzs, energies):
-                    self.ts_guesses.append(TSGuess(method=f'user guess {tsg_index}',
+                    self.ts_guesses.append(TSGuess(index=tsg_index,
+                                                   method=f'user guess {tsg_index}',
                                                    xyz=remove_dummies(xyz),
                                                    energy=energy,
                                                    success=True,
                                                    ))
-                    # user guesses are always successful in generating a *guess*:
-                    self.ts_guesses[tsg_index].success = True
                     tsg_index += 1
             if self.multiplicity is not None and self.charge is not None:
                 for xyz in xyzs:

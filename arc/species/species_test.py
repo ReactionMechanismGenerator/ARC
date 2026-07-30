@@ -2771,6 +2771,40 @@ H       1.11582953    0.94384729   -0.10134685"""
         spc.cluster_tsgs()  # must not raise
         self.assertEqual(len(spc.ts_guesses), 3)
 
+    def test_process_xyz_assigns_ts_guess_indices(self):
+        """User TS guesses must get an explicit TSGuess.index, continuing past the indices in use.
+
+        A surviving guess keeps its index when clustering shrinks the list, so the next index must
+        come from the indices in use, not from the list length.
+        """
+        xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_2 = """N       9.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        spc = ARCSpecies(label='TS_user_guesses', is_ts=True, xyz=[xyz_1, xyz_2])
+        self.assertEqual([tsg.index for tsg in spc.ts_guesses], [0, 1])
+        self.assertEqual([tsg.method for tsg in spc.ts_guesses], ['user guess 0', 'user guess 1'])
+        self.assertTrue(all(tsg.success for tsg in spc.ts_guesses))
+        spc_2 = ARCSpecies(label='TS_gapped', is_ts=True)
+        spc_2.ts_guesses = [TSGuess(index=0, method='gcn', success=True, xyz=xyz_1),
+                            TSGuess(index=4, method='qst2', success=True, xyz=xyz_2),
+                            ]
+        spc_2.process_xyz([xyz_1])
+        self.assertEqual(spc_2.ts_guesses[-1].index, 5)
+        self.assertEqual(spc_2.ts_guesses[-1].method, 'user guess 5')
+
     def test_process_completed_tsg_queue_jobs_no_geometry(self):
         """A queue TS-guess job whose .log has no parseable geometry must not be added as a
         clusterable 'successful' guess, must be marked failed, and must not crash the subsequent
