@@ -274,6 +274,23 @@ class TestTSChecks(unittest.TestCase):
         self.assertTrue(ts.ts_passed_checks(spc, exemptions=['NMD', 'warnings']))
         spc.ts_checks['e_elect'] = False
 
+    def test_ts_passed_checks_irc(self):
+        """Test that ts_passed_checks() treats the three-valued IRC check correctly."""
+        spc = ARCSpecies(label='TS', is_ts=True)
+        spc.populate_ts_checks()
+        for key in ['E0', 'e_elect', 'freq', 'NMD']:
+            spc.ts_checks[key] = True
+
+        spc.ts_checks['IRC'] = True
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
+        spc.ts_checks['IRC'] = None
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
+        spc.ts_checks['IRC'] = False
+        self.assertFalse(ts.ts_passed_checks(spc, exemptions=['warnings']))
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings', 'IRC']))
+
     def test_check_rxn_e_elect(self):
         """Test the check_rxn_e_elect() function."""
         rxn1 = ARCReaction(r_species=[ARCSpecies(label='s1', smiles='C')], p_species=[ARCSpecies(label='s2', smiles='C')])

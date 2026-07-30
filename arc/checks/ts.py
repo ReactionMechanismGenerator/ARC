@@ -52,10 +52,8 @@ def check_ts(reaction: ARCReaction,
     """
     Check the TS in terms of energy, normal mode displacement, and IRC.
     Populates the ``TS.ts_checks`` dictionary.
-    Note that the 'freq' check is done in Scheduler.check_negative_freq() and not here.
-
-    Todo:
-        check IRC
+    Note that the 'freq' check is done in Scheduler.check_negative_freq() and not here,
+    and that the 'IRC' check is done in check_irc_species_and_rxn() and not here.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
@@ -97,7 +95,7 @@ def check_ts(reaction: ARCReaction,
             logger.warning(f'Skipping failed normal mode displacement check for TS {reaction.ts_species.label}')
             reaction.ts_species.ts_checks['NMD'] = True
 
-    if 'rotors' in checks or (ts_passed_checks(species=reaction.ts_species, exemptions=['E0', 'warnings', 'IRC'])
+    if 'rotors' in checks or (ts_passed_checks(species=reaction.ts_species, exemptions=['E0', 'warnings'])
                               and job is not None):
         invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction, job,
                                                               rxn_zone_atom_indices=rxn_zone_atom_indices)
@@ -110,6 +108,10 @@ def ts_passed_checks(species: ARCSpecies,
     """
     Check whether the TS species passes all checks other than ones specified in ``exemptions``.
 
+    The 'IRC' check is three-valued: ``True`` means the IRC endpoints correspond to the requested wells,
+    ``False`` means they positively do not, and ``None`` means the check was not performed
+    (e.g., IRC jobs were not requested). Only a ``False`` IRC verdict is considered a failure here.
+
     Args:
         species (ARCSpecies): The TS species.
         exemptions (list[str], optional): Keys of the TS.ts_checks dict to pass.
@@ -120,7 +122,9 @@ def ts_passed_checks(species: ARCSpecies,
     """
     exemptions = exemptions or list()
     for check, value in species.ts_checks.items():
-        if check not in exemptions and not value and not (check == 'e_elect' and species.ts_checks['E0']):
+        if check in exemptions or (check == 'IRC' and value is None):
+            continue
+        if not value and not (check == 'e_elect' and species.ts_checks['E0']):
             if verbose:
                 logger.warning(f'TS {species.label} did not pass the all checks, status is:\n{species.ts_checks}')
             return False
