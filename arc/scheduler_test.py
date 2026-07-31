@@ -2267,5 +2267,153 @@ class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
             self.build_scheduler(rxn, r + p + [collider], 'adaptive_collision')
 
 
+class TestTroubleshootEssJobTypeGuard(unittest.TestCase):
+    """
+    Test that only a geometry-determining job type may reject a TS guess when ESS troubleshooting
+    is exhausted, and that an exhausted rotor scan invalidates just that rotor.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.maxDiff = None
+        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
+        cls.job_types = {'conf_opt': False, 'opt': True, 'fine': False, 'freq': True, 'sp': True,
+                         'rotors': True, 'irc': False}
+        cls.ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+
+    def build_sched(self, name: str):
+        """Build a minimal Scheduler holding a single TS with two guesses and one rotor."""
+        ts_spc = ARCSpecies(label='TS_test', is_ts=True, xyz=self.ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.ts_guesses = [
+            TSGuess(index=0, method='heuristics', success=True, energy=100.0, xyz=self.ts_xyz,
+                    execution_time='0:00:01'),
+            TSGuess(index=1, method='heuristics', success=True, energy=110.0, xyz=self.ts_xyz,
+                    execution_time='0:00:01'),
+        ]
+        for tsg in ts_spc.ts_guesses:
+            tsg.opt_xyz = self.ts_xyz
+            tsg.imaginary_freqs = [-500.0]
+        ts_spc.chosen_ts = 0
+        ts_spc.chosen_ts_list = [0]
+        ts_spc.ts_guesses_exhausted = False
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'top': [2, 3], 'scan': [3, 1, 2, 4], 'torsion': [2, 0, 1, 3],
+                                  'number_of_running_jobs': 0, 'success': None, 'invalidation_reason': '',
+                                  'times_dihedral_set': 0, 'trsh_counter': 0, 'trsh_methods': list(),
+                                  'scan_path': '', 'directed_scan_type': '', 'directed_scan': dict(),
+                                  'dimensions': 1, 'original_dihedrals': list(), 'cont_indices': list()}}
+        project_directory = os.path.join(ARC_PATH, 'Projects', f'arc_test_trsh_guard_{name}')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=f'test_trsh_guard_{name}', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types,
+                          )
+        sched.trsh_ess_jobs, sched.trsh_rotors = True, True
+        return sched
+
+    def make_failed_job(self, sched, job_type: str, job_num: int, rotor_index=None):
+        """Build a job that has failed at the ESS level."""
+        kwargs = dict()
+        if rotor_index is not None:
+            kwargs['rotor_index'] = rotor_index
+            kwargs['torsions'] = [sched.species_dict['TS_test'].rotors_dict[rotor_index]['torsion']]
+        job = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
+                          species=[sched.species_dict['TS_test']], xyz=self.ts_xyz, job_type=job_type,
+                          level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
+                          project_directory=sched.project_directory, job_num=job_num, **kwargs)
+        job.job_status = ['done', {'status': 'errored', 'keywords': ['MaxOptCycles'],
+                                   'error': 'Maximum optimization cycles reached', 'line': 'Number of steps exceeded'}]
+        return job
+
+    @patch('arc.scheduler.trsh_ess_job')
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_exhausted_scan_invalidates_rotor_and_keeps_ts(self, mock_switch_ts, mock_trsh):
+        """An unconvergeable rotor scan must invalidate only that rotor, never discard the TS."""
+        mock_trsh.return_value = (list(), list(), False, Level(repr='wb97xd/def2tzvp'),
+                                  'gaussian', 'scan', False, '', 14, '', 8, True)
+        sched = self.build_sched('scan')
+        job = self.make_failed_job(sched, 'scan', 300, rotor_index=0)
+        sched.troubleshoot_ess(label='TS_test', job=job, level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        mock_switch_ts.assert_not_called()
+        rotor = sched.species_dict['TS_test'].rotors_dict[0]
+        self.assertIs(rotor['success'], False)
+        self.assertIn('exhausted', rotor['invalidation_reason'])
+
+    @patch('arc.scheduler.trsh_ess_job')
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_exhausted_directed_scan_invalidates_rotor(self, mock_switch_ts, mock_trsh):
+        """A directed scan is gated by the same 'success is not None' check, so it must also be invalidated."""
+        mock_trsh.return_value = (list(), list(), False, Level(repr='wb97xd/def2tzvp'),
+                                  'gaussian', 'directed_scan', False, '', 14, '', 8, True)
+        sched = self.build_sched('directed')
+        job = self.make_failed_job(sched, 'directed_scan', 301, rotor_index=0)
+        sched.troubleshoot_ess(label='TS_test', job=job, level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        mock_switch_ts.assert_not_called()
+        self.assertIs(sched.species_dict['TS_test'].rotors_dict[0]['success'], False)
+
+    @patch('arc.scheduler.trsh_ess_job')
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_exhausted_opt_still_switches_ts(self, mock_switch_ts, mock_trsh):
+        """A failed geometry-determining job must still reject the TS guess, as before."""
+        mock_trsh.return_value = (list(), list(), False, Level(repr='wb97xd/def2tzvp'),
+                                  'gaussian', 'opt', False, '', 14, '', 8, True)
+        sched = self.build_sched('opt')
+        job = self.make_failed_job(sched, 'opt', 302)
+        sched.troubleshoot_ess(label='TS_test', job=job, level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        mock_switch_ts.assert_called_once_with(label='TS_test')
+
+    @patch('arc.scheduler.trsh_ess_job')
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_exhausted_sp_does_not_switch_ts(self, mock_switch_ts, mock_trsh):
+        """A refinement job that cannot invalidate a geometry must not discard the TS."""
+        mock_trsh.return_value = (list(), list(), False, Level(repr='wb97xd/def2tzvp'),
+                                  'gaussian', 'sp', False, '', 14, '', 8, True)
+        sched = self.build_sched('sp')
+        job = self.make_failed_job(sched, 'sp', 303)
+        sched.troubleshoot_ess(label='TS_test', job=job, level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        mock_switch_ts.assert_not_called()
+
+    @patch('arc.scheduler.trsh_ess_job')
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_exhausted_scan_on_a_rotor_without_an_invalidation_reason(self, mock_switch_ts, mock_trsh):
+        """
+        A rotor restored from older restart data can lack the 'invalidation_reason' key.
+
+        ``ARCSpecies.as_dict()`` serializes a rotor by iterating the keys it happens to have, so a
+        key absent when the project was written stays absent after the round trip. Appending to it
+        must therefore not assume it exists.
+        """
+        mock_trsh.return_value = (list(), list(), False, Level(repr='wb97xd/def2tzvp'),
+                                  'gaussian', 'scan', False, '', 14, '', 8, True)
+        sched = self.build_sched('legacy_rotor')
+        del sched.species_dict['TS_test'].rotors_dict[0]['invalidation_reason']
+        job = self.make_failed_job(sched, 'scan', 305, rotor_index=0)
+        sched.troubleshoot_ess(label='TS_test', job=job, level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        mock_switch_ts.assert_not_called()
+        rotor = sched.species_dict['TS_test'].rotors_dict[0]
+        self.assertIs(rotor['success'], False)
+        self.assertIn('exhausted', rotor['invalidation_reason'])
+
+    @patch('arc.scheduler.trsh_ess_job')
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_scan_rotor_not_left_pending(self, mock_switch_ts, mock_trsh):
+        """Leaving 'success' as None would make run_scan_jobs() re-spawn the exhausted scan."""
+        mock_trsh.return_value = (list(), list(), False, Level(repr='wb97xd/def2tzvp'),
+                                  'gaussian', 'scan', False, '', 14, '', 8, True)
+        sched = self.build_sched('pending')
+        job = self.make_failed_job(sched, 'scan', 304, rotor_index=0)
+        sched.troubleshoot_ess(label='TS_test', job=job, level_of_theory=Level(repr='wb97xd/def2tzvp'))
+        self.assertIsNotNone(sched.species_dict['TS_test'].rotors_dict[0]['success'])
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
