@@ -2838,7 +2838,7 @@ class Scheduler(object):
                                                project_directory=self.project_directory,
                                                method='draw_3d')
         elif self.trsh_ess_jobs:
-            self.troubleshoot_opt_jobs(label=label)
+            self.troubleshoot_opt_jobs(label=label, job=job)
         return success
 
     def post_opt_geo_work(self, 
@@ -3893,7 +3893,46 @@ class Scheduler(object):
                                      )
         return trsh_success, actual_actions
 
-    def troubleshoot_opt_jobs(self, label):
+    def get_latest_opt_job(self, label: str) -> JobAdapter | None:
+        """
+        Get the most recently spawned ``opt`` job of a species.
+
+        Recency is taken from the insertion order of ``job_dict[label]['opt']``, not from the job
+        number: job numbers are only monotonic within a single execution, so a project that was
+        restarted holds jobs from several numbering eras at once and the highest number can belong
+        to an old job.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            JobAdapter | None: The most recently spawned ``opt`` job, or ``None`` if there is none.
+        """
+        opt_jobs = list(self.job_dict.get(label, dict()).get('opt', dict()).values())
+        return opt_jobs[-1] if opt_jobs else None
+
+    def get_preceding_opt_job(self, label: str, job: JobAdapter) -> JobAdapter | None:
+        """
+        Get the ``opt`` job of a species that was spawned immediately before ``job``.
+
+        The match is done on the job's identity rather than on its name or number, so that the
+        result is the actual predecessor of the given job.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The job to find the predecessor of.
+
+        Returns:
+            JobAdapter | None: The preceding ``opt`` job, or ``None`` if ``job`` is the first one
+                                  or is not registered for this species.
+        """
+        opt_jobs = list(self.job_dict.get(label, dict()).get('opt', dict()).values())
+        for i, candidate in enumerate(opt_jobs):
+            if candidate is job:
+                return opt_jobs[i - 1] if i else None
+        return None
+
+    def troubleshoot_opt_jobs(self, label, job=None):
         """
         We're troubleshooting for opt jobs.
         First check for server status and troubleshoot if needed. Then check for ESS status and troubleshoot
@@ -3901,20 +3940,20 @@ class Scheduler(object):
 
         Args:
             label (str): The species label.
+            job (JobAdapter, optional): The opt job to troubleshoot. Callers that already hold the
+                                        job which failed must pass it: resolving it here instead
+                                        can select a different job than the one that failed.
         """
         if not self.trsh_ess_jobs:
             logger.warning(f'Not troubleshooting failed opt job for {label}. To enable troubleshooting, set the '
                            f'"trsh_ess_jobs" to "True".')
             return None
 
-        previous_job_num, latest_job_num = -1, -1
-        job = None
-        for job_name in self.job_dict[label]['opt'].keys():  # get the latest Job object for the species / TS
-            job_name_int = int(job_name[5:])
-            if job_name_int > latest_job_num:
-                previous_job_num = latest_job_num
-                latest_job_num = job_name_int
-                job = self.job_dict[label]['opt'][job_name]
+        job = job if job is not None else self.get_latest_opt_job(label)
+        if job is None:
+            logger.error(f'Cannot troubleshoot an opt job for {label}, no opt job was found.')
+            return None
+        previous_job = self.get_preceding_opt_job(label=label, job=job)
         if job.job_status[0] == 'done':
             if job.job_status[1]['status'] == 'done':
                 if job.fine:
@@ -3935,8 +3974,7 @@ class Scheduler(object):
             else:
                 trsh_opt = True
                 # job passed on the server, but failed in ESS calculation
-                if previous_job_num >= 0 and job.fine:
-                    previous_job = self.job_dict[label]['opt']['opt_a' + str(previous_job_num)]
+                if previous_job is not None and job.fine:
                     if not previous_job.fine and previous_job.job_status[0] == 'done' \
                             and previous_job.job_status[1]['status'] == 'done' \
                                 and 'all_attempted' in job.ess_trsh_methods:
