@@ -5,6 +5,8 @@
 This module contains unit tests for the arc.job.pipe.pipe_coordinator module
 """
 
+import functools
+import json
 import os
 import shutil
 import tempfile
@@ -13,13 +15,15 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
-from arc.job.pipe.pipe_run import PipeRun
+from arc.job.pipe.pipe_run import PipeRun, get_task_attempt_dir
 from arc.job.pipe.pipe_state import (
     PipeRunState,
     TaskState,
     TaskSpec,
     update_task_state,
 )
+from arc.level import Level
+from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
 
 
@@ -273,6 +277,178 @@ class TestIngestPipeResults(unittest.TestCase):
         # Remove state.json to simulate corruption
         os.remove(os.path.join(pipe.pipe_root, 'tasks', 't_missing', 'state.json'))
         self.coord.ingest_pipe_results(pipe)  # should not raise
+
+
+class TestFinalizeSpeciesLeafTask(unittest.TestCase):
+    """
+    Tests that piped species_sp / species_freq tasks are routed through the Scheduler's own
+    post-job checks, which own the ``output[label]['job_types']`` success flags. Without this,
+    a piped job computes correctly and is ingested, yet the species is reported as failed.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_finalize_')
+        self.sched = _make_mock_sched(self.tmpdir)
+        self.coord = PipeCoordinator(self.sched)
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        convergence_patch = patch('arc.job.pipe.pipe_coordinator.check_ess_convergence',
+                                  return_value=True)
+        self.mock_convergence = convergence_patch.start()
+        self.addCleanup(convergence_patch.stop)
+
+    def _stage_completed(self, task_id, task_family):
+        """Stage a single-task pipe run, complete it, and give it a canonical output file."""
+        task = _make_spec(task_id, task_family=task_family)
+        pipe = self.coord.submit_pipe_run(f'run_{task_id}', [task])
+        _complete_task(pipe.pipe_root, task_id)
+        attempt_dir = get_task_attempt_dir(pipe.pipe_root, task_id, 0)
+        os.makedirs(attempt_dir, exist_ok=True)
+        output_file = os.path.join(attempt_dir, 'output.out')
+        with open(output_file, 'w') as f:
+            f.write('mock output\n')
+        with open(os.path.join(attempt_dir, 'result.json'), 'w') as f:
+            json.dump({'canonical_output_path': output_file}, f)
+        return pipe, output_file
+
+    def test_species_sp_is_finalized(self):
+        """A completed species_sp task runs post_sp_actions, which sets job_types['sp']."""
+        pipe, output_file = self._stage_completed('t_sp', 'species_sp')
+        self.coord.ingest_pipe_results(pipe)
+        self.sched.post_sp_actions.assert_called_once()
+        kwargs = self.sched.post_sp_actions.call_args.kwargs
+        self.assertEqual(kwargs['label'], 'H2O')
+        self.assertEqual(kwargs['sp_path'], output_file)
+
+    def test_species_freq_is_finalized(self):
+        """A completed species_freq task runs post_freq_actions, which sets job_types['freq']."""
+        pipe, output_file = self._stage_completed('t_freq', 'species_freq')
+        with patch('arc.job.pipe.pipe_coordinator.parser.parse_frequencies',
+                   return_value=[1500.0, 3000.0]):
+            self.coord.ingest_pipe_results(pipe)
+        self.sched.post_freq_actions.assert_called_once()
+        kwargs = self.sched.post_freq_actions.call_args.kwargs
+        self.assertEqual(kwargs['label'], 'H2O')
+        self.assertEqual(kwargs['vibfreqs'], [1500.0, 3000.0])
+        self.assertEqual(kwargs['job'].local_path_to_output_file, output_file)
+
+    def test_other_families_are_not_finalized(self):
+        """conf_opt has its own post-ingestion handler and must not be finalized here."""
+        pipe, _ = self._stage_completed('t_conf', 'conf_opt')
+        self.coord.ingest_pipe_results(pipe)
+        self.sched.post_sp_actions.assert_not_called()
+        self.sched.post_freq_actions.assert_not_called()
+
+    def test_unknown_species_is_skipped(self):
+        """An owner_key absent from species_dict is skipped rather than raising."""
+        pipe, _ = self._stage_completed('t_unknown', 'species_sp')
+        self.sched.species_dict.pop('H2O')
+        self.coord.ingest_pipe_results(pipe)
+        self.sched.post_sp_actions.assert_not_called()
+
+    def test_non_converged_ess_is_not_finalized(self):
+        """A task can be COMPLETED yet hold a non-converged output; it must not be flagged."""
+        pipe, _ = self._stage_completed('t_unconverged', 'species_sp')
+        self.mock_convergence.return_value = False
+        self.coord.ingest_pipe_results(pipe)
+        self.sched.post_sp_actions.assert_not_called()
+
+    def test_missing_output_file_is_skipped(self):
+        """A completed task with no locatable output does not reach the Scheduler checks."""
+        task = _make_spec('t_no_out', task_family='species_sp')
+        pipe = self.coord.submit_pipe_run('run_no_out', [task])
+        _complete_task(pipe.pipe_root, 't_no_out')
+        self.coord.ingest_pipe_results(pipe)
+        self.sched.post_sp_actions.assert_not_called()
+
+
+class _RealMethodSchedulerStub:
+    """
+    A Scheduler stand-in that runs the Scheduler's real post-job methods over stub state.
+
+    Every attribute that is not stub state falls through to the Scheduler class, so whichever
+    post-job method the coordinator reaches for is the production implementation, bound to this
+    object. Tests can therefore observe what a piped task actually leaves behind, rather than
+    only that some method was called on a mock.
+    """
+
+    def __init__(self, project_directory, species):
+        self.project_directory = project_directory
+        self.server_job_ids = list()
+        self.species_dict = {species.label: species}
+        self.output = {species.label: {'paths': {'sp': '', 'composite': '', 'freq': ''},
+                                       'job_types': dict(),
+                                       'warnings': '',
+                                       'info': ''}}
+        self.testing = True
+        self.trsh_ess_jobs = False
+        self.skip_nmd = False
+        self.rxn_dict = dict()
+        self.rxn_list = list()
+        self.freq_level = Level(repr='wb97xd/def2tzvp')
+
+    def __getattr__(self, name):
+        return functools.partial(getattr(Scheduler, name), self)
+
+
+class TestPipedFreqArtifacts(unittest.TestCase):
+    """
+    Tests that a piped species_freq task leaves behind everything a converged freq job is
+    expected to leave behind, not merely the ``job_types['freq']`` success flag.
+
+    Marking a species converged while ``species.freqs`` is unset and no ``freq.out`` sits in its
+    output folder would trade a loud failure for a quiet one: ``compute_rxn_e0()`` abandons the
+    reaction E0 check when that file is missing for any participant, and the frequencies would
+    never reach the restart or output files.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_freq_artifacts_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        self.species = ARCSpecies(label='H2O', smiles='O')
+        self.sched = _RealMethodSchedulerStub(self.tmpdir, self.species)
+        self.coord = PipeCoordinator(self.sched)
+        self.freq_out = os.path.join(self.tmpdir, 'output', 'Species', 'H2O', 'geometry', 'freq.out')
+        convergence_patch = patch('arc.job.pipe.pipe_coordinator.check_ess_convergence', return_value=True)
+        convergence_patch.start()
+        self.addCleanup(convergence_patch.stop)
+        ingest_patch = patch('arc.job.pipe.pipe_coordinator.ingest_completed_task')
+        ingest_patch.start()
+        self.addCleanup(ingest_patch.stop)
+
+    def _ingest_freq_task(self, task_id, vibfreqs):
+        """Stage, complete and ingest a single species_freq task yielding ``vibfreqs``."""
+        task = _make_spec(task_id, task_family='species_freq')
+        pipe = self.coord.submit_pipe_run(f'run_{task_id}', [task])
+        _complete_task(pipe.pipe_root, task_id)
+        attempt_dir = get_task_attempt_dir(pipe.pipe_root, task_id, 0)
+        os.makedirs(attempt_dir, exist_ok=True)
+        output_file = os.path.join(attempt_dir, 'output.out')
+        with open(output_file, 'w') as f:
+            f.write('mock freq output\n')
+        with open(os.path.join(attempt_dir, 'result.json'), 'w') as f:
+            json.dump({'canonical_output_path': output_file}, f)
+        with patch('arc.job.pipe.pipe_coordinator.parser.parse_frequencies', return_value=vibfreqs):
+            self.coord.ingest_pipe_results(pipe)
+
+    def test_converged_freq_sets_freqs_and_writes_freq_out(self):
+        """A piped freq task that passes the check must populate species.freqs and freq.out."""
+        self._ingest_freq_task('t_freq_ok', [1500.0, 3000.0, 3700.0])
+        self.assertTrue(self.sched.output['H2O']['job_types']['freq'])
+        self.assertEqual(self.species.freqs, [1500.0, 3000.0, 3700.0])
+        self.assertTrue(os.path.isfile(self.freq_out),
+                        f'Expected the freq output to be copied to {self.freq_out}')
+        with open(self.freq_out, 'r') as f:
+            self.assertIn('mock freq output', f.read())
+
+    def test_imaginary_freq_leaves_no_artifacts(self):
+        """
+        A stable species carrying an imaginary frequency must fail the check, and must not be
+        credited with any of the artifacts a converged freq job produces.
+        """
+        self._ingest_freq_task('t_freq_imag', [-800.0, 1500.0, 3000.0])
+        self.assertFalse(self.sched.output['H2O']['job_types'].get('freq', False))
+        self.assertIsNone(self.species.freqs)
+        self.assertFalse(os.path.isfile(self.freq_out))
 
 
 class TestComputePipeRoot(unittest.TestCase):
