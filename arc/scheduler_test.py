@@ -29,6 +29,47 @@ from arc.species.species import ARCSpecies, TSGuess
 default_levels_of_theory = settings['default_levels_of_theory']
 
 
+class TestHasPendingPipeWork(unittest.TestCase):
+    """Tests for Scheduler.has_pending_pipe_work()."""
+
+    def test_has_pending_pipe_work(self):
+        """
+        A species routed to pipe mode holds no running_jobs entries, so it must be reported as
+        still busy until every pending batch and active pipe run has released it. Otherwise the
+        main loop drops its label and check_all_done() never runs for it.
+        """
+        label = 'spc_under_test'
+        sched = MagicMock()
+        sched._pending_pipe_sp = set()
+        sched._pending_pipe_freq = set()
+        sched._pending_pipe_irc = list()
+        sched._pending_pipe_conf_sp = dict()
+        sched.active_pipes = dict()
+        self.assertFalse(Scheduler.has_pending_pipe_work(sched, label))
+
+        sched._pending_pipe_sp.add(label)
+        self.assertTrue(Scheduler.has_pending_pipe_work(sched, label))
+        sched._pending_pipe_sp.clear()
+
+        sched._pending_pipe_freq.add(label)
+        self.assertTrue(Scheduler.has_pending_pipe_work(sched, label))
+        sched._pending_pipe_freq.clear()
+
+        sched._pending_pipe_irc.append((label, 'forward'))
+        self.assertTrue(Scheduler.has_pending_pipe_work(sched, label))
+        sched._pending_pipe_irc.clear()
+
+        sched._pending_pipe_conf_sp[label] = {0, 1}
+        self.assertTrue(Scheduler.has_pending_pipe_work(sched, label))
+        sched._pending_pipe_conf_sp.clear()
+
+        pipe = MagicMock()
+        pipe.tasks = [MagicMock(owner_key=label)]
+        sched.active_pipes['run_0'] = pipe
+        self.assertTrue(Scheduler.has_pending_pipe_work(sched, label))
+        self.assertFalse(Scheduler.has_pending_pipe_work(sched, 'a_label_no_pipe_holds'))
+
+
 class TestScheduler(unittest.TestCase):
     """
     Contains unit tests for the Scheduler class
@@ -209,6 +250,43 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertFalse(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=None))
         # An empty freqs list for a polyatomic non-TS species must not sneak through as successful.
         self.assertFalse(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=list()))
+
+    def test_post_freq_actions(self):
+        """
+        Test the post_freq_actions() method.
+
+        This is the whole success path of a freq job, shared by check_freq_job() and by pipe mode.
+        Passing the imaginary frequency check is not on its own enough to call a freq job done:
+        species.freqs and the freq.out copy under the species output folder must exist too, or
+        consumers such as compute_rxn_e0() have nothing to read.
+        """
+        label = 'C2H6'
+        self.job3.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out')
+        self.job3.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
+        freq_path = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry', 'freq.out')
+        if os.path.isfile(freq_path):
+            os.remove(freq_path)
+        self.sched1.species_dict[label].freqs = None
+
+        vibfreqs = parser.parse_frequencies(log_file_path=self.job3.local_path_to_output_file)
+        freq_ok, switch_ts = self.sched1.post_freq_actions(label=label, job=self.job3, vibfreqs=vibfreqs)
+        self.assertTrue(freq_ok)
+        self.assertFalse(switch_ts)
+        self.assertTrue(self.sched1.output[label]['job_types']['freq'])
+        self.assertEqual(self.sched1.species_dict[label].freqs, [float(f) for f in vibfreqs])
+        self.assertTrue(os.path.isfile(freq_path))
+
+        # A failed check must leave none of the above behind.
+        os.remove(freq_path)
+        self.sched1.species_dict[label].freqs = None
+        self.sched1.output[label]['job_types']['freq'] = False
+        freq_ok, switch_ts = self.sched1.post_freq_actions(label=label, job=self.job3,
+                                                           vibfreqs=[-500.0] + list(vibfreqs))
+        self.assertFalse(freq_ok)
+        self.assertFalse(switch_ts)
+        self.assertFalse(self.sched1.output[label]['job_types']['freq'])
+        self.assertIsNone(self.sched1.species_dict[label].freqs)
+        self.assertFalse(os.path.isfile(freq_path))
 
     def test_determine_adaptive_level(self):
         """Test the determine_adaptive_level() method"""
