@@ -16,8 +16,8 @@
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../_static/documentation_options.js?v=fc837d61"></script>
-      <script src="../_static/doctools.js?v=9bcbadda"></script>
-      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
@@ -300,6 +300,7 @@
 <li class="toctree-l2"><a class="reference internal" href="zmat.html#arc.species.zmat.drop_symbol_and_coords_row_0"><code class="docutils literal notranslate"><span class="pre">drop_symbol_and_coords_row_0()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="zmat.html#arc.species.zmat.find_smart_anchors"><code class="docutils literal notranslate"><span class="pre">find_smart_anchors()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="zmat.html#arc.species.zmat.get_all_neighbors"><code class="docutils literal notranslate"><span class="pre">get_all_neighbors()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="zmat.html#arc.species.zmat.get_atom_connectivity_from_mol"><code class="docutils literal notranslate"><span class="pre">get_atom_connectivity_from_mol()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="zmat.html#arc.species.zmat.get_atom_indices_from_zmat_parameter"><code class="docutils literal notranslate"><span class="pre">get_atom_indices_from_zmat_parameter()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="zmat.html#arc.species.zmat.get_atom_order"><code class="docutils literal notranslate"><span class="pre">get_atom_order()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="zmat.html#arc.species.zmat.get_atom_order_from_mol"><code class="docutils literal notranslate"><span class="pre">get_atom_order_from_mol()</span></code></a></li>
@@ -437,6 +438,8 @@
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.convert_list_index_0_to_1"><code class="docutils literal notranslate"><span class="pre">convert_list_index_0_to_1()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.convert_to_hours"><code class="docutils literal notranslate"><span class="pre">convert_to_hours()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.delete_check_files"><code class="docutils literal notranslate"><span class="pre">delete_check_files()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.determine_top_group_indices"><code class="docutils literal notranslate"><span class="pre">determine_top_group_indices()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.dfs"><code class="docutils literal notranslate"><span class="pre">dfs()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.distance_matrix"><code class="docutils literal notranslate"><span class="pre">distance_matrix()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.estimate_orca_mem_cpu_requirement"><code class="docutils literal notranslate"><span class="pre">estimate_orca_mem_cpu_requirement()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.extremum_list"><code class="docutils literal notranslate"><span class="pre">extremum_list()</span></code></a></li>
@@ -466,6 +469,7 @@
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.is_str_float"><code class="docutils literal notranslate"><span class="pre">is_str_float()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.is_str_int"><code class="docutils literal notranslate"><span class="pre">is_str_int()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.is_xyz_linear"><code class="docutils literal notranslate"><span class="pre">is_xyz_linear()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.is_xyz_mol_match"><code class="docutils literal notranslate"><span class="pre">is_xyz_mol_match()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.key_by_val"><code class="docutils literal notranslate"><span class="pre">key_by_val()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.log_footer"><code class="docutils literal notranslate"><span class="pre">log_footer()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.log_header"><code class="docutils literal notranslate"><span class="pre">log_header()</span></code></a></li>
@@ -474,6 +478,7 @@
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.safe_copy_file"><code class="docutils literal notranslate"><span class="pre">safe_copy_file()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.save_yaml_file"><code class="docutils literal notranslate"><span class="pre">save_yaml_file()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.signed_angular_diff"><code class="docutils literal notranslate"><span class="pre">signed_angular_diff()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.sort_atoms_in_descending_label_order"><code class="docutils literal notranslate"><span class="pre">sort_atoms_in_descending_label_order()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.sort_two_lists_by_the_first"><code class="docutils literal notranslate"><span class="pre">sort_two_lists_by_the_first()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.string_representer"><code class="docutils literal notranslate"><span class="pre">string_representer()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="common.html#arc.common.sum_list_entries"><code class="docutils literal notranslate"><span class="pre">sum_list_entries()</span></code></a></li>

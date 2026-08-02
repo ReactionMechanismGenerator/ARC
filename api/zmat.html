@@ -16,8 +16,8 @@
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../_static/documentation_options.js?v=fc837d61"></script>
-      <script src="../_static/doctools.js?v=9bcbadda"></script>
-      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
@@ -81,6 +81,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.zmat.drop_symbol_and_coords_row_0"><code class="docutils literal notranslate"><span class="pre">drop_symbol_and_coords_row_0()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.zmat.find_smart_anchors"><code class="docutils literal notranslate"><span class="pre">find_smart_anchors()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.zmat.get_all_neighbors"><code class="docutils literal notranslate"><span class="pre">get_all_neighbors()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.zmat.get_atom_connectivity_from_mol"><code class="docutils literal notranslate"><span class="pre">get_atom_connectivity_from_mol()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.zmat.get_atom_indices_from_zmat_parameter"><code class="docutils literal notranslate"><span class="pre">get_atom_indices_from_zmat_parameter()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.zmat.get_atom_order"><code class="docutils literal notranslate"><span class="pre">get_atom_order()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.zmat.get_atom_order_from_mol"><code class="docutils literal notranslate"><span class="pre">get_atom_order_from_mol()</span></code></a></li>
@@ -588,6 +589,27 @@ whose bond is forming in the reaction.</p></li>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Atom indices of all neighbors of the requested atom.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.zmat.get_atom_connectivity_from_mol">
+<span class="sig-prename descclassname"><span class="pre">arc.species.zmat.</span></span><span class="sig-name descname"><span class="pre">get_atom_connectivity_from_mol</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/zmat.html#get_atom_connectivity_from_mol"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.zmat.get_atom_connectivity_from_mol" title="Link to this definition"></a></dt>
+<dd><p>Get the connectivity of <code class="docutils literal notranslate"><span class="pre">atom</span></code> in <code class="docutils literal notranslate"><span class="pre">mol</span></code>.
+Returns heavy (non-H) atoms first.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The molecule with connectivity information.</p></li>
+<li><p><strong>atom1</strong> (<em>Atom</em>) – The atom to check connectivity for.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>0-indices of atoms in <code class="docutils literal notranslate"><span class="pre">mol</span></code> connected to <code class="docutils literal notranslate"><span class="pre">atom</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>list[int]</p>
