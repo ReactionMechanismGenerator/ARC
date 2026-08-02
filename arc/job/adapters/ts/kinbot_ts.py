@@ -380,7 +380,7 @@ class KinBotAdapter(JobAdapter):
             ts_guess = TSGuess(method=method,
                                method_direction=method_direction,
                                method_index=method_index,
-                               index=len(rxn.ts_species.ts_guesses),
+                               index=rxn.ts_species.next_ts_guess_index(),
                                execution_time=result.get('execution_time'),
                                )
             success = bool(result.get('success')) and result.get('coords') is not None

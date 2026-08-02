@@ -1091,6 +1091,193 @@ H      -1.82570782    0.42754384   -0.56130718"""
         # rotors_dict=None must be preserved — do not re-enable rotor scans.
         self.assertIsNone(sched2.species_dict[ts_label2].rotors_dict)
 
+    def setup_ts_scheduler_for_freq_check(self, project, chosen_ts, chosen_ts_list=None):
+        """
+        Set up a Scheduler with a single TS species whose TSGuess ``index`` (identity) and
+        ``conformer_index`` (position among the successful guesses) deliberately diverge.
+
+        Args:
+            project (str): The project name.
+            chosen_ts (int): The value to assign to the TS species ``chosen_ts`` attribute.
+            chosen_ts_list (list, optional): The value to assign to the ``chosen_ts_list`` attribute.
+
+        Returns:
+            tuple: The Scheduler instance, the TS species label, and the list of TSGuess objects.
+        """
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_label = 'TS_freq_identity'
+        ts_spc = ARCSpecies(label=ts_label, is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0, compute_thermo=False)
+        tsg_failed = TSGuess(index=0, method='autotst', success=False, xyz=ts_xyz, execution_time='0:00:01')
+        tsg_a = TSGuess(index=1, method='heuristics', success=True, energy=100.0, xyz=ts_xyz,
+                        execution_time='0:00:01')
+        tsg_b = TSGuess(index=2, method='gcn', success=True, energy=90.0, xyz=ts_xyz, execution_time='0:00:01')
+        for tsg in [tsg_failed, tsg_a, tsg_b]:
+            tsg.opt_xyz = ts_xyz
+        # Only successful guesses get conformer optimization jobs, so the positions and the identities diverge.
+        tsg_a.conformer_index = 0
+        tsg_b.conformer_index = 1
+        ts_spc.ts_guesses = [tsg_failed, tsg_a, tsg_b]
+        ts_spc.chosen_ts = chosen_ts
+        ts_spc.chosen_ts_list = chosen_ts_list if chosen_ts_list is not None else list()
+        ts_spc.ts_guesses_exhausted = False
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=project, ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.job_dict[ts_label] = {'opt': dict(), 'freq': dict(), 'sp': dict()}
+        sched.running_jobs[ts_label] = list()
+        return sched, ts_label, [tsg_failed, tsg_a, tsg_b]
+
+    def test_check_negative_freq_assigns_freqs_to_the_chosen_ts_guess(self):
+        """Test that the imaginary frequencies are assigned to the TSGuess identified by ``chosen_ts``."""
+        sched, ts_label, tsgs = self.setup_ts_scheduler_for_freq_check(
+            project='test_ts_freq_identity_pass', chosen_ts=2)
+        job = MagicMock()
+        job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out')
+        self.assertTrue(sched.check_negative_freq(label=ts_label, job=job, vibfreqs=[-1000.0, 500.0, 1500.0]))
+        self.assertEqual(tsgs[2].imaginary_freqs, [-1000.0])
+        self.assertIsNone(tsgs[0].imaginary_freqs)
+        self.assertIsNone(tsgs[1].imaginary_freqs)
+        self.assertTrue(sched.species_dict[ts_label].ts_checks['freq'])
+        self.assertTrue(sched.output[ts_label]['job_types']['freq'])
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_check_negative_freq_rejects_two_imaginary_freqs(self, mock_run_opt):
+        """Test that a TS with two imaginary frequencies is rejected when index and conformer_index diverge."""
+        sched, ts_label, tsgs = self.setup_ts_scheduler_for_freq_check(
+            project='test_ts_freq_identity_reject', chosen_ts=2, chosen_ts_list=[2])
+        job = MagicMock()
+        job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out')
+        self.assertFalse(sched.check_negative_freq(label=ts_label, job=job,
+                                                   vibfreqs=[-1200.0, -800.0, 500.0, 1500.0]))
+        self.assertEqual(tsgs[2].imaginary_freqs, [-1200.0, -800.0])
+        self.assertNotEqual(sched.species_dict[ts_label].ts_checks['freq'], True)
+        self.assertFalse(sched.output[ts_label]['job_types']['freq'])
+        # A different TS guess was selected instead of silently accepting the wrong one.
+        self.assertEqual(sched.species_dict[ts_label].chosen_ts, 1)
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_check_negative_freq_no_matching_ts_guess(self, mock_run_opt):
+        """Test that a ``chosen_ts`` value matching no TSGuess is logged and is not silently accepted."""
+        sched, ts_label, tsgs = self.setup_ts_scheduler_for_freq_check(
+            project='test_ts_freq_identity_no_match', chosen_ts=99)
+        job = MagicMock()
+        job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out')
+        with self.assertLogs('arc', level='WARNING') as context_manager:
+            self.assertFalse(sched.check_negative_freq(label=ts_label, job=job, vibfreqs=[-1000.0, 500.0, 1500.0]))
+        self.assertTrue(any('99' in message and ts_label in message for message in context_manager.output))
+        self.assertTrue(all(tsg.imaginary_freqs is None for tsg in tsgs))
+        self.assertNotEqual(sched.species_dict[ts_label].ts_checks['freq'], True)
+        self.assertFalse(sched.output[ts_label]['job_types']['freq'])
+
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_check_negative_freq_no_chosen_ts_leaves_the_check_unverified(self, mock_switch_ts):
+        """Test that freqs arriving while no TS guess is selected do not discard the optimized geometry.
+
+        A restart file with ambiguous TS guess identities is repaired by resetting ``chosen_ts``, so a
+        freq job can land with several successful guesses and no selection. The frequencies cannot be
+        attributed to a guess, but switching guesses would throw away a geometry that may already have
+        passed every check, so the check is left unverified instead.
+        """
+        sched, ts_label, tsgs = self.setup_ts_scheduler_for_freq_check(
+            project='test_ts_freq_identity_no_chosen', chosen_ts=None)
+        job = MagicMock()
+        job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out')
+        with self.assertLogs('arc', level='WARNING') as context_manager:
+            self.assertFalse(sched.check_negative_freq(label=ts_label, job=job, vibfreqs=[-1000.0, 500.0, 1500.0]))
+        self.assertTrue(any(ts_label in message for message in context_manager.output))
+        mock_switch_ts.assert_not_called()
+        self.assertTrue(all(tsg.imaginary_freqs is None for tsg in tsgs))
+        self.assertNotEqual(sched.species_dict[ts_label].ts_checks['freq'], True)
+        self.assertFalse(sched.output[ts_label]['job_types']['freq'])
+
+    def setup_ts_scheduler_for_conf_opt(self, project):
+        """
+        Set up a Scheduler with a TS species whose TSGuess objects are ordered so that a guess's
+        position in the ``ts_guesses`` list, its ``index`` identity and its ``conformer_index``
+        all differ from one another.
+
+        Args:
+            project (str): The project name.
+
+        Returns:
+            tuple: The Scheduler instance, the TS species label, and the list of TSGuess objects.
+        """
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_label = 'TS_conf_opt_identity'
+        ts_spc = ARCSpecies(label=ts_label, is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0, compute_thermo=False)
+        # Clustering removed the guess that held index 1, and the surviving guesses were reordered,
+        # so neither the list position nor the identity equals the conformer job index.
+        tsg_a = TSGuess(index=5, method='gcn', success=True, xyz=ts_xyz, execution_time='0:00:01')
+        tsg_a.conformer_index = 1
+        tsg_b = TSGuess(index=2, method='heuristics', success=True, xyz=ts_xyz, execution_time='0:00:01')
+        tsg_b.conformer_index = 0
+        ts_spc.ts_guesses = [tsg_a, tsg_b]
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=project, ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        return sched, ts_label, [tsg_a, tsg_b]
+
+    def test_parse_conformer_attributes_ts_results_by_conformer_index(self):
+        """Test that a TS conf_opt result is written to the TSGuess whose conformer_index matches the job."""
+        sched, ts_label, (tsg_a, tsg_b) = self.setup_ts_scheduler_for_conf_opt(
+            project='test_ts_conf_opt_identity')
+        job_0, job_1 = MagicMock(), MagicMock()
+        job_0.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_0.out')
+        job_1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_1.out')
+        for job in (job_0, job_1):
+            job.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
+
+        sched.parse_conformer(job=job_0, label=ts_label, i=0)
+        self.assertAlmostEqual(tsg_b.energy, -251596.4435088726, 5)
+        self.assertEqual(tsg_b.opt_xyz, parser.parse_geometry(log_file_path=job_0.local_path_to_output_file))
+        self.assertIsNone(tsg_a.energy)
+        self.assertIsNone(tsg_a.opt_xyz)
+
+        sched.parse_conformer(job=job_1, label=ts_label, i=1)
+        self.assertAlmostEqual(tsg_a.energy, -254221.9433698632, 5)
+        self.assertEqual(tsg_a.opt_xyz, parser.parse_geometry(log_file_path=job_1.local_path_to_output_file))
+        # The identities must survive the ingestion, they are what chosen_ts refers to.
+        self.assertEqual([tsg.index for tsg in sched.species_dict[ts_label].ts_guesses], [5, 2])
+
+    def test_parse_conformer_warns_when_no_ts_guess_matches(self):
+        """Test that a TS conf_opt result with no matching conformer_index is logged and not attributed."""
+        sched, ts_label, (tsg_a, tsg_b) = self.setup_ts_scheduler_for_conf_opt(
+            project='test_ts_conf_opt_identity_no_match')
+        job = MagicMock()
+        job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_0.out')
+        job.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
+        with self.assertLogs('arc', level='WARNING') as context_manager:
+            self.assertFalse(sched.parse_conformer(job=job, label=ts_label, i=5))
+        self.assertTrue(any(ts_label in message for message in context_manager.output))
+        for tsg in (tsg_a, tsg_b):
+            self.assertIsNone(tsg.energy)
+            self.assertIsNone(tsg.opt_xyz)
+        self.assertEqual([tsg.index for tsg in sched.species_dict[ts_label].ts_guesses], [5, 2])
+
     @patch('arc.scheduler.Scheduler.run_job')
     def test_run_sp_monoatomic_dlpno(self, mock_run_job):
         """Monoatomic H falls back to HF; heavier atoms (O) keep DLPNO intact."""

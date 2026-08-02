@@ -623,7 +623,7 @@ def process_goflow_tsg(tsg_dict: dict,
     tsg = TSGuess(method='GoFlow',
                   method_direction=tsg_dict.get('method_direction', 'F'),
                   method_index=method_index,
-                  index=len(ts_species.ts_guesses),
+                  index=ts_species.next_ts_guess_index(),
                   success=True,
                   )
     tsg.process_xyz(ts_xyz)

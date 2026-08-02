@@ -277,7 +277,7 @@ class AutoTSTAdapter(JobAdapter):
                                                        execution_time=tok,
                                                        xyz=xyz,
                                                        success=True,
-                                                       index=len(rxn.ts_species.ts_guesses),
+                                                       index=rxn.ts_species.next_ts_guess_index(),
                                                        )
                                     rxn.ts_species.ts_guesses.append(ts_guess)
                                     save_geo(xyz=xyz,
@@ -294,7 +294,7 @@ class AutoTSTAdapter(JobAdapter):
                                                t0=tic,
                                                execution_time=tok,
                                                success=False,
-                                               index=len(rxn.ts_species.ts_guesses),
+                                               index=rxn.ts_species.next_ts_guess_index(),
                                                )
                             rxn.ts_species.ts_guesses.append(ts_guess)
                             i += 1

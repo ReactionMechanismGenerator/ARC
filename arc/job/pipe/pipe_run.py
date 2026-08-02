@@ -708,7 +708,6 @@ def _ingest_ts_opt(run_id, pipe_root, spec, state, species_dict, label):
                 tsg.opt_xyz = xyz
             if e_elect is not None:
                 tsg.energy = e_elect
-            tsg.index = conformer_index
             break
     else:
         logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '

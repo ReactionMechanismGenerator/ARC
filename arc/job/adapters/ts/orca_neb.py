@@ -318,7 +318,7 @@ class OrcaNEBAdapter(OrcaAdapter):
         Process a completed orca-NEB run.
         """
         tsg = TSGuess(method='orca_neb',
-                      index=len(self.reactions[0].ts_species.ts_guesses),
+                      index=self.reactions[0].ts_species.next_ts_guess_index(),
                       success=False,
                       t0=self.initial_time,
                       )

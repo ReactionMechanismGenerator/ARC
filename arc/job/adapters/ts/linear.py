@@ -926,7 +926,7 @@ class LinearAdapter(JobAdapter):
                         if unique:
                             method = f'Linear (w={w:.2f}, {xyz_i})'
                             ts_guess = TSGuess(method=method,
-                                               index=len(rxn.ts_species.ts_guesses),
+                                               index=rxn.ts_species.next_ts_guess_index(),
                                                method_index=w_i,
                                                t0=t0,
                                                execution_time=t_ex,

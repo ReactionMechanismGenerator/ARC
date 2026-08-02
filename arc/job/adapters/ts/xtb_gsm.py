@@ -384,7 +384,7 @@ class xTBGSMAdapter(JobAdapter):
         Process a completed xTB-GSM run.
         """
         tsg = TSGuess(method='xTB-GSM',
-                      index=len(self.reactions[0].ts_species.ts_guesses),
+                      index=self.reactions[0].ts_species.next_ts_guess_index(),
                       success=False,
                       t0=self.initial_time,
                       )

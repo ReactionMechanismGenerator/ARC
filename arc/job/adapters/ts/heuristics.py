@@ -288,7 +288,7 @@ class HeuristicsAdapter(JobAdapter):
                         break
                 if unique:
                     ts_guess = TSGuess(method='Heuristics',
-                                       index=len(rxn.ts_species.ts_guesses),
+                                       index=rxn.ts_species.next_ts_guess_index(),
                                        method_index=method_index,
                                        t0=tsg.t0,
                                        execution_time=tsg.execution_time,

@@ -378,7 +378,7 @@ def run_subprocess_locally(direction: str,
     ts_xyz = None
     tsg = TSGuess(method='GCN',
                   method_direction=direction,
-                  index=len(ts_species.ts_guesses),
+                  index=ts_species.next_ts_guess_index(),
                   )
     tsg.tic()
     # Routed via run_in_conda_env so arc_env's activation vars don't

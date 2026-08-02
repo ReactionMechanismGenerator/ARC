@@ -19,6 +19,8 @@ from arc.job.pipe.pipe_state import TaskState, PipeRunState, TaskSpec, read_task
 from arc.job.pipe.pipe_run import PipeRun, local_cpu_budget, local_worker_limit, worker_cpu_cores
 from arc.level import Level
 from arc.species import ARCSpecies
+from arc.species.converter import str_to_xyz
+from arc.species.species import TSGuess
 
 
 def _make_spec(task_id, label='H2O', smiles='O', task_family='conf_opt',
@@ -703,6 +705,65 @@ class TestLocalCpuBudget(unittest.TestCase):
         """Unset or unparseable value yields None, so the caller uses ARC's default allocation."""
         for env in ({}, {'ARC_PIPE_LOCAL_CPUS': ''}, {'ARC_PIPE_LOCAL_CPUS': '0'}, {'ARC_PIPE_LOCAL_CPUS': 'abc'}):
             self.assertIsNone(worker_cpu_cores(env))
+
+
+class TestIngestTsOpt(unittest.TestCase):
+    """Test the ingestion of a completed pipe ts_opt task into the matching TSGuess."""
+
+    def setUp(self):
+        self.ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        self.opt_xyz = str_to_xyz("""N       0.90000000    0.50000000    0.00000000
+        H       1.80000000    1.00000000    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.90000000    1.20000000    0.70000000""")
+        self.ts_species = ARCSpecies(label='TS_pipe', is_ts=True, xyz=self.ts_xyz, multiplicity=1, charge=0,
+                                     compute_thermo=False)
+        # The identity and the conformer job position deliberately diverge, and are not in the same order.
+        self.tsg_a = TSGuess(index=7, method='heuristics', success=True, xyz=self.ts_xyz)
+        self.tsg_a.conformer_index = 0
+        self.tsg_b = TSGuess(index=3, method='gcn', success=True, xyz=self.ts_xyz)
+        self.tsg_b.conformer_index = 1
+        self.ts_species.ts_guesses = [self.tsg_a, self.tsg_b]
+
+    def ingest(self, conformer_index):
+        """Run _ingest_ts_opt() for the given conformer index against mocked ESS output."""
+        spec = _make_spec('t0', label='TS_pipe', task_family='ts_opt')
+        spec.ingestion_metadata = {'conformer_index': conformer_index}
+        state = mock.Mock(attempt_index=0)
+        with mock.patch.object(pipe_run_module, 'find_output_file', return_value='output.out'), \
+                mock.patch.object(pipe_run_module, 'check_ess_convergence', return_value=True), \
+                mock.patch.object(pipe_run_module.parser, 'parse_geometry', return_value=self.opt_xyz), \
+                mock.patch.object(pipe_run_module.parser, 'parse_e_elect', return_value=-123.4):
+            pipe_run_module._ingest_ts_opt('run_0', tempfile.gettempdir(), spec, state,
+                                           {'TS_pipe': self.ts_species}, 'TS_pipe')
+
+    def test_ingestion_preserves_the_ts_guess_identity(self):
+        """Test that ingesting a result does not overwrite TSGuess.index with the conformer index."""
+        self.ingest(conformer_index=0)
+        self.assertEqual(self.tsg_a.index, 7)
+        self.assertEqual(self.tsg_a.conformer_index, 0)
+        self.assertEqual(self.tsg_a.opt_xyz, self.opt_xyz)
+        self.assertEqual(self.tsg_a.energy, -123.4)
+
+    def test_ingestion_updates_only_the_matching_ts_guess(self):
+        """Test that a result is attributed by conformer_index, not by position in the ts_guesses list."""
+        self.ingest(conformer_index=1)
+        self.assertEqual(self.tsg_b.index, 3)
+        self.assertEqual(self.tsg_b.opt_xyz, self.opt_xyz)
+        self.assertEqual(self.tsg_b.energy, -123.4)
+        self.assertIsNone(self.tsg_a.opt_xyz)
+        self.assertIsNone(self.tsg_a.energy)
+
+    def test_ingestion_of_an_unmatched_conformer_index_is_a_no_op(self):
+        """Test that a result with no matching conformer_index does not touch any TSGuess."""
+        self.ingest(conformer_index=7)
+        for tsg in (self.tsg_a, self.tsg_b):
+            self.assertIsNone(tsg.opt_xyz)
+            self.assertIsNone(tsg.energy)
+        self.assertEqual([tsg.index for tsg in self.ts_species.ts_guesses], [7, 3])
 
 
 if __name__ == '__main__':

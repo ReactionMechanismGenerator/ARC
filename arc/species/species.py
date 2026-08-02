@@ -901,6 +901,7 @@ class ARCSpecies(object):
             self.ts_checks = species_dict['ts_checks'] if 'ts_checks' in species_dict else dict()
             self.chosen_ts_list = species_dict['chosen_ts_list'] if 'chosen_ts_list' in species_dict else list()
             self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
+            self.renumber_ambiguous_ts_guesses()
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
             self.process_xyz(species_dict['xyz'])
         self.multiplicity = species_dict['multiplicity'] if 'multiplicity' in species_dict else None
@@ -1669,6 +1670,58 @@ class ARCSpecies(object):
                 self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
                                   f'optimization: {self.chosen_ts_method}\n'
 
+    def next_ts_guess_index(self) -> int:
+        """
+        Get the next available ``TSGuess.index`` identity for this species.
+
+        The returned index is one greater than the largest index currently assigned to any of the
+        TS guesses of this species, so identities are never reused. It is deliberately not the
+        length of the ``ts_guesses`` list: ``cluster_tsgs()`` shrinks that list while the surviving
+        guesses retain their original indices, and a length-based identity would then collide with
+        an index that is still in use.
+
+        Returns:
+            int: The next available TSGuess index.
+        """
+        return max((tsg.index for tsg in self.ts_guesses if tsg.index is not None), default=-1) + 1
+
+    def renumber_ambiguous_ts_guesses(self) -> None:
+        """
+        Assign fresh identities to TS guesses whose ``index`` is missing or duplicated.
+
+        A restart file written before TSGuess identities were allocated uniquely may hold guesses
+        that share an index or that have none, which makes a lookup by identity ambiguous. Only the
+        ambiguous guesses are re-indexed, so references to unambiguous identities remain valid, and
+        the first guess holding a duplicated index keeps it.
+
+        Every reference to a duplicated index is then dropped, since none of them can be resolved:
+        ``chosen_ts`` is reset so that a TS conformer is selected again rather than paired
+        arbitrarily, and the duplicated indices are removed from ``chosen_ts_list`` so that neither
+        the guess that kept the index nor the guess that was re-indexed is barred from selection.
+        """
+        if not self.is_ts or not len(self.ts_guesses):
+            return None
+        seen, ambiguous = set(), list()
+        for tsg in self.ts_guesses:
+            if tsg.index is None or tsg.index in seen:
+                ambiguous.append(tsg)
+            else:
+                seen.add(tsg.index)
+        if not ambiguous:
+            return None
+        duplicated = sorted({tsg.index for tsg in ambiguous if tsg.index is not None})
+        for tsg in ambiguous:
+            tsg.index = self.next_ts_guess_index()
+        logger.warning(f'{len(ambiguous)} TS guess(es) of {self.label} had a missing or a duplicated index '
+                       f'(duplicated indices: {duplicated}), and were re-indexed to keep TS guess '
+                       f'identities unique.')
+        if self.chosen_ts in duplicated:
+            logger.warning(f'The chosen TS guess index {self.chosen_ts} of {self.label} was ambiguous, '
+                           f'a TS conformer will be selected again.')
+            self.chosen_ts = None
+        if any(index in duplicated for index in self.chosen_ts_list):
+            self.chosen_ts_list = [index for index in self.chosen_ts_list if index not in duplicated]
+
     def cluster_tsgs(self):
         """
         Cluster TSGuesses.
@@ -1712,7 +1765,7 @@ class ARCSpecies(object):
                           )
             if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
                 if tsg.index is None:
-                    tsg.index = len(self.ts_guesses)
+                    tsg.index = self.next_ts_guess_index()
                 self.ts_guesses.append(tsg)
             else:
                 # The queue TS-search job produced no usable geometry (nothing parseable, or
@@ -1729,8 +1782,8 @@ class ARCSpecies(object):
             tsgs = [TSGuess(ts_dict=tsg_dict) for tsg_dict in tsg_list]
             for tsg in tsgs:
                 if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
-                    if tsg.index is None:
-                        tsg.index = len(self.ts_guesses)
+                    if tsg.index is None or any(guess.index == tsg.index for guess in self.ts_guesses):
+                        tsg.index = self.next_ts_guess_index()
                     self.ts_guesses.append(tsg)
         self.cluster_tsgs()
 
@@ -1825,6 +1878,12 @@ class ARCSpecies(object):
         """
         Process the user's input and add either to the .conformers attribute or to .ts_guesses.
 
+        For a TS, each user guess is given an explicit ``TSGuess.index`` allocated by
+        ``next_ts_guess_index()``. ``TSGuess.index`` is the guess's stable identity: it is what
+        ``cluster_tsgs()`` orders by, what ``ARCSpecies.chosen_ts`` / ``chosen_ts_list`` refer to,
+        and what keys the TS guess report. Leaving it ``None`` (the ``TSGuess`` default) makes a
+        user guess unselectable as the chosen TS.
+
         Args:
             xyz_list (list, str, dict): Entries are either string-format, dict-format coordinates or file paths.
                                         (If there's only one entry, it could be given directly, not in a list)
@@ -1876,16 +1935,14 @@ class ARCSpecies(object):
                 self.conformers.extend(xyzs)
                 self.conformer_energies.extend(energies)
             else:
-                tsg_index = len(self.ts_guesses)
                 for xyz, energy in zip(xyzs, energies):
-                    self.ts_guesses.append(TSGuess(method=f'user guess {tsg_index}',
+                    tsg_index = self.next_ts_guess_index()
+                    self.ts_guesses.append(TSGuess(index=tsg_index,
+                                                   method=f'user guess {tsg_index}',
                                                    xyz=remove_dummies(xyz),
                                                    energy=energy,
                                                    success=True,
                                                    ))
-                    # user guesses are always successful in generating a *guess*:
-                    self.ts_guesses[tsg_index].success = True
-                    tsg_index += 1
             if self.multiplicity is not None and self.charge is not None:
                 for xyz in xyzs:
                     consistent = check_xyz(xyz=xyz, multiplicity=self.multiplicity, charge=self.charge)
@@ -2395,7 +2452,8 @@ class TSGuess(object):
         execution_time (str): Overall execution time for the TS guess method.
         success (bool): Whether the TS guess method succeeded in generating an XYZ guess or not.
         energy (float): Relative energy of all TS conformers in kJ/mol.
-        index (int): A running index of all TSGuess objects belonging to an ARCSpecies object.
+        index (int): A unique identity assigned to a TSGuess object when it is appended to an
+                     ARCSpecies object. It is not a position in a list.
         imaginary_freqs (list[float]): The imaginary frequencies of the TS guess after optimization.
         conformer_index (int): An index corresponding to the conformer jobs spawned for each TSGuess object.
                                Assigned only if self.success is ``True``.
