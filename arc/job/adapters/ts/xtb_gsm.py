@@ -384,7 +384,6 @@ class xTBGSMAdapter(JobAdapter):
         Process a completed xTB-GSM run.
         """
         tsg = TSGuess(method='xTB-GSM',
-                      index=len(self.reactions[0].ts_species.ts_guesses),
                       success=False,
                       t0=self.initial_time,
                       )
@@ -393,7 +392,7 @@ class xTBGSMAdapter(JobAdapter):
             tsg.initial_xyz = traj[int((len(traj) - 1) / 2) + 1]
             tsg.execution_time = self.final_time - self.initial_time
             tsg.success = True
-        self.reactions[0].ts_species.ts_guesses.append(tsg)
+        self.reactions[0].ts_species.append_ts_guess(tsg)
 
     def cleanup_files(self):
         """Remove unneeded files after run."""

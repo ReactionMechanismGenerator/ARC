@@ -15,10 +15,15 @@ from unittest import mock
 
 import arc.job.pipe.pipe_run as pipe_run_module
 from arc.job.adapters.mockter import MockAdapter
-from arc.job.pipe.pipe_state import TaskState, PipeRunState, TaskSpec, read_task_state, update_task_state
+from arc.job.pipe.pipe_state import (TaskState, TaskStateRecord, PipeRunState, TaskSpec, get_task_attempt_dir,
+                                     read_task_state, update_task_state)
 from arc.job.pipe.pipe_run import PipeRun, local_cpu_budget, local_worker_limit, worker_cpu_cores
+import arc.parser.parser as parser
+from arc.common import ARC_TESTING_PATH
 from arc.level import Level
 from arc.species import ARCSpecies
+from arc.species.converter import str_to_xyz
+from arc.species.species import TSGuess
 
 
 def _make_spec(task_id, label='H2O', smiles='O', task_family='conf_opt',
@@ -703,6 +708,79 @@ class TestLocalCpuBudget(unittest.TestCase):
         """Unset or unparseable value yields None, so the caller uses ARC's default allocation."""
         for env in ({}, {'ARC_PIPE_LOCAL_CPUS': ''}, {'ARC_PIPE_LOCAL_CPUS': '0'}, {'ARC_PIPE_LOCAL_CPUS': 'abc'}):
             self.assertIsNone(worker_cpu_cores(env))
+
+
+class TestIngestTsOpt(unittest.TestCase):
+    """Test the ingestion of a completed pipe ts_opt task into the matching TSGuess."""
+
+    def setUp(self):
+        self.ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        self.ts_species = ARCSpecies(label='TS_pipe', is_ts=True, xyz=self.ts_xyz, multiplicity=1, charge=0,
+                                     compute_thermo=False)
+        # The identity and the conformer job position deliberately diverge, and are not in the same order.
+        self.tsg_a = TSGuess(index=7, method='heuristics', success=True, xyz=self.ts_xyz)
+        self.tsg_a.conformer_index = 0
+        self.tsg_b = TSGuess(index=3, method='gcn', success=True, xyz=self.ts_xyz)
+        self.tsg_b.conformer_index = 1
+        # Stored so that conformer_index disagrees with list position too: conformer 1 sits at
+        # position 0. A lookup by position therefore cannot pass by coincidence.
+        self.ts_species.ts_guesses = [self.tsg_b, self.tsg_a]
+        self.pipe_root = tempfile.mkdtemp(prefix='pipe_ingest_ts_opt_')
+        self.addCleanup(shutil.rmtree, self.pipe_root, ignore_errors=True)
+        # Real converged TS conformer optimizations, discovered through the same result.json the
+        # worker writes. Two different logs, so a cross-attributed result cannot pass unnoticed.
+        self.logs = {0: os.path.join(ARC_TESTING_PATH, 'TS_confs', 'TS0_conf_0.out'),
+                     1: os.path.join(ARC_TESTING_PATH, 'TS_confs', 'TS0_conf_1.out')}
+        self.expected = {i: (parser.parse_geometry(log_file_path=path),
+                             parser.parse_e_elect(log_file_path=path))
+                         for i, path in self.logs.items()}
+
+    def ingest(self, conformer_index, log_index=0):
+        """Run _ingest_ts_opt() against a real attempt directory holding a real ESS log."""
+        task_id = f't_ts_opt_{conformer_index}_{log_index}'
+        spec = _make_spec(task_id, label='TS_pipe', task_family='ts_opt', engine='gaussian')
+        spec.ingestion_metadata = {'conformer_index': conformer_index}
+        state = TaskStateRecord(status=TaskState.COMPLETED.value, attempt_index=0)
+        attempt_dir = get_task_attempt_dir(self.pipe_root, task_id, state.attempt_index)
+        os.makedirs(attempt_dir, exist_ok=True)
+        with open(os.path.join(attempt_dir, 'result.json'), 'w') as f:
+            json.dump({'canonical_output_path': self.logs[log_index]}, f)
+        pipe_run_module._ingest_ts_opt('run_0', self.pipe_root, spec, state,
+                                       {'TS_pipe': self.ts_species}, 'TS_pipe')
+
+    def test_ingestion_preserves_the_ts_guess_identity(self):
+        """Test that ingesting a result does not overwrite TSGuess.index with the conformer index."""
+        self.ingest(conformer_index=0, log_index=0)
+        self.assertEqual(self.tsg_a.index, 7)
+        self.assertEqual(self.tsg_a.conformer_index, 0)
+        self.assertEqual(self.tsg_a.opt_xyz, self.expected[0][0])
+        self.assertAlmostEqual(self.tsg_a.energy, self.expected[0][1], 5)
+
+    def test_ingestion_updates_only_the_matching_ts_guess(self):
+        """Test that a result is attributed by conformer_index, not by position in the ts_guesses list."""
+        self.ingest(conformer_index=1, log_index=1)
+        self.assertEqual(self.tsg_b.index, 3)
+        self.assertEqual(self.tsg_b.opt_xyz, self.expected[1][0])
+        self.assertAlmostEqual(self.tsg_b.energy, self.expected[1][1], 5)
+        # The guess at list position 0, which holds the *other* conformer_index, is untouched.
+        self.assertIsNone(self.tsg_a.opt_xyz)
+        self.assertIsNone(self.tsg_a.energy)
+        self.assertNotAlmostEqual(self.expected[0][1], self.expected[1][1], 3)
+
+    def test_ingestion_of_an_unmatched_conformer_index_is_a_no_op(self):
+        """Test that a result with no matching conformer_index does not touch any TSGuess."""
+        with self.assertLogs('arc', level='WARNING') as context_manager:
+            self.ingest(conformer_index=7, log_index=0)
+        # Proves ingestion actually reached the attribution step rather than returning early.
+        self.assertTrue(any('no TSGuess with conformer_index=7' in message
+                            for message in context_manager.output))
+        for tsg in (self.tsg_a, self.tsg_b):
+            self.assertIsNone(tsg.opt_xyz)
+            self.assertIsNone(tsg.energy)
+        self.assertEqual(sorted(tsg.index for tsg in self.ts_species.ts_guesses), [3, 7])
 
 
 if __name__ == '__main__':

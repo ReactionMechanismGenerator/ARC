@@ -81,6 +81,31 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
 WRONG_FREQ_MESSAGE = 'wrong number of negative frequencies; '
 
 
+def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> bool:
+    """
+    Determine whether a ``TSGuess.method`` was produced by a given TS-search adapter.
+
+    The two spellings differ (e.g. the ``xtb_gsm`` adapter labels its guesses ``'xTB-GSM'``,
+    ``kinbot`` labels them ``'KinBot'`` or ``'KinBot-UMA'``), so both strings are lower-cased
+    and stripped of ``'-'`` and ``'_'`` before testing for containment.
+
+    Args:
+        method (str, optional): The ``TSGuess.method`` string.
+        job_adapter (str, optional): The TS-search job adapter name.
+
+    Returns:
+        bool: Whether the guess was produced by this adapter.
+    """
+    if not method or not job_adapter:
+        return False
+
+    def normalize(text: str) -> str:
+        """Lower-case ``text`` and drop the separators that differ between the two spellings."""
+        return text.lower().replace('-', '').replace('_', '')
+
+    return normalize(job_adapter) in normalize(method)
+
+
 class Scheduler(object):
     """
     ARC's Scheduler class. Creates jobs, submits, checks status, troubleshoots.
@@ -397,10 +422,9 @@ class Scheduler(object):
                 rxn.ts_species = ts_species
                 # 3. Generate TSGuess objects for all methods, start with the user guesses
                 for i, user_guess in enumerate(rxn.ts_xyz_guess):  # This is a list of user guesses, could be empty.
-                    ts_species.ts_guesses.append(
+                    ts_species.append_ts_guess(
                         TSGuess(method=f'user guess {i}',
                                 xyz=user_guess,
-                                index=len(rxn.ts_species.ts_guesses),
                                 success=True,
                                 project_directory=self.project_directory,
                                 )
@@ -1326,6 +1350,12 @@ class Scheduler(object):
         """
         Spawn opt jobs at the ts_guesses level of theory for the TS guesses.
 
+        When only a single guess succeeded, its geometry is optimized directly. The reported
+        provenance (relative energy, ``chosen_ts_method``, ``successful_methods`` and the guess
+        log path) is taken from that same guess rather than from ``ts_guesses[0]``: several TS
+        adapters append ``success=False`` guesses, so the first entry of ``ts_guesses`` is not
+        necessarily the guess whose coordinates are being optimized.
+
         Args:
             label (str): The TS species label.
         """
@@ -1370,17 +1400,18 @@ class Scheduler(object):
                     rxn = ' of reaction ' + self.species_dict[label].rxn_label
                 logger.info(f'Only one TS guess is available for species {label}{rxn}, '
                             f'using it for geometry optimization')
-                self.species_dict[label].ts_guesses[0].energy = 0.0  # Set relative energy to 0, no other guesses.
-                self.species_dict[label].initial_xyz = successful_tsgs[0].initial_xyz
+                chosen_tsg = successful_tsgs[0]
+                chosen_tsg.energy = 0.0
+                self.species_dict[label].initial_xyz = chosen_tsg.initial_xyz
                 self.species_dict[label].mol_from_xyz(get_cheap=False)
                 if not self.composite_method:
                     self.run_opt_job(label, fine=self.fine_only)
                 else:
                     self.run_composite_job(label)
-                self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
-                self.species_dict[label].successful_methods = [self.species_dict[label].ts_guesses[0].method]
-                if getattr(self.species_dict[label].ts_guesses[0], 'log_path', None):
-                    self.output[label]['paths']['neb'] = self.species_dict[label].ts_guesses[0].log_path
+                self.species_dict[label].chosen_ts_method = chosen_tsg.method
+                self.species_dict[label].successful_methods = [chosen_tsg.method]
+                if getattr(chosen_tsg, 'log_path', None):
+                    self.output[label]['paths']['neb'] = chosen_tsg.log_path
 
     def run_opt_job(self, label: str, fine: bool = False):
         """
@@ -2176,9 +2207,14 @@ class Scheduler(object):
             xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
             energy = parser.parse_e_elect(log_file_path=job.local_path_to_output_file)
             if self.species_dict[label].is_ts:
-                self.species_dict[label].ts_guesses[i].energy = energy
-                self.species_dict[label].ts_guesses[i].opt_xyz = xyz
-                self.species_dict[label].ts_guesses[i].index = i
+                tsg = next((guess for guess in self.species_dict[label].ts_guesses
+                            if guess.conformer_index == i), None)
+                if tsg is None:
+                    logger.warning(f'Could not find TSGuess for conformer {i} of {label} '
+                                   f'(expected a matching conformer_index); skipping.')
+                    return False
+                tsg.energy = energy
+                tsg.opt_xyz = xyz
                 if energy is not None:
                     logger.debug(f'Energy for TSGuess {i} of {label} is {energy:.2f}')
                 else:
@@ -2398,7 +2434,8 @@ class Scheduler(object):
             e_min, selected_i = None, None
             self.species_dict[label].ts_guesses_exhausted = True
             for tsg in self.species_dict[label].ts_guesses:
-                if tsg.success and tsg.energy is not None and (e_min is None or tsg.energy < e_min) \
+                if tsg.success and tsg.energy is not None and tsg.opt_xyz is not None \
+                        and (e_min is None or tsg.energy < e_min) \
                         and (tsg.imaginary_freqs is None or check_imaginary_frequencies(tsg.imaginary_freqs)) \
                         and tsg.index not in self.species_dict[label].chosen_ts_list:
                     e_min = tsg.energy
@@ -2513,7 +2550,7 @@ class Scheduler(object):
                                        project_directory=self.project_directory,
                                        method='draw_3d')
             frequencies = parser.parse_frequencies(job.local_path_to_output_file, job.job_adapter)
-            freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
+            freq_ok, _ = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
             if freq_ok:
                 # Update restart dictionary and save a restart file:
                 self.save_restart_dict()
@@ -2667,6 +2704,31 @@ class Scheduler(object):
                     f'{xyz_to_str(self.species_dict[spc_label].final_xyz)}\n')
         self.output[spc_label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
 
+    def get_chosen_tsg(self, label: str) -> TSGuess | None:
+        """
+        Get the TSGuess object of a TS species that is currently being optimized.
+
+        The ``chosen_ts`` attribute of an ARCSpecies object stores a ``TSGuess.index``, which is an identity
+        assigned to a TS guess when it is appended to the species. It is not a position in a list, and in
+        particular it is not the ``TSGuess.conformer_index`` attribute, which is the index of the conformer
+        optimization job spawned for the guess (i.e., a position in the list of *successful* TS guesses).
+        If ``chosen_ts`` is ``None``, no selection was made among several guesses. That happens when only a
+        single TS guess was successful and was sent directly to a geometry optimization, in which case that
+        guess is returned, and after a restart file with ambiguous TS guess identities was repaired, in which
+        case there may be several successful guesses and ``None`` is returned.
+
+        Args:
+            label (str): The TS species label.
+
+        Returns:
+            TSGuess | None: The chosen TSGuess object, or ``None`` if it could not be determined.
+        """
+        if self.species_dict[label].chosen_ts is not None:
+            return next((tsg for tsg in self.species_dict[label].ts_guesses
+                         if tsg.index == self.species_dict[label].chosen_ts), None)
+        successful_tsgs = [tsg for tsg in self.species_dict[label].ts_guesses if tsg.success]
+        return successful_tsgs[0] if len(successful_tsgs) == 1 else None
+
     def check_freq_job(self,
                        label: str,
                        job: JobAdapter,
@@ -2723,9 +2785,9 @@ class Scheduler(object):
             tuple[bool, bool]: Whether the frequencies passed the check,
                                and whether a different TS guess was selected as a result.
         """
-        switch_ts = False
-        if not self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs):
-            return False, False
+        freq_ok, switch_ts = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
+        if not freq_ok:
+            return False, switch_ts
         if vibfreqs is not None:
             self.species_dict[label].freqs = [float(f) for f in vibfreqs]
         # Copy the frequency file to the species / TS output folder.
@@ -2766,24 +2828,27 @@ class Scheduler(object):
                             label: str,
                             job: JobAdapter,
                             vibfreqs: list | np.ndarray | None,
-                            ):
+                            ) -> tuple[bool, bool]:
         """
         A helper function for determining the number of negative frequencies. Also logs appropriate errors.
-        Returns ``True`` if the number of negative frequencies is as excepted, ``False`` otherwise.
 
         Args:
             label (str): The species label.
             job (JobAdapter): The optimization job object.
             vibfreqs (list | np.ndarray | None): The vibrational frequencies, or ``None`` if they could not be parsed.
+
+        Returns:
+            tuple[bool, bool]: Whether the number of negative frequencies is as expected,
+                               and whether a different TS guess was selected as a result.
         """
         if vibfreqs is None:
             logger.error(f'Could not parse frequencies for {label} from the freq job output file '
                          f'{job.local_path_to_output_file}. Treating the freq job as unsuccessful.')
-            return False
+            return False, False
         if len(vibfreqs) == 0 and not self.species_dict[label].is_ts and self.species_dict[label].number_of_atoms > 1:
             logger.error(f'The freq job for {label} yielded no frequencies, but {label} is a polyatomic non-TS '
                          f'species and should have vibrational modes. Treating the freq job as unsuccessful.')
-            return False
+            return False, False
         neg_freqs = list()
         for freq in vibfreqs:
             if freq < 0:
@@ -2795,22 +2860,42 @@ class Scheduler(object):
                 if f'{len(neg_freqs)} imaginary freq for' not in self.output[label]['warnings']:
                     self.output[label]['warnings'] += f'Warning: {len(neg_freqs)} imaginary freq for stable species ' \
                                                       f'({neg_freqs}); '
-                return False
+                return False, False
             else:
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
                 if not self.testing:
                     # Update restart dictionary and save the yaml restart file:
                     self.save_restart_dict()
-                return True
+                return True, False
         else:
             # This is a TS. Assign the imaginary frequencies to the respective TSGuess.
-            tsg = None
-            for tsg in self.species_dict[label].ts_guesses:
-                if tsg.conformer_index == self.species_dict[label].chosen_ts:
-                    tsg.imaginary_freqs = neg_freqs
-                    break
-            if tsg is not None and not check_imaginary_frequencies(tsg.imaginary_freqs):
+            chosen_tsg = self.get_chosen_tsg(label=label)
+            if chosen_tsg is None and self.species_dict[label].chosen_ts is None:
+                # No selection was made among the TS guesses, so the frequencies cannot be attributed to one.
+                # They still describe the geometry that was optimized, so the check is decided on them directly.
+                n_successful = len([tsg for tsg in self.species_dict[label].ts_guesses if tsg.success])
+                logger.warning(f'No TS guess is currently selected for {label} ({n_successful} successful TS '
+                               f'guesses), so the imaginary frequencies {neg_freqs} cannot be attributed to a '
+                               f'TS guess. Checking them against the optimized geometry of {label} itself.')
+                if 'imaginary freqs could not be attributed' not in self.output[label]['warnings']:
+                    self.output[label]['warnings'] += f'Warning: the imaginary freqs could not be attributed to a ' \
+                                                      f'TS guess ({neg_freqs}); '
+            elif chosen_tsg is None:
+                logger.warning(f'Could not match the chosen TS guess index {self.species_dict[label].chosen_ts} of '
+                               f'{label} to any of its TS guesses (available TS guess indices: '
+                               f'{[tsg.index for tsg in self.species_dict[label].ts_guesses]}). '
+                               f'The imaginary frequencies {neg_freqs} could not be attributed to a TS guess, '
+                               f'the frequency check for {label} is therefore considered unverified. '
+                               f'Searching for a better TS conformer...')
+                if 'imaginary freqs could not be attributed' not in self.output[label]['warnings']:
+                    self.output[label]['warnings'] += f'Warning: the imaginary freqs could not be attributed to a ' \
+                                                      f'TS guess ({neg_freqs}); '
+                self.switch_ts(label=label)
+                return False, True
+            if chosen_tsg is not None:
+                chosen_tsg.imaginary_freqs = neg_freqs
+            if not check_imaginary_frequencies(neg_freqs):
                 # Imaginary frequencies are problematic, try choosing a different TSGuess, and optimize it.
                 add_text = f' major imaginary frequency between {LOWEST_MAJOR_TS_FREQ} and {HIGHEST_MAJOR_TS_FREQ}.' \
                     if len(neg_freqs) == 1 and (neg_freqs[0] < LOWEST_MAJOR_TS_FREQ
@@ -2820,36 +2905,43 @@ class Scheduler(object):
                 if f'{len(neg_freqs)} imaginary freqs for' not in self.output[label]['warnings']:
                     self.output[label]['warnings'] += f'Warning: {len(neg_freqs)} imaginary freqs for TS ({neg_freqs}); '
                     logger.info(f'TS {label} did not pass the negative frequency check. '
-                                f'Status is:\n{self.species_dict[label].ts_checks}\n'
-                                f'Searching for a better TS conformer...')
+                                f'Status is:\n{self.species_dict[label].ts_checks}\n')
+                if chosen_tsg is None:
+                    # The frequencies belong to no identifiable guess, so switching guesses would discard a
+                    # geometry that may already have passed every other check without knowing what replaces it.
+                    logger.warning(f'Not switching the TS guess of {label}: the frequencies could not be '
+                                   f'attributed to a TS guess. The frequency check is left unverified.')
+                    return False, False
+                logger.info(f'Searching for a better TS conformer for {label}...')
                 self.switch_ts(label=label)
-                return False
+                return False, True
             else:
                 logger.info(f'TS {label} has exactly one imaginary frequency: {neg_freqs[0]}')
                 self.output[label]['info'] += f'Imaginary frequency: {neg_freqs[0] if len(neg_freqs) == 1 else neg_freqs}; '
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
-                plotter.save_conformers_file(
-                    project_directory=self.project_directory,
-                    label=label,
-                    xyzs=[tsg.opt_xyz for tsg in self.species_dict[label].ts_guesses],
-                    level_of_theory=self.ts_guess_level,
-                    multiplicity=self.species_dict[label].multiplicity,
-                    charge=self.species_dict[label].charge,
-                    is_ts=True,
-                    energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
-                    ts_methods=[f'{tsg.method} '
-                                f'{tsg.method_direction if tsg.method_direction is not None else ""} '
-                                f'{tsg.method_index if tsg.method_index is not None else ""} '
-                                for tsg in self.species_dict[label].ts_guesses],
-                    im_freqs=[tsg.imaginary_freqs for tsg in self.species_dict[label].ts_guesses]
-                        if any(tsg.imaginary_freqs is not None for tsg in self.species_dict[label].ts_guesses) else None,
-                    before_optimization=False,
-                )
+                if len(self.species_dict[label].ts_guesses):
+                    plotter.save_conformers_file(
+                        project_directory=self.project_directory,
+                        label=label,
+                        xyzs=[tsg.opt_xyz for tsg in self.species_dict[label].ts_guesses],
+                        level_of_theory=self.ts_guess_level,
+                        multiplicity=self.species_dict[label].multiplicity,
+                        charge=self.species_dict[label].charge,
+                        is_ts=True,
+                        energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
+                        ts_methods=[f'{tsg.method} '
+                                    f'{tsg.method_direction if tsg.method_direction is not None else ""} '
+                                    f'{tsg.method_index if tsg.method_index is not None else ""} '
+                                    for tsg in self.species_dict[label].ts_guesses],
+                        im_freqs=[tsg.imaginary_freqs for tsg in self.species_dict[label].ts_guesses]
+                            if any(tsg.imaginary_freqs is not None for tsg in self.species_dict[label].ts_guesses) else None,
+                        before_optimization=False,
+                    )
                 if not self.testing:
                     self.save_restart_dict()
                 self.species_dict[label].ts_checks['freq'] = True
-                return True
+                return True, False
 
     def check_rxn_e0_by_spc(self, label: str):
         """
@@ -3669,6 +3761,41 @@ class Scheduler(object):
         else:
             job.troubleshoot_server()
 
+    def record_tsg_job_error(self,
+                             label: str,
+                             job: JobAdapter,
+                             output_error: str,
+                             ):
+        """
+        Record an unrecoverable TS-search job error on the TS guesses that job produced.
+
+        A ``tsg<i>`` job name numbers the TS-search *adapter* that was dispatched for the
+        reaction, it is not a position in ``species.ts_guesses``: one adapter may contribute
+        several guesses or none at all, and guesses from other adapters are interleaved.
+        Using the job number as a list index therefore either annotates an unrelated guess or
+        raises an ``IndexError`` when the adapter number exceeds the number of guesses
+        generated so far. Match on the adapter that produced each guess instead.
+
+        Args:
+            label (str): The TS species label.
+            job (JobAdapter): The failed TS-search job.
+            output_error (str): The error string to record.
+        """
+        matched = False
+        for tsg in self.species_dict[label].ts_guesses:
+            if tsg.success:
+                # A guess that produced a geometry is not the casualty of this failure, and adapters
+                # merge their names into an equivalent guess (e.g. 'heuristics and gcn'), so matching
+                # a successful guess on the merged name would record the error on another method's work.
+                continue
+            sources = tsg.method_sources or [tsg.method]
+            if any(tsg_method_matches_adapter(source, job.job_adapter) for source in sources):
+                tsg.errors += f'; {output_error}'
+                matched = True
+        if not matched:
+            logger.warning(f'TS-search job {job.job_name} of {label} ({job.job_adapter}) generated no TS guess '
+                           f'to record the error "{output_error}" on: {output_error}')
+
     def troubleshoot_ess(self,
                          label: str,
                          job: JobAdapter,
@@ -3759,7 +3886,7 @@ class Scheduler(object):
         for output_error in output_errors:
             self.output[label]['errors'] += output_error
             if 'Could not troubleshoot' in output_error and 'tsg' in job.job_name:
-                self.species_dict[label].ts_guesses[get_i_from_job_name(job.job_name)].errors += f'; {output_error}'
+                self.record_tsg_job_error(label=label, job=job, output_error=output_error)
         if remove_checkfile:
             self.species_dict[label].checkfile = None
         job.ess_trsh_methods = ess_trsh_methods

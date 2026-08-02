@@ -926,7 +926,6 @@ class LinearAdapter(JobAdapter):
                         if unique:
                             method = f'Linear (w={w:.2f}, {xyz_i})'
                             ts_guess = TSGuess(method=method,
-                                               index=len(rxn.ts_species.ts_guesses),
                                                method_index=w_i,
                                                t0=t0,
                                                execution_time=t_ex,
@@ -934,7 +933,7 @@ class LinearAdapter(JobAdapter):
                                                family=rxn.family,
                                                xyz=xyz,
                                                )
-                            rxn.ts_species.ts_guesses.append(ts_guess)
+                            rxn.ts_species.append_ts_guess(ts_guess)
 
                             save_geo(xyz=xyz,
                                      path=self.local_path,

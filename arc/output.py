@@ -523,7 +523,13 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
 
 
 def _get_ts_imag_freq(spc) -> float | None:
-    """Return the imaginary frequency (cm⁻¹) of the TS, or None."""
+    """Return the imaginary frequency (cm⁻¹) of the TS, or None.
+
+    ``ARCSpecies.chosen_ts`` holds the chosen ``TSGuess.index``, which is that guess's stable
+    identity, not its position in ``ts_guesses``: unsuccessful guesses are kept in the list and
+    equivalent-guess clustering removes guesses while preserving the survivors' indices, so the
+    two diverge. The chosen guess is therefore looked up by index.
+    """
     # Primary: take the most negative frequency from spc.freqs (all freqs from the freq job)
     freqs = getattr(spc, 'freqs', None)
     if freqs:
@@ -533,8 +539,9 @@ def _get_ts_imag_freq(spc) -> float | None:
     # Fallback: try the chosen TS guess's imaginary_freqs
     try:
         chosen = spc.chosen_ts
-        if chosen is not None and spc.ts_guesses and chosen < len(spc.ts_guesses):
-            im_freqs = spc.ts_guesses[chosen].imaginary_freqs
+        if chosen is not None and spc.ts_guesses:
+            chosen_guess = next((tsg for tsg in spc.ts_guesses if tsg.index == chosen), None)
+            im_freqs = chosen_guess.imaginary_freqs if chosen_guess is not None else None
             if im_freqs:
                 return float(im_freqs[0])
     except Exception:
