@@ -1078,6 +1078,28 @@ def zmat_to_coords(zmat: dict,
     return ordered_coords, ordered_symbols
 
 
+def get_perpendicular_unit_vector(vector: np.ndarray | list) -> np.ndarray:
+    """
+    Get a deterministic unit vector perpendicular to ``vector``.
+
+    Crossing ``vector`` with the Cartesian axis it is least aligned with can never be degenerate:
+    a unit vector's smallest component is at most 1/sqrt(3), so the resulting cross product has a
+    length of at least sqrt(2/3). Picking the axis by magnitude rather than arbitrarily keeps the
+    result reproducible for a given input.
+
+    Args:
+        vector (np.ndarray | list): The vector to find a perpendicular of. Need not be normalized.
+
+    Returns:
+        np.ndarray: A unit vector perpendicular to ``vector``.
+    """
+    axis = int(np.argmin([abs(float(component)) for component in vector]))
+    reference = np.zeros(3)
+    reference[axis] = 1.0
+    perpendicular = np.cross(np.asarray(vector, dtype=np.float64), reference)
+    return perpendicular / vectors.get_vector_length(list(perpendicular))
+
+
 def _add_nth_atom_to_coords(zmat: dict,
                             coords: list,
                             i: int,
@@ -1148,7 +1170,14 @@ def _add_nth_atom_to_coords(zmat: dict,
                (coords[c_index][1] - coords[b_index][1]) / bc_length,
                (coords[c_index][2] - coords[b_index][2]) / bc_length]
         n = np.cross(ab, ubc)
-        un = n / vectors.get_vector_length(n)
+        n_length = vectors.get_vector_length(list(n))
+        un = n / n_length if n_length else np.full(3, np.nan)
+        if not np.all(np.isfinite(un)):
+            logger.warning(f'Atoms {a_index}, {b_index} and {c_index} of the zmat are exactly collinear, so the '
+                           f'dihedral about them is undefined. Placing atom {i} using an arbitrary reference '
+                           f'plane; its position is still determined by the respective distance and angle. '
+                           f'This usually means a dummy atom is missing for a linear segment.')
+            un = get_perpendicular_unit_vector(ubc)
         un_cross_ubc = np.cross(un, ubc)
 
         # The transformation matrix:

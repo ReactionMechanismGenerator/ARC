@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.species.species module
 """
 
+import math
 import unittest
 
 import arc.species.zmat as zmat
@@ -2450,6 +2451,85 @@ H   1.3230  -1.0712   1.2760""")
         result = zmat.find_smart_anchors(mol, breaking_bonds=[(0, 1)])
         self.assertEqual(len(result), len(set(result)),
                          msg=f'Duplicate anchors {result} with reactive core on cyclohexane')
+
+
+class TestCollinearReference(unittest.TestCase):
+    """
+    Test placing an atom whose three zmat reference atoms are collinear.
+
+    The dihedral about a collinear A-B-C is undefined, so no reference plane exists. The placement
+    must still honour the requested distance and angle rather than producing NaN coordinates.
+    """
+
+    @staticmethod
+    def build_collinear_zmat(cd_length: float, bcd_angle: float, abcd_dihedral: float = 0.0) -> dict:
+        """Build a 4-atom zmat whose first three atoms lie on a straight line."""
+        return {'symbols': ('H', 'H', 'H', 'H'),
+                'coords': ((None, None, None),
+                           ('R_1_0', None, None),
+                           ('R_2_1', 'A_2_1_0', None),
+                           ('R_3_2', 'A_3_2_1', 'D_3_2_1_0')),
+                'vars': {'R_1_0': 1.0, 'R_2_1': 1.0, 'A_2_1_0': 180.0,
+                         'R_3_2': cd_length, 'A_3_2_1': bcd_angle, 'D_3_2_1_0': abcd_dihedral},
+                'map': {0: 0, 1: 1, 2: 2, 3: 3}}
+
+    @staticmethod
+    def distance(p, q):
+        return math.sqrt(sum((p[k] - q[k]) ** 2 for k in range(3)))
+
+    def angle(self, p, q, r):
+        """The angle at ``q`` in degrees."""
+        v1 = [p[k] - q[k] for k in range(3)]
+        v2 = [r[k] - q[k] for k in range(3)]
+        dot = sum(v1[k] * v2[k] for k in range(3))
+        return math.degrees(math.acos(dot / (self.distance(p, q) * self.distance(r, q))))
+
+    def test_collinear_reference_does_not_produce_nan(self):
+        """The reported failure: a collinear A-B-C gave (nan, nan, nan) with only a RuntimeWarning."""
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5)
+        coords = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)]
+        coords = zmat._add_nth_atom_to_coords(zmat=z, coords=coords, i=3)
+        self.assertEqual(len(coords), 4)
+        for value in coords[3]:
+            self.assertFalse(math.isnan(value), f'Atom 3 was placed at {coords[3]}, which contains NaN.')
+
+    def test_collinear_reference_honours_distance_and_angle(self):
+        """Not merely non-NaN: the requested C-D distance and B-C-D angle must both be reproduced."""
+        for cd_length, bcd_angle in ((1.5, 109.5), (1.09, 120.0), (2.0, 90.0)):
+            with self.subTest(cd_length=cd_length, bcd_angle=bcd_angle):
+                z = self.build_collinear_zmat(cd_length=cd_length, bcd_angle=bcd_angle)
+                coords = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)]
+                coords = zmat._add_nth_atom_to_coords(zmat=z, coords=coords, i=3)
+                self.assertAlmostEqual(self.distance(coords[3], coords[2]), cd_length, places=6)
+                self.assertAlmostEqual(self.angle(coords[1], coords[2], coords[3]), bcd_angle, places=4)
+
+    def test_collinear_reference_is_deterministic(self):
+        """The arbitrary reference plane must be chosen reproducibly, not at random."""
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5)
+        first = zmat._add_nth_atom_to_coords(zmat=z, coords=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)], i=3)
+        second = zmat._add_nth_atom_to_coords(zmat=z, coords=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)], i=3)
+        self.assertEqual(first[3], second[3])
+
+    def test_non_collinear_reference_is_unchanged(self):
+        """A well-defined reference must keep using the real A-B-C plane, dihedral included."""
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5, abcd_dihedral=60.0)
+        coords = [(0.0, 1.0, 0.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]
+        coords = zmat._add_nth_atom_to_coords(zmat=z, coords=coords, i=3)
+        self.assertAlmostEqual(self.distance(coords[3], coords[2]), 1.5, places=6)
+        self.assertAlmostEqual(self.angle(coords[1], coords[2], coords[3]), 109.5, places=4)
+        for value in coords[3]:
+            self.assertFalse(math.isnan(value))
+
+    def test_get_perpendicular_unit_vector(self):
+        """The helper must return a unit vector orthogonal to its input, for any input direction."""
+        for vector in ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+                       [1.0, 1.0, 1.0], [-3.0, 0.5, 0.0], [0.0, 0.0, -2.0]):
+            with self.subTest(vector=vector):
+                perpendicular = zmat.get_perpendicular_unit_vector(vector)
+                length = math.sqrt(sum(float(c) ** 2 for c in perpendicular))
+                self.assertAlmostEqual(length, 1.0, places=10)
+                dot = sum(float(perpendicular[k]) * vector[k] for k in range(3))
+                self.assertAlmostEqual(dot, 0.0, places=10)
 
 
 if __name__ == '__main__':
