@@ -500,7 +500,7 @@ def find_output_file(attempt_dir: str, engine: str, task_id: str = '') -> str | 
     return None
 
 
-def _check_ess_convergence(pipe_run_id: str, spec: TaskSpec, output_file: str, label: str) -> bool:
+def check_ess_convergence(pipe_run_id: str, spec: TaskSpec, output_file: str, label: str) -> bool:
     """
     Check whether an ESS job converged by inspecting the output file.
 
@@ -575,7 +575,7 @@ def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, confor
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
             return
-        if not _check_ess_convergence(run_id, spec, output_file, label):
+        if not check_ess_convergence(run_id, spec, output_file, label):
             return
         xyz = parser.parse_geometry(log_file_path=output_file)
         e_elect = parser.parse_e_elect(log_file_path=output_file)
@@ -597,7 +597,7 @@ def _ingest_conf_sp(run_id, pipe_root, spec, state, species_dict, label, conform
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
             return
-        if not _check_ess_convergence(run_id, spec, output_file, label):
+        if not check_ess_convergence(run_id, spec, output_file, label):
             return
         e_elect = parser.parse_e_elect(log_file_path=output_file)
     except Exception as e:
@@ -647,7 +647,7 @@ def _ingest_ts_opt(run_id, pipe_root, spec, state, species_dict, label):
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
             return
-        if not _check_ess_convergence(run_id, spec, output_file, label):
+        if not check_ess_convergence(run_id, spec, output_file, label):
             return
         xyz = parser.parse_geometry(log_file_path=output_file)
         e_elect = parser.parse_e_elect(log_file_path=output_file)
@@ -679,7 +679,7 @@ def _ingest_species_sp(run_id, pipe_root, spec, state, species_dict, label):
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
             return
-        if not _check_ess_convergence(run_id, spec, output_file, label):
+        if not check_ess_convergence(run_id, spec, output_file, label):
             return
         e_elect = parser.parse_e_elect(log_file_path=output_file)
     except Exception as e:
@@ -702,7 +702,7 @@ def _ingest_species_freq(run_id, pipe_root, spec, state, species_dict, label, ou
         logger.error(f'Pipe run {run_id}, task {spec.task_id}: '
                      f'output lookup failed: {type(e).__name__}: {e}')
         return
-    if output_file is not None and _check_ess_convergence(run_id, spec, output_file, label):
+    if output_file is not None and check_ess_convergence(run_id, spec, output_file, label):
         if label not in output:
             output[label] = {'paths': {}}
         elif 'paths' not in output[label]:
@@ -722,7 +722,7 @@ def _ingest_irc(run_id, pipe_root, spec, state, species_dict, label, output):
         logger.error(f'Pipe run {run_id}, task {spec.task_id}: '
                      f'output lookup failed: {type(e).__name__}: {e}')
         return
-    if output_file is not None and _check_ess_convergence(run_id, spec, output_file, label):
+    if output_file is not None and check_ess_convergence(run_id, spec, output_file, label):
         if label not in output:
             output[label] = {'paths': {'irc': []}}
         elif 'paths' not in output[label]:
@@ -746,7 +746,7 @@ def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):
         return
     if output_file is None:
         return
-    if not _check_ess_convergence(run_id, spec, output_file, label):
+    if not check_ess_convergence(run_id, spec, output_file, label):
         return
     meta = spec.ingestion_metadata or {}
     rotor_index = meta.get('rotor_index')

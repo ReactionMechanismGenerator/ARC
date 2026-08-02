@@ -78,6 +78,8 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
     settings['default_job_types'], settings['ts_adapters'], settings['max_ess_trsh'], settings['max_rotor_trsh'], \
     settings['rotor_scan_resolution'], settings['servers']
 
+WRONG_FREQ_MESSAGE = 'wrong number of negative frequencies; '
+
 
 class Scheduler(object):
     """
@@ -535,6 +537,29 @@ class Scheduler(object):
         if not self.testing:
             self.schedule_jobs()
 
+    def has_pending_pipe_work(self, label: str) -> bool:
+        """
+        Whether a species still has work queued for, or running in, a pipe run.
+
+        A species whose jobs were routed to pipe mode holds no entries in ``running_jobs``, so an
+        empty entry does not mean that species is finished. It must be kept until its pipe work
+        terminates: dropping it leaves ``check_all_done()`` unreachable for that species, because
+        the main loop only reaches it through ``running_jobs``. The species would then never be
+        marked as converged even once every one of its piped jobs had succeeded.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: ``True`` if any pending batch or active pipe run still holds this species.
+        """
+        return (label in self._pending_pipe_sp
+                or label in self._pending_pipe_freq
+                or any(lbl == label for lbl, _ in self._pending_pipe_irc)
+                or label in self._pending_pipe_conf_sp
+                or any(label in {t.owner_key for t in p.tasks}
+                       for p in self.active_pipes.values()))
+
     def flush_pending_pipe_batches(self) -> None:
         """
         Attempt to submit accumulated deferred pipe batches for SP, freq, IRC, and conf_sp.
@@ -821,17 +846,8 @@ class Scheduler(object):
                             self.timer = False
                             break
 
-                if not len(job_list):
-                    has_pending_pipe_work = (
-                        label in self._pending_pipe_sp
-                        or label in self._pending_pipe_freq
-                        or any(lbl == label for lbl, _ in self._pending_pipe_irc)
-                        or label in self._pending_pipe_conf_sp
-                        or any(label in {t.owner_key for t in p.tasks}
-                               for p in self.active_pipes.values())
-                    )
-                    if not has_pending_pipe_work:
-                        self.check_all_done(label)
+                if not len(job_list) and not self.has_pending_pipe_work(label):
+                    self.check_all_done(label)
                     if not self.running_jobs[label]:
                         # Delete the label only if it represents an empty entry.
                         del self.running_jobs[label]
@@ -2630,55 +2646,88 @@ class Scheduler(object):
             label (str): The species label.
             job (JobAdapter): The frequency job object instance.
         """
-        freq_ok, switch_ts = False, False
-        wrong_freq_message = 'wrong number of negative frequencies; '
+        freq_ok = False
         if job.job_status[1]['status'] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
             vibfreqs = parser.parse_frequencies(log_file_path=str(job.local_path_to_output_file))
-            freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
-            if freq_ok and vibfreqs is not None:
-                self.species_dict[label].freqs = [float(f) for f in vibfreqs]
-            if freq_ok:
-                # Copy the frequency file to the species / TS output folder.
-                folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
-                freq_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry', 'freq.out')
-                safe_copy_file(source=job.local_path_to_output_file, destination=freq_path)
-                # Set species.polarizability.
-                polarizability = parser.parse_polarizability(job.local_path_to_output_file)
-                if polarizability is not None:
-                    self.species_dict[label].transport_data.polarizability = (polarizability, str('angstroms^3'))
-                    if self.species_dict[label].transport_data.comment:
-                        self.species_dict[label].transport_data.comment += \
-                            str(f'\nPolarizability calculated at the {self.freq_level.simple()} level of theory')
-                    else:
-                        self.species_dict[label].transport_data.comment = \
-                            str(f'Polarizability calculated at the {self.freq_level.simple()} level of theory')
-                if self.species_dict[label].is_ts:
-                    if self.species_dict[label].rxn_index in self.rxn_dict.keys():
-                        check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
-                                 job=job,
-                                 checks=['NMD'],
-                                 skip_nmd=self.skip_nmd,
-                                 )
-                    if self.species_dict[label].ts_checks['NMD'] is False:
-                        logger.info(f'TS {label} did not pass the normal mode displacement check. '
-                                    f'Status is:\n{self.species_dict[label].ts_checks}\n'
-                                    f'Searching for a better TS conformer...')
-                        self.switch_ts(label)
-                        switch_ts = True
-                if wrong_freq_message in self.output[label]['warnings']:
-                    self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(wrong_freq_message))
-            elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
-                # Only trsh neg freq here for non TS species, trsh TS species is done in check_negative_freq().
-                self.troubleshoot_negative_freq(label=label, job=job)
+            freq_ok, _ = self.post_freq_actions(label=label, job=job, vibfreqs=vibfreqs)
             if not freq_ok:
-                self.output[label]['warnings'] += wrong_freq_message
+                if not self.species_dict[label].is_ts and self.trsh_ess_jobs:
+                    # Only trsh neg freq here for non TS species, trsh TS species is done in check_negative_freq().
+                    self.troubleshoot_negative_freq(label=label, job=job)
+                self.output[label]['warnings'] += WRONG_FREQ_MESSAGE
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
-        if (job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts
-                and species_has_sp(self.output[label], self.species_dict[label].yml_path)):
+
+    def post_freq_actions(self,
+                          label: str,
+                          job: JobAdapter,
+                          vibfreqs: list | np.ndarray | None,
+                          ) -> tuple[bool, bool]:
+        """
+        Run the imaginary frequency QA and, if it passes, perform every action a converged freq job
+        is expected to leave behind.
+
+        Pipe mode computes a batch of freq tasks outside the Scheduler's job machinery and hands the
+        results back to be checked, so it is a second caller of this method. Both routes share it so
+        that a species cannot be reported as converged while missing the artifacts its consumers
+        read: ``species.freqs``, which carries the frequencies into the restart and output files, and
+        the ``freq.out`` copy under the species output folder, whose absence makes
+        ``compute_rxn_e0()`` give up on the reaction E0 check. For a TS this is also where the normal
+        mode displacement check runs, so skipping it would leave the TS permanently un-validated.
+
+        Troubleshooting a failed check is deliberately not done here: it resubmits jobs and therefore
+        needs a real job object, which only a Scheduler-submitted job has.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The frequency job object instance.
+            vibfreqs (list | np.ndarray | None): The vibrational frequencies,
+                                                 or ``None`` if they could not be parsed.
+
+        Returns:
+            tuple[bool, bool]: Whether the frequencies passed the check,
+                               and whether a different TS guess was selected as a result.
+        """
+        switch_ts = False
+        if not self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs):
+            return False, False
+        if vibfreqs is not None:
+            self.species_dict[label].freqs = [float(f) for f in vibfreqs]
+        # Copy the frequency file to the species / TS output folder.
+        folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
+        freq_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry', 'freq.out')
+        os.makedirs(os.path.dirname(freq_path), exist_ok=True)
+        safe_copy_file(source=job.local_path_to_output_file, destination=freq_path)
+        # Set species.polarizability.
+        polarizability = parser.parse_polarizability(job.local_path_to_output_file)
+        if polarizability is not None:
+            self.species_dict[label].transport_data.polarizability = (polarizability, str('angstroms^3'))
+            if self.species_dict[label].transport_data.comment:
+                self.species_dict[label].transport_data.comment += \
+                    str(f'\nPolarizability calculated at the {self.freq_level.simple()} level of theory')
+            else:
+                self.species_dict[label].transport_data.comment = \
+                    str(f'Polarizability calculated at the {self.freq_level.simple()} level of theory')
+        if self.species_dict[label].is_ts:
+            if self.species_dict[label].rxn_index in self.rxn_dict.keys():
+                check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
+                         job=job,
+                         checks=['NMD'],
+                         skip_nmd=self.skip_nmd,
+                         )
+            if self.species_dict[label].ts_checks['NMD'] is False:
+                logger.info(f'TS {label} did not pass the normal mode displacement check. '
+                            f'Status is:\n{self.species_dict[label].ts_checks}\n'
+                            f'Searching for a better TS conformer...')
+                self.switch_ts(label)
+                switch_ts = True
+        if WRONG_FREQ_MESSAGE in self.output[label]['warnings']:
+            self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(WRONG_FREQ_MESSAGE))
+        if not switch_ts and species_has_sp(self.output[label], self.species_dict[label].yml_path):
             self.check_rxn_e0_by_spc(label)
+        return True, switch_ts
 
     def check_negative_freq(self,
                             label: str,
