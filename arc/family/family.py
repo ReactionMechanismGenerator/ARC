@@ -520,15 +520,19 @@ def get_reaction_family_products(rxn: ARCReaction,
                                      consider_rmg_families=consider_rmg_families,
                                      consider_arc_families=consider_arc_families)
     product_dicts = list()
-    # Pre-build the flipped reaction and copies once; guard against ValueError from to_smiles()
-    # (e.g. when openbabel is unavailable) so we can fall back to lazy creation per family.
+    # Pre-build the flipped reaction and the product copies once; guard against ValueError from
+    # to_smiles() (e.g. when openbabel is unavailable) so we can fall back to lazy creation per family.
+    # Only the *product* copies are reused across families. Reactant copies are deliberately rebuilt
+    # per call: generate_products() mutates them, and reusing a mutated set leaks state into the next
+    # family, which made the resulting atom map depend on family iteration order (and so on
+    # PYTHONHASHSEED -- it produced a chemically wrong map for CH2CH2NH2 <=> CH3CH2NH on 2 of 8 seeds).
     try:
         flipped_rxn = rxn.flip_reaction(report_family=False)
-        fwd_reactants, fwd_products = rxn.get_reactants_and_products(return_copies=True)
-        rev_reactants, rev_products = flipped_rxn.get_reactants_and_products(return_copies=True)
+        fwd_products = rxn.get_reactants_and_products(return_copies=True)[1]
+        rev_products = flipped_rxn.get_reactants_and_products(return_copies=True)[1]
     except (KeyError, ValueError, InvalidAdjacencyListError) as e:
         logger.debug(f'Could not pre-build flipped reaction copies: {type(e).__name__}: {e}')
-        flipped_rxn = fwd_reactants = fwd_products = rev_reactants = rev_products = None
+        flipped_rxn = fwd_products = rev_products = None
     # Shared adjacency-list → bool caches for check_product_isomorphism: one per direction.
     # Families appearing multiple times in the family list (e.g. due to 'all' including both
     # RMG and ARC copies) share results for the same template-product graph across calls.
@@ -541,24 +545,21 @@ def get_reaction_family_products(rxn: ARCReaction,
                                                                         family_label=family_label,
                                                                         consider_arc_families=consider_arc_families,
                                                                         reverse=False,
-                                                                        reactants=fwd_reactants,
                                                                         p_species=fwd_products,
                                                                         iso_cache=fwd_iso_cache,
                                                                         )
             if len(products):
                 product_dicts.extend(filter_products_by_reaction(rxn=rxn, product_dicts=products,
                                                                   p_species=fwd_products))
-                fwd_reactants = rxn.get_reactants_and_products(return_copies=True)[0]
 
             # Reverse:
             if flipped_rxn is None:
                 flipped_rxn = rxn.flip_reaction(report_family=False)
-                rev_reactants, rev_products = flipped_rxn.get_reactants_and_products(return_copies=True)
+                rev_products = flipped_rxn.get_reactants_and_products(return_copies=True)[1]
             products = determine_possible_reaction_products_from_family(rxn=flipped_rxn,
                                                                         family_label=family_label,
                                                                         consider_arc_families=consider_arc_families,
                                                                         reverse=True,
-                                                                        reactants=rev_reactants,
                                                                         p_species=rev_products,
                                                                         iso_cache=rev_iso_cache,
                                                                         )
@@ -569,7 +570,6 @@ def get_reaction_family_products(rxn: ARCReaction,
                     product_dicts.extend([prod for prod in filtered_products if not prod['own_reverse']])
                 else:
                     product_dicts.extend(filtered_products)
-                rev_reactants = flipped_rxn.get_reactants_and_products(return_copies=True)[0]
         except (KeyError, ValueError, InvalidAdjacencyListError) as e:
             logger.debug(f'Skipping family {family_label} due to unsupported group definition: {type(e).__name__}: {e}')
     return product_dicts
@@ -614,7 +614,6 @@ def determine_possible_reaction_products_from_family(rxn: ARCReaction,
                                                      family_label: str,
                                                      consider_arc_families: bool = True,
                                                      reverse: bool = False,
-                                                     reactants: list | None = None,
                                                      p_species: list | None = None,
                                                      iso_cache: dict | None = None,
                                                      ) -> list[dict]:
@@ -639,10 +638,6 @@ def determine_possible_reaction_products_from_family(rxn: ARCReaction,
         family_label (str): The reaction family label.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
         reverse (bool, optional): Whether the reaction is in reverse.
-        reactants (list, optional): Pre-built reactant copies to pass directly to generate_products.
-                                    When provided, skips the internal get_reactants_and_products() call.
-                                    The caller is responsible for ensuring these are fresh copies when
-                                    a previous call may have mutated them (i.e., when products were found).
         p_species (list, optional): Pre-built product species copies for isomorphism check.
                                     When provided, skips the internal get_reactants_and_products() call
                                     inside isomorphic_products. The caller must ensure these are not mutated.
@@ -657,9 +652,8 @@ def determine_possible_reaction_products_from_family(rxn: ARCReaction,
     """
     product_dicts = list()
     family = get_reaction_family(label=family_label, consider_arc_families=consider_arc_families)
-    if reactants is None:
-        reactants = rxn.get_reactants_and_products(return_copies=True)[0]
-    products = family.generate_products(reactants=reactants)
+    # A fresh reactant copy per call: generate_products() mutates it.
+    products = family.generate_products(reactants=rxn.get_reactants_and_products(return_copies=True)[0])
     if products:
         if p_species is None:
             p_species = rxn.get_reactants_and_products(return_copies=True)[1]
