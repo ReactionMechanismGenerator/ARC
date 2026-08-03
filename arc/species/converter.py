@@ -11,7 +11,6 @@ from collections.abc import Iterable
 from ase import Atoms
 from scipy.spatial.transform import Rotation
 from openbabel import openbabel as ob
-from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
 from rdkit.Chem import AllChem, SDWriter
@@ -1263,8 +1262,9 @@ def xyz_to_pybel_mol(xyz: dict):
         return None
     xyz = check_xyz_dict(xyz)
     try:
+        from openbabel import pybel
         pybel_mol = pybel.readstring('xyz', xyz_to_xyz_file_format(xyz))
-    except (IOError, InputError):
+    except (IOError, ImportError, ValueError, InputError):
         return None
     return pybel_mol
 

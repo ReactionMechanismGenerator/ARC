@@ -5230,6 +5230,26 @@ H      -1.88123946   -2.00923795    0.23313156"""
         self.assertEqual([a.element.symbol for a in result.atoms],
                          list(reversed(ref_symbols)))
 
+    def test_xyz_to_pybel_mol_returns_none_when_pybel_broken(self):
+        """xyz_to_pybel_mol() must return None gracefully when the pybel import fails
+        (e.g. broken OpenBabel plugin directory raises ValueError at import time)
+        rather than propagating the exception to the caller."""
+        import sys
+        from unittest.mock import patch
+        from arc.species.converter import xyz_to_pybel_mol
+        ch4_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                   'isotopes': (12, 1, 1, 1, 1),
+                   'coords': ((0.0, 0.0, 0.0),
+                              (0.63, 0.63, 0.63),
+                              (-0.63, -0.63, 0.63),
+                              (-0.63, 0.63, -0.63),
+                              (0.63, -0.63, -0.63))}
+        # Remove any cached pybel so the lazy import inside xyz_to_pybel_mol fires.
+        # Patch it to raise ValueError, simulating a broken OB plugin directory.
+        with patch.dict(sys.modules, {'openbabel.pybel': None}):
+            result = xyz_to_pybel_mol(ch4_xyz)
+        self.assertIsNone(result)
+
     @classmethod
     def tearDownClass(cls):
         """

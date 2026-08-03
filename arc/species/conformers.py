@@ -42,7 +42,6 @@ import time
 from itertools import product
 
 from openbabel import openbabel as ob
-from openbabel import pybel as pyb
 from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
@@ -1399,6 +1398,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
 
     elif num_confs is not None:
         obmol, ob_atom_ids = to_ob_mol(mol, return_mapping=True)
+        from openbabel import pybel as pyb
         pybmol = pyb.Molecule(obmol)
         pybmol.make3D()
         obmol = pybmol.OBMol

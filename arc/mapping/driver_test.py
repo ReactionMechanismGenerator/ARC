@@ -875,6 +875,53 @@ class TestMappingDriver(unittest.TestCase):
         self.assertIn(atom_map[7], [6, 7])
         self.assertIn(atom_map[8], [7, 8])
 
+    def test_map_c7h5_isomerization(self):
+        """
+        Regression test for the lazy-pybel import fix (arc/species/conformers.py,
+        converter.py, perceive.py).
+
+        C7H5 -> C7H5-2 is an ethynylcyclopentadienyl isomerization where the radical
+        migrates around the ring and the ring bond pattern changes.  Before the fix,
+        a bare `from openbabel import pybel` at module level in conformers.py crashed
+        at import time with ValueError when the OpenBabel plugin directory is absent,
+        blocking arc.mapping.engine from loading entirely.  The same ValueError was
+        also unguarded in the runtime call sites in converter.py and perceive.py.
+        """
+        r_adjlist = """multiplicity 2
+1  *2 C u0 p0 c0 {2,S} {5,S} {6,S} {8,S}
+2     C u0 p0 c0 {1,S} {3,D} {9,S}
+3     C u0 p0 c0 {2,D} {4,S} {10,S}
+4     C u0 p0 c0 {3,S} {5,D} {11,S}
+5  *3 C u1 p0 c0 {1,S} {4,D}
+6  *1 C u0 p0 c0 {1,S} {7,T}
+7     C u0 p0 c0 {6,T} {12,S}
+8     H u0 p0 c0 {1,S}
+9     H u0 p0 c0 {2,S}
+10    H u0 p0 c0 {3,S}
+11    H u0 p0 c0 {4,S}
+12    H u0 p0 c0 {7,S}
+"""
+        p_adjlist = """multiplicity 2
+1  *2 C u0 p0 c0 {2,S} {3,D} {6,S}
+2  *3 C u1 p0 c0 {1,S} {4,S} {8,S}
+3     C u0 p0 c0 {1,D} {5,S} {11,S}
+4     C u0 p0 c0 {2,S} {5,D} {9,S}
+5     C u0 p0 c0 {3,S} {4,D} {10,S}
+6  *1 C u0 p0 c0 {1,S} {7,T}
+7     C u0 p0 c0 {6,T} {12,S}
+8     H u0 p0 c0 {2,S}
+9     H u0 p0 c0 {4,S}
+10    H u0 p0 c0 {5,S}
+11    H u0 p0 c0 {3,S}
+12    H u0 p0 c0 {7,S}
+"""
+        reactant = ARCSpecies(label='C7H5', adjlist=r_adjlist)
+        product = ARCSpecies(label='C7H5-2', adjlist=p_adjlist)
+        rxn = ARCReaction(r_species=[reactant], p_species=[product])
+        atom_map = map_rxn(rxn, backend='ARC')
+        self.assertIsNotNone(atom_map)
+        self.assertTrue(check_atom_map(rxn))
+
     def test_map_pairs_failure_condition_guarded_in_map_rxn(self):
         """
         Test the condition guarded by map_rxn(): a fragment pair that cannot be mapped
