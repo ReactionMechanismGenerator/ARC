@@ -271,9 +271,6 @@ def fingerprint(spc: ARCSpecies,
     return fingerprint_dict
 
 
-_MAX_BACKBONE_CANDIDATES = 4
-
-
 def identify_superimposable_candidates(fingerprint_1: dict[int, dict[str, str | list[int]]],
                                        fingerprint_2: dict[int, dict[str, str | list[int]]],
                                        ) -> list[dict[int, int]]:
@@ -291,13 +288,16 @@ def identify_superimposable_candidates(fingerprint_1: dict[int, dict[str, str | 
     if not fingerprint_1:
         return []
     key_1 = list(fingerprint_1.keys())[0]
+    # Deduplicated inline rather than by a prune_identical_dicts() post-pass. The list is
+    # deliberately not truncated: the number of distinct candidates is bounded by the
+    # molecule's symmetry order (at most 6 across the aromatics, rings and cages tested),
+    # and dropping the tail discards the best-RMSD map for symmetric species -- for jittered
+    # benzene it lost the best candidate in half of the trials, by up to 0.04 A.
     candidates: list[dict[int, int]] = []
     for key_2 in fingerprint_2.keys():
         result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2)
         if result is not None and result not in candidates:
             candidates.append(result)
-            if len(candidates) >= _MAX_BACKBONE_CANDIDATES:
-                break
     return candidates
 
 
