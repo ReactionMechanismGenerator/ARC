@@ -23,6 +23,10 @@ ARC_FAMILIES_PATH = settings['ARC_FAMILIES_PATH']
 
 logger = get_logger()
 
+# How many resonance structures of a >20-atom reactant to search for reaction sites in
+# generate_unimolecular_products(). ``None`` searches all of them.
+RESONANCE_SEARCH_LIMIT: int | None = 2
+
 
 REACTION_FAMILY_CACHE: dict[tuple[str, bool], 'ReactionFamily'] = {}
 
@@ -264,12 +268,9 @@ class ReactionFamily(object):
         isomorphic_subgraph_dicts = list()
         reactant_to_group_maps = reactant_to_group_maps[0]
         mol_list = reactants[0].mol_list or [reactants[0].mol]
-        # For large molecules (>20 atoms) with many resonance structures, limit the search
-        # to avoid combinatorial explosion. Most reaction sites are captured by the first
-        # few Kekulé forms; additional resonance structures produce equivalent sites already
-        # covered by the adjacency-list deduplication in check_product_isomorphism.
-        if len(mol_list) > 2 and len(mol_list[0].atoms) > 20:
-            mol_list = mol_list[:2]
+        if RESONANCE_SEARCH_LIMIT is not None \
+                and len(mol_list) > RESONANCE_SEARCH_LIMIT and len(mol_list[0].atoms) > 20:
+            mol_list = mol_list[:RESONANCE_SEARCH_LIMIT]
         for mol in mol_list:
             for reactant_to_group_map in reactant_to_group_maps:
                 group = self.groups_by_label[reactant_to_group_map['subgroup']]
