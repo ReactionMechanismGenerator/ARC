@@ -15,9 +15,9 @@
 *.o
 *.html
 
-# Exception: hand-written C kernel committed alongside its source
+# Exception: hand-written C kernel source is tracked (the .so it builds into is not --
+# a compiled binary is not portable across CPUs/OSes; `make compile` builds it locally)
 !arc/species/_zmat_c_kernels.c
-!arc/species/_zmat_c_kernels.so
 
 # PyCharm project files
 .idea/*

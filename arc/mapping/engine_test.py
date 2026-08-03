@@ -15,7 +15,7 @@ from arc.common import ARC_PATH, is_equal_family_product_dicts
 from arc.family import determine_possible_reaction_products_from_family
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
-from arc.species.vectors import calculate_dihedral_angle
+from arc.species.vectors import calculate_dihedral_angle, get_delta_angle
 
 from arc.molecule import Molecule
 
@@ -314,6 +314,40 @@ class TestMappingEngine(unittest.TestCase):
                                     (0.7583076310662862, -1.882720433150506, -0.04089782108496264),
                                     (0.9972006722528377, -0.7025586995487184, -1.3391950754631268),
                                     (2.377638769033351, 0.43380253822255727, 0.17647842348371048))}
+        # Two [CH2]C(C)CO conformers differing only in the [0, 3, 5, 6] torsion, placed at
+        # 350 and 10 degrees so that the pair straddles the 0/360 wrap.
+        cls.wrap_350_xyz = {'symbols': ('C', 'H', 'H', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                            'isotopes': (12, 1, 1, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1),
+                            'coords': ((0.025711531222639566, 1.5002469234994276, -0.018809721320361607),
+                                       (-0.2501237905589279, 2.283276320160058, 0.6795778782867752),
+                                       (0.21710649528235348, 1.7701501165266882, -1.0518607878262018),
+                                       (-0.1296127183749531, 0.05931626777072968, 0.3829802045651552),
+                                       (-1.5215969202773243, -0.4341372833972907, -0.0024458040153687616),
+                                       (0.9542754661462038, -0.8261822387409434, -0.2512878552942834),
+                                       (1.6894940768903859, -0.1043095831260194, -1.2359530753394785),
+                                       (-0.022719509344805086, 0.012299638536749403, 1.47391586262432),
+                                       (-1.6734988982808552, -1.4656213151526711, 0.3333615031669381),
+                                       (-1.6708084550075688, -0.40804497485420527, -1.0879383468423085),
+                                       (-2.3005261427143897, 0.18308085969254126, 0.45923715033920876),
+                                       (1.6712189461427793, -1.1577313587391742, 0.5070046625677396),
+                                       (0.5277517561091307, -1.7183490799383507, -0.7232871399349066),
+                                       (1.0437989988259144, 0.26298871316936584, -1.864421728863517))}
+        cls.wrap_010_xyz = {'symbols': ('C', 'H', 'H', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                            'isotopes': (12, 1, 1, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1),
+                            'coords': ((0.025711531222639566, 1.5002469234994276, -0.018809721320361607),
+                                       (-0.2501237905589279, 2.283276320160058, 0.6795778782867752),
+                                       (0.21710649528235348, 1.7701501165266882, -1.0518607878262018),
+                                       (-0.1296127183749531, 0.05931626777072968, 0.3829802045651552),
+                                       (-1.5215969202773243, -0.4341372833972907, -0.0024458040153687616),
+                                       (0.9542754661462038, -0.8261822387409434, -0.2512878552942834),
+                                       (1.9627902992393995, -0.031777997393463875, -0.8701835370015807),
+                                       (-0.022719509344805086, 0.012299638536749403, 1.47391586262432),
+                                       (-1.6734988982808552, -1.4656213151526711, 0.3333615031669381),
+                                       (-1.6708084550075688, -0.40804497485420527, -1.0879383468423085),
+                                       (-2.3005261427143897, 0.18308085969254126, 0.45923715033920876),
+                                       (1.4480466018873437, -1.4352262778413052, 0.5130391290991433),
+                                       (0.5379105760222647, -1.5046427762153576, -1.0042812482395453),
+                                       (1.5144122217847011, 0.5703124296921558, -1.4892531922346401))}
         cls.spc1 = ARCSpecies(label='[CH2]C(C)CO_a', smiles='[CH2]C(C)CO', xyz=cls.c4h9o_xyz)
         cls.spc2 = ARCSpecies(label='[CH2]C(C)CO_b', smiles='[CH2]C(C)CO',
                               xyz={'symbols': ('C', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
@@ -985,21 +1019,6 @@ class TestMappingEngine(unittest.TestCase):
                                       key_1=7, key_2=7)
         self.assertEqual(result, {7: 7, 6: 6, 5: 5, 3: 3, 4: 4, 2: 2, 1: 1, 0: 0, 9: 9, 10: 10, 8: 8})
 
-    def test_prune_identical_dicts(self):
-        """Test the prune_identical_dicts() function."""
-        new_dicts_list = engine.prune_identical_dicts([{0: 0}])
-        self.assertEqual(new_dicts_list, [{0: 0}])
-        new_dicts_list = engine.prune_identical_dicts([{0: 0}, {0: 0}, {0: 0}])
-        self.assertEqual(new_dicts_list, [{0: 0}])
-        new_dicts_list = engine.prune_identical_dicts([{0: 0}, {0: 0}, {0: 0}, {0: 1}])
-        self.assertEqual(new_dicts_list, [{0: 0}, {0: 1}])
-        new_dicts_list = engine.prune_identical_dicts([{0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
-                                                       {0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
-                                                       {0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
-                                                       {0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
-                                                       {0: 0, 3: 1, 4: 2, 5: 3, 6: 4}])
-        self.assertEqual(new_dicts_list, [{0: 0, 3: 1, 4: 2, 5: 3, 6: 4}])
-
     def test_remove_gaps_from_values(self):
         """Test the remove_gaps_from_values() function."""
         self.assertEqual(engine.remove_gaps_from_values({5: 18, 7: 502, 21: 0, 0: 55, 2: 1}),
@@ -1027,6 +1046,32 @@ class TestMappingEngine(unittest.TestCase):
         self.assertAlmostEqual(original_dihedrals_2[2], 174.65228274664804, places = 4)
         self.assertAlmostEqual(new_dihedrals_1[2], 121.23139159126627, places = 4)
         self.assertAlmostEqual(new_dihedrals_2[2], 121.23139016907017, places = 4)
+
+    def test_fix_dihedrals_by_backbone_mapping_across_the_0_360_wrap(self):
+        """Test aligning two torsions that straddle the 0/360 degree boundary.
+
+        Two conformers of [CH2]C(C)CO differing only in the C-C-C-O torsion, one at 350
+        and one at 10 degrees. The shorter arc between them is 20 degrees wide and centred
+        on 0, so both should be driven to ~0 (equivalently 360). Averaging the raw angles
+        instead would target (350 + 10) / 2 = 180, i.e. the far side of the circle.
+        """
+        torsion = [0, 3, 5, 6]
+        spc_a = ARCSpecies(label='wrap_a', smiles='[CH2]C(C)CO', xyz=self.wrap_350_xyz)
+        spc_b = ARCSpecies(label='wrap_b', smiles='[CH2]C(C)CO', xyz=self.wrap_010_xyz)
+        self.assertAlmostEqual(get_delta_angle(
+            calculate_dihedral_angle(coords=spc_a.get_xyz(), torsion=torsion, units='degs'), 350.0), 0, places=4)
+        self.assertAlmostEqual(get_delta_angle(
+            calculate_dihedral_angle(coords=spc_b.get_xyz(), torsion=torsion, units='degs'), 10.0), 0, places=4)
+
+        identity_map = {i: i for i in range(len(spc_a.mol.atoms))}
+        fixed_a, fixed_b = engine.fix_dihedrals_by_backbone_mapping(spc_1=spc_a, spc_2=spc_b,
+                                                                    backbone_map=identity_map)
+        angle_a = calculate_dihedral_angle(coords=fixed_a.get_xyz(), torsion=torsion, units='degs')
+        angle_b = calculate_dihedral_angle(coords=fixed_b.get_xyz(), torsion=torsion, units='degs')
+        # Both land on the circular midpoint (0), not on the arithmetic mean (180).
+        self.assertAlmostEqual(get_delta_angle(angle_a, 0.0), 0, places=3)
+        self.assertAlmostEqual(get_delta_angle(angle_b, 0.0), 0, places=3)
+        self.assertAlmostEqual(get_delta_angle(angle_a, angle_b), 0, places=3)
 
     def test_get_backbone_dihedral_deviation_score(self):
         """Test the get_backbone_dihedral_deviation_score() function."""

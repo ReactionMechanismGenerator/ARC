@@ -201,11 +201,18 @@ def calculate_angle(coords: list | tuple | dict,
     if not all([isinstance(a, int) for a in new_atoms]):
         raise VectorsError(f'all entries in atoms must be integers, got: {new_atoms} ({[type(a) for a in new_atoms]})')
     new_atoms = [a - index for a in new_atoms]  # convert 1-index to 0-index
+    # Computed in float64, not float32. Coordinates used to be truncated to float32 here
+    # (dd452891, 2020), which cost up to ~8e-4 deg -- the same order as the 1e-3 deg
+    # DEFAULT_CONSOLIDATION_A_TOL, so the noise alone could decide whether two equal angles
+    # consolidate into one z-matrix parameter. The kernel below is exact and matches this
+    # path bit-for-bit; keeping both in float64 is what lets them agree, so that whether
+    # the .so happens to be compiled cannot change a result.
     if _ck_available:
-        c0, c1, c2 = coords[new_atoms[0]], coords[new_atoms[1]], coords[new_atoms[2]]
-        deg = _ck.zmat_a_f32(c0[0], c0[1], c0[2], c1[0], c1[1], c1[2], c2[0], c2[1], c2[2])
+        c0, c1 = coords[new_atoms[0]], coords[new_atoms[1]]
+        c2 = coords[new_atoms[2]]
+        deg = _ck.zmat_a(c0[0], c0[1], c0[2], c1[0], c1[1], c1[2], c2[0], c2[1], c2[2])
         return deg if 'degs' in units else math.radians(deg)
-    coords = np.asarray(coords, dtype=np.float32)
+    coords = np.asarray(coords, dtype=np.float64)
     v1 = coords[new_atoms[1]] - coords[new_atoms[0]]
     v2 = coords[new_atoms[1]] - coords[new_atoms[2]]
     return get_angle(v1, v2, units=units)
@@ -259,7 +266,20 @@ def calculate_dihedral_angle(coords: list | tuple | dict,
         c2, c3 = coords[new_torsion[2]], coords[new_torsion[3]]
         deg = _ck.zmat_d_f32(c0[0], c0[1], c0[2], c1[0], c1[1], c1[2],
                               c2[0], c2[1], c2[2], c3[0], c3[1], c3[2])
-        return deg if 'degs' in units else math.radians(deg)
+        if not math.isnan(deg):
+            return deg if 'degs' in units else math.radians(deg)
+        # The kernel collapses two distinct degenerate cases onto NaN, while
+        # get_dihedral() distinguishes them: a zero-length bond vector raises
+        # VectorsError, and only a collinear (yet non-degenerate) triplet returns
+        # NaN. Whether the .so happens to be compiled must not change which errors
+        # ARC reports, so re-classify here -- but do not recompute the angle: the
+        # two paths draw the collinearity threshold at slightly different places,
+        # and letting numpy re-answer a borderline triplet with a finite value
+        # would silently change which reference atoms zmat.py picks.
+        pts = np.asarray([coords[i] for i in new_torsion], dtype=np.float32)
+        if any(not np.any(pts[i + 1] - pts[i]) for i in range(3)):
+            raise VectorsError('Input vectors must be non-zero.')
+        return deg  # NaN, in either unit
     coords = np.asarray(coords, dtype=np.float32)
     v1 = coords[new_torsion[1]] - coords[new_torsion[0]]
     v2 = coords[new_torsion[2]] - coords[new_torsion[1]]

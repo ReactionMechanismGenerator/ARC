@@ -13,7 +13,7 @@ from collections import deque
 from itertools import product
 from typing import TYPE_CHECKING
 
-from arc.common import convert_list_index_0_to_1, extremum_list, get_angle_in_180_range, logger, signed_angular_diff
+from arc.common import extremum_list, get_angle_in_180_range, logger, signed_angular_diff
 from arc.exceptions import AtomTypeError, ConformerError, InputError, SpeciesError
 from arc.family import ReactionFamily
 from arc.molecule import Molecule
@@ -412,23 +412,6 @@ def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
     return None
 
 
-def prune_identical_dicts(dicts_list: list[dict]) -> list[dict]:
-    """
-    Return a list of unique dictionaries.
-
-    Args:
-        dicts_list (list[dict]): A list of dicts to prune.
-
-    Returns:
-        list[dict]: A list of unique dicts.
-    """
-    new_dicts_list = list()
-    for new_dict in dicts_list:
-        if new_dict not in new_dicts_list:
-            new_dicts_list.append(new_dict)
-    return new_dicts_list
-
-
 def remove_gaps_from_values(data: dict[int, int]) -> dict[int, int]:
     """
     Return a dictionary of integer keys and values with consecutive values starting at 0.
@@ -457,6 +440,12 @@ def _downstream_atoms_adj(adj: tuple, pivot_i: int, pivot_j: int) -> list[int]:
     """
     BFS from pivot_j without crossing to pivot_i, using pre-built adjacency.
     Returns all atom indices reachable from pivot_j when the pivot_i–pivot_j bond is cut.
+
+    Returns an empty list if the pivot_i–pivot_j bond lies in a ring, since cutting a ring
+    bond leaves the graph connected: the BFS wraps around and reaches everything except
+    pivot_i itself, and rotating that set about the pivot axis would tear the ring apart.
+    Rotor torsions never contain ring bonds (``find_internal_rotors`` filters on
+    ``not mol.is_bond_in_cycle(bond)``), so this is a guard for direct callers.
     """
     visited = {pivot_i}
     queue = deque([pivot_j])
@@ -470,61 +459,9 @@ def _downstream_atoms_adj(adj: tuple, pivot_i: int, pivot_j: int) -> list[int]:
         for nb in adj[atom]:
             if nb not in visited:
                 queue.append(nb)
+    if any(nb in visited for nb in adj[pivot_i] if nb != pivot_j):
+        return []  # the pivot bond is in a ring, there is no well-defined downstream group
     return downstream
-
-
-def _downstream_atoms(mol: Molecule, pivot_i: int, pivot_j: int) -> list[int]:
-    """
-    BFS from pivot_j without crossing to pivot_i.
-    Returns all atom indices reachable from pivot_j when the pivot_i–pivot_j bond is cut.
-    """
-    return _downstream_atoms_adj(_build_adj(mol), pivot_i, pivot_j)
-
-
-def _rodrigues_on_coords(coords: list, adj: tuple, torsion: list[int], deg_abs: float) -> bool:
-    """
-    Apply Rodrigues rotation directly on a mutable coords list.
-    No ARCSpecies involved. Returns True on success, False on degenerate geometry.
-    """
-    current = calculate_dihedral_angle(coords=coords, torsion=torsion, units='degs')
-    if current is None or (isinstance(current, float) and math.isnan(current)):
-        return False
-    delta = math.radians(deg_abs - current)
-    pivot_i, pivot_j = torsion[1], torsion[2]
-    pi_c, pj_c = coords[pivot_i], coords[pivot_j]
-    dx = pj_c[0] - pi_c[0]; dy = pj_c[1] - pi_c[1]; dz = pj_c[2] - pi_c[2]
-    bond_len = math.sqrt(dx * dx + dy * dy + dz * dz)
-    if bond_len < 1e-8:
-        return False
-    inv = 1.0 / bond_len
-    axis_unit = (dx * inv, dy * inv, dz * inv)
-    downstream = _downstream_atoms_adj(adj, pivot_i, pivot_j)
-    apply_rodrigues_rotation(coords, coords[pivot_i], axis_unit, delta, downstream)
-    return True
-
-
-def _set_dihedral_rodrigues(spc: ARCSpecies, torsion: list[int], deg_abs: float) -> bool:
-    """
-    Set the dihedral defined by ``torsion`` (0-indexed, length 4) to ``deg_abs`` degrees
-    using Rodrigues rotation on the downstream group.  Stores result to ``spc.initial_xyz``
-    and ``spc.final_xyz`` so subsequent torsions in the same pass read the updated coords.
-
-    Falls back gracefully and returns False if the operation cannot be performed
-    (missing mol, degenerate bond, NaN dihedral).  Returns True on success.
-    """
-    mol = spc.mol
-    if mol is None:
-        return False
-    xyz = spc.get_xyz()
-    if xyz is None:
-        return False
-    coords = list(xyz['coords'])
-    if not _rodrigues_on_coords(coords, _build_adj(mol), torsion, deg_abs):
-        return False
-    new_xyz = {**xyz, 'coords': tuple(coords)}
-    spc.initial_xyz = new_xyz
-    spc.final_xyz = new_xyz
-    return True
 
 
 def _build_torsion_pairs(spc_1: ARCSpecies,
@@ -620,10 +557,15 @@ def fix_dihedrals_by_backbone_mapping(spc_1: ARCSpecies,
             a2 = calculate_dihedral_angle(coords=coords_2, torsion=t2, units='degs')
             if a1 is None or a2 is None:
                 continue
-            angle = 0.5 * (a1 + a2)
+            # Circular midpoint: rotate each species half-way *along the shorter arc*.
+            # A plain 0.5 * (a1 + a2) is wrong across the 0/360 wrap (350 and 10 would
+            # average to 180 instead of 0), which rotates both torsions the wrong way.
+            # Note: signed_angular_diff() is not used here because it rounds to 2 decimals,
+            # which would quantize every rotation to 0.01 deg and accumulate over iterations.
+            half = 0.5 * get_angle_in_180_range(a2 - a1, round_to=None)
 
             # Rodrigues on coords_1
-            delta = math.radians(angle - a1)
+            delta = math.radians(half)
             pi, pj = t1[1], t1[2]
             key1 = (pi, pj)
             if key1 not in ds_cache_1:
@@ -635,8 +577,8 @@ def fix_dihedrals_by_backbone_mapping(spc_1: ARCSpecies,
                 inv = 1.0/bl
                 apply_rodrigues_rotation(coords_1, pi_c, (dx*inv, dy*inv, dz*inv), delta, ds_cache_1[key1])
 
-            # Rodrigues on coords_2
-            delta2 = math.radians(angle - a2)
+            # Rodrigues on coords_2 (meets coords_1 at the midpoint from the other side)
+            delta2 = math.radians(-half)
             pi2, pj2 = t2[1], t2[2]
             key2 = (pi2, pj2)
             if key2 not in ds_cache_2:

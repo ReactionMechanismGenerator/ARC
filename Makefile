@@ -130,6 +130,13 @@ compile:
 	python setup.py build_ext main --inplace --build-temp .
 	@ python utilities.py check-dependencies
 	@echo "Compiling arc/species/_zmat_c_kernels.so…"
-	gcc -O3 -march=native -ffast-math -shared -fPIC \
+# No -march=native: the result must run on whatever CPU the user has, and a SIGILL from
+# an unsupported instruction kills the interpreter outright (the ctypes loader cannot
+# catch it -- CDLL() succeeds, the fault only comes at call time).
+# No -ffast-math either: it implies -ffinite-math-only, which lets the compiler assume
+# NaN never occurs and would silently defeat the collinearity guards that rely on a NaN
+# dihedral propagating back to Python. -fno-math-errno and -fno-trapping-math keep the
+# useful part (branch-free sqrt) without that.
+	$(CC) -O3 -fno-math-errno -fno-trapping-math -shared -fPIC \
 	    -o arc/species/_zmat_c_kernels.so \
 	    arc/species/_zmat_c_kernels.c -lm
