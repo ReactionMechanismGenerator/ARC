@@ -942,6 +942,15 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
     We don't care about the actual rotor symmetry number here, since we plan to just use the first well
     (they're all the same).
 
+    A torsion sampled at a single angle gives one zero-width well, and a scan whose every well
+    consists of exactly repeated angles -- two conformers landing on the same dihedral, which is
+    common -- gives all-zero widths as well. Widths are absolute values, so a zero mean means every
+    width is identically zero: uniform by definition rather than by tolerance. The uniformity test
+    is therefore satisfied without dividing by the mean, and the structural group comparison below
+    decides the symmetry. That choice is observable, not inert -- for a degenerate multi-well scan
+    it can yield a symmetry the early-return alternative would not -- and is preferred because the
+    group comparison is structural evidence that does not depend on the scan.
+
     Args:
         label (str): The species' label.
         top1 (list): A list of atom indices on one side of the torsion, including the pivotal atom.
@@ -981,11 +990,13 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
         well_widths.append(abs(wells[i]['end_angle'] - wells[i]['start_angle']))
         if i > 0:
             distances.append(int(round(abs(wells[i]['start_angle'] - wells[i - 1]['end_angle'])) / 10) * 10)
-    mean_well_width = sum(well_widths) / len(well_widths)
+    mean_well_width = sum(well_widths) / len(well_widths) if well_widths else 0.0
+    widths_are_uniform = not mean_well_width or all(
+        [abs(width - mean_well_width) / mean_well_width < determine_well_width_tolerance(mean_well_width)
+         for width in well_widths])
 
     if len(wells) in [1, 2, 3, 4, 6, 9] and all([distance == distances[0] for distance in distances]) \
-            and all([abs(width - mean_well_width) / mean_well_width < determine_well_width_tolerance(mean_well_width)
-                     for width in well_widths]):
+            and widths_are_uniform:
         # All well distances and widths are equal. The torsion scan might be symmetric, check the groups
         for j, top in enumerate([top1, top2]):
             if check_tops[j]:
@@ -1607,6 +1618,11 @@ def get_wells(label, angles, blank=WELL_GAP):
     """
     Determine the distinct wells from a list of angles.
 
+    Wells are delimited by comparing consecutive angles, so a single angle has no consecutive pair
+    and is reported as one zero-width well rather than as no wells at all. Returning an empty list
+    for it would be read by callers as "this torsion has no wells", and both of them divide by a
+    quantity derived from the well count.
+
     Args:
         label (str): The species' label.
         angles (list): The angles in the torsion.
@@ -1628,6 +1644,9 @@ def get_wells(label, angles, blank=WELL_GAP):
                 new_angles = angles[i:] + part2
                 break
     wells = list()
+    if len(new_angles) == 1:
+        return [{'start_idx': 0, 'end_idx': 0, 'start_angle': new_angles[0], 'end_angle': new_angles[0],
+                 'angles': [new_angles[0]]}]
     new_well = True
     for i in range(len(new_angles) - 1):
         if new_well:
