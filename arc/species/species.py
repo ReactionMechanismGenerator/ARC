@@ -9,13 +9,14 @@ import os
 from math import isclose
 
 import arc.molecule.element as elements
-from arc.common import (SYMBOL_BY_NUMBER,
-                        almost_equal_coords,
+from arc.common import (almost_equal_coords,
                         convert_list_index_0_to_1,
+                        count_electrons,
                         dfs,
                         get_logger,
                         get_single_bond_length,
                         is_angle_linear,
+                        is_multiplicity_parity_valid,
                         is_xyz_linear,
                         read_yaml_file,
                         timedelta_from_str,
@@ -519,6 +520,7 @@ class ARCSpecies(object):
         if not isinstance(self.charge, int):
             raise SpeciesError(f'Charge for species {self.label} is not an integer. '
                                f'Got {self.charge} which is a {type(self.charge)}.')
+        self.check_multiplicity_parity()
         if not self.is_ts and self.initial_xyz is None and self.final_xyz is None and self.mol is None \
                 and not self.conformers:
             raise SpeciesError(f'No structure (xyz, SMILES, adjList, or Molecule) '
@@ -1585,26 +1587,67 @@ class ARCSpecies(object):
     def determine_multiplicity_from_xyz(self):
         """
         Determine the spin multiplicity of the species from the xyz.
+
+        Counts electrons from the coordinates only, not from ``self.mol``.
         """
         xyz = self.get_xyz()
-        if xyz is None and len(self.conformers):
-            xyz = self.conformers[0]
-        if xyz:
-            electrons = 0
-            for symbol in xyz['symbols']:
-                for number, symb in SYMBOL_BY_NUMBER.items():
-                    if symbol == symb:
-                        electrons += number
-                        break
-                else:
-                    raise SpeciesError(f'Could not identify atom symbol {symbol}')
-            electrons -= self.charge
-            if electrons % 2 == 1:
-                self.multiplicity = 2
-                logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 2')
-            else:
-                self.multiplicity = 1
-                logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 1')
+        if xyz is None or not xyz.get('symbols'):
+            return
+        electrons = count_electrons(symbols=xyz['symbols'], charge=self.charge or 0, label=self.label)
+        if electrons % 2 == 1:
+            self.multiplicity = 2
+            logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 2')
+        else:
+            self.multiplicity = 1
+            logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 1')
+
+    def get_number_of_electrons(self) -> int | None:
+        """
+        Count the number of electrons of the species.
+
+        Follows the convention of :func:`arc.common.count_electrons`. The composition is taken from
+        ``self.mol`` if available, otherwise from the coordinates. No conformer is generated.
+
+        Returns:
+            Optional[int]: The number of electrons, or ``None`` if the composition
+                           is not yet known (no Molecule and no xyz at this point).
+
+        Raises:
+            SpeciesError: If an xyz is present but contains an unrecognized atom symbol
+                          (a genuinely invalid composition, e.g. a typo'd element).
+        """
+        charge = self.charge or 0
+        if self.mol is not None:
+            return sum(atom.element.number for atom in self.mol.atoms) - charge
+        xyz = self.get_xyz(generate=False)
+        if xyz and xyz.get('symbols'):
+            return count_electrons(symbols=xyz['symbols'], charge=charge, label=self.label)
+        return None
+
+    def check_multiplicity_parity(self):
+        """
+        Verify that the requested spin multiplicity is consistent with the electron count.
+
+        Uses :func:`arc.common.is_multiplicity_parity_valid`. Does nothing when the multiplicity,
+        the charge, or the electron count is not yet known.
+
+        Raises:
+            SpeciesError: If the requested multiplicity is inconsistent with the electron count.
+        """
+        if self.multiplicity is None or self.charge is None:
+            return
+        n_electrons = self.get_number_of_electrons()
+        if n_electrons is None or is_multiplicity_parity_valid(n_electrons=n_electrons, multiplicity=self.multiplicity):
+            return
+        valid = [m for m in (self.multiplicity - 1, self.multiplicity + 1) if m >= 1]
+        parity_word = 'odd' if n_electrons % 2 == 0 else 'even'
+        count_phrase = f'has {n_electrons} electrons' if not self.charge else \
+            f'has {n_electrons} electrons ({n_electrons + self.charge} in its neutral composition, ' \
+            f'at a net charge of {self.charge})'
+        raise SpeciesError(f'Impossible multiplicity for species {self.label}: the species {count_phrase}, '
+                           f'which requires an {parity_word} multiplicity, but a multiplicity of '
+                           f'{self.multiplicity} was requested. The nearest valid multiplicities are {valid}. '
+                           f'Check the multiplicity (2S+1), the charge, and the composition of this species.')
 
     def make_ts_report(self):
         """A helper function to write content into the .ts_report attribute"""
@@ -2977,18 +3020,12 @@ def check_xyz(xyz: dict,
 
     Returns:
         bool: Whether the input arguments are all in agreement. True if they are.
+
+    Raises:
+        SpeciesError: If the xyz contains an unrecognized atom symbol.
     """
-    symbols = xyz['symbols']
-    electrons = 0
-    for symbol in symbols:
-        for number, element_symbol in SYMBOL_BY_NUMBER.items():
-            if symbol == element_symbol:
-                electrons += number
-                break
-    electrons -= charge
-    if electrons % 2 ^ multiplicity % 2:
-        return True
-    return False
+    electrons = count_electrons(symbols=xyz['symbols'], charge=charge)
+    return is_multiplicity_parity_valid(n_electrons=electrons, multiplicity=multiplicity)
 
 
 def are_coords_compliant_with_graph(xyz: dict,
