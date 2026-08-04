@@ -123,7 +123,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 
 <span class="c1"># don&#39;t import any ARC module other than exceptions and imports, to avoid circular imports</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SettingsError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SettingsError</span><span class="p">,</span> <span class="n">SpeciesError</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.imports</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
 
 <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
@@ -694,6 +694,64 @@
 
 
 <span class="n">SYMBOL_BY_NUMBER</span><span class="p">,</span> <span class="n">NUMBER_BY_SYMBOL</span><span class="p">,</span> <span class="n">MASS_BY_SYMBOL</span><span class="p">,</span> <span class="n">COVALENT_RADII</span> <span class="o">=</span> <span class="n">read_element_dicts</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="count_electrons">
+<a class="viewcode-back" href="../../api/common.html#arc.common.count_electrons">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">count_electrons</span><span class="p">(</span><span class="n">symbols</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+                    <span class="n">charge</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+                    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Count the number of electrons of a chemical composition.</span>
+
+<span class="sd">    Returns the sum of the atomic numbers of all atoms minus the net charge, so a cation has fewer</span>
+<span class="sd">    electrons than its neutral composition and an anion has more. With the default ``charge=0`` the</span>
+<span class="sd">    returned value is the neutral-composition electron count.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        symbols (Sequence[str]): The atomic symbols of the composition.</span>
+<span class="sd">        charge (int, optional): The net charge of the species.</span>
+<span class="sd">        label (str, optional): A species label to mention in an error message, if available.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        int: The number of electrons.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        SpeciesError: If an atomic symbol is not a recognized element symbol.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">of_species</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39; of species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">&#39;</span> <span class="k">if</span> <span class="n">label</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span>
+    <span class="n">electrons</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="n">symbols</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">symbol</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">NUMBER_BY_SYMBOL</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">SpeciesError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not identify atom symbol </span><span class="si">{</span><span class="n">symbol</span><span class="si">}{</span><span class="n">of_species</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+        <span class="n">electrons</span> <span class="o">+=</span> <span class="n">NUMBER_BY_SYMBOL</span><span class="p">[</span><span class="n">symbol</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">electrons</span> <span class="o">-</span> <span class="n">charge</span></div>
+
+
+
+<div class="viewcode-block" id="is_multiplicity_parity_valid">
+<a class="viewcode-back" href="../../api/common.html#arc.common.is_multiplicity_parity_valid">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_multiplicity_parity_valid</span><span class="p">(</span><span class="n">n_electrons</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+                                 <span class="n">multiplicity</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+                                 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check whether a spin multiplicity is consistent with a number of electrons.</span>
+
+<span class="sd">    ``n_electrons`` and ``multiplicity - 1`` must have the same parity, since each unpaired electron</span>
+<span class="sd">    contributes 1 to ``multiplicity - 1`` and the remaining electrons are paired. An even number of</span>
+<span class="sd">    electrons therefore requires an odd multiplicity, and an odd number requires an even one.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        n_electrons (int): The number of electrons of the species, net charge included</span>
+<span class="sd">                           (as returned by :func:`count_electrons`).</span>
+<span class="sd">        multiplicity (int): The spin multiplicity (2S+1).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: Whether the multiplicity is consistent with the electron count.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">n_electrons</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="p">(</span><span class="n">multiplicity</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">2</span></div>
+
 
 
 <div class="viewcode-block" id="get_atom_radius">

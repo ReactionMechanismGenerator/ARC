@@ -88,6 +88,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.clean_text"><code class="docutils literal notranslate"><span class="pre">clean_text()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.convert_list_index_0_to_1"><code class="docutils literal notranslate"><span class="pre">convert_list_index_0_to_1()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.convert_to_hours"><code class="docutils literal notranslate"><span class="pre">convert_to_hours()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.common.count_electrons"><code class="docutils literal notranslate"><span class="pre">count_electrons()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.delete_check_files"><code class="docutils literal notranslate"><span class="pre">delete_check_files()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.determine_top_group_indices"><code class="docutils literal notranslate"><span class="pre">determine_top_group_indices()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.dfs"><code class="docutils literal notranslate"><span class="pre">dfs()</span></code></a></li>
@@ -114,6 +115,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.initialize_log"><code class="docutils literal notranslate"><span class="pre">initialize_log()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.is_angle_linear"><code class="docutils literal notranslate"><span class="pre">is_angle_linear()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.is_equal_family_product_dicts"><code class="docutils literal notranslate"><span class="pre">is_equal_family_product_dicts()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.common.is_multiplicity_parity_valid"><code class="docutils literal notranslate"><span class="pre">is_multiplicity_parity_valid()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.is_notebook"><code class="docutils literal notranslate"><span class="pre">is_notebook()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.is_same_pivot"><code class="docutils literal notranslate"><span class="pre">is_same_pivot()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.is_same_sequence_sublist"><code class="docutils literal notranslate"><span class="pre">is_same_sequence_sublist()</span></code></a></li>
@@ -408,6 +410,33 @@ Ensures positive values in the resulting list.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.common.count_electrons">
+<span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">count_electrons</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">symbols</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">charge</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/common.html#count_electrons"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.count_electrons" title="Link to this definition"></a></dt>
+<dd><p>Count the number of electrons of a chemical composition.</p>
+<p>Returns the sum of the atomic numbers of all atoms minus the net charge, so a cation has fewer
+electrons than its neutral composition and an anion has more. With the default <code class="docutils literal notranslate"><span class="pre">charge=0</span></code> the
+returned value is the neutral-composition electron count.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>symbols</strong> (<em>Sequence</em><em>[</em><em>str</em><em>]</em>) – The atomic symbols of the composition.</p></li>
+<li><p><strong>charge</strong> (<em>int</em><em>, </em><em>optional</em>) – The net charge of the species.</p></li>
+<li><p><strong>label</strong> (<em>str</em><em>, </em><em>optional</em>) – A species label to mention in an error message, if available.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The number of electrons.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>SpeciesError</strong> – If an atomic symbol is not a recognized element symbol.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -916,6 +945,30 @@ Returns True if they have the same length and, for each corresponding entry:</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>True if all entries match, False otherwise.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.common.is_multiplicity_parity_valid">
+<span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">is_multiplicity_parity_valid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_electrons</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiplicity</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/common.html#is_multiplicity_parity_valid"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.is_multiplicity_parity_valid" title="Link to this definition"></a></dt>
+<dd><p>Check whether a spin multiplicity is consistent with a number of electrons.</p>
+<p><code class="docutils literal notranslate"><span class="pre">n_electrons</span></code> and <code class="docutils literal notranslate"><span class="pre">multiplicity</span> <span class="pre">-</span> <span class="pre">1</span></code> must have the same parity, since each unpaired electron
+contributes 1 to <code class="docutils literal notranslate"><span class="pre">multiplicity</span> <span class="pre">-</span> <span class="pre">1</span></code> and the remaining electrons are paired. An even number of
+electrons therefore requires an odd multiplicity, and an odd number requires an even one.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n_electrons</strong> (<em>int</em>) – The number of electrons of the species, net charge included
+(as returned by <a class="reference internal" href="#arc.common.count_electrons" title="arc.common.count_electrons"><code class="xref py py-func docutils literal notranslate"><span class="pre">count_electrons()</span></code></a>).</p></li>
+<li><p><strong>multiplicity</strong> (<em>int</em>) – The spin multiplicity (2S+1).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Whether the multiplicity is consistent with the electron count.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>bool</p>

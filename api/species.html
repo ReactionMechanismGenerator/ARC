@@ -137,6 +137,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.symmetry_number"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.symmetry_number</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.index"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.index</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.as_dict"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.as_dict()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.check_multiplicity_parity"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.check_multiplicity_parity()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.check_xyz_isomorphism"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.check_xyz_isomorphism()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.cluster_tsgs"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.cluster_tsgs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.copy"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.copy()</span></code></a></li>
@@ -150,6 +151,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.get_bonds"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.get_bonds()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.get_cheap_conformer"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.get_cheap_conformer()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.get_n_fragments"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.get_n_fragments()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.get_number_of_electrons"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.get_number_of_electrons()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.get_resonance_hybrid"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.get_resonance_hybrid()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.get_symmetry_number"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.get_symmetry_number()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.get_xyz"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.get_xyz()</span></code></a></li>
@@ -1269,6 +1271,19 @@ different object instances.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.check_multiplicity_parity">
+<span class="sig-name descname"><span class="pre">check_multiplicity_parity</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.check_multiplicity_parity"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.check_multiplicity_parity" title="Link to this definition"></a></dt>
+<dd><p>Verify that the requested spin multiplicity is consistent with the electron count.</p>
+<p>Uses <a class="reference internal" href="common.html#arc.common.is_multiplicity_parity_valid" title="arc.common.is_multiplicity_parity_valid"><code class="xref py py-func docutils literal notranslate"><span class="pre">arc.common.is_multiplicity_parity_valid()</span></code></a>. Does nothing when the multiplicity,
+the charge, or the electron count is not yet known.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>SpeciesError</strong> – If the requested multiplicity is inconsistent with the electron count.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.species.species.ARCSpecies.check_xyz_isomorphism">
 <span class="sig-name descname"><span class="pre">check_xyz_isomorphism</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_nonisomorphic_2d</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.check_xyz_isomorphism"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.check_xyz_isomorphism" title="Link to this definition"></a></dt>
 <dd><p>Check whether the perception of self.final_xyz or <code class="docutils literal notranslate"><span class="pre">xyz</span></code> is isomorphic with self.mol.
@@ -1344,6 +1359,7 @@ bond order information, only does not necessitate a molecule object, directly ch
 <dt class="sig sig-object py" id="arc.species.species.ARCSpecies.determine_multiplicity_from_xyz">
 <span class="sig-name descname"><span class="pre">determine_multiplicity_from_xyz</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.determine_multiplicity_from_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.determine_multiplicity_from_xyz" title="Link to this definition"></a></dt>
 <dd><p>Determine the spin multiplicity of the species from the xyz.</p>
+<p>Counts electrons from the coordinates only, not from <code class="docutils literal notranslate"><span class="pre">self.mol</span></code>.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -1424,6 +1440,30 @@ this could very well not be the best (lowest energy) one.</p>
 <span class="sig-name descname"><span class="pre">get_n_fragments</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.get_n_fragments"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.get_n_fragments" title="Link to this definition"></a></dt>
 <dd><p>Return the total number of fragments represented by this species.
 If self.fragments is None, assume a single fragment.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.get_number_of_electrons">
+<span class="sig-name descname"><span class="pre">get_number_of_electrons</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.get_number_of_electrons"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.get_number_of_electrons" title="Link to this definition"></a></dt>
+<dd><p>Count the number of electrons of the species.</p>
+<p>Follows the convention of <a class="reference internal" href="common.html#arc.common.count_electrons" title="arc.common.count_electrons"><code class="xref py py-func docutils literal notranslate"><span class="pre">arc.common.count_electrons()</span></code></a>. The composition is taken from
+<code class="docutils literal notranslate"><span class="pre">self.mol</span></code> if available, otherwise from the coordinates. No conformer is generated.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><dl class="simple">
+<dt>The number of electrons, or <code class="docutils literal notranslate"><span class="pre">None</span></code> if the composition</dt><dd><p>is not yet known (no Molecule and no xyz at this point).</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Optional[int]</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>SpeciesError</strong> – If an xyz is present but contains an unrecognized atom symbol
+    (a genuinely invalid composition, e.g. a typo’d element).</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -2239,6 +2279,9 @@ below 120% of the single bond length of the respective elements.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>bool</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>SpeciesError</strong> – If the xyz contains an unrecognized atom symbol.</p>
 </dd>
 </dl>
 </dd></dl>
