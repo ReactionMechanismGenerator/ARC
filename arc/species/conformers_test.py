@@ -754,6 +754,15 @@ O       1.40839617    0.14303696    0.00000000"""
         self.assertEqual(sum(tops[0]), 19)
         self.assertEqual(sum(tops[1]), 40)
 
+    def test_get_wells_single_angle(self):
+        """Test that a single angle is reported as one zero-width well, not as no wells"""
+        wells = conformers.get_wells(label='', angles=[-59.1])
+        self.assertEqual(wells, [{'angles': [-59.1],
+                                  'end_angle': -59.1,
+                                  'end_idx': 0,
+                                  'start_angle': -59.1,
+                                  'start_idx': 0}])
+
     def test_get_wells(self):
         """Test determining wells characteristics from a list of angles"""
         scan = [-179, -178, -175, -170, -61, -59, -58, -50, -40, -30, -20, -10, 0, 10, 150, 160]
@@ -1147,6 +1156,39 @@ O       1.40839617    0.14303696    0.00000000"""
                              for angle in torsion_angles[tuple(torsions[0])]]))  # batch check almost equal
         self.assertTrue(all([int(round(angle / 5.0) * 5.0) in [60, 300]
                              for angle in torsion_angles[tuple(torsions[1])]]))  # batch check almost equal
+
+    def test_determine_torsion_symmetry_single_angle_scan(self):
+        """Test a torsion sampled at a single angle, which yields a single zero-width well"""
+        mol = Molecule(smiles='CCO')
+        mol.update()
+        self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=[2, 5, 6, 7],
+                                                               mol_list=[mol], torsion_scan=[-59.1]), 3)
+        # the hydroxyl side of the same torsion is not symmetric; a single angle must not inflate it
+        self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=[1, 9],
+                                                               mol_list=[mol], torsion_scan=[-59.1]), 1)
+
+    def test_determine_torsion_symmetry_degenerate_wells(self):
+        """Test a scan whose wells are all exactly repeated angles, so every well width is zero"""
+        mol = Molecule(smiles='CCO')
+        mol.update()
+        symmetry = conformers.determine_torsion_symmetry(
+            label='', top1=[2, 5, 6, 7], mol_list=[mol],
+            torsion_scan=[-120.0, -120.0, 0.0, 0.0, 120.0, 120.0])
+        self.assertEqual(symmetry, 3)
+
+    def test_determine_torsion_sampling_points_single_angle(self):
+        """Test the other consumer of the well count, which divides by it
+
+        With one well the symmetry is forced to one, so the sampling points are the scan itself.
+        """
+        sampling_points, wells = conformers.determine_torsion_sampling_points(label='',
+                                                                              torsion_angles=[-59.1])
+        self.assertEqual(sampling_points, [-59.1])
+        self.assertEqual(wells, [{'angles': [-59.1],
+                                  'end_angle': -59.1,
+                                  'end_idx': 0,
+                                  'start_angle': -59.1,
+                                  'start_idx': 0}])
 
     def test_determine_torsion_symmetry(self):
         """Test that we correctly determine the torsion symmetry"""
