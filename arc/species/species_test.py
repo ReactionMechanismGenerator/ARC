@@ -608,6 +608,130 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc7.multiplicity, 2)
         self.assertEqual(spc8.multiplicity, 1)
 
+    def test_check_multiplicity_parity_neutral(self):
+        """Test that an impossible electron-count/multiplicity parity of a neutral species raises SpeciesError."""
+        spc_even = ARCSpecies(label='ethylene', smiles='C=C', multiplicity=1, compute_thermo=False)
+        self.assertEqual(spc_even.get_number_of_electrons(), 16)
+        self.assertEqual(spc_even.multiplicity, 1)
+        spc_odd = ARCSpecies(label='HO2', smiles='[O]O', multiplicity=2, compute_thermo=False)
+        self.assertEqual(spc_odd.get_number_of_electrons(), 17)
+        self.assertEqual(spc_odd.multiplicity, 2)
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='ethylene_bad', smiles='C=C', multiplicity=2, compute_thermo=False)
+        self.assertIn('Impossible multiplicity for species ethylene_bad', str(cm.exception))
+        self.assertIn('has 16 electrons', str(cm.exception))
+        self.assertIn('requires an odd multiplicity', str(cm.exception))
+        self.assertIn('nearest valid multiplicities are [1, 3]', str(cm.exception))
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='HO2_bad', smiles='[O]O', multiplicity=1, compute_thermo=False)
+        self.assertIn('Impossible multiplicity', str(cm.exception))
+        self.assertIn('requires an even multiplicity', str(cm.exception))
+        self.assertIn('nearest valid multiplicities are [2]', str(cm.exception))
+
+    def test_check_multiplicity_parity_ions(self):
+        """Test the electron-count/multiplicity parity check for cations and anions, radicals and non-radicals."""
+        oh_anion = ARCSpecies(label='OH_anion', smiles='[OH-]', multiplicity=1, compute_thermo=False)
+        self.assertEqual((oh_anion.charge, oh_anion.get_number_of_electrons()), (-1, 10))
+        o2_anion = ARCSpecies(label='O2_anion', smiles='[O-][O]', multiplicity=2, compute_thermo=False)
+        self.assertEqual((o2_anion.charge, o2_anion.get_number_of_electrons()), (-1, 17))
+        nh4_cation = ARCSpecies(label='NH4_cation', smiles='[NH4+]', multiplicity=1, compute_thermo=False)
+        self.assertEqual((nh4_cation.charge, nh4_cation.get_number_of_electrons()), (1, 10))
+        ch4_cation = ARCSpecies(label='CH4_cation', smiles='C', charge=1, multiplicity=2, compute_thermo=False)
+        self.assertEqual((ch4_cation.charge, ch4_cation.get_number_of_electrons()), (1, 9))
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='OH_anion_bad', smiles='[OH-]', multiplicity=2, compute_thermo=False)
+        self.assertIn('Impossible multiplicity', str(cm.exception))
+        self.assertIn('has 10 electrons (9 in its neutral composition, at a net charge of -1)', str(cm.exception))
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='O2_anion_bad', smiles='[O-][O]', multiplicity=1, compute_thermo=False)
+        self.assertIn('has 17 electrons (16 in its neutral composition, at a net charge of -1)', str(cm.exception))
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='NH4_cation_bad', smiles='[NH4+]', multiplicity=2, compute_thermo=False)
+        self.assertIn('has 10 electrons (11 in its neutral composition, at a net charge of 1)', str(cm.exception))
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='CH4_cation_bad', smiles='C', charge=1, multiplicity=1, compute_thermo=False)
+        self.assertIn('has 9 electrons (10 in its neutral composition, at a net charge of 1)', str(cm.exception))
+
+    def test_check_multiplicity_parity_high_multiplicity(self):
+        """Test the electron-count/multiplicity parity check for a high spin multiplicity."""
+        n_xyz = {'symbols': ('N',), 'isotopes': (14,), 'coords': ((0.0, 0.0, 0.0),)}
+        n_quartet = ARCSpecies(label='N_quartet', xyz=n_xyz, multiplicity=4, compute_thermo=False)
+        self.assertEqual(n_quartet.multiplicity, 4)
+        self.assertEqual(n_quartet.get_number_of_electrons(), 7)
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='N_bad', xyz=n_xyz, multiplicity=3, compute_thermo=False)
+        self.assertIn('Impossible multiplicity for species N_bad', str(cm.exception))
+        self.assertIn('nearest valid multiplicities are [2, 4]', str(cm.exception))
+
+    def test_check_multiplicity_parity_xyz_only(self):
+        """Test that the parity check runs at init for a species defined by coordinates only."""
+        h2o_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+                   'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.48), (0.0, -0.76, -0.48))}
+        self.assertEqual(ARCSpecies(label='water', xyz=h2o_xyz, multiplicity=1,
+                                    compute_thermo=False).get_number_of_electrons(), 10)
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='xyz_bad', xyz=h2o_xyz, multiplicity=2, compute_thermo=False)
+        self.assertIn('Impossible multiplicity for species xyz_bad', str(cm.exception))
+
+    def test_check_multiplicity_parity_species_dict(self):
+        """Test that the parity check also guards the restart (species_dict) path."""
+        ethane_adjlist = '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}\n' \
+                         '3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n5 H u0 p0 c0 {1,S}\n6 H u0 p0 c0 {2,S}\n' \
+                         '7 H u0 p0 c0 {2,S}\n8 H u0 p0 c0 {2,S}\n'
+        species_dict = {'label': 'restart_spc', 'multiplicity': 1, 'charge': 0, 'mol': ethane_adjlist,
+                        'is_ts': False, 'compute_thermo': False, 'number_of_rotors': 0, 'rotors_dict': {}}
+        self.assertEqual(ARCSpecies(species_dict=species_dict).get_number_of_electrons(), 18)
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(species_dict={**species_dict, 'multiplicity': 2})
+        self.assertIn('Impossible multiplicity for species restart_spc', str(cm.exception))
+
+    def test_get_number_of_electrons(self):
+        """Test the get_number_of_electrons() method (atomic number sum less the net charge)."""
+        self.assertEqual(ARCSpecies(label='eth', smiles='C=C', compute_thermo=False).get_number_of_electrons(), 16)
+        self.assertEqual(ARCSpecies(label='OH', smiles='[OH]', compute_thermo=False).get_number_of_electrons(), 9)
+        self.assertEqual(ARCSpecies(label='water', smiles='O', compute_thermo=False).get_number_of_electrons(), 10)
+
+        cation = ARCSpecies(label='CH4_cation', smiles='C', charge=1, multiplicity=2, compute_thermo=False)
+        self.assertEqual(cation.get_number_of_electrons(), 9)
+        anion = ARCSpecies(label='OH_anion', smiles='[OH-]', compute_thermo=False)
+        self.assertEqual(anion.get_number_of_electrons(), 10)
+
+        xyz_spc = ARCSpecies(label='xyz_only', is_ts=True, multiplicity=1,
+                             xyz={'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+                                  'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.48), (0.0, -0.76, -0.48))})
+        xyz_spc.mol = None
+        self.assertEqual(xyz_spc.get_number_of_electrons(), 10)
+
+        self.assertIsNone(ARCSpecies(label='TS0', is_ts=True).get_number_of_electrons())
+        self.assertIsNone(ARCSpecies(label='TS1', is_ts=True, multiplicity=2).get_number_of_electrons())
+
+        bad = ARCSpecies(label='bad_symbol', smiles='O', compute_thermo=False)
+        bad.mol = None
+        bad.final_xyz = {'symbols': ('O', 'Xx'), 'isotopes': (16, 1),
+                         'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))}
+        with self.assertRaises(SpeciesError) as cm:
+            bad.get_number_of_electrons()
+        self.assertIn('Could not identify atom symbol Xx of species bad_symbol', str(cm.exception))
+
+    def test_get_number_of_electrons_does_not_generate_a_conformer(self):
+        """Test that counting electrons never triggers force-field conformer generation.
+
+        The ``mol is None`` / ``mol_list is not None`` state below is the only one in which
+        ``get_xyz()`` would try to generate a conformer from within this method.
+        """
+        spc = ARCSpecies(label='propane', smiles='CCC', compute_thermo=False)
+        spc.mol_list = spc.mol_list or [spc.mol]
+        spc.mol = None
+        self.assertIsNone(spc.get_number_of_electrons())
+        self.assertIsNone(spc.cheap_conformer)
+        self.assertEqual(spc.conformers, list())
+
     def test_as_dict(self):
         """Test Species.as_dict()"""
         spc_dict = self.spc3.as_dict()
@@ -2001,6 +2125,11 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertFalse(check_xyz(xyz_dict1, multiplicity=1, charge=0))
         self.assertFalse(check_xyz(xyz_dict1, multiplicity=2, charge=1))
         self.assertTrue(check_xyz(xyz_dict1, multiplicity=1, charge=-1))
+
+        bad_xyz = {'symbols': ('O', 'Xx'), 'isotopes': (16, 1),
+                   'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))}
+        with self.assertRaises(SpeciesError):
+            check_xyz(bad_xyz, multiplicity=1, charge=0)
 
     def test_check_xyz_isomorphism(self):
         """Test the check_xyz_isomorphism() method"""

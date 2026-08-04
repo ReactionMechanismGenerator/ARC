@@ -17,7 +17,7 @@ from random import shuffle
 
 import arc.common as common
 import arc.species.converter as converter
-from arc.exceptions import InputError, SettingsError
+from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.molecule import Molecule
 from arc.species.species import ARCSpecies
@@ -613,6 +613,36 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_element_mass('C'), (12.0000000, 6))
         self.assertEqual(common.get_element_mass('C', 13), (13.00335483507, 6))
         self.assertEqual(common.get_element_mass('O'), (15.99491461957, 8))
+
+    def test_count_electrons(self):
+        """Test counting the electrons of a chemical composition"""
+        self.assertEqual(common.count_electrons(('C', 'H', 'H', 'H', 'H')), 10)
+        self.assertEqual(common.count_electrons(('O', 'H')), 9)
+        self.assertEqual(common.count_electrons(tuple()), 0)
+        self.assertEqual(common.count_electrons(('O', 'H'), charge=-1), 10)
+        self.assertEqual(common.count_electrons(('C', 'H', 'H', 'H', 'H'), charge=1), 9)
+        self.assertEqual(common.count_electrons(('N', 'H', 'H', 'H', 'H'), charge=1), 10)
+        self.assertEqual(common.count_electrons(['C', 'C', 'H', 'H', 'H', 'H', 'H', 'H']), 18)
+
+    def test_count_electrons_unrecognized_symbol(self):
+        """Test that counting the electrons of an unrecognized atom symbol raises an error"""
+        with self.assertRaises(SpeciesError) as cm:
+            common.count_electrons(('O', 'Xx'))
+        self.assertIn('Could not identify atom symbol Xx.', str(cm.exception))
+        with self.assertRaises(SpeciesError) as cm:
+            common.count_electrons(('O', 'Xx'), label='spc1')
+        self.assertIn('Could not identify atom symbol Xx of species spc1.', str(cm.exception))
+
+    def test_is_multiplicity_parity_valid(self):
+        """Test checking the parity of an electron count against a spin multiplicity"""
+        self.assertTrue(common.is_multiplicity_parity_valid(n_electrons=16, multiplicity=1))
+        self.assertTrue(common.is_multiplicity_parity_valid(n_electrons=16, multiplicity=3))
+        self.assertFalse(common.is_multiplicity_parity_valid(n_electrons=16, multiplicity=2))
+        self.assertTrue(common.is_multiplicity_parity_valid(n_electrons=17, multiplicity=2))
+        self.assertTrue(common.is_multiplicity_parity_valid(n_electrons=17, multiplicity=4))
+        self.assertFalse(common.is_multiplicity_parity_valid(n_electrons=17, multiplicity=1))
+        self.assertTrue(common.is_multiplicity_parity_valid(n_electrons=7, multiplicity=4))
+        self.assertFalse(common.is_multiplicity_parity_valid(n_electrons=7, multiplicity=3))
 
     def test_get_atom_radius(self):
         """Test determining the covalent radius of an atom"""

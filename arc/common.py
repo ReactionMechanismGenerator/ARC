@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 
 # don't import any ARC module other than exceptions and imports, to avoid circular imports
-from arc.exceptions import InputError, SettingsError
+from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 
 if TYPE_CHECKING:
@@ -541,6 +541,58 @@ def read_element_dicts() -> tuple[dict, dict, dict, dict]:
     return symbol_by_number, number_by_symbol, mass_by_symbol, covalent_radii
 
 SYMBOL_BY_NUMBER, NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, COVALENT_RADII = read_element_dicts()
+
+
+def count_electrons(symbols: Sequence[str],
+                    charge: int = 0,
+                    label: str | None = None,
+                    ) -> int:
+    """
+    Count the number of electrons of a chemical composition.
+
+    Returns the sum of the atomic numbers of all atoms minus the net charge, so a cation has fewer
+    electrons than its neutral composition and an anion has more. With the default ``charge=0`` the
+    returned value is the neutral-composition electron count.
+
+    Args:
+        symbols (Sequence[str]): The atomic symbols of the composition.
+        charge (int, optional): The net charge of the species.
+        label (str, optional): A species label to mention in an error message, if available.
+
+    Returns:
+        int: The number of electrons.
+
+    Raises:
+        SpeciesError: If an atomic symbol is not a recognized element symbol.
+    """
+    of_species = f' of species {label}' if label is not None else ''
+    electrons = 0
+    for symbol in symbols:
+        if symbol not in NUMBER_BY_SYMBOL:
+            raise SpeciesError(f'Could not identify atom symbol {symbol}{of_species}.')
+        electrons += NUMBER_BY_SYMBOL[symbol]
+    return electrons - charge
+
+
+def is_multiplicity_parity_valid(n_electrons: int,
+                                 multiplicity: int,
+                                 ) -> bool:
+    """
+    Check whether a spin multiplicity is consistent with a number of electrons.
+
+    ``n_electrons`` and ``multiplicity - 1`` must have the same parity, since each unpaired electron
+    contributes 1 to ``multiplicity - 1`` and the remaining electrons are paired. An even number of
+    electrons therefore requires an odd multiplicity, and an odd number requires an even one.
+
+    Args:
+        n_electrons (int): The number of electrons of the species, net charge included
+                           (as returned by :func:`count_electrons`).
+        multiplicity (int): The spin multiplicity (2S+1).
+
+    Returns:
+        bool: Whether the multiplicity is consistent with the electron count.
+    """
+    return n_electrons % 2 == (multiplicity - 1) % 2
 
 
 def get_atom_radius(symbol: str) -> float | None:
