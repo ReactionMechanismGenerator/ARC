@@ -161,7 +161,7 @@ class TestARC(unittest.TestCase):
                                      'mol': '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}'
                                             '\n3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n5 H u0 p0 c0 {1,S}\n6 H u0 p0 '
                                             'c0 {2,S}\n7 H u0 p0 c0 {2,S}\n8 H u0 p0 c0 {2,S}\n',
-                                     'multiplicity': 1,
+                                     'multiplicity': 2,
                                      'neg_freqs_trshed': [],
                                      'number_of_rotors': 0,
                                      'opt_level': '',
