@@ -572,6 +572,55 @@ class TestMappingEngine(unittest.TestCase):
                           H                  0.34179135    2.75680752   -1.36901816
                           H                  1.78229521    1.76788614   -1.37607384
                           H                  0.34142026    1.21854517   -2.19776146"""
+        cls.methylbutane_xyz = """C      -0.97433227    1.17065473   -0.35442290
+                                  C      -0.45192007   -0.26483788   -0.28088601
+                                  C      -0.33943943   -0.84708671   -1.69187722
+                                  C      -1.34349197   -1.16914868    0.58768626
+                                  C      -1.40105018   -0.74536522    2.04847109
+                                  H      -2.00419427    1.19988237   -0.72602982
+                                  H      -0.35559338    1.77478281   -1.02687519
+                                  H      -0.95159170    1.65360691    0.62712610
+                                  H       0.55534772   -0.24133144    0.15407433
+                                  H       0.32353843   -0.23606931   -2.31364700
+                                  H       0.07332070   -1.86107875   -1.66298158
+                                  H      -1.31775660   -0.89266154   -2.18248872
+                                  H      -0.96063413   -2.19652174    0.54586182
+                                  H      -2.36224242   -1.19617367    0.18190102
+                                  H      -1.90298172    0.21908306    2.16797716
+                                  H      -0.39634721   -0.67043363    2.47612199
+                                  H      -1.96252182   -1.48324241    2.63070314"""
+        cls.dimethylbutane_xyz = """C      -0.82461851    1.14673080   -0.77842678
+                                    C      -0.42610728   -0.06063487    0.08629698
+                                    C      -0.47034470   -1.33504078   -0.77290194
+                                    C      -1.45116287   -0.20442011    1.22812003
+                                    C       0.97587301    0.14090229    0.71707616
+                                    C       2.12880735    0.30329591   -0.26614701
+                                    H      -0.76102821    2.07968065   -0.20742874
+                                    H      -0.18120395    1.24559899   -1.65876690
+                                    H      -1.85453719    1.04872389   -1.14068352
+                                    H       0.17558199   -1.25377401   -1.65320345
+                                    H      -0.14861173   -2.21043461   -0.19787833
+                                    H      -1.48632406   -1.53069938   -1.13494088
+                                    H      -2.46459886   -0.34995913    0.83714693
+                                    H      -1.21500982   -1.06356074    1.86613835
+                                    H      -1.46522531    0.68925624    1.86223603
+                                    H       0.95650220    1.02607021    1.36632791
+                                    H       1.20453979   -0.71149012    1.37019493
+                                    H       2.24605190   -0.57899874   -0.90132288
+                                    H       1.99489999    1.18037559   -0.90523893
+                                    H       3.06651626    0.43837793    0.28340204"""
+        cls.benzene_xyz = """C      -1.39298622   -0.07016743    0.01432698
+                             C      -0.63555191   -1.24137615    0.02446132
+                             C       0.75743431   -1.17120872    0.01013428
+                             C       1.39298622    0.07016743   -0.01432699
+                             C       0.63555191    1.24137616   -0.02446130
+                             C      -0.75743431    1.17120872   -0.01013444
+                             H      -2.47828288   -0.12483594    0.02548953
+                             H      -1.13072003   -2.20855112    0.04351957
+                             H       1.34756286   -2.08371519    0.01803002
+                             H       2.47828289    0.12483592   -0.02548935
+                             H       1.13072003    2.20855114   -0.04351930
+                             H      -1.34756286    2.08371519   -0.01803033"""
 
     def test_map_two_species(self):
         """Test the map_two_species() function."""
@@ -730,6 +779,68 @@ class TestMappingEngine(unittest.TestCase):
         e2 = ARCSpecies(label='ethane_2', smiles='CC')
         atom_map = engine.map_two_species(e1, e2)
         self.assertEqual(len(atom_map), 8)
+
+    def test_map_two_species_uses_the_lowest_rmsd_candidate(self):
+        """Test that map_two_species() maps hydrogens using the backbone map of the lowest-RMSD candidate.
+
+        2-methylbutane fingerprints into more than one superimposable backbone candidate, and the
+        candidate that is not last in the list is the one that superimposes best. Mapping the species
+        onto a copy of itself with identical coordinates makes the lowest-RMSD candidate the identity
+        backbone map, so the full atom map must be the identity map.
+        """
+        spc_1 = ARCSpecies(label='2-methylbutane_1', smiles='CC(C)CC', xyz=self.methylbutane_xyz)
+        spc_2 = ARCSpecies(label='2-methylbutane_2', smiles='CC(C)CC', xyz=self.methylbutane_xyz)
+        candidates = engine.identify_superimposable_candidates(engine.fingerprint(spc_1),
+                                                               engine.fingerprint(spc_2))
+        identity_backbone = {i: i for i in range(5)}
+        self.assertGreater(len(candidates), 1)
+        self.assertIn(identity_backbone, candidates)
+        self.assertNotEqual(candidates[-1], identity_backbone)
+
+        atom_map = engine.map_two_species(spc_1, spc_2, map_type='dict')
+        self.assertEqual(atom_map, {i: i for i in range(spc_1.number_of_atoms)})
+
+    def test_map_two_species_breaks_a_backbone_tie_on_the_all_atom_displacement(self):
+        """Test that map_two_species() breaks a backbone RMSD tie on the displacement of the full atom map.
+
+        2,2-dimethylbutane fingerprints into three superimposable backbone candidates, the first of
+        which is the identity backbone map. Mapped onto a copy of itself with identical coordinates,
+        the second candidate ties with the first on the backbone distance matrix, since permuting the
+        two methyl groups leaves every backbone interatomic distance unchanged. The two candidates
+        place the hydrogen atoms differently, so the tie is broken on the Kabsch RMSD of the full atom
+        map, and the identity map, which superimposes the species exactly, is the one returned.
+        """
+        spc_1 = ARCSpecies(label='2,2-dimethylbutane_1', smiles='CC(C)(C)CC', xyz=self.dimethylbutane_xyz)
+        spc_2 = ARCSpecies(label='2,2-dimethylbutane_2', smiles='CC(C)(C)CC', xyz=self.dimethylbutane_xyz)
+        candidates = engine.identify_superimposable_candidates(engine.fingerprint(spc_1),
+                                                               engine.fingerprint(spc_2))
+        self.assertEqual(len(candidates), 3)
+        self.assertEqual(candidates[0], {i: i for i in range(6)})
+        self.assertNotEqual(candidates[1], candidates[0])
+
+        atom_map = engine.map_two_species(spc_1, spc_2, map_type='list')
+
+        self.assertEqual(atom_map, list(range(spc_1.number_of_atoms)))
+        self.assertLess(spc_1.kabsch(spc_2, atom_map), 1e-5)
+
+    def test_map_two_species_uses_the_last_of_the_displacement_tied_candidates(self):
+        """Test that map_two_species() uses the last candidate when the displacement does not discriminate.
+
+        Benzene fingerprints into six superimposable backbone candidates, every one of which is an
+        exact symmetry of the ring, so all six tie on the backbone distance matrix and all six yield
+        an atom map of zero Kabsch RMSD. Nothing discriminates them, and the last candidate is used.
+        """
+        spc_1 = ARCSpecies(label='benzene_1', smiles='c1ccccc1', xyz=self.benzene_xyz)
+        spc_2 = ARCSpecies(label='benzene_2', smiles='c1ccccc1', xyz=self.benzene_xyz)
+        candidates = engine.identify_superimposable_candidates(engine.fingerprint(spc_1),
+                                                               engine.fingerprint(spc_2))
+        self.assertEqual(len(candidates), 6)
+
+        atom_map = engine.map_two_species(spc_1, spc_2, map_type='dict')
+
+        self.assertLess(spc_1.kabsch(spc_2, [v for k, v in sorted(atom_map.items(), key=lambda i: i[0])]), 1e-5)
+        self.assertEqual({key: val for key, val in atom_map.items() if key < 6}, candidates[-1])
+        self.assertNotEqual(candidates[-1], {i: i for i in range(6)})
 
     def test_inc_valss(self):
         s1 = ARCSpecies(label='S1', smiles='C=CC1C(C)C=CC(C)C1C')
