@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.checks.nmd module
 """
 
+import copy
 import unittest
 import os
 import shutil
@@ -13,6 +14,7 @@ import numpy as np
 
 import arc.checks.nmd as nmd
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords
+from arc.exceptions import ReactionError
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.molecule import Molecule
@@ -407,6 +409,25 @@ class TestNMD(unittest.TestCase):
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_file_paths['TS7'])
         valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=amplitude)
         self.assertFalse(valid)
+
+    def test_analyze_ts_normal_mode_displacement_when_the_bonds_are_undetermined(self):
+        """Test analyze_ts_normal_mode_displacement() when the bonds that change cannot be determined."""
+        def raise_reaction_error():
+            raise ReactionError('Cannot get bonds without an atom map.')
+
+        def raise_value_error():
+            raise ValueError('11 is not in list')
+
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        rxn = copy.deepcopy(self.rxn_1)
+        rxn.get_formed_and_broken_bonds = raise_reaction_error
+        valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
+        self.assertIsNone(valid)
+        self.assertIn(nmd.NMD_UNDETERMINED_BONDS_WARNING, rxn.ts_species.ts_checks['warnings'])
+
+        rxn.get_formed_and_broken_bonds = raise_value_error
+        with self.assertRaises(ValueError):
+            nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
 
     def test_analyze_ts_normal_mode_displacement_for_hypervalence_nitrogen(self):
         """Test the analyze_ts_normal_mode_displacement() function for a hypervalence nitrogen."""
