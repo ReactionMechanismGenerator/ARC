@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from arc.parser import parser
 from arc.common import get_element_mass, get_logger
+from arc.exceptions import ReactionError
 from arc.species.converter import get_most_common_isotope_for_element, xyz_from_data, xyz_to_np_array
 from arc.species.vectors import calculate_distance, VectorsError
 
@@ -23,6 +24,7 @@ logger = get_logger()
 SIGMA_THRESHOLD = 3.0
 STD_FLOOR = 1e-4
 DIRECTIONALITY_MIN_DELTA = 0.005
+NMD_UNDETERMINED_BONDS_WARNING = 'Could not determine the bonds that change in the reaction, NMD not checked; '
 
 
 def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
@@ -34,6 +36,8 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
     Analyze the normal mode displacement by identifying bonds that break and form
     and comparing them to the expected given reaction.
     Note that the TS geometry must be in the standard orientation for the normal mode displacement to be relevant.
+    If the bonds that change in the reaction cannot be determined, a warning is appended to the TS species'
+    ``ts_checks['warnings']`` entry and ``None`` is returned.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
@@ -64,7 +68,15 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
     amplitude_list = [amplitude] if isinstance(amplitude, (float, int)) else amplitude
     weights_array = get_weights_from_xyz(xyz=ts_xyz, weights=weights)
     r_eq_atoms, _ = find_equivalent_atoms(reaction=reaction, reactant_only=True)
-    bond_change_candidates = get_bond_change_candidates(reaction=reaction)
+    try:
+        bond_change_candidates = get_bond_change_candidates(reaction=reaction)
+    except ReactionError as e:
+        logger.warning(f'Could not determine the bonds that change in reaction {reaction.label}, '
+                       f'got {type(e).__name__}: {e}\n'
+                       f'Not checking the normal mode displacement of TS {reaction.ts_species.label}.')
+        if NMD_UNDETERMINED_BONDS_WARNING not in reaction.ts_species.ts_checks['warnings']:
+            reaction.ts_species.ts_checks['warnings'] += NMD_UNDETERMINED_BONDS_WARNING
+        return None
 
     for amp in amplitude_list:
         if not amp:
