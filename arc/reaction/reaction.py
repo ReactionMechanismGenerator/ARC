@@ -15,6 +15,7 @@ from arc.species.converter import (align_xyz_to_ref_coords,
                                    xyz_to_str,
                                    )
 from arc.mapping.driver import map_reaction
+from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
 
@@ -22,6 +23,49 @@ logger = get_logger()
 
 # The RMG family set used to determine/validate reaction families (configurable via settings.py).
 RMG_FAMILY_SET = settings['rmg_family_set']
+
+
+def get_resonance_bond_orders(mol: Molecule,
+                              index_1: int,
+                              index_2: int,
+                              ) -> list[float]:
+    """
+    Get the order of the bond between two atom indices of ``mol`` in each of its resonance structures.
+
+    Atoms are located in each resonance structure by their atom ID rather than by their index.
+    If ``mol`` has no valid atom IDs, a copy of ``mol`` carrying freshly assigned IDs is used instead
+    and ``mol`` itself is left unchanged. A resonance structure in which the two atoms are not bonded
+    is skipped, and an empty list is returned if the bond was located in no resonance structure.
+
+    Args:
+        mol (Molecule): The molecule to generate resonance structures for.
+        index_1 (int): The index in ``mol`` of the first atom of the bond.
+        index_2 (int): The index in ``mol`` of the second atom of the bond.
+
+    Returns:
+        list[float]: The bond order in each resonance structure in which the bond was located.
+    """
+    if not mol.atom_ids_valid():
+        mol = mol.copy(deep=True)
+        mol.assign_atom_ids()
+    mol_list = generate_resonance_structures_safely(mol,
+                                                    keep_isomorphic=True,
+                                                    filter_structures=True,
+                                                    save_order=True,
+                                                    ) or [mol]
+    id_1, id_2 = mol.atoms[index_1].id, mol.atoms[index_2].id
+    bond_orders, skipped = list(), 0
+    for structure in mol_list:
+        atoms_by_id = {atom.id: atom for atom in structure.atoms}
+        atom_1, atom_2 = atoms_by_id[id_1], atoms_by_id[id_2]
+        if not structure.has_bond(atom_1, atom_2):
+            skipped += 1
+            continue
+        bond_orders.append(structure.get_bond(atom_1, atom_2).order)
+    if skipped:
+        logger.debug(f'Could not locate the bond between atoms {index_1} and {index_2} of '
+                     f'{mol.get_formula()} in {skipped} of its {len(mol_list)} resonance structures.')
+    return bond_orders
 
 
 class ARCReaction(object):
@@ -1153,6 +1197,10 @@ class ARCReaction(object):
     def get_changed_bonds(self) -> list[tuple[int, int]]:
         """
         Get all bonds that change their bond order in the reaction.
+
+        The bond order of a shared bond is averaged over the resonance structures in which it could be
+        located; a bond that could not be located in any resonance structure is not reported as changed.
+
         Returns:
             list[tuple[int, int]]: The bonds that change their bond order.
         """
@@ -1171,28 +1219,14 @@ class ARCReaction(object):
             len_atoms = 0
             for reactant in reactants:
                 if bond[0] - len_atoms < len(reactant.mol.atoms) and bond[1] - len_atoms < len(reactant.mol.atoms):
-                    mol_list = generate_resonance_structures_safely(reactant.mol,
-                                                                    keep_isomorphic=True,
-                                                                    filter_structures=True,
-                                                                    save_order=True,
-                                                                    )
-                    for mol in mol_list:
-                        atom1, atom2 = mol.atoms[bond[0] - len_atoms], mol.atoms[bond[1] - len_atoms]
-                        r_bos.append(mol.get_bond(atom1, atom2).order)
+                    r_bos = get_resonance_bond_orders(reactant.mol, bond[0] - len_atoms, bond[1] - len_atoms)
                 len_atoms += reactant.number_of_atoms
                 break
             len_atoms = 0
             for product in products:
                 mapped_bond = (self.atom_map[bond[0]], self.atom_map[bond[1]])
                 if mapped_bond[0] - len_atoms < len(product.mol.atoms) and mapped_bond[1] - len_atoms < len(product.mol.atoms):
-                    mol_list = generate_resonance_structures_safely(product.mol,
-                                                                    keep_isomorphic=True,
-                                                                    filter_structures=True,
-                                                                    save_order=True,
-                                                                    )
-                    for mol in mol_list:
-                        atom1, atom2 = mol.atoms[mapped_bond[0] - len_atoms], mol.atoms[mapped_bond[1] - len_atoms]
-                        p_bos.append(mol.get_bond(atom1, atom2).order)
+                    p_bos = get_resonance_bond_orders(product.mol, mapped_bond[0] - len_atoms, mapped_bond[1] - len_atoms)
                 len_atoms += product.number_of_atoms
                 break
             if len(r_bos) and len(p_bos) and sum(r_bos) / len(r_bos) != sum(p_bos) / len(p_bos):

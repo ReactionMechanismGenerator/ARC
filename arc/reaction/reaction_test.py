@@ -17,7 +17,9 @@ from scipy.spatial.transform import Rotation
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, calc_rmsd, read_yaml_file
 from arc.exceptions import ReactionError
 from arc.main import ARC
-from arc.reaction.reaction import ARCReaction, remove_dup_species
+from arc.molecule.molecule import Molecule
+from arc.molecule.resonance import generate_resonance_structures_safely
+from arc.reaction.reaction import ARCReaction, get_resonance_bond_orders, remove_dup_species
 from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
 from arc.mapping.engine import check_atom_map
@@ -1204,6 +1206,46 @@ H       1.12853146   -0.86793870    0.06973060"""
         self.assertEqual(changed_bonds, [(0, 1), (1, 2)])
         changed_bonds = self.rxn_1_w_xyz.get_changed_bonds()
         self.assertEqual(changed_bonds, [])
+
+    def test_get_changed_bonds_of_a_polycyclic_aromatic(self):
+        """
+        Test get_changed_bonds() for a reaction whose species have reordered resonance structures.
+        H abstraction from an aromatic C-H leaves the pi system unperturbed; the bonds that are
+        reported are confined to the ring bearing the abstraction site and reflect which Kekule
+        alternant of that ring is selected on each side of the reaction.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='ethynylnaphthalene', smiles='C#Cc1ccc2ccccc2c1'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='ethynylnaphthalenyl', smiles='C#Cc1[c]c2ccccc2cc1'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        self.assertEqual(rxn.get_formed_and_broken_bonds(), ([(19, 20)], [(11, 19)]))
+        changed_bonds = set(rxn.get_changed_bonds())
+        abstraction_site_ring = {(2, 3), (3, 4), (4, 5), (5, 10), (10, 11), (2, 11)}
+        ethynyl_bonds = {(0, 1), (1, 2), (0, 12)}
+        distal_ring_only = {(5, 6), (6, 7), (7, 8), (8, 9), (9, 10)}
+        self.assertTrue(changed_bonds.issubset(abstraction_site_ring))
+        self.assertFalse(changed_bonds.intersection(ethynyl_bonds))
+        self.assertFalse(changed_bonds.intersection(distal_ring_only))
+
+    def test_get_resonance_bond_orders(self):
+        """Test the get_resonance_bond_orders() function."""
+        spc = ARCSpecies(label='ethynylnaphthalene', smiles='C#Cc1ccc2ccccc2c1')
+        mol_list = generate_resonance_structures_safely(spc.mol, keep_isomorphic=True,
+                                                        filter_structures=True, save_order=True)
+        self.assertEqual(len(mol_list), 4)
+        self.assertEqual(get_resonance_bond_orders(spc.mol, 0, 1), [3.0] * 4)
+        self.assertEqual(get_resonance_bond_orders(spc.mol, 0, 12), [1.0] * 4)
+        self.assertEqual(get_resonance_bond_orders(spc.mol, 2, 3), [1.5, 1.0, 1.5, 1.0])
+        self.assertEqual(get_resonance_bond_orders(spc.mol, 3, 4), [1.5, 2.0, 1.5, 2.0])
+        self.assertEqual(get_resonance_bond_orders(spc.mol, 0, 5), list())
+
+    def test_get_resonance_bond_orders_without_atom_ids(self):
+        """Test get_resonance_bond_orders() for a molecule that carries no valid atom IDs."""
+        mol = Molecule(smiles='C#Cc1ccc2ccccc2c1')
+        self.assertFalse(mol.atom_ids_valid())
+        self.assertEqual(get_resonance_bond_orders(mol, 0, 1), [3.0] * 4)
+        self.assertEqual(get_resonance_bond_orders(mol, 0, 12), [1.0] * 4)
+        self.assertFalse(mol.atom_ids_valid())
 
     def test_multi_reactants(self):
         """Test that a reaction can be defined with many (>3) reactants or products given ts_xyz_guess."""
