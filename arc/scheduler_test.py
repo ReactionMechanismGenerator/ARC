@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import os
 import shutil
+import tempfile
 from types import SimpleNamespace
 
 
@@ -434,6 +435,12 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.job4.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'N2O3.out')
         self.sched3.check_scan_job(label='methylamine', job=self.job4)
         self.assertTrue(self.sched3.species_dict['methylamine'].rotors_dict[self.job4.rotor_index]['success'])
+        # arc/output.py's _parse_scan_constraints dispatches the constraint
+        # parser on this field; a completed scan job must stamp it with the
+        # adapter that actually produced the log (see TestScanSoftwareStamp
+        # below for isolated coverage of both producer call sites).
+        self.assertEqual(self.sched3.species_dict['methylamine'].rotors_dict[self.job4.rotor_index]['scan_software'],
+                         self.job4.job_adapter)
 
         self.job4.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'l103_err.out')
         self.job4.job_status[1]['status'] = 'errored'
@@ -1571,6 +1578,137 @@ class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
         collider = ARCSpecies(label='CH4_TS0', smiles='O')
         with self.assertRaises(SchedulerError):
             self.build_scheduler(rxn, r + p + [collider], 'adaptive_collision')
+
+
+class TestTsGuessPathProvenance(unittest.TestCase):
+    """Tests method-specific routing of TS path-search artifacts."""
+
+    def test_method_specific_path_keys(self):
+        from arc.scheduler import _ts_guess_paths_key
+
+        self.assertEqual(_ts_guess_paths_key('orca_neb'), 'neb')
+        self.assertEqual(_ts_guess_paths_key(' xTB-GSM '), 'gsm')
+        self.assertIsNone(_ts_guess_paths_key('gcn'))
+        self.assertIsNone(_ts_guess_paths_key(None))
+
+    def test_merged_guess_path_provenance(self):
+        from arc.scheduler import _ts_guess_path_provenance
+
+        guess = TSGuess(index=0, method='gcn', success=True, xyz='C 0 0 0')
+        guess.method_sources = ['gcn', 'xtb-gsm']
+        guess.method_source_paths = {'xtb-gsm': '/run/stringfile.xyz0000'}
+        self.assertEqual(
+            _ts_guess_path_provenance(guess),
+            ('gsm', '/run/stringfile.xyz0000'),
+        )
+
+
+class TestScanSoftwareStamp(unittest.TestCase):
+    """Tests that a completed scan job stamps ``rotors_dict[...]['scan_software']``.
+
+    ``arc/output.py``'s ``_scan_constraint_parser_for`` dispatches the
+    rotor-scan constraint parser on this field. Nothing sets it unless the
+    scheduler stamps it here (``Scheduler.end_job`` and
+    ``Scheduler.check_scan_job``); without the stamp, dispatch silently
+    falls back to the Gaussian parser for every scan regardless of which
+    software actually produced the log. These tests drive the two
+    producer call sites directly with a ``MagicMock`` ``self`` (as
+    ``TestHasPendingPipeWork`` above does) so they don't depend on the
+    ``~/.arc`` server configuration that ``TestScheduler``'s job fixtures
+    require.
+    """
+
+    def _rotor(self):
+        return {
+            'pivots': [2, 3],
+            'dimensions': 1,
+            'scan': [1, 2, 3, 4],
+            'torsion': [0, 1, 2, 3],
+            'trsh_methods': [],
+            'invalidation_reason': '',
+            'success': None,
+            'scan_path': '',
+            # deliberately no 'scan_software' key, mirroring
+            # find_internal_rotors()'s output.
+        }
+
+    def test_end_job_stamps_scan_software_for_a_finished_scan(self):
+        from arc.scheduler import Scheduler
+
+        rotor = self._rotor()
+        rotor['pivots'] = [2, 3]
+        spc = MagicMock()
+        spc.rotors_dict = {0: rotor}
+
+        sched = MagicMock()
+        sched.species_dict = {'spc': spc}
+        sched.project_directory = '/fake/project'
+        sched.output = {}
+        sched.running_jobs = {'spc': ['scan_job']}
+
+        # A real (empty) file: end_job() retries with real time.sleep() calls
+        # until os.path.isfile() succeeds, so a nonexistent path would hang
+        # the test for ~50s before falling into an unrelated branch.
+        output_file = tempfile.NamedTemporaryFile(suffix='.out', delete=False)
+        output_file.close()
+        self.addCleanup(os.remove, output_file.name)
+
+        job = MagicMock()
+        job.job_status = ['done', {'status': 'done'}]
+        job.job_adapter = 'orca'
+        job.job_type = 'scan'
+        job.directed_scan_type = 'ess'
+        job.pivots = [2, 3]
+        job.local_path_to_output_file = output_file.name
+        job.local_path = '/fake/local_path'
+        job.species_label = 'spc'
+        job.job_name = 'scan_job'
+        job.execution_type = 'incore'
+
+        result = Scheduler.end_job(sched, job=job, label='spc', job_name='scan_job')
+
+        self.assertTrue(result)
+        self.assertEqual(rotor['scan_software'], 'orca')
+        self.assertEqual(rotor['scan_path'], output_file.name)
+
+    def test_check_scan_job_stamps_scan_software(self):
+        from arc.scheduler import Scheduler
+
+        rotor = self._rotor()
+        spc = MagicMock()
+        spc.rotors_dict = {0: rotor}
+        spc.get_xyz.return_value = {'coords': (), 'symbols': ()}
+        spc.final_xyz = None
+        spc.preserve_param_in_scan = None
+        spc.is_ts = False
+
+        sched = MagicMock()
+        sched.species_dict = {'spc': spc}
+        sched.project_directory = '/fake/project'
+        sched.trsh_ess_jobs = False
+        sched.trsh_rotors = False
+
+        job = MagicMock()
+        job.job_status = [None, {'status': 'done', 'error': None}]
+        job.rotor_index = 0
+        job.local_path_to_output_file = '/fake/scan.out'
+        job.job_adapter = 'orca'
+        job.torsions = [[0, 1, 2, 3]]
+        job.xyz = {'coords': (), 'symbols': ()}
+        job.is_ts = False
+        job.species_label = 'spc'
+
+        # Drive the "energies could not be read" branch: it reaches the
+        # scan_software stamp without needing determine_rotor_symmetry(),
+        # scan_quality_check(), or real log-file parsing.
+        with patch('arc.scheduler.parser.parse_1d_scan_energies_from_specific_angle',
+                   return_value=(None, None)), \
+             patch('arc.scheduler.calculate_dihedral_angle', return_value=0.0):
+            Scheduler.check_scan_job(sched, label='spc', job=job)
+
+        self.assertEqual(rotor['scan_software'], 'orca')
+        self.assertEqual(rotor['scan_path'], '/fake/scan.out')
+        self.assertFalse(rotor['success'])
 
 
 if __name__ == '__main__':
