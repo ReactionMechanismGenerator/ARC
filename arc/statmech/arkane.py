@@ -41,6 +41,13 @@ MBAC_SECTION_START = "mbac = {"
 MBAC_SECTION_END = "freq_dict ="
 FREQ_SECTION_START = "freq_dict = {"
 
+# Tunneling method ARC uses for every reaction kinetics fit. Single source
+# of truth: the Arkane input template renders this constant, and output.yml
+# / the TCKDB adapter both read it back so downstream consumers know which
+# correction was applied.
+ARKANE_TUNNELING_METHOD = 'Eckart'
+
+
 main_input_template = """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
@@ -83,7 +90,7 @@ reaction(
     reactants=${rxn.reactants},
     products=${rxn.products},
     transitionState='${rxn.ts_species.label}',
-    tunneling='Eckart',
+    tunneling='${tunneling_method}',
 )
 % endfor
 
@@ -414,6 +421,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             t_min=self.T_min,
             t_max=self.T_max,
             t_count=self.T_count,
+            tunneling_method=ARKANE_TUNNELING_METHOD,
         )
 
     def generate_species_files(self,
@@ -501,6 +509,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         if len(stderr):
             logger.error(f'Error while running Arkane thermo script:\n{stderr}')
         thermo_yaml_path = os.path.join(statmech_dir, 'thermo.yaml')
+        content = dict()
         if os.path.isfile(thermo_yaml_path):
             content = read_yaml_file(thermo_yaml_path) or {}
             valid_labels = [lbl for lbl in content if lbl in self.species_dict]
@@ -540,7 +549,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     spc.thermo.data = content[lbl]['data']
                     spc.thermo.nasa_low = content[lbl].get('nasa_low')
                     spc.thermo.nasa_high = content[lbl].get('nasa_high')
-                    spc.thermo.cp_data = content[lbl].get('cp_data')
+                    spc.thermo.thermo_points = content[lbl].get('thermo_points')
 
                     line = (
                         f"   {lbl:<{label_width}}  "
@@ -548,6 +557,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                         f"{spc.thermo.S298:>{s_width}.2f}"
                     )
                     logger.info(line)
+
+        pressure_pa = get_standard_state_pressure(content)
+        for species in self.species:
+            if species.thermo is not None and species.thermo.H298 is not None:
+                species.thermo.standard_state_pressure_pa = pressure_pa
 
     def parse_arkane_kinetics_output(self, statmech_dir: str) -> None:
         """Parse Arkane kinetic output and assign results to reactions."""
@@ -1256,6 +1270,26 @@ def check_arkane_bacs(sp_level: Level,
     return has_encorr
 
 
+def get_standard_state_pressure(content: dict) -> float | None:
+    """
+    Return the standard-state pressure in Pa recorded in an Arkane ``thermo.yaml`` mapping.
+
+    Every record written by one Arkane run carries the same pressure, which
+    ``arc/scripts/save_arkane_thermo.py`` reads from RMG's translational partition
+    function, so the first record carrying one supplies it for the whole run.
+
+    Args:
+        content (dict): The parsed ``thermo.yaml`` content, keyed by species label.
+
+    Returns:
+        Optional[float]: The standard-state pressure in Pa, or ``None`` when no record carries one.
+    """
+    for record in content.values():
+        if isinstance(record, dict) and record.get('standard_state_pressure_pa') is not None:
+            return record['standard_state_pressure_pa']
+    return None
+
+
 def parse_species_thermo(species, output_content: str) -> None:
     """Parse thermodynamic data for a single species."""
     # Parse E0
@@ -1355,6 +1389,13 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
             kinetics['dEa'] = float(m_dea.group(1))
             kinetics['dEa_units'] = m_dea.group(2) or 'kJ/mol'
     mark_ts_validation_in_kinetics(reaction=reaction, kinetics=kinetics)
+    # Stamp the tunneling method here, where we know these specific A/n/Ea came
+    # out of the Arkane run ARC rendered ARKANE_TUNNELING_METHOD into. Callers
+    # that default this from the template constant instead would also stamp
+    # kinetics restored from a restart file, supplied in the input YAML, or
+    # produced by a future non-Arkane StatmechAdapter, none of which carry the
+    # correction.
+    kinetics['tunneling'] = ARKANE_TUNNELING_METHOD
     reaction.kinetics = kinetics
 
 
