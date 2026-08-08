@@ -38,6 +38,13 @@ MBAC_SECTION_START = "mbac = {"
 MBAC_SECTION_END = "freq_dict ="
 FREQ_SECTION_START = "freq_dict = {"
 
+# Tunneling method ARC uses for every reaction kinetics fit. Single source
+# of truth: the Arkane input template renders this constant, and output.yml
+# / the TCKDB adapter both read it back so downstream consumers know which
+# correction was applied.
+ARKANE_TUNNELING_METHOD = 'Eckart'
+
+
 main_input_template = """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
@@ -80,7 +87,7 @@ reaction(
     reactants=${rxn.reactants},
     products=${rxn.products},
     transitionState='${rxn.ts_species.label}',
-    tunneling='Eckart',
+    tunneling='${tunneling_method}',
 )
 % endfor
 
@@ -403,6 +410,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             t_min=self.T_min,
             t_max=self.T_max,
             t_count=self.T_count,
+            tunneling_method=ARKANE_TUNNELING_METHOD,
         )
 
     def generate_species_files(self,
@@ -511,7 +519,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     spc.thermo.data = content[lbl]['data']
                     spc.thermo.nasa_low = content[lbl].get('nasa_low')
                     spc.thermo.nasa_high = content[lbl].get('nasa_high')
-                    spc.thermo.cp_data = content[lbl].get('cp_data')
+                    spc.thermo.thermo_points = content[lbl].get('thermo_points')
 
                     line = (
                         f"   {lbl:<{label_width}}  "
@@ -1325,6 +1333,13 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
         if m_dea:
             kinetics['dEa'] = float(m_dea.group(1))
             kinetics['dEa_units'] = m_dea.group(2) or 'kJ/mol'
+    # Stamp the tunneling method here, where we know these specific A/n/Ea came
+    # out of the Arkane run ARC rendered ARKANE_TUNNELING_METHOD into. Callers
+    # that default this from the template constant instead would also stamp
+    # kinetics restored from a restart file, supplied in the input YAML, or
+    # produced by a future non-Arkane StatmechAdapter, none of which carry the
+    # correction.
+    kinetics['tunneling'] = ARKANE_TUNNELING_METHOD
     reaction.kinetics = kinetics
 
 
