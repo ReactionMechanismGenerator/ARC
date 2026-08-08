@@ -7,10 +7,12 @@ This module contains unit tests for the parser functions
 
 import numpy as np
 import os
+import shutil
 import unittest
 
 import arc.parser.parser as parser
 from arc.common import ARC_TESTING_PATH, almost_equal_coords
+from arc.constants import E_h_kJmol
 from arc.parser.adapters.gaussian import parse_ic_info, parse_ic_values
 from arc.species import ARCSpecies
 from arc.species.converter import str_to_xyz, xyz_to_str
@@ -592,6 +594,107 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 3)
 
+    def test_parse_gsm_stringfile_energies(self):
+        """Test parsing the per-frame comment-line energies of a GSM stringfile."""
+        import tempfile
+
+        # 1. The real fixture: ARC's molecularGSM build writes 0.000000 for
+        #    every comment line (the "no energy emitted" case). The parser
+        #    faithfully returns those zeros; the caller applies the sentinel.
+        path = os.path.join(ARC_TESTING_PATH, 'stringfile.xyz0000')
+        energies = parser.parse_gsm_stringfile_energies(path)
+        self.assertEqual(energies, [0.0] * 9)
+
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+
+        # 2. An energy-bearing stringfile (relative kcal/mol, first node 0):
+        #    the parser returns the per-frame floats in frame order.
+        expected = [0.0, 3.5, 12.4, 8.1, 1.2]
+        energetic = os.path.join(tmp_dir, 'stringfile.xyz0000')
+        with open(energetic, 'w') as f:
+            for e in expected:
+                f.write(f' 1\n {e:.6f}\n C 0.0 0.0 0.0\n')
+        parsed = parser.parse_gsm_stringfile_energies(energetic)
+        self.assertEqual(len(parsed), len(expected))
+        for got, exp in zip(parsed, expected):
+            self.assertAlmostEqual(got, exp)
+
+        # 3. A geometry-only trajectory (non-numeric comment line) is not an
+        #    energy-bearing stringfile → None (never a partial list).
+        geom_only = os.path.join(tmp_dir, 'geom.xyz')
+        with open(geom_only, 'w') as f:
+            f.write(' 1\n frame 0\n C 0.0 0.0 0.0\n 1\n frame 1\n C 0.0 0.0 0.1\n')
+        self.assertIsNone(parser.parse_gsm_stringfile_energies(geom_only))
+
+        # 4. A missing file → None.
+        self.assertIsNone(parser.parse_gsm_stringfile_energies('/no/such/stringfile.xyz0000'))
+
+    def test_parse_irc_path_gaussian_forward(self):
+        """parse_irc_path emits per-point energy, RC, grads, direction, and xyz."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertIsNotNone(points)
+        # Gaussian's Point Number: 0 has no CURRENT STRUCTURE block — the
+        # rich parser correctly skips it; 50 stepped points remain.
+        self.assertEqual(len(points), 50)
+        first = points[0]
+        self.assertEqual(first['point_number'], 1)
+        self.assertEqual(first['direction'], 'forward')
+        self.assertAlmostEqual(first['electronic_energy_hartree'], -303.578211343)
+        self.assertAlmostEqual(first['reaction_coordinate'], 0.07236)
+        self.assertAlmostEqual(first['max_gradient'], 0.007275026)
+        self.assertAlmostEqual(first['rms_gradient'], 0.002502813)
+        self.assertEqual(len(first['xyz']['symbols']), 8)
+        self.assertEqual(
+            [point['reaction_coordinate'] for point in points],
+            sorted(point['reaction_coordinate'] for point in points),
+        )
+        self.assertEqual({point['direction'] for point in points}, {'forward'})
+        # Reaction coordinate increases monotonically along a single
+        # Gaussian IRC branch (cumulative path length).
+        rcs = [p['reaction_coordinate'] for p in points]
+        self.assertEqual(rcs, sorted(rcs))
+        # Every emitted point inherits the FORWARD label.
+        self.assertEqual(
+            sorted({p['direction'] for p in points}),
+            ['forward'],
+        )
+
+    def test_parse_irc_path_gaussian_reverse_direction(self):
+        """The REVERSE branch fixture flips per-point direction labels."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out')
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertIsNotNone(points)
+        self.assertEqual(
+            sorted({p['direction'] for p in points}),
+            ['reverse'],
+        )
+
+    def test_parse_irc_path_geometries_match_parse_irc_traj(self):
+        """Both Gaussian IRC walkers read the same geometry tables.
+
+        ``parse_irc_traj`` additionally emits the ``Point Number: 0`` seed,
+        which ``parse_irc_path`` omits, so the trajectory is one longer and
+        its tail is the structured path's geometries.
+        """
+        from arc.parser.adapters.gaussian import GaussianParser
+        for name in ('rxn_1_irc_1.out', 'rxn_1_irc_2.out'):
+            with self.subTest(log=name):
+                adapter = GaussianParser(os.path.join(ARC_TESTING_PATH, 'irc', name))
+                traj = adapter.parse_irc_traj()
+                points = adapter.parse_irc_path()
+                self.assertEqual(len(traj), len(points) + 1)
+                self.assertEqual(traj[1:], [point['xyz'] for point in points])
+
+    def test_parse_irc_path_failed_log_returns_none(self):
+        """A truncated/failed IRC log yields None — the upstream upload
+        path interprets this as "no rich data" and falls back to the
+        geometry-only parser without aborting the upload."""
+        path = os.path.join(ARC_TESTING_PATH, 'irc', 'irc_failed.out')
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertIsNone(points)
+
     def test_parse_1d_scan_coords(self):
         """Test parsing the optimized coordinates of a torsion scan at each optimization point"""
         path_1 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2.out')
@@ -648,6 +751,56 @@ H      -1.69381305    0.40788834    0.90078104"""
         path = os.path.join(ARC_TESTING_PATH, 'mockter.yml')
         t1 = parser.parse_t1(path)
         self.assertEqual(t1, 0.0002)
+
+    def test_parse_s_squared(self):
+        """Test parsing the S**2 spin-contamination diagnostic"""
+        # Gaussian, open-shell doublet (UwB97XD): <S**2>=0.7535, expected 0.75, annihilated 0.75.
+        path = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7535)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertAlmostEqual(sd['s_squared_annihilated'], 0.75)
+
+        # Gaussian, open-shell triplet: <S**2>=2.0153, expected 2.0, annihilated 2.0001.
+        path = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'TSs', 'TS_freq.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 2.0153)
+        self.assertAlmostEqual(sd['s_squared_expected'], 2.0)
+        self.assertAlmostEqual(sd['s_squared_annihilated'], 2.0001)
+
+        # Gaussian, closed-shell/restricted: no <S**2> printed -> None.
+        path = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
+        self.assertIsNone(parser.parse_s_squared(path))
+
+        # ORCA, open-shell doublet: last converged <S**2>=0.762333, Ideal value 0.75, no annihilation.
+        path = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.762333)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertIsNone(sd['s_squared_annihilated'])
+
+        # Q-Chem, open-shell doublet: <S^2> = 0.7572, expected from multiplicity, no annihilation.
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'NO3_freq_QChem_fails_on_cclib.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7572)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertIsNone(sd['s_squared_annihilated'])
+
+        # Malformed / non-ESS path -> None (no crash).
+        path = os.path.join(ARC_TESTING_PATH, 'mockter.yml')
+        self.assertIsNone(parser.parse_s_squared(path))
+
+    def test_s_squared_expected_from_multiplicity(self):
+        """Test the ideal S(S+1) helper"""
+        self.assertEqual(parser.s_squared_expected_from_multiplicity(2), 0.75)
+        self.assertEqual(parser.s_squared_expected_from_multiplicity(3), 2.0)
+        self.assertEqual(parser.s_squared_expected_from_multiplicity(1), 0.0)
+        self.assertIsNone(parser.s_squared_expected_from_multiplicity(None))
+        self.assertIsNone(parser.s_squared_expected_from_multiplicity(0))
 
     def test_parse_e_elect(self):
         """Test parsing the electronic energy from a single-point job output file"""
@@ -749,59 +902,40 @@ H      -1.69381305    0.40788834    0.90078104"""
                                     200.0, 208.0, 216.0, 224.0, 232.0, 240.0, 248.0, 256.0, 264.0, 272.0, 280.0, 288.0,
                                     296.0, 304.0, 312.0, 320.0, 328.0, 336.0, 344.0])
         
+        # Orca reports the surface on its own -180..180 dihedral origin in absolute
+        # Hartree; the adapter must publish the ARC-wide convention instead:
+        # kJ/mol relative to the scan minimum, on a displacement-from-first-point
+        # angle axis. The absolute Hartree values remain reachable through
+        # parse_1d_scan_energies_hartree.
         path_4 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'orca', 'cc.txt')
         energies_4, angles_4 = parser.parse_1d_scan_energies(log_file_path=path_4)
-        self.assertEqual(energies_4.shape, (45,))
-        energies_4, angles_4 = energies_4.tolist(), angles_4.tolist()
-        self.assertEqual(angles_4, [-180.        , -171.81818182, -163.63636364, -155.45454545,
-                                    -147.27272727, -139.09090909, -130.90909091, -122.72727273,
-                                    -114.54545455, -106.36363636,  -98.18181818,  -90.        ,
-                                    -81.81818182,  -73.63636364,  -65.45454545,  -57.27272727,
-                                    -49.09090909,  -40.90909091,  -32.72727273,  -24.54545455,
-                                    -16.36363636,   -8.18181818,    0.        ,    8.18181818,
-                                     16.36363636,   24.54545455,   32.72727273,   40.90909091,
-                                     49.09090909,   57.27272727,   65.45454545,   73.63636364,
-                                     81.81818182,   90.        ,   98.18181818,  106.36363636,
-                                     114.54545455,  122.72727273,  130.90909091,  139.09090909,
-                                     147.27272727,  155.45454545,  163.63636364,  171.81818182,
-                                     180.        ])
-        self.assertEqual(energies_4, [-205.45224799, -205.45190811, -205.45091275, -205.44933274,
-                                      -205.44728671, -205.4449269 , -205.44243238, -205.43999284,
-                                      -205.43779528, -205.43600588, -205.434757  , -205.43414239,
-                                      -205.43420969, -205.43496112, -205.4363512 , -205.43828268,
-                                      -205.44061138, -205.44315299, -205.44569266, -205.44800238,
-                                      -205.4498563 , -205.4510646 , -205.45148293, -205.45106459,
-                                      -205.44985629, -205.44800238, -205.44569265, -205.44315298,
-                                      -205.44061136, -205.43828268, -205.43635116, -205.43496113,
-                                      -205.43420969, -205.43414239, -205.434757  , -205.43600587,
-                                      -205.43779528, -205.43999284, -205.44243239, -205.44492691,
-                                      -205.44728671, -205.44933274, -205.45091284, -205.45190811,
-                                      -205.45224799])
+        self.assertEqual(len(energies_4), 45)
+        self.assertEqual(len(angles_4), 45)
+        self.assertAlmostEqual(min(energies_4), 0.0, places=10)
+        self.assertAlmostEqual(max(energies_4), 47.5363, places=3)
+        self.assertAlmostEqual(angles_4[0], 0.0, places=10)
+        self.assertAlmostEqual(angles_4[1], 8.18181818, places=6)
+        self.assertAlmostEqual(angles_4[-1], 360.0, places=6)
+        self.assertEqual(angles_4, sorted(angles_4))
+
+        abs_energies_4, abs_angles_4 = parser.parse_1d_scan_energies_hartree(log_file_path=path_4)
+        self.assertEqual(len(abs_energies_4), 45)
+        self.assertAlmostEqual(min(abs_energies_4), -205.45224799, places=6)
+        self.assertAlmostEqual(max(abs_energies_4), -205.43414239, places=6)
+        self.assertEqual(abs_angles_4, angles_4)
+        # The two views must agree: E_rel = (E_abs - min(E_abs)) * E_h_kJmol.
+        lowest_4 = min(abs_energies_4)
+        for absolute, relative in zip(abs_energies_4, energies_4):
+            self.assertAlmostEqual((absolute - lowest_4) * E_h_kJmol, relative, places=6)
 
         path_5 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'orca', 'dft.txt')
         energies_5, angles_5 = parser.parse_1d_scan_energies(log_file_path=path_5)
-        self.assertEqual(energies_5.shape, (40,))
-        energies_5, angles_5 = energies_5.tolist(), angles_5.tolist()
-        self.assertEqual(angles_5, [-180.        , -170.76923077, -161.53846154, -152.30769231,
-                                    -143.07692308, -133.84615385, -124.61538462, -115.38461538,
-                                    -106.15384615,  -96.92307692,  -87.69230769,  -78.46153846,
-                                    -69.23076923,  -60.        ,  -50.76923077,  -41.53846154,
-                                    -32.30769231,  -23.07692308,  -13.84615385,   -4.61538462,
-                                     4.61538462,   13.84615385,   23.07692308,   32.30769231,
-                                     41.53846154,   50.76923077,   60.        ,   69.23076923,
-                                     78.46153846,   87.69230769,   96.92307692,  106.15384615,
-                                     115.38461538,  124.61538462,  133.84615385,  143.07692308,
-                                     152.30769231,  161.53846154,  170.76923077,  180.        ])
-        self.assertEqual(energies_5, [-205.56412863, -205.56304415, -205.55981277, -205.55449922,
-                                      -205.54721698, -205.53811775, -205.5274174 , -205.51539728,
-                                      -205.50245689, -205.49000818, -205.49181718, -205.50275068,
-                                      -205.51519265, -205.52710432, -205.53796901, -205.54748809,
-                                      -205.55543296, -205.56160894, -205.56584894, -205.5680131 ,
-                                      -205.56801483, -205.56585336, -205.56161212, -205.55542977,
-                                      -205.54748298, -205.53796909, -205.52710778, -205.51519567,
-                                      -205.50275147, -205.49181828, -205.49000878, -205.50245773,
-                                      -205.51540006, -205.52742038, -205.53811826, -205.5472153 ,
-                                      -205.55449977, -205.55981412, -205.56304759, -205.56413261])
+        self.assertEqual(len(energies_5), 40)
+        self.assertEqual(len(angles_5), 40)
+        self.assertAlmostEqual(min(energies_5), 0.0, places=10)
+        self.assertAlmostEqual(max(energies_5), 204.8064, places=3)
+        self.assertAlmostEqual(angles_5[0], 0.0, places=10)
+        self.assertAlmostEqual(angles_5[-1], 360.0, places=6)
 
     def test_parse_nd_scan_energies(self):
         """Test parsing an ND scan output file"""
