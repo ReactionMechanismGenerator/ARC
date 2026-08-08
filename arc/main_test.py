@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.main module
 """
 
+import inspect
 import os
 import shutil
 import unittest
@@ -14,6 +15,7 @@ from arc.exceptions import InputError
 from arc.imports import settings
 from arc.level import Level
 from arc.main import ARC, process_adaptive_levels
+from arc.output import _compute_cost_metrics
 from arc.species.species import ARCSpecies
 
 servers = settings['servers']
@@ -521,6 +523,96 @@ class TestARC(unittest.TestCase):
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestRestartRoundTrip(unittest.TestCase):
+    """
+    Test that a restart dictionary can be fed straight back into the ARC constructor.
+
+    ``ARC.py`` restarts a project with ``ARC(**read_yaml_file('restart.yml'))``, and ``restart.yml``
+    is the dictionary produced by ``ARC.as_dict()`` plus the keys the Scheduler adds to it. Any key
+    written into that dictionary which ``ARC.__init__()`` does not accept makes every restart of an
+    affected project fail with ``TypeError: got an unexpected keyword argument``, and nothing
+    detects it until somebody actually restarts. ``Scheduler.save_restart_dict()`` writes into
+    ARC's constructor namespace, so keys can be added there without touching ``main.py`` at all.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.maxDiff = None
+
+    def tearDown(self):
+        for project in ('arc_restart_roundtrip',):
+            project_directory = os.path.join(ARC_PATH, 'Projects', project)
+            shutil.rmtree(project_directory, ignore_errors=True)
+
+    def test_as_dict_output_is_accepted_by_the_constructor(self):
+        """Every key ARC writes into a restart dictionary must be a constructor parameter."""
+        arc0 = ARC(project='arc_restart_roundtrip',
+                   species=[ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)],
+                   compute_thermo=False,
+                   )
+        restart_dict = arc0.as_dict()
+        accepted = set(inspect.signature(ARC.__init__).parameters) - {'self'}
+        unexpected = sorted(set(restart_dict) - accepted)
+        self.assertEqual(unexpected, list(),
+                         f'ARC.as_dict() emits key(s) that ARC.__init__() cannot accept: {unexpected}. '
+                         f'Every key written into a restart dictionary must be a constructor parameter, '
+                         f'or restarting any affected project raises TypeError.')
+
+    def test_scheduler_restart_keys_are_accepted_by_the_constructor(self):
+        """
+        The keys ``Scheduler.save_restart_dict()`` adds must also be constructor parameters.
+
+        The Scheduler writes into the same dictionary ARC is later reconstructed from, so a key
+        added there is just as breaking as one added to ``as_dict()`` - and is easier to miss,
+        because it does not touch ``main.py``.
+        """
+        accepted = set(inspect.signature(ARC.__init__).parameters) - {'self'}
+        scheduler_written_keys = {'output', 'output_multi_spc', 'completed_job_records',
+                                  'species', 'running_jobs'}
+        unexpected = sorted(scheduler_written_keys - accepted)
+        self.assertEqual(unexpected, list(),
+                         f'Scheduler.save_restart_dict() writes key(s) ARC.__init__() cannot accept: '
+                         f'{unexpected}.')
+
+    def test_completed_job_records_survives_a_restart(self):
+        """
+        Cost records are persisted specifically so a restarted run keeps its history.
+
+        The restored records are aggregated to prove they remain consumable by the cost
+        metrics, not merely that a list of the right length came back.
+        """
+        records = [{'job_name': 'opt_a1', 'label': 'spc1', 'job_type': 'opt', 'job_adapter': 'gaussian',
+                    'server': 'local', 'cpu_cores': 8, 'run_time_sec': 12.5, 'job_status': 'done'}]
+        arc0 = ARC(project='arc_restart_roundtrip',
+                   species=[ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)],
+                   compute_thermo=False,
+                   completed_job_records=records,
+                   )
+        restart_dict = arc0.as_dict()
+        self.assertEqual(restart_dict['completed_job_records'], records)
+        arc1 = ARC(**restart_dict)
+        self.assertEqual(arc1.completed_job_records, records)
+
+        metrics = _compute_cost_metrics(arc1.completed_job_records, t0=None)
+        self.assertEqual(metrics['total_job_count'], 1)
+        self.assertEqual(metrics['total_core_hours'], 0.0278)
+        self.assertEqual(metrics['total_execution_time_hrs'], 0.0035)
+        self.assertEqual(metrics['jobs_missing_time'], 0)
+        self.assertEqual(metrics['jobs_missing_cores'], 0)
+        self.assertEqual(metrics['per_ess']['gaussian']['job_count'], 1)
+
+    def test_absent_completed_job_records_defaults_to_empty(self):
+        """A restart file written before the key existed must still construct."""
+        arc0 = ARC(project='arc_restart_roundtrip',
+                   species=[ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)],
+                   compute_thermo=False,
+                   )
+        self.assertEqual(arc0.completed_job_records, list())
+        restart_dict = arc0.as_dict()
+        self.assertNotIn('completed_job_records', restart_dict)
+        self.assertEqual(ARC(**restart_dict).completed_job_records, list())
 
 
 if __name__ == '__main__':
