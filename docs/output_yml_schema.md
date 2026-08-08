@@ -6,6 +6,10 @@ so downstream consumers (TCKDB, analysis scripts) need only one file.
 
 Fields marked **nullable** may be `null` when the species did not converge,
 the job was not requested, or the data is not applicable (e.g. monoatomic species).
+A handful of fields are instead **omitted** — the key is absent from the mapping
+rather than present with a `null` value — which matters to a consumer reading the
+document with `.get()`. Those fields are called out explicitly below; everything
+else marked `?` is present with a `null` value.
 
 ---
 
@@ -13,36 +17,63 @@ the job was not requested, or the data is not applicable (e.g. monoatomic specie
 
 ```
 output.yml
+├── schema_version: "1.1"
 ├── project
 ├── arc_version
 ├── arc_git_commit?
 ├── arkane_git_commit?
+├── datetime_started?
 ├── datetime_completed
 │
+├── composite_method?
 ├── opt_level?
 ├── freq_level?
 ├── sp_level?
-├── neb_level?
+├── neb_level (omitted unless the orca_neb TS adapter was configured)
 ├── arkane_level_of_theory?
 ├── freq_scale_factor?
 ├── freq_scale_factor_source?
 ├── bac_type?
 ├── atom_energy_corrections?
 ├── bond_additivity_corrections?
+├── tckdb_evidence?
+│   └── path, schema_name, schema_version, document_id
 │
 ├── species: []
 │   └── label, original_label, charge, multiplicity, converged
 │       ├── smiles?, inchi?, inchi_key?, formula?
 │       ├── xyz?
+│       ├── conformers, conformer_energies   (both omitted when none were screened)
 │       ├── sp_energy_hartree?, zpe_hartree?, opt_converged?
 │       ├── coarse_opt_log?, coarse_opt_n_steps?, coarse_opt_final_energy_hartree?
 │       ├── opt_n_steps?, opt_final_energy_hartree?
+│       ├── coarse_opt_input_xyz?, coarse_opt_output_xyz?, opt_input_xyz?
 │       ├── freq_n_imag?, imag_freq_cm1?
 │       ├── opt_log?, freq_log?, sp_log?
+│       ├── sp_spin_diagnostic?
+│       │   └── {s_squared, s_squared_expected?, s_squared_annihilated?}
+│       ├── opt_input?, freq_input?, sp_input?
+│       ├── opt_constraints: [], freq_constraints: [], sp_constraints: []
+│       │   └── [{coordinate_type, atom_indices, index_base, target_value?}, ...]
+│       ├── opt_final_settings?, coarse_opt_final_settings?
+│       ├── freq_final_settings?, sp_final_settings?
+│       ├── rotor_scans: []
+│       │   └── key, source_log?, constraints?, result
+│       │       ├── dimension, relaxed, zero_energy_reference_hartree?
+│       │       ├── coordinate: {coordinate_type, atom_indices, index_base, unit,
+│       │       │                sample_count, symmetry_number?,
+│       │       │                requested_step_size?,
+│       │       │                requested_start?, requested_end?}
+│       │       └── samples: [{source_index, angle_degrees,
+│       │                      relative_energy_kj_mol,
+│       │                      electronic_energy_hartree?, geometry_xyz?}, ...]
+│       ├── energy_corrections: []
+│       │   └── correction_type, model, level_of_theory?, total,
+│       │       components, parameter_table?
 │       ├── ess_versions?
 │       ├── thermo?
 │       │   ├── h298_kj_mol, s298_j_mol_k, tmin_k, tmax_k
-│       │   ├── cp_data?: [{temperature_k, cp_j_mol_k}, ...]
+│       │   ├── thermo_points?: [{temperature_k, cp_j_mol_k, h_kj_mol, s_j_mol_k, g_kj_mol}, ...]
 │       │   ├── nasa_low?: {tmin_k, tmax_k, coeffs}
 │       │   └── nasa_high?: {tmin_k, tmax_k, coeffs}
 │       └── statmech?
@@ -50,22 +81,27 @@ output.yml
 │           ├── is_linear, external_symmetry, point_group?
 │           ├── rigid_rotor_kind, harmonic_frequencies_cm1?
 │           └── torsions: []
-│               └── symmetry_number, treatment, atom_indices, pivot_atoms, barrier_kj_mol?
+│               └── symmetry_number, treatment, atom_indices, pivot_atoms,
+│                   barrier_kj_mol?, source_scan_key?
 │
 ├── transition_states: []
 │   └── (all species fields, plus:)
 │       ├── chosen_ts_method?, successful_ts_methods?
-│       ├── neb_log?, irc_logs: [], irc_converged?
+│       ├── ts_guesses: []
+│       ├── neb_log?, gsm_log?, irc_logs: [], irc_log_directions: [], irc_converged?
 │       └── rxn_label
 │
 └── reactions: []
     └── label, reactant_labels, product_labels, family?, multiplicity, ts_label
+        ├── long_kinetic_description   (omitted when empty)
         └── kinetics?
             └── A, A_units?, n, Ea, Ea_units?, Tmin_k, Tmax_k
-                dA?, dn?, dEa?, dEa_units?, n_data_points?
+                dA?, dn?, dEa?, dEa_units?, n_data_points?, tunneling
 ```
 
-`?` = nullable. TS entries share all species fields but add IRC/NEB/method fields and always have `thermo: null`.
+`?` = nullable; a parenthesised note marks a key that is omitted entirely rather than
+emitted as `null`. TS entries share all species fields but add IRC/NEB/method fields
+and always have `thermo: null`.
 
 ---
 
@@ -73,20 +109,38 @@ output.yml
 
 | Field | Type | Description |
 |---|---|---|
+| `schema_version` | `str` | Output contract version; `1.1` adds the optional evidence descriptor |
 | `project` | `str` | ARC project name |
 | `arc_version` | `str` | ARC version string |
 | `arc_git_commit` | `str?` | ARC repo HEAD commit hash |
 | `arkane_git_commit` | `str?` | RMG-Py (Arkane) repo HEAD commit hash |
+| `datetime_started` | `str?` | Run start timestamp (`YYYY-MM-DD HH:MM`); `null` when ARC has no recorded start time |
 | `datetime_completed` | `str` | Completion timestamp (`YYYY-MM-DD HH:MM`) |
+| `tckdb_evidence` | `dict?` | Descriptor for `tckdb_evidence.json`, present only after the sidecar was written successfully |
+
+The descriptor binds `output.yml` to the parser-neutral evidence sidecar with
+`path`, `schema_name`, `schema_version`, and a shared UUID4 `document_id`.
+ARC writes the sidecar first and `output.yml` second so consumers can reject a
+stale or interrupted pair by comparing document IDs. The evidence file contains
+best-effort, versioned Hessian, IRC, and GSM facts parsed by ARC; it contains no
+TCKDB upload request objects.
 
 ## Levels of Theory
 
+Every level field is a **level dict**: `Level.as_dict()` with the `repr` and
+`compatible_ess` keys removed. Only the level's non-`None` attributes appear, so the
+key set varies between runs; the possible keys are `method`, `basis`,
+`auxiliary_basis`, `dispersion`, `cabs`, `method_type` (e.g. `dft`, `wavefunction`,
+`composite`, `force_field`), `software`, `software_version`, `solvation_method`,
+`solvent`, `solvation_scheme_level`, `args`, and `year`.
+
 | Field | Type | Description |
 |---|---|---|
-| `opt_level` | `dict?` | Geometry optimization level (`method`, `basis`, `software`, ...) |
+| `composite_method` | `dict?` | Composite method level (e.g. CBS-QB3, G4); `null` when no composite method was used |
+| `opt_level` | `dict?` | Geometry optimization level |
 | `freq_level` | `dict?` | Frequency calculation level |
 | `sp_level` | `dict?` | Single-point energy level |
-| `neb_level` | `dict?` | NEB TS search level (only present if NEB was used) |
+| `neb_level` | `dict` | NEB TS search level. **Omitted** (key absent) unless the `orca_neb` TS adapter was configured for the run and `orca_neb_settings['level']` is set — it does not indicate that an NEB job actually ran |
 | `arkane_level_of_theory` | `dict?` | Composite level Arkane uses for energy corrections |
 | `freq_scale_factor` | `float?` | Harmonic frequency scaling factor |
 | `freq_scale_factor_source` | `str?` | Source of the scaling factor (`null` if user-provided) |
@@ -97,6 +151,13 @@ output.yml
 ## Species
 
 `species` is a list of entries, one per non-TS species.
+
+Calculation constraints, rotor scans, and energy corrections are deliberately
+tool-neutral. Constraint and scan coordinates retain their source atom indices
+with an explicit `index_base`; scan samples retain source ordering and explicit
+units; correction records retain the applied model, total, components, level
+of theory, and native parameter table. Consumers own any database enum,
+one-based-index, calculation-DAG, or payload nesting conversion.
 
 ### Identity
 
@@ -113,6 +174,16 @@ output.yml
 | `inchi_key` | `str?` | InChI key |
 | `formula` | `str?` | Molecular formula |
 | `xyz` | `str?` | Final (or initial) geometry as an XYZ block |
+
+### Screened Conformers
+
+Both keys are **omitted** (absent, not `null`) when ARC screened no conformers for
+the species, so a consumer must use `.get()` rather than indexing.
+
+| Field | Type | Description |
+|---|---|---|
+| `conformers` | `list[str]` | Screened conformer geometries as XYZ blocks, in ARC's conformer order |
+| `conformer_energies` | `list[float]` | Post-screen energies (kJ/mol) relative to the lowest conformer, in lockstep with `conformers` |
 
 ### Energies
 
@@ -132,6 +203,16 @@ output.yml
 | `opt_n_steps` | `int?` | Number of (fine) optimization steps |
 | `opt_final_energy_hartree` | `float?` | Final energy from (fine) optimization |
 
+**Optimization geometry provenance.** ARC's two-stage convention is
+`initial_xyz → coarse opt → coarse output → fine opt → xyz`. When no coarse stage
+ran, the chain collapses to `initial_xyz → opt → xyz`.
+
+| Field | Type | Description |
+|---|---|---|
+| `coarse_opt_input_xyz` | `str?` | Geometry submitted to the coarse optimization; `null` unless a coarse stage ran and its output geometry parsed |
+| `coarse_opt_output_xyz` | `str?` | Geometry the coarse optimization produced; `null` under the same condition |
+| `opt_input_xyz` | `str?` | Geometry submitted to the fine optimization: the coarse output when a coarse stage ran and parsed, otherwise the species' initial geometry |
+
 ### Frequency Results
 
 | Field | Type | Description |
@@ -148,7 +229,84 @@ All paths are relative to the project directory.
 | `opt_log` | `str?` | Geometry optimization log |
 | `freq_log` | `str?` | Frequency calculation log |
 | `sp_log` | `str?` | Single-point energy log |
+| `opt_input` | `str?` | Geometry optimization input deck; `null` when the deck is not on disk |
+| `freq_input` | `str?` | Frequency calculation input deck; `null` when the deck is not on disk |
+| `sp_input` | `str?` | Single-point energy input deck; `null` when the deck is not on disk |
 | `ess_versions` | `dict?` | ESS software versions (`{label: version_str, ...}`) |
+
+Each input deck sits in the same directory as its log, under the ESS-specific
+filename from `settings['input_filenames']`. Software with no entry in that map
+(`gcn`, `torchani`, `mockter`, ...) yields `null`.
+
+### Spin Diagnostic
+
+`sp_spin_diagnostic` reports the S² spin contamination of the single-point
+wavefunction. It is parsed from the sp log, falling back to the freq log and then
+the opt/geo log (ARC may reuse the optimization output for the sp energy). It is
+`null` when the species did not converge, and for restricted/closed-shell
+calculations, whose logs print no `<S**2>` at all.
+
+| Field | Type | Description |
+|---|---|---|
+| `s_squared` | `float` | The `<S**2>` value the ESS reported. Always present when the block is non-`null` |
+| `s_squared_expected` | `float?` | The exact `<S**2>` for a pure spin state, recomputed from ARC's own `multiplicity` and falling back to the value in the log. **Omitted** when neither source yields a value |
+| `s_squared_annihilated` | `float?` | The `<S**2>` after spin annihilation, when the ESS reports one. **Omitted** otherwise |
+
+### Final Calculation Settings
+
+These carry the calc-specific scientific knobs that defined the final job, as
+distinct from level-of-theory identity and from scheduler/operational fields.
+Today ARC can prove exactly one such setting from run state — which stage of the
+two-stage optimization convention a calc represents — so the dicts hold only
+`optimization_stage`, and the fields are `null` rather than fabricated whenever
+that signal is absent.
+
+| Field | Type | Description |
+|---|---|---|
+| `opt_final_settings` | `dict?` | `{'optimization_stage': 'fine'}` when a coarse stage ran and parsed; `null` for a single-stage optimization |
+| `coarse_opt_final_settings` | `dict?` | `{'optimization_stage': 'coarse'}` under the same condition; `null` otherwise |
+| `freq_final_settings` | `null` | Always `null`; ARC has no equally reliable signal for freq jobs yet |
+| `sp_final_settings` | `null` | Always `null`; ARC has no equally reliable signal for sp jobs yet |
+
+### Energy Corrections
+
+`energy_corrections` is always present and is always a list — possibly empty when no
+corrections were applied or the correction helper produced no usable rows. Atom-energy
+and bond-additivity records are built independently, so either may be absent from the
+list on its own.
+
+| Field | Type | Description |
+|---|---|---|
+| `correction_type` | `str` | `"atom_energy"` or `"bond_additivity"` |
+| `model` | `str` | `"arkane_atom_energy"`, or `"petersson"` / `"melius"` for BAC |
+| `level_of_theory` | `dict?` | The Arkane level of theory the correction was applied at (a level dict); `null` when unknown |
+| `total` | `dict` | `{value: float, unit: str}` — the applied correction total, in the unit the correction helper reported (defaulting to `hartree` for AEC and `kcal_mol` for BAC) |
+| `components` | `list` | Native per-atom / per-bond decomposition. Always present; `[]` when no decomposition is available, and deliberately emptied for a BAC whose bonds are not all parameterized (a partial decomposition would not sum to `total`) |
+| `parameter_table` | `dict?` | `{unit: str, values: {name: float, ...}}` — the parameter table ARC actually used. **Omitted** when the run has no such table, and for BAC additionally omitted unless `bac_type == 'p'`, so a Melius run never carries a BAC `parameter_table` |
+
+### Rotor Scans
+
+`rotor_scans` is always a list, `[]` for monoatomic or non-converged species. It holds
+one record per successful 1D rotor whose scan log parsed cleanly; rotors that fail any
+of those conditions — unsuccessful, multi-dimensional, or unparseable — are skipped
+entirely, so the list can be shorter than `statmech.torsions` and the matching
+torsion's `source_scan_key` is then `null`. `constraints` (held-fixed coordinates,
+excluding the scanned coordinate itself) is **omitted** when none were found, and
+`result.zero_energy_reference_hartree` is **omitted** when the parser reports none.
+
+**`result.coordinate`** describes the scanned coordinate and the requested grid:
+
+| Field | Type | Description |
+|---|---|---|
+| `coordinate_type` | `str` | Always `"dihedral"` |
+| `atom_indices` | `list[int]` | The 4 atoms defining the dihedral, in source order |
+| `index_base` | `int` | Always `1` — the atom indices are 1-based |
+| `unit` | `str` | Always `"degree"` |
+| `sample_count` | `int` | Number of parsed scan points, matching `len(samples)` |
+| `symmetry_number` | `int?` | The rotor's symmetry number. **Omitted** unless ARC determined an integer symmetry of at least 1 |
+| `requested_step_size` | `float?` | The step size the user requested, read back from the ESS log rather than inferred from point spacing. Gaussian only — other ESS raise `NotImplementedError` from the same parser, so this is **omitted** for them |
+| `requested_start` | `float?` | The requested starting dihedral, taken from the geometry the scan was launched against. **Omitted** without a `requested_step_size` or a computable dihedral |
+| `requested_end` | `float?` | `requested_start + requested_step_size * (sample_count - 1)`. Deliberately not wrapped into `[-180, 180]`, so a full rotation ends at `start + 360` rather than back at `start`. **Omitted** under the same condition as `requested_start` |
 
 ### Thermochemistry
 
@@ -160,16 +318,19 @@ All paths are relative to the project directory.
 | `s298_j_mol_k` | `float` | Standard entropy at 298 K (J/(mol K)) |
 | `tmin_k` | `float` | Minimum temperature (K) |
 | `tmax_k` | `float` | Maximum temperature (K) |
-| `cp_data` | `list?` | Tabulated heat capacity (see below) |
+| `thermo_points` | `list?` | Tabulated per-temperature thermochemistry (see below) |
 | `nasa_low` | `dict?` | Low-temperature NASA polynomial |
 | `nasa_high` | `dict?` | High-temperature NASA polynomial |
 
-**`cp_data`** entries:
+**`thermo_points`** entries (one per evaluation temperature; `temperature_k` is required, all others are optional but emitted by default when produced via `arc/scripts/save_arkane_thermo.py`):
 
 | Field | Type | Description |
 |---|---|---|
 | `temperature_k` | `float` | Temperature (K) |
-| `cp_j_mol_k` | `float` | Heat capacity at constant pressure (J/(mol K)) |
+| `cp_j_mol_k` | `float?` | Heat capacity at constant pressure (J/(mol K)) |
+| `h_kj_mol`    | `float?` | Enthalpy at this temperature (kJ/mol) |
+| `s_j_mol_k`   | `float?` | Entropy at this temperature (J/(mol K)) |
+| `g_kj_mol`    | `float?` | Gibbs free energy at this temperature (kJ/mol) |
 
 **`nasa_low` / `nasa_high`**:
 
@@ -191,8 +352,8 @@ All paths are relative to the project directory.
 | `is_linear` | `bool` | Whether the molecule is linear |
 | `external_symmetry` | `int` | External symmetry number |
 | `point_group` | `str?` | Point group (e.g. `C2v`) |
-| `rigid_rotor_kind` | `str` | `"linear"` or `"asymmetric_top"` |
-| `harmonic_frequencies_cm1` | `list[float]?` | Real harmonic frequencies (cm-1); imaginary mode excluded for TSs |
+| `rigid_rotor_kind` | `str` | `"linear"` or `"asymmetric_top"`. The builder has a third `"atom"` branch, but `statmech` is `null` for monoatomic species, so it never reaches `output.yml` |
+| `harmonic_frequencies_cm1` | `list[float]?` | Harmonic frequencies (cm-1) as parsed. For TSs **every** negative (imaginary) frequency is dropped, not only the reaction mode — a TS that legitimately carries additional small imaginary modes (which `check_imaginary_frequencies` permits) loses those too, so the list can be shorter than the species' true mode count. Non-TS species are not filtered at all |
 | `torsions` | `list` | Internal rotation data (see below) |
 
 **`torsions`** entries (only successful rotors):
@@ -204,6 +365,7 @@ All paths are relative to the project directory.
 | `atom_indices` | `list[int]` | 4-atom dihedral defining atoms (1-indexed) |
 | `pivot_atoms` | `list[int]` | 2-atom rotation axis (1-indexed) |
 | `barrier_kj_mol` | `float?` | Torsional barrier height (kJ/mol) |
+| `source_scan_key` | `str?` | The `rotor_scans[].key` (e.g. `"scan_rotor_3"`) this torsion was derived from. `null` when `rotor_scans` holds no record for that rotor, so the reference can never dangle |
 
 ---
 
@@ -218,8 +380,11 @@ All paths are relative to the project directory.
 | `imag_freq_cm1` | `float?` | Imaginary frequency (cm-1) |
 | `chosen_ts_method` | `str?` | The TS search method that was selected |
 | `successful_ts_methods` | `list[str]?` | All TS methods that succeeded |
-| `neb_log` | `str?` | Run-relative path to NEB log |
+| `ts_guesses` | `list[dict]` | Sanitized provenance for the chosen guess: `index`, `chosen`, `method`, and merged `method_sources` |
+| `neb_log` | `str?` | Run-relative path to the NEB log. Taken from the run's `neb` path slot, falling back to the chosen TS guess's log when that guess's method is `orca_neb` |
+| `gsm_log` | `str?` | Run-relative path to the selected GSM stringfile. Taken from the run's `gsm` path slot, falling back to the chosen TS guess's log when that guess's method is `xtb_gsm` |
 | `irc_logs` | `list[str]` | Run-relative paths to IRC logs |
+| `irc_log_directions` | `list[str?]` | Forward/reverse direction in lockstep with `irc_logs` |
 | `irc_converged` | `bool?` | Whether IRC converged (`null` if IRC was not requested) |
 | `rxn_label` | `str` | Reaction label this TS belongs to |
 | `thermo` | `null` | Always `null` for transition states |
@@ -239,6 +404,7 @@ All paths are relative to the project directory.
 | `multiplicity` | `int` | Reaction spin multiplicity |
 | `ts_label` | `str` | Label of the associated transition state |
 | `kinetics` | `dict?` | Fitted kinetics (see below); `null` if not computed |
+| `long_kinetic_description` | `str` | ARC's verbose description of how the rate coefficient was obtained. **Omitted** (key absent) when the reaction carries no such description |
 
 **`kinetics`**:
 
@@ -256,3 +422,4 @@ All paths are relative to the project directory.
 | `dEa` | `float?` | Uncertainty in Ea |
 | `dEa_units` | `str?` | Units of dEa |
 | `n_data_points` | `int?` | Number of data points used in fitting |
+| `tunneling` | `str` | The tunneling correction applied to the fitted `A`/`n`/`Ea`. Always present whenever `kinetics` is non-`null`: Arkane's parsed value when it carries one, otherwise the method ARC renders into the Arkane input template (currently `"Eckart"`) |
