@@ -28,6 +28,7 @@ dependencies:
   - conda-forge::graphviz
   - conda-forge::h5py
   - conda-forge::ipython
+  - conda-forge::jsonschema >=4.18
   - conda-forge::jupyter
   - conda-forge::lpsolve55
   - conda-forge::mako

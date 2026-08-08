@@ -684,6 +684,7 @@ class ARC(object):
                 freq_scale_factor=self.freq_scale_factor,
                 freq_scale_factor_user_provided=_user_provided_scale,
                 bac_type=self.bac_type,
+                compute_thermo=self.compute_thermo,
                 arkane_level_of_theory=self.arkane_level_of_theory,
                 irc_requested=self.job_types.get('irc', True),
                 t0=self.t0,
