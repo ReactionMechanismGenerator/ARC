@@ -5,6 +5,9 @@
 This module contains unit tests for the arc.scheduler module
 """
 
+import datetime
+import inspect
+import re
 import unittest
 from unittest.mock import MagicMock, patch
 import os
@@ -17,6 +20,7 @@ from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, in
 from arc.job.adapters.common import default_incore_adapters, ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular
 from arc.job.factory import job_factory
 from arc.level import Level
+from arc.output import _compute_cost_metrics
 from arc.plotter import save_conformers_file
 from arc.scheduler import (Scheduler, SchedulerError, species_has_freq, species_has_geo, species_has_sp,
                            species_has_sp_and_freq)
@@ -1547,6 +1551,212 @@ class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
         collider = ARCSpecies(label='CH4_TS0', smiles='O')
         with self.assertRaises(SchedulerError):
             self.build_scheduler(rxn, r + p + [collider], 'adaptive_collision')
+
+
+class TestCompletedJobRecords(unittest.TestCase):
+    """
+    Contains unit tests for Scheduler._record_completed_job() and the record shape it produces.
+
+    The Scheduler is the sole producer of the records that arc.output._compute_cost_metrics()
+    consumes, so these tests assert the emitted record itself rather than a hand-built fixture.
+    """
+
+    RECORD_KEYS = {'job_name', 'label', 'job_type', 'job_adapter', 'server',
+                   'cpu_cores', 'run_time_sec', 'job_status'}
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
+        cls.xyz = str_to_xyz("""C       0.00000000    0.00000000    0.00000000
+H       0.63003260    0.63003260    0.63003260
+H      -0.63003260   -0.63003260    0.63003260
+H      -0.63003260    0.63003260   -0.63003260
+H       0.63003260   -0.63003260   -0.63003260""")
+        cls.spc = ARCSpecies(label='CH4', smiles='C', xyz=cls.xyz)
+        cls.job_num = 900
+
+    def setUp(self):
+        """A method that is run before every unit test in this class."""
+        self.project_directory = os.path.join(ARC_PATH, 'Projects', 'completed_job_records_delete')
+        self.addCleanup(shutil.rmtree, self.project_directory, ignore_errors=True)
+
+    def make_scheduler(self, restart_dict=None):
+        """Return a testing Scheduler for a single species."""
+        return Scheduler(project='completed_job_records',
+                         ess_settings=self.ess_settings,
+                         species_list=[self.spc],
+                         opt_level=Level(repr='b3lyp/6-31g(d,p)'),
+                         freq_level=Level(repr='b3lyp/6-31g(d,p)'),
+                         sp_level=Level(repr='b3lyp/6-311+g(d,p)'),
+                         project_directory=self.project_directory,
+                         job_types=initialize_job_types(),
+                         restart_dict=restart_dict,
+                         testing=True,
+                         )
+
+    def make_job(self, job_type='opt', job_adapter='gaussian', run_time=None, status='done'):
+        """Return a real JobAdapter instance with the given run time and final status."""
+        TestCompletedJobRecords.job_num += 1
+        job = job_factory(job_adapter=job_adapter,
+                          project='completed_job_records',
+                          ess_settings=self.ess_settings,
+                          species=[self.spc],
+                          xyz=self.xyz,
+                          job_type=job_type,
+                          level=Level(repr='b3lyp/6-31g(d,p)'),
+                          project_directory=self.project_directory,
+                          job_num=TestCompletedJobRecords.job_num,
+                          )
+        job.run_time = run_time
+        job.job_status[0] = status
+        return job
+
+    def test_record_field_contract(self):
+        """Test the exact key set and the value types of an emitted record."""
+        sched = self.make_scheduler()
+        job = self.make_job(job_type='opt', job_adapter='gaussian', run_time=datetime.timedelta(minutes=5))
+        sched._record_completed_job(job=job, label='CH4')
+
+        self.assertEqual(len(sched.completed_job_records), 1)
+        record = sched.completed_job_records[0]
+        self.assertEqual(set(record.keys()), self.RECORD_KEYS)
+        self.assertEqual(record['job_name'], job.job_name)
+        self.assertEqual(record['label'], 'CH4')
+        self.assertEqual(record['job_type'], 'opt')
+        self.assertEqual(record['job_adapter'], 'gaussian')
+        self.assertEqual(record['server'], 'server1')
+        self.assertEqual(record['cpu_cores'], job.cpu_cores)
+        self.assertEqual(record['run_time_sec'], 300.0)
+        self.assertEqual(record['job_status'], 'done')
+        for key in ('job_name', 'label', 'job_type', 'job_adapter', 'server', 'job_status'):
+            self.assertIsInstance(record[key], str)
+        self.assertIsInstance(record['cpu_cores'], int)
+        self.assertIsInstance(record['run_time_sec'], float)
+
+    def test_record_keys_cover_what_the_cost_metrics_consumer_reads(self):
+        """Test that every record key _compute_cost_metrics() reads is a key the Scheduler emits."""
+        source = inspect.getsource(_compute_cost_metrics)
+        consumed_keys = set(re.findall(r"""record\.get\(['"]([^'"]+)['"]""", source))
+        self.assertTrue(consumed_keys,
+                        '_compute_cost_metrics() no longer reads record keys via record.get(...); '
+                        'this test can no longer see what the consumer reads and must be updated.')
+
+        sched = self.make_scheduler()
+        sched._record_completed_job(job=self.make_job(run_time=datetime.timedelta(minutes=1)), label='CH4')
+        emitted_keys = set(sched.completed_job_records[0].keys())
+        self.assertEqual(sorted(consumed_keys - emitted_keys), list(),
+                         f'_compute_cost_metrics() reads {sorted(consumed_keys - emitted_keys)}, which '
+                         f'Scheduler._record_completed_job() does not emit. The emitted keys are '
+                         f'{sorted(emitted_keys)}.')
+
+    def test_emitted_records_aggregate_through_the_consumer(self):
+        """Test that records emitted by the Scheduler aggregate into the expected cost metrics."""
+        sched = self.make_scheduler()
+        gaussian_job = self.make_job(job_type='opt', job_adapter='gaussian',
+                                     run_time=datetime.timedelta(hours=1))
+        qchem_job = self.make_job(job_type='freq', job_adapter='qchem',
+                                  run_time=datetime.timedelta(minutes=30))
+        sched._record_completed_job(job=gaussian_job, label='CH4')
+        sched._record_completed_job(job=qchem_job, label='CH4')
+
+        cost_metrics = _compute_cost_metrics(sched.completed_job_records, None)
+        self.assertEqual(cost_metrics['total_job_count'], 2)
+        self.assertEqual(cost_metrics['jobs_missing_time'], 0)
+        self.assertEqual(cost_metrics['jobs_missing_cores'], 0)
+        self.assertAlmostEqual(cost_metrics['total_execution_time_hrs'], 1.5)
+        self.assertAlmostEqual(cost_metrics['total_core_hours'],
+                               1.0 * gaussian_job.cpu_cores + 0.5 * qchem_job.cpu_cores)
+        self.assertEqual(set(cost_metrics['per_ess'].keys()), {'gaussian', 'qchem'})
+        self.assertAlmostEqual(cost_metrics['per_ess']['gaussian']['execution_time_hrs'], 1.0)
+        self.assertAlmostEqual(cost_metrics['per_ess']['qchem']['execution_time_hrs'], 0.5)
+
+    def test_record_run_time_none(self):
+        """Test that a job with no run time is recorded with a null run time and counted as missing."""
+        sched = self.make_scheduler()
+        job = self.make_job(run_time=None)
+        self.assertIsNone(job.run_time)
+        sched._record_completed_job(job=job, label='CH4')
+
+        record = sched.completed_job_records[0]
+        self.assertIsNone(record['run_time_sec'])
+        self.assertEqual(set(record.keys()), self.RECORD_KEYS)
+        cost_metrics = _compute_cost_metrics(sched.completed_job_records, None)
+        self.assertEqual(cost_metrics['total_job_count'], 1)
+        self.assertEqual(cost_metrics['jobs_missing_time'], 1)
+        self.assertEqual(cost_metrics['total_execution_time_hrs'], 0.0)
+
+    def test_record_incore_job(self):
+        """Test that an incore job, which has no server, still records an integer core count."""
+        sched = self.make_scheduler()
+        job = self.make_job(job_adapter='xtb', run_time=datetime.timedelta(seconds=30))
+        self.assertEqual(job.execution_type, 'incore')
+        sched._record_completed_job(job=job, label='CH4')
+
+        record = sched.completed_job_records[0]
+        self.assertIsNone(record['server'])
+        self.assertIsInstance(record['cpu_cores'], int)
+        self.assertEqual(record['job_adapter'], 'xtb')
+        self.assertEqual(_compute_cost_metrics([record], None)['jobs_missing_cores'], 0)
+
+    def test_record_errored_job(self):
+        """Test that a job that did not converge is recorded, carrying its final status."""
+        sched = self.make_scheduler()
+        job = self.make_job(run_time=datetime.timedelta(minutes=2), status='errored')
+        sched._record_completed_job(job=job, label='CH4')
+
+        record = sched.completed_job_records[0]
+        self.assertEqual(record['job_status'], 'errored')
+        self.assertEqual(record['run_time_sec'], 120.0)
+        self.assertAlmostEqual(_compute_cost_metrics([record], None)['total_execution_time_hrs'],
+                               round(120.0 / 3600.0, 4))
+
+    def test_records_accumulate_in_order(self):
+        """Test that two completed jobs append two records in completion order."""
+        sched = self.make_scheduler()
+        job_1 = self.make_job(job_type='opt', run_time=datetime.timedelta(minutes=1))
+        job_2 = self.make_job(job_type='freq', run_time=datetime.timedelta(minutes=2))
+        self.assertEqual(sched.completed_job_records, list())
+        sched._record_completed_job(job=job_1, label='CH4')
+        sched._record_completed_job(job=job_2, label='CH4')
+
+        self.assertEqual([record['job_name'] for record in sched.completed_job_records],
+                         [job_1.job_name, job_2.job_name])
+        self.assertEqual([record['job_type'] for record in sched.completed_job_records], ['opt', 'freq'])
+        self.assertEqual([record['run_time_sec'] for record in sched.completed_job_records], [60.0, 120.0])
+
+    def test_records_are_written_to_the_restart_dict(self):
+        """Test that the records reach restart.yml intact, including through YAML serialization."""
+        sched = self.make_scheduler(restart_dict=dict())
+        sched.save_restart = True
+        sched._record_completed_job(job=self.make_job(job_type='opt',
+                                                      run_time=datetime.timedelta(minutes=1)), label='CH4')
+        sched._record_completed_job(job=self.make_job(job_type='freq', run_time=None), label='CH4')
+        sched.save_restart_dict()
+
+        self.assertEqual(sched.restart_dict['completed_job_records'], sched.completed_job_records)
+        content = read_yaml_file(sched.restart_path)
+        self.assertEqual(content['completed_job_records'], sched.completed_job_records)
+        self.assertEqual([record['job_type'] for record in content['completed_job_records']], ['opt', 'freq'])
+        self.assertEqual([record['run_time_sec'] for record in content['completed_job_records']], [60.0, None])
+
+    def test_records_are_restored_from_the_restart_dict(self):
+        """Test that a restarted Scheduler resumes with the records it was restarted with."""
+        records = [{'job_name': 'opt_a1', 'label': 'CH4', 'job_type': 'opt', 'job_adapter': 'gaussian',
+                    'server': 'server1', 'cpu_cores': 8, 'run_time_sec': 60.0, 'job_status': 'done'}]
+        sched = self.make_scheduler(restart_dict={'completed_job_records': records})
+        self.assertEqual(sched.completed_job_records, records)
+
+        sched._record_completed_job(job=self.make_job(job_type='freq',
+                                                      run_time=datetime.timedelta(minutes=1)), label='CH4')
+        self.assertEqual(len(sched.completed_job_records), 2)
+        self.assertEqual(sched.completed_job_records[0], records[0])
+
+    def test_records_default_to_empty_without_the_restart_key(self):
+        """Test that a restart file written before the key existed restores an empty record list."""
+        self.assertEqual(self.make_scheduler(restart_dict=dict()).completed_job_records, list())
+        self.assertEqual(self.make_scheduler(restart_dict=None).completed_job_records, list())
 
 
 class TestTsGuessPathProvenance(unittest.TestCase):
