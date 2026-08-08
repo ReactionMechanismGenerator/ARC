@@ -1,0 +1,2001 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ReactionMechanismGenerator/ARC/schemas/output_yml_schema.json",
+  "title": "ARC output.yml",
+  "description": "Mechanical definition of the consolidated output.yml contract ARC writes to <project_directory>/output/output.yml. Prose reference: docs/output_yml_schema.md. A key listed in 'required' is always emitted; a key whose type includes 'null' may be emitted as null; a key that is neither required nor null-typed is omitted entirely under the conditions stated in the reference. 'unevaluatedProperties'/'additionalProperties' are false wherever ARC controls the key set, so a field added to arc/output.py without a matching schema change fails validation.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "project",
+    "arc_version",
+    "arc_git_commit",
+    "arkane_git_commit",
+    "datetime_started",
+    "datetime_completed",
+    "composite_method",
+    "opt_level",
+    "freq_level",
+    "sp_level",
+    "arkane_level_of_theory",
+    "freq_scale_factor",
+    "freq_scale_factor_source",
+    "bac_type",
+    "atom_energy_corrections",
+    "bond_additivity_corrections",
+    "species",
+    "transition_states",
+    "reactions"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Output contract version. Emitted from arc.tckdb_evidence.OUTPUT_SCHEMA_VERSION, shared with the evidence sidecar's output_schema_version.",
+      "const": "1.1"
+    },
+    "project": {
+      "type": "string"
+    },
+    "arc_version": {
+      "type": "string"
+    },
+    "arc_git_commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "arkane_git_commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "datetime_started": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$"
+    },
+    "datetime_completed": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$"
+    },
+    "tckdb_evidence": {
+      "description": "Omitted (key absent, never null) when the evidence sidecar could not be built or written.",
+      "$ref": "#/$defs/tckdb_evidence_descriptor"
+    },
+    "composite_method": {
+      "$ref": "#/$defs/nullable_level_dict"
+    },
+    "opt_level": {
+      "$ref": "#/$defs/nullable_level_dict"
+    },
+    "freq_level": {
+      "$ref": "#/$defs/nullable_level_dict"
+    },
+    "sp_level": {
+      "$ref": "#/$defs/nullable_level_dict"
+    },
+    "neb_level": {
+      "description": "Omitted (key absent, never null) unless the orca_neb TS adapter was configured with a level.",
+      "$ref": "#/$defs/level_dict"
+    },
+    "arkane_level_of_theory": {
+      "$ref": "#/$defs/nullable_level_dict"
+    },
+    "freq_scale_factor": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "freq_scale_factor_source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "bac_type": {
+      "enum": [
+        "p",
+        "m",
+        null
+      ]
+    },
+    "atom_energy_corrections": {
+      "description": "Arkane's reference atomic electronic energies in hartree, keyed by element symbol.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "bond_additivity_corrections": {
+      "description": "The Arkane BAC parameter table for the run's level of theory, in the model's native shape: a flat per-bond map in kcal/mol for Petersson, the nested per-element table for Melius.",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/petersson_bac_table"
+        },
+        {
+          "$ref": "#/$defs/melius_bac_table"
+        }
+      ]
+    },
+    "species": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/species_record"
+      }
+    },
+    "transition_states": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ts_record"
+      }
+    },
+    "reactions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reaction"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "bac_type": {
+            "const": "p"
+          }
+        },
+        "required": [
+          "bac_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "bond_additivity_corrections": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/petersson_bac_table"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "bac_type": {
+            "const": "m"
+          }
+        },
+        "required": [
+          "bac_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "bond_additivity_corrections": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/melius_bac_table"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "petersson_bac_table": {
+      "description": "The Petersson BAC parameter table: per-bond parameters in kcal/mol, keyed by bond descriptor.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "melius_bac_table": {
+      "description": "The Melius BAC parameter table in its native nested shape, as arkane.encorr.data.mbac stores it: three per-element parameter maps plus one scalar molecular correction.",
+      "type": "object",
+      "required": [
+        "atom_corr",
+        "bond_corr_length",
+        "bond_corr_neighbor",
+        "mol_corr"
+      ],
+      "properties": {
+        "atom_corr": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "bond_corr_length": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "bond_corr_neighbor": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "mol_corr": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tckdb_evidence_descriptor": {
+      "type": "object",
+      "required": [
+        "path",
+        "schema_name",
+        "schema_version",
+        "document_id"
+      ],
+      "properties": {
+        "path": {
+          "const": "tckdb_evidence.json"
+        },
+        "schema_name": {
+          "const": "arc-tckdb-evidence"
+        },
+        "schema_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$"
+        },
+        "document_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "level_dict": {
+      "description": "Level.as_dict() with the 'repr' and 'compatible_ess' keys removed. Only the level's non-None attributes appear, so the key set varies between runs.",
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "basis": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "auxiliary_basis": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dispersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cabs": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "method_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "software": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "software_version": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "solvation_method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "solvent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "solvation_scheme_level": {
+          "description": "Emitted by _level_to_dict as a nested level dict of the same shape.",
+          "$ref": "#/$defs/nullable_level_dict"
+        },
+        "args": {
+          "description": "Free-form ESS keyword blocks; the key set is the user's, not ARC's.",
+          "type": [
+            "object",
+            "string",
+            "null"
+          ]
+        },
+        "year": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "nullable_level_dict": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/level_dict"
+        }
+      ]
+    },
+    "ess_versions": {
+      "description": "Full ESS version banners keyed by job type, parsed from each available log. Each value is the banner as the program printed it (e.g. 'Gaussian 16, Revision C.01'), not a bare version number. Pair each entry with the same job type in 'ess_software'.",
+      "type": "object",
+      "properties": {
+        "opt": {
+          "type": "string"
+        },
+        "freq": {
+          "type": "string"
+        },
+        "sp": {
+          "type": "string"
+        },
+        "neb": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ess_software": {
+      "description": "The ESS that produced each available log, keyed by the same job types as 'ess_versions' and read from the same files, so a version banner can be paired with the program that produced it rather than with the software a level of theory declared. Values are ARC's lowercase ESS names ('gaussian', 'orca', 'molpro', ...). The key set is a superset of the 'ess_versions' key set.",
+      "type": "object",
+      "properties": {
+        "opt": {
+          "type": "string"
+        },
+        "freq": {
+          "type": "string"
+        },
+        "sp": {
+          "type": "string"
+        },
+        "neb": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "constraint": {
+      "description": "One held-fixed coordinate parsed from an ESS input deck or log. index_base is the source convention: 1 for Gaussian, 0 for Orca. target_value is reported exactly as the source deck states it and is never converted; target_value_units names the unit it is in.",
+      "type": "object",
+      "required": [
+        "coordinate_type",
+        "atom_indices",
+        "index_base",
+        "target_value",
+        "target_value_units"
+      ],
+      "properties": {
+        "coordinate_type": {
+          "enum": [
+            "cartesian",
+            "distance",
+            "angle",
+            "dihedral"
+          ]
+        },
+        "atom_indices": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 1
+        },
+        "index_base": {
+          "enum": [
+            0,
+            1
+          ]
+        },
+        "target_value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "target_value_units": {
+          "description": "The unit of target_value, as the source deck states it and never converted. Angular constraints are degrees for every ESS. Length is 'angstrom' for both a Gaussian ModRedundant coordinate and an Orca '%geom Constraints' entry, which is the unit Orca reads by default and the one ARC writes; an Orca deck written elsewhere in Bohr carries a value this unit does not describe, because Orca does not echo the unit it was written in.",
+          "enum": [
+            "angstrom",
+            "bohr",
+            "degree",
+            null
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "constraint_list": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/constraint"
+      }
+    },
+    "spin_diagnostic": {
+      "description": "S**2 spin contamination of the single-point wavefunction. null for restricted/closed-shell logs and for non-converged species.",
+      "type": "object",
+      "required": [
+        "s_squared"
+      ],
+      "properties": {
+        "s_squared": {
+          "type": "number"
+        },
+        "s_squared_expected": {
+          "type": "number"
+        },
+        "s_squared_annihilated": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "optimization_stage_settings": {
+      "type": "object",
+      "required": [
+        "optimization_stage"
+      ],
+      "properties": {
+        "optimization_stage": {
+          "enum": [
+            "coarse",
+            "fine"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "correction_component": {
+      "description": "One native per-atom or per-bond term of an applied correction, as produced by arc/scripts/get_species_corrections.py.",
+      "type": "object",
+      "required": [
+        "component_kind",
+        "key",
+        "multiplicity",
+        "parameter_value",
+        "parameter_unit",
+        "contribution_value"
+      ],
+      "properties": {
+        "component_kind": {
+          "enum": [
+            "atom",
+            "bond"
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "multiplicity": {
+          "type": "integer"
+        },
+        "parameter_value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "parameter_unit": {
+          "description": "Pinned to hartree for an atom component and kcal_mol for a bond component by the 'allOf' branches below. Pinning it is what makes a silent kJ/mol-for-kcal/mol substitution a validation failure rather than a factor-of-4.184 error in a consumer.",
+          "type": "string"
+        },
+        "contribution_value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "component_kind": {
+                "const": "atom"
+              }
+            },
+            "required": [
+              "component_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "parameter_unit": {
+                "const": "hartree"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "component_kind": {
+                "const": "bond"
+              }
+            },
+            "required": [
+              "component_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "parameter_unit": {
+                "const": "kcal_mol"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "energy_correction": {
+      "description": "One applied correction model with its total, native decomposition, and the parameter table ARC used.",
+      "type": "object",
+      "required": [
+        "correction_type",
+        "model",
+        "level_of_theory",
+        "matched_arkane_key",
+        "total",
+        "components"
+      ],
+      "properties": {
+        "correction_type": {
+          "enum": [
+            "atom_energy",
+            "bond_additivity"
+          ]
+        },
+        "model": {
+          "description": "The legal model names are enumerated once, per correction_type, in the 'allOf' branches below.",
+          "type": "string"
+        },
+        "level_of_theory": {
+          "$ref": "#/$defs/nullable_level_dict"
+        },
+        "matched_arkane_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total": {
+          "type": "object",
+          "required": [
+            "value",
+            "unit"
+          ],
+          "properties": {
+            "value": {
+              "type": "number"
+            },
+            "unit": {
+              "description": "Pinned to hartree for an atom-energy correction and kcal_mol for a bond-additivity one by the 'allOf' branches below.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/correction_component"
+          }
+        },
+        "reference_atom_energies": {
+          "description": "Atom-energy corrections only. Omitted (key absent, never null) when the run has no such table.",
+          "type": "object",
+          "required": [
+            "unit",
+            "applied_as",
+            "values"
+          ],
+          "properties": {
+            "unit": {
+              "const": "hartree"
+            },
+            "applied_as": {
+              "const": "subtracted"
+            },
+            "values": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "parameter_table": {
+          "description": "Petersson bond-additivity corrections only, and only when the BAC key matched the AEC key. Omitted (key absent, never null) otherwise.",
+          "type": "object",
+          "required": [
+            "unit",
+            "values"
+          ],
+          "properties": {
+            "unit": {
+              "const": "kcal_mol"
+            },
+            "values": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "correction_type": {
+                "const": "atom_energy"
+              }
+            },
+            "required": [
+              "correction_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "model": {
+                "const": "arkane_atom_energy"
+              },
+              "total": {
+                "properties": {
+                  "unit": {
+                    "const": "hartree"
+                  }
+                }
+              }
+            },
+            "not": {
+              "required": [
+                "parameter_table"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "correction_type": {
+                "const": "bond_additivity"
+              }
+            },
+            "required": [
+              "correction_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "model": {
+                "enum": [
+                  "petersson",
+                  "melius"
+                ]
+              },
+              "total": {
+                "properties": {
+                  "unit": {
+                    "const": "kcal_mol"
+                  }
+                }
+              }
+            },
+            "not": {
+              "required": [
+                "reference_atom_energies"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "model": {
+                "const": "melius"
+              }
+            },
+            "required": [
+              "model"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "parameter_table"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "scan_sample": {
+      "description": "One completed point of a 1D rotor scan.",
+      "type": "object",
+      "required": [
+        "source_index",
+        "angle_degrees",
+        "relative_energy_kj_mol"
+      ],
+      "properties": {
+        "source_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "angle_degrees": {
+          "description": "The ABSOLUTE value of the scanned dihedral at this point, in degrees, measured on this point's own geometry (coordinate.atom_indices, 1-based) rather than derived from the requested grid. It is not a displacement from the scan's first sample and nothing has to be added back to it. The sequence is unwrapped and never folded into a 0-360 window, so a full rotation ends a turn away from where it started (a scan from 59.867 ends at 419.867, which is the same angle modulo 360) and a scan that sweeps towards decreasing values goes below its start, possibly negative.",
+          "type": "number"
+        },
+        "relative_energy_kj_mol": {
+          "type": "number"
+        },
+        "electronic_energy_hartree": {
+          "description": "Omitted (key absent, never null) when the parser gave no aligned absolute-energy list.",
+          "type": "number"
+        },
+        "geometry_xyz": {
+          "description": "Omitted (key absent, never null) when the per-point geometries were unavailable or did not align 1:1 with the energies.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "scan_coordinate": {
+      "type": "object",
+      "required": [
+        "coordinate_type",
+        "atom_indices",
+        "index_base",
+        "unit",
+        "sample_count"
+      ],
+      "properties": {
+        "coordinate_type": {
+          "const": "dihedral"
+        },
+        "atom_indices": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true
+        },
+        "index_base": {
+          "const": 1
+        },
+        "unit": {
+          "const": "degree"
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "symmetry_number": {
+          "description": "Omitted (key absent, never null) unless ARC determined an integer symmetry of at least 1.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "requested_step_size": {
+          "description": "The requested grid spacing in degrees, SIGNED: negative for a scan that sweeps towards decreasing dihedral values. Never 0. Omitted (key absent, never null) for ESS whose logs do not echo the requested grid.",
+          "type": "number",
+          "not": {
+            "const": 0
+          }
+        },
+        "requested_start": {
+          "description": "The requested starting dihedral in degrees. Grid metadata describing the extent that was asked for, NOT an anchor to add to a sample's angle_degrees. Omitted (key absent, never null) without a requested_step_size or a computable dihedral.",
+          "type": "number"
+        },
+        "requested_end": {
+          "description": "requested_start + requested_step_size * steps, in degrees, and therefore below requested_start for a scan with a negative step size. Not wrapped: a full rotation lands a turn away from requested_start. Omitted (key absent, never null) under the same condition as requested_start.",
+          "type": "number"
+        }
+      },
+      "additionalProperties": false,
+      "dependentRequired": {
+        "requested_start": [
+          "requested_end",
+          "requested_step_size"
+        ],
+        "requested_end": [
+          "requested_start",
+          "requested_step_size"
+        ]
+      }
+    },
+    "scan_result": {
+      "type": "object",
+      "required": [
+        "dimension",
+        "relaxed",
+        "coordinate",
+        "samples"
+      ],
+      "properties": {
+        "dimension": {
+          "const": 1
+        },
+        "relaxed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "zero_energy_reference_hartree": {
+          "description": "Omitted (key absent, never null) when the parser reports none.",
+          "type": "number"
+        },
+        "coordinate": {
+          "$ref": "#/$defs/scan_coordinate"
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scan_sample"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "rotor_scan": {
+      "type": "object",
+      "required": [
+        "key",
+        "source_log",
+        "result"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^scan_rotor_.+$"
+        },
+        "source_log": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "constraints": {
+          "description": "Held-fixed coordinates excluding the scanned coordinate. Omitted (key absent, never null) when none were found.",
+          "allOf": [
+            {
+              "$ref": "#/$defs/constraint_list"
+            }
+          ],
+          "minItems": 1
+        },
+        "result": {
+          "$ref": "#/$defs/scan_result"
+        }
+      },
+      "additionalProperties": false
+    },
+    "one_or_multi_dimensional_indices": {
+      "description": "An atom-index list taken straight from rotors_dict: a flat list of integers for a 1D rotor, or a list of such lists for an ND directed rotor, which the scheduler also marks successful.",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1
+          },
+          "minItems": 1
+        }
+      ]
+    },
+    "torsion": {
+      "type": "object",
+      "required": [
+        "symmetry_number",
+        "treatment",
+        "dimension",
+        "atom_indices",
+        "pivot_atoms",
+        "barrier_kj_mol",
+        "source_scan_key"
+      ],
+      "properties": {
+        "symmetry_number": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "treatment": {
+          "enum": [
+            "hindered_rotor",
+            "free_rotor"
+          ]
+        },
+        "dimension": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Rotor dimensionality. 1 for an ordinary 1D rotor; higher for an ND directed rotor, whose atom_indices and pivot_atoms are then lists of lists and whose barrier_kj_mol is null."
+        },
+        "atom_indices": {
+          "description": "The rotor's 1-indexed scanned dihedral: a flat 4-atom list for a 1D rotor, one such list per dimension for an ND directed rotor.",
+          "$ref": "#/$defs/one_or_multi_dimensional_indices"
+        },
+        "pivot_atoms": {
+          "description": "The rotor's 1-indexed rotation axis, dimensioned exactly as atom_indices.",
+          "$ref": "#/$defs/one_or_multi_dimensional_indices"
+        },
+        "barrier_kj_mol": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "source_scan_key": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^scan_rotor_.+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "rejected_torsion": {
+      "description": "A rotor ARC evaluated and genuinely rejected (rotors_dict entry whose 'success' is False), carried so a consumer can tell 'no rotors' from 'rotors found and rejected, for these reasons' rather than losing the rejected rotor entirely. Pending or never-attempted rotors ('success' is None) are not carried here -- ARC has not decided their fate yet. This rotor never contributes a rotor_scans record -- rejected rotors are excluded from rotor_scans entirely -- so source_log records the raw scan-log path directly rather than referencing a rotor_scans key.",
+      "type": "object",
+      "required": [
+        "rotor_index",
+        "invalidation_reason",
+        "atom_indices",
+        "pivot_atoms",
+        "dimension"
+      ],
+      "properties": {
+        "rotor_index": {
+          "type": "integer",
+          "description": "The rotor's key in rotors_dict, i.e. its identifying index among the species' rotors (not an atom index)."
+        },
+        "invalidation_reason": {
+          "type": "string",
+          "description": "ARC's recorded reason(s) the rotor was rejected, verbatim. An empty string means ARC recorded no specific reason -- not that one was fabricated here. This is accumulated with '+=' across troubleshooting rounds, so it may contain more than one concatenated reason rather than a single discrete one."
+        },
+        "atom_indices": {
+          "description": "The rotor's 1-indexed scanned dihedral, when recorded: a flat 4-atom list for a 1D rotor, one such list per dimension for an ND directed rotor. Null when rotors_dict has no 'scan' entry for this rotor.",
+          "$ref": "#/$defs/one_or_multi_dimensional_indices"
+        },
+        "pivot_atoms": {
+          "description": "The rotor's 1-indexed rotation axis, when recorded, dimensioned exactly as atom_indices. Null when rotors_dict has no 'pivots' entry for this rotor.",
+          "$ref": "#/$defs/one_or_multi_dimensional_indices"
+        },
+        "dimension": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Rotor dimensionality, exactly as the successful torsion shape's 'dimension'. 1 for an ordinary 1D rotor; higher for an ND directed rotor, whose atom_indices and pivot_atoms are then lists of lists."
+        },
+        "source_log": {
+          "type": "string",
+          "description": "The rejected rotor's scan log path, relative to the project directory (bare os.path.relpath, no containment check -- a log outside the project directory yields a '../..'-prefixed path; same behavior as rotor_scans[].source_log, not changed here), when one is found on disk at write time. Omitted entirely (never null) when rotors_dict records no on-disk scan for this rotor. IMPORTANT: this field's absence does NOT mean the rotor was never a torsion -- it only means no scan log was found on disk when output.yml was written. A genuinely-scanned rotor can still lack this field: a restart-restored rejected rotor's stale relative scan_path is only repaired for rotors where success is truthy, so it routinely fails the on-disk check; a failed directed scan has its scan_path deliberately blanked to '' while still recording a real invalidation_reason; and a TS reaction-zone pivot exclusion sets success=False for policy reasons, typically before any scan is attempted. ARC's rotors_dict does not currently distinguish these rejection stages from a genuine 'not a torsion' determination -- invalidation_reason is the only (free-text, imperfect) signal available. Deliberately not a rotor_scans[].key reference: rejected rotors never produce a rotor_scans record (rotor_scans only admits success=True rotors), and a rejected rotor's log may itself be truncated or self-inconsistent, so this records where the evidence is rather than a parsed result."
+        }
+      },
+      "additionalProperties": false
+    },
+    "statmech": {
+      "type": "object",
+      "required": [
+        "e0_kj_mol",
+        "spin_multiplicity",
+        "optical_isomers",
+        "is_linear",
+        "external_symmetry",
+        "point_group",
+        "rigid_rotor_kind",
+        "harmonic_frequencies_cm1",
+        "torsions"
+      ],
+      "properties": {
+        "e0_kj_mol": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "spin_multiplicity": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "optical_isomers": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "is_linear": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "external_symmetry": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "point_group": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rigid_rotor_kind": {
+          "description": "The builder's third 'atom' branch is unreachable here: statmech is null for monoatomic species.",
+          "enum": [
+            "linear",
+            "asymmetric_top"
+          ]
+        },
+        "harmonic_frequencies_cm1": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number"
+          }
+        },
+        "torsions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/torsion"
+          }
+        },
+        "rejected_torsions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rejected_torsion"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "nasa_polynomial": {
+      "type": "object",
+      "required": [
+        "tmin_k",
+        "tmax_k",
+        "coeffs"
+      ],
+      "properties": {
+        "tmin_k": {
+          "type": "number"
+        },
+        "tmax_k": {
+          "type": "number"
+        },
+        "coeffs": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 7,
+          "maxItems": 7
+        }
+      },
+      "additionalProperties": false
+    },
+    "thermo_point": {
+      "description": "One tabulated temperature. Only temperature_k is guaranteed: the Tdata/Cpdata fallback in _thermo_to_dict emits Cp alone, while arc/scripts/save_arkane_thermo.py emits all five.",
+      "type": "object",
+      "required": [
+        "temperature_k"
+      ],
+      "properties": {
+        "temperature_k": {
+          "type": "number"
+        },
+        "cp_j_mol_k": {
+          "type": "number"
+        },
+        "h_kj_mol": {
+          "type": "number"
+        },
+        "s_j_mol_k": {
+          "type": "number"
+        },
+        "g_kj_mol": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "thermo": {
+      "type": "object",
+      "required": [
+        "h298_kj_mol",
+        "s298_j_mol_k",
+        "tmin_k",
+        "tmax_k",
+        "thermo_points",
+        "nasa_low",
+        "nasa_high"
+      ],
+      "properties": {
+        "h298_kj_mol": {
+          "type": "number"
+        },
+        "s298_j_mol_k": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tmin_k": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tmax_k": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "thermo_points": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/thermo_point"
+          }
+        },
+        "nasa_low": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/nasa_polynomial"
+            }
+          ]
+        },
+        "nasa_high": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/nasa_polynomial"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ts_guess": {
+      "description": "Sanitized attribution for the chosen TS guess. The list is empty when no guess was chosen.",
+      "type": "object",
+      "required": [
+        "index",
+        "chosen",
+        "method",
+        "method_sources"
+      ],
+      "properties": {
+        "index": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chosen": {
+          "const": true
+        },
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "method_sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "common_species_fields": {
+      "description": "The fields every species and transition-state record carries.",
+      "type": "object",
+      "required": [
+        "label",
+        "original_label",
+        "charge",
+        "multiplicity",
+        "converged",
+        "is_ts",
+        "smiles",
+        "inchi",
+        "inchi_key",
+        "formula",
+        "xyz",
+        "sp_energy_hartree",
+        "zpe_hartree",
+        "opt_converged",
+        "coarse_opt_log",
+        "coarse_opt_n_steps",
+        "coarse_opt_final_energy_hartree",
+        "opt_n_steps",
+        "opt_final_energy_hartree",
+        "coarse_opt_input_xyz",
+        "coarse_opt_output_xyz",
+        "opt_input_xyz",
+        "freq_n_imag",
+        "imag_freq_cm1",
+        "imaginary_frequencies_cm1",
+        "opt_log",
+        "freq_log",
+        "sp_log",
+        "sp_spin_diagnostic",
+        "opt_input",
+        "freq_input",
+        "sp_input",
+        "opt_constraints",
+        "freq_constraints",
+        "sp_constraints",
+        "opt_final_settings",
+        "coarse_opt_final_settings",
+        "freq_final_settings",
+        "sp_final_settings",
+        "ess_versions",
+        "ess_software",
+        "thermo",
+        "statmech",
+        "rotor_scans",
+        "energy_corrections"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "original_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "charge": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "multiplicity": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "converged": {
+          "type": "boolean"
+        },
+        "is_ts": {
+          "type": "boolean"
+        },
+        "smiles": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inchi": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inchi_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "formula": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xyz": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "conformers": {
+          "description": "Omitted (key absent, never null) when ARC screened no conformers.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "conformer_energies": {
+          "description": "One energy per screened conformer, relative to the lowest. Emitted and omitted together with 'conformers', which 'dependentRequired' enforces. The two lists are index-aligned, a relation JSON Schema cannot express; arc/output_schema_test.py asserts it against the producer instead. An entry is null for a conformer whose energy has not been filled in: the list is pre-allocated per conformer and populated one job at a time, so a partly-null list is an ordinary state and not an error. UNIT IS STAGE-DEPENDENT: kcal/mol while the list still holds force-field energies from the conformer screen, kJ/mol once the conformers have been optimized at a quantum-chemical level. Nothing in this document distinguishes the two; a consumer that needs an absolute scale should use sp_energy_hartree and e0_kj_mol instead.",
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "sp_energy_hartree": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "zpe_hartree": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "opt_converged": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "coarse_opt_log": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "coarse_opt_n_steps": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "coarse_opt_final_energy_hartree": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "opt_n_steps": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "opt_final_energy_hartree": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "coarse_opt_input_xyz": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "coarse_opt_output_xyz": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "opt_input_xyz": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "freq_n_imag": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "imag_freq_cm1": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "imaginary_frequencies_cm1": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number"
+          },
+          "minItems": 1
+        },
+        "opt_log": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "freq_log": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sp_log": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sp_spin_diagnostic": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/spin_diagnostic"
+            }
+          ]
+        },
+        "opt_input": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "freq_input": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sp_input": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "opt_constraints": {
+          "$ref": "#/$defs/constraint_list"
+        },
+        "freq_constraints": {
+          "$ref": "#/$defs/constraint_list"
+        },
+        "sp_constraints": {
+          "$ref": "#/$defs/constraint_list"
+        },
+        "opt_final_settings": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/optimization_stage_settings"
+                }
+              ],
+              "properties": {
+                "optimization_stage": {
+                  "const": "fine"
+                }
+              }
+            }
+          ]
+        },
+        "coarse_opt_final_settings": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/optimization_stage_settings"
+                }
+              ],
+              "properties": {
+                "optimization_stage": {
+                  "const": "coarse"
+                }
+              }
+            }
+          ]
+        },
+        "freq_final_settings": {
+          "description": "Always null: ARC has no reliable signal for freq jobs yet.",
+          "type": "null"
+        },
+        "sp_final_settings": {
+          "description": "Always null: ARC has no reliable signal for sp jobs yet.",
+          "type": "null"
+        },
+        "ess_versions": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ess_versions"
+            }
+          ]
+        },
+        "ess_software": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ess_software"
+            }
+          ]
+        },
+        "thermo": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/thermo"
+            }
+          ]
+        },
+        "statmech": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/statmech"
+            }
+          ]
+        },
+        "rotor_scans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rotor_scan"
+          }
+        },
+        "energy_corrections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/energy_correction"
+          }
+        }
+      },
+      "dependentRequired": {
+        "conformers": [
+          "conformer_energies"
+        ],
+        "conformer_energies": [
+          "conformers"
+        ]
+      }
+    },
+    "species_record": {
+      "description": "A non-TS species. The TS-only fields must be absent, which 'unevaluatedProperties: false' enforces.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/common_species_fields"
+        }
+      ],
+      "properties": {
+        "is_ts": {
+          "const": false
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ts_record": {
+      "description": "A transition state: every species field plus the TS-only fields.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/common_species_fields"
+        }
+      ],
+      "required": [
+        "chosen_ts_method",
+        "successful_ts_methods",
+        "neb_log",
+        "gsm_log",
+        "ts_guesses",
+        "irc_logs",
+        "irc_log_directions",
+        "irc_converged",
+        "ts_checks",
+        "rxn_label"
+      ],
+      "properties": {
+        "is_ts": {
+          "const": true
+        },
+        "thermo": {
+          "description": "Always null for transition states.",
+          "type": "null"
+        },
+        "chosen_ts_method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "successful_ts_methods": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "neb_log": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "gsm_log": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ts_guesses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ts_guess"
+          },
+          "maxItems": 1
+        },
+        "irc_logs": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "irc_log_directions": {
+          "description": "Index-aligned with irc_logs: which branch of the reaction path each log traversed. null when ARC did not record a direction for that log. Getting this wrong swaps reactant and product silently, so the value is constrained rather than free text.",
+          "type": "array",
+          "items": {
+            "enum": [
+              "forward",
+              "reverse",
+              null
+            ]
+          }
+        },
+        "irc_converged": {
+          "description": "Whether the IRC JOBS COMPLETED, not whether the IRC validated the transition state. It is true once both IRC job directions finished, whatever their endpoints turned out to be, and null when the run did not request IRC at all. The validation verdict is ts_checks.IRC.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "ts_checks": {
+          "$ref": "#/$defs/ts_checks"
+        },
+        "rxn_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ts_checks": {
+      "description": "ARC's own verdicts on the transition state, one per validation it runs. true is a pass, false a failure, and null 'not run or no conclusion reached' - null is NOT a failure. These are the provenance of the transition state: irc_converged reports only that the IRC jobs completed, and only ts_checks.IRC says whether the IRC endpoints matched the reaction.",
+      "type": "object",
+      "required": [
+        "E0",
+        "e_elect",
+        "IRC",
+        "freq",
+        "NMD",
+        "warnings"
+      ],
+      "properties": {
+        "E0": {
+          "description": "The zero-point-corrected energy of the transition state lies above both reaction wells.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "e_elect": {
+          "description": "The electronic energy of the transition state lies above both reaction wells.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "IRC": {
+          "description": "The intrinsic reaction coordinate connects this transition state to the reaction's own reactants and products.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "freq": {
+          "description": "The frequency calculation yielded exactly one imaginary mode, of a magnitude consistent with the reaction.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "NMD": {
+          "description": "The imaginary mode's normal mode displacement moves the atoms whose bonds the reaction forms and breaks.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "warnings": {
+          "description": "Free text accumulated by the checks above. An empty string means no check raised anything.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "kinetics": {
+      "description": "Fitted modified-Arrhenius kinetics. Every key is emitted; a value is null when the source dict did not carry it.",
+      "type": "object",
+      "required": [
+        "A",
+        "A_units",
+        "n",
+        "Ea",
+        "Ea_units",
+        "T0_k",
+        "Tmin_k",
+        "Tmax_k",
+        "dA",
+        "dn",
+        "dEa",
+        "dEa_units",
+        "n_data_points",
+        "tunneling"
+      ],
+      "properties": {
+        "A": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "A_units": {
+          "description": "The unit string Arkane fitted A in, verbatim. It cannot be pinned by this schema because it depends on the reaction's molecularity ('s^-1' for unimolecular, 'cm^3/(mol*s)' or 'm^3/(mol*s)' for bimolecular, and so on). A consumer must read it rather than assume one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "n": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "Ea": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "Ea_units": {
+          "description": "The unit string Arkane fitted Ea in, verbatim ('kJ/mol' or 'kcal/mol'). Not pinned for the same reason as A_units: ARC reports the source's own unit rather than converting.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "T0_k": {
+          "description": "The reference temperature in K of k = A (T/T0)^n exp(-Ea/RT). A and n cannot be interpreted without it.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "Tmin_k": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "Tmax_k": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dA": {
+          "description": "MULTIPLICATIVE uncertainty factor on A, dimensionless, as Arkane reports it ('dA = *|/ 1.48466'). The one-sigma band is [A / dA, A * dA] - NOT A +/- dA. dn and dEa beside it are additive, which is why this field carries no units sibling: there is no unit to carry.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "dn": {
+          "description": "ADDITIVE uncertainty on n: the band is n +/- dn. Dimensionless.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dEa": {
+          "description": "ADDITIVE uncertainty on Ea: the band is Ea +/- dEa, in dEa_units.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dEa_units": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "n_data_points": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tunneling": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "reaction": {
+      "type": "object",
+      "required": [
+        "label",
+        "reactant_labels",
+        "product_labels",
+        "family",
+        "multiplicity",
+        "ts_label",
+        "kinetics"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "reactant_labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "product_labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "family": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "multiplicity": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ts_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kinetics": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/kinetics"
+            }
+          ]
+        },
+        "long_kinetic_description": {
+          "description": "Omitted (key absent, never null) when the reaction carries no description.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
