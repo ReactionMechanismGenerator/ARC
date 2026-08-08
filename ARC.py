@@ -6,11 +6,95 @@ ARC - Automatic Rate Calculator
 """
 
 import argparse
+from functools import lru_cache
 import logging
 import os
+from urllib.parse import urlsplit
 
 from arc.common import read_yaml_file
 from arc.main import ARC
+
+
+logger = logging.getLogger('arc')
+
+
+TCKDB_ARC_SOURCE = 'https://github.com/calvinp0/tckdb-adapters'
+
+
+@lru_cache(maxsize=1)
+def _warn_missing_tckdb_package() -> None:
+    """Log the optional-adapter warning at most once per ARC process."""
+    logger.warning(
+        "TCKDB upload requested, but the optional 'tckdb_arc' adapter is not importable; "
+        "continuing without upload. It is not published on PyPI - do not 'pip install' it by "
+        "name, which would fetch an unrelated project. Install it from its own repository, "
+        "%s, into the environment ARC itself runs in.",
+        TCKDB_ARC_SOURCE,
+    )
+
+
+def _tckdb_log_destination(tckdb_settings: dict) -> str:
+    """Return the configured TCKDB destination as a string safe to write to the log.
+
+    Reports only the host and, when one is given, the port. Any credentials a
+    URL carries in its userinfo component, and any query string or fragment,
+    are dropped, so a URL written as ``https://user:token@host/path?key=...``
+    is logged as ``host``. Returns a generic placeholder when no destination is
+    configured or none can be read out of the value given.
+    """
+    endpoint = tckdb_settings.get('url') or tckdb_settings.get('host')
+    if not isinstance(endpoint, str) or not endpoint.strip():
+        return 'the configured endpoint'
+    parts = urlsplit(endpoint.strip())
+    if not parts.netloc:
+        parts = urlsplit(f'//{endpoint.strip()}')
+    host = parts.netloc.rsplit('@', 1)[-1]
+    return host or 'the configured endpoint'
+
+
+def run_tckdb_upload(tckdb_settings, project_directory: str) -> None:
+    """Run the optional standalone TCKDB adapter after ARC completes.
+
+    ``tckdb_settings`` is whatever the input file put under its ``tckdb`` key,
+    so it is validated here rather than assumed to be a mapping.
+
+    Uploading publishes the run's full scientific record to a remote endpoint,
+    so it requires ``enabled: true`` stated explicitly in the ``tckdb`` block.
+    Defaulting to "upload unless told otherwise" would mean a ``tckdb`` block
+    written to configure anything else — a URL, a dry run — silently shipped
+    the data. The resolved destination is logged before anything leaves the
+    machine so the target is visible in the run log; only its host is written,
+    never any credential the URL carries.
+    """
+    if not isinstance(tckdb_settings, dict):
+        logger.warning("TCKDB upload skipped: the 'tckdb' entry in the input file is %s, "
+                       "not a settings block. Write it as a mapping with 'enabled: true'.",
+                       type(tckdb_settings).__name__)
+        return
+    if tckdb_settings.get('enabled') is not True:
+        logger.info("TCKDB upload skipped: the 'tckdb' block does not set 'enabled: true'.")
+        return
+    try:
+        import tckdb_arc
+    except ModuleNotFoundError as exc:
+        if exc.name == 'tckdb_arc':
+            _warn_missing_tckdb_package()
+            return
+        raise
+    from tckdb_arc.adapter import TCKDBAdapter
+    from tckdb_arc.config import TCKDBConfig
+    from tckdb_arc.sweep import run_upload_sweep
+
+    config = TCKDBConfig.from_dict(tckdb_settings)
+    if config is None:
+        return
+    logger.info('Uploading ARC results to TCKDB at %s.', _tckdb_log_destination(tckdb_settings))
+    adapter = TCKDBAdapter(config, project_directory=project_directory)
+    run_upload_sweep(
+        adapter=adapter,
+        project_directory=project_directory,
+        tckdb_config=config,
+    )
 
 
 def parse_command_line_arguments(command_line_args=None):
@@ -42,7 +126,14 @@ def parse_command_line_arguments(command_line_args=None):
 
 def main():
     """
-    The main ARC executable function
+    The main ARC executable function.
+
+    The input file's ``tckdb`` block is consumed here rather than handed to
+    ``ARC``: it configures the optional post-run upload, not the project, and
+    ``ARC`` neither accepts nor records it. It therefore never reaches
+    ``restart.yml``, which keeps any credential the block carries out of a file
+    written into the project directory, and means a restarted run performs no
+    upload unless it is restarted from the input file.
     """
     args = parse_command_line_arguments()
     input_file = args.file
@@ -59,8 +150,20 @@ def main():
     input_dict['verbose'] = input_dict['verbose'] if 'verbose' in input_dict else verbose
     if 'project_directory' not in input_dict or not input_dict['project_directory']:
         input_dict['project_directory'] = project_directory
+    tckdb_settings = input_dict.pop('tckdb', None)
+    if tckdb_settings is not None:
+        logger.info("The 'tckdb' block configures the post-run upload only and is not part of the "
+                    "ARC project, so it is not saved to restart.yml and a run restarted from that "
+                    "file uploads nothing. Re-run from the input file to upload.")
     arc_object = ARC(**input_dict)
     arc_object.execute()
+    if tckdb_settings is not None:
+        try:
+            run_tckdb_upload(tckdb_settings, arc_object.project_directory)
+        except Exception as exc:
+            logger.error('The TCKDB upload failed: %s. The ARC run itself completed and its '
+                         'results are on disk under %s.',
+                         exc, arc_object.project_directory, exc_info=True)
 
 
 if __name__ == '__main__':
