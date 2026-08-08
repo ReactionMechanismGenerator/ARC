@@ -198,12 +198,84 @@ class ESSAdapter(ABC):
         """
         pass
 
+    def parse_1d_scan_energies_hartree(self) -> tuple[list[float] | None, list[float] | None]:
+        """
+        Parse the 1D torsion scan absolute electronic energies in Hartree.
+
+        Default returns ``(None, None)`` so adapters that haven't implemented
+        Hartree-preserving extraction don't break the new
+        :func:`parse_1d_scan_full_result` wrapper. Callers must treat absence as
+        "absolute energies unavailable for this ESS" and not as an error.
+
+        Returns: tuple[list[float] | None, list[float] | None]
+            The absolute electronic energy in Hartree and the dihedral scan angle
+            in degrees, with the same point-filtering applied as
+            :meth:`parse_1d_scan_energies`.
+        """
+        return None, None
+
+    def parse_cartesian_hessian_lower_triangle(self) -> list[float] | None:
+        """
+        Parse the Cartesian Hessian and return its packed lower triangle.
+
+        The triangle is row-major and includes the diagonal, i.e.
+        ``[H[i][j] for i in range(3N) for j in range(i + 1)]``, in the ESS's
+        native atomic units (hartree/bohr^2) with no SI conversion applied.
+
+        Adapters that don't implement this return ``None``; the caller treats
+        ``None`` as "no Cartesian Hessian available for this ESS".
+
+        Returns: list[float] | None
+            The lower triangle (length ``3N(3N + 1) / 2``), or ``None``.
+        """
+        return None
+
+    def parse_cartesian_hessian_geometry(self) -> tuple[dict[str, tuple] | None, str | None]:
+        """
+        Parse the geometry in the same Cartesian frame as the Hessian.
+
+        A Hessian is only meaningful alongside the geometry it was evaluated
+        at, in the *same* frame: mass-weighting and projecting out translation
+        and rotation both mix the two. Several ESSs report the Hessian in one
+        frame and their canonical geometry in another (Gaussian prints force
+        constants in the input orientation but reports geometries in the
+        standard orientation, a pure rotation apart), so a consumer that pairs
+        :meth:`parse_cartesian_hessian_lower_triangle` with
+        :meth:`parse_geometry` can silently reconstruct the wrong spectrum.
+        This method is the frame-correct partner for the Hessian.
+
+        Adapters that don't implement this return ``(None, None)``.
+
+        Returns: tuple[dict[str, tuple] | None, str | None]
+            The Cartesian geometry and a stable label naming its frame (e.g.
+            ``'gaussian_input_orientation'``), or ``(None, None)`` when the
+            frame-matched geometry is not recoverable.
+        """
+        return None, None
+
     def parse_opt_steps(self) -> int | None:
         """
         Parse the number of geometry optimization steps from an opt job output file.
 
         Returns: int | None
             The number of optimization cycles, or ``None`` if not an opt job or not parseable.
+        """
+        return None
+
+    def parse_s_squared(self) -> dict[str, float | None] | None:
+        """
+        Parse the S**2 spin-contamination diagnostic from an unrestricted-reference ESS output.
+
+        Only meaningful for unrestricted/open-shell calculations (restricted/closed-shell
+        references do not print an ``<S**2>`` value). Adapters that don't implement this
+        (or restricted/closed-shell logs) return ``None`` — the caller treats ``None`` as
+        "no spin diagnostic available for this calc" and omits the block entirely.
+
+        Returns: dict[str, float | None] | None
+            ``{'s_squared': float, 's_squared_expected': float | None,
+               's_squared_annihilated': float | None}`` when an ``<S**2>`` value was parsed,
+            else ``None``. ``s_squared`` is always present (and finite) when the dict is
+            returned; the other two are ``None`` when the ESS doesn't report them.
         """
         return None
 
