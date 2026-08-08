@@ -2,6 +2,7 @@
 Tests for the arc.output module (consolidated output.yml writer).
 """
 
+import datetime
 import json
 import os
 import shutil
@@ -17,6 +18,7 @@ from arc.output import (
     _build_energy_corrections_for_species,
     _build_rotor_scans,
     _build_scan_result_for_rotor,
+    _compute_cost_metrics,
     _compute_point_groups,
     _compute_species_corrections,
     _evidence_status_counts,
@@ -36,6 +38,7 @@ from arc.output import (
     _spc_to_dict,
     _statmech_to_dict,
     _thermo_to_dict,
+    _timedelta_to_seconds,
     write_output_yml,
 )
 from arc.species.species import TSGuess, ThermoData
@@ -1411,6 +1414,46 @@ class TestWriteOutputYml(unittest.TestCase):
             )
         self.assertEqual(destinations[-2:], ['tckdb_evidence.json', 'output.yml'])
 
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_cost_metrics_section(self, mock_arc_git, mock_arkane_git, mock_pg):
+        """Cost metrics should aggregate per-ESS execution time and core-hours."""
+        from arc.common import read_yaml_file
+        spc = self._make_spc_mock()
+        records = [
+            {'job_name': 'opt_a1', 'label': 'CH4', 'job_type': 'opt', 'job_adapter': 'gaussian',
+             'server': 'server1', 'cpu_cores': 8, 'run_time_sec': 3600.0, 'job_status': 'done'},
+            {'job_name': 'freq_a2', 'label': 'CH4', 'job_type': 'freq', 'job_adapter': 'gaussian',
+             'server': 'server1', 'cpu_cores': 8, 'run_time_sec': None, 'job_status': 'done'},
+            {'job_name': 'sp_a3', 'label': 'CH4', 'job_type': 'sp', 'job_adapter': 'orca',
+             'server': 'server2', 'cpu_cores': 16, 'run_time_sec': 900.0, 'job_status': 'done'},
+        ]
+        write_output_yml(
+            project='test_cost',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': spc},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+            t0=datetime.datetime.now().timestamp() - 7200.0,  # started 2 hrs ago
+            completed_job_records=records,
+        )
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        cm = doc['cost_metrics']
+        self.assertAlmostEqual(cm['wall_time_hrs'], 2.0, places=2)
+        self.assertEqual(cm['total_job_count'], 3)
+        self.assertEqual(cm['jobs_missing_time'], 1)
+        self.assertEqual(cm['jobs_missing_cores'], 0)
+        self.assertAlmostEqual(cm['total_execution_time_hrs'], 1.25)
+        self.assertAlmostEqual(cm['total_core_hours'], 12.0)
+        self.assertEqual(cm['per_ess']['gaussian']['job_count'], 2)
+        self.assertEqual(cm['per_ess']['gaussian']['jobs_missing_time'], 1)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['execution_time_hrs'], 1.0)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['core_hours'], 8.0)
+        self.assertEqual(cm['per_ess']['orca']['job_count'], 1)
+        self.assertAlmostEqual(cm['per_ess']['orca']['execution_time_hrs'], 0.25)
+        self.assertAlmostEqual(cm['per_ess']['orca']['core_hours'], 4.0)
+
 
 class TestGetPointGroupsScript(unittest.TestCase):
     """Tests for arc/scripts/get_point_groups.py helper functions (imported directly)."""
@@ -2454,6 +2497,87 @@ class TestScanConstraintDispatch(unittest.TestCase):
             self.assertEqual(_parse_scan_constraints(rotor, '/tmp/project'), [])
             gauss.assert_not_called()
 
+
+
+class TestTimedeltaToSeconds(unittest.TestCase):
+    """Tests for _timedelta_to_seconds."""
+
+    def test_none(self):
+        self.assertIsNone(_timedelta_to_seconds(None))
+
+    def test_timedelta(self):
+        self.assertEqual(_timedelta_to_seconds(datetime.timedelta(minutes=1, seconds=30)), 90.0)
+
+    def test_numeric(self):
+        self.assertEqual(_timedelta_to_seconds(42), 42.0)
+        self.assertEqual(_timedelta_to_seconds(12.345), 12.35)
+
+    def test_str_hms(self):
+        self.assertEqual(_timedelta_to_seconds('0:01:30'), 90.0)
+
+    def test_str_hms_with_micro(self):
+        self.assertEqual(_timedelta_to_seconds('1:00:00.500000'), 3600.5)
+
+    def test_str_with_days(self):
+        self.assertEqual(_timedelta_to_seconds('1 day, 2:00:00'), 93600.0)
+        self.assertEqual(_timedelta_to_seconds('2 days, 0:00:01'), 172801.0)
+
+    def test_unparseable_str(self):
+        self.assertIsNone(_timedelta_to_seconds('bogus'))
+        self.assertIsNone(_timedelta_to_seconds('12:30'))
+
+
+class TestComputeCostMetrics(unittest.TestCase):
+    """Tests for _compute_cost_metrics."""
+
+    def test_empty_records(self):
+        cm = _compute_cost_metrics(None, None)
+        self.assertIsNone(cm['wall_time_hrs'])
+        self.assertEqual(cm['total_job_count'], 0)
+        self.assertEqual(cm['jobs_missing_time'], 0)
+        self.assertEqual(cm['jobs_missing_cores'], 0)
+        self.assertEqual(cm['total_execution_time_hrs'], 0.0)
+        self.assertEqual(cm['total_core_hours'], 0.0)
+        self.assertIsNone(cm['per_ess'])
+
+    def test_two_ess_aggregation(self):
+        records = [
+            {'job_adapter': 'gaussian', 'cpu_cores': 8, 'run_time_sec': 7200.0},
+            {'job_adapter': 'gaussian', 'cpu_cores': 4, 'run_time_sec': 1800.0},
+            {'job_adapter': 'orca', 'cpu_cores': 16, 'run_time_sec': 3600.0},
+        ]
+        cm = _compute_cost_metrics(records, None)
+        self.assertEqual(cm['total_job_count'], 3)
+        self.assertEqual(cm['jobs_missing_time'], 0)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['execution_time_hrs'], 2.5)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['core_hours'], 18.0)  # 2*8 + 0.5*4
+        self.assertAlmostEqual(cm['per_ess']['orca']['execution_time_hrs'], 1.0)
+        self.assertAlmostEqual(cm['per_ess']['orca']['core_hours'], 16.0)
+        self.assertAlmostEqual(cm['total_execution_time_hrs'], 3.5)
+        self.assertAlmostEqual(cm['total_core_hours'], 34.0)
+
+    def test_missing_time_and_cores_counted(self):
+        records = [
+            {'job_adapter': 'gaussian', 'cpu_cores': 8, 'run_time_sec': None},
+            {'job_adapter': 'gaussian', 'cpu_cores': None, 'run_time_sec': 3600.0},
+        ]
+        cm = _compute_cost_metrics(records, None)
+        self.assertEqual(cm['jobs_missing_time'], 1)
+        self.assertEqual(cm['jobs_missing_cores'], 1)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['execution_time_hrs'], 1.0)
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['core_hours'], 0.0)
+        self.assertEqual(cm['per_ess']['gaussian']['jobs_missing_time'], 1)
+
+    def test_run_time_as_timedelta_str(self):
+        """Records restored from a restart file may carry str run times."""
+        records = [{'job_adapter': 'xtb', 'cpu_cores': 1, 'run_time_sec': '0:30:00'}]
+        cm = _compute_cost_metrics(records, None)
+        self.assertAlmostEqual(cm['per_ess']['xtb']['execution_time_hrs'], 0.5)
+
+    def test_unknown_adapter_bucket(self):
+        records = [{'job_adapter': None, 'cpu_cores': 2, 'run_time_sec': 3600.0}]
+        cm = _compute_cost_metrics(records, None)
+        self.assertIn('unknown', cm['per_ess'])
 
 if __name__ == '__main__':
     unittest.main()
