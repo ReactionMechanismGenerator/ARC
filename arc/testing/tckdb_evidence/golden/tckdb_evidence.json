@@ -1,0 +1,1142 @@
+{
+  "document_id": "0123456789abcdef0123456789abcdef",
+  "output_schema_version": "1.1",
+  "producer": {
+    "git_commit": null,
+    "name": "ARC",
+    "version": "1.1.0"
+  },
+  "records": [
+    {
+      "freq_hessian": {
+        "status": "available",
+        "value": {
+          "atom_count": 3,
+          "frame": "orca_hess_atoms",
+          "geometry_xyz_text": "3\nH2O\nO       0.00000000    0.00000000    0.00000000\nH       0.93797041    0.18955587    0.04075436\nH      -0.12911801   -0.70924031    0.63062474",
+          "lower_triangle": [
+            0.60939945102,
+            0.12909784849,
+            0.35557959022,
+            0.020942862811,
+            -0.30125463482,
+            0.28541912251,
+            -0.54370634841,
+            -0.10830847035,
+            -0.025085944249,
+            0.53724361756,
+            -0.068541078617,
+            -0.048447316866,
+            0.029241973064,
+            0.10424499461,
+            0.048110660038,
+            -0.062122502459,
+            0.020029324447,
+            -0.033045416602,
+            0.027373202311,
+            -0.020657144449,
+            0.025579983569,
+            -0.065693102615,
+            -0.020789378137,
+            0.0041430814378,
+            0.0064627308521,
+            -0.035703915997,
+            0.034749300148,
+            0.059230371762,
+            -0.060556769875,
+            -0.30713227335,
+            0.27201266176,
+            0.0040634757408,
+            0.00033665682802,
+            0.00062782000194,
+            0.056493294135,
+            0.30679561652,
+            0.041179639648,
+            0.28122531037,
+            -0.25237370591,
+            -0.002287258062,
+            -0.0085848286156,
+            0.007465433033,
+            -0.038892381586,
+            -0.27264048176,
+            0.24490827288
+          ],
+          "matrix_dimension": 9,
+          "packing": "lower_triangle_row_major_including_diagonal",
+          "parser_version": "arc-hessian-2",
+          "source": "parsed_hess",
+          "source_log": "calcs/Species/H2O/freq/output.out",
+          "units": "hartree_per_bohr_squared"
+        }
+      },
+      "label": "H2O",
+      "record_kind": "species"
+    },
+    {
+      "gsm": {
+        "status": "available",
+        "value": {
+          "method": "gsm",
+          "ograd_invocations": [
+            {
+              "electronic_energy_hartree": -9.8990468444,
+              "invocation_id": "0000.01",
+              "max_gradient_hartree_per_bohr": 0.0065555496747372,
+              "rms_gradient_hartree_per_bohr": 0.0023566293030838855
+            },
+            {
+              "electronic_energy_hartree": -9.88997851517,
+              "invocation_id": "0000.02",
+              "max_gradient_hartree_per_bohr": 0.051346374081037,
+              "rms_gradient_hartree_per_bohr": 0.01832184762470287
+            },
+            {
+              "electronic_energy_hartree": -9.84219711856,
+              "invocation_id": "0000.03",
+              "max_gradient_hartree_per_bohr": 0.11626824179977,
+              "rms_gradient_hartree_per_bohr": 0.03542712242948015
+            },
+            {
+              "electronic_energy_hartree": -9.77343400513,
+              "invocation_id": "0000.04"
+            }
+          ],
+          "parser_version": "arc-gsm-stringfile-3",
+          "points": [
+            {
+              "cumulative_com_superposed_displacement_angstrom": 0.0,
+              "geometry_xyz_text": "10\ngsm_point_0\nC       0.00551800   -0.21638800    1.29400800\nC       0.00551800    0.51487200    0.00000000\nC       0.00551800   -0.21638800   -1.29400800\nH       0.76685100   -1.00479300    1.31103400\nH      -0.95560900   -0.72160000    1.48162800\nH       0.18693500    0.44796000    2.14022300\nH      -0.19347200    1.57937000    0.00000000\nH      -0.95560900   -0.72160000   -1.48162800\nH       0.76685100   -1.00479300   -1.31103400\nH       0.18693500    0.44796000   -2.14022300",
+              "source_point_index": 0,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 0.4206660586602443,
+              "electronic_energy_hartree": -9.88997851517,
+              "geometry_match_displacement_angstrom": 8.749507091876274e-06,
+              "geometry_matched_ograd_invocation_id": "0000.02",
+              "geometry_xyz_text": "10\ngsm_point_1\nC      -1.02238900    0.23632700    0.72211300\nC      -0.27017300    0.05652700   -0.45396500\nC       1.12863300   -0.46077400   -0.48412400\nH      -0.29363000    0.84896200    1.46810600\nH      -1.48287000   -0.68909000    1.09597400\nH      -1.94809800    0.75941700    0.48434400\nH      -0.81634600    0.17173800   -1.38394300\nH       1.20144200   -1.46917800   -0.04865900\nH       1.80409200    0.17265500    0.10152800\nH       1.51875900   -0.52199900   -1.50137500",
+              "max_gradient_hartree_per_bohr": 0.051346374081037,
+              "rms_gradient_hartree_per_bohr": 0.01832184762470287,
+              "source_point_index": 1,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 0.826792100161331,
+              "electronic_energy_hartree": -9.84219711856,
+              "geometry_match_displacement_angstrom": 1.2805153147516758e-05,
+              "geometry_matched_ograd_invocation_id": "0000.03",
+              "geometry_xyz_text": "10\ngsm_point_2\nC      -1.03816600    0.16628200    0.71005300\nC      -0.25777900    0.06442900   -0.37030700\nC       1.15275400   -0.43227800   -0.43799200\nH      -0.19612800    0.81970800    1.48938500\nH      -1.67665000   -0.69933900    0.93897700\nH      -1.94742000    0.67195100    0.38103900\nH      -0.77300100    0.28249200   -1.30148700\nH       1.27025500   -1.39448500    0.08146200\nH       1.84693700    0.26456800    0.04366200\nH       1.48158300   -0.57992700   -1.46814200",
+              "max_gradient_hartree_per_bohr": 0.11626824179977,
+              "rms_gradient_hartree_per_bohr": 0.03542712242948015,
+              "source_point_index": 2,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 1.2343094583142542,
+              "geometry_xyz_text": "10\ngsm_point_3\nC      -1.06036300    0.08377700    0.71086100\nC      -0.25165200    0.06389600   -0.28181000\nC       1.17173200   -0.40214200   -0.39695000\nH      -0.10079200    0.77454600    1.50876300\nH      -1.87465200   -0.67368400    0.81321600\nH      -1.93562100    0.58908200    0.25365900\nH      -0.70392300    0.39018200   -1.21602300\nH       1.34577900   -1.31660400    0.18669800\nH       1.87098500    0.34905800   -0.01591000\nH       1.44162300   -0.62186500   -1.43152800",
+              "source_point_index": 3,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 1.672185473871749,
+              "geometry_xyz_text": "10\ngsm_point_4\nC      -1.09529600   -0.00936000    0.73372400\nC      -0.24745600    0.06581600   -0.19290500\nC       1.18593000   -0.36737300   -0.36278100\nH      -0.01060400    0.71884300    1.51705400\nH      -2.09388000   -0.61302500    0.76116500\nH      -1.90367800    0.48886400    0.06690800\nH      -0.59280700    0.50459800   -1.12853800\nH       1.41710200   -1.24262700    0.25806400\nH       1.88046300    0.42379400   -0.06436800\nH       1.40375600   -0.63609100   -1.39816900",
+              "source_point_index": 4,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 2.1336899559136575,
+              "geometry_xyz_text": "10\ngsm_point_5\nC      -1.14250900   -0.06896800    0.76952900\nC      -0.23520200    0.12032000   -0.11867900\nC       1.19001200   -0.33071900   -0.33505300\nH       0.03730700    0.70409300    1.51461400\nH      -2.27401900   -0.51995500    0.78230400\nH      -1.82856300    0.27587100   -0.16815200\nH      -0.46117600    0.64929300   -1.04530000\nH       1.43000600   -1.20653700    0.28033800\nH       1.90230200    0.45389800   -0.06380900\nH       1.36877800   -0.60465700   -1.37658000",
+              "source_point_index": 5,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 2.611884215437205,
+              "geometry_xyz_text": "10\ngsm_point_6\nC      -1.17504200   -0.05277500    0.78346600\nC      -0.21366300    0.24170700   -0.06692500\nC       1.17724900   -0.29722900   -0.31235900\nH       0.01400200    0.77454100    1.53077900\nH      -2.34517900   -0.43090700    0.76442700\nH      -1.68235200   -0.03029400   -0.33032900\nH      -0.36699300    0.80999200   -0.98552600\nH       1.35775100   -1.21325900    0.26305000\nH       1.94293300    0.42412900   -0.01295900\nH       1.33211300   -0.53728800   -1.36601900",
+              "source_point_index": 6,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 3.1197634785588257,
+              "geometry_xyz_text": "10\ngsm_point_7\nC      -1.19274100    0.01259000    0.76299600\nC      -0.19220500    0.38863800   -0.03125900\nC       1.15054600   -0.25516100   -0.29442900\nH      -0.03993900    0.89901000    1.54954300\nH      -2.36985900   -0.31106400    0.64112900\nH      -1.45931000   -0.33467300   -0.37728400\nH      -0.29519200    0.96557100   -0.95164800\nH       1.24861300   -1.20687900    0.24146600\nH       1.97195200    0.38551300    0.03871400\nH       1.29237400   -0.46208100   -1.35692500",
+              "source_point_index": 7,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 3.6983371699498453,
+              "geometry_xyz_text": "10\ngsm_point_8\nC      -1.17186300    0.07537400    0.62115100\nC      -0.12914600    0.38136500   -0.14740500\nC       1.19813500   -0.34271300   -0.19176300\nH      -0.15059100    1.24856900    1.25221000\nH      -2.29790800   -0.26353300    0.29879000\nH      -1.11200100   -0.86244800   -0.14777500\nH      -0.15890900    0.71398900   -1.18630800\nH       1.22735900   -1.16652200    0.53132600\nH       2.02641700    0.32798400    0.05350200\nH       1.38783200   -0.76750100   -1.17939400",
+              "source_point_index": 8,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 4.2551019896085815,
+              "geometry_xyz_text": "10\ngsm_point_9\nC      -1.17399800    0.07188400    0.56249500\nC      -0.11772200    0.48445100   -0.12158200\nC       1.16021000   -0.32228200   -0.19617900\nH      -0.23180600    1.31317500    1.26924400\nH      -2.18741900   -0.19078100    0.01922400\nH      -0.95475200   -1.01493900    0.17365000\nH      -0.10320000    0.84232800   -1.15255400\nH       1.12303500   -1.19047000    0.47238500\nH       2.02641400    0.27494800    0.10197200\nH       1.33787600   -0.69490000   -1.20684800",
+              "source_point_index": 9,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 4.690093566021982,
+              "geometry_xyz_text": "10\ngsm_point_10\nC      -1.17926800    0.01331500    0.47432000\nC      -0.10153800    0.54369200   -0.08506600\nC       1.14759900   -0.30525400   -0.19502800\nH      -0.30729800    1.33035500    1.26215500\nH      -2.07136500   -0.14038700   -0.19519200\nH      -0.93298900   -1.08118600    0.46064500\nH      -0.05693300    0.94870300   -1.09797800\nH       1.07378700   -1.20426500    0.42772500\nH       2.03286300    0.24394900    0.13698200\nH       1.31777900   -0.63171500   -1.22281700",
+              "source_point_index": 10,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 4.987877976611757,
+              "geometry_xyz_text": "10\ngsm_point_11\nC      -1.19744300   -0.08212700    0.36739500\nC      -0.08357200    0.55826600   -0.04206800\nC       1.17182800   -0.28380400   -0.16889100\nH      -0.30612300    1.29624900    1.21851100\nH      -2.05087200   -0.05733700   -0.31420100\nH      -1.02739200   -1.13724800    0.57661000\nH      -0.04201400    1.04179500   -1.02098700\nH       1.11258300   -1.18078600    0.45731100\nH       2.05792200    0.27309500    0.14668900\nH       1.32742700   -0.61174200   -1.19856000",
+              "source_point_index": 11,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 5.325427740077494,
+              "geometry_xyz_text": "10\ngsm_point_12\nC      -1.22711700   -0.17343300    0.24413100\nC      -0.07049800    0.55276200   -0.00554800\nC       1.20892100   -0.26164600   -0.11831200\nH      -0.24188600    1.23725000    1.15137900\nH      -2.10864800    0.04217800   -0.34596500\nH      -1.13405800   -1.21208500    0.52527100\nH      -0.04693500    1.13199000   -0.93307300\nH       1.18876800   -1.12355800    0.55627600\nH       2.08499000    0.33689500    0.14281400\nH       1.34830800   -0.64028900   -1.13285800",
+              "source_point_index": 12,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 5.68604739889601,
+              "geometry_xyz_text": "10\ngsm_point_13\nC      -1.25430000   -0.24391700    0.10309900\nC      -0.06133700    0.54939000    0.02711400\nC       1.23920300   -0.24295600   -0.05662400\nH      -0.16376400    1.17747800    1.07743700\nH      -2.17573000    0.11709500   -0.33379400\nH      -1.20871600   -1.28328400    0.39563500\nH      -0.05429800    1.22463900   -0.83498600\nH       1.25382200   -1.05198800    0.67921300\nH       2.10479900    0.39437400    0.13665900\nH       1.36363400   -0.69159800   -1.04427300",
+              "source_point_index": 13,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            },
+            {
+              "cumulative_com_superposed_displacement_angstrom": 6.049844786769871,
+              "electronic_energy_hartree": -9.8990468444,
+              "geometry_match_displacement_angstrom": 9.617242219778612e-06,
+              "geometry_matched_ograd_invocation_id": "0000.01",
+              "geometry_xyz_text": "10\ngsm_point_14\nC      -1.27963600   -0.29591100   -0.02395100\nC      -0.05964000    0.54853400    0.04565400\nC       1.24723500   -0.24338500   -0.03050100\nH      -0.06499900    1.13262500    0.98115000\nH      -2.24411700    0.13697700   -0.25314700\nH      -1.25222900   -1.33645600    0.27313900\nH      -0.08602400    1.30260700   -0.74989500\nH       1.30745400   -0.97515400    0.77854200\nH       2.11405900    0.41502400    0.05023900\nH       1.32177500   -0.78560400   -0.97526400",
+              "max_gradient_hartree_per_bohr": 0.0065555496747372,
+              "rms_gradient_hartree_per_bohr": 0.0023566293030838855,
+              "source_point_index": 14,
+              "stringfile_relative_energy_kcal_mol": 0.0
+            }
+          ],
+          "selected_source_point_index": 8,
+          "source_stringfile": "calcs/TSs/TS0/gsm/stringfile.xyz0000"
+        }
+      },
+      "irc": {
+        "status": "available",
+        "value": {
+          "parser_version": "arc-irc-path-1",
+          "trajectories": [
+            {
+              "declared_direction": "forward",
+              "points": [
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.578211343,
+                  "geometry_xyz_text": "8\n\nO      -0.44471100    1.34271700    1.53511000\nC      -0.18817400    0.67725200    0.60191900\nC       0.07184000   -0.85695200    0.48040100\nO      -0.09572800   -1.08335800   -0.89466100\nO       0.58687400   -0.01971800   -1.52377900\nH       0.16954800    0.82435700   -0.71818900\nH       1.10745800   -1.00825800    0.81146700\nH      -0.62877600   -1.47971800    1.03880500",
+                  "max_gradient_hartree_per_bohr": 0.007275026,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.07236,
+                  "rms_gradient_hartree_per_bohr": 0.002502813,
+                  "source_point_index": 1
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.579182858,
+                  "geometry_xyz_text": "8\n\nO      -0.44468500    1.34276100    1.53530100\nC      -0.18872700    0.67717400    0.60324300\nC       0.07190500   -0.85679300    0.48011200\nO      -0.09605500   -1.08406100   -0.89433100\nO       0.58672800   -0.01813500   -1.52320400\nH       0.18274800    0.80767900   -0.74847200\nH       1.10756000   -1.00811400    0.81180000\nH      -0.62918700   -1.47880000    1.03905600",
+                  "max_gradient_hartree_per_bohr": 0.014049143,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.1447,
+                  "rms_gradient_hartree_per_bohr": 0.004767302,
+                  "source_point_index": 2
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.580704037,
+                  "geometry_xyz_text": "8\n\nO      -0.44466900    1.34282300    1.53555400\nC      -0.18931500    0.67707500    0.60463500\nC       0.07197500   -0.85656800    0.47986000\nO      -0.09637600   -1.08476800   -0.89403300\nO       0.58661800   -0.01661800   -1.52271600\nH       0.19585000    0.79138700   -0.77904200\nH       1.10763700   -1.00812100    0.81210200\nH      -0.62961800   -1.47785000    1.03926200",
+                  "max_gradient_hartree_per_bohr": 0.019565967,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.21703,
+                  "rms_gradient_hartree_per_bohr": 0.006539599,
+                  "source_point_index": 3
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.582611096,
+                  "geometry_xyz_text": "8\n\nO      -0.44466400    1.34290900    1.53588600\nC      -0.18995500    0.67694600    0.60612100\nC       0.07205500   -0.85626300    0.47964400\nO      -0.09670100   -1.08549800   -0.89376000\nO       0.58656900   -0.01517200   -1.52235200\nH       0.20878400    0.77570900   -0.80999100\nH       1.10768600   -1.00828100    0.81237900\nH      -0.63008000   -1.47684100    1.03942100",
+                  "max_gradient_hartree_per_bohr": 0.023049304,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.28937,
+                  "rms_gradient_hartree_per_bohr": 0.007607253,
+                  "source_point_index": 4
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.584674183,
+                  "geometry_xyz_text": "8\n\nO      -0.44467500    1.34303300    1.53633300\nC      -0.19067400    0.67677100    0.60776200\nC       0.07214800   -0.85585100    0.47946000\nO      -0.09704600   -1.08628000   -0.89350100\nO       0.58663100   -0.01382200   -1.52218900\nH       0.22141900    0.76113200   -0.84150400\nH       1.10769600   -1.00861500    0.81263900\nH      -0.63059300   -1.47572800    1.03952800",
+                  "max_gradient_hartree_per_bohr": 0.023846415,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.3617,
+                  "rms_gradient_hartree_per_bohr": 0.007846706,
+                  "source_point_index": 5
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.58662293,
+                  "geometry_xyz_text": "8\n\nO      -0.44470800    1.34321900    1.53697000\nC      -0.19153400    0.67651600    0.60967500\nC       0.07226100   -0.85527200    0.47930800\nO      -0.09743700   -1.08716100   -0.89324300\nO       0.58690100   -0.01263600   -1.52238500\nH       0.23341000    0.74872700   -0.87386300\nH       1.10765200   -1.00917600    0.81289000\nH      -0.63119600   -1.47441900    1.03957200",
+                  "max_gradient_hartree_per_bohr": 0.021606863,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.43398,
+                  "rms_gradient_hartree_per_bohr": 0.007391103,
+                  "source_point_index": 6
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.588220001,
+                  "geometry_xyz_text": "8\n\nO      -0.44478100    1.34352300    1.53796000\nC      -0.19265200    0.67610900    0.61206900\nC       0.07240800   -0.85439800    0.47919800\nO      -0.09791700   -1.08820200   -0.89296900\nO       0.58758900   -0.01179900   -1.52328100\nH       0.24371300    0.74081000   -0.90710800\nH       1.10751600   -1.01007200    0.81314400\nH      -0.63195300   -1.47274300    1.03953200",
+                  "max_gradient_hartree_per_bohr": 0.01675221,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.50606,
+                  "rms_gradient_hartree_per_bohr": 0.006874425,
+                  "source_point_index": 7
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.589417016,
+                  "geometry_xyz_text": "8\n\nO      -0.44492100    1.34402800    1.53955100\nC      -0.19415400    0.67544200    0.61510300\nC       0.07259400   -0.85306000    0.47916400\nO      -0.09851400   -1.08938000   -0.89267800\nO       0.58900500   -0.01167300   -1.52538500\nH       0.24982300    0.74058700   -0.93942400\nH       1.10724000   -1.01139000    0.81340300\nH      -0.63290900   -1.47052600    1.03939200",
+                  "max_gradient_hartree_per_bohr": 0.017132261,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.57777,
+                  "rms_gradient_hartree_per_bohr": 0.006900732,
+                  "source_point_index": 8
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.590377879,
+                  "geometry_xyz_text": "8\n\nO      -0.44512300    1.34472900    1.54176600\nC      -0.19597500    0.67452600    0.61849300\nC       0.07279400   -0.85128000    0.47923400\nO      -0.09915800   -1.09044500   -0.89241200\nO       0.59113600   -0.01238000   -1.52867000\nH       0.25017300    0.74619900   -0.96789900\nH       1.10684300   -1.01290700    0.81365300\nH      -0.63394500   -1.46791800    1.03918900",
+                  "max_gradient_hartree_per_bohr": 0.019141403,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.64978,
+                  "rms_gradient_hartree_per_bohr": 0.006920222,
+                  "source_point_index": 9
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.591226065,
+                  "geometry_xyz_text": "8\n\nO      -0.44534400    1.34552200    1.54439700\nC      -0.19798800    0.67351300    0.62191500\nC       0.07297900   -0.84923100    0.47939100\nO      -0.09976800   -1.09121500   -0.89221700\nO       0.59366100   -0.01363300   -1.53259900\nH       0.24646200    0.75205600   -0.99305300\nH       1.10639800   -1.01428100    0.81390600\nH      -0.63492200   -1.46520200    1.03896300",
+                  "max_gradient_hartree_per_bohr": 0.019260056,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.72201,
+                  "rms_gradient_hartree_per_bohr": 0.006746732,
+                  "source_point_index": 10
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.592004865,
+                  "geometry_xyz_text": "8\n\nO      -0.44554800    1.34632100    1.54728700\nC      -0.20015300    0.67252900    0.62527900\nC       0.07314700   -0.84702400    0.47960200\nO      -0.10031000   -1.09169000   -0.89210600\nO       0.59636700   -0.01523400   -1.53682100\nH       0.24045100    0.75613800   -1.01623500\nH       1.10595300   -1.01533100    0.81417700\nH      -0.63578700   -1.46252700    1.03870500",
+                  "max_gradient_hartree_per_bohr": 0.018643033,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.7943,
+                  "rms_gradient_hartree_per_bohr": 0.006491338,
+                  "source_point_index": 11
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.592731721,
+                  "geometry_xyz_text": "8\n\nO      -0.44571300    1.34707600    1.55034600\nC      -0.20245900    0.67165000    0.62856300\nC       0.07330100   -0.84472200    0.47983500\nO      -0.10077600   -1.09191800   -0.89208000\nO       0.59914500   -0.01710300   -1.54115900\nH       0.23316800    0.75858000   -1.03820100\nH       1.10553000   -1.01597700    0.81446700\nH      -0.63652200   -1.45997200    1.03839000",
+                  "max_gradient_hartree_per_bohr": 0.017711935,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.86662,
+                  "rms_gradient_hartree_per_bohr": 0.00620592,
+                  "source_point_index": 12
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.593415521,
+                  "geometry_xyz_text": "8\n\nO      -0.44582900    1.34776500    1.55353300\nC      -0.20490200    0.67091700    0.63175200\nC       0.07344100   -0.84236000    0.48006200\nO      -0.10116600   -1.09195500   -0.89212900\nO       0.60194000   -0.01919400   -1.54551700\nH       0.22524100    0.75985100   -1.05943300\nH       1.10514400   -1.01619400    0.81476500\nH      -0.63711400   -1.45757600    1.03800300",
+                  "max_gradient_hartree_per_bohr": 0.016651765,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.93895,
+                  "rms_gradient_hartree_per_bohr": 0.005913688,
+                  "source_point_index": 13
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.594061452,
+                  "geometry_xyz_text": "8\n\nO      -0.44589000    1.34837400    1.55683000\nC      -0.20748100    0.67035100    0.63483200\nC       0.07357000   -0.83995800    0.48026300\nO      -0.10148300   -1.09184300   -0.89223900\nO       0.60472000   -0.02147500   -1.54984200\nH       0.21706300    0.76031900   -1.08025200\nH       1.10480100   -1.01598000    0.81505300\nH      -0.63755300   -1.45535700    1.03753600",
+                  "max_gradient_hartree_per_bohr": 0.015561983,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.01129,
+                  "rms_gradient_hartree_per_bohr": 0.005627989,
+                  "source_point_index": 14
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.594673208,
+                  "geometry_xyz_text": "8\n\nO      -0.44589200    1.34889800    1.56022600\nC      -0.21019500    0.66996200    0.63779100\nC       0.07368800   -0.83752500    0.48042300\nO      -0.10173100   -1.09161700   -0.89239900\nO       0.60747000   -0.02392100   -1.55410200\nH       0.20887400    0.76021500   -1.10085300\nH       1.10450800   -1.01534600    0.81531200\nH      -0.63783200   -1.45331900    1.03699200",
+                  "max_gradient_hartree_per_bohr": 0.014497183,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.08362,
+                  "rms_gradient_hartree_per_bohr": 0.005356373,
+                  "source_point_index": 15
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.595253835,
+                  "geometry_xyz_text": "8\n\nO      -0.44583300    1.34933200    1.56371700\nC      -0.21304300    0.66975700    0.64061800\nC       0.07379400   -0.83506600    0.48053100\nO      -0.10191600   -1.09130300   -0.89259700\nO       0.61018400   -0.02650900   -1.55828200\nH       0.20081100    0.75967800   -1.12133900\nH       1.10426700   -1.01430600    0.81552100\nH      -0.63794500   -1.45145700    1.03637900",
+                  "max_gradient_hartree_per_bohr": 0.013485339,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.15596,
+                  "rms_gradient_hartree_per_bohr": 0.005102465,
+                  "source_point_index": 16
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.595806016,
+                  "geometry_xyz_text": "8\n\nO      -0.44571300    1.34967500    1.56729400\nC      -0.21602100    0.66973800    0.64330700\nC       0.07388800   -0.83258500    0.48057900\nO      -0.10204600   -1.09092300   -0.89282000\nO       0.61286000   -0.02922100   -1.56236900\nH       0.19295000    0.75878500   -1.14175400\nH       1.10408300   -1.01287500    0.81566400\nH      -0.63789100   -1.44975900    1.03571100",
+                  "max_gradient_hartree_per_bohr": 0.012538831,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.2283,
+                  "rms_gradient_hartree_per_bohr": 0.004867385,
+                  "source_point_index": 17
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.596332156,
+                  "geometry_xyz_text": "8\n\nO      -0.44552900    1.34992300    1.57095300\nC      -0.21912600    0.66990600    0.64585100\nC       0.07397100   -0.83008000    0.48056200\nO      -0.10212600   -1.09049400   -0.89306100\nO       0.61549800   -0.03203800   -1.56635900\nH       0.18532900    0.75757600   -1.16211000\nH       1.10395500   -1.01106900    0.81572900\nH      -0.63766900   -1.44820600    1.03500100",
+                  "max_gradient_hartree_per_bohr": 0.011661197,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.30064,
+                  "rms_gradient_hartree_per_bohr": 0.004650712,
+                  "source_point_index": 18
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.596834395,
+                  "geometry_xyz_text": "8\n\nO      -0.44528100    1.35007600    1.57468600\nC      -0.22235400    0.67025600    0.64824800\nC       0.07404100   -0.82755200    0.48047600\nO      -0.10216400   -1.09003200   -0.89331300\nO       0.61810100   -0.03494400   -1.57024800\nH       0.17796600    0.75607600   -1.18239400\nH       1.10388300   -1.00890300    0.81570500\nH      -0.63728300   -1.44677800    1.03426700",
+                  "max_gradient_hartree_per_bohr": 0.010851094,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.37299,
+                  "rms_gradient_hartree_per_bohr": 0.00445112,
+                  "source_point_index": 19
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.597314609,
+                  "geometry_xyz_text": "8\n\nO      -0.44496900    1.35013400    1.57848400\nC      -0.22570100    0.67078100    0.65049700\nC       0.07410000   -0.82499700    0.48032000\nO      -0.10216600   -1.08955000   -0.89356800\nO       0.62067300   -0.03792500   -1.57403500\nH       0.17086700    0.75429700   -1.20258700\nH       1.10386800   -1.00639300    0.81558700\nH      -0.63673700   -1.44545000    1.03352300",
+                  "max_gradient_hartree_per_bohr": 0.01038172,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.44533,
+                  "rms_gradient_hartree_per_bohr": 0.004266829,
+                  "source_point_index": 20
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.597774432,
+                  "geometry_xyz_text": "8\n\nO      -0.44459300    1.35009800    1.58234100\nC      -0.22916400    0.67147400    0.65260100\nC       0.07414800   -0.82241200    0.48009400\nO      -0.10213900   -1.08906000   -0.89382400\nO       0.62321500   -0.04096700   -1.57771900\nH       0.16403700    0.75225000   -1.22266300\nH       1.10390600   -1.00355200    0.81537100\nH      -0.63603800   -1.44419900    1.03278500",
+                  "max_gradient_hartree_per_bohr": 0.010087604,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.51767,
+                  "rms_gradient_hartree_per_bohr": 0.004095961,
+                  "source_point_index": 21
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.598215293,
+                  "geometry_xyz_text": "8\n\nO      -0.44415300    1.34996700    1.58624800\nC      -0.23273700    0.67232500    0.65456400\nC       0.07418500   -0.81979300    0.47979800\nO      -0.10208900   -1.08857000   -0.89407800\nO       0.62573200   -0.04405800   -1.58130200\nH       0.15747600    0.74994400   -1.24259700\nH       1.10399600   -1.00039500    0.81505700\nH      -0.63519200   -1.44300200    1.03206500",
+                  "max_gradient_hartree_per_bohr": 0.009791425,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.59001,
+                  "rms_gradient_hartree_per_bohr": 0.003936737,
+                  "source_point_index": 22
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.598638447,
+                  "geometry_xyz_text": "8\n\nO      -0.44364900    1.34974500    1.59019700\nC      -0.23641500    0.67332100    0.65639300\nC       0.07421200   -0.81713600    0.47943400\nO      -0.10202100   -1.08808900   -0.89432700\nO       0.62822600   -0.04718700   -1.58478600\nH       0.15118300    0.74738800   -1.26236800\nH       1.10413400   -0.99693600    0.81464600\nH      -0.63420700   -1.44183800    1.03137300",
+                  "max_gradient_hartree_per_bohr": 0.009493139,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.66235,
+                  "rms_gradient_hartree_per_bohr": 0.003787585,
+                  "source_point_index": 23
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.599045019,
+                  "geometry_xyz_text": "8\n\nO      -0.44308300    1.34943300    1.59418000\nC      -0.24019500    0.67445100    0.65809400\nC       0.07422700   -0.81443900    0.47900300\nO      -0.10193700   -1.08762200   -0.89457000\nO       0.63069800   -0.05034600   -1.58817200\nH       0.14515600    0.74459200   -1.28196000\nH       1.10431700   -0.99318700    0.81413800\nH      -0.63309100   -1.44068800    1.03071900",
+                  "max_gradient_hartree_per_bohr": 0.009193277,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.7347,
+                  "rms_gradient_hartree_per_bohr": 0.003647158,
+                  "source_point_index": 24
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.599436021,
+                  "geometry_xyz_text": "8\n\nO      -0.44245500    1.34903400    1.59818900\nC      -0.24407200    0.67570200    0.65967800\nC       0.07423200   -0.81169900    0.47850900\nO      -0.10184200   -1.08717500   -0.89480700\nO       0.63315100   -0.05352400   -1.59146200\nH       0.13938800    0.74156200   -1.30136500\nH       1.10454000   -0.98916500    0.81353600\nH      -0.63185100   -1.43953700    1.03010900",
+                  "max_gradient_hartree_per_bohr": 0.008892526,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.80704,
+                  "rms_gradient_hartree_per_bohr": 0.003514316,
+                  "source_point_index": 25
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.599812372,
+                  "geometry_xyz_text": "8\n\nO      -0.44176700    1.34855300    1.60221600\nC      -0.24803900    0.67705900    0.66115200\nC       0.07422700   -0.80891400    0.47795300\nO      -0.10173800   -1.08674900   -0.89503600\nO       0.63558500   -0.05671400   -1.59465900\nH       0.13386900    0.73830500   -1.32058200\nH       1.10479900   -0.98488500    0.81284500\nH      -0.63049400   -1.43837500    1.02954700",
+                  "max_gradient_hartree_per_bohr": 0.008591767,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.87938,
+                  "rms_gradient_hartree_per_bohr": 0.003388105,
+                  "source_point_index": 26
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.600174899,
+                  "geometry_xyz_text": "8\n\nO      -0.44102000    1.34799400    1.60625400\nC      -0.25209200    0.67851100    0.66252700\nC       0.07421000   -0.80608400    0.47733900\nO      -0.10162600   -1.08634700   -0.89525900\nO       0.63800200   -0.05991000   -1.59776500\nH       0.12858800    0.73482600   -1.33961300\nH       1.10509000   -0.98036100    0.81206700\nH      -0.62903000   -1.43719200    1.02903500",
+                  "max_gradient_hartree_per_bohr": 0.008291868,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.95173,
+                  "rms_gradient_hartree_per_bohr": 0.003267697,
+                  "source_point_index": 27
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.600524339,
+                  "geometry_xyz_text": "8\n\nO      -0.44021600    1.34736000    1.61029500\nC      -0.25622500    0.68004400    0.66381300\nC       0.07418300   -0.80320900    0.47667100\nO      -0.10150900   -1.08596800   -0.89547400\nO       0.64040200   -0.06310500   -1.60078400\nH       0.12352900    0.73112800   -1.35846700\nH       1.10540800   -0.97561200    0.81120800\nH      -0.62746500   -1.43598400    1.02857500",
+                  "max_gradient_hartree_per_bohr": 0.007993721,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.02407,
+                  "rms_gradient_hartree_per_bohr": 0.003152375,
+                  "source_point_index": 28
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.600861335,
+                  "geometry_xyz_text": "8\n\nO      -0.43935700    1.34665700    1.61433300\nC      -0.26043400    0.68164800    0.66502100\nC       0.07414500   -0.80029100    0.47595300\nO      -0.10138600   -1.08561100   -0.89568100\nO       0.64278600   -0.06629400   -1.60371900\nH       0.11867900    0.72721500   -1.37715500\nH       1.10575000   -0.97065300    0.81027300\nH      -0.62580800   -1.43474600    1.02816400",
+                  "max_gradient_hartree_per_bohr": 0.00769822,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.09642,
+                  "rms_gradient_hartree_per_bohr": 0.003041544,
+                  "source_point_index": 29
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.601186443,
+                  "geometry_xyz_text": "8\n\nO      -0.43844500    1.34589100    1.61836300\nC      -0.26471300    0.68330900    0.66616000\nC       0.07409600   -0.79733200    0.47518900\nO      -0.10126000   -1.08527600   -0.89588200\nO       0.64515500   -0.06947400   -1.60657600\nH       0.11402700    0.72309000   -1.39568800\nH       1.10611200   -0.96550000    0.80926500\nH      -0.62406400   -1.43347800    1.02780100",
+                  "max_gradient_hartree_per_bohr": 0.007406106,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.16876,
+                  "rms_gradient_hartree_per_bohr": 0.00293467,
+                  "source_point_index": 30
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.601500128,
+                  "geometry_xyz_text": "8\n\nO      -0.43748200    1.34506500    1.62238000\nC      -0.26905900    0.68501900    0.66724100\nC       0.07403600   -0.79433400    0.47438300\nO      -0.10113000   -1.08495900   -0.89607500\nO       0.64751000   -0.07264200   -1.60936000\nH       0.10956400    0.71875600   -1.41407600\nH       1.10649000   -0.96017000    0.80819100\nH      -0.62224000   -1.43218000    1.02748400",
+                  "max_gradient_hartree_per_bohr": 0.007117899,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.24111,
+                  "rms_gradient_hartree_per_bohr": 0.002831243,
+                  "source_point_index": 31
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.601802777,
+                  "geometry_xyz_text": "8\n\nO      -0.43647000    1.34418600    1.62638000\nC      -0.27346700    0.68676800    0.66827500\nC       0.07396600   -0.79130000    0.47353900\nO      -0.10099700   -1.08465900   -0.89626200\nO       0.64985000   -0.07579600   -1.61207600\nH       0.10528500    0.71421900   -1.43232600\nH       1.10688100   -0.95467600    0.80705600\nH      -0.62034200   -1.43085400    1.02721000",
+                  "max_gradient_hartree_per_bohr": 0.006833947,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.31346,
+                  "rms_gradient_hartree_per_bohr": 0.002730791,
+                  "source_point_index": 32
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.602094716,
+                  "geometry_xyz_text": "8\n\nO      -0.43541200    1.34325900    1.63036100\nC      -0.27793400    0.68854800    0.66926900\nC       0.07388600   -0.78823300    0.47266000\nO      -0.10086200   -1.08437200   -0.89644200\nO       0.65217800   -0.07893400   -1.61473200\nH       0.10118400    0.70948200   -1.45044600\nH       1.10728200   -0.94903300    0.80586300\nH      -0.61837400   -1.42950400    1.02697300",
+                  "max_gradient_hartree_per_bohr": 0.006554554,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.3858,
+                  "rms_gradient_hartree_per_bohr": 0.002632918,
+                  "source_point_index": 33
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.602376233,
+                  "geometry_xyz_text": "8\n\nO      -0.43431000    1.34228900    1.63431800\nC      -0.28245800    0.69035000    0.67023500\nC       0.07379700   -0.78513600    0.47175100\nO      -0.10072400   -1.08409600   -0.89661600\nO       0.65449200   -0.08205500   -1.61733200\nH       0.09725700    0.70455000   -1.46844600\nH       1.10769200   -0.94325300    0.80461600\nH      -0.61634300   -1.42813200    1.02677200",
+                  "max_gradient_hartree_per_bohr": 0.006279985,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.45815,
+                  "rms_gradient_hartree_per_bohr": 0.002537294,
+                  "source_point_index": 34
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.602647578,
+                  "geometry_xyz_text": "8\n\nO      -0.43316600    1.34128100    1.63825100\nC      -0.28703400    0.69216900    0.67117900\nC       0.07369800   -0.78201200    0.47081400\nO      -0.10058500   -1.08382800   -0.89678400\nO       0.65679500   -0.08516000   -1.61988300\nH       0.09350000    0.69942500   -1.48633400\nH       1.10810700   -0.93734800    0.80332000\nH      -0.61425000   -1.42674200    1.02660200",
+                  "max_gradient_hartree_per_bohr": 0.006010381,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.5305,
+                  "rms_gradient_hartree_per_bohr": 0.002443615,
+                  "source_point_index": 35
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.602908973,
+                  "geometry_xyz_text": "8\n\nO      -0.43198200    1.34023900    1.64215700\nC      -0.29166100    0.69399700    0.67211000\nC       0.07359000   -0.77886400    0.46985200\nO      -0.10044500   -1.08356500   -0.89694600\nO       0.65908800   -0.08824700   -1.62239000\nH       0.08990700    0.69411000   -1.50412100\nH       1.10852700   -0.93132800    0.80197800\nH      -0.61209900   -1.42533900    1.02646000",
+                  "max_gradient_hartree_per_bohr": 0.005745756,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.60285,
+                  "rms_gradient_hartree_per_bohr": 0.002351604,
+                  "source_point_index": 36
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.603160602,
+                  "geometry_xyz_text": "8\n\nO      -0.43076100    1.33916900    1.64603500\nC      -0.29633600    0.69582900    0.67303500\nC       0.07347500   -0.77569500    0.46886800\nO      -0.10030400   -1.08330600   -0.89710300\nO       0.66137000   -0.09131700   -1.62485700\nH       0.08647400    0.68860500   -1.52181500\nH       1.10895000   -0.92520500    0.80059100\nH      -0.60989400   -1.42392500    1.02634200",
+                  "max_gradient_hartree_per_bohr": 0.005486061,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.67519,
+                  "rms_gradient_hartree_per_bohr": 0.002261024,
+                  "source_point_index": 37
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.603402641,
+                  "geometry_xyz_text": "8\n\nO      -0.42950500    1.33807500    1.64988300\nC      -0.30105600    0.69766100    0.67396100\nC       0.07335200   -0.77250800    0.46786500\nO      -0.10016200   -1.08304600   -0.89725500\nO       0.66364300   -0.09436900   -1.62728900\nH       0.08319800    0.68291100   -1.53942700\nH       1.10937400   -0.91898800    0.79916100\nH      -0.60763500   -1.42250600    1.02624400",
+                  "max_gradient_hartree_per_bohr": 0.005231384,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.74754,
+                  "rms_gradient_hartree_per_bohr": 0.002171749,
+                  "source_point_index": 38
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.603635266,
+                  "geometry_xyz_text": "8\n\nO      -0.42821700    1.33696100    1.65369900\nC      -0.30581700    0.69948600    0.67489500\nC       0.07322200   -0.76930600    0.46684400\nO      -0.10002100   -1.08278500   -0.89740200\nO       0.66590800   -0.09740400   -1.62968900\nH       0.08007500    0.67702600   -1.55697300\nH       1.10980000   -0.91268500    0.79769200\nH      -0.60532600   -1.42108500    1.02616600",
+                  "max_gradient_hartree_per_bohr": 0.004982002,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.81989,
+                  "rms_gradient_hartree_per_bohr": 0.002083764,
+                  "source_point_index": 39
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.603858656,
+                  "geometry_xyz_text": "8\n\nO      -0.42689900    1.33583100    1.65748200\nC      -0.31061800    0.70130100    0.67584200\nC       0.07308500   -0.76609200    0.46580800\nO      -0.09988100   -1.08251900   -0.89754600\nO       0.66816600   -0.10042200   -1.63206100\nH       0.07710100    0.67095000   -1.57447000\nH       1.11022700   -0.90630600    0.79618300\nH      -0.60296700   -1.41966600    1.02610300",
+                  "max_gradient_hartree_per_bohr": 0.00473812,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.89224,
+                  "rms_gradient_hartree_per_bohr": 0.001997068,
+                  "source_point_index": 40
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.604072972,
+                  "geometry_xyz_text": "8\n\nO      -0.42555500    1.33469100    1.66123200\nC      -0.31545400    0.70310100    0.67680800\nC       0.07294400   -0.76286800    0.46476000\nO      -0.09974200   -1.08224700   -0.89768600\nO       0.67041600   -0.10342300   -1.63440700\nH       0.07427200    0.66467900   -1.59193600\nH       1.11065400   -0.89986000    0.79463700\nH      -0.60056000   -1.41825400    1.02605200",
+                  "max_gradient_hartree_per_bohr": 0.004499729,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.96458,
+                  "rms_gradient_hartree_per_bohr": 0.00191161,
+                  "source_point_index": 41
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.604278349,
+                  "geometry_xyz_text": "8\n\nO      -0.42418700    1.33354300    1.66494600\nC      -0.32032200    0.70488300    0.67779700\nC       0.07279900   -0.75963800    0.46370100\nO      -0.09960600   -1.08196500   -0.89782400\nO       0.67266200   -0.10640700   -1.63673000\nH       0.07159000    0.65821000   -1.60937800\nH       1.11108200   -0.89335500    0.79305300\nH      -0.59810600   -1.41685100    1.02601300",
+                  "max_gradient_hartree_per_bohr": 0.004266832,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.03693,
+                  "rms_gradient_hartree_per_bohr": 0.001827362,
+                  "source_point_index": 42
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.604474902,
+                  "geometry_xyz_text": "8\n\nO      -0.42279800    1.33239200    1.66862500\nC      -0.32522100    0.70664300    0.67881600\nC       0.07265000   -0.75640300    0.46263300\nO      -0.09947400   -1.08167200   -0.89795900\nO       0.67490300   -0.10937800   -1.63903400\nH       0.06905500    0.65154200   -1.62680300\nH       1.11151000   -0.88679700    0.79143200\nH      -0.59560400   -1.41546100    1.02598300",
+                  "max_gradient_hartree_per_bohr": 0.004092146,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.10928,
+                  "rms_gradient_hartree_per_bohr": 0.00174436,
+                  "source_point_index": 43
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.604662736,
+                  "geometry_xyz_text": "8\n\nO      -0.42139200    1.33124100    1.67226800\nC      -0.33014700    0.70837900    0.67986800\nC       0.07250000   -0.75316400    0.46155700\nO      -0.09934800   -1.08136500   -0.89809200\nO       0.67714100   -0.11233600   -1.64132300\nH       0.06667300    0.64467400   -1.64421000\nH       1.11194000   -0.88019300    0.78977500\nH      -0.59305300   -1.41408600    1.02596100",
+                  "max_gradient_hartree_per_bohr": 0.003928255,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.18163,
+                  "rms_gradient_hartree_per_bohr": 0.001662652,
+                  "source_point_index": 44
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.604841953,
+                  "geometry_xyz_text": "8\n\nO      -0.41997200    1.33009300    1.67587500\nC      -0.33509800    0.71008800    0.68095800\nC       0.07234900   -0.74992400    0.46047400\nO      -0.09922900   -1.08104100   -0.89822400\nO       0.67937800   -0.11528500   -1.64360100\nH       0.06444900    0.63760700   -1.66159700\nH       1.11237300   -0.87354800    0.78807900\nH      -0.59045400   -1.41272900    1.02594400",
+                  "max_gradient_hartree_per_bohr": 0.003762482,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.25397,
+                  "rms_gradient_hartree_per_bohr": 0.001582265,
+                  "source_point_index": 45
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.605012644,
+                  "geometry_xyz_text": "8\n\nO      -0.41854000    1.32895200    1.67944800\nC      -0.34007000    0.71176800    0.68209000\nC       0.07220100   -0.74668300    0.45938600\nO      -0.09911900   -1.08069700   -0.89835500\nO       0.68161300   -0.11822600   -1.64587200\nH       0.06239000    0.63034200   -1.67895700\nH       1.11281100   -0.86686600    0.78634400\nH      -0.58780400   -1.41139100    1.02593300",
+                  "max_gradient_hartree_per_bohr": 0.003594896,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.32632,
+                  "rms_gradient_hartree_per_bohr": 0.00150316,
+                  "source_point_index": 46
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.605174888,
+                  "geometry_xyz_text": "8\n\nO      -0.41710100    1.32782100    1.68298700\nC      -0.34506300    0.71341700    0.68326900\nC       0.07205800   -0.74344300    0.45829200\nO      -0.09902100   -1.08033300   -0.89848600\nO       0.68385000   -0.12116400   -1.64814000\nH       0.06050300    0.62288200   -1.69627800\nH       1.11325600   -0.86015100    0.78456600\nH      -0.58510100   -1.41007300    1.02592600",
+                  "max_gradient_hartree_per_bohr": 0.003425568,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.39867,
+                  "rms_gradient_hartree_per_bohr": 0.001425235,
+                  "source_point_index": 47
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.605328767,
+                  "geometry_xyz_text": "8\n\nO      -0.41565900    1.32670100    1.68649200\nC      -0.35007100    0.71503300    0.68449700\nC       0.07192100   -0.74020300    0.45719400\nO      -0.09893600   -1.07994400   -0.89861700\nO       0.68608900   -0.12410100   -1.65040800\nH       0.05879300    0.61523200   -1.71355300\nH       1.11371200   -0.85340700    0.78274400\nH      -0.58233900   -1.40877900    1.02592400",
+                  "max_gradient_hartree_per_bohr": 0.00325474,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.47102,
+                  "rms_gradient_hartree_per_bohr": 0.001348446,
+                  "source_point_index": 48
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.605474387,
+                  "geometry_xyz_text": "8\n\nO      -0.41421800    1.32559700    1.68996500\nC      -0.35509300    0.71661600    0.68578000\nC       0.07179500   -0.73696600    0.45609100\nO      -0.09886900   -1.07952900   -0.89875000\nO       0.68833000   -0.12704000   -1.65268100\nH       0.05726500    0.60739300   -1.73077900\nH       1.11418200   -0.84663700    0.78087400\nH      -0.57951700   -1.40750800    1.02592600",
+                  "max_gradient_hartree_per_bohr": 0.003082706,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.54336,
+                  "rms_gradient_hartree_per_bohr": 0.001272822,
+                  "source_point_index": 49
+                },
+                {
+                  "direction": "forward",
+                  "electronic_energy_hartree": -303.605611874,
+                  "geometry_xyz_text": "8\n\nO      -0.41278200    1.32451000    1.69340600\nC      -0.36012200    0.71816100    0.68711800\nC       0.07168200   -0.73373300    0.45498600\nO      -0.09882100   -1.07908500   -0.89888400\nO       0.69057600   -0.12998300   -1.65496000\nH       0.05592200    0.59936300   -1.74796200\nH       1.11467000   -0.83984600    0.77895100\nH      -0.57662800   -1.40626400    1.02593400",
+                  "max_gradient_hartree_per_bohr": 0.002909814,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.61571,
+                  "rms_gradient_hartree_per_bohr": 0.001198402,
+                  "source_point_index": 50
+                }
+              ],
+              "source_log": "calcs/TSs/TS0/irc/irc_f/output.out"
+            },
+            {
+              "declared_direction": "reverse",
+              "points": [
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.578203085,
+                  "geometry_xyz_text": "8\n\nO      -0.44479500    1.34266700    1.53488300\nC      -0.18713700    0.67735400    0.59941600\nC       0.07173500   -0.85708500    0.48111000\nO      -0.09502600   -1.08190700   -0.89545300\nO       0.58721300   -0.02309100   -1.52508900\nH       0.14272200    0.85854800   -0.65844600\nH       1.10721700   -1.00900500    0.81067200\nH      -0.62800600   -1.48148800    1.03817100",
+                  "max_gradient_hartree_per_bohr": 0.006817523,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.07236,
+                  "rms_gradient_hartree_per_bohr": 0.002502417,
+                  "source_point_index": 1
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.579127649,
+                  "geometry_xyz_text": "8\n\nO      -0.44485400    1.34265600    1.53484600\nC      -0.18664800    0.67738000    0.59824300\nC       0.07169400   -0.85705600    0.48154000\nO      -0.09463600   -1.08113300   -0.89593200\nO       0.58739300   -0.02490800   -1.52580800\nH       0.12906100    0.87608100   -0.62912100\nH       1.10708200   -1.00963300    0.81019300\nH      -0.62765600   -1.48234500    1.03778100",
+                  "max_gradient_hartree_per_bohr": 0.012977429,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.14469,
+                  "rms_gradient_hartree_per_bohr": 0.004781668,
+                  "source_point_index": 2
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.580546881,
+                  "geometry_xyz_text": "8\n\nO      -0.44492700    1.34265200    1.53486900\nC      -0.18618500    0.67739400    0.59714800\nC       0.07165600   -0.85695300    0.48202600\nO      -0.09420300   -1.08030400   -0.89648400\nO       0.58757000   -0.02684700   -1.52657600\nH       0.11527900    0.89405600   -0.60029900\nH       1.10694000   -1.01047100    0.80965500\nH      -0.62732200   -1.48319400    1.03734600",
+                  "max_gradient_hartree_per_bohr": 0.0189125,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.21703,
+                  "rms_gradient_hartree_per_bohr": 0.006696826,
+                  "source_point_index": 3
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.582320409,
+                  "geometry_xyz_text": "8\n\nO      -0.44501700    1.34265400    1.53496100\nC      -0.18575400    0.67739200    0.59616000\nC       0.07162300   -0.85676300    0.48257600\nO      -0.09371700   -1.07940300   -0.89712400\nO       0.58774400   -0.02894300   -1.52740000\nH       0.10132300    0.91266900   -0.57223000\nH       1.10679000   -1.01154600    0.80904600\nH      -0.62701300   -1.48402800    1.03686000",
+                  "max_gradient_hartree_per_bohr": 0.024097944,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.28937,
+                  "rms_gradient_hartree_per_bohr": 0.008168065,
+                  "source_point_index": 4
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.584294957,
+                  "geometry_xyz_text": "8\n\nO      -0.44512700    1.34265800    1.53514400\nC      -0.18536300    0.67737200    0.59532300\nC       0.07159600   -0.85646400    0.48319700\nO      -0.09316300   -1.07841000   -0.89787200\nO       0.58791400   -0.03124100   -1.52829300\nH       0.08715400    0.93215600   -0.54527000\nH       1.10663500   -1.01290200    0.80835100\nH      -0.62674100   -1.48483400    1.03631500",
+                  "max_gradient_hartree_per_bohr": 0.028362384,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.3617,
+                  "rms_gradient_hartree_per_bohr": 0.009191522,
+                  "source_point_index": 5
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.586327452,
+                  "geometry_xyz_text": "8\n\nO      -0.44526500    1.34266200    1.53544500\nC      -0.18502700    0.67733300    0.59468800\nC       0.07157600   -0.85602700    0.48389500\nO      -0.09252400   -1.07730100   -0.89875200\nO       0.58807900   -0.03379600   -1.52927000\nH       0.07274200    0.95275000   -0.51990400\nH       1.10647100   -1.01458800    0.80755700\nH      -0.62652100   -1.48558500    1.03570200",
+                  "max_gradient_hartree_per_bohr": 0.031626478,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.43402,
+                  "rms_gradient_hartree_per_bohr": 0.009829544,
+                  "source_point_index": 6
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.588304816,
+                  "geometry_xyz_text": "8\n\nO      -0.44543600    1.34265800    1.53590600\nC      -0.18476300    0.67728100    0.59431100\nC       0.07157000   -0.85541100    0.48467000\nO      -0.09178200   -1.07605600   -0.89979000\nO       0.58824100   -0.03666500   -1.53035300\nH       0.05808900    0.97458100   -0.49673100\nH       1.10629500   -1.01665600    0.80665600\nH      -0.62637900   -1.48623100    1.03501200",
+                  "max_gradient_hartree_per_bohr": 0.033875718,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.50632,
+                  "rms_gradient_hartree_per_bohr": 0.01017673,
+                  "source_point_index": 7
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.590155312,
+                  "geometry_xyz_text": "8\n\nO      -0.44564900    1.34263900    1.53658400\nC      -0.18459300    0.67723900    0.59423400\nC       0.07158200   -0.85457100    0.48551300\nO      -0.09092400   -1.07466300   -0.90100500\nO       0.58840500   -0.03989700   -1.53156400\nH       0.04323200    0.99751700   -0.47632500\nH       1.10609800   -1.01914100    0.80564600\nH      -0.62634900   -1.48669300    1.03423600",
+                  "max_gradient_hartree_per_bohr": 0.035149096,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.57861,
+                  "rms_gradient_hartree_per_bohr": 0.010319036,
+                  "source_point_index": 8
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.591846685,
+                  "geometry_xyz_text": "8\n\nO      -0.44590900    1.34259200    1.53754000\nC      -0.18453400    0.67725400    0.59446000\nC       0.07162300   -0.85346300    0.48640100\nO      -0.08994600   -1.07312500   -0.90240500\nO       0.58858100   -0.04352000   -1.53292300\nH       0.02822600    1.02104000   -0.45898600\nH       1.10586600   -1.02203600    0.80454400\nH      -0.62647300   -1.48686200    1.03336500",
+                  "max_gradient_hartree_per_bohr": 0.035541172,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.65089,
+                  "rms_gradient_hartree_per_bohr": 0.010308288,
+                  "source_point_index": 9
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.593373085,
+                  "geometry_xyz_text": "8\n\nO      -0.44621900    1.34249800    1.53883900\nC      -0.18460500    0.67740300    0.59494200\nC       0.07170100   -0.85205200    0.48729700\nO      -0.08885400   -1.07146200   -0.90398300\nO       0.58878400   -0.04753600   -1.53445000\nH       0.01311200    1.04432100   -0.44458900\nH       1.10558200   -1.02528900    0.80337700\nH      -0.62679600   -1.48661500    1.03239500",
+                  "max_gradient_hartree_per_bohr": 0.03519236,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.72318,
+                  "rms_gradient_hartree_per_bohr": 0.010174157,
+                  "source_point_index": 10
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.594742143,
+                  "geometry_xyz_text": "8\n\nO      -0.44657700    1.34233700    1.54053600\nC      -0.18482400    0.67777200    0.59561100\nC       0.07182200   -0.85031400    0.48816500\nO      -0.08766200   -1.06970900   -0.90571700\nO       0.58903700   -0.05193200   -1.53617200\nH      -0.00207300    1.06644800   -0.43271600\nH       1.10522900   -1.02880000    0.80218300\nH      -0.62735500   -1.48583100    1.03132200",
+                  "max_gradient_hartree_per_bohr": 0.034252817,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.79546,
+                  "rms_gradient_hartree_per_bohr": 0.009944826,
+                  "source_point_index": 11
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.595968849,
+                  "geometry_xyz_text": "8\n\nO      -0.44697500    1.34208800    1.54267400\nC      -0.18521000    0.67844600    0.59640100\nC       0.07198900   -0.84823700    0.48896500\nO      -0.08639500   -1.06791600   -0.90757200\nO       0.58936900   -0.05667100   -1.53811600\nH      -0.01724800    1.08662800   -0.42293000\nH       1.10479200   -1.03243300    0.80100200\nH      -0.62818100   -1.48441200    1.03014600",
+                  "max_gradient_hartree_per_bohr": 0.032860303,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.86773,
+                  "rms_gradient_hartree_per_bohr": 0.009650048,
+                  "source_point_index": 12
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.597073022,
+                  "geometry_xyz_text": "8\n\nO      -0.44740000    1.34173400    1.54526800\nC      -0.18578700    0.67947800    0.59725900\nC       0.07219600   -0.84583000    0.48966200\nO      -0.08508500   -1.06614600   -0.90949700\nO       0.58981000   -0.06169000   -1.54030600\nH      -0.03225500    1.10432000   -0.41492300\nH       1.10426600   -1.03601500    0.79987800\nH      -0.62928400   -1.48230300    1.02888100",
+                  "max_gradient_hartree_per_bohr": 0.031143156,
+                  "reaction_coordinate_sqrt_amu_bohr": 0.94,
+                  "rms_gradient_hartree_per_bohr": 0.009315575,
+                  "source_point_index": 13
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.598076332,
+                  "geometry_xyz_text": "8\n\nO      -0.44783500    1.34126200    1.54830000\nC      -0.18657400    0.68088600    0.59815200\nC       0.07243100   -0.84311900    0.49022700\nO      -0.08377200   -1.06446700   -0.91143000\nO       0.59039100   -0.06689700   -1.54275500\nH      -0.04688800    1.11930700   -0.40848800\nH       1.10365500   -1.03935600    0.79885600\nH      -0.63064600   -1.47950700    1.02755000",
+                  "max_gradient_hartree_per_bohr": 0.029227909,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.01227,
+                  "rms_gradient_hartree_per_bohr": 0.008961376,
+                  "source_point_index": 14
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.598998959,
+                  "geometry_xyz_text": "8\n\nO      -0.44825700    1.34067200    1.55171700\nC      -0.18757700    0.68264300    0.59905800\nC       0.07267500   -0.84014800    0.49064100\nO      -0.08249400   -1.06294100   -0.91330700\nO       0.59113400   -0.07219200   -1.54546300\nH      -0.06095100    1.13170000   -0.40342900\nH       1.10297000   -1.04228000    0.79797200\nH      -0.63222000   -1.47609000    1.02618900",
+                  "max_gradient_hartree_per_bohr": 0.02723693,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.08456,
+                  "rms_gradient_hartree_per_bohr": 0.008603034,
+                  "source_point_index": 15
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.599857383,
+                  "geometry_xyz_text": "8\n\nO      -0.44864900    1.33996800    1.55545000\nC      -0.18879100    0.68469700    0.59996500\nC       0.07290600   -0.83696200    0.49090000\nO      -0.08128200   -1.06161400   -0.91507700\nO       0.59204800   -0.07748400   -1.54841700\nH      -0.07431400    1.14186000   -0.39951200\nH       1.10222500   -1.04464600    0.79725000\nH      -0.63394000   -1.47215900    1.02483700",
+                  "max_gradient_hartree_per_bohr": 0.025275804,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.15685,
+                  "rms_gradient_hartree_per_bohr": 0.00825221,
+                  "source_point_index": 16
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.60066387,
+                  "geometry_xyz_text": "8\n\nO      -0.44899600    1.33916100    1.55942500\nC      -0.19020300    0.68698300    0.60086400\nC       0.07310500   -0.83360800    0.49100600\nO      -0.08015200   -1.06050800   -0.91670500\nO       0.59313300   -0.08270800   -1.55159200\nH      -0.08692700    1.15026000   -0.39647600\nH       1.10143400   -1.04636900    0.79670000\nH      -0.63573100   -1.46783600    1.02352600",
+                  "max_gradient_hartree_per_bohr": 0.023422067,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.22917,
+                  "rms_gradient_hartree_per_bohr": 0.007916245,
+                  "source_point_index": 17
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.601427114,
+                  "geometry_xyz_text": "8\n\nO      -0.44928700    1.33826100    1.56357600\nC      -0.19179500    0.68943800    0.60175200\nC       0.07325600   -0.83011900    0.49096900\nO      -0.07911100   -1.05962400   -0.91817400\nO       0.59437800   -0.08782400   -1.55496100\nH      -0.09879800    1.15737800   -0.39407000\nH       1.10061000   -1.04740400    0.79631800\nH      -0.63752500   -1.46324200    1.02228400",
+                  "max_gradient_hartree_per_bohr": 0.021722226,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.30149,
+                  "rms_gradient_hartree_per_bohr": 0.007598241,
+                  "source_point_index": 18
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.602153197,
+                  "geometry_xyz_text": "8\n\nO      -0.44951700    1.33728000    1.56784900\nC      -0.19354600    0.69201100    0.60262600\nC       0.07334400   -0.82652400    0.49080200\nO      -0.07815400   -1.05894900   -0.91948400\nO       0.59576500   -0.09281800   -1.55849300\nH      -0.10997300    1.16361600   -0.39208500\nH       1.09976400   -1.04774400    0.79609100\nH      -0.63926800   -1.45847800    1.02112500",
+                  "max_gradient_hartree_per_bohr": 0.020195911,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.37382,
+                  "rms_gradient_hartree_per_bohr": 0.007298085,
+                  "source_point_index": 19
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.602846427,
+                  "geometry_xyz_text": "8\n\nO      -0.44968400    1.33622800    1.57220200\nC      -0.19543700    0.69466100    0.60348600\nC       0.07336400   -0.82284400    0.49051900\nO      -0.07726800   -1.05845900   -0.92064300\nO       0.59727300   -0.09768900   -1.56215600\nH      -0.12051100    1.16928800   -0.39035800\nH       1.09890300   -1.04740700    0.79600000\nH      -0.64091700   -1.45362900    1.02005800",
+                  "max_gradient_hartree_per_bohr": 0.018843052,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.44615,
+                  "rms_gradient_hartree_per_bohr": 0.007013857,
+                  "source_point_index": 20
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.60350991,
+                  "geometry_xyz_text": "8\n\nO      -0.44978900    1.33511200    1.57660500\nC      -0.19745000    0.69736100    0.60433300\nC       0.07330900   -0.81909300    0.49013000\nO      -0.07644300   -1.05812900   -0.92166400\nO       0.59888200   -0.10244700   -1.56592200\nH      -0.13047700    1.17461700   -0.38877400\nH       1.09803500   -1.04642200    0.79602500\nH      -0.64244400   -1.44875900    1.01908400",
+                  "max_gradient_hartree_per_bohr": 0.017651023,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.51849,
+                  "rms_gradient_hartree_per_bohr": 0.00674301,
+                  "source_point_index": 21
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.604145932,
+                  "geometry_xyz_text": "8\n\nO      -0.44983300    1.33394000    1.58103500\nC      -0.19956700    0.70009100    0.60516600\nC       0.07317900   -0.81528400    0.48964900\nO      -0.07566300   -1.05793200   -0.92256400\nO       0.60057000   -0.10710700   -1.56976300\nH      -0.13993600    1.17975500   -0.38725400\nH       1.09716600   -1.04483100    0.79614200\nH      -0.64383300   -1.44391500    1.01819600",
+                  "max_gradient_hartree_per_bohr": 0.016600602,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.59083,
+                  "rms_gradient_hartree_per_bohr": 0.00648312,
+                  "source_point_index": 22
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.60475621,
+                  "geometry_xyz_text": "8\n\nO      -0.44981900    1.33271900    1.58547600\nC      -0.20177700    0.70283600    0.60598800\nC       0.07297500   -0.81142600    0.48908600\nO      -0.07491600   -1.05784500   -0.92336100\nO       0.60232100   -0.11168200   -1.57365700\nH      -0.14894800    1.18480200   -0.38574900\nH       1.09630000   -1.04267800    0.79632900\nH      -0.64507700   -1.43913200    1.01738600",
+                  "max_gradient_hartree_per_bohr": 0.015670346,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.66318,
+                  "rms_gradient_hartree_per_bohr": 0.006232218,
+                  "source_point_index": 23
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.605342064,
+                  "geometry_xyz_text": "8\n\nO      -0.44975100    1.33145200    1.58991700\nC      -0.20406600    0.70559000    0.60680000\nC       0.07270100   -0.80752500    0.48845000\nO      -0.07419100   -1.05784500   -0.92407000\nO       0.60411800   -0.11618900   -1.57758400\nH      -0.15756800    1.18982100   -0.38422600\nH       1.09544100   -1.04001200    0.79656700\nH      -0.64617400   -1.43443100    1.01664500",
+                  "max_gradient_hartree_per_bohr": 0.014839321,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.73552,
+                  "rms_gradient_hartree_per_bohr": 0.005988837,
+                  "source_point_index": 24
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.605904537,
+                  "geometry_xyz_text": "8\n\nO      -0.44963300    1.33014700    1.59435000\nC      -0.20642500    0.70834700    0.60760200\nC       0.07236000   -0.80358700    0.48774900\nO      -0.07348000   -1.05791500   -0.92470600\nO       0.60594900   -0.12064000   -1.58153000\nH      -0.16584900    1.19484900   -0.38266800\nH       1.09459100   -1.03688100    0.79683600\nH      -0.64712900   -1.42982600    1.01596000",
+                  "max_gradient_hartree_per_bohr": 0.014088741,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.80787,
+                  "rms_gradient_hartree_per_bohr": 0.005751934,
+                  "source_point_index": 25
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.606444468,
+                  "geometry_xyz_text": "8\n\nO      -0.44946700    1.32880500    1.59877100\nC      -0.20884700    0.71110500    0.60839800\nC       0.07195800   -0.79961900    0.48698900\nO      -0.07277500   -1.05804000   -0.92528100\nO       0.60780500   -0.12504600   -1.58548200\nH      -0.17383900    1.19990900   -0.38106300\nH       1.09375300   -1.03333000    0.79712300\nH      -0.64794900   -1.42532300    1.01532300",
+                  "max_gradient_hartree_per_bohr": 0.013469978,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.88021,
+                  "rms_gradient_hartree_per_bohr": 0.005520789,
+                  "source_point_index": 26
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.606962561,
+                  "geometry_xyz_text": "8\n\nO      -0.44925800    1.32743200    1.60317600\nC      -0.21132400    0.71386300    0.60918900\nC       0.07150000   -0.79562400    0.48617800\nO      -0.07207300   -1.05820800   -0.92580700\nO       0.60967800   -0.12941800   -1.58943100\nH      -0.18158200    1.20501200   -0.37940700\nH       1.09292800   -1.02940400    0.79741300\nH      -0.64864100   -1.42092500    1.01472300",
+                  "max_gradient_hartree_per_bohr": 0.012871398,
+                  "reaction_coordinate_sqrt_amu_bohr": 1.95256,
+                  "rms_gradient_hartree_per_bohr": 0.005294895,
+                  "source_point_index": 27
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.607459414,
+                  "geometry_xyz_text": "8\n\nO      -0.44900900    1.32603200    1.60756300\nC      -0.21385100    0.71662000    0.60997700\nC       0.07099400   -0.79160700    0.48531900\nO      -0.07136900   -1.05840800   -0.92629100\nO       0.61156400   -0.13376300   -1.59337000\nH      -0.18911800    1.21016300   -0.37769700\nH       1.09211800   -1.02514500    0.79769700\nH      -0.64921400   -1.41663000    1.01415200",
+                  "max_gradient_hartree_per_bohr": 0.012286779,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.02491,
+                  "rms_gradient_hartree_per_bohr": 0.005073908,
+                  "source_point_index": 28
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.607935556,
+                  "geometry_xyz_text": "8\n\nO      -0.44872300    1.32460800    1.61193200\nC      -0.21642400    0.71937800    0.61076400\nC       0.07044400   -0.78757200    0.48441800\nO      -0.07066300   -1.05863400   -0.92674300\nO       0.61345800   -0.13808800   -1.59729400\nH      -0.19648500    1.21536500   -0.37593200\nH       1.09132300   -1.02059300    0.79796600\nH      -0.64967800   -1.41243500    1.01360400",
+                  "max_gradient_hartree_per_bohr": 0.011716745,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.09725,
+                  "rms_gradient_hartree_per_bohr": 0.004857585,
+                  "source_point_index": 29
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.608391463,
+                  "geometry_xyz_text": "8\n\nO      -0.44840300    1.32316300    1.61628000\nC      -0.21903900    0.72213500    0.61155300\nC       0.06985800   -0.78352200    0.48347700\nO      -0.06995400   -1.05888000   -0.92716800\nO       0.61535800   -0.14239700   -1.60120100\nH      -0.20371900    1.22061500   -0.37411100\nH       1.09054400   -1.01578400    0.79821400\nH      -0.65004100   -1.40833300    1.01307200",
+                  "max_gradient_hartree_per_bohr": 0.01116149,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.1696,
+                  "rms_gradient_hartree_per_bohr": 0.004645773,
+                  "source_point_index": 30
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.60882758,
+                  "geometry_xyz_text": "8\n\nO      -0.44805100    1.32170100    1.62060900\nC      -0.22169300    0.72489300    0.61234400\nC       0.06924100   -0.77946200    0.48249900\nO      -0.06924300   -1.05913900   -0.92757000\nO       0.61726400   -0.14669400   -1.60508700\nH      -0.21085100    1.22591400   -0.37223500\nH       1.08978100   -1.01075200    0.79843400\nH      -0.65031100   -1.40431900    1.01255300",
+                  "max_gradient_hartree_per_bohr": 0.010620987,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.24195,
+                  "rms_gradient_hartree_per_bohr": 0.004438382,
+                  "source_point_index": 31
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.609244329,
+                  "geometry_xyz_text": "8\n\nO      -0.44767100    1.32022400    1.62491700\nC      -0.22438400    0.72765300    0.61314200\nC       0.06860000   -0.77539400    0.48148800\nO      -0.06853100   -1.05940900   -0.92795600\nO       0.61917600   -0.15098400   -1.60895100\nH      -0.21791300    1.23125800   -0.37030300\nH       1.08903500   -1.00552600    0.79862100\nH      -0.65049500   -1.40038800    1.01204100",
+                  "max_gradient_hartree_per_bohr": 0.010095103,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.3143,
+                  "rms_gradient_hartree_per_bohr": 0.004235378,
+                  "source_point_index": 32
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.609642121,
+                  "geometry_xyz_text": "8\n\nO      -0.44726500    1.31873700    1.62920500\nC      -0.22711100    0.73041300    0.61394800\nC       0.06793900   -0.77132300    0.48044500\nO      -0.06781800   -1.05968500   -0.92832700\nO       0.62109300   -0.15526800   -1.61279200\nH      -0.22493200    1.23664600   -0.36831400\nH       1.08830800   -1.00013400    0.79877300\nH      -0.65059900   -1.39653400    1.01153500",
+                  "max_gradient_hartree_per_bohr": 0.009607571,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.38664,
+                  "rms_gradient_hartree_per_bohr": 0.004036754,
+                  "source_point_index": 33
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.610021359,
+                  "geometry_xyz_text": "8\n\nO      -0.44683400    1.31724100    1.63347200\nC      -0.22987100    0.73317400    0.61476400\nC       0.06726400   -0.76725000    0.47937300\nO      -0.06710900   -1.05996300   -0.92868800\nO       0.62301800   -0.15955000   -1.61661100\nH      -0.23193600    1.24207200   -0.36626700\nH       1.08760200   -0.99460000    0.79888300\nH      -0.65062700   -1.39275000    1.01103300",
+                  "max_gradient_hartree_per_bohr": 0.009150905,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.45899,
+                  "rms_gradient_hartree_per_bohr": 0.00384252,
+                  "source_point_index": 34
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.610382442,
+                  "geometry_xyz_text": "8\n\nO      -0.44638100    1.31574000    1.63772000\nC      -0.23266500    0.73593600    0.61559200\nC       0.06658100   -0.76318000    0.47827200\nO      -0.06640500   -1.06024100   -0.92904100\nO       0.62495100   -0.16383200   -1.62040600\nH      -0.23894900    1.24753500   -0.36416100\nH       1.08691600   -0.98894600    0.79895000\nH      -0.65058200   -1.38903400    1.01053100",
+                  "max_gradient_hartree_per_bohr": 0.008709,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.53134,
+                  "rms_gradient_hartree_per_bohr": 0.003652687,
+                  "source_point_index": 35
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.610725764,
+                  "geometry_xyz_text": "8\n\nO      -0.44590700    1.31423700    1.64194600\nC      -0.23549100    0.73869800    0.61643400\nC       0.06589500   -0.75911400    0.47714500\nO      -0.06570800   -1.06051500   -0.92938700\nO       0.62689400   -0.16811600   -1.62417800\nH      -0.24599300    1.25302700   -0.36199600\nH       1.08625500   -0.98319100    0.79896800\nH      -0.65046800   -1.38538200    1.01002900",
+                  "max_gradient_hartree_per_bohr": 0.008280868,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.60369,
+                  "rms_gradient_hartree_per_bohr": 0.003467251,
+                  "source_point_index": 36
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.611051717,
+                  "geometry_xyz_text": "8\n\nO      -0.44541300    1.31273300    1.64615300\nC      -0.23835000    0.74145900    0.61729300\nC       0.06521000   -0.75505600    0.47599200\nO      -0.06502300   -1.06078100   -0.92973100\nO       0.62884900   -0.17240400   -1.62792700\nH      -0.25308900    1.25854400   -0.35977100\nH       1.08562100   -0.97735000    0.79893400\nH      -0.65028400   -1.38179200    1.00952700",
+                  "max_gradient_hartree_per_bohr": 0.007865699,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.67604,
+                  "rms_gradient_hartree_per_bohr": 0.003286197,
+                  "source_point_index": 37
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.61136069,
+                  "geometry_xyz_text": "8\n\nO      -0.44490200    1.31123300    1.65033800\nC      -0.24124200    0.74421800    0.61817100\nC       0.06453200   -0.75100700    0.47481600\nO      -0.06435300   -1.06103700   -0.93007200\nO       0.63082000   -0.17669800   -1.63165400\nH      -0.26025300    1.26407800   -0.35748600\nH       1.08501700   -0.97143900    0.79884300\nH      -0.65003100   -1.37826100    1.00902400",
+                  "max_gradient_hartree_per_bohr": 0.007462777,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.74838,
+                  "rms_gradient_hartree_per_bohr": 0.00310949,
+                  "source_point_index": 38
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.611653065,
+                  "geometry_xyz_text": "8\n\nO      -0.44437400    1.30973800    1.65450200\nC      -0.24416600    0.74697200    0.61906900\nC       0.06386400   -0.74697000    0.47361700\nO      -0.06370100   -1.06127800   -0.93041300\nO       0.63280800   -0.18100100   -1.63535800\nH      -0.26750100    1.26962100   -0.35514200\nH       1.08444700   -0.96546600    0.79869100\nH      -0.64970500   -1.37479100    1.00852000",
+                  "max_gradient_hartree_per_bohr": 0.00707145,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.82073,
+                  "rms_gradient_hartree_per_bohr": 0.002937081,
+                  "source_point_index": 39
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.61192922,
+                  "geometry_xyz_text": "8\n\nO      -0.44383100    1.30825100    1.65864500\nC      -0.24712500    0.74972000    0.61998900\nC       0.06321100   -0.74294700    0.47239600\nO      -0.06307300   -1.06150100   -0.93075600\nO       0.63481600   -0.18531500   -1.63903800\nH      -0.27484800    1.27516300   -0.35273800\nH       1.08391500   -0.95944200    0.79847100\nH      -0.64930300   -1.37138100    1.00801700",
+                  "max_gradient_hartree_per_bohr": 0.006691117,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.89308,
+                  "rms_gradient_hartree_per_bohr": 0.002768904,
+                  "source_point_index": 40
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.612189527,
+                  "geometry_xyz_text": "8\n\nO      -0.44327300    1.30677400    1.66276600\nC      -0.25011800    0.75245900    0.62093500\nC       0.06257800   -0.73893900    0.47115500\nO      -0.06247200   -1.06170000   -0.93110100\nO       0.63684800   -0.18964200   -1.64269700\nH      -0.28230300    1.28069300   -0.35027700\nH       1.08342900   -0.95337300    0.79817600\nH      -0.64882100   -1.36803500    1.00751600",
+                  "max_gradient_hartree_per_bohr": 0.006321263,
+                  "reaction_coordinate_sqrt_amu_bohr": 2.96543,
+                  "rms_gradient_hartree_per_bohr": 0.002604903,
+                  "source_point_index": 41
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.612434359,
+                  "geometry_xyz_text": "8\n\nO      -0.44270300    1.30531000    1.66686300\nC      -0.25314600    0.75518600    0.62190600\nC       0.06196900   -0.73494900    0.46989600\nO      -0.06190400   -1.06187200   -0.93145100\nO       0.63890700   -0.19398400   -1.64633200\nH      -0.28987900    1.28620100   -0.34775900\nH       1.08299200   -0.94726300    0.79780100\nH      -0.64825000   -1.36475500    1.00701900",
+                  "max_gradient_hartree_per_bohr": 0.005961494,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.03778,
+                  "rms_gradient_hartree_per_bohr": 0.002445053,
+                  "source_point_index": 42
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.61266409,
+                  "geometry_xyz_text": "8\n\nO      -0.44212000    1.30386100    1.67093700\nC      -0.25621100    0.75789700    0.62290600\nC       0.06139000   -0.73097800    0.46861800\nO      -0.06137400   -1.06201100   -0.93180700\nO       0.64099600   -0.19834400   -1.64994300\nH      -0.29758500    1.29167600   -0.34518500\nH       1.08261400   -0.94111700    0.79733600\nH      -0.64758300   -1.36154400    1.00653000",
+                  "max_gradient_hartree_per_bohr": 0.00561154,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.11013,
+                  "rms_gradient_hartree_per_bohr": 0.002289376,
+                  "source_point_index": 43
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.612879101,
+                  "geometry_xyz_text": "8\n\nO      -0.44152700    1.30243100    1.67498500\nC      -0.25931400    0.76058900    0.62393500\nC       0.06084500   -0.72703000    0.46732500\nO      -0.06088900   -1.06211100   -0.93217000\nO       0.64312100   -0.20272500   -1.65353000\nH      -0.30543100    1.29710700   -0.34255500\nH       1.08230100   -0.93493500    0.79677100\nH      -0.64680900   -1.35841000    1.00605200",
+                  "max_gradient_hartree_per_bohr": 0.005271228,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.18247,
+                  "rms_gradient_hartree_per_bohr": 0.002137944,
+                  "source_point_index": 44
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.61307979,
+                  "geometry_xyz_text": "8\n\nO      -0.44092500    1.30102000    1.67900500\nC      -0.26245400    0.76325800    0.62499600\nC       0.06033900   -0.72310500    0.46601700\nO      -0.06045700   -1.06216700   -0.93254100\nO       0.64528400   -0.20712900   -1.65709200\nH      -0.31342800    1.30248200   -0.33986900\nH       1.08206500   -0.92871900    0.79609700\nH      -0.64591700   -1.35535600    1.00558900",
+                  "max_gradient_hartree_per_bohr": 0.004940515,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.25482,
+                  "rms_gradient_hartree_per_bohr": 0.001990882,
+                  "source_point_index": 45
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.613266571,
+                  "geometry_xyz_text": "8\n\nO      -0.44031500    1.29963400    1.68299600\nC      -0.26563400    0.76589700    0.62609100\nC       0.05988000   -0.71920700    0.46469500\nO      -0.06008400   -1.06217000   -0.93292200\nO       0.64749000   -0.21155800   -1.66062600\nH      -0.32158700    1.30778900   -0.33712800\nH       1.08191400   -0.92247000    0.79530100\nH      -0.64489200   -1.35239200    1.00514800",
+                  "max_gradient_hartree_per_bohr": 0.004619436,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.32717,
+                  "rms_gradient_hartree_per_bohr": 0.001848369,
+                  "source_point_index": 46
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.613439878,
+                  "geometry_xyz_text": "8\n\nO      -0.43969900    1.29827300    1.68695400\nC      -0.26885300    0.76850200    0.62721900\nC       0.05947500   -0.71533900    0.46336200\nO      -0.05978100   -1.06211300   -0.93331400\nO       0.64974500   -0.21601600   -1.66413000\nH      -0.32992000    1.31301500   -0.33433100\nH       1.08186200   -0.91618800    0.79437000\nH      -0.64371800   -1.34952300    1.00473500",
+                  "max_gradient_hartree_per_bohr": 0.004308084,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.39952,
+                  "rms_gradient_hartree_per_bohr": 0.001710618,
+                  "source_point_index": 47
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.61360017,
+                  "geometry_xyz_text": "8\n\nO      -0.43907900    1.29694000    1.69087700\nC      -0.27211300    0.77106500    0.62838400\nC       0.05913000   -0.71150500    0.46201800\nO      -0.05955800   -1.06198800   -0.93371800\nO       0.65205400   -0.22050400   -1.66760200\nH      -0.33843800    1.31814600   -0.33147900\nH       1.08192100   -0.90987200    0.79328700\nH      -0.64237700   -1.34676000    1.00435600",
+                  "max_gradient_hartree_per_bohr": 0.00400657,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.47186,
+                  "rms_gradient_hartree_per_bohr": 0.001577856,
+                  "source_point_index": 48
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.613747929,
+                  "geometry_xyz_text": "8\n\nO      -0.43845700    1.29564000    1.69476000\nC      -0.27541400    0.77358100    0.62958500\nC       0.05885600   -0.70770800    0.46066600\nO      -0.05942400   -1.06178500   -0.93413600\nO       0.65442200   -0.22502500   -1.67103700\nH      -0.34715300    1.32316400   -0.32857400\nH       1.08210700   -0.90352200    0.79203800\nH      -0.64085000   -1.34411100    1.00401900",
+                  "max_gradient_hartree_per_bohr": 0.003714999,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.54421,
+                  "rms_gradient_hartree_per_bohr": 0.001450303,
+                  "source_point_index": 49
+                },
+                {
+                  "direction": "reverse",
+                  "electronic_energy_hartree": -303.613883656,
+                  "geometry_xyz_text": "8\n\nO      -0.43783600    1.29437400    1.69860000\nC      -0.27875600    0.77604000    0.63082300\nC       0.05866100   -0.70395400    0.45930600\nO      -0.05939300   -1.06149400   -0.93456900\nO       0.65685400   -0.22958100   -1.67443100\nH      -0.35607500    1.32804900   -0.32562000\nH       1.08243600   -0.89713600    0.79060200\nH      -0.63911300   -1.34158800    1.00373400",
+                  "max_gradient_hartree_per_bohr": 0.003433425,
+                  "reaction_coordinate_sqrt_amu_bohr": 3.61655,
+                  "rms_gradient_hartree_per_bohr": 0.001328152,
+                  "source_point_index": 50
+                }
+              ],
+              "source_log": "calcs/TSs/TS0/irc/irc_r/output.out"
+            }
+          ]
+        }
+      },
+      "label": "TS0",
+      "record_kind": "transition_state"
+    }
+  ],
+  "schema_name": "arc-tckdb-evidence",
+  "schema_version": "1.1"
+}
