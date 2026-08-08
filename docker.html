@@ -49,6 +49,7 @@
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Docker image</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#platform-support">Platform support</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#aliases-in-interactive-shells">Aliases in interactive shells</a></li>
 </ul>
 </li>
@@ -105,6 +106,17 @@
 Bind-mount your working directory and pass an input file path that exists inside
 the container. For best write access on bind mounts, pass your host UID/GID as
 <code class="docutils literal notranslate"><span class="pre">PUID</span></code>/<code class="docutils literal notranslate"><span class="pre">PGID</span></code> (the entrypoint remaps the <code class="docutils literal notranslate"><span class="pre">mambauser</span></code> account).</p>
+<section id="platform-support">
+<h2>Platform support<a class="headerlink" href="#platform-support" title="Link to this heading"></a></h2>
+<p>The image is built for <code class="docutils literal notranslate"><span class="pre">linux/amd64</span></code> only.</p>
+<ul class="simple">
+<li><p><strong>Linux (x86-64)</strong> – the platform the image is built and tested on.</p></li>
+<li><p><strong>macOS on Apple Silicon</strong> – Docker Desktop will run the image under
+<code class="docutils literal notranslate"><span class="pre">qemu</span></code>/Rosetta emulation. This is untested; expect a substantial slowdown,
+and be aware that some numerical dependencies may misbehave under emulation.</p></li>
+<li><p><strong>Windows</strong> – use Docker Desktop with the WSL2 backend. Untested.</p></li>
+</ul>
+<p>No <code class="docutils literal notranslate"><span class="pre">linux/arm64</span></code> image is published.</p>
 <p>Run ARC non-interactively:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>docker run --rm \
     -v &quot;$PWD:/work&quot; -w /work \
@@ -144,9 +156,11 @@ the container. For best write access on bind mounts, pass your host UID/GID as
 </div>
 <p>For job submission, the scheduler client tools must be available in the container
 or accessed via SSH on a remote host.</p>
+</section>
 <section id="aliases-in-interactive-shells">
 <h2>Aliases in interactive shells<a class="headerlink" href="#aliases-in-interactive-shells" title="Link to this heading"></a></h2>
-<p>When you open an interactive shell, the image provides these aliases:</p>
+<p>An interactive shell starts with the <code class="docutils literal notranslate"><span class="pre">arc_env</span></code> environment already activated,
+and provides these shortcuts:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">rc</span>              <span class="c1"># reload ~/.bashrc</span>
 <span class="n">rce</span><span class="p">,</span> <span class="n">erc</span>        <span class="c1"># edit ~/.bashrc with nano</span>
 
@@ -159,12 +173,21 @@ or accessed via SSH on a remote host.</p>
 <span class="n">dbcode</span>          <span class="c1"># cd to /home/mambauser/Code/RMG-database</span>
 <span class="n">arcode</span>          <span class="c1"># cd to /home/mambauser/Code/ARC</span>
 
-<span class="n">rmg</span>             <span class="c1"># run RMG with input.py, tee logs</span>
-<span class="n">arkane</span>          <span class="c1"># run Arkane with input.py, tee logs</span>
-<span class="n">arc</span>             <span class="c1"># run ARC with input.yml, tee logs</span>
-<span class="n">arcrestart</span>      <span class="c1"># run ARC with restart.yml, tee logs</span>
+<span class="n">rmg</span> <span class="p">[</span><span class="n">args</span><span class="p">]</span> <span class="o">&lt;</span><span class="nb">input</span><span class="o">.</span><span class="n">py</span><span class="o">&gt;</span>     <span class="c1"># run RMG in rmg_env    (default file: input.py)</span>
+<span class="n">arkane</span> <span class="p">[</span><span class="n">args</span><span class="p">]</span> <span class="o">&lt;</span><span class="nb">input</span><span class="o">.</span><span class="n">py</span><span class="o">&gt;</span>  <span class="c1"># run Arkane in rmg_env (default file: input.py)</span>
+<span class="n">arc</span> <span class="p">[</span><span class="n">args</span><span class="p">]</span> <span class="o">&lt;</span><span class="nb">input</span><span class="o">.</span><span class="n">yml</span><span class="o">&gt;</span>    <span class="c1"># run ARC in arc_env    (default file: input.yml)</span>
+<span class="n">arcrestart</span> <span class="p">[</span><span class="n">args</span><span class="p">]</span> <span class="p">[</span><span class="n">file</span><span class="p">]</span>  <span class="c1"># run ARC in arc_env    (default file: restart.yml)</span>
 </pre></div>
 </div>
+<p>The four job runners forward their arguments, so <code class="docutils literal notranslate"><span class="pre">arc</span> <span class="pre">my_case/input.yml</span></code> runs
+<code class="docutils literal notranslate"><span class="pre">my_case/input.yml</span></code>; with no arguments the default file shown above is used.
+They dispatch through the same entrypoint as <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">run</span> <span class="pre">IMAGE</span> <span class="pre">arc</span> <span class="pre">&lt;file&gt;</span></code>, so
+interactive and non-interactive invocations behave identically. Both streams are
+echoed to the terminal and appended to <code class="docutils literal notranslate"><span class="pre">./stdout.log</span></code> and <code class="docutils literal notranslate"><span class="pre">./stderr.log</span></code>.</p>
+<p>Run <code class="docutils literal notranslate"><span class="pre">aliases</span></code> at any time to reprint this cheat-sheet; it also shows the
+branch and resolved commit SHA of ARC, RMG-Py and RMG-database baked into the
+image (also available in <code class="docutils literal notranslate"><span class="pre">/home/mambauser/Code/image_versions.env</span></code> and, for
+ARC, in the <code class="docutils literal notranslate"><span class="pre">org.opencontainers.image.revision</span></code> label).</p>
 </section>
 </section>
 
