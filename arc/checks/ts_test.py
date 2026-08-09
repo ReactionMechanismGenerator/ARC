@@ -683,6 +683,48 @@ class TestTSChecks(unittest.TestCase):
                                      )
         self.assertTrue(rxn.ts_species.ts_checks['IRC'])
 
+    def test_check_bond_orders(self):
+        """Test the check_bond_orders() function."""
+        # The Orca TS of CH4 + OH <=> CH3 + H2O. The migrating H atom has Mayer bond orders of 0.62 to C
+        # and 0.36 to O, both partial. Note that the atom map assigns a different, equivalent, methane H
+        # atom, so this only passes when equivalent atoms are considered.
+        path_1 = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        self.job1.local_path_to_output_file = path_1
+        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='CH4', smiles='C')],
+                            p_species=[ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CH3', smiles='[CH3]')])
+        rxn_1.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=parse_geometry(path_1))
+        rxn_1.ts_species.populate_ts_checks()
+        self.assertIsNone(rxn_1.ts_species.ts_checks['BO'])
+        ts.check_bond_orders(rxn_1, job=self.job1)
+        self.assertTrue(rxn_1.ts_species.ts_checks['BO'])
+        self.assertEqual(rxn_1.ts_species.ts_checks['warnings'], '')
+
+        # An optimized formaldehyde geometry is not the TS of CH2O <=> H2 + CO: the H-H bond that should be
+        # forming has a Mayer bond order of 0, and the C-H bonds that should be breaking are still 0.89.
+        path_2 = os.path.join(ARC_TESTING_PATH, 'orca_example_opt.log')
+        self.job1.local_path_to_output_file = path_2
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='CH2O', smiles='C=O', xyz=parse_geometry(path_2))],
+                            p_species=[ARCSpecies(label='H2', smiles='[H][H]'),
+                                       ARCSpecies(label='CO', smiles='[C-]#[O+]')])
+        rxn_2.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=parse_geometry(path_2))
+        rxn_2.ts_species.populate_ts_checks()
+        ts.check_bond_orders(rxn_2, job=self.job1)
+        self.assertFalse(rxn_2.ts_species.ts_checks['BO'])
+
+        # The check must never block a TS when the bond orders are unavailable.
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite',
+                                                           'TS_intra_H_migration_CBS-QB3.out')
+        self.rxn_2a.ts_species.populate_ts_checks()
+        ts.check_bond_orders(self.rxn_2a, job=self.job1)
+        self.assertTrue(self.rxn_2a.ts_species.ts_checks['BO'])
+        self.assertIn('Could not parse Mayer bond orders', self.rxn_2a.ts_species.ts_checks['warnings'])
+
+        self.rxn_2a.ts_species.populate_ts_checks()
+        ts.check_bond_orders(self.rxn_2a, job=None)
+        self.assertTrue(self.rxn_2a.ts_species.ts_checks['BO'])
+        self.assertIn('no frequency job', self.rxn_2a.ts_species.ts_checks['warnings'])
+        self.rxn_2a.ts_species.populate_ts_checks()
+
     def test_check_irc_species_and_rxn_using_bond_orders(self):
         """Test that check_irc_species_and_rxn() uses the computed Mayer bond orders when log files are given."""
         # An isoxazole ring opening, both endpoints were optimized with Orca and hold Mayer bond orders.

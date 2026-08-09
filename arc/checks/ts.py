@@ -9,7 +9,10 @@ import numpy as np
 from typing import TYPE_CHECKING
 
 from arc.parser import parser
-from arc.checks.nmd import analyze_ts_normal_mode_displacement
+from arc.checks.nmd import (analyze_ts_normal_mode_displacement,
+                            find_equivalent_atoms,
+                            get_eq_formed_and_broken_bonds,
+                            )
 from arc.common import (ARC_PATH,
                         convert_list_index_0_to_1,
                         extremum_list,
@@ -18,6 +21,7 @@ from arc.common import (ARC_PATH,
                         read_yaml_file,
                         sum_list_entries,
                         )
+from arc.exceptions import ReactionError
 from arc.imports import settings
 from arc.species.converter import check_isomorphism, check_xyz_dict, mol_from_dft, xyz_from_data, xyz_to_dmat
 from arc.species.perceive import perceive_molecule_from_xyz
@@ -34,6 +38,11 @@ logger = get_logger()
 
 MAX_IRC_FRAGMENTS_FOR_CHARGE_SEARCH = 4
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ']
+# The Mayer bond order range within which a bond is considered partially formed at a TS.
+TS_PARTIAL_BOND_MIN, TS_PARTIAL_BOND_MAX = 0.15, 0.85
+# TS checks that are reported but do not determine whether a TS is accepted. The bond order thresholds
+# above are heuristic, and an early or a late TS may legitimately fall outside of them.
+NON_BLOCKING_TS_CHECKS = ['BO']
 
 
 def check_ts(reaction: ARCReaction,
@@ -60,7 +69,7 @@ def check_ts(reaction: ARCReaction,
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
         job (JobAdapter, optional): The frequency job object instance.
-        checks (list[str], optional): Specific checks to run. Optional values: 'energy', 'NMD', 'IRC', 'rotors'.
+        checks (list[str], optional): Specific checks to run. Optional values: 'energy', 'NMD', 'BO', 'IRC', 'rotors'.
         rxn_zone_atom_indices (list[int], optional): The 0-indices of atoms identified by the normal mode displacement
                                                      as the reaction zone. Automatically determined if not given.
         species_dict (dict, optional): The Scheduler species dictionary.
@@ -74,8 +83,8 @@ def check_ts(reaction: ARCReaction,
     """
     checks = checks or list()
     for entry in checks:
-        if entry not in ['energy', 'NMD', 'IRC', 'rotors']:
-            raise ValueError(f"Requested checks could be 'energy', 'IRC', 'NMD', or 'rotors', got:\n{checks}")
+        if entry not in ['energy', 'NMD', 'BO', 'IRC', 'rotors']:
+            raise ValueError(f"Requested checks could be 'energy', 'IRC', 'NMD', 'BO', or 'rotors', got:\n{checks}")
 
     if 'energy' in checks:
         if not reaction.ts_species.ts_checks['E0']:
@@ -97,6 +106,10 @@ def check_ts(reaction: ARCReaction,
             logger.warning(f'Skipping failed normal mode displacement check for TS {reaction.ts_species.label}')
             reaction.ts_species.ts_checks['NMD'] = True
 
+    # Use .get(), a TS restarted from a project that predates this check has no 'BO' key.
+    if 'BO' in checks and not reaction.ts_species.ts_checks.get('BO'):
+        check_bond_orders(reaction, job=job, verbose=verbose)
+
     if 'rotors' in checks or (ts_passed_checks(species=reaction.ts_species, exemptions=['E0', 'warnings', 'IRC'])
                               and job is not None):
         invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction, job,
@@ -109,6 +122,7 @@ def ts_passed_checks(species: ARCSpecies,
                      ) -> bool:
     """
     Check whether the TS species passes all checks other than ones specified in ``exemptions``.
+    The checks listed in ``NON_BLOCKING_TS_CHECKS`` are always exempted.
 
     Args:
         species (ARCSpecies): The TS species.
@@ -118,7 +132,7 @@ def ts_passed_checks(species: ARCSpecies,
     Returns:
         bool: Whether the TS species passed all checks.
     """
-    exemptions = exemptions or list()
+    exemptions = (exemptions or list()) + NON_BLOCKING_TS_CHECKS
     for check, value in species.ts_checks.items():
         if check not in exemptions and not value and not (check == 'e_elect' and species.ts_checks['E0']):
             if verbose:
@@ -301,6 +315,77 @@ def check_normal_mode_displacement(reaction: ARCReaction,
                                                                                job=job,
                                                                                amplitude=amplitude,
                                                                                )
+
+
+def check_bond_orders(reaction: ARCReaction,
+                      job: 'JobAdapter | None' = None,
+                      verbose: bool = True,
+                      ) -> None:
+    """
+    Check that the computed Mayer bond orders at the TS geometry are consistent with the reaction.
+
+    At a transition state the bonds that are formed and broken are only partially formed, so their bond
+    orders are expected to be significantly lower than a single bond, yet not negligible. Unlike the normal
+    mode displacement check, this considers the electron density at the TS geometry alone, and does not
+    depend on the imaginary mode. Populates the ``'BO'`` entry of the ``TS.ts_checks`` dictionary.
+
+    This check only rejects a TS on positive evidence: if the bond orders cannot be determined
+    (e.g., the ESS did not report them, or the reaction has no atom map), the check passes with a warning.
+    Its result is currently reported but not acted upon: ``'BO'`` is listed in ``NON_BLOCKING_TS_CHECKS``,
+    and unlike a failed NMD check it does not trigger a TS switch.
+
+    Args:
+        reaction (ARCReaction): The reaction for which the TS is checked.
+        job (JobAdapter, optional): The frequency job object instance.
+        verbose (bool, optional): Whether to log findings.
+    """
+    ts_species = reaction.ts_species
+
+    def pass_with_warning(message: str) -> None:
+        ts_species.ts_checks['BO'] = True
+        if message not in ts_species.ts_checks.get('warnings', ''):
+            ts_species.ts_checks['warnings'] = ts_species.ts_checks.get('warnings', '') + message
+        if verbose:
+            logger.info(f'Skipping the bond order check for TS {ts_species.label}: {message}')
+
+    if job is None:
+        pass_with_warning('Could not check bond orders, no frequency job; ')
+        return
+    bond_orders = parser.parse_bond_orders(log_file_path=job.local_path_to_output_file)
+    if bond_orders is None:
+        pass_with_warning('Could not parse Mayer bond orders; ')
+        return
+    if bond_orders.shape[0] != sum(spc.number_of_atoms for spc in reaction.r_species):
+        pass_with_warning('The number of atoms in the TS does not match the reactants; ')
+        return
+    try:
+        formed_bonds, broken_bonds = reaction.get_formed_and_broken_bonds()
+        changed_bonds = reaction.get_changed_bonds()
+    except (ReactionError, ValueError, IndexError):
+        pass_with_warning('Could not determine the formed and broken bonds; ')
+        return
+    if not formed_bonds and not broken_bonds:
+        pass_with_warning('The reaction has no formed or broken bonds; ')
+        return
+
+    r_eq_atoms, _ = find_equivalent_atoms(reaction=reaction, reactant_only=True)
+    options = get_eq_formed_and_broken_bonds(formed_bonds=formed_bonds,
+                                             broken_bonds=broken_bonds,
+                                             changed_bonds=changed_bonds,
+                                             r_eq_atoms=r_eq_atoms,
+                                             ) or [(formed_bonds, broken_bonds, changed_bonds)]
+    for eq_formed_bonds, eq_broken_bonds, _ in options:
+        if all(TS_PARTIAL_BOND_MIN <= bond_orders[i, j] <= TS_PARTIAL_BOND_MAX
+               for i, j in eq_formed_bonds + eq_broken_bonds):
+            ts_species.ts_checks['BO'] = True
+            return
+    ts_species.ts_checks['BO'] = False
+    if verbose:
+        logger.info(f'TS {ts_species.label} did not pass the bond order check. No assignment of the bonds '
+                    f'expected to change has all of its Mayer bond orders between {TS_PARTIAL_BOND_MIN} and '
+                    f'{TS_PARTIAL_BOND_MAX}. For the atom-mapped assignment they are:\n'
+                    f'formed: {[(bond, round(float(bond_orders[bond[0], bond[1]]), 4)) for bond in formed_bonds]}\n'
+                    f'broken: {[(bond, round(float(bond_orders[bond[0], bond[1]]), 4)) for bond in broken_bonds]}')
 
 
 def determine_changing_bond(bond: tuple[int, ...],
