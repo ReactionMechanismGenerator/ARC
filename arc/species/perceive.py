@@ -34,6 +34,8 @@ def perceive_molecule_from_xyz(
     n_radicals: int | None = None,
     n_fragments: int | None = None,
     single_bond_tolerance: float = 1.20,
+    bonds: list[tuple[int, int]] | None = None,
+    bond_orders: dict[tuple[int, int], float] | None = None,
 ) -> Molecule | None:
     """
     Infer a chemically valid Molecule with localized Lewis structure from Cartesian coordinates.
@@ -41,7 +43,8 @@ def perceive_molecule_from_xyz(
     Workflow:
         (1) Validate the XYZ input (dict or string) and extract symbols/coords.
         (2) Build an initial graph by adding bonds between atoms closer than a scaled
-            single-bond cutoff (`single_bond_tolerance` × reference length).
+            single-bond cutoff (`single_bond_tolerance` × reference length),
+            unless an explicit ``bonds`` list is given.
         (3) Identify connected components (fragments) and drop pure-H fragments.
         (4) If multiple fragments remain:
               • If their count matches `n_fragments`, rebuild using `_combine_fragments`.
@@ -61,7 +64,13 @@ def perceive_molecule_from_xyz(
         n_radicals (int, optional): Number of radical centers. If None, defaults to multiplicity-1.
         n_fragments (int, optional): Expected number of molecular fragments. Defaults to 1.
         single_bond_tolerance (float, optional): Scaling factor for maximum bond length when
-            perceiving connectivity. Default is 1.20.
+            perceiving connectivity. Default is 1.20. Ignored if ``bonds`` is given.
+        bonds (list[tuple[int, int]], optional): An explicit connectivity list of 0-indexed atom pairs,
+            e.g., derived from computed bond orders. If given, it is used as-is instead of perceiving
+            connectivity from interatomic distances, and no inter-fragment bonds are added.
+        bond_orders (dict[tuple[int, int], float], optional): Computed (e.g., Mayer) bond orders keyed by
+            the pairs in ``bonds``. If given, a Lewis structure with the corresponding rounded bond orders
+            is attempted first, and is used if it is chemically valid.
 
     Returns:
         Molecule | None: A perceived Molecule object with atoms, bonds, charges, and multiplicity
@@ -75,16 +84,21 @@ def perceive_molecule_from_xyz(
 
     symbols, coords = xyz_dict["symbols"], xyz_dict["coords"]
 
-    # build the zero‐order graph and find its connected components
-    dmat = distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
-                           b=np.array(xyz_to_coords_list(xyz_dict)))
-    raw_bonds = get_bonds_from_dmat(dmat, symbols, charges=[0] * len(symbols), n_fragments=n_fragments)
+    if bonds is None:
+        # build the zero‐order graph and find its connected components
+        dmat = distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
+                               b=np.array(xyz_to_coords_list(xyz_dict)))
+        raw_bonds = get_bonds_from_dmat(dmat, symbols, charges=[0] * len(symbols), n_fragments=n_fragments)
 
-    bonds: list[tuple[int, int]] = list()
-    for i, j in raw_bonds:
-        maxd = get_single_bond_length(symbols[i], symbols[j]) * (single_bond_tolerance)
-        if dmat[i, j] <= maxd:
-            bonds.append((i, j))
+        bonds = list()
+        for i, j in raw_bonds:
+            maxd = get_single_bond_length(symbols[i], symbols[j]) * (single_bond_tolerance)
+            if dmat[i, j] <= maxd:
+                bonds.append((i, j))
+        given_bonds = False
+    else:
+        bonds = [tuple(sorted(bond)) for bond in bonds]
+        given_bonds = True
 
     # immediately detach into fragments if requested
     atoms0 = [Atom(element=sym, radical_electrons=0, charge=0, lone_pairs=0, coords=np.array(c))
@@ -119,14 +133,21 @@ def perceive_molecule_from_xyz(
 
     # if we expected multiple fragments, hand off to the multi‐frag helper
     if len(fragments) != 1:
-        if len(fragments) == n_fragments:
-            return _combine_fragments(symbols, coords, fragments, charge)
+        # An explicit connectivity list is authoritative, it determines the number of fragments.
+        if len(fragments) == n_fragments or given_bonds:
+            return _combine_fragments(symbols, coords, fragments, charge,
+                                      bonds=bonds if given_bonds else None, bond_orders=bond_orders)
         return None
 
     # otherwise fall back on the existing single‐molecule code
     # (note: symbols, coords, mol0 already built above)
     multiplicity = multiplicity or infer_multiplicity(symbols, charge, n_radicals)
     n_radicals = n_radicals or (multiplicity - 1)
+
+    if bond_orders is not None:
+        rep = _mol_from_computed_bond_orders(mol0, bonds, bond_orders, charge, multiplicity, n_radicals)
+        if rep is not None:
+            return rep
 
     rep = generate_lewis_structure(mol0, charge, multiplicity, n_radicals)
     if rep is None:
@@ -145,11 +166,73 @@ def perceive_molecule_from_xyz(
     return rep
 
 
+def round_bond_order(bond_order: float) -> int:
+    """
+    Convert a computed (e.g., Mayer) bond order into a formal integer bond order.
+
+    Computed bond orders of delocalized bonds fall between the formal values (e.g., ~1.2-1.6 for an
+    aromatic ring), so the thresholds are placed midway between consecutive formal bond orders.
+
+    Args:
+        bond_order (float): The computed bond order.
+
+    Returns: int
+        The corresponding formal bond order, between 1 and 3.
+    """
+    if bond_order >= 2.5:
+        return 3
+    if bond_order >= 1.5:
+        return 2
+    return 1
+
+
+def _mol_from_computed_bond_orders(
+    mol0: Molecule,
+    bonds: list[tuple[int, int]],
+    bond_orders: dict[tuple[int, int], float],
+    charge: int,
+    multiplicity: int,
+    n_radicals: int,
+) -> Molecule | None:
+    """
+    Attempt to build a valid Molecule using computed (e.g., Mayer) bond orders directly.
+
+    This preserves the multiple bonds indicated by the electronic structure calculation instead of
+    searching for a Lewis structure from scratch. Radicals and lone pairs are assigned for the resulting
+    bond orders, and the structure is only returned if it is chemically valid.
+
+    Args:
+        mol0 (Molecule): A single-bonded molecule with the desired connectivity and coordinates.
+        bonds (list[tuple[int, int]]): The 0-indexed atom pairs of ``mol0``.
+        bond_orders (dict[tuple[int, int], float]): Computed bond orders keyed by the pairs in ``bonds``.
+        charge (int): The desired net formal charge.
+        multiplicity (int): The desired spin multiplicity.
+        n_radicals (int): The desired number of radical electrons.
+
+    Returns: Molecule | None
+        The perceived molecule, or ``None`` if the computed bond orders do not yield a valid structure.
+    """
+    mol = mol0.copy(deep=True)
+    for i, j in bonds:
+        order = bond_orders.get((i, j), bond_orders.get((j, i)))
+        if order is None:
+            return None
+        mol.get_bond(mol.atoms[i], mol.atoms[j]).set_order_num(round_bond_order(order))
+    mol.multiplicity = multiplicity
+    adjust_atoms_for_octet(mol, n_radicals)
+    assign_formal_charges(mol)
+    enforce_target_charge(mol, charge)
+    mol.multiplicity = multiplicity
+    return mol if is_mol_valid(mol, charge, multiplicity, n_radicals) else None
+
+
 def _combine_fragments(
     symbols: tuple[str, ...],
     coords: tuple[tuple[float, float, float], ...],
     fragments: list[list[int]],
     total_charge: int,
+    bonds: list[tuple[int, int]] | None = None,
+    bond_orders: dict[tuple[int, int], float] | None = None,
 ) -> Molecule:
     """
     Build disconnected fragments separately, then stitch them into one Molecule with charges distributed.
@@ -171,6 +254,11 @@ def _combine_fragments(
         coords (tuple[tuple[float, float, float], ...]): Cartesian coordinates for all atoms.
         fragments (list[list[int]]): Lists of atom indices, one per fragment.
         total_charge (int): Desired net charge of the combined system.
+        bonds (list[tuple[int, int]], optional): An explicit connectivity list of 0-indexed atom pairs.
+            If given, it is used instead of perceiving connectivity from interatomic distances, and no
+            inter-fragment bonds are added (steps 1 and 5 above are skipped).
+        bond_orders (dict[tuple[int, int], float], optional): Computed bond orders keyed by the pairs
+            in ``bonds``.
 
     Returns:
         Molecule: A reconstructed Molecule with all fragments combined, charges balanced to match
@@ -186,7 +274,12 @@ def _combine_fragments(
     all_idxs = set(range(len(symbols)))
     covered = set().union(*fragments)
     missing = all_idxs - covered
-    if missing:
+    if missing and bonds is not None:
+        # An explicit connectivity list is authoritative, uncovered atoms are separate fragments.
+        for i in sorted(missing):
+            fragments.append([i])
+        nfr = len(fragments)
+    elif missing:
         centroids = list()
         for idxs in fragments:
             pts = [coords[i] for i in idxs]
@@ -207,11 +300,23 @@ def _combine_fragments(
         mult = infer_multiplicity(sub_symbols, charge)
         rad  = mult - 1
         sub_xyz = {"symbols": sub_symbols, "coords": sub_coords}
+        sub_bonds, sub_bond_orders = None, None
+        if bonds is not None:
+            # Re-index the given connectivity into the fragment's local atom order.
+            local_index = {orig: local for local, orig in enumerate(idxs)}
+            sub_bonds = [(local_index[i], local_index[j]) for i, j in bonds
+                         if i in local_index and j in local_index]
+            if bond_orders is not None:
+                sub_bond_orders = {(local_index[i], local_index[j]): order
+                                   for (i, j), order in bond_orders.items()
+                                   if i in local_index and j in local_index}
         return perceive_molecule_from_xyz(sub_xyz,
                                           charge=charge,
                                           multiplicity=mult,
                                           n_radicals=rad,
                                           n_fragments=1,
+                                          bonds=sub_bonds,
+                                          bond_orders=sub_bond_orders,
                                           )
 
     # 2) search over all splits of total_charge into nfr integers (small range)
@@ -274,7 +379,9 @@ def _combine_fragments(
     best_mol.multiplicity = max(sm.multiplicity for sm in submols)
     assign_formal_charges(best_mol)
     enforce_target_charge(best_mol, total_charge)
-    _add_interfragment_bonds(best_mol, fragments, coords)
+    if bonds is None:
+        # A given connectivity list already accounts for all bonds, the fragments are genuinely separate.
+        _add_interfragment_bonds(best_mol, fragments, coords)
 
     # restore original atom order
     idx_map: dict[int, int] = dict()

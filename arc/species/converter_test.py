@@ -20,6 +20,7 @@ import arc.species.converter as converter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
+from arc.parser.parser import parse_geometry
 from arc.species.converter import order_mol_by_atom_map
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies
@@ -3522,6 +3523,60 @@ R1=1.0912"""
         conf, rd_mol = converter.rdkit_conf_from_mol(mol=mol, xyz=self.xyz5['dict'])
         self.assertTrue(conf.Is3D())
         self.assertEqual(rd_mol.GetNumAtoms(), 5)
+
+    def test_mol_from_dft(self):
+        """Test perceiving a molecule from an ESS log file using Mayer bond orders"""
+        # An Orca log file of 3-(hydroxymethyl)isoxazole, an aromatic ring which a distance-based
+        # criterion cannot assign bond orders for.
+        path_1 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C4H5NO2_mayer_orca.out')
+        mol_1, single_bond_mol_1 = converter.mol_from_dft(path_1)
+        self.assertTrue(converter.check_isomorphism(mol_1, Molecule(smiles='OCc1ccon1')))
+        self.assertEqual(mol_1.multiplicity, 1)
+        self.assertEqual(mol_1.get_net_charge(), 0)
+        # The atom order of the log file is preserved.
+        xyz_1 = parse_geometry(path_1)
+        self.assertEqual(tuple(atom.symbol for atom in mol_1.atoms), xyz_1['symbols'])
+        self.assertEqual(tuple(atom.symbol for atom in single_bond_mol_1.atoms), xyz_1['symbols'])
+        # The single bond copy has the same connectivity, with all bond orders set to 1.
+        self.assertEqual(sorted(tuple(sorted((mol_1.atoms.index(bond.atom1), mol_1.atoms.index(bond.atom2))))
+                                for bond in mol_1.get_all_edges()),
+                         sorted(tuple(sorted((single_bond_mol_1.atoms.index(bond.atom1),
+                                              single_bond_mol_1.atoms.index(bond.atom2))))
+                                for bond in single_bond_mol_1.get_all_edges()))
+        self.assertTrue(all(bond.is_single() for bond in single_bond_mol_1.get_all_edges()))
+
+        # A Gaussian log file of di(2-methylallyl) peroxide, the double bonds must be preserved.
+        path_2 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C8H14O2_mayer_gaussian.out')
+        mol_2, single_bond_mol_2 = converter.mol_from_dft(path_2)
+        self.assertTrue(converter.check_isomorphism(mol_2, Molecule(smiles='C=C(C)COOCC(=C)C')))
+        self.assertEqual(len([bond for bond in mol_2.get_all_edges() if bond.is_double()]), 2)
+        self.assertEqual(len(single_bond_mol_2.atoms), 24)
+
+        # A formaldehyde Orca log file, a C=O double bond with a Mayer bond order of 2.14.
+        path_3 = os.path.join(ARC_TESTING_PATH, 'orca_example_opt.log')
+        mol_3, _ = converter.mol_from_dft(path_3)
+        self.assertTrue(converter.check_isomorphism(mol_3, Molecule(smiles='C=O')))
+
+        # An Orca TS log file of CH4 + OH <=> CH3 + H2O. At the TS geometry the migrating H atom has a
+        # Mayer bond order of 0.62 to C and 0.36 to O, so it is perceived as belonging to the methane.
+        path_4 = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        mol_4, single_bond_mol_4 = converter.mol_from_dft(path_4)
+        fragments = sorted(mol_4.split(), key=lambda mol: len(mol.atoms))
+        self.assertEqual(len(fragments), 2)
+        self.assertTrue(converter.check_isomorphism(fragments[0], Molecule(smiles='[OH]')))
+        self.assertTrue(converter.check_isomorphism(fragments[1], Molecule(smiles='C')))
+        self.assertEqual(mol_4.multiplicity, 2)
+        # A lower threshold also captures the forming O-H bond. The single bond copy then represents the
+        # bridged TS connectivity, while the perceived molecule cannot (a bivalent H is not a valid
+        # Lewis structure) and falls back to the two separate species.
+        _, single_bond_mol_5 = converter.mol_from_dft(path_4, bond_order_threshold=0.3)
+        self.assertEqual(len(single_bond_mol_5.split()), 1)
+        migrating_h = single_bond_mol_5.atoms[5]
+        self.assertEqual(migrating_h.symbol, 'H')
+        self.assertEqual(sorted(single_bond_mol_5.atoms.index(atom) for atom in migrating_h.edges), [0, 2])
+
+        # A log file without a Mayer population analysis.
+        self.assertEqual(converter.mol_from_dft(os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')), (None, None))
 
     def test_s_bonds_mol_from_xyz(self):
         """Test creating a molecule with only single bonds from xyz"""
