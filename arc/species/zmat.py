@@ -990,7 +990,9 @@ def add_dummy_atom(zmat: dict,
     if d_str is not None:
         zmat['vars'][d_str] = 180
     # Update xyz with the dummy atom (useful when this atom is used to define dihedrals of other atoms).
-    coords = _add_nth_atom_to_coords(zmat=zmat, coords=list(coords), i=n)
+    zmat_ordered_coords = [tuple(coords[map_index_to_int(zmat['map'][zmat_index])]) for zmat_index in range(n)]
+    zmat_ordered_coords = _add_nth_atom_to_coords(zmat=zmat, coords=zmat_ordered_coords, i=n)
+    coords = list(coords) + [zmat_ordered_coords[n]]
     if connectivity is not None:
         # Update the connectivity dict to reflect that X is connected to the respective atom (r_atoms[1]),
         # this will help later in avoiding linear angles in the last three indices of a dihedral.
@@ -1086,9 +1088,13 @@ def _add_nth_atom_to_coords(zmat: dict,
     """
     Add the n-th atom to the coords (n >= 0).
 
+    The reference atoms are read from the zmat's R/A/D parameter strings, so ``coords`` is indexed
+    in the zmat's index space: entry ``k`` holds the coordinates of the atom at zmat index ``k``,
+    which is not the same as its index in the mol/xyz whenever the two orders differ.
+
     Args:
         zmat (dict): The zmat.
-        coords (list): The coordinates to be updated (not the entire xyz dict).
+        coords (list): The coordinates to be updated (not the entire xyz dict), ordered by zmat index.
         i (int): The atom number in the zmat to be added to the coords (0-indexed)
         coords_to_skip (list, optional): Entries are indices to skip.
 

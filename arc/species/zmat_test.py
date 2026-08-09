@@ -5,8 +5,11 @@
 This module contains unit tests of the arc.species.species module
 """
 
+import math
 import unittest
 
+import arc.species.converter as converter
+import arc.species.vectors as vectors
 import arc.species.zmat as zmat
 from arc.exceptions import ZMatError
 from arc.molecule.molecule import Molecule
@@ -836,7 +839,7 @@ class TestZMat(unittest.TestCase):
                                  ('R_14_0', 'A_14_0_1', 'DX_14_0_1_12'), ('R_15_13', 'A_15_13_11', 'D_15_13_11_14')),
                       'vars': {'R_1_0': 1.3280952001482191, 'R_11_9': 1.1999728537508982, 'R_13_11': 1.689800107747744,
                                'R_14_0': 0.9721366076390169, 'A_14_0_1': 110.47038205347816,
-                               'DX_14_0_1_12': 23.38932439442073, 'R_15_13': 1.3410220734118692,
+                               'DX_14_0_1_12': 72.40162521218208, 'R_15_13': 1.3410220734118692,
                                'A_15_13_11': 97.88723623341478, 'D_15_13_11_14': 179.99850519058072,
                                'RX_2|4|6|8|10|12_1|3|5|7|9|11': 1.0, 'R_3|7_1|5': 1.2000592040351243,
                                'R_5|9_3|7': 1.5398025274560583,
@@ -874,7 +877,7 @@ class TestZMat(unittest.TestCase):
                                  ('R_24_16', 'AX_2|3|4|5|6|7|11|12|13|14|15|16|17|18|19|20|21|22|23|24_1|1|3|3|5|5|8|8|9|9|10|10|14|14|18|18|0|0|16|16_0|2|1|4|3|6|7|11|7|13|7|15|9|17|14|19|1|21|10|23', 'DX_3|4|5|6|7|11|12|13|14|15|16|17|18|19|20|21|22|23|24_1|3|3|5|5|8|8|9|9|10|10|14|14|18|18|0|0|16|16_2|1|4|3|6|7|11|7|13|7|15|9|17|14|19|1|21|10|23_0|2|1|4|3|5|7|5|7|5|7|5|9|16|14|20|1|5|10')),
                       'vars': {'R_1_0': 1.199903964996338, 'R_3_1': 1.5391608476638794, 'R_5_3': 1.2011795043945312,
                                'R_7_5': 1.4856303930282593, 'R_8_7': 1.4922382831573486, 'A_8_7_5': 109.90699005126953,
-                               'DX_8_7_5_6': 359.9999987925818, 'R_9_7': 1.4877170324325562,
+                               'DX_8_7_5_6': 250.96298746830732, 'R_9_7': 1.4877170324325562,
                                'A_9_7_5': 109.04773712158203, 'D_9_7_5_8': 120.33149888420691,
                                'R_10_7': 1.4911911487579346, 'A_10_7_5': 109.24951171875,
                                'D_10_7_5_9': 118.98353452695731, 'R_12_8': 1.1634670495986938,
@@ -2450,6 +2453,108 @@ H   1.3230  -1.0712   1.2760""")
         result = zmat.find_smart_anchors(mol, breaking_bonds=[(0, 1)])
         self.assertEqual(len(result), len(set(result)),
                          msg=f'Duplicate anchors {result} with reactive core on cyclohexane')
+
+
+class TestDummyAtomIndexSpace(unittest.TestCase):
+    """
+    Test that a dummy atom added for a linear segment is placed using the zmat's index space.
+
+    ``add_dummy_atom`` is handed xyz-indexed coordinates, while the parameter strings that define
+    where the dummy goes are written in zmat indices. The two spaces differ whenever the atom order
+    is not the identity, and they always differ once an earlier dummy atom has shifted the indices.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        ch3, hch = 1.091, math.radians(110.0)
+        r, dz = ch3 * math.sin(hch), -ch3 * math.cos(hch)
+        cls.propyne_xyz = {'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H'),
+                           'isotopes': (12, 12, 12, 1, 1, 1, 1),
+                           'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.46), (0.0, 0.0, 2.668),
+                                      (0.0, 0.0, 3.73), (r, 0.0, dz),
+                                      (-r / 2, r * math.sqrt(3) / 2, dz),
+                                      (-r / 2, -r * math.sqrt(3) / 2, dz))}
+        cls.propyne_mol = Molecule(smiles='C#CC')
+        cls.butyne_xyz = {'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
+                          'isotopes': (12, 12, 12, 12, 1, 1, 1, 1, 1, 1),
+                          'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.46), (0.0, 0.0, 2.668),
+                                     (0.0, 0.0, 4.128), (r, 0.0, dz),
+                                     (-r / 2, r * math.sqrt(3) / 2, dz),
+                                     (-r / 2, -r * math.sqrt(3) / 2, dz),
+                                     (r, 0.0, 4.128 - dz),
+                                     (-r / 2, r * math.sqrt(3) / 2, 4.128 - dz),
+                                     (-r / 2, -r * math.sqrt(3) / 2, 4.128 - dz))}
+        cls.butyne_mol = Molecule(smiles='CC#CC')
+
+    @staticmethod
+    def interatomic_distances(coords):
+        """All pairwise distances of ``coords``, keyed by the atom index pair."""
+        return {(i, j): vectors.calculate_param(coords=coords, atoms=[i, j])
+                for i in range(len(coords)) for j in range(i + 1, len(coords))}
+
+    def assert_round_trip(self, xyz, mol=None, atom_order=None, num_dummies=None):
+        """Assert that ``xyz`` survives a zmat round trip with all variables finite."""
+        z = zmat.xyz_to_zmat(xyz, mol=mol, consolidate=False, atom_order=atom_order)
+        if num_dummies is not None:
+            self.assertEqual(len([symbol for symbol in z['symbols'] if symbol == 'X']), num_dummies)
+        for key, value in z['vars'].items():
+            self.assertTrue(math.isfinite(value), msg=f'zmat var {key} is {value}, which is not finite.\n{z}')
+        back = converter.zmat_to_xyz(z)
+        self.assertFalse(all(abs(value) < 1e-10 for atom_coords in back['coords'] for value in atom_coords),
+                         msg='Every atom collapsed onto the origin, which is what a laundered NaN looks like.')
+        expected = self.interatomic_distances(xyz['coords'])
+        got = self.interatomic_distances(back['coords'])
+        for pair, distance in expected.items():
+            self.assertAlmostEqual(got[pair], distance, places=4,
+                                   msg=f'Distance {pair} is {got[pair]}, expected {distance}.')
+        return z
+
+    def test_propyne_round_trip(self):
+        """Propyne needs two dummy atoms, and the second one is resolved through shifted indices."""
+        self.assert_round_trip(self.propyne_xyz, mol=self.propyne_mol, num_dummies=2)
+        self.assert_round_trip(self.propyne_xyz, mol=None, num_dummies=2)
+
+    def test_propyne_round_trip_with_a_permuted_atom_order(self):
+        """An explicit atom order divorces the zmat indices from the xyz indices from the start."""
+        self.assert_round_trip(self.propyne_xyz, mol=self.propyne_mol, atom_order=[3, 2, 1, 0, 4, 5, 6])
+        self.assert_round_trip(self.propyne_xyz, mol=None, atom_order=[3, 2, 1, 0, 4, 5, 6])
+
+    def test_two_butyne_round_trip(self):
+        """2-butyne places both methyl groups relative to dummy atoms of the central triple bond."""
+        self.assert_round_trip(self.butyne_xyz, mol=self.butyne_mol, num_dummies=2)
+        self.assert_round_trip(self.butyne_xyz, mol=None, num_dummies=2)
+
+    def test_dummy_map_values_index_the_augmented_coords(self):
+        """
+        Each dummy is mapped to 'X<i>', where ``i`` indexes the coordinates the dummies are appended to.
+
+        The placement relies on this: an 'X<i>' map value is decoded back into ``i`` and used to read
+        the dummy's cartesian coordinates, exactly as ``vectors.calculate_dihedral_angle`` decodes it.
+        """
+        for xyz, mol in ((self.propyne_xyz, self.propyne_mol), (self.butyne_xyz, self.butyne_mol)):
+            z = zmat.xyz_to_zmat(xyz, mol=mol, consolidate=False)
+            dummy_indices = [zmat.map_index_to_int(value) for value in z['map'].values()
+                             if isinstance(value, str)]
+            self.assertEqual(len(dummy_indices), 2)
+            self.assertEqual(dummy_indices, list(range(len(xyz['symbols']), len(xyz['symbols']) + 2)))
+
+    def test_a_zmat_without_a_linear_segment_has_no_dummy_atoms(self):
+        """Species with no linear angle never reach the dummy atom path, so they cannot be affected."""
+        for smiles, xyz_str in (('CC', """C  0.0000  0.0000  0.7625
+C  0.0000  0.0000 -0.7625
+H  1.0184  0.0000  1.1573
+H -0.5092 -0.8819  1.1573
+H -0.5092  0.8819  1.1573
+H -1.0184  0.0000 -1.1573
+H  0.5092  0.8819 -1.1573
+H  0.5092 -0.8819 -1.1573"""),
+                                ('O', """O  0.0000  0.0000  0.1173
+H  0.0000  0.7572 -0.4692
+H  0.0000 -0.7572 -0.4692""")):
+            xyz = str_to_xyz(xyz_str)
+            z = self.assert_round_trip(xyz, mol=Molecule(smiles=smiles), num_dummies=0)
+            self.assertNotIn('X', z['symbols'])
 
 
 if __name__ == '__main__':
