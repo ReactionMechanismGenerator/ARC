@@ -52,11 +52,13 @@ GAUSSIAN_MEMORY_HEADROOM_FRACTION = 0.90
 # restricted: '' or 'u' for restricted / unrestricted
 # `iop(2/9=2000)` makes Gaussian print the geometry in the input orientation even for molecules with more
 #   than 50 atoms (important so it matches the hessian, and so that Arkane can parse the geometry)
+# `iop(6/80=1)` makes Gaussian print the Mayer atomic bond orders, from which connectivity is inferred
+#   (see arc.species.converter.mol_from_dft). It is a post-SCF population analysis, its cost is negligible.
 input_template = """${checkfile}
 %%mem=${memory}mb
 %%NProcShared=${cpus}
 
-#P ${job_type_1} ${restricted}${method}${slash_1}${basis}${slash_2}${auxiliary_basis} ${job_type_2} ${fine} IOp(2/9=2000) ${keywords} ${dispersion} ${trsh}
+#P ${job_type_1} ${restricted}${method}${slash_1}${basis}${slash_2}${auxiliary_basis} ${job_type_2} ${fine} IOp(2/9=2000,6/80=1) ${keywords} ${dispersion} ${trsh}
 
 ${label}
 
