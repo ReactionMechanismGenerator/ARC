@@ -28,6 +28,37 @@ def get_normal(v1: list[float],
     return unit_vector(normal)
 
 
+def get_perpendicular_unit_vector(vector: list[float]) -> list[float]:
+    """
+    Get a deterministic unit vector perpendicular to ``vector``.
+
+    Crossing ``vector`` with the Cartesian axis it is least aligned with can never be degenerate:
+    the smallest component of a vector of length L is at most L / sqrt(3), so the cross product has
+    a length of at least L * sqrt(2/3). Picking the axis by magnitude rather than arbitrarily keeps
+    the result reproducible for a given input.
+
+    Args:
+        vector (list): The vector to find a perpendicular of. Need not be normalized.
+
+    Raises:
+        VectorsError: If ``vector`` is not a finite, non-zero vector of length three.
+        ZeroDivisionError: If ``vector`` is non-zero but its squared length underflows to zero,
+                           which happens below a magnitude of about 1e-162.
+
+    Returns: list
+        A unit vector perpendicular to ``vector``.
+    """
+    if len(vector) != 3:
+        raise VectorsError(f'vector must be of length three, got {len(vector)}.')
+    if not all(math.isfinite(component) for component in vector):
+        raise VectorsError(f'vector must be finite, got {vector}.')
+    if not any(vector):
+        raise VectorsError(f'vector must be non-zero, got {vector}.')
+    reference = [0.0, 0.0, 0.0]
+    reference[min(range(3), key=lambda index: abs(vector[index]))] = 1.0
+    return get_normal(vector, reference)
+
+
 def get_angle(v1: list[float],
               v2: list[float],
               units: str = 'rads',

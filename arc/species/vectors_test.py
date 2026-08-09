@@ -51,6 +51,29 @@ class TestVectors(unittest.TestCase):
         for ni, expected_ni in zip(n, expected_n):
             self.assertEqual(ni, expected_ni)
 
+    def test_get_perpendicular_unit_vector(self):
+        """Test that a unit vector orthogonal to the input is returned for any input direction"""
+        for vector in ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+                       [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0],
+                       [1.0, 1.0, 1.0], [-3.0, 0.5, 0.0], [0.0, 0.0, -2.0]):
+            with self.subTest(vector=vector):
+                perpendicular = vectors.get_perpendicular_unit_vector(vector)
+                self.assertAlmostEqual(vectors.get_vector_length(perpendicular), 1.0, places=10)
+                self.assertAlmostEqual(sum(perpendicular[i] * vector[i] for i in range(3)), 0.0, places=10)
+
+    def test_get_perpendicular_unit_vector_is_deterministic(self):
+        """Test that repeated calls with the same input return the same vector"""
+        self.assertEqual(vectors.get_perpendicular_unit_vector([1.0, 2.0, 3.0]),
+                         vectors.get_perpendicular_unit_vector([1.0, 2.0, 3.0]))
+
+    def test_get_perpendicular_unit_vector_rejects_degenerate_input(self):
+        """Test that a vector which is not a finite, non-zero 3-vector is rejected"""
+        for vector in ([0.0, 0.0, 0.0], [1.0, 0.0], [1.0, 2.0, 3.0, 4.0],
+                       [float('nan'), 0.0, 1.0], [float('inf'), 0.0, 1.0]):
+            with self.subTest(vector=vector):
+                with self.assertRaises(VectorsError):
+                    vectors.get_perpendicular_unit_vector(vector)
+
     def test_get_angle(self):
         """Test calculating the angle between two vectors"""
         v1 = [-1.45707856 + 0.02416711, -0.94104506 - 0.17703194, -0.20275830 - 0.08644641]
