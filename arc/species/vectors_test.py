@@ -74,6 +74,44 @@ class TestVectors(unittest.TestCase):
                 with self.assertRaises(VectorsError):
                     vectors.get_perpendicular_unit_vector(vector)
 
+    def test_get_perpendicular_axes(self):
+        """Test that a right-handed orthonormal pair perpendicular to the input vector is returned"""
+        for vector in ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+                       [-1.0, 0.0, 0.0], [0.0, -2.0, 0.0], [0.0, 0.0, -3.0],
+                       [1.0, 1.0, 1.0], [-3.0, 0.5, 0.0], [0.7, -0.7, 0.14], [1e-4, 1e5, 2.0]):
+            with self.subTest(vector=vector):
+                e_y, e_z = vectors.get_perpendicular_axes(vector)
+                e_x = vectors.unit_vector(vector)
+                self.assertAlmostEqual(vectors.get_vector_length(e_y), 1.0, places=10)
+                self.assertAlmostEqual(vectors.get_vector_length(e_z), 1.0, places=10)
+                self.assertAlmostEqual(sum(e_x[i] * e_y[i] for i in range(3)), 0.0, places=10)
+                self.assertAlmostEqual(sum(e_x[i] * e_z[i] for i in range(3)), 0.0, places=10)
+                self.assertAlmostEqual(sum(e_y[i] * e_z[i] for i in range(3)), 0.0, places=10)
+                for expected, obtained in zip(e_z, vectors.get_normal(e_x, e_y)):
+                    self.assertAlmostEqual(expected, obtained, places=10)
+        e_y, e_z = vectors.get_perpendicular_axes([0.0, 0.0, 1.0])
+        for expected, obtained in zip([1.0, 0.0, 0.0], e_y):
+            self.assertAlmostEqual(expected, obtained, places=10)
+        for expected, obtained in zip([0.0, 1.0, 0.0], e_z):
+            self.assertAlmostEqual(expected, obtained, places=10)
+
+    def test_get_perpendicular_axes_is_deterministic(self):
+        """Test that repeated calls with the same input, and with a scaled input, return the same axes"""
+        self.assertEqual(vectors.get_perpendicular_axes([1.0, 2.0, 3.0]),
+                         vectors.get_perpendicular_axes([1.0, 2.0, 3.0]))
+        for scaled, unscaled in zip(vectors.get_perpendicular_axes([5.0, 10.0, 15.0]),
+                                    vectors.get_perpendicular_axes([1.0, 2.0, 3.0])):
+            for expected, obtained in zip(unscaled, scaled):
+                self.assertAlmostEqual(expected, obtained, places=10)
+
+    def test_get_perpendicular_axes_rejects_degenerate_input(self):
+        """Test that a vector which is not a finite, sufficiently long 3-vector is rejected"""
+        for vector in ([0.0, 0.0, 0.0], [1.0, 0.0], [1.0, 2.0, 3.0, 4.0], [1e-12, 0.0, 0.0],
+                       [float('nan'), 0.0, 1.0], [float('nan')] * 3, [float('inf'), 0.0, 1.0]):
+            with self.subTest(vector=vector):
+                with self.assertRaises(VectorsError):
+                    vectors.get_perpendicular_axes(vector)
+
     def test_get_angle(self):
         """Test calculating the angle between two vectors"""
         v1 = [-1.45707856 + 0.02416711, -0.94104506 - 0.17703194, -0.20275830 - 0.08644641]
