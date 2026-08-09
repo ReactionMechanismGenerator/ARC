@@ -990,7 +990,9 @@ def add_dummy_atom(zmat: dict,
     if d_str is not None:
         zmat['vars'][d_str] = 180
     # Update xyz with the dummy atom (useful when this atom is used to define dihedrals of other atoms).
-    coords = _add_nth_atom_to_coords(zmat=zmat, coords=list(coords), i=n)
+    zmat_ordered_coords = [tuple(coords[map_index_to_int(zmat['map'][zmat_index])]) for zmat_index in range(n)]
+    zmat_ordered_coords = _add_nth_atom_to_coords(zmat=zmat, coords=zmat_ordered_coords, i=n)
+    coords = list(coords) + [zmat_ordered_coords[n]]
     if connectivity is not None:
         # Update the connectivity dict to reflect that X is connected to the respective atom (r_atoms[1]),
         # this will help later in avoiding linear angles in the last three indices of a dihedral.
@@ -1078,28 +1080,6 @@ def zmat_to_coords(zmat: dict,
     return ordered_coords, ordered_symbols
 
 
-def get_perpendicular_unit_vector(vector: np.ndarray | list) -> np.ndarray:
-    """
-    Get a deterministic unit vector perpendicular to ``vector``.
-
-    Crossing ``vector`` with the Cartesian axis it is least aligned with can never be degenerate:
-    a unit vector's smallest component is at most 1/sqrt(3), so the resulting cross product has a
-    length of at least sqrt(2/3). Picking the axis by magnitude rather than arbitrarily keeps the
-    result reproducible for a given input.
-
-    Args:
-        vector (np.ndarray | list): The vector to find a perpendicular of. Need not be normalized.
-
-    Returns:
-        np.ndarray: A unit vector perpendicular to ``vector``.
-    """
-    axis = int(np.argmin([abs(float(component)) for component in vector]))
-    reference = np.zeros(3)
-    reference[axis] = 1.0
-    perpendicular = np.cross(np.asarray(vector, dtype=np.float64), reference)
-    return perpendicular / vectors.get_vector_length(list(perpendicular))
-
-
 def _add_nth_atom_to_coords(zmat: dict,
                             coords: list,
                             i: int,
@@ -1108,11 +1088,25 @@ def _add_nth_atom_to_coords(zmat: dict,
     """
     Add the n-th atom to the coords (n >= 0).
 
+    The reference atoms are read from the zmat's R/A/D parameter strings, so ``coords`` is indexed
+    in the zmat's index space: entry ``k`` holds the coordinates of the atom at zmat index ``k``,
+    which is not the same as its index in the mol/xyz whenever the two orders differ.
+
+    Atoms 0 and 1 define the frame: they are placed at the origin and on the +z axis, respectively.
+    Given zmat-ordered ``coords``, every atom from index 2 onwards is placed relative to the
+    coordinates already present, so the frame they are in is honoured rather than replaced. Atom 2
+    has no reference plane to fix its azimuth about the 0-1 axis, which is therefore taken from
+    ``vectors.get_perpendicular_unit_vector()`` of that axis; for the canonical frame this
+    reproduces the +y half plane.
+
     Args:
         zmat (dict): The zmat.
-        coords (list): The coordinates to be updated (not the entire xyz dict).
+        coords (list): The coordinates to be updated (not the entire xyz dict), ordered by zmat index.
         i (int): The atom number in the zmat to be added to the coords (0-indexed)
         coords_to_skip (list, optional): Entries are indices to skip.
+
+    Raises:
+        VectorsError: If atom 2 is being added and atoms 0 and 1 are coincident.
 
     Returns:
         list: The updated coords.
@@ -1131,25 +1125,12 @@ def _add_nth_atom_to_coords(zmat: dict,
         bc_length = zmat['vars'][r_key]
         alpha = zmat['vars'][a_key]
         alpha = math.radians(alpha if alpha < 180 else 360 - alpha)
-        b_index = [indices for indices in get_atom_indices_from_zmat_parameter(r_key) if indices[0] == i][0][1]
-        b_z = coords[b_index][2]
-        c_y = bc_length * math.sin(alpha)
-        r"""
-        We differentiate between two cases for c_z:
-        Either atom A is at the origin (case 1), or atom B is at the origin (case 2).
-        One of them has to be at the origin (0, 0, 0), since we're adding the 3rd atom (so either A or B were 1st).
-        
-         y
-         ^                    C                         C
-         |           (1)       \        or     (2)     /
-         L__ > z           A -- B                    B -- A
-        
-        In case 1, we need to deduct len(B-C) from the z coordinate of atom B,
-        but in case 2 we need to take the positive value of len(B-C).
-        The above is also true if alpha(A-B-C) is > 90 degrees.
-        """
-        c_z = b_z - bc_length * math.cos(alpha) if b_z else bc_length * math.cos(alpha)
-        coords.append((0.0, c_y, c_z))
+        a_indices = [indices for indices in get_atom_indices_from_zmat_parameter(a_key) if indices[0] == i][0]
+        b_index, a_index = a_indices[1], a_indices[2]
+        u_perp = vectors.get_perpendicular_unit_vector([coords[1][k] - coords[0][k] for k in range(3)])
+        u_ba = vectors.unit_vector([coords[a_index][k] - coords[b_index][k] for k in range(3)])
+        coords.append(tuple(coords[b_index][k] + bc_length * (math.cos(alpha) * u_ba[k]
+                                                              + math.sin(alpha) * u_perp[k]) for k in range(3)))
     elif i not in coords_to_skip:
         d_indices = [indices for indices in get_atom_indices_from_zmat_parameter(zmat['coords'][i][2])
                      if indices[0] == i][0]
@@ -1170,14 +1151,18 @@ def _add_nth_atom_to_coords(zmat: dict,
                (coords[c_index][1] - coords[b_index][1]) / bc_length,
                (coords[c_index][2] - coords[b_index][2]) / bc_length]
         n = np.cross(ab, ubc)
-        n_length = vectors.get_vector_length(list(n))
+        n_length = vectors.get_vector_length(n)
         un = n / n_length if n_length else np.full(3, np.nan)
         if not np.all(np.isfinite(un)):
-            logger.warning(f'Atoms {a_index}, {b_index} and {c_index} of the zmat are exactly collinear, so the '
-                           f'dihedral about them is undefined. Placing atom {i} using an arbitrary reference '
-                           f'plane; its position is still determined by the respective distance and angle. '
-                           f'This usually means a dummy atom is missing for a linear segment.')
-            un = get_perpendicular_unit_vector(ubc)
+            logger.warning(f'Atoms {a_index}, {b_index} and {c_index} of the zmat do not define a reference plane '
+                           f'(they are collinear or coincident), so the dihedral about them is undefined. Placing '
+                           f'atom {i} against an arbitrary plane; the requested distance and angle are still '
+                           f'honoured, and the dihedral is measured from an arbitrary zero. zmat construction '
+                           f'inserts dummy atoms to keep linear segments out of a dihedral reference, so a '
+                           f'linear segment reaching this branch means either that the reference atoms were '
+                           f'resolved incorrectly, or that the segment was never recognized as linear, which '
+                           f'can happen when the connectivity is unavailable.')
+            un = vectors.get_perpendicular_unit_vector(ubc)
         un_cross_ubc = np.cross(un, ubc)
 
         # The transformation matrix:
