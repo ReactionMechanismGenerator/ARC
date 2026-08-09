@@ -59,6 +59,40 @@ def get_perpendicular_unit_vector(vector: list[float]) -> list[float]:
     return get_normal(vector, reference)
 
 
+def get_perpendicular_axes(vector: list[float],
+                           tol: float = 1e-8,
+                           ) -> tuple[list[float], list[float]]:
+    """
+    Get the two unit vectors that complete a right-handed orthonormal frame with a given direction.
+
+    Writing ``e_x`` for the unit vector along ``vector``, the returned ``e_y`` and ``e_z`` satisfy
+    ``e_x`` x ``e_y`` = ``e_z``. Their common phase about ``e_x`` is arbitrary: it is fixed by
+    ``get_perpendicular_unit_vector()``, so it is reproducible for a given input but carries no
+    meaning of its own. Angles measured against the returned pair therefore retain their cyclic
+    order about ``e_x`` while their absolute values do not.
+
+    Args:
+        vector (list): The vector defining the first axis of the frame. Need not be normalized.
+        tol (float, optional): The minimal accepted length of ``vector``.
+
+    Raises:
+        VectorsError: If ``vector`` is not of length three, is not finite, is shorter than ``tol``,
+                      or is long enough for its squared length to overflow.
+
+    Returns: tuple
+        The ``e_y`` and ``e_z`` unit vectors.
+    """
+    if len(vector) != 3:
+        raise VectorsError(f'vector must be of length three, got {len(vector)}.')
+    if not all(math.isfinite(component) for component in vector):
+        raise VectorsError(f'vector must be finite, got {vector}.')
+    if get_vector_length(vector) < tol:
+        raise VectorsError(f'vector must be longer than {tol}, got {vector}.')
+    e_x = unit_vector(vector)
+    e_z = get_perpendicular_unit_vector(e_x)
+    return get_normal(e_z, e_x), e_z
+
+
 def get_angle(v1: list[float],
               v2: list[float],
               units: str = 'rads',
