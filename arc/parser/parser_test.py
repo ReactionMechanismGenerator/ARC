@@ -1127,6 +1127,50 @@ H      -1.69381305    0.40788834    0.90078104"""
         path5 = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
         self.assertEqual(parser.parse_ess_version(path5), 'Molpro 2015.1.37')
 
+    def test_parse_bond_orders(self):
+        """Test parsing Mayer bond orders from various ESS output files."""
+        # Gaussian, requires IOp(6/80=1) in the route section.
+        path1 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C8H14O2_mayer_gaussian.out')
+        bond_orders_1 = parser.parse_bond_orders(path1)
+        self.assertEqual(bond_orders_1.shape, (24, 24))
+        self.assertTrue(np.allclose(bond_orders_1, bond_orders_1.T))
+        # The diagonal holds the Mayer atomic valence.
+        self.assertAlmostEqual(bond_orders_1[0, 0], 3.931186, places=6)  # C
+        self.assertAlmostEqual(bond_orders_1[4, 4], 1.861909, places=6)  # O
+        self.assertAlmostEqual(bond_orders_1[0, 1], 1.908673, places=6)  # a C=C double bond
+        self.assertAlmostEqual(bond_orders_1[4, 5], 0.822247, places=6)  # a strained O-O bond
+        self.assertAlmostEqual(bond_orders_1[0, 10], 0.965318, places=6)  # a C-H bond
+        self.assertAlmostEqual(bond_orders_1[0, 6], 0.000079, places=6)  # not bonded
+
+        # Orca, printed by default.
+        path2 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C4H5NO2_mayer_orca.out')
+        bond_orders_2 = parser.parse_bond_orders(path2)
+        self.assertEqual(bond_orders_2.shape, (12, 12))
+        self.assertTrue(np.allclose(bond_orders_2, bond_orders_2.T))
+        self.assertAlmostEqual(bond_orders_2[0, 0], 1.8586, places=4)  # O
+        self.assertAlmostEqual(bond_orders_2[1, 1], 3.9312, places=4)  # C
+        self.assertAlmostEqual(bond_orders_2[0, 1], 1.0121, places=4)  # a C-O bond
+        self.assertAlmostEqual(bond_orders_2[5, 6], 1.6025, places=4)  # a C=C double bond
+        self.assertAlmostEqual(bond_orders_2[2, 3], 1.5612, places=4)  # a C=N double bond
+        self.assertEqual(bond_orders_2[0, 2], 0)  # not bonded, below Orca's print threshold
+
+        # An Orca TS, with two partial bonds of a migrating H atom.
+        path3 = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        bond_orders_3 = parser.parse_bond_orders(path3)
+        self.assertEqual(bond_orders_3.shape, (7, 7))
+        self.assertAlmostEqual(bond_orders_3[2, 5], 0.6169, places=4)  # a breaking C-H bond
+        self.assertAlmostEqual(bond_orders_3[0, 5], 0.3644, places=4)  # a forming O-H bond
+
+        # A double bond in an Orca opt job.
+        path4 = os.path.join(ARC_TESTING_PATH, 'orca_example_opt.log')
+        bond_orders_4 = parser.parse_bond_orders(path4)
+        self.assertEqual(bond_orders_4.shape, (4, 4))
+        self.assertAlmostEqual(bond_orders_4[0, 1], 2.1427, places=4)  # a C=O double bond
+
+        # Log files without a Mayer population analysis.
+        self.assertIsNone(parser.parse_bond_orders(os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')))
+        self.assertIsNone(parser.parse_bond_orders(os.path.join(ARC_TESTING_PATH, 'freq', 'orca6_example.out')))
+
     def test_yaml_parser(self):
         """Test the YAMLParser adapter for all its parse methods."""
         import tempfile
