@@ -24,8 +24,23 @@ ARC_FAMILIES_PATH = settings['ARC_FAMILIES_PATH']
 logger = get_logger()
 
 # How many resonance structures of a >20-atom reactant to search for reaction sites in
-# generate_unimolecular_products(). ``None`` searches all of them.
-RESONANCE_SEARCH_LIMIT: int | None = 2
+# generate_unimolecular_products(). ``None`` (the default) searches all of them.
+#
+# Truncating this is *lossy*, and not only for equivalent Kekule re-drawings: resonance also
+# covers N and S chemistries and conjugated allyls, where the later structures expose sites the
+# first two do not. Measured over all 112 families with a limit of 2, the fraction of distinct
+# product sets never enumerated was 53% for fluorenyl (5 structures), 42% for naphthylethyl (4),
+# 46% for 1,3-diphenylallyl (4), 47% for a biphenyl aminyl radical (4), 48% for a biphenyl thiyl
+# radical (4) and 71% for a nitro-naphthylmethyl radical (7). This propagates all the way out:
+# for [CH2]Cc1cccc2ccccc12 -> [CH2]CC12C=CC1c1ccccc12, a limit of 2 finds no family at all,
+# while searching every structure correctly identifies Intra_2+2_cycloaddition_Cd.
+#
+# Searching all structures costs roughly 2x in this stage alone, but only ~20% end to end
+# (8.5 s vs 7.2 s and 13.1 s vs 10.5 s for the two reactions above, over all families), since
+# the adjacency-list cache in determine_possible_reaction_products_from_family() absorbs the
+# duplicate product graphs the extra structures generate. Set this to an int only where missing
+# reaction sites is acceptable in exchange for that ~20%, e.g. a coarse screening pass.
+RESONANCE_SEARCH_LIMIT: int | None = None
 
 
 REACTION_FAMILY_CACHE: dict[tuple[str, bool], 'ReactionFamily'] = {}
