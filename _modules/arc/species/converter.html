@@ -112,7 +112,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">rdkit.Chem</span><span class="w"> </span><span class="kn">import</span> <span class="n">rdMolTransforms</span> <span class="k">as</span> <span class="n">rdMT</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">rdkit.Chem</span><span class="w"> </span><span class="kn">import</span> <span class="n">AllChem</span><span class="p">,</span> <span class="n">SDWriter</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">rdkit.Chem.rdchem</span><span class="w"> </span><span class="kn">import</span> <span class="n">AtomValenceException</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.optimize</span><span class="w"> </span><span class="kn">import</span> <span class="n">minimize</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.optimize</span><span class="w"> </span><span class="kn">import</span> <span class="n">brentq</span><span class="p">,</span> <span class="n">minimize</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">NUMBER_BY_SYMBOL</span><span class="p">,</span> <span class="n">MASS_BY_SYMBOL</span><span class="p">,</span> <span class="n">SYMBOL_BY_NUMBER</span><span class="p">,</span>
                         <span class="n">almost_equal_lists</span><span class="p">,</span>
@@ -1701,6 +1701,11 @@
         <span class="k">for</span> <span class="n">mol</span> <span class="ow">in</span> <span class="n">mol_list</span><span class="p">:</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">Molecule</span><span class="p">):</span>
                 <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;expected entries of mol_list to be Molecule instances, got </span><span class="si">{</span><span class="n">mol</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">mol</span><span class="p">)</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+            <span class="c1"># Fast path: if atom IDs already match ref_mol in the same positions, no VF2 needed.</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span>
+                    <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">id</span> <span class="o">==</span> <span class="n">r</span><span class="o">.</span><span class="n">id</span> <span class="ow">and</span> <span class="n">m</span><span class="o">.</span><span class="n">id</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span>
+                            <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">,</span> <span class="n">ref_mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">))):</span>
+                <span class="k">continue</span>
             <span class="k">try</span><span class="p">:</span>  <span class="c1"># TODO: flag as unordered (or solve)</span>
                 <span class="n">order_atoms</span><span class="p">(</span><span class="n">ref_mol</span><span class="p">,</span> <span class="n">mol</span><span class="p">)</span>
             <span class="k">except</span> <span class="n">SanitizationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
@@ -2438,6 +2443,151 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_place_atom_nerf</span><span class="p">(</span><span class="n">coord_l</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                     <span class="n">coord_m</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                     <span class="n">coord_r</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                     <span class="n">r_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                     <span class="n">a_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                     <span class="n">d_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Place an atom X analytically from internal coordinates (the NeRF construction).</span>
+
+<span class="sd">    Solves for X with ``|X - R| = r_value``, ``angle(M, R, X) = a_value``, and</span>
+<span class="sd">    ``dihedral(L, M, R, X) = d_value``. Those three constraints determine X exactly,</span>
+<span class="sd">    so no optimizer is needed -- which matters because the numerical fallback needs</span>
+<span class="sd">    ~2000 objective evaluations per atom and its iteration count is acutely sensitive</span>
+<span class="sd">    to sub-1e-5 changes in the targets.</span>
+
+<span class="sd">    Only applies when the three parameters are chained in this way (the angle&#39;s vertex</span>
+<span class="sd">    and the dihedral&#39;s last atom are both R, and the dihedral&#39;s third atom is M). The</span>
+<span class="sd">    caller checks that and falls back to the optimizer otherwise.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        coord_l (tuple): Cartesian coordinates of atom L (dihedral&#39;s first atom).</span>
+<span class="sd">        coord_m (tuple): Cartesian coordinates of atom M.</span>
+<span class="sd">        coord_r (tuple): Cartesian coordinates of atom R, to which X is being attached.</span>
+<span class="sd">        r_value (float): The R-X distance in Angstrom.</span>
+<span class="sd">        a_value (float): The M-R-X angle in degrees.</span>
+<span class="sd">        d_value (float): The L-M-R-X dihedral angle in degrees.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple | None: The Cartesian coordinates of X, or ``None`` if L, M and R are</span>
+<span class="sd">                      collinear, in which case the reference frame is undefined.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">a_rad</span><span class="p">,</span> <span class="n">d_rad</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">a_value</span><span class="p">),</span> <span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">d_value</span><span class="p">)</span>
+    <span class="n">coord_l</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">coord_l</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">coord_m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">coord_m</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">coord_r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">coord_r</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+    <span class="n">bc</span> <span class="o">=</span> <span class="n">coord_r</span> <span class="o">-</span> <span class="n">coord_m</span>
+    <span class="n">bc_len</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">bc</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">bc_len</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">bc</span> <span class="o">=</span> <span class="n">bc</span> <span class="o">/</span> <span class="n">bc_len</span>
+    <span class="n">normal</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">coord_m</span> <span class="o">-</span> <span class="n">coord_l</span><span class="p">,</span> <span class="n">bc</span><span class="p">)</span>
+    <span class="n">normal_len</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">normal</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">normal_len</span> <span class="o">&lt;</span> <span class="mf">1e-8</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>  <span class="c1"># L, M and R are collinear: the dihedral reference plane is undefined.</span>
+    <span class="n">normal</span> <span class="o">=</span> <span class="n">normal</span> <span class="o">/</span> <span class="n">normal_len</span>
+    <span class="n">in_plane</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">normal</span><span class="p">,</span> <span class="n">bc</span><span class="p">)</span>
+
+    <span class="n">x</span> <span class="o">=</span> <span class="n">coord_r</span> <span class="o">+</span> <span class="n">r_value</span> <span class="o">*</span> <span class="p">(</span><span class="o">-</span><span class="n">math</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">a_rad</span><span class="p">)</span> <span class="o">*</span> <span class="n">bc</span>
+                             <span class="o">+</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">a_rad</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">d_rad</span><span class="p">)</span> <span class="o">*</span> <span class="n">in_plane</span>
+                             <span class="o">+</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">a_rad</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">d_rad</span><span class="p">)</span> <span class="o">*</span> <span class="n">normal</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_place_atom_on_dihedral_arc</span><span class="p">(</span><span class="n">coord_l</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                                <span class="n">coord_m</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                                <span class="n">coord_r</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                                <span class="n">coord_a</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                                <span class="n">r_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                                <span class="n">a_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                                <span class="n">d_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                                <span class="n">initial_guess</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                                <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Place an atom X when the angle is measured to an atom the dihedral does not name.</span>
+
+<span class="sd">    Handles ``|X - R| = r_value``, ``angle(A, R, X) = a_value`` and</span>
+<span class="sd">    ``dihedral(L, M, R, X) = d_value`` where A is not M, so :func:`_place_atom_nerf`</span>
+<span class="sd">    does not apply directly.</span>
+
+<span class="sd">    Sweeping the *M-R-X* angle through :func:`_place_atom_nerf` traces precisely the arc</span>
+<span class="sd">    of points that already satisfy ``r_value`` and ``d_value``, so the problem collapses</span>
+<span class="sd">    from three unknowns to one: find the point on that arc whose A-R-X angle is</span>
+<span class="sd">    ``a_value``. That is a bracketed 1-D root find over an exact constructor, which</span>
+<span class="sd">    replaces a 3-D SLSQP solve that averages ~5200 objective evaluations per atom.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        coord_l (tuple): Cartesian coordinates of atom L (the dihedral&#39;s first atom).</span>
+<span class="sd">        coord_m (tuple): Cartesian coordinates of atom M.</span>
+<span class="sd">        coord_r (tuple): Cartesian coordinates of atom R, to which X is being attached.</span>
+<span class="sd">        coord_a (tuple): Cartesian coordinates of atom A (the angle&#39;s outer atom).</span>
+<span class="sd">        r_value (float): The R-X distance in Angstrom.</span>
+<span class="sd">        a_value (float): The A-R-X angle in degrees.</span>
+<span class="sd">        d_value (float): The L-M-R-X dihedral angle in degrees.</span>
+<span class="sd">        initial_guess (np.ndarray, optional): Used only to choose between two valid</span>
+<span class="sd">                                              solutions, preserving the behaviour of the</span>
+<span class="sd">                                              optimizer this replaces.</span>
+
+<span class="sd">    The three constraints are frequently over-determined -- for roughly 60% of these</span>
+<span class="sd">    placements in the hydrolysis TS heuristics no point attains ``a_value`` at all, the</span>
+<span class="sd">    closest being ~4 deg away. There the arc yields no exact answer, but the point that</span>
+<span class="sd">    comes closest still satisfies ``r_value`` and ``d_value`` exactly, which makes it a far</span>
+<span class="sd">    better starting point than a generic guess for the least-squares solve that follows.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple[tuple | None, bool]: The Cartesian coordinates of X and whether they satisfy</span>
+<span class="sd">                                   all three constraints exactly. When the flag is False the</span>
+<span class="sd">                                   coordinates are the closest point on the arc, intended as</span>
+<span class="sd">                                   an optimizer starting point, and are ``None`` only if the</span>
+<span class="sd">                                   construction itself is degenerate.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">origin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">coord_r</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">axis</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">coord_a</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span> <span class="o">-</span> <span class="n">origin</span>
+    <span class="n">axis_len</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">axis</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">axis_len</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span>
+    <span class="n">axis</span> <span class="o">=</span> <span class="n">axis</span> <span class="o">/</span> <span class="n">axis_len</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">residual</span><span class="p">(</span><span class="n">trial_angle</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;A-R-X angle minus its target, for the arc point at an M-R-X angle of ``trial_angle``.&quot;&quot;&quot;</span>
+        <span class="n">point</span> <span class="o">=</span> <span class="n">_place_atom_nerf</span><span class="p">(</span><span class="n">coord_l</span><span class="p">,</span> <span class="n">coord_m</span><span class="p">,</span> <span class="n">coord_r</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">trial_angle</span><span class="p">,</span> <span class="n">d_value</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">point</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">vector</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">point</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span> <span class="o">-</span> <span class="n">origin</span>
+        <span class="n">cosine</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="n">axis</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">vector</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">math</span><span class="o">.</span><span class="n">degrees</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">acos</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">cosine</span><span class="p">))))</span> <span class="o">-</span> <span class="n">a_value</span>
+
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">1e-4</span><span class="p">,</span> <span class="mf">180.0</span> <span class="o">-</span> <span class="mf">1e-4</span><span class="p">,</span> <span class="mi">181</span><span class="p">)</span>
+    <span class="n">samples</span> <span class="o">=</span> <span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">residual</span><span class="p">(</span><span class="n">t</span><span class="p">))</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">grid</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">res</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">res</span> <span class="ow">in</span> <span class="n">samples</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span>
+
+    <span class="n">solutions</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">t_low</span><span class="p">,</span> <span class="n">res_low</span><span class="p">),</span> <span class="p">(</span><span class="n">t_high</span><span class="p">,</span> <span class="n">res_high</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">samples</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
+        <span class="k">if</span> <span class="n">res_low</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">:</span>
+            <span class="n">solutions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t_low</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">res_low</span> <span class="o">*</span> <span class="n">res_high</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">solutions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">brentq</span><span class="p">(</span><span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="n">residual</span><span class="p">(</span><span class="n">t</span><span class="p">),</span> <span class="n">t_low</span><span class="p">,</span> <span class="n">t_high</span><span class="p">,</span> <span class="n">xtol</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">))</span>
+
+    <span class="n">exact</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">solutions</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">exact</span><span class="p">:</span>
+        <span class="c1"># Over-determined: return the closest the arc gets, for use as a starting point.</span>
+        <span class="n">solutions</span> <span class="o">=</span> <span class="p">[</span><span class="nb">min</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="nb">abs</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="mi">1</span><span class="p">]))[</span><span class="mi">0</span><span class="p">]]</span>
+
+    <span class="n">points</span> <span class="o">=</span> <span class="p">[</span><span class="n">_place_atom_nerf</span><span class="p">(</span><span class="n">coord_l</span><span class="p">,</span> <span class="n">coord_m</span><span class="p">,</span> <span class="n">coord_r</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">d_value</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">solutions</span><span class="p">]</span>
+    <span class="n">points</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">points</span> <span class="k">if</span> <span class="n">p</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">points</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">points</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">initial_guess</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">guess</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">initial_guess</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+        <span class="n">points</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">-</span> <span class="n">guess</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">points</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">exact</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_add_atom_to_xyz_using_internal_coords</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                                            <span class="n">element</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                            <span class="n">r_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
@@ -2480,6 +2630,42 @@
                         <span class="sa">f</span><span class="s1">&#39;respectively, got </span><span class="si">{</span><span class="n">a_indices</span><span class="si">}</span><span class="s1"> and </span><span class="si">{</span><span class="n">d_indices</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
 
     <span class="n">coords</span><span class="p">,</span> <span class="n">symbols</span> <span class="o">=</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">],</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;symbols&#39;</span><span class="p">]</span>
+
+    <span class="c1"># Whenever the angle&#39;s vertex and the dihedral&#39;s last atom are both R, the three</span>
+    <span class="c1"># constraints determine X exactly, so solve for it directly rather than running SLSQP</span>
+    <span class="c1"># over them. Either helper returns None if its construction is degenerate, in which</span>
+    <span class="c1"># case we fall through to the optimizer below.</span>
+    <span class="n">new_coord</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">a_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">r_index</span> <span class="ow">and</span> <span class="n">d_indices</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="n">r_index</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">d_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">a_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="n">new_coord</span> <span class="o">=</span> <span class="n">_place_atom_nerf</span><span class="p">(</span><span class="n">coord_l</span><span class="o">=</span><span class="n">coords</span><span class="p">[</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span>
+                                         <span class="n">coord_m</span><span class="o">=</span><span class="n">coords</span><span class="p">[</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span>
+                                         <span class="n">coord_r</span><span class="o">=</span><span class="n">coords</span><span class="p">[</span><span class="n">r_index</span><span class="p">],</span>
+                                         <span class="n">r_value</span><span class="o">=</span><span class="n">r_value</span><span class="p">,</span>
+                                         <span class="n">a_value</span><span class="o">=</span><span class="n">a_value</span><span class="p">,</span>
+                                         <span class="n">d_value</span><span class="o">=</span><span class="n">d_value</span><span class="p">,</span>
+                                         <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">arc_coord</span><span class="p">,</span> <span class="n">exact</span> <span class="o">=</span> <span class="n">_place_atom_on_dihedral_arc</span><span class="p">(</span><span class="n">coord_l</span><span class="o">=</span><span class="n">coords</span><span class="p">[</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span>
+                                                           <span class="n">coord_m</span><span class="o">=</span><span class="n">coords</span><span class="p">[</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span>
+                                                           <span class="n">coord_r</span><span class="o">=</span><span class="n">coords</span><span class="p">[</span><span class="n">r_index</span><span class="p">],</span>
+                                                           <span class="n">coord_a</span><span class="o">=</span><span class="n">coords</span><span class="p">[</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span>
+                                                           <span class="n">r_value</span><span class="o">=</span><span class="n">r_value</span><span class="p">,</span>
+                                                           <span class="n">a_value</span><span class="o">=</span><span class="n">a_value</span><span class="p">,</span>
+                                                           <span class="n">d_value</span><span class="o">=</span><span class="n">d_value</span><span class="p">,</span>
+                                                           <span class="n">initial_guess</span><span class="o">=</span><span class="n">initial_guess</span><span class="p">,</span>
+                                                           <span class="p">)</span>
+            <span class="k">if</span> <span class="n">exact</span><span class="p">:</span>
+                <span class="n">new_coord</span> <span class="o">=</span> <span class="n">arc_coord</span>
+            <span class="k">elif</span> <span class="n">arc_coord</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="c1"># No exact solution exists. Start the least-squares solve from the closest</span>
+                <span class="c1"># point on the arc, which already satisfies the distance and dihedral.</span>
+                <span class="n">initial_guess</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">arc_coord</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">new_coord</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">xyz_from_data</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">coords</span> <span class="o">+</span> <span class="p">(</span><span class="n">new_coord</span><span class="p">,),</span>
+                             <span class="n">symbols</span><span class="o">=</span><span class="n">symbols</span> <span class="o">+</span> <span class="p">(</span><span class="n">element</span><span class="p">,),</span>
+                             <span class="n">isotopes</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;isotopes&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">get_most_common_isotope_for_element</span><span class="p">(</span><span class="n">element</span><span class="p">),),</span>
+                             <span class="p">)</span>
 
     <span class="n">atom_r_coord</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">r_index</span><span class="p">]</span>
     <span class="n">atom_a_coord</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
@@ -2868,9 +3054,7 @@
                          <span class="sa">f</span><span class="s1">&#39;got duplicate indices in </span><span class="si">{</span><span class="n">atom_map</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
     <span class="n">reordered</span> <span class="o">=</span> <span class="n">mol</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">reordered</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="p">[</span><span class="n">reordered</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">atom_map</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
-    <span class="n">explicit_order</span> <span class="o">=</span> <span class="n">reordered</span><span class="o">.</span><span class="n">atoms</span><span class="p">[:]</span>   <span class="c1"># save our ordering before update() reorders</span>
-    <span class="n">reordered</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
-    <span class="n">reordered</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">explicit_order</span>      <span class="c1"># restore explicit ordering</span>
+    <span class="n">reordered</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">sort_atoms</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">reordered</span></div>
 
 </pre></div>

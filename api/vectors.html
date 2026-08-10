@@ -66,6 +66,7 @@
 <li class="toctree-l2"><a class="reference internal" href="converter.html">arc.species.converter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="conformers.html">arc.species.conformers</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">arc.species.vectors</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.vectors.apply_rodrigues_rotation"><code class="docutils literal notranslate"><span class="pre">apply_rodrigues_rotation()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.vectors.calculate_angle"><code class="docutils literal notranslate"><span class="pre">calculate_angle()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.vectors.calculate_dihedral_angle"><code class="docutils literal notranslate"><span class="pre">calculate_dihedral_angle()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.vectors.calculate_distance"><code class="docutils literal notranslate"><span class="pre">calculate_distance()</span></code></a></li>
@@ -136,6 +137,30 @@
   <section id="module-arc.species.vectors">
 <span id="arc-species-vectors"></span><span id="vectors"></span><h1>arc.species.vectors<a class="headerlink" href="#module-arc.species.vectors" title="Link to this heading"></a></h1>
 <p>A module for manipulating vectors</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.vectors.apply_rodrigues_rotation">
+<span class="sig-prename descclassname"><span class="pre">arc.species.vectors.</span></span><span class="sig-name descname"><span class="pre">apply_rodrigues_rotation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis_origin</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis_unit</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">angle_rad</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indices</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/vectors.html#apply_rodrigues_rotation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.vectors.apply_rodrigues_rotation" title="Link to this definition"></a></dt>
+<dd><p>Rotate atoms at <code class="docutils literal notranslate"><span class="pre">indices</span></code> around an axis using Rodrigues’ formula.</p>
+<p>Modifies <code class="docutils literal notranslate"><span class="pre">coords</span></code> in-place and returns it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>coords</strong> – list of (x, y, z) tuples representing all atom positions.</p></li>
+<li><p><strong>axis_origin</strong> – a point on the rotation axis (e.g., coords of the near-side pivot).</p></li>
+<li><p><strong>axis_unit</strong> – unit vector along the rotation axis.</p></li>
+<li><p><strong>angle_rad</strong> – rotation angle in radians (positive = right-hand rule around axis_unit).</p></li>
+<li><p><strong>indices</strong> – 0-indexed atom indices to rotate.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The same <code class="docutils literal notranslate"><span class="pre">coords</span></code> list with rotated atoms.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.species.vectors.calculate_angle">
 <span class="sig-prename descclassname"><span class="pre">arc.species.vectors.</span></span><span class="sig-name descname"><span class="pre">calculate_angle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atoms</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">units</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'degs'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/vectors.html#calculate_angle"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.vectors.calculate_angle" title="Link to this definition"></a></dt>

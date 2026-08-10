@@ -2223,6 +2223,7 @@
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.scissors">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scissors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                  <span class="n">sort_atom_labels</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">skip_conformers</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Cut chemical bonds to create new species from the original one according to the .bdes attribute,</span>
@@ -2260,7 +2261,8 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">label_atoms</span><span class="p">()</span>
         <span class="n">resulting_species</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">index_tuple</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">bdes</span><span class="p">:</span>
-            <span class="n">new_species_list</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_scissors</span><span class="p">(</span><span class="n">indices</span><span class="o">=</span><span class="n">index_tuple</span><span class="p">,</span> <span class="n">sort_atom_labels</span><span class="o">=</span><span class="n">sort_atom_labels</span><span class="p">)</span>
+            <span class="n">new_species_list</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_scissors</span><span class="p">(</span><span class="n">indices</span><span class="o">=</span><span class="n">index_tuple</span><span class="p">,</span> <span class="n">sort_atom_labels</span><span class="o">=</span><span class="n">sort_atom_labels</span><span class="p">,</span>
+                                              <span class="n">skip_conformers</span><span class="o">=</span><span class="n">skip_conformers</span><span class="p">)</span>
             <span class="k">for</span> <span class="n">new_species</span> <span class="ow">in</span> <span class="n">new_species_list</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">new_species</span><span class="o">.</span><span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="n">existing_species</span><span class="o">.</span><span class="n">label</span> <span class="k">for</span> <span class="n">existing_species</span> <span class="ow">in</span> <span class="n">resulting_species</span><span class="p">]:</span>
                     <span class="c1"># Mainly checks that the H species doesn&#39;t already exist.</span>
@@ -2271,6 +2273,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">_scissors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                   <span class="n">indices</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
                   <span class="n">sort_atom_labels</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                  <span class="n">skip_conformers</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Cut a chemical bond to create two new species from the original one, preserving the 3D geometry.</span>
@@ -2322,7 +2325,8 @@
                               <span class="n">compute_thermo</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
                               <span class="n">e0_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                               <span class="n">keep_mol</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-            <span class="n">spc1</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">(</span><span class="n">economic_generation</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">skip_conformers</span><span class="p">:</span>
+                <span class="n">spc1</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">(</span><span class="n">economic_generation</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
             <span class="k">return</span> <span class="p">[</span><span class="n">spc1</span><span class="p">]</span>
         <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">mol_splits</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
             <span class="n">mol1</span><span class="p">,</span> <span class="n">mol2</span> <span class="o">=</span> <span class="n">mol_splits</span>
@@ -2365,7 +2369,8 @@
                           <span class="n">compute_thermo</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
                           <span class="n">e0_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                           <span class="n">keep_mol</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="n">spc1</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">(</span><span class="n">economic_generation</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">skip_conformers</span><span class="p">:</span>
+            <span class="n">spc1</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">(</span><span class="n">economic_generation</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">spc1</span><span class="o">.</span><span class="n">rotors_dict</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="n">spc2</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="n">label2</span><span class="p">,</span>
                           <span class="n">mol</span><span class="o">=</span><span class="n">mol2</span><span class="p">,</span>
@@ -2375,7 +2380,8 @@
                           <span class="n">compute_thermo</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
                           <span class="n">e0_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                           <span class="n">keep_mol</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="n">spc2</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">(</span><span class="n">economic_generation</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">skip_conformers</span><span class="p">:</span>
+            <span class="n">spc2</span><span class="o">.</span><span class="n">generate_conformers</span><span class="p">(</span><span class="n">economic_generation</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">spc2</span><span class="o">.</span><span class="n">rotors_dict</span> <span class="o">=</span> <span class="kc">None</span>
 
         <span class="k">return</span> <span class="p">[</span><span class="n">spc1</span><span class="p">,</span> <span class="n">spc2</span><span class="p">]</span>
