@@ -114,6 +114,20 @@ Identity and structure:
 * ``mol`` - RMG Molecule object when using the Python API.
 * ``species_dict`` - dictionary representation used in restarts/API workflows.
 
+.. note::
+
+    When a species is given as a dictionary (a ``species_dict``, or a mapping in the ``species`` list of the
+    input file) whose ``mol`` key holds a serialized graph - the nested mapping of atoms, edges and
+    ``atom_order`` that ARC writes to ``restart.yml``, not an adjacency list string - that graph is used as
+    given and is not re-perceived from the coordinates. This keeps a restarted or copied species identical to
+    the one that was saved, since perception may return a different resonance structure or connectivity for
+    the same coordinates.
+
+    Copying a ``mol`` block out of a restart file and into an input file therefore carries its bond orders,
+    formal charges and atom order into the new run, including into rotor identification, bond corrections and
+    atom mapping, and coordinates that disagree with it are no longer rejected at load time. Give ``smiles``,
+    ``inchi`` or ``adjlist`` instead to have the graph perceived from the coordinates.
+
 Charge, spin, and TS metadata:
 
 * ``charge`` - integer charge.
@@ -146,7 +160,8 @@ Conformers, rotors, and geometry controls:
 * ``external_symmetry`` - external symmetry number.
 * ``optical_isomers`` - number of optical isomers.
 * ``multi_species`` - multi-species label.
-* ``keep_mol`` - preserve the molecule object.
+* ``keep_mol`` - preserve the molecule object, i.e., keep the given 2D graph instead of the one perceived from
+  the coordinates. Not needed for a serialized ``mol`` graph, which is kept regardless (see the note above).
 * ``project_directory`` - species-specific project directory metadata.
 
 Reaction Entries
