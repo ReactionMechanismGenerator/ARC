@@ -30,6 +30,12 @@ Implementation notes
 * GoFlow was trained on RDB7 (small organic; H/C/N/O/F). Reactions outside
   this domain are skipped cleanly with a one-line warning by
   :func:`_within_goflow_supported_domain`.
+* Like the Linear adapter, GoFlow is scoped to unimolecular reactions — one
+  side has a single species, so ``A + B <=> C`` qualifies while a 2↔2 reaction
+  such as ``CH4 + OH <=> CH3 + H2O`` does not. It is registered per family in
+  ``ts_adapters_by_rmg_family`` (the same families as Linear) rather than in
+  ``all_families_ts_adapters``, and ``execute_goflow`` declines anything
+  bimolecular with a warning.
 * The shipped checkpoint in goflow_lean@main is a 45-byte LFS pointer
   rather than a real Lightning ckpt. We validate by file size at adapter
   init time, defer ``torch.load``-level validation to ``goflow_script.py``,
@@ -310,6 +316,9 @@ class GoFlowAdapter(JobAdapter):
         timeout_s = getattr(self, 'goflow_subprocess_timeout', 600)
 
         for rxn in self.reactions:
+            if not rxn.is_unimolecular():
+                logger.warning(f'The GoFlow TS search adapter requires a unimolecular reaction; skipping {rxn}.')
+                continue
             ok, reason = _within_goflow_supported_domain(rxn)
             if not ok:
                 logger.warning(f'GoFlow: skipping {rxn.label} — outside validated domain ({reason}).')

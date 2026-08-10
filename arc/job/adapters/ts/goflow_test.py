@@ -36,7 +36,11 @@ from rdkit import Chem
 
 from arc.common import read_yaml_file, save_yaml_file
 from arc.job.adapter import JobEnum
-from arc.job.adapters.common import all_families_ts_adapters, default_incore_adapters
+from arc.job.adapters.common import (all_families_ts_adapters,
+                                     default_incore_adapters,
+                                     ts_adapters_by_rmg_family,
+                                     ts_adapters_for_unknown_unimolecular,
+                                     )
 from arc.settings import external_paths as goflow_paths
 from arc.job.adapters.ts.goflow_ts import (
     GOFLOW_DEDUP_DMAT_RMSD,
@@ -68,18 +72,33 @@ class TestDefaultIncoreAdaptersIncludesGoFlow(unittest.TestCase):
         self.assertIn('goflow', default_incore_adapters)
 
 
-class TestAllFamiliesTSAdaptersIncludesGoFlow(unittest.TestCase):
+class TestGoFlowSchedulerRegistration(unittest.TestCase):
     """
-    GoFlow ships in the default ``ts_adapters`` list, so it must also be in
-    ``all_families_ts_adapters`` — otherwise the scheduler's gating in
-    ``spawn_ts_jobs`` would silently never spawn it. Out-of-domain reactions
-    (non-H/C/N/O/F elements, >100 atoms) are filtered at runtime by the
-    adapter's own ``_within_goflow_supported_domain`` guard; hosts without
-    ``goflow_env`` skip cleanly via ``_goflow_environment_ready``.
+    GoFlow is scoped exactly like the Linear adapter: it is registered per
+    family in ``ts_adapters_by_rmg_family`` (never via
+    ``all_families_ts_adapters``), and the adapter itself declines any
+    reaction that is not unimolecular. Registering it for all families would
+    let ``spawn_ts_jobs`` hand it genuinely bimolecular reactions such as
+    2↔2 H-abstraction, which it was not validated for.
     """
 
-    def test_goflow_in_all_families_ts_adapters(self):
-        self.assertIn('goflow', all_families_ts_adapters)
+    def test_goflow_not_in_all_families_ts_adapters(self):
+        self.assertNotIn('goflow', all_families_ts_adapters)
+
+    def test_goflow_admitted_for_unknown_unimolecular_reactions(self):
+        self.assertIn('goflow', ts_adapters_for_unknown_unimolecular)
+
+    def test_goflow_registered_for_a_unimolecular_family(self):
+        self.assertIn('goflow', ts_adapters_by_rmg_family['intra_H_migration'])
+
+    def test_goflow_not_registered_for_h_abstraction(self):
+        self.assertNotIn('goflow', ts_adapters_by_rmg_family['H_Abstraction'])
+
+    def test_goflow_registered_exactly_where_linear_is(self):
+        """GoFlow mirrors Linear's family scoping, so the two must agree family by family."""
+        mismatched = {family: adapters for family, adapters in ts_adapters_by_rmg_family.items()
+                      if ('linear' in adapters) != ('goflow' in adapters)}
+        self.assertEqual(mismatched, dict())
 
 
 class TestWithinGoFlowSupportedDomain(unittest.TestCase):
@@ -586,6 +605,27 @@ class TestExecuteIncoreWithMockedSubprocess(unittest.TestCase):
         if self.rxn.ts_species is not None:
             self.assertEqual(len(self.rxn.ts_species.ts_guesses), 0)
 
+    def test_skips_bimolecular_reaction_without_invoking_the_model(self):
+        """
+        A 2↔2 reaction such as CH4 + OH <=> CH3 + H2O is outside GoFlow's scope
+        (mirroring the Linear adapter), so the subprocess must never be reached.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        adapter = GoFlowAdapter(project='goflow_test',
+                                project_directory=self.tmpdir,
+                                job_type='tsg',
+                                reactions=[rxn],
+                                testing=False)
+        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts._goflow_environment_ready', return_value=True), \
+             unittest.mock.patch('arc.job.adapters.ts.goflow_ts.subprocess.run') as run_mock:
+            adapter.execute_incore()
+        run_mock.assert_not_called()
+        if rxn.ts_species is not None:
+            self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
+
     def test_writes_input_yml_and_ingests_tsg_when_subprocess_mocked(self):
 
         adapter = GoFlowAdapter(project='goflow_test',
@@ -837,9 +877,58 @@ class TestGoFlowEndToEnd(unittest.TestCase):
         rxn.ts_species = ts
         return rxn
 
-    def test_h_abstraction_produces_geometrically_valid_tsguesses(self):
+    def _build_intra_h_migration_rxn(self):
+        """[CH2]CO <=> CC[O] — a 4-membered-ring intramolecular H migration.
 
+        Eight atoms, all H/C/O, one species per side: in-domain for GoFlow and
+        unimolecular, so the adapter runs it for real.
+        """
+        r_xyz = """C  -3.35807020  0.39772754 -0.02139706
+H  -2.80953191  0.44242278 -0.93900704
+H  -4.34767471 -0.00900040 -0.00893508
+C  -2.72326461  0.91878394  1.28133933
+H  -1.66157493  0.79378755  1.23561273
+H  -2.95540282  1.95641525  1.40106030
+O  -3.24245519  0.18293235  2.39213346
+H  -2.84673223  0.50774673  3.20422887"""
+        p_xyz = """C  -0.34334771 -0.13590857  0.00000002
+H   0.01333400  0.36848377 -0.87365124
+H  -1.41334771 -0.13588640 -0.00000560
+C   0.16999407  0.59004821  1.25740487
+H   1.23999407  0.59002603  1.25741049
+H  -0.18665169  1.59886128  1.25739942
+O  -0.30669270 -0.08404623  2.42499487
+H   0.01329805 -1.14472164  0.00000547"""
+        r = ARCSpecies(label='R', smiles='[CH2]CO', xyz=r_xyz)
+        p = ARCSpecies(label='P', smiles='CC[O]', xyz=p_xyz)
+        rxn = ARCReaction(r_species=[r], p_species=[p])
+        ts = ARCSpecies(label='TS_intra_h_migration', is_ts=True, charge=r.charge,
+                        multiplicity=r.multiplicity, xyz=r_xyz)
+        ts.ts_guesses = []
+        rxn.ts_species = ts
+        return rxn
+
+    def test_h_abstraction_is_declined_as_bimolecular(self):
+        """
+        CH4 + H <=> CH3 + H2 is elementally in-domain but 2↔2, and GoFlow is
+        scoped to unimolecular reactions. Running against the real environment
+        proves the guard sits ahead of the subprocess, not merely ahead of the
+        assertions.
+        """
         rxn = self._build_h_abstraction_rxn()
+        adapter = GoFlowAdapter(project='goflow_tier2_e2e',
+                                project_directory=self.tmpdir,
+                                job_type='tsg',
+                                reactions=[rxn],
+                                testing=False)
+        adapter.execute_incore()
+        self.assertFalse(os.path.isfile(adapter.yml_in_path),
+                         'GoFlow staged an input.yml for an out-of-scope reaction')
+        self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
+
+    def test_intra_h_migration_produces_geometrically_valid_tsguesses(self):
+
+        rxn = self._build_intra_h_migration_rxn()
 
         adapter = GoFlowAdapter(project='goflow_tier2_e2e',
                                 project_directory=self.tmpdir,
@@ -864,10 +953,10 @@ class TestGoFlowEndToEnd(unittest.TestCase):
                                  f'guess {i}: expected {n_atoms_expected} atoms, '
                                  f'got {len(xyz["symbols"])}')
 
-                # Element ordering matches the mapped reactant ordering. For
-                # CH4 + H, ARC's canonicalization puts the carbon first.
-                self.assertEqual(xyz['symbols'][0], 'C', f'guess {i}: first atom should be C')
-                self.assertEqual(sorted(xyz['symbols']), sorted(('C', 'H', 'H', 'H', 'H', 'H')))
+                # Atoms are neither created nor destroyed: the TS element
+                # multiset must match the reactants'.
+                self.assertEqual(sorted(xyz['symbols']),
+                                 sorted(('C', 'C', 'H', 'H', 'H', 'H', 'H', 'O')))
 
                 flat = [c for tup in xyz['coords'] for c in tup]
                 self.assertFalse(any(math.isnan(c) or math.isinf(c) for c in flat),

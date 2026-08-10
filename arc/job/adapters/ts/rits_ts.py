@@ -3,9 +3,15 @@ An adapter for executing RitS (Right into the Saddle) TS-guess jobs.
 
 RitS is a flow-matching ML model that generates 3D transition-state geometries
 directly from atom-mapped reactant + product structures, without requiring an
-initial guess. Unlike GCN (which is restricted to isomerizations), RitS can
-handle bimolecular reactions and supports charged species, so it covers a
-strictly larger reaction space.
+initial guess. Unlike GCN (which is restricted to single-bond isomerizations),
+RitS handles multi-bond rearrangements and supports charged species.
+
+Like the Linear adapter, RitS is scoped to unimolecular reactions — one side has
+a single species, so ``A + B <=> C`` qualifies while a 2↔2 reaction such as
+``CH4 + OH <=> CH3 + H2O`` does not. It is registered per family in
+``ts_adapters_by_rmg_family`` (the same families as Linear) rather than in
+``all_families_ts_adapters``, and ``execute_rits`` declines anything bimolecular
+with a warning.
 
 Code source     : https://github.com/isayevlab/RitS
 Paper           : 10.26434/chemrxiv.15001681/v1
@@ -279,6 +285,9 @@ class RitSAdapter(JobAdapter):
         if not _rits_environment_ready():
             return
         rxn = self.reactions[0]
+        if not rxn.is_unimolecular():
+            logger.warning(f'The RitS TS search adapter requires a unimolecular reaction; skipping {rxn}.')
+            return
         if rxn.ts_species is None:
             rxn.ts_species = ARCSpecies(label=self.species_label,
                                         is_ts=True,

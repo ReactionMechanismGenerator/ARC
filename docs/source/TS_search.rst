@@ -329,8 +329,15 @@ checkpoint) is heavyweight, so it is intentionally absent from the default
 ``goflow_env`` or the checkpoint is not installed, and it enforces a runtime
 domain guard:
 
+- Molecularity: unimolecular reactions only (one side has a single species), the
+  same scope as the Linear adapter. ``A + B <=> C`` qualifies; a 2↔2 reaction
+  such as ``CH4 + OH <=> CH3 + H2O`` does not.
 - Elements: H, C, N, O, F
 - Reaction size: up to 100 atoms
+
+Accordingly, GoFlow is registered per family in ``ts_adapters_by_rmg_family`` —
+for the same families as the Linear adapter, so ``H_Abstraction`` is excluded —
+rather than in ``all_families_ts_adapters``.
 
 Reactions outside this domain (or hosts without the GoFlow stack installed) are
 skipped with a warning instead of being attempted with out-of-distribution inputs.
@@ -408,9 +415,14 @@ ARC supports automated TS generation via **RitS** (*Right into the Saddle*),
 a flow-matching neural network from the Isayev lab that predicts transition-
 state Cartesian geometries directly from atom-mapped reactant + product 3D
 structures. Unlike GCN — which is restricted to single-bond isomerizations —
-RitS handles bimolecular reactions and charged species and is therefore
-applied to **all** reaction families (it is the only entry currently in
-``all_families_ts_adapters``).
+RitS handles multi-bond rearrangements and charged species.
+
+Like GoFlow and the Linear adapter, RitS is scoped to **unimolecular reactions**
+(one side has a single species): ``A + B <=> C`` qualifies, a 2↔2 reaction such
+as ``CH4 + OH <=> CH3 + H2O`` does not. It is therefore registered per family in
+``ts_adapters_by_rmg_family`` — for the same families as the Linear adapter, so
+``H_Abstraction`` is excluded — rather than in ``all_families_ts_adapters``, and
+the adapter declines anything bimolecular at runtime with a warning.
 
 How it is used
 """"""""""""""

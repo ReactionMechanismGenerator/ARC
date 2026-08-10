@@ -33,6 +33,10 @@ import unittest.mock as mock
 from collections import Counter
 
 from arc.common import read_yaml_file
+from arc.job.adapters.common import (all_families_ts_adapters,
+                                     ts_adapters_by_rmg_family,
+                                     ts_adapters_for_unknown_unimolecular,
+                                     )
 from arc.job.adapters.ts.rits_ts import (DEFAULT_N_SAMPLES,
                                          RitSAdapter,
                                          _rits_environment_ready,
@@ -651,6 +655,33 @@ class TestRitSAdapterInstantiation(unittest.TestCase):
                         project='test_rits', project_directory=proj)
 
 
+class TestRitSSchedulerRegistration(unittest.TestCase):
+    """
+    RitS is scoped exactly like the Linear adapter: registered per family in
+    ``ts_adapters_by_rmg_family`` rather than via ``all_families_ts_adapters``,
+    so ``spawn_ts_jobs`` never hands it a genuinely bimolecular reaction such
+    as 2↔2 H-abstraction.
+    """
+
+    def test_rits_not_in_all_families_ts_adapters(self):
+        self.assertNotIn('rits', all_families_ts_adapters)
+
+    def test_rits_admitted_for_unknown_unimolecular_reactions(self):
+        self.assertIn('rits', ts_adapters_for_unknown_unimolecular)
+
+    def test_rits_registered_for_a_unimolecular_family(self):
+        self.assertIn('rits', ts_adapters_by_rmg_family['intra_H_migration'])
+
+    def test_rits_not_registered_for_h_abstraction(self):
+        self.assertNotIn('rits', ts_adapters_by_rmg_family['H_Abstraction'])
+
+    def test_rits_registered_exactly_where_linear_is(self):
+        """RitS mirrors Linear's family scoping, so the two must agree family by family."""
+        mismatched = {family: adapters for family, adapters in ts_adapters_by_rmg_family.items()
+                      if ('linear' in adapters) != ('rits' in adapters)}
+        self.assertEqual(mismatched, dict())
+
+
 class TestRitSGracefulSkip(unittest.TestCase):
     """When rits_env / checkpoint are missing, execute_incore must NOT raise."""
 
@@ -678,6 +709,29 @@ class TestRitSGracefulSkip(unittest.TestCase):
             # Should not raise
             adapter.execute_incore()
         # No TS guesses should have been created
+        if rxn.ts_species is not None:
+            self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
+
+    def test_skips_bimolecular_reaction_without_invoking_the_model(self):
+        """
+        A 2↔2 reaction such as CH4 + OH <=> CH3 + H2O is outside RitS's scope
+        (mirroring the Linear adapter), so the subprocess must never be reached.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        adapter = RitSAdapter(
+            job_type='tsg',
+            reactions=[rxn],
+            testing=True,
+            project='test_rits',
+            project_directory=os.path.join(self.output_dir, 'bimolecular'),
+        )
+        with mock.patch('arc.job.adapters.ts.rits_ts._rits_environment_ready', return_value=True), \
+             mock.patch('arc.job.adapters.ts.rits_ts.subprocess.run') as run_mock:
+            adapter.execute_incore()
+        run_mock.assert_not_called()
         if rxn.ts_species is not None:
             self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
 
@@ -1023,27 +1077,50 @@ class TestRitSEndToEnd(unittest.TestCase):
         self._run_e2e(_build_rxn_ethyl_peroxy_ho2_elimination(),
                       label='ethyl_peroxy_ho2_elimination', expected_n_atoms=9)
 
-    # ----- Group C: 2<->2 H-abstractions ------- -----------------------------
+    # ----- Group C: 2<->2 H-abstractions are out of scope ---------------------
+    # RitS is scoped to unimolecular reactions (see the module docstring), so a
+    # 2<->2 H-abstraction must be declined before rits_env is ever entered. These
+    # run against the real environment to prove the guard sits ahead of the
+    # subprocess, not merely ahead of the assertions.
 
-    def test_e2e_hab_ch4_oh(self):
-        """H-abstraction CH4 + OH -> CH3 + H2O (7 atoms total: 1C + 5H + 1O)."""
-        self._run_e2e(_build_rxn_hab_ch4_oh(),
-                      label='hab_ch4_oh', expected_n_atoms=7)
+    def _assert_declined(self, rxn, label: str):
+        """Run the adapter end-to-end and assert it produced nothing at all.
 
-    def test_e2e_hab_c2h6_h(self):
-        """H-abstraction C2H6 + H -> C2H5 + H2 (9 atoms)."""
-        self._run_e2e(_build_rxn_hab_c2h6_h(),
-                      label='hab_c2h6_h', expected_n_atoms=9)
+        Args:
+            rxn (ARCReaction): A bimolecular (2<->2) reaction RitS must decline.
+            label (str): Subdirectory name under the test output dir.
+        """
+        adapter = RitSAdapter(
+            job_type='tsg',
+            reactions=[rxn],
+            testing=True,
+            project='test_rits',
+            project_directory=os.path.join(self.output_dir, label),
+            args={'keyword': {'n_samples': 2}},
+        )
+        adapter.execute_incore()
+        self.assertFalse(os.path.isfile(adapter.reactant_xyz_path),
+                         f'{label}: adapter wrote inputs for an out-of-scope reaction')
+        self.assertFalse(os.path.isfile(adapter.yml_out_path),
+                         f'{label}: RitS ran on an out-of-scope reaction')
+        if rxn.ts_species is not None:
+            self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
 
-    def test_e2e_hab_nh3_oh(self):
-        """H-abstraction NH3 + OH -> NH2 + H2O (6 atoms)."""
-        self._run_e2e(_build_rxn_hab_nh3_oh(),
-                      label='hab_nh3_oh', expected_n_atoms=6)
+    def test_e2e_hab_ch4_oh_is_declined(self):
+        """H-abstraction CH4 + OH <=> CH3 + H2O is 2<->2, so RitS declines it."""
+        self._assert_declined(_build_rxn_hab_ch4_oh(), label='hab_ch4_oh')
 
-    def test_e2e_hab_ch3oh_h(self):
-        """H-abstraction CH3OH + H -> CH2OH + H2 (7 atoms; abstracts α-CH)."""
-        self._run_e2e(_build_rxn_hab_ch3oh_h(),
-                      label='hab_ch3oh_h', expected_n_atoms=7)
+    def test_e2e_hab_c2h6_h_is_declined(self):
+        """H-abstraction C2H6 + H <=> C2H5 + H2 is 2<->2, so RitS declines it."""
+        self._assert_declined(_build_rxn_hab_c2h6_h(), label='hab_c2h6_h')
+
+    def test_e2e_hab_nh3_oh_is_declined(self):
+        """H-abstraction NH3 + OH <=> NH2 + H2O is 2<->2, so RitS declines it."""
+        self._assert_declined(_build_rxn_hab_nh3_oh(), label='hab_nh3_oh')
+
+    def test_e2e_hab_ch3oh_h_is_declined(self):
+        """H-abstraction CH3OH + H <=> CH2OH + H2 is 2<->2, so RitS declines it."""
+        self._assert_declined(_build_rxn_hab_ch3oh_h(), label='hab_ch3oh_h')
 
 
 if __name__ == '__main__':
