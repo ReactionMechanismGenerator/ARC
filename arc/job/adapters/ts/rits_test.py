@@ -29,12 +29,12 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import unittest.mock as mock
 from collections import Counter
-from unittest import mock
 
-import arc.job.adapters.ts.rits_ts as rits_mod
 from arc.common import read_yaml_file
-from arc.job.adapters.ts.rits_ts import (RitSAdapter,
+from arc.job.adapters.ts.rits_ts import (DEFAULT_N_SAMPLES,
+                                         RitSAdapter,
                                          _rits_environment_ready,
                                          process_rits_tsg,
                                          write_xyz_file,
@@ -630,7 +630,7 @@ class TestRitSAdapterInstantiation(unittest.TestCase):
             project='test_rits',
             project_directory=proj,
         )
-        self.assertEqual(adapter.n_samples, rits_mod.DEFAULT_N_SAMPLES)
+        self.assertEqual(adapter.n_samples, DEFAULT_N_SAMPLES)
 
     def test_n_samples_invalid_args_falls_back_to_default(self):
         proj = os.path.join(self.output_dir, 'bad_samples')
@@ -642,7 +642,7 @@ class TestRitSAdapterInstantiation(unittest.TestCase):
             project_directory=proj,
             args={'keyword': {'n_samples': 'not-a-number'}},
         )
-        self.assertEqual(adapter.n_samples, rits_mod.DEFAULT_N_SAMPLES)
+        self.assertEqual(adapter.n_samples, DEFAULT_N_SAMPLES)
 
     def test_missing_reactions_raises(self):
         proj = os.path.join(self.output_dir, 'no_reactions')
@@ -672,9 +672,9 @@ class TestRitSGracefulSkip(unittest.TestCase):
             project_directory=os.path.join(self.output_dir, 'no_python'),
         )
         # Patch the module-level constants to simulate a host without rits_env.
-        with mock.patch.object(rits_mod, 'RITS_PYTHON', None), \
-             mock.patch.object(rits_mod, 'RITS_REPO_PATH', '/nonexistent/RitS'), \
-             mock.patch.object(rits_mod, 'RITS_CKPT_PATH', '/nonexistent/rits.ckpt'):
+        with mock.patch('arc.job.adapters.ts.rits_ts.RITS_PYTHON', None), \
+             mock.patch('arc.job.adapters.ts.rits_ts.RITS_REPO_PATH', '/nonexistent/RitS'), \
+             mock.patch('arc.job.adapters.ts.rits_ts.RITS_CKPT_PATH', '/nonexistent/rits.ckpt'):
             # Should not raise
             adapter.execute_incore()
         # No TS guesses should have been created
@@ -699,10 +699,10 @@ class TestRitSGracefulSkip(unittest.TestCase):
             seen_timeouts.append(kwargs.get('timeout'))
             raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get('timeout', 1))
 
-        with mock.patch.object(rits_mod, '_rits_environment_ready', return_value=True), \
-             mock.patch.object(rits_mod, 'RITS_PYTHON', '/fake/python'), \
-             mock.patch.object(rits_mod, 'RITS_REPO_PATH', '/fake/RitS'), \
-             mock.patch.object(rits_mod, 'RITS_CKPT_PATH', '/fake/rits.ckpt'), \
+        with mock.patch('arc.job.adapters.ts.rits_ts._rits_environment_ready', return_value=True), \
+             mock.patch('arc.job.adapters.ts.rits_ts.RITS_PYTHON', '/fake/python'), \
+             mock.patch('arc.job.adapters.ts.rits_ts.RITS_REPO_PATH', '/fake/RitS'), \
+             mock.patch('arc.job.adapters.ts.rits_ts.RITS_CKPT_PATH', '/fake/rits.ckpt'), \
              mock.patch('arc.job.adapters.ts.rits_ts.subprocess.run',
                         side_effect=hanging_subprocess_run):
             # Must not raise — adapter swallows TimeoutExpired and returns.
@@ -719,7 +719,7 @@ class TestRitSGracefulSkip(unittest.TestCase):
             project='test_rits',
             project_directory=os.path.join(self.output_dir, 'no_ckpt'),
         )
-        with mock.patch.object(rits_mod, 'RITS_CKPT_PATH', '/nonexistent/ckpt'):
+        with mock.patch('arc.job.adapters.ts.rits_ts.RITS_CKPT_PATH', '/nonexistent/ckpt'):
             adapter.execute_incore()
         if rxn.ts_species is not None:
             self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
@@ -755,10 +755,10 @@ class TestRitSInputYamlWritten(unittest.TestCase):
         # never actually invoke RitS — we only care about input.yml + the
         # mapped reactant.xyz / product.xyz files we wrote.
         fake_completed = mock.Mock(returncode=0)
-        with mock.patch.object(rits_mod, '_rits_environment_ready', return_value=True), \
-             mock.patch.object(rits_mod, 'RITS_PYTHON', '/fake/python'), \
-             mock.patch.object(rits_mod, 'RITS_REPO_PATH', '/fake/RitS'), \
-             mock.patch.object(rits_mod, 'RITS_CKPT_PATH', '/fake/rits.ckpt'), \
+        with mock.patch('arc.job.adapters.ts.rits_ts._rits_environment_ready', return_value=True), \
+             mock.patch('arc.job.adapters.ts.rits_ts.RITS_PYTHON', '/fake/python'), \
+             mock.patch('arc.job.adapters.ts.rits_ts.RITS_REPO_PATH', '/fake/RitS'), \
+             mock.patch('arc.job.adapters.ts.rits_ts.RITS_CKPT_PATH', '/fake/rits.ckpt'), \
              mock.patch('arc.job.adapters.ts.rits_ts.subprocess.run',
                         return_value=fake_completed) as run_mock:
             adapter.execute_incore()
