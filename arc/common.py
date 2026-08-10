@@ -1257,6 +1257,43 @@ def clean_text(text: str) -> str:
     return text
 
 
+def join_stream_lines(stream: list | tuple | str | bytes | None) -> str:
+    """
+    Join the content of a standard output or standard error stream into a single line of text.
+    Each line is stripped of surrounding whitespace before being joined by a single space,
+    and the result is stripped as well. Bytes are decoded as UTF-8, undecodable characters
+    are replaced.
+
+    Args:
+        stream (list | tuple | str | bytes | None): The stream content, either as a sequence of lines
+                                                    or as a single string.
+
+    Returns:
+        str: The joined stream content, an empty string if the stream is empty or ``None``.
+    """
+    if stream is None:
+        return ''
+    if isinstance(stream, (list, tuple)):
+        return ' '.join(_decode_stream_line(line) for line in stream).strip()
+    return _decode_stream_line(stream)
+
+
+def _decode_stream_line(line) -> str:
+    """
+    Render a single line of a standard output or standard error stream as stripped text.
+    Bytes are decoded as UTF-8, undecodable characters are replaced.
+
+    Args:
+        line: The line to render.
+
+    Returns:
+        str: The stripped text of the line.
+    """
+    if isinstance(line, (bytes, bytearray)):
+        return line.decode('utf-8', errors='replace').strip()
+    return str(line).strip()
+
+
 def time_lapse(t0) -> str:
     """
     A helper function returning the elapsed time since t0.

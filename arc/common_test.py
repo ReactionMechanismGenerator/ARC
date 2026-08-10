@@ -607,6 +607,23 @@ class TestCommon(unittest.TestCase):
 4    H         u0 {1,S}
 5    [O2d,S2d] u0 {2,D}""")
 
+    def test_join_stream_lines(self):
+        """Test the join_stream_lines() function"""
+        self.assertEqual(common.join_stream_lines(None), '')
+        self.assertEqual(common.join_stream_lines([]), '')
+        self.assertEqual(common.join_stream_lines(''), '')
+        self.assertEqual(common.join_stream_lines('  qstat: cannot connect to server  '),
+                         'qstat: cannot connect to server')
+        self.assertEqual(common.join_stream_lines(['qstat: cannot connect to server\n',
+                                                   'qstat: Connection refused\n']),
+                         'qstat: cannot connect to server qstat: Connection refused')
+        self.assertEqual(common.join_stream_lines(('a', 'b')), 'a b')
+        self.assertEqual(common.join_stream_lines([b'qstat: cannot connect to server\n']),
+                         'qstat: cannot connect to server')
+        self.assertEqual(common.join_stream_lines(b'qstat: cannot connect to server'),
+                         'qstat: cannot connect to server')
+        self.assertEqual(common.join_stream_lines([b'\xff invalid utf-8']), '� invalid utf-8')
+
     def test_get_element_mass(self):
         """Test determining the mass of an atom"""
         self.assertEqual(common.get_element_mass('H'), (1.00782503224, 1))
