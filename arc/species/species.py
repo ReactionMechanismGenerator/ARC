@@ -864,7 +864,10 @@ class ARCSpecies(object):
 
     def from_dict(self, species_dict):
         """
-        A helper function for loading this object from a dictionary in a YAML file for restarting ARC
+        A helper function for loading this object from a dictionary in a YAML file for restarting ARC.
+
+        The 2D graph is taken from the dictionary as-is whenever it was serialized by ``as_dict()``
+        (see ``dict_repr_is_authoritative()``), and is otherwise perceived from the coordinates.
         """
         try:
             self.label = species_dict['label']
@@ -961,9 +964,9 @@ class ARCSpecies(object):
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
                 self.mol = Molecule(smiles=smiles)
-        # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
-        # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
-        if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
+        if not dict_repr_is_authoritative(species_dict, mol=self.mol) \
+                and (self.final_xyz or self.initial_xyz or self.most_stable_conformer
+                     or self.conformers or self.ts_guesses):
             self.mol_from_xyz(get_cheap=False)
         if self.mol is not None:
             if 'bond_corrections' not in species_dict and not self.is_ts:
@@ -3363,6 +3366,30 @@ def split_mol(mol: Molecule) -> tuple[list[Molecule], list[list[int]]]:
         molecules.append(Molecule(atoms=[mol.atoms[index] for index in frag_indices]))
         fragments.append(frag_indices)
     return molecules, fragments
+
+
+def dict_repr_is_authoritative(species_dict: dict,
+                               mol: Molecule | None = None,
+                               ) -> bool:
+    """
+    Check whether the 2D graph of a species dictionary supersedes a graph perceived from the coordinates.
+
+    It does when the dictionary carries a ``rmg_mol_to_dict_repr()`` mapping under the 'mol' key,
+    which is written by ``ARCSpecies.as_dict()`` and stores the connectivity, the bond orders,
+    the formal charges, the radical counts and the atom order of an existing object instance.
+    It does not for a structure given as SMILES, InChI, or an adjacency list (including an
+    adjacency list stored under the 'mol' key). It also does not when the atom IDs of ``mol``
+    are not unique, which is how a mapping that ``rmg_mol_from_dict_repr()`` could not decode
+    into a molecule presents itself.
+
+    Args:
+        species_dict (dict): The dictionary representation of an ARCSpecies object instance.
+        mol (Molecule, optional): The graph read from ``species_dict``, if any.
+
+    Returns:
+        bool: Whether the dictionary's 2D graph supersedes a graph perceived from the coordinates.
+    """
+    return isinstance(species_dict.get('mol'), dict) and mol is not None and mol.atom_ids_valid()
 
 
 def rmg_mol_from_dict_repr(representation: dict,
