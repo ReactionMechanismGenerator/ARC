@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import arc.parser.parser as parser
 from arc.common import get_logger
+from arc.exceptions import ServerError, SettingsError
 from arc.imports import settings
 from arc.level import Level
 
@@ -346,6 +347,9 @@ class PipeCoordinator:
         convergence gate the ingestion helpers apply is repeated here before any success flag
         can be set.
 
+        A ``ServerError`` or a ``SettingsError`` raised by the Scheduler's post-job logic
+        propagates, every other exception is logged and the task is left unfinalized.
+
         Args:
             pipe (PipeRun): The owning pipe run.
             spec (TaskSpec): The completed task's specification.
@@ -378,6 +382,8 @@ class PipeCoordinator:
                 self.sched.post_freq_actions(label=label,
                                              job=PipedJobView(output_file, level),
                                              vibfreqs=vibfreqs)
+        except (ServerError, SettingsError):
+            raise
         except Exception as e:
             logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
                          f'could not finalize {spec.task_family} for {label}: {type(e).__name__}: {e}')

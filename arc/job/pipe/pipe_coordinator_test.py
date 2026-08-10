@@ -14,6 +14,7 @@ import time
 import unittest
 from unittest.mock import MagicMock, patch
 
+from arc.exceptions import ServerError, SettingsError
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_run import PipeRun, get_task_attempt_dir
 from arc.job.pipe.pipe_state import (
@@ -351,6 +352,27 @@ class TestFinalizeSpeciesLeafTask(unittest.TestCase):
         self.mock_convergence.return_value = False
         self.coord.ingest_pipe_results(pipe)
         self.sched.post_sp_actions.assert_not_called()
+
+    def test_a_finalization_error_is_logged_and_swallowed(self):
+        """An ordinary error raised by the Scheduler's post-job checks does not abort the run."""
+        pipe, _ = self._stage_completed('t_error', 'species_sp')
+        self.sched.post_sp_actions.side_effect = ValueError('a parsing problem')
+        self.coord.ingest_pipe_results(pipe)
+        self.sched.post_sp_actions.assert_called_once()
+
+    def test_a_server_error_is_not_swallowed(self):
+        """A ServerError means ARC can no longer track its jobs, so it must stop the run."""
+        pipe, _ = self._stage_completed('t_server_error', 'species_sp')
+        self.sched.post_sp_actions.side_effect = ServerError('the queue has been unanswerable')
+        with self.assertRaises(ServerError):
+            self.coord.ingest_pipe_results(pipe)
+
+    def test_a_settings_error_is_not_swallowed(self):
+        """A SettingsError means ARC is misconfigured, so it must stop the run."""
+        pipe, _ = self._stage_completed('t_settings_error', 'species_sp')
+        self.sched.post_sp_actions.side_effect = SettingsError('the queue status command was not found')
+        with self.assertRaises(SettingsError):
+            self.coord.ingest_pipe_results(pipe)
 
     def test_missing_output_file_is_skipped(self):
         """A completed task with no locatable output does not reach the Scheduler checks."""
