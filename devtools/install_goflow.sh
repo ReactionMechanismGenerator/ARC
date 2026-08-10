@@ -14,6 +14,12 @@ TORCH_VERSION="2.6.0"  # must match GoFlow's pinned torch version (see goflow_le
 TORCHVISION_VERSION="0.21.0"
 SKIP_CKPT=false
 
+# Upstream goflow_lean is pinned to an explicit commit rather than tracking its default branch,
+# for the same reasons as install_rits.sh: the Zenodo checkpoint below was trained against this
+# revision, and an upstream dependency bump can silently replace the torch that the ABI-matched
+# PyG companion wheels were built for. Bumping this SHA is a checkpoint-compatibility decision.
+GOFLOW_REF="312df1c70da709ea7ebd211b26c80f10cfeb5a40"
+
 # Pretrained checkpoint mirror (Dana Research Group, Zenodo)
 # Self-trained reproduction of the paper's epoch_337.ckpt with seed=1, same
 # hyperparameters; see goflow/README.md in DanaResearchGroup/training_checkpoints
@@ -92,8 +98,11 @@ Usage: $0 [--cpu] [--cuda <variant>] [--path <existing goflow_lean checkout>]
                        until real artifacts are placed at the expected paths.
   -h                   this help
 
-By default the script clones (or updates) goflow_lean as a sibling of the ARC
-repo, creates the '${GOFLOW_ENV_NAME}' conda env with python=3.11, autodetects
+By default the script clones goflow_lean as a sibling of the ARC repo and checks
+out the pinned revision ${GOFLOW_REF:0:9}, so the code stays matched to the
+pretrained checkpoint below and an upstream dependency bump cannot break the
+torch/PyG ABI match. It then
+creates the '${GOFLOW_ENV_NAME}' conda env with python=3.11, autodetects
 the host CUDA version, installs torch=${TORCH_VERSION} + matching PyTorch
 Geometric companion wheels (torch-scatter / torch-sparse / torch-cluster /
 torch-spline-conv / pyg-lib / torch-geometric) from PyG's wheel index, runs
@@ -214,11 +223,13 @@ else
   if [[ -d "$GOFLOW_DIR/.git" ]]; then
     echo "🔄  Updating existing goflow_lean clone at $GOFLOW_DIR"
     git -C "$GOFLOW_DIR" fetch origin
-    git -C "$GOFLOW_DIR" pull --ff-only || echo "⚠️  Could not fast-forward; leaving working tree as-is."
   else
     echo "⬇️  Cloning goflow_lean into $GOFLOW_DIR"
     git clone "$GOFLOW_REPO_URL" "$GOFLOW_DIR"
   fi
+  # Always land on the pinned SHA — a restored CI cache may sit on a newer default branch.
+  echo "📌  Checking out pinned goflow_lean revision $GOFLOW_REF"
+  git -C "$GOFLOW_DIR" checkout --quiet --detach "$GOFLOW_REF"
 fi
 
 GOFLOW_COMMIT="$(git -C "$GOFLOW_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"

@@ -11,6 +11,16 @@ SKIP_CKPT_CHECK=false
 CUDA_VARIANT=""        # one of: cpu, cu118, cu121, cu124, cu126 (empty → autodetect)
 TORCH_VERSION="2.7.0"  # must match RitS's pinned torch version
 
+# Upstream RitS is pinned to an explicit commit rather than tracking 'main'. Two reasons:
+#   1. Reproducibility — the Zenodo checkpoint below was produced against this revision, and
+#      upstream refactors its model code in place (no tags, no releases).
+#   2. Build integrity — this revision pins torch==2.7.0, matching TORCH_VERSION and the
+#      ABI-matched PyG companion wheels installed further down. Upstream's 98091d1
+#      (2026-08-09) bumped that pin to torch==2.12.0, which silently replaced the CPU torch
+#      during 'pip install -e' and segfaulted torch_scatter / pyg-lib on import.
+# Bumping this SHA is a checkpoint-compatibility decision, not just a build one.
+RITS_REF="6ecac0cbe27ebdc4265ce128aed378d294283058"
+
 # Pretrained checkpoint mirror (Dana Research Group, Zenodo)
 # Google Drive checkpoint file source: https://drive.google.com/drive/folders/1DD2hmWx3E1klM3Ljon5r4gdquGoN_4v6
 # Source paper: https://github.com/isayevlab/RitS, 10.26434/chemrxiv.15001681/v1
@@ -59,7 +69,10 @@ Usage: $0 [--cpu] [--cuda <variant>] [--path <existing RitS checkout>]
                     at runtime until a real ckpt is placed at the expected path.
   -h                this help
 
-By default the script clones (or updates) RitS as a sibling of the ARC repo,
+By default the script clones RitS as a sibling of the ARC repo and checks out the
+pinned revision ${RITS_REF:0:9} (upstream has no tags and refactors in place, so
+tracking 'main' would desync the code from the pretrained checkpoint below and can
+break the torch/PyG ABI match). It then
 creates the '${RITS_ENV_NAME}' conda env with python=3.10, autodetects the
 host CUDA version, installs torch=${TORCH_VERSION} + matching PyTorch Geometric
 companion wheels (torch-scatter / torch-sparse / torch-cluster /
@@ -177,12 +190,17 @@ else
   if [[ -d "$RITS_DIR/.git" ]]; then
     echo "🔄  Updating existing RitS clone at $RITS_DIR"
     git -C "$RITS_DIR" fetch origin
-    git -C "$RITS_DIR" pull --ff-only || echo "⚠️  Could not fast-forward; leaving working tree as-is."
   else
     echo "⬇️  Cloning RitS into $RITS_DIR"
     git clone "$RITS_REPO_URL" "$RITS_DIR"
   fi
+  # Always land on the pinned SHA — a restored CI cache may sit on a newer 'main'.
+  echo "📌  Checking out pinned RitS revision $RITS_REF"
+  git -C "$RITS_DIR" checkout --quiet --detach "$RITS_REF"
 fi
+
+RITS_COMMIT="$(git -C "$RITS_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+echo "🔖  RitS commit: $RITS_COMMIT"
 
 # ── create / update the rits_env conda environment ───────────────────────
 if $COMMAND_PKG env list | awk '{print $1}' | grep -qx "$RITS_ENV_NAME"; then
