@@ -892,7 +892,7 @@ class TestComputePointGroups(unittest.TestCase):
         return spc
 
     @patch('arc.output.execute_command')
-    @patch('arc.output.settings', {'RMG_ENV_NAME': 'rmg_env'})
+    @patch('arc.job.env_run.settings', {'RMG_ENV_NAME': 'rmg_env'})
     def test_returns_point_groups(self, mock_exec):
         mock_exec.return_value = ([], [])
         species_dict = {
@@ -905,7 +905,7 @@ class TestComputePointGroups(unittest.TestCase):
         self.assertEqual(result['NH3'], 'C3v')
 
     @patch('arc.output.execute_command')
-    @patch('arc.output.settings', {'RMG_ENV_NAME': 'rmg_env'})
+    @patch('arc.job.env_run.settings', {'RMG_ENV_NAME': 'rmg_env'})
     def test_null_point_group(self, mock_exec):
         mock_exec.return_value = ([], [])
         species_dict = {
@@ -927,7 +927,7 @@ class TestComputePointGroups(unittest.TestCase):
         self.assertEqual(result, {})
 
     @patch('arc.output.execute_command', side_effect=Exception('conda not found'))
-    @patch('arc.output.settings', {'RMG_ENV_NAME': 'rmg_env'})
+    @patch('arc.job.env_run.settings', {'RMG_ENV_NAME': 'rmg_env'})
     def test_graceful_failure(self, mock_exec):
         species_dict = {
             'H2O': self._make_spc('H2O', ['O', 'H', 'H'], [[0, 0, 0], [1, 0, 0], [-1, 0, 0]]),
@@ -936,7 +936,7 @@ class TestComputePointGroups(unittest.TestCase):
         self.assertEqual(result, {})
 
     @patch('arc.output.execute_command')
-    @patch('arc.output.settings', {'RMG_ENV_NAME': 'rmg_env'})
+    @patch('arc.job.env_run.settings', {'RMG_ENV_NAME': 'rmg_env'})
     def test_uses_initial_xyz_fallback(self, mock_exec):
         mock_exec.return_value = ([], [])
         spc = MagicMock()
@@ -949,7 +949,7 @@ class TestComputePointGroups(unittest.TestCase):
         self.assertEqual(result['CH4'], 'Td')
 
     @patch('arc.output.execute_command')
-    @patch('arc.output.settings', {'RMG_ENV_NAME': 'rmg_env'})
+    @patch('arc.job.env_run.settings', {'RMG_ENV_NAME': 'rmg_env'})
     def test_writes_input_yaml(self, mock_exec):
         """Verify the input YAML is written and the script path is passed to execute_command."""
         mock_exec.return_value = ([], [])

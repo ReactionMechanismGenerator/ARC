@@ -16,7 +16,7 @@ from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
 from rdkit.Chem import AllChem, SDWriter
 from rdkit.Chem.rdchem import AtomValenceException
-from scipy.optimize import minimize
+from scipy.optimize import brentq, minimize
 
 from arc.common import (NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, SYMBOL_BY_NUMBER,
                         almost_equal_lists,
@@ -1480,6 +1480,11 @@ def order_atoms_in_mol_list(ref_mol: Molecule, mol_list: list[Molecule] | None) 
         for mol in mol_list:
             if not isinstance(mol, Molecule):
                 raise TypeError(f'expected entries of mol_list to be Molecule instances, got {mol} which is a {type(mol)}.')
+            # Fast path: if atom IDs already match ref_mol in the same positions, no VF2 needed.
+            if (len(mol.atoms) == len(ref_mol.atoms)
+                    and all(m.id == r.id and m.id != -1
+                            for m, r in zip(mol.atoms, ref_mol.atoms))):
+                continue
             try:  # TODO: flag as unordered (or solve)
                 order_atoms(ref_mol, mol)
             except SanitizationError as e:
@@ -2165,6 +2170,151 @@ def add_atom_to_xyz_using_internal_coords(xyz: dict | str,
     return xyz
 
 
+def _place_atom_nerf(coord_l: tuple,
+                     coord_m: tuple,
+                     coord_r: tuple,
+                     r_value: float,
+                     a_value: float,
+                     d_value: float,
+                     ) -> tuple | None:
+    """
+    Place an atom X analytically from internal coordinates (the NeRF construction).
+
+    Solves for X with ``|X - R| = r_value``, ``angle(M, R, X) = a_value``, and
+    ``dihedral(L, M, R, X) = d_value``. Those three constraints determine X exactly,
+    so no optimizer is needed -- which matters because the numerical fallback needs
+    ~2000 objective evaluations per atom and its iteration count is acutely sensitive
+    to sub-1e-5 changes in the targets.
+
+    Only applies when the three parameters are chained in this way (the angle's vertex
+    and the dihedral's last atom are both R, and the dihedral's third atom is M). The
+    caller checks that and falls back to the optimizer otherwise.
+
+    Args:
+        coord_l (tuple): Cartesian coordinates of atom L (dihedral's first atom).
+        coord_m (tuple): Cartesian coordinates of atom M.
+        coord_r (tuple): Cartesian coordinates of atom R, to which X is being attached.
+        r_value (float): The R-X distance in Angstrom.
+        a_value (float): The M-R-X angle in degrees.
+        d_value (float): The L-M-R-X dihedral angle in degrees.
+
+    Returns:
+        tuple | None: The Cartesian coordinates of X, or ``None`` if L, M and R are
+                      collinear, in which case the reference frame is undefined.
+    """
+    a_rad, d_rad = math.radians(a_value), math.radians(d_value)
+    coord_l = np.asarray(coord_l, dtype=np.float64)
+    coord_m = np.asarray(coord_m, dtype=np.float64)
+    coord_r = np.asarray(coord_r, dtype=np.float64)
+
+    bc = coord_r - coord_m
+    bc_len = np.linalg.norm(bc)
+    if bc_len == 0:
+        return None
+    bc = bc / bc_len
+    normal = np.cross(coord_m - coord_l, bc)
+    normal_len = np.linalg.norm(normal)
+    if normal_len < 1e-8:
+        return None  # L, M and R are collinear: the dihedral reference plane is undefined.
+    normal = normal / normal_len
+    in_plane = np.cross(normal, bc)
+
+    x = coord_r + r_value * (-math.cos(a_rad) * bc
+                             + math.sin(a_rad) * math.cos(d_rad) * in_plane
+                             + math.sin(a_rad) * math.sin(d_rad) * normal)
+    return tuple(x.tolist())
+
+
+def _place_atom_on_dihedral_arc(coord_l: tuple,
+                                coord_m: tuple,
+                                coord_r: tuple,
+                                coord_a: tuple,
+                                r_value: float,
+                                a_value: float,
+                                d_value: float,
+                                initial_guess=None,
+                                ) -> tuple[tuple | None, bool]:
+    """
+    Place an atom X when the angle is measured to an atom the dihedral does not name.
+
+    Handles ``|X - R| = r_value``, ``angle(A, R, X) = a_value`` and
+    ``dihedral(L, M, R, X) = d_value`` where A is not M, so :func:`_place_atom_nerf`
+    does not apply directly.
+
+    Sweeping the *M-R-X* angle through :func:`_place_atom_nerf` traces precisely the arc
+    of points that already satisfy ``r_value`` and ``d_value``, so the problem collapses
+    from three unknowns to one: find the point on that arc whose A-R-X angle is
+    ``a_value``. That is a bracketed 1-D root find over an exact constructor, which
+    replaces a 3-D SLSQP solve that averages ~5200 objective evaluations per atom.
+
+    Args:
+        coord_l (tuple): Cartesian coordinates of atom L (the dihedral's first atom).
+        coord_m (tuple): Cartesian coordinates of atom M.
+        coord_r (tuple): Cartesian coordinates of atom R, to which X is being attached.
+        coord_a (tuple): Cartesian coordinates of atom A (the angle's outer atom).
+        r_value (float): The R-X distance in Angstrom.
+        a_value (float): The A-R-X angle in degrees.
+        d_value (float): The L-M-R-X dihedral angle in degrees.
+        initial_guess (np.ndarray, optional): Used only to choose between two valid
+                                              solutions, preserving the behaviour of the
+                                              optimizer this replaces.
+
+    The three constraints are frequently over-determined -- for roughly 60% of these
+    placements in the hydrolysis TS heuristics no point attains ``a_value`` at all, the
+    closest being ~4 deg away. There the arc yields no exact answer, but the point that
+    comes closest still satisfies ``r_value`` and ``d_value`` exactly, which makes it a far
+    better starting point than a generic guess for the least-squares solve that follows.
+
+    Returns:
+        tuple[tuple | None, bool]: The Cartesian coordinates of X and whether they satisfy
+                                   all three constraints exactly. When the flag is False the
+                                   coordinates are the closest point on the arc, intended as
+                                   an optimizer starting point, and are ``None`` only if the
+                                   construction itself is degenerate.
+    """
+    origin = np.asarray(coord_r, dtype=np.float64)
+    axis = np.asarray(coord_a, dtype=np.float64) - origin
+    axis_len = np.linalg.norm(axis)
+    if axis_len == 0:
+        return None, False
+    axis = axis / axis_len
+
+    def residual(trial_angle: float) -> float | None:
+        """A-R-X angle minus its target, for the arc point at an M-R-X angle of ``trial_angle``."""
+        point = _place_atom_nerf(coord_l, coord_m, coord_r, r_value, trial_angle, d_value)
+        if point is None:
+            return None
+        vector = np.asarray(point, dtype=np.float64) - origin
+        cosine = float(np.dot(vector, axis) / np.linalg.norm(vector))
+        return math.degrees(math.acos(min(1.0, max(-1.0, cosine)))) - a_value
+
+    grid = np.linspace(1e-4, 180.0 - 1e-4, 181)
+    samples = [(t, residual(t)) for t in grid]
+    if any(res is None for _, res in samples):
+        return None, False
+
+    solutions = list()
+    for (t_low, res_low), (t_high, res_high) in zip(samples, samples[1:]):
+        if res_low == 0.0:
+            solutions.append(t_low)
+        elif res_low * res_high < 0:
+            solutions.append(brentq(lambda t: residual(t), t_low, t_high, xtol=1e-12))
+
+    exact = bool(solutions)
+    if not exact:
+        # Over-determined: return the closest the arc gets, for use as a starting point.
+        solutions = [min(samples, key=lambda s: abs(s[1]))[0]]
+
+    points = [_place_atom_nerf(coord_l, coord_m, coord_r, r_value, t, d_value) for t in solutions]
+    points = [p for p in points if p is not None]
+    if not points:
+        return None, False
+    if len(points) > 1 and initial_guess is not None:
+        guess = np.asarray(initial_guess, dtype=np.float64)
+        points.sort(key=lambda p: float(np.linalg.norm(np.asarray(p) - guess)))
+    return points[0], exact
+
+
 def _add_atom_to_xyz_using_internal_coords(xyz: dict,
                                            element: str,
                                            r_index: int,
@@ -2207,6 +2357,42 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
                         f'respectively, got {a_indices} and {d_indices}.')
 
     coords, symbols = xyz['coords'], xyz['symbols']
+
+    # Whenever the angle's vertex and the dihedral's last atom are both R, the three
+    # constraints determine X exactly, so solve for it directly rather than running SLSQP
+    # over them. Either helper returns None if its construction is degenerate, in which
+    # case we fall through to the optimizer below.
+    new_coord = None
+    if a_indices[1] == r_index and d_indices[2] == r_index:
+        if d_indices[1] == a_indices[0]:
+            new_coord = _place_atom_nerf(coord_l=coords[d_indices[0]],
+                                         coord_m=coords[d_indices[1]],
+                                         coord_r=coords[r_index],
+                                         r_value=r_value,
+                                         a_value=a_value,
+                                         d_value=d_value,
+                                         )
+        else:
+            arc_coord, exact = _place_atom_on_dihedral_arc(coord_l=coords[d_indices[0]],
+                                                           coord_m=coords[d_indices[1]],
+                                                           coord_r=coords[r_index],
+                                                           coord_a=coords[a_indices[0]],
+                                                           r_value=r_value,
+                                                           a_value=a_value,
+                                                           d_value=d_value,
+                                                           initial_guess=initial_guess,
+                                                           )
+            if exact:
+                new_coord = arc_coord
+            elif arc_coord is not None:
+                # No exact solution exists. Start the least-squares solve from the closest
+                # point on the arc, which already satisfies the distance and dihedral.
+                initial_guess = np.asarray(arc_coord, dtype=np.float64)
+    if new_coord is not None:
+        return xyz_from_data(coords=coords + (new_coord,),
+                             symbols=symbols + (element,),
+                             isotopes=xyz['isotopes'] + (get_most_common_isotope_for_element(element),),
+                             )
 
     atom_r_coord = coords[r_index]
     atom_a_coord = coords[a_indices[0]]
@@ -2563,7 +2749,5 @@ def order_mol_by_atom_map(mol: Molecule,
                          f'got duplicate indices in {atom_map}.')
     reordered = mol.copy(deep=True)
     reordered.atoms = [reordered.atoms[atom_map[i]] for i in range(n)]
-    explicit_order = reordered.atoms[:]   # save our ordering before update() reorders
-    reordered.update()
-    reordered.atoms = explicit_order      # restore explicit ordering
+    reordered.update(sort_atoms=False)
     return reordered

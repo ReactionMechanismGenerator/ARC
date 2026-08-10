@@ -9,6 +9,7 @@ import arc.plotter as plotter
 from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file
 from arc.imports import settings
 from arc.level import Level
+from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
 from arc.statmech.factory import statmech_factory
 
@@ -256,20 +257,10 @@ def compare_thermo(species_for_thermo_lib: list,
     species_thermo_path = os.path.join(output_directory, 'RMG_thermo.yml')
     save_yaml_file(path=species_thermo_path,
                    content=[{'label': spc.label, 'adjlist': spc.mol.copy(deep=True).to_adjacency_list()} for spc in species_for_thermo_lib])
-    env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
     rmg_db_path = settings.get('RMG_DB_PATH') or ""
-    commands = ['bash -lc "set -euo pipefail; '
-                f'export RMG_DB_PATH=\\"{rmg_db_path}\\"; '
-                f'export RMG_DATABASE=\\"{rmg_db_path}\\"; '
-                'if command -v micromamba >/dev/null 2>&1; then '
-                f'    micromamba run -n {env_name} python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
-                'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
-                f'    conda run -n {env_name} python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
-                'else '
-                '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
-                'fi"',
-                ]
-    stdout, stderr = execute_command(command=commands, no_fail=True)
+    command = rmg_env_command(py_args=f'{THERMO_SCRIPT_PATH} {species_thermo_path}',
+                              env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path})
+    stdout, stderr = execute_command(command=command, shell=True, no_fail=True, executable='/bin/bash')
     if len(stderr):
         logger.error(f'Error while running RMG thermo script: {stderr}')
     species_list = read_yaml_file(path=species_thermo_path)
@@ -314,24 +305,11 @@ def compare_rates(rxns_for_kinetics_lib: list,
                              'family': rxn.family,
                              } for rxn in rxns_for_kinetics_lib],
                    )
-    env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
     rmg_db_path = settings.get('RMG_DB_PATH') or ""
-    shell_script = f"""if command -v micromamba &> /dev/null; then
-    eval "$(micromamba shell hook --shell=bash)"
-    micromamba activate {env_name}
-elif command -v mamba &> /dev/null; then
-    eval "$(mamba shell hook --shell=bash)"
-    mamba activate {env_name}
-elif command -v conda &> /dev/null; then
-    source "$(conda info --base)/etc/profile.d/conda.sh"
-    conda activate {env_name}
-else
-    exit 1
-fi
-export RMG_DB_PATH="{rmg_db_path}"
-export RMG_DATABASE="{rmg_db_path}"
-python {KINETICS_SCRIPT_PATH} {reactions_kinetics_path}   > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)
-"""
+    log_suffix = ' > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)'
+    shell_script = rmg_env_command(py_args=f'{KINETICS_SCRIPT_PATH} {reactions_kinetics_path}',
+                                   env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path},
+                                   suffix=log_suffix)
     o, e = execute_command(command=shell_script,
                            shell=True,
                            no_fail=True,

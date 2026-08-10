@@ -15,6 +15,7 @@ from arc.common import ARC_PATH, get_logger, read_yaml_file
 from arc.exceptions import AtomTypeError, InputError
 from arc.imports import incore_commands, settings
 from arc.molecule.molecule import Molecule
+from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
 from arc.statmech.adapter import StatmechAdapter
 from arc.statmech.factory import register_statmech_adapter
@@ -26,7 +27,6 @@ if TYPE_CHECKING:
 
 
 RMG_DB_PATH = settings['RMG_DB_PATH']
-RMG_ENV_NAME = settings.get('RMG_ENV_NAME', 'rmg_env')
 logger = get_logger()
 
 # Section boundary markers in the RMG quantum_corrections/data.py file.
@@ -483,19 +483,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
         script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'save_arkane_thermo.py')
         rmg_db_path = RMG_DB_PATH or ""
-        commands = [f'cd {statmech_dir}',
-                    'bash -lc "set -euo pipefail; '
-                    f'export RMG_DB_PATH=\\"{rmg_db_path}\\"; '
-                    f'export RMG_DATABASE=\\"{rmg_db_path}\\"; '
-                    'if command -v micromamba >/dev/null 2>&1; then '
-                    f'    micromamba run -n {RMG_ENV_NAME} python {script_path}; '
-                    'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
-                    f'    conda run -n {RMG_ENV_NAME} python {script_path}; '
-                    'else '
-                    '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
-                    'fi"',
-                    ]
-        stdout, stderr = execute_command(command=commands, executable='/bin/bash')
+        command = rmg_env_command(py_args=script_path,
+                                  cwd=statmech_dir,
+                                  env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path})
+        stdout, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
         if len(stderr):
             logger.error(f'Error while running Arkane thermo script:\n{stderr}')
         thermo_yaml_path = os.path.join(statmech_dir, 'thermo.yaml')
@@ -566,21 +557,11 @@ def run_arkane(statmech_dir: str) -> bool:
         logger.error(f'Cannot run Arkane in {statmech_dir} because it does not contain an input.py file.')
         return False
     rmg_db_path = RMG_DB_PATH or ""
-    arkane_cmd = 'python -m arkane input.py'
-    arkane_cmd += ' 2> >(tee -a stderr.log >&2) | tee -a stdout.log'
-    shell_script = rf'''bash -lc 'set -euo pipefail
-cd "{statmech_dir}"
-export RMG_DB_PATH="{rmg_db_path}"
-export RMG_DATABASE="{rmg_db_path}"
-
-if command -v micromamba >/dev/null 2>&1; then
-    micromamba run -n {RMG_ENV_NAME} {arkane_cmd}
-elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then
-    conda run -n {RMG_ENV_NAME} {arkane_cmd}
-else
-    echo "❌ Micromamba/Mamba/Conda required" >&2
-    exit 1
-fi' '''
+    arkane_suffix = ' 2> >(tee -a stderr.log >&2) | tee -a stdout.log'
+    shell_script = rmg_env_command(py_args='-m arkane input.py',
+                                   cwd=statmech_dir,
+                                   env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path},
+                                   suffix=arkane_suffix)
 
     std_out, std_err = execute_command(command=shell_script,
                                        shell=True,

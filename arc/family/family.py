@@ -23,6 +23,25 @@ ARC_FAMILIES_PATH = settings['ARC_FAMILIES_PATH']
 
 logger = get_logger()
 
+# How many resonance structures of a >20-atom reactant to search for reaction sites in
+# generate_unimolecular_products(). ``None`` (the default) searches all of them.
+#
+# Truncating this is *lossy*, and not only for equivalent Kekule re-drawings: resonance also
+# covers N and S chemistries and conjugated allyls, where the later structures expose sites the
+# first two do not. Measured over all 112 families with a limit of 2, the fraction of distinct
+# product sets never enumerated was 53% for fluorenyl (5 structures), 42% for naphthylethyl (4),
+# 46% for 1,3-diphenylallyl (4), 47% for a biphenyl aminyl radical (4), 48% for a biphenyl thiyl
+# radical (4) and 71% for a nitro-naphthylmethyl radical (7). This propagates all the way out:
+# for [CH2]Cc1cccc2ccccc12 -> [CH2]CC12C=CC1c1ccccc12, a limit of 2 finds no family at all,
+# while searching every structure correctly identifies Intra_2+2_cycloaddition_Cd.
+#
+# Searching all structures costs roughly 2x in this stage alone, but only ~20% end to end
+# (8.5 s vs 7.2 s and 13.1 s vs 10.5 s for the two reactions above, over all families), since
+# the adjacency-list cache in determine_possible_reaction_products_from_family() absorbs the
+# duplicate product graphs the extra structures generate. Set this to an int only where missing
+# reaction sites is acceptable in exchange for that ~20%, e.g. a coarse screening pass.
+RESONANCE_SEARCH_LIMIT: int | None = None
+
 
 REACTION_FAMILY_CACHE: dict[tuple[str, bool], 'ReactionFamily'] = {}
 
@@ -263,7 +282,11 @@ class ReactionFamily(object):
         """
         isomorphic_subgraph_dicts = list()
         reactant_to_group_maps = reactant_to_group_maps[0]
-        for mol in reactants[0].mol_list or [reactants[0].mol]:
+        mol_list = reactants[0].mol_list or [reactants[0].mol]
+        if RESONANCE_SEARCH_LIMIT is not None \
+                and len(mol_list) > RESONANCE_SEARCH_LIMIT and len(mol_list[0].atoms) > 20:
+            mol_list = mol_list[:RESONANCE_SEARCH_LIMIT]
+        for mol in mol_list:
             for reactant_to_group_map in reactant_to_group_maps:
                 group = self.groups_by_label[reactant_to_group_map['subgroup']]
                 isomorphic_subgraphs = mol.find_subgraph_isomorphisms(other=group, save_order=True)
@@ -512,6 +535,24 @@ def get_reaction_family_products(rxn: ARCReaction,
                                      consider_rmg_families=consider_rmg_families,
                                      consider_arc_families=consider_arc_families)
     product_dicts = list()
+    # Pre-build the flipped reaction and the product copies once; guard against ValueError from
+    # to_smiles() (e.g. when openbabel is unavailable) so we can fall back to lazy creation per family.
+    # Only the *product* copies are reused across families. Reactant copies are deliberately rebuilt
+    # per call: generate_products() mutates them, and reusing a mutated set leaks state into the next
+    # family, which made the resulting atom map depend on family iteration order (and so on
+    # PYTHONHASHSEED -- it produced a chemically wrong map for CH2CH2NH2 <=> CH3CH2NH on 2 of 8 seeds).
+    try:
+        flipped_rxn = rxn.flip_reaction(report_family=False)
+        fwd_products = rxn.get_reactants_and_products(return_copies=True)[1]
+        rev_products = flipped_rxn.get_reactants_and_products(return_copies=True)[1]
+    except (KeyError, ValueError, InvalidAdjacencyListError) as e:
+        logger.debug(f'Could not pre-build flipped reaction copies: {type(e).__name__}: {e}')
+        flipped_rxn = fwd_products = rev_products = None
+    # Shared adjacency-list → bool caches for check_product_isomorphism: one per direction.
+    # Families appearing multiple times in the family list (e.g. due to 'all' including both
+    # RMG and ARC copies) share results for the same template-product graph across calls.
+    fwd_iso_cache: dict[tuple, bool] = {}
+    rev_iso_cache: dict[tuple, bool] = {}
     for family_label in family_labels:
         try:
             # Forward:
@@ -519,19 +560,27 @@ def get_reaction_family_products(rxn: ARCReaction,
                                                                         family_label=family_label,
                                                                         consider_arc_families=consider_arc_families,
                                                                         reverse=False,
+                                                                        p_species=fwd_products,
+                                                                        iso_cache=fwd_iso_cache,
                                                                         )
             if len(products):
-                product_dicts.extend(filter_products_by_reaction(rxn=rxn, product_dicts=products))
+                product_dicts.extend(filter_products_by_reaction(rxn=rxn, product_dicts=products,
+                                                                  p_species=fwd_products))
 
             # Reverse:
-            flipped_rxn = rxn.flip_reaction(report_family=False)
+            if flipped_rxn is None:
+                flipped_rxn = rxn.flip_reaction(report_family=False)
+                rev_products = flipped_rxn.get_reactants_and_products(return_copies=True)[1]
             products = determine_possible_reaction_products_from_family(rxn=flipped_rxn,
                                                                         family_label=family_label,
                                                                         consider_arc_families=consider_arc_families,
                                                                         reverse=True,
+                                                                        p_species=rev_products,
+                                                                        iso_cache=rev_iso_cache,
                                                                         )
             if len(products):
-                filtered_products = filter_products_by_reaction(rxn=flipped_rxn, product_dicts=products)
+                filtered_products = filter_products_by_reaction(rxn=flipped_rxn, product_dicts=products,
+                                                                 p_species=rev_products)
                 if not discover_own_reverse_rxns_in_reverse:
                     product_dicts.extend([prod for prod in filtered_products if not prod['own_reverse']])
                 else:
@@ -541,10 +590,47 @@ def get_reaction_family_products(rxn: ARCReaction,
     return product_dicts
 
 
+def _product_graph_key(mols: list[Molecule]) -> tuple:
+    """
+    Build a cache key identifying a set of product molecules by graph alone.
+
+    ``Molecule.to_adjacency_list()`` writes each atom's reaction-site label
+    (``*1``, ``*2``, ...) into a column of its own, so using it verbatim keys on
+    the template match as well as on the graph. Atom equivalence in
+    ``is_isomorphic()`` ignores labels, so two candidates that differ only in
+    where the labels landed must share one entry. The label column is therefore
+    dropped token-wise rather than by regex: substituting it out textually would
+    leave the remaining columns ragged and re-split the very keys this merges.
+
+    In practice this rarely changes the hit rate -- label placement and atom
+    ordering co-vary, so the ordering usually separates the candidates anyway --
+    but it makes the key mean what the cache assumes it means, and keeps that
+    true if product atom ordering is ever canonicalized.
+
+    Args:
+        mols (list[Molecule]): The product molecules.
+
+    Returns:
+        tuple: A hashable, label-independent key.
+    """
+    keys = list()
+    for mol in mols:
+        lines = list()
+        for line in mol.to_adjacency_list().splitlines():
+            tokens = line.split()
+            if len(tokens) > 1 and tokens[0].isdigit() and tokens[1].startswith('*'):
+                del tokens[1]
+            lines.append(' '.join(tokens))
+        keys.append('\n'.join(lines))
+    return tuple(keys)
+
+
 def determine_possible_reaction_products_from_family(rxn: ARCReaction,
                                                      family_label: str,
                                                      consider_arc_families: bool = True,
                                                      reverse: bool = False,
+                                                     p_species: list | None = None,
+                                                     iso_cache: dict | None = None,
                                                      ) -> list[dict]:
     """
     Determine the possible reaction products for a given ARC reaction and a given RMG reaction family.
@@ -567,6 +653,13 @@ def determine_possible_reaction_products_from_family(rxn: ARCReaction,
         family_label (str): The reaction family label.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
         reverse (bool, optional): Whether the reaction is in reverse.
+        p_species (list, optional): Pre-built product species copies for isomorphism check.
+                                    When provided, skips the internal get_reactants_and_products() call
+                                    inside isomorphic_products. The caller must ensure these are not mutated.
+        iso_cache (dict, optional): Shared adjacency-list → bool cache for check_product_isomorphism.
+                                    When provided, results are shared across multiple calls with the same
+                                    p_species (e.g., across all families in get_reaction_family_products).
+                                    The caller owns the dict and must NOT share it across different p_species.
 
     Returns:
         list[dict]: A list of dictionaries, each containing the family label, the group labels, the products,
@@ -574,13 +667,28 @@ def determine_possible_reaction_products_from_family(rxn: ARCReaction,
     """
     product_dicts = list()
     family = get_reaction_family(label=family_label, consider_arc_families=consider_arc_families)
+    # A fresh reactant copy per call: generate_products() mutates it.
     products = family.generate_products(reactants=rxn.get_reactants_and_products(return_copies=True)[0])
     if products:
+        if p_species is None:
+            p_species = rxn.get_reactants_and_products(return_copies=True)[1]
+        if iso_cache is None:
+            iso_cache = {}
         for group_labels, product_lists in products.items():
             for product_list in product_lists:
                 template_mols, r_label_dict = product_list[0], product_list[1]
-                if not isomorphic_products(rxn=rxn, products=template_mols):
-                    continue
+                # Cache check_product_isomorphism by adjacency-list key. generate_products()
+                # emits many candidates that share a product graph, and the isomorphism result
+                # depends only on that graph, so it is computed once per unique graph.
+                adj_key = _product_graph_key(template_mols)
+                if adj_key in iso_cache:
+                    if not iso_cache[adj_key]:
+                        continue
+                else:
+                    result = check_product_isomorphism(products=template_mols, p_species=p_species)
+                    iso_cache[adj_key] = result
+                    if not result:
+                        continue
                 # Build r_label_map preserving duplicate labels by suffixing
                 # (e.g., R_Recombination has two atoms labeled '*' → '*' and '*_2').
                 r_label_map = {}
@@ -621,6 +729,7 @@ def determine_possible_reaction_products_from_family(rxn: ARCReaction,
 
 def filter_products_by_reaction(rxn: ARCReaction,
                                 product_dicts: list[dict],
+                                p_species: list | None = None,
                                 ) -> list[dict]:
     """
     Filter the possible reaction products by the ARC reaction.
@@ -629,12 +738,15 @@ def filter_products_by_reaction(rxn: ARCReaction,
         rxn (ARCReaction): The ARC reaction object.
         product_dicts (list[dict]): A list of dictionaries, each containing the family label, the group labels,
                                     the products, and whether the family's template also represents its own reverse.
+        p_species (list, optional): Pre-built product species copies. When provided, skips the internal
+                                    get_reactants_and_products() call. The caller must ensure these are not mutated.
 
     Returns:
         list[dict]: The filtered list of product dictionaries.
     """
     filtered_product_dicts, r_label_maps = list(), list()
-    _, p_species = rxn.get_reactants_and_products(return_copies=True)
+    if p_species is None:
+        _, p_species = rxn.get_reactants_and_products(return_copies=True)
     for product_dict in product_dicts:
         if len(product_dict['products']) != len(p_species):
             continue
