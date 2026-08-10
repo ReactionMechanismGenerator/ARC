@@ -316,9 +316,11 @@ class TestJobAdapter(unittest.TestCase):
                                        'source': 'input_files',
                                        'make_x': True})
 
-    def test_determine_job_status(self):
+    @patch('arc.job.adapter.check_job_status', return_value='done')
+    def test_determine_job_status(self, mock_check_job_status):
         """Test determining the job status"""
         self.job_5.determine_job_status()
+        mock_check_job_status.assert_called_once_with('123456')
         self.assertEqual(self.job_5.job_status[0], 'done')
         self.assertEqual(self.job_5.job_status[1]['status'], 'errored')
         self.assertEqual(self.job_5.job_status[1]['keywords'], ['ServerTimeLimit'])
