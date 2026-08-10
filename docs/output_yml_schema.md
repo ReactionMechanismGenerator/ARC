@@ -25,6 +25,12 @@ output.yml
 ├── datetime_started?
 ├── datetime_completed
 │
+├── cost_metrics
+│   ├── wall_time_hrs?
+│   ├── total_job_count, total_execution_time_hrs, total_core_hours
+│   ├── jobs_missing_time, jobs_missing_cores
+│   └── per_ess?: {<ess>: {job_count, execution_time_hrs, core_hours, jobs_missing_time}, ...}
+│
 ├── composite_method?
 ├── opt_level?
 ├── freq_level?
@@ -125,6 +131,28 @@ stale or interrupted pair by comparing document IDs. The evidence file contains
 best-effort, versioned Hessian, IRC, and GSM facts parsed by ARC; it contains no
 TCKDB upload request objects.
 
+## Cost Metrics
+
+`cost_metrics` records the computational cost of the run, aggregated from per-job
+records collected as jobs complete (persisted in the restart file, so restarted runs
+keep their history). Jobs with unavailable run time or core count are **counted**, not
+silently dropped, so analysis scripts know the coverage. Wall time is queue-confounded
+and should be treated as a secondary metric; ESS execution time and core-hours are the
+primary cost measures. Pipe-mode tasks are not individually tracked and are therefore
+not included in the per-job aggregates.
+
+| Field | Type | Description |
+|---|---|---|
+| `wall_time_hrs` | `float?` | Wall-clock duration of the run in hours (also derivable from the `datetime_*` pair, which only has minute resolution) |
+| `total_job_count` | `int` | Total number of completed jobs recorded |
+| `total_execution_time_hrs` | `float` | Summed ESS job execution time (hours), over jobs with a known run time |
+| `total_core_hours` | `float` | Summed execution time x CPU cores (hours), over jobs with known run time and core count |
+| `jobs_missing_time` | `int` | Jobs ARC recorded with no run time. They are excluded from both `total_execution_time_hrs` and `total_core_hours`, so a non-zero value means **both totals understate the run**, by this many jobs |
+| `jobs_missing_cores` | `int` | Jobs that have a run time but no core count. They still count toward `total_execution_time_hrs`, but are excluded from `total_core_hours`, so a non-zero value means **core-hours alone understate the run**, by this many jobs |
+| `per_ess` | `dict?` | Per-ESS-software aggregates, keyed by the job adapter name (e.g. `gaussian`, `orca`, `xtb`); records with no adapter recorded are bucketed under `unknown`. `null` when no jobs were recorded |
+
+Each `per_ess` entry: `{job_count: int, execution_time_hrs: float, core_hours: float, jobs_missing_time: int}`.
+
 ## Levels of Theory
 
 Every level field is a **level dict**: `Level.as_dict()` with the `repr` and
@@ -146,7 +174,7 @@ key set varies between runs; the possible keys are `method`, `basis`,
 | `freq_scale_factor_source` | `str?` | Source of the scaling factor (`null` if user-provided) |
 | `bac_type` | `str?` | Bond additivity correction type: `"p"`, `"m"`, or `null` |
 | `atom_energy_corrections` | `dict?` | Per-atom corrections in Hartree (`{element: value, ...}`) |
-| `bond_additivity_corrections` | `dict?` | Per-bond corrections in kJ/mol (`{bond: value, ...}`) |
+| `bond_additivity_corrections` | `dict?` | Per-bond corrections in kcal/mol (`{bond: value, ...}`) |
 
 ## Species
 
@@ -232,7 +260,7 @@ All paths are relative to the project directory.
 | `opt_input` | `str?` | Geometry optimization input deck; `null` when the deck is not on disk |
 | `freq_input` | `str?` | Frequency calculation input deck; `null` when the deck is not on disk |
 | `sp_input` | `str?` | Single-point energy input deck; `null` when the deck is not on disk |
-| `ess_versions` | `dict?` | ESS software versions (`{label: version_str, ...}`) |
+| `ess_versions` | `dict?` | ESS software versions, keyed by job type (`{sp\|opt\|freq\|neb: version_str, ...}`) |
 
 Each input deck sits in the same directory as its log, under the ESS-specific
 filename from `settings['input_filenames']`. Software with no entry in that map
