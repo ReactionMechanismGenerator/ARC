@@ -2016,6 +2016,27 @@ class TestSchedulerStaleServerJobIds(unittest.TestCase):
         end_job.assert_not_called()
         self.assertEqual(self.sched.running_jobs, dict())
 
+    def test_a_failed_query_is_not_offered_to_the_pipe_coordinator(self):
+        """Test that a queue which could not be queried does not make a pipe run's job look gone"""
+        def stop_the_loop(*args, **kwargs):
+            self.sched.running_jobs = dict()
+            self.sched.active_pipes.clear()
+
+        self.sched.active_pipes['run_1'] = MagicMock(tasks=list())
+        poll_pipes = MagicMock()
+        with patch('arc.job.local.execute_command',
+                   return_value=([], ['qstat: cannot connect to server'], 1)), \
+                patch.object(Scheduler, 'end_job', MagicMock(side_effect=_StopScheduling)), \
+                patch.object(Scheduler, 'run_conformer_jobs'), \
+                patch.object(Scheduler, 'spawn_ts_jobs'), \
+                patch.object(self.sched.pipe_coordinator, 'poll_pipes', poll_pipes), \
+                patch('arc.scheduler.time.sleep', side_effect=stop_the_loop):
+            try:
+                self.sched.schedule_jobs()
+            except _StopScheduling:
+                pass
+        poll_pipes.assert_called_with(server_job_ids=None)
+
     def test_a_silently_failed_query_does_not_end_jobs(self):
         """Test that a queue status command which failed without a diagnostic does not end a running job"""
         for return_code in (124, -9, 2):
