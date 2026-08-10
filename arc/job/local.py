@@ -5,6 +5,7 @@ When transitioning to Python 3, use
 """
 
 import datetime
+import errno
 import os
 import re
 import shutil
@@ -12,12 +13,14 @@ import subprocess
 import time
 
 from arc.common import get_logger
-from arc.exceptions import SettingsError
+from arc.exceptions import ServerError
 from arc.imports import settings
-from arc.job.ssh import check_job_status_in_stdout
+from arc.job.ssh import check_job_status_in_stdout, queue_query_failed, register_queue_query
 
 
 logger = get_logger()
+
+TRANSIENT_SPAWN_ERRNOS = frozenset({errno.EAGAIN, errno.ENOMEM, errno.EMFILE, errno.ENFILE})
 
 servers, check_status_command, submit_command, submit_filenames, delete_command, output_filenames = \
     settings['servers'], settings['check_status_command'], settings['submit_command'], settings['submit_filenames'],\
@@ -28,13 +31,20 @@ def execute_command(command: str | list[str],
                     shell: bool = True,
                     no_fail: bool = False,
                     executable: str | None = None,
-                    ) -> tuple[list | None, list | None]:
+                    return_code: bool = False,
+                    ) -> tuple[list | None, list | None] | tuple[list | None, list | None, int | None]:
     """
     Execute a command.
 
     Notes:
-        If ``no_fail`` is ``True``, then a warning is logged and ``False`` is returned
+        If ``no_fail`` is ``True``, then a warning is logged and ``None`` values are returned
         so that the calling function can debug the situation.
+
+        A non-zero exit status is not treated as an error, and is only reported to callers
+        that request ``return_code``.
+
+        A failure to spawn a process for the command, e.g., when the machine cannot allocate
+        memory or has no free process slots, is retried with an escalating delay.
 
     Args:
         command (str | list[str]): An array of string commands to send.
@@ -42,68 +52,74 @@ def execute_command(command: str | list[str],
         no_fail (bool, optional): If ``True`` then ARC will not crash if an error is encountered.
         executable (str, optional): Select a specific shell to run with, e.g., '/bin/bash'.
                                     Default shell of the subprocess command is '/bin/sh'.
+        return_code (bool, optional): Whether to also return the exit status of the command.
 
-    Returns: tuple[list, list]:
+    Raises:
+        ServerError: If a process for the command could not be spawned in ``max_times_to_try`` attempts
+                     and ``no_fail`` is ``False``.
+
+    Returns: tuple[list, list] | tuple[list, list, int]:
         - A list of lines of standard output stream.
         - A list of lines of the standard error stream.
+        - The exit status of the command, only if ``return_code`` is ``True``.
     """
     error = None
     if not isinstance(command, list):
         command = [command]
     command = [' && '.join(command)]
-    i, max_times_to_try = 1, 30
+    i, max_times_to_try = 1, 10
     sleep_time = 60  # Seconds
-    while i < max_times_to_try:
+    while i <= max_times_to_try:
         try:
             if executable is None:
                 completed_process = subprocess.run(command, shell=shell, capture_output=True)
             else:
                 completed_process = subprocess.run(command, shell=shell, capture_output=True, executable=executable)
-            return _format_stdout(completed_process.stdout), _format_stdout(completed_process.stderr)
-        except subprocess.CalledProcessError as e:
-            error = e  # Store the error so we can raise a SettingsError if needed.
-            if no_fail:
-                _output_command_error_message(command, e, logger.warning)
-                return None, None
-            else:
-                _output_command_error_message(command, e, logger.error)
-                logger.error(f'ARC is sleeping for {sleep_time * i} seconds before retrying.\nPlease check whether '
-                             f'this is a server issue by executing the command manually on the server.')
-                logger.info('ZZZZZ..... ZZZZZ.....')
-                time.sleep(sleep_time * i)  # In seconds
-                i += 1
-    # If unsuccessful:
-    raise SettingsError(f'The command "{command}" is erroneous, got: \n{error}'
-                        f'\nThis maybe either a server issue or the command is wrong.'
-                        f'\nTo check if this is a server issue, please run the command on server and restart ARC.'
-                        f'\nTo correct the command, modify settings.py'
-                        f'\nTips: use "which" command to locate cluster software commands on server.'
-                        f'\nExample: type "which sbatch" on a server running Slurm to find the correct '
-                        f'sbatch path required in the submit_command dictionary.')
+        except OSError as e:
+            if e.errno not in TRANSIENT_SPAWN_ERRNOS:
+                raise
+            error = e
+            _output_command_error_message(command, e, logger.error)
+            if i == max_times_to_try:
+                break
+            logger.error(f'ARC could not spawn a process for the above command (attempt {i} of {max_times_to_try}), '
+                         f'and is sleeping for {sleep_time * i} seconds before retrying.')
+            logger.info('ZZZZZ..... ZZZZZ.....')
+            time.sleep(sleep_time * i)
+            i += 1
+            continue
+        stdout, stderr = _format_stdout(completed_process.stdout), _format_stdout(completed_process.stderr)
+        if return_code:
+            return stdout, stderr, completed_process.returncode
+        return stdout, stderr
+    message = (f'Could not spawn a process for the command "{command}" in {max_times_to_try} attempts, got:\n{error}'
+               f'\nThe machine could not allocate the resources required for another process, which usually means '
+               f'that too many processes are running on it concurrently, or that it ran out of memory.'
+               f'\nRun fewer concurrent ARC instances or incore jobs on this machine, or use a machine with more '
+               f'memory.')
+    if no_fail:
+        logger.warning(message)
+        return (None, None, None) if return_code else (None, None)
+    raise ServerError(message)
 
 
 def _output_command_error_message(command: list[str],
-                                  error: subprocess.CalledProcessError,
+                                  error: OSError,
                                   logging_func,
                                   ) -> None:
     """
-    Formats and logs the error message returned from a command at the desired logging level
+    Formats and logs an error raised while trying to run a command at the desired logging level
 
     Args:
         command (list[str]): The command that threw the error.
-        error (subprocess.CalledProcessError): The exception caught by python from subprocess.
+        error (OSError): The exception raised when trying to run the command.
         logging_func: ``logging.warning`` or ``logging.error`` as a function object.
     """
     logging_func('The server command is erroneous.')
-    logging_func(f'Tried to submit the following command:\n{command}')
-    logging_func('And got the following status (cmd, message, output, return code)')
-    logging_func(error.cmd)
-    logger.info('\n')
+    logging_func(f'Tried to run the following command:\n{command}')
+    logging_func(f'And got the following error (errno, message, file): '
+                 f'{error.errno}, {error.strerror}, {error.filename}')
     logging_func(error)
-    logger.info('\n')
-    logging_func(error.output)
-    logger.info('\n')
-    logging_func(error.returncode)
 
 
 def _format_stdout(stdout: bytes) -> list[str]:
@@ -152,8 +168,11 @@ def check_job_status(job_id: int) -> str:
     """
     server = 'local'
     cmd = check_status_command[servers[server]['cluster_soft']]
-    stdout = execute_command(cmd)[0]
-    return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=server)
+    stdout, stderr, code = execute_command(cmd, return_code=True)
+    failed = queue_query_failed(return_code=code, stderr=stderr)
+    register_queue_query(failed=failed, server=server, return_code=code, stderr=stderr)
+    return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=server,
+                                      return_code=code, stderr=stderr)
 
 
 def delete_job(job_id: int | str):
@@ -166,7 +185,10 @@ def delete_job(job_id: int | str):
         logger.warning(f'Detected possible error when trying to delete job {job_id}. Checking to see if the job is '
                        f'still running...')
         running_jobs = check_running_jobs_ids()
-        if job_id in running_jobs:
+        if running_jobs is None:
+            logger.error(f'Job {job_id} was scheduled for deletion, but the deletion command appeared to have errored '
+                         f'and the queue could not be queried. It is unknown whether the job was deleted.')
+        elif job_id in running_jobs:
             logger.error(f'Job {job_id} was scheduled for deletion, but the deletion command has appeared to errored. '
                          f'The job is still running.')
             raise RuntimeError(f'Could not delete job {job_id}')
@@ -174,20 +196,25 @@ def delete_job(job_id: int | str):
             logger.info(f'Job {job_id} is no longer running.')
 
 
-def check_running_jobs_ids() -> list[str]:
+def check_running_jobs_ids() -> list[str] | None:
     """
     Check which jobs are still running on the server for this user.
+    The output of a query which failed is not parsed.
 
     Returns:
-        list[str]: List of job IDs.
+        list[str] | None: A list of job IDs, or ``None`` if the queue could not be queried, in which
+                          case the queue must not be assumed to be empty.
     """
     cluster_soft = servers['local']['cluster_soft'].lower()
     if cluster_soft not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
         raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
     cmd = check_status_command[servers['local']['cluster_soft']]
-    stdout = execute_command(cmd)[0]
-    running_job_ids = parse_running_jobs_ids(stdout, cluster_soft=cluster_soft)
-    return running_job_ids
+    stdout, stderr, code = execute_command(cmd, return_code=True)
+    failed = queue_query_failed(return_code=code, stderr=stderr)
+    register_queue_query(failed=failed, server='local', return_code=code, stderr=stderr)
+    if failed:
+        return None
+    return parse_running_jobs_ids(stdout, cluster_soft=cluster_soft)
 
 
 def parse_running_jobs_ids(stdout: list[str],
