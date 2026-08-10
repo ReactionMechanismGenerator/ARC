@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.scheduler module
 """
 
+import datetime
 import math
 import unittest
 from unittest.mock import MagicMock, patch
@@ -13,6 +14,7 @@ import shutil
 from types import SimpleNamespace
 
 
+import arc.job.ssh as ssh
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
@@ -1900,6 +1902,179 @@ class TestPathsTemplateInitialization(unittest.TestCase):
         with open(os.path.join(ARC_PATH, 'arc', 'scheduler.py')) as f:
             sched_src = f.read()
         self.assertIn("self.output[species.label]['paths']['gsm'] = ''", sched_src)
+
+
+class _StopScheduling(Exception):
+    """An exception raised by a mocked Scheduler.end_job() to terminate the scheduling loop."""
+
+
+class TestSchedulerStaleServerJobIds(unittest.TestCase):
+    """
+    Contains unit tests for the Scheduler's handling of a server whose queue could not be queried.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """A function that is run ONCE before all unit tests in this class"""
+        cls.ess_settings = {'gaussian': ['server1']}
+        cls.project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_stale')
+
+    def setUp(self):
+        """A function that is run before every unit test in this class"""
+        self.spc = ARCSpecies(label='C2H6', smiles='CC')
+        self.sched = self.make_scheduler()
+        job = self.make_job(job_num=101, job_id='4556708', server='local')
+        self.sched.job_dict['C2H6'] = {'opt': {'opt_a101': job}}
+        self.sched.running_jobs = {'C2H6': ['opt_a101']}
+        self.sched.servers = ['local']
+        self.addCleanup(ssh.reset_queue_query_history)
+        self.addCleanup(shutil.rmtree, self.project_directory, ignore_errors=True)
+
+    def make_scheduler(self) -> Scheduler:
+        """
+        Make a Scheduler tracking a single species and no job types other than 'opt'.
+
+        Returns:
+            Scheduler: The Scheduler.
+        """
+        return Scheduler(project='project_test_stale_queue', ess_settings=self.ess_settings,
+                         species_list=[self.spc],
+                         composite_method=None,
+                         conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                         opt_level=Level(repr=default_levels_of_theory['opt']),
+                         freq_level=Level(repr=default_levels_of_theory['freq']),
+                         sp_level=Level(repr=default_levels_of_theory['sp']),
+                         scan_level=Level(repr=default_levels_of_theory['scan']),
+                         ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                         project_directory=self.project_directory,
+                         testing=True,
+                         job_types={'conf_opt': False, 'conf_sp': False, 'opt': True, 'fine': False,
+                                    'freq': False, 'sp': False, 'rotors': False},
+                         )
+
+    def make_job(self, job_num: int, job_id: str, server: str):
+        """
+        Make an opt job which reports the given job ID and server.
+
+        Args:
+            job_num (int): The job number.
+            job_id (str): The job ID on the server.
+            server (str): The server the job runs on.
+
+        Returns:
+            JobAdapter: The job.
+        """
+        job = job_factory(job_adapter='gaussian', project='project_test_stale_queue', ess_settings=self.ess_settings,
+                          species=[self.spc], job_type='opt',
+                          level=Level(repr={'method': 'b3lyp', 'basis': '6-31g'}),
+                          project_directory=self.project_directory, job_num=job_num)
+        job.job_id, job.server = job_id, server
+        return job
+
+    def _run_scheduling_cycle(self, queue_query_result):
+        """
+        Run a single scheduling cycle with the local queue status command returning ``queue_query_result``.
+
+        Args:
+            queue_query_result (tuple): The stdout, stderr and exit status of the queue status command.
+
+        Returns:
+            MagicMock: The mocked ``Scheduler.end_job``.
+        """
+        def stop_the_loop(*args, **kwargs):
+            self.sched.running_jobs = dict()
+
+        end_job = MagicMock(side_effect=_StopScheduling)
+        with patch('arc.job.local.execute_command', return_value=queue_query_result), \
+                patch.object(Scheduler, 'end_job', end_job), \
+                patch.object(Scheduler, 'run_conformer_jobs'), \
+                patch.object(Scheduler, 'spawn_ts_jobs'), \
+                patch('arc.scheduler.time.sleep', side_effect=stop_the_loop):
+            try:
+                self.sched.schedule_jobs()
+            except _StopScheduling:
+                pass
+        return end_job
+
+    def test_get_server_job_ids_of_a_failed_query(self):
+        """Test that a queue which could not be queried marks its server as stale"""
+        with patch('arc.scheduler.check_running_jobs_ids', return_value=['4556708']):
+            self.sched.get_server_job_ids()
+        self.assertEqual(self.sched.server_job_ids, ['4556708'])
+        self.assertEqual(self.sched.stale_servers, set())
+        with patch('arc.scheduler.check_running_jobs_ids', return_value=None):
+            self.sched.get_server_job_ids()
+        self.assertEqual(self.sched.server_job_ids, list())
+        self.assertEqual(self.sched.stale_servers, {'local'})
+        with patch('arc.scheduler.check_running_jobs_ids', return_value=['4556708']):
+            self.sched.get_server_job_ids()
+        self.assertEqual(self.sched.stale_servers, set())
+
+    def test_a_failed_query_does_not_end_jobs(self):
+        """Test that a queue which could not be queried does not cause a running job to be ended"""
+        end_job = self._run_scheduling_cycle(([], ['qstat: cannot connect to server'], 1))
+        end_job.assert_not_called()
+        self.assertEqual(self.sched.running_jobs, dict())
+
+    def test_a_silently_failed_query_does_not_end_jobs(self):
+        """Test that a queue status command which failed without a diagnostic does not end a running job"""
+        for return_code in (124, -9, 2):
+            ssh.reset_queue_query_history()
+            self.setUp()
+            end_job = self._run_scheduling_cycle(([], [], return_code))
+            end_job.assert_not_called()
+
+    def test_an_empty_queue_does_end_jobs(self):
+        """Test that a queue which answered that it is empty does cause a running job to be ended"""
+        end_job = self._run_scheduling_cycle(([], [], 0))
+        end_job.assert_called_once()
+
+    def test_a_stale_server_does_not_hold_up_a_healthy_one(self):
+        """Test that a job on a healthy server is ended while another server cannot be queried"""
+        remote_job = self.make_job(job_num=102, job_id='4556709', server='server1')
+        self.sched.job_dict['C2H6']['opt']['opt_a102'] = remote_job
+        self.sched.running_jobs = {'C2H6': ['opt_a101', 'opt_a102']}
+        self.sched.servers = ['local', 'server1']
+        ssh_client = MagicMock()
+        ssh_client.return_value.__enter__.return_value.check_running_jobs_ids.return_value = list()
+        with patch('arc.scheduler.SSHClient', ssh_client):
+            end_job = self._run_scheduling_cycle(([], ['qstat: cannot connect to server'], 1))
+        self.assertEqual(self.sched.stale_servers, {'local'})
+        end_job.assert_called_once()
+        self.assertIs(end_job.call_args.kwargs['job'], remote_job)
+
+    def test_a_failed_query_does_not_free_the_max_simultaneous_jobs_limit(self):
+        """Test that a queue which could not be queried is not treated as having room for more jobs"""
+        with patch('arc.scheduler.servers_dict', {'local': {'max_simultaneous_jobs': 10}}), \
+                patch('arc.job.local.execute_command',
+                      return_value=([], ['qstat: cannot connect to server'], 1)), \
+                patch('arc.scheduler.time.sleep', side_effect=_StopScheduling):
+            with self.assertRaises(_StopScheduling):
+                self.sched.check_max_simultaneous_jobs_limit(server='local')
+
+    def test_restore_running_jobs_populates_the_servers(self):
+        """Test that jobs restored from a restart file make their servers queryable"""
+        self.sched.servers, self.sched.server_job_ids = list(), list()
+        self.sched.running_jobs, self.sched.job_dict = dict(), dict()
+        self.sched.restart_dict = {'running_jobs': {'C2H6': [{'job_name': 'opt_a101',
+                                                              'job_type': 'opt',
+                                                              'species_labels': ['C2H6']}]}}
+        restored_job = MagicMock(job_id='4556708', server='server1')
+        with patch('arc.scheduler.job_factory', return_value=restored_job):
+            self.sched.restore_running_jobs()
+        self.assertEqual(self.sched.servers, ['server1'])
+        self.assertEqual(self.sched.server_job_ids, ['4556708'])
+
+    def test_a_new_scheduler_forgets_the_queue_query_history_of_a_previous_run(self):
+        """Test that a queue outage recorded by a previous run does not immediately stop a new one"""
+        ssh._queue_query_history['local'] = {
+            'failing_since': datetime.datetime.now() - ssh.QUEUE_QUERY_TOLERANCE - datetime.timedelta(minutes=1),
+            'consecutive_failures': 100, 'ever_answered': True, 'last_warned': None}
+        sched = self.make_scheduler()
+        sched.servers = ['local']
+        with patch('arc.job.local.execute_command', return_value=([], ['qstat: cannot connect to server'], 1)):
+            sched.get_server_job_ids()
+        self.assertEqual(sched.stale_servers, {'local'})
 
 
 class TestSpawnTsJobsAdmission(unittest.TestCase):
