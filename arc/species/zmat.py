@@ -1993,7 +1993,11 @@ def consolidate_zmat(zmat: dict,
         for keys in keys_to_consolidate1[key_type]:
             atoms_dict, indices_to_pop = dict(), list()
             for key in keys:
-                indices = [int(index) for index in key.split('_')[1:]]
+                # A key may already be consolidated, in which case each of its index fields is a
+                # '|'-joined group (e.g. 'R_39|62|63_6|33|31'). Atoms land in one group precisely
+                # because they share an atom type, so the first member characterizes the group.
+                # For an unconsolidated key this is a no-op.
+                indices = [int(index.split('|')[0]) for index in key.split('_')[1:]]
                 if any([zmat['symbols'][index] == 'X' for index in indices]):
                     # This is a dummy atom, don't check atoms, always consolidate.
                     atoms_dict[key] = key[:2]
@@ -2030,7 +2034,10 @@ def consolidate_zmat(zmat: dict,
                 indices.append([key.split('_')[1:][i] for key in keys])
             for i in range(len(keys[0].split('_')[1:])):
                 new_indices.append('|'.join(str(index) for index in indices[i]))
-            if any(['X' in list([zmat['symbols'][int(index)] for index in entry]) for entry in indices]):
+            # As above, an index field may itself be a '|'-joined group of already-consolidated
+            # atoms; take the first member of each (a no-op for unconsolidated keys).
+            if any(['X' in list([zmat['symbols'][int(index.split('|')[0])] for index in entry])
+                    for entry in indices]):
                 new_key = '_'.join([key_type + 'X'] + new_indices)
             else:
                 new_key = '_'.join([key_type] + new_indices)
