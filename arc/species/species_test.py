@@ -9,6 +9,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from arc.common import (ARC_PATH,
                         ARC_TESTING_PATH,
@@ -37,6 +38,7 @@ from arc.species.species import (ARCSpecies,
                                  colliding_atoms,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
+                                 dict_repr_is_authoritative,
                                  rmg_mol_from_dict_repr,
                                  rmg_mol_to_dict_repr,
                                  split_mol,
@@ -1509,6 +1511,111 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc_1_copy.get_xyz()['symbols'], spc_1.get_xyz()['symbols'])
         self.assertEqual(spc_1_copy.mol.to_smiles(), spc_1.mol.to_smiles())
         atom_labels = [atom.label for atom in spc_1_copy.mol.atoms]
+
+    def test_copy_preserves_the_declared_lewis_structure(self):
+        """Test that copy() does not replace a declared graph with a charge-separated perception of the coordinates."""
+        isoxazole_xyz = """C      -1.09437451   -0.03845088    0.00235099
+                           C       0.00327326    0.77917425   -0.06526477
+                           C       1.08963190   -0.10993209    0.01007451
+                           N       0.69216257   -1.38022824    0.11616468
+                           O      -0.69387336   -1.33034168    0.11088427
+                           H      -2.16236830    0.11977522   -0.01175166
+                           H       0.01690055    1.85420986   -0.15530407
+                           H       2.14864790    0.10579356   -0.00715396"""
+        zwitterion_adjlist = """1 C u0 p0 c0 {2,S} {5,D} {6,S}
+                                2 C u0 p0 c0 {1,S} {3,D} {7,S}
+                                3 C u0 p0 c0 {2,D} {4,S} {8,S}
+                                4 N u0 p2 c-1 {3,S} {5,S}
+                                5 O u0 p1 c+1 {1,D} {4,S}
+                                6 H u0 p0 c0 {1,S}
+                                7 H u0 p0 c0 {2,S}
+                                8 H u0 p0 c0 {3,S}"""
+        spc = ARCSpecies(label='isoxazole', smiles='c1ccno1')
+        spc.final_xyz = str_to_xyz(isoxazole_xyz)
+        self.assertEqual(spc.mol.copy(deep=True).to_smiles(), 'c1ccno1')
+        with mock.patch('arc.species.species.perceive_molecule_from_xyz',
+                        side_effect=lambda *args, **kwargs: Molecule().from_adjacency_list(
+                            zwitterion_adjlist, raise_atomtype_exception=False,
+                            raise_charge_exception=False)) as perceive:
+            spc_copy = spc.copy()
+        perceive.assert_not_called()
+        self.assertEqual(spc_copy.mol.copy(deep=True).to_smiles(), 'c1ccno1')
+        self.assertTrue(check_isomorphism(spc.mol, spc_copy.mol))
+        self.assertEqual([atom.charge for atom in spc_copy.mol.atoms], [0] * 8)
+
+    def test_copy_preserves_the_declared_connectivity(self):
+        """
+        Test that copy() does not replace a declared graph with a differently bonded perception of the coordinates.
+
+        The injected ring closure stands in for the one measured in benchmark reaction_018, where a 1.476 A
+        contact in the product geometry closed a fourth ring. It is not a claim about butadiene: the C1...C4
+        distance of the s-trans geometry below is ~3.7 A, and no perception closes that ring.
+        """
+        butadiene_xyz = """C      -1.81799082   -0.22530589   -0.06165892
+                           C      -0.60325740    0.30083878   -0.25569759
+                           C       0.60325739   -0.30083877    0.25569760
+                           C       1.81799082    0.22530592    0.06165897
+                           H      -1.96812252   -1.14370732    0.49678746
+                           H      -2.69975248    0.26231344   -0.46539902
+                           H      -0.51116237    1.22426578   -0.82376453
+                           H       0.51116237   -1.22426580    0.82376450
+                           H       2.69975247   -0.26231341    0.46539906
+                           H       1.96812251    1.14370738   -0.49678738"""
+        cyclobutene_adjlist = """1  C u0 p0 c0 {2,S} {4,S} {5,S} {6,S}
+                                 2  C u0 p0 c0 {1,S} {3,D} {7,S}
+                                 3  C u0 p0 c0 {2,D} {4,S} {8,S}
+                                 4  C u0 p0 c0 {1,S} {3,S} {9,S} {10,S}
+                                 5  H u0 p0 c0 {1,S}
+                                 6  H u0 p0 c0 {1,S}
+                                 7  H u0 p0 c0 {2,S}
+                                 8  H u0 p0 c0 {3,S}
+                                 9  H u0 p0 c0 {4,S}
+                                 10 H u0 p0 c0 {4,S}"""
+        spc = ARCSpecies(label='butadiene', smiles='C=CC=C')
+        spc.final_xyz = str_to_xyz(butadiene_xyz)
+        self.assertEqual(len(spc.mol.get_all_edges()), 9)
+        with mock.patch('arc.species.species.perceive_molecule_from_xyz',
+                        side_effect=lambda *args, **kwargs: Molecule().from_adjacency_list(
+                            cyclobutene_adjlist, raise_atomtype_exception=False,
+                            raise_charge_exception=False)) as perceive:
+            spc_copy = spc.copy()
+        perceive.assert_not_called()
+        self.assertEqual(len(spc_copy.mol.get_all_edges()), 9)
+        self.assertEqual(spc_copy.mol.copy(deep=True).to_smiles(), 'C=CC=C')
+        self.assertTrue(check_isomorphism(spc.mol, spc_copy.mol))
+
+    def test_from_dict_perceives_the_graph_of_a_user_specified_structure(self):
+        """Test that from_dict() still perceives the graph when the structure is given as SMILES alongside xyz."""
+        scrambled_ethanol_xyz = """H      -1.42607526    0.68990357   -0.87225712
+                                   C      -0.98261300   -0.04502183    0.00436374
+                                   H      -1.39610270   -1.05737434   -0.02205278
+                                   H      -1.28565463    0.40890627    0.94943929
+                                   C       0.54008765    0.06694671   -0.10188014
+                                   H       0.85567615   -0.38455771   -1.04688865
+                                   H       0.95870245   -0.46330826    0.75955514
+                                   O       0.96361397    1.42484824   -0.03556676
+                                   H       1.91807512    1.45143902   -0.11029272"""
+        species_dict = {'label': 'ethanol', 'smiles': 'CCO', 'multiplicity': 1,
+                        'xyz': scrambled_ethanol_xyz}
+        spc = ARCSpecies(species_dict=species_dict)
+        self.assertEqual([atom.element.symbol for atom in spc.mol.atoms],
+                         list(spc.get_xyz()['symbols']))
+        self.assertTrue(check_isomorphism(spc.mol, Molecule(smiles='CCO')))
+
+    def test_from_dict_perceives_the_graph_without_a_declared_structure(self):
+        """Test that from_dict() still perceives the graph when only coordinates are given."""
+        species_dict = {'label': 'ethanol', 'multiplicity': 1,
+                        'xyz': """C      -0.97459464    0.29181710    0.10303882
+                                  C       0.39565894   -0.35143697    0.10221676
+                                  O       0.30253309   -1.63748590   -0.49196889
+                                  H      -1.68942501   -0.24618907   -0.51173648
+                                  H      -0.93861751    1.30890182   -0.28407958
+                                  H      -1.35943743    0.34098805    1.12546267
+                                  H       0.76858330   -0.46867535    1.12508303
+                                  H       1.10530896    0.26674355   -0.44244914
+                                  H       1.19023282   -2.03119348   -0.44235175"""}
+        spc = ARCSpecies(species_dict=species_dict)
+        self.assertTrue(check_isomorphism(spc.mol, Molecule(smiles='CCO')))
 
     def test_is_water(self):
         """Test the ARCSpecies.is_water() method."""
@@ -3272,6 +3379,39 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         representation = rmg_mol_to_dict_repr(mol)
         new_mol = rmg_mol_from_dict_repr(representation, is_ts=False)
         self.assertEqual(new_mol.to_smiles(), 'CC')
+
+    def test_dict_repr_is_authoritative(self):
+        """Test the dict_repr_is_authoritative() function.
+
+        The ``mol`` argument is the graph decoded from the dictionary, as ``from_dict()`` passes it.
+        """
+        mol = Molecule(smiles='CC')
+        representation = rmg_mol_to_dict_repr(mol)
+        self.assertTrue(dict_repr_is_authoritative({'mol': representation},
+                                                   mol=rmg_mol_from_dict_repr(representation)))
+        self.assertFalse(dict_repr_is_authoritative({'mol': mol.to_adjacency_list()}, mol=mol))
+        self.assertFalse(dict_repr_is_authoritative({'smiles': 'CC'}, mol=mol))
+        self.assertFalse(dict_repr_is_authoritative({'adjlist': mol.to_adjacency_list()}, mol=mol))
+        self.assertFalse(dict_repr_is_authoritative({'mol': representation}, mol=None))
+
+        colliding_mol = Molecule(smiles='CCO')
+        colliding_mol.assign_atom_ids()
+        colliding_mol.atoms[-1].id = colliding_mol.atoms[0].id
+        colliding_repr = rmg_mol_to_dict_repr(colliding_mol)
+        self.assertEqual(colliding_repr['atom_order'][-1], colliding_repr['atom_order'][0])
+        decoded = rmg_mol_from_dict_repr(colliding_repr)
+        self.assertEqual(len(decoded.atoms), 9)
+        self.assertEqual(len(set(id(atom) for atom in decoded.atoms)), 8)
+        self.assertFalse(dict_repr_is_authoritative({'mol': colliding_repr}, mol=decoded))
+
+        degenerate_repr = rmg_mol_to_dict_repr(mol)
+        for atom_dict in degenerate_repr['atoms']:
+            atom_dict['id'] = -1
+            atom_dict['edges'] = {-1: 1.0}
+        degenerate_repr['atom_order'] = [-1] * len(degenerate_repr['atom_order'])
+        degenerate_mol = rmg_mol_from_dict_repr(degenerate_repr, is_ts=True)
+        self.assertEqual(len(set(id(atom) for atom in degenerate_mol.atoms)), 1)
+        self.assertFalse(dict_repr_is_authoritative({'mol': degenerate_repr}, mol=degenerate_mol))
 
     def test_rmg_mol_to_dict_repr(self):
         """Test the rmg_mol_to_dict_repr() function."""
