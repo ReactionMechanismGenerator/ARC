@@ -1225,10 +1225,9 @@ class ARCSpecies(object):
                                                           num_confs=num_confs,
                                                           force_field='MMFF94s',
                                                           )
-            if energies:
-                min_energy = min(energies)
-                min_energy_index = energies.index(min_energy)
-                self.cheap_conformer = xyzs[min_energy_index]
+            energetic_conformers = [(xyz, energy) for xyz, energy in zip(xyzs, energies) if energy is not None]
+            if energetic_conformers:
+                self.cheap_conformer = min(energetic_conformers, key=lambda conformer: conformer[1])[0]
             elif xyzs:
                 self.cheap_conformer = xyzs[0]
             else:

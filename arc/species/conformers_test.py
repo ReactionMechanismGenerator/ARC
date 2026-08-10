@@ -6,7 +6,11 @@ This module contains unit tests of the arc.species.conformers module
 """
 
 import unittest
+from itertools import combinations
+from unittest.mock import patch
 
+from openbabel import openbabel as ob
+from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
 
 import arc.species.conformers as conformers
@@ -15,6 +19,7 @@ import arc.species.vectors as vectors
 from arc.common import almost_equal_coords_lists
 from arc.exceptions import ConformerError
 from arc.molecule.atomtype import ATOMTYPES
+from arc.molecule.converter import to_ob_mol
 from arc.molecule.group import GroupAtom, GroupBond, Group
 from arc.molecule.molecule import Molecule
 from arc.species.perceive import perceive_molecule_from_xyz
@@ -700,9 +705,8 @@ O       1.40839617    0.14303696    0.00000000"""
         rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
         xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s', optimize=True)
         self.assertEqual(len(energies), 3)
-        self.assertAlmostEqual(energies[0], 2.7141371135180876e-11, 3)
-        self.assertAlmostEqual(energies[1], 1.9502773173728733e-11, 3)
-        self.assertAlmostEqual(energies[2], 8.503223258358894e-12, 3)
+        for energy in energies:
+            self.assertAlmostEqual(energy, 0, places=6)
         expected_xyzs1 = [{'coords': ((-0.028772486510434854, -0.6093128074216372, 0.0),
                                       (-1.366470471984328, 0.3698618355848534, 0.0),
                                       (1.3952429584951413, 0.23945097183200187, 0.0)),
@@ -720,24 +724,151 @@ O       1.40839617    0.14303696    0.00000000"""
                            'symbols': ('S', 'O', 'O')}]
 
         self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs1))
+
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
         xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s', optimize=False)
-        self.assertEqual(len(energies), 0)
+        self.assertEqual(len(energies), 3)
+        self.assertEqual(len(xyzs), 3)
+        self.assertAlmostEqual(energies[0], 184.1206, places=3)
+        self.assertAlmostEqual(energies[1], 189.7955, places=3)
+        self.assertAlmostEqual(energies[2], 187.7565, places=3)
         expected_xyzs2 = [{'symbols': ('S', 'O', 'O'),
                            'isotopes': (32, 16, 16),
-                           'coords': ((-0.028772486510434854, -0.6093128074216372, 0.0),
-                                      (-1.366470471984328, 0.3698618355848534, 0.0),
-                                      (1.3952429584951413, 0.23945097183200187, 0.0))},
+                           'coords': ((0.005560448030875758, -0.004353569471243981, 0.0),
+                                      (-1.3374458527503068, 0.07507157915088257, 0.0),
+                                      (1.331885404719417, -0.07071800967964495, 0.0))},
                           {'symbols': ('S', 'O', 'O'),
                            'isotopes': (32, 16, 16),
-                           'coords': ((-0.033023167690188655, 0.6090970965805037, 0.0),
-                                      (-1.3638563753202797, -0.37938721271665443, 0.0),
-                                      (1.3968795430104692, -0.2297098838638481, 0.0))},
+                           'coords': ((0.0008683912021607329, 0.00670723076166246, 0.0),
+                                      (-1.3307386682974711, -0.02371039410841009, 0.0),
+                                      (1.32987027709531, 0.017003163346748007, 0.0))},
                           {'symbols': ('S', 'O', 'O'),
                            'isotopes': (32, 16, 16),
-                           'coords': ((-0.0026802533445678136, -0.6099858776422872, 0.0),
-                                      (-1.3810417536025885, 0.3110671844664584, 0.0),
-                                      (1.3837220069472413, 0.29891869317576875, 0.0))}]
+                           'coords': ((-0.004080432194034369, -0.0016065151188410438, 0.0),
+                                      (-1.3311491694884883, -0.0014680338970425384, 0.0),
+                                      (1.335229601682522, 0.003074549015884301, 0.0))}]
         self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs2))
+
+    def test_rdkit_force_field_keeps_geometries_aligned_with_their_energies(self):
+        """Test that a non-converged conformer neither steals another conformer's energy nor is dropped"""
+        mol = Molecule(smiles='CCCO')
+        uff_output = [(1, 10.0), (0, 5.0), (1, 20.0)]
+        rd_mol = conformers.embed_rdkit(label='propanol', mol=mol, num_confs=3)
+        with patch.object(Chem.AllChem, 'MMFFGetMoleculeProperties', return_value=None), \
+                patch.object(Chem.AllChem, 'UFFOptimizeMoleculeConfs', return_value=uff_output):
+            xyzs, energies = conformers.rdkit_force_field(label='propanol', rd_mol=rd_mol, mol=mol, try_ob=False)
+        self.assertEqual(len(xyzs), 3)
+        self.assertEqual(energies, [None, 5.0, None])
+        expected_xyzs = [conformers.read_rdkit_embedded_conformer_i(rd_mol, i) for i in range(3)]
+        self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs))
+
+        with patch.object(Chem.AllChem, 'MMFFGetMoleculeProperties', return_value=None), \
+                patch.object(Chem.AllChem, 'UFFOptimizeMoleculeConfs', return_value=uff_output):
+            confs = conformers.generate_force_field_conformers(label='propanol', mol_list=[mol], torsion_num=2,
+                                                               charge=0, multiplicity=1, num_confs=3)
+        self.assertEqual(len(confs), 3)
+        self.assertEqual([conf['FF energy'] for conf in confs], [None, 5.0, None])
+        self.assertTrue(almost_equal_coords_lists([conf['xyz'] for conf in confs], expected_xyzs))
+
+    def test_rdkit_force_field_does_not_retry_a_raising_optimizer(self):
+        """Test that a persistently raising force field optimizer terminates instead of looping forever"""
+        mol = Molecule(smiles='CCO')
+        rd_mol = conformers.embed_rdkit(label='ethanol', mol=mol, num_confs=1)
+        calls = list()
+
+        def raise_then_converge(*args, **kwargs):
+            calls.append(1)
+            if len(calls) > 50:
+                return 0
+            raise RuntimeError('Pre-condition Violation: bad params pointer')
+
+        with patch.object(Chem.AllChem, 'MMFFOptimizeMolecule', side_effect=raise_then_converge):
+            xyzs, energies = conformers.rdkit_force_field(label='ethanol', rd_mol=rd_mol, mol=mol)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(xyzs), 1)
+        self.assertEqual(len(energies), 1)
+        self.assertIsNotNone(energies[0])
+
+    def test_rdkit_force_field_does_not_rank_an_unparameterized_molecule(self):
+        """Test that a species neither RDKit nor OpenBabel can atom type returns geometries but no energies"""
+        mol = Molecule(smiles='[O]OS(=O)(O)(C)C')
+        rd_mol = conformers.embed_rdkit(label='R1', mol=mol, num_confs=5)
+        self.assertEqual(rd_mol.GetNumConformers(), 5)
+        self.assertFalse(Chem.AllChem.MMFFHasAllMoleculeParams(rd_mol))
+        self.assertFalse(Chem.AllChem.UFFHasAllMoleculeParams(rd_mol))
+        bonds = [tuple(sorted((bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()))) for bond in rd_mol.GetBonds()]
+        xyzs, energies = conformers.rdkit_force_field(label='R1', rd_mol=rd_mol, mol=mol)
+        self.assertEqual(len(xyzs), 5)
+        self.assertEqual(energies, [None] * 5)
+        for xyz in xyzs:
+            self.assertEqual(xyz['symbols'], ('O', 'O', 'S', 'O', 'O', 'C', 'C',
+                                              'H', 'H', 'H', 'H', 'H', 'H', 'H'))
+            for atom_1, atom_2 in combinations(range(len(xyz['symbols'])), 2):
+                distance = vectors.calculate_distance(coords=xyz, atoms=[atom_1, atom_2])
+                if (atom_1, atom_2) in bonds:
+                    self.assertGreater(distance, 0.9)
+                    self.assertLess(distance, 2.2)
+                else:
+                    self.assertGreater(distance, 1.2)
+
+    def test_openbabel_force_field_on_rdkit_conformers_with_a_molecule(self):
+        """Test optimizing RDKit conformers with OpenBabel using the connectivity of a given molecule"""
+        mol = Molecule(smiles='CCO')
+        rd_mol = conformers.embed_rdkit(label='ethanol', mol=mol, num_confs=3)
+        xyzs, energies = conformers.openbabel_force_field_on_rdkit_conformers(label='ethanol', rd_mol=rd_mol, mol=mol)
+        self.assertEqual(len(xyzs), 3)
+        self.assertEqual(len(energies), 3)
+        for xyz, energy in zip(xyzs, energies):
+            self.assertIsInstance(energy, float)
+            self.assertEqual(xyz['symbols'], ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H'))
+
+    def test_openbabel_force_field_on_rdkit_conformers_declines_an_untyped_molecule(self):
+        """Test that OpenBabel does not report energies of a molecule its force field cannot atom type"""
+        mol = Molecule(smiles='[O]OS(=O)(O)(C)C')
+        ob_mol = to_ob_mol(mol, save_order=True)
+        ff = ob.OBForceField.FindForceField('MMFF94s')
+        self.assertTrue(ff.Setup(ob_mol))
+        self.assertEqual(conformers.get_untyped_ob_atom_indices(ff=ff, ob_mol=ob_mol), [2])
+        self.assertEqual(mol.atoms[2].symbol, 'S')
+
+        rd_mol = conformers.embed_rdkit(label='R1', mol=mol, num_confs=5)
+        xyzs, energies = conformers.openbabel_force_field_on_rdkit_conformers(label='R1', rd_mol=rd_mol, mol=mol)
+        self.assertEqual(xyzs, list())
+        self.assertEqual(energies, list())
+
+        mol = Molecule(smiles='OS(=O)(=O)O')
+        ob_mol = to_ob_mol(mol, save_order=True)
+        self.assertTrue(ff.Setup(ob_mol))
+        self.assertEqual(conformers.get_untyped_ob_atom_indices(ff=ff, ob_mol=ob_mol), list())
+
+    def test_openbabel_force_field_on_rdkit_conformers_detects_a_permuted_molecule(self):
+        """Test that a molecule whose atom order does not match the RDKit molecule is not used for the connectivity"""
+        mol = Molecule(smiles='CCO')
+        permuted_mol = mol.copy(deep=True)
+        permuted_mol.vertices[3], permuted_mol.vertices[8] = permuted_mol.vertices[8], permuted_mol.vertices[3]
+        self.assertEqual([atom.symbol for atom in permuted_mol.atoms], [atom.symbol for atom in mol.atoms])
+
+        rd_mol = conformers.embed_rdkit(label='ethanol', mol=mol, num_confs=3)
+        self.assertTrue(conformers.bond_indices_correspond(rd_mol, to_ob_mol(mol, save_order=True)))
+        self.assertFalse(conformers.bond_indices_correspond(rd_mol, to_ob_mol(permuted_mol, save_order=True)))
+
+        _, energies = conformers.openbabel_force_field_on_rdkit_conformers(label='ethanol', rd_mol=rd_mol, mol=mol)
+        _, permuted_energies = conformers.openbabel_force_field_on_rdkit_conformers(label='ethanol', rd_mol=rd_mol,
+                                                                                    mol=permuted_mol)
+        _, perceived_energies = conformers.openbabel_force_field_on_rdkit_conformers(label='ethanol', rd_mol=rd_mol,
+                                                                                     mol=None)
+        self.assertNotEqual(permuted_energies, energies)
+        self.assertEqual(permuted_energies, perceived_energies)
+
+    def test_rdkit_force_field_does_not_use_openbabel_when_rdkit_has_parameters(self):
+        """Test that a species RDKit can parameterize does not pay the OpenBabel fall back cost"""
+        mol = Molecule(smiles='CCO')
+        rd_mol = conformers.embed_rdkit(label='ethanol', mol=mol, num_confs=3)
+        with patch.object(conformers, 'openbabel_force_field_on_rdkit_conformers') as ob_mock:
+            xyzs, energies = conformers.rdkit_force_field(label='ethanol', rd_mol=rd_mol, mol=mol)
+        ob_mock.assert_not_called()
+        self.assertEqual(len(xyzs), 3)
+        self.assertEqual(len(energies), 3)
 
     def test_determine_rotors(self):
         """Test determining the rotors"""
