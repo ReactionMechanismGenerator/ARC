@@ -73,7 +73,24 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#general-workflow">General workflow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#outputs-and-validation">Outputs and validation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#goflow-flow-matching-ml-ts-generator">GoFlow (flow-matching ML TS generator)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#supported-domain">Supported domain</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id1">How it is used</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id2">What ARC does</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id3">Outputs and validation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#reference">Reference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#rits-flow-matching-ml-ts-generator">RitS (flow-matching ML TS generator)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#id4">How it is used</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id5">What ARC does</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id6">Outputs and validation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id7">Reference</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Usage</a></li>
@@ -152,7 +169,7 @@ purely geometric.</p>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">heuristics</span>
 </pre></div>
 </div>
-<figure class="align-default" id="id2">
+<figure class="align-default" id="id9">
 <div class="graphviz"><img src="_images/graphviz-f7a008c174b2e8c34eb9c19164450c0e4f1c0e25.png" alt="digraph heuristic_ts {
    graph [rankdir=LR, bgcolor=&quot;transparent&quot;];
    node [shape=box, style=&quot;rounded,filled&quot;, fillcolor=&quot;#f5f7fa&quot;, color=&quot;#9fb3c8&quot;, fontname=&quot;Helvetica&quot;];
@@ -168,7 +185,7 @@ purely geometric.</p>
    rxn -&gt; family -&gt; heuristics -&gt; guesses -&gt; opt -&gt; validate;
 }" class="graphviz" /></div>
 <figcaption>
-<p><span class="caption-text">How the heuristic TS adapter fits into an ARC run.</span><a class="headerlink" href="#id2" title="Link to this image"></a></p>
+<p><span class="caption-text">How the heuristic TS adapter fits into an ARC run.</span><a class="headerlink" href="#id9" title="Link to this image"></a></p>
 </figcaption>
 </figure>
 <section id="hydrogen-abstraction-heuristic-ts-search">
@@ -412,6 +429,171 @@ Digital Discovery 2026.</p>
 <p>[2] L. Fahoum, A. Grinberg Dana, <em>“Automated reaction transition state search for bimolecular liquid-phase reactions
 using internal coordinates: a test case for neutral hydrolysis”</em>, Digital Discovery 2026, 5, 1372-1387,
 DOI: 10.1039/D5DD00506J.</p>
+<section id="goflow-flow-matching-ml-ts-generator">
+<h3>GoFlow (flow-matching ML TS generator)<a class="headerlink" href="#goflow-flow-matching-ml-ts-generator" title="Link to this heading"></a></h3>
+<p>ARC supports automated TS generation via <strong>GoFlow</strong>, a flow-matching, E(3)-equivariant
+neural network that predicts transition-state Cartesian geometries from atom-mapped
+reactant + product 2D graphs (SMILES + RDKit features). The model was trained on the
+<a class="reference external" href="https://zenodo.org/records/13328872">RDB7</a> database of single-step organic reactions.</p>
+<section id="supported-domain">
+<h4>Supported domain<a class="headerlink" href="#supported-domain" title="Link to this heading"></a></h4>
+<p>GoFlow is <strong>opt-in only</strong> — its inference stack (<code class="docutils literal notranslate"><span class="pre">goflow_env</span></code> + pretrained
+checkpoint) is heavyweight, so it is intentionally absent from the default
+<code class="docutils literal notranslate"><span class="pre">ts_adapters</span></code> list. When enabled, the adapter skips cleanly at runtime if
+<code class="docutils literal notranslate"><span class="pre">goflow_env</span></code> or the checkpoint is not installed, and it enforces a runtime
+domain guard:</p>
+<ul class="simple">
+<li><p>Molecularity: unimolecular reactions only (one side has a single species), the
+same scope as the Linear adapter. <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">+</span> <span class="pre">B</span> <span class="pre">&lt;=&gt;</span> <span class="pre">C</span></code> qualifies; a 2↔2 reaction
+such as <code class="docutils literal notranslate"><span class="pre">CH4</span> <span class="pre">+</span> <span class="pre">OH</span> <span class="pre">&lt;=&gt;</span> <span class="pre">CH3</span> <span class="pre">+</span> <span class="pre">H2O</span></code> does not.</p></li>
+<li><p>Elements: H, C, N, O, F</p></li>
+<li><p>Reaction size: up to 100 atoms</p></li>
+</ul>
+<p>Accordingly, GoFlow is registered per family in <code class="docutils literal notranslate"><span class="pre">ts_adapters_by_rmg_family</span></code> —
+for the same families as the Linear adapter, so <code class="docutils literal notranslate"><span class="pre">H_Abstraction</span></code> is excluded —
+rather than in <code class="docutils literal notranslate"><span class="pre">all_families_ts_adapters</span></code>.</p>
+<p>Reactions outside this domain (or hosts without the GoFlow stack installed) are
+skipped with a warning instead of being attempted with out-of-distribution inputs.</p>
+</section>
+<section id="id1">
+<h4>How it is used<a class="headerlink" href="#id1" title="Link to this heading"></a></h4>
+<p>To enable GoFlow, install its environment and request it explicitly:</p>
+<ol class="arabic">
+<li><p>Install the dedicated conda env and download the pretrained checkpoint:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make<span class="w"> </span>install-goflow
+</pre></div>
+</div>
+<p>This creates <code class="docutils literal notranslate"><span class="pre">goflow_env</span></code> (PyTorch 2.6 + PyTorch Geometric + GoFlow), clones
+<code class="docutils literal notranslate"><span class="pre">goflow_lean</span></code>, downloads the published checkpoint from Zenodo
+(<a class="reference external" href="https://doi.org/10.5281/zenodo.20073635">10.5281/zenodo.20073635</a>), and verifies
+its SHA-256.</p>
+</li>
+<li><p>Add <code class="docutils literal notranslate"><span class="pre">goflow</span></code> to <code class="docutils literal notranslate"><span class="pre">ts_adapters</span></code> in the input file:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">ts_adapters</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">heuristics</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">goflow</span>
+</pre></div>
+</div>
+<p>Once requested, GoFlow is invoked automatically for every reaction within its
+supported domain.</p>
+</li>
+<li><p>(Optional) Override the default checkpoint or feature-dictionary location via env vars:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">ARC_GOFLOW_CKPT</span><span class="o">=</span>/path/to/your/epoch_&lt;NNN&gt;.ckpt
+<span class="nb">export</span><span class="w"> </span><span class="nv">ARC_GOFLOW_FEAT_DICT</span><span class="o">=</span>/path/to/your/feat_dict_organic.pkl
+</pre></div>
+</div>
+<p>These take precedence over both the in-repo paths and the Zenodo download.</p>
+</li>
+</ol>
+</section>
+<section id="id2">
+<h4>What ARC does<a class="headerlink" href="#id2" title="Link to this heading"></a></h4>
+<p>For each reaction with GoFlow selected, ARC:</p>
+<ol class="arabic simple">
+<li><p>Validates the reaction is within GoFlow’s supported domain (elements + atom count); skips with a warning otherwise.</p></li>
+<li><p>Builds atom-mapped reactant and product SMILES (every hydrogen explicit; map numbers consistent across sides via <code class="docutils literal notranslate"><span class="pre">rxn.atom_map</span></code>).</p></li>
+<li><p>Spawns the GoFlow inference subprocess (in <code class="docutils literal notranslate"><span class="pre">goflow_env</span></code>), which performs flow-matching ODE sampling and returns multiple candidate TS geometries.</p></li>
+<li><p>Filters out colliding-atom geometries and consolidates near-duplicate samples that share a heavy-atom skeleton (torsion-invariant deduplication; controlled by <code class="docutils literal notranslate"><span class="pre">GOFLOW_DEDUP_DMAT_RMSD</span> <span class="pre">=</span> <span class="pre">0.15</span></code> Å).</p></li>
+<li><p>Appends the surviving guesses to the reaction’s TS species for downstream optimization, frequency, and IRC validation by ARC’s standard pipeline.</p></li>
+</ol>
+<p>GoFlow is best used <strong>alongside</strong> other adapters (e.g. <code class="docutils literal notranslate"><span class="pre">heuristics</span></code>) — its samples
+provide additional starting points but do not replace the optimization/validation steps.</p>
+</section>
+<section id="id3">
+<h4>Outputs and validation<a class="headerlink" href="#id3" title="Link to this heading"></a></h4>
+<p>Each surviving TS guess is written as a numbered <code class="docutils literal notranslate"><span class="pre">GoFlow</span> <span class="pre">N.xyz</span></code> file under the
+TS-guess directory of the reaction, alongside the staged <code class="docutils literal notranslate"><span class="pre">input.yml</span></code> and the raw
+multi-frame <code class="docutils literal notranslate"><span class="pre">output.yml</span></code> returned by the subprocess. Optimized + validated TSs follow
+the same reporting flow as any other ARC TS guess.</p>
+</section>
+<section id="reference">
+<h4>Reference<a class="headerlink" href="#reference" title="Link to this heading"></a></h4>
+<p>The GoFlow model is described in:
+L. Galustian, K. Mark, J. Karwounopoulos, M. P.-P. Kovar, E. Heid,
+<em>“GoFlow: efficient transition state geometry prediction with flow matching and
+E(3)-equivariant neural networks”</em>, Digital Discovery 2025, DOI
+<a class="reference external" href="https://doi.org/10.1039/D5DD00283D">10.1039/D5DD00283D</a>.</p>
+<p>The upstream implementation lives at <a class="reference external" href="https://github.com/heid-lab/goflow_lean">heid-lab/goflow_lean</a>.</p>
+</section>
+</section>
+<section id="rits-flow-matching-ml-ts-generator">
+<h3>RitS (flow-matching ML TS generator)<a class="headerlink" href="#rits-flow-matching-ml-ts-generator" title="Link to this heading"></a></h3>
+<p>ARC supports automated TS generation via <strong>RitS</strong> (<em>Right into the Saddle</em>),
+a flow-matching neural network from the Isayev lab that predicts transition-
+state Cartesian geometries directly from atom-mapped reactant + product 3D
+structures. Unlike GCN — which is restricted to single-bond isomerizations —
+RitS handles multi-bond rearrangements and charged species.</p>
+<p>Like GoFlow and the Linear adapter, RitS is scoped to <strong>unimolecular reactions</strong>
+(one side has a single species): <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">+</span> <span class="pre">B</span> <span class="pre">&lt;=&gt;</span> <span class="pre">C</span></code> qualifies, a 2↔2 reaction such
+as <code class="docutils literal notranslate"><span class="pre">CH4</span> <span class="pre">+</span> <span class="pre">OH</span> <span class="pre">&lt;=&gt;</span> <span class="pre">CH3</span> <span class="pre">+</span> <span class="pre">H2O</span></code> does not. It is therefore registered per family in
+<code class="docutils literal notranslate"><span class="pre">ts_adapters_by_rmg_family</span></code> — for the same families as the Linear adapter, so
+<code class="docutils literal notranslate"><span class="pre">H_Abstraction</span></code> is excluded — rather than in <code class="docutils literal notranslate"><span class="pre">all_families_ts_adapters</span></code>, and
+the adapter declines anything bimolecular at runtime with a warning.</p>
+<section id="id4">
+<h4>How it is used<a class="headerlink" href="#id4" title="Link to this heading"></a></h4>
+<p>RitS is <strong>opt-in only</strong> — its inference stack is heavyweight, so it is
+intentionally absent from the default <code class="docutils literal notranslate"><span class="pre">ts_adapters</span></code> list. To enable it,
+install its environment once and request it in the ARC input file:</p>
+<ol class="arabic">
+<li><p>Install the dedicated conda env and download the pretrained checkpoint:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make<span class="w"> </span>install-rits
+</pre></div>
+</div>
+<p>This creates <code class="docutils literal notranslate"><span class="pre">rits_env</span></code> (PyTorch 2.7 + PyTorch Geometric + RitS / megalodon),
+clones <code class="docutils literal notranslate"><span class="pre">RitS</span></code>, downloads the published checkpoint from Zenodo
+(<a class="reference external" href="https://doi.org/10.5281/zenodo.19474153">10.5281/zenodo.19474153</a>), and
+verifies its SHA-256 (~364 MB).</p>
+</li>
+<li><p>Opt in to the adapter for a given run by adding it to <code class="docutils literal notranslate"><span class="pre">ts_adapters</span></code>:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">ts_adapters</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">heuristics</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rits</span>
+</pre></div>
+</div>
+</li>
+<li><p>(Optional) Override the default repository or checkpoint location via env vars:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">ARC_RITS_REPO</span><span class="o">=</span>/path/to/your/RitS
+<span class="nb">export</span><span class="w"> </span><span class="nv">ARC_RITS_CKPT</span><span class="o">=</span>/path/to/your/rits.ckpt
+</pre></div>
+</div>
+<p>These take precedence over both the default <code class="docutils literal notranslate"><span class="pre">~/Code/RitS</span></code> /
+sibling-of-ARC discovery and the install-time Zenodo download.</p>
+</li>
+</ol>
+</section>
+<section id="id5">
+<h4>What ARC does<a class="headerlink" href="#id5" title="Link to this heading"></a></h4>
+<p>For each reaction with RitS selected, ARC:</p>
+<ol class="arabic simple">
+<li><p>Builds atom-mapped reactant and product XYZ files using the reaction’s
+<code class="docutils literal notranslate"><span class="pre">rxn.atom_map</span></code>-aligned coordinates.</p></li>
+<li><p>Spawns the RitS inference subprocess (in <code class="docutils literal notranslate"><span class="pre">rits_env</span></code>), which performs
+flow-matching ODE sampling and returns <code class="docutils literal notranslate"><span class="pre">n_samples</span></code> candidate TS
+geometries in a single multi-frame XYZ.</p></li>
+<li><p>Deduplicates near-duplicate samples that share a heavy-atom skeleton via
+<code class="docutils literal notranslate"><span class="pre">compare_confs</span></code> (translation- and rotation-invariant distance-matrix
+comparison).</p></li>
+<li><p>Appends the surviving guesses to the reaction’s TS species for downstream
+optimization, frequency, and IRC validation by ARC’s standard pipeline.</p></li>
+</ol>
+<p>If <code class="docutils literal notranslate"><span class="pre">rits_env</span></code> or the checkpoint is missing, the adapter logs a warning
+and skips cleanly — the rest of the TS pipeline continues unaffected.</p>
+</section>
+<section id="id6">
+<h4>Outputs and validation<a class="headerlink" href="#id6" title="Link to this heading"></a></h4>
+<p>Each surviving TS guess is written as a numbered <code class="docutils literal notranslate"><span class="pre">RitS</span> <span class="pre">N.xyz</span></code> file under
+the TS-guess directory of the reaction, alongside the staged <code class="docutils literal notranslate"><span class="pre">input.yml</span></code>
+and the raw multi-frame <code class="docutils literal notranslate"><span class="pre">output.yml</span></code> returned by the subprocess. Optimized
++ validated TSs follow the same reporting flow as any other ARC TS guess.</p>
+</section>
+<section id="id7">
+<h4>Reference<a class="headerlink" href="#id7" title="Link to this heading"></a></h4>
+<p>The RitS model is described in:
+<em>“Right into the Saddle”</em> (Isayev lab),
+DOI <a class="reference external" href="https://doi.org/10.26434/chemrxiv.15001681/v1">10.26434/chemrxiv.15001681/v1</a>.</p>
+<p>The upstream implementation lives at <a class="reference external" href="https://github.com/isayevlab/RitS">isayevlab/RitS</a>.</p>
+</section>
+</section>
 </section>
 </section>
 
