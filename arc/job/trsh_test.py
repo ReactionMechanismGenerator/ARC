@@ -433,7 +433,7 @@ class TestTrsh(unittest.TestCase):
 
         # Gaussian: test 6
         job_status = {'keywords': ['Memory', 'max_total_job_memory'],
-                      'error': 'Memory allocation failed (did you ask for too much?)'}
+                      'error': 'Gaussian could not allocate the memory it was given, it requires more memory.'}
         capped_memory_gb = settings['default_job_settings']['job_max_server_node_memory_allocation'] * \
             settings['servers']['server2']['memory']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
@@ -443,7 +443,8 @@ class TestTrsh(unittest.TestCase):
 
         self.assertTrue(couldnt_trsh)
         self.assertEqual(memory, capped_memory_gb)
-        self.assertIn('Use a higher-memory node or lower the job cost', output_errors[0])
+        self.assertIn('job_max_server_node_memory_allocation', output_errors[0])
+        self.assertNotIn('higher-memory node', output_errors[0])
 
         # Gaussian: test 7 - part 1
         job_status = {'keywords': ['SCF', 'GL502', 'NoSymm']}
@@ -831,6 +832,48 @@ class TestTrsh(unittest.TestCase):
                               job_type, software, fine, memory_gb,
                               num_heavy_atoms, cpu_cores, ess_trsh_methods,
                               is_h=True, is_monoatomic=True)
+
+    def test_trsh_ess_job_gaussian_galloc_escalates_memory_to_the_cap(self):
+        """Test that a Gaussian galloc failure escalates the job memory up to the configured cap, then gives up."""
+        label, level_of_theory, job_type, software = 'TS0', {'method': 'wb97xd', 'basis': 'def2tzvp'}, 'conf_opt', \
+            'gaussian'
+        server, num_heavy_atoms, fine = 'server2', 5, False
+        path = os.path.join(self.base_path['gaussian'], 'galloc.out')
+        status, keywords, error, _ = trsh.determine_ess_status(output_path=path,
+                                                               species_label=label,
+                                                               job_type=job_type,
+                                                               software=software)
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['Memory'])
+        self.assertNotIn('too high', error)
+        self.assertNotIn('too much', error)
+        job_status = {'keywords': keywords, 'error': error}
+        capped_memory_gb = settings['default_job_settings']['job_max_server_node_memory_allocation'] * \
+            settings['servers']['server2']['memory']
+
+        memory, cpu_cores, ess_trsh_methods = 42.0, 12, []
+        for expected_memory in [84.0, 168.0, capped_memory_gb]:
+            output_errors, ess_trsh_methods, _, _, _, _, _, _, memory, _, cpu_cores, couldnt_trsh = \
+                trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type, software, fine, memory,
+                                  num_heavy_atoms, cpu_cores, ess_trsh_methods)
+            self.assertFalse(couldnt_trsh)
+            self.assertEqual(memory, expected_memory)
+            self.assertEqual(cpu_cores, 12)
+            self.assertEqual(ess_trsh_methods[-1], 'memory')
+            self.assertEqual(output_errors, [])
+
+        output_errors, ess_trsh_methods, _, _, _, _, _, _, memory, _, cpu_cores, couldnt_trsh = \
+            trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type, software, fine, memory,
+                              num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertTrue(couldnt_trsh)
+        self.assertEqual(memory, capped_memory_gb)
+        self.assertEqual(cpu_cores, 12)
+        self.assertIn('all_attempted', ess_trsh_methods)
+        self.assertIn(f'{capped_memory_gb:.2f} GB', output_errors[0])
+        self.assertIn("servers['server2']['memory']", output_errors[0])
+        self.assertIn('job_max_server_node_memory_allocation', output_errors[0])
+        self.assertIn('cheaper method or level of theory', output_errors[0])
+        self.assertNotIn('higher-memory node', output_errors[0])
 
     def test_trsh_ess_job_terachem_trsh_attempt_only(self):
         """Isolate the terachem trsh_attempt-only case from Gaussian stateful flow."""

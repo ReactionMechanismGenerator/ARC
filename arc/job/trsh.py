@@ -202,7 +202,7 @@ def determine_ess_status(output_path: str,
                     line = ''
                 elif 'malloc failed' in line or 'galloc' in line:
                     keywords = ['Memory']
-                    error = 'Memory allocation failed (did you ask for too much?)'
+                    error = 'Gaussian could not allocate the memory it was given, it requires more memory.'
                     line = ''
                 elif 'PGFIO/stdio: No such file or directory' in line:
                     keywords = ['Scratch']
@@ -989,14 +989,16 @@ def trsh_ess_job(label: str,
             else:
                 couldnt_trsh = True
                 output_errors.append(
-                    f'Error: Could not troubleshoot {job_type} for {label}! Gaussian exhausted memory even after ARC '
-                    f'reached the configured node-memory cap ({max_mem_allocation:.2f} GB total allocation) while '
-                    f'still reserving scheduler headroom. Use a higher-memory node or lower the job cost; '
+                    f'Error: Could not troubleshoot {job_type} for {label}! Gaussian could not allocate the memory it '
+                    f'was given, and this job already requests the configured per-job memory cap on {server}, '
+                    f'{max_mem_allocation:.2f} GB. It needs more memory than the cap allows. Either raise the cap by '
+                    f'changing servers[\'{server}\'][\'memory\'] (currently {max_mem} GB) or '
+                    f'job_max_server_node_memory_allocation, or use a cheaper method or level of theory; '
                 )
                 logger.error(
-                    f'Could not troubleshoot {job_type} job in {software} for {label}. ARC already reached the '
-                    f'configured node-memory cap ({max_mem_allocation:.2f} GB total allocation) and still preserved '
-                    f'Gaussian headroom.'
+                    f'Could not troubleshoot {job_type} job in {software} for {label}. Gaussian could not allocate '
+                    f'{memory_gb} GB, which is the configured per-job memory cap on {server} '
+                    f'({max_mem_allocation:.2f} GB).'
                 )
 
         if attempted_ess_trsh_methods:
