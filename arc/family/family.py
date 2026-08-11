@@ -847,14 +847,22 @@ def get_all_families(rmg_family_set: list[str] | str | None = None,
                      ) -> list[str]:
     """
     Get all available RMG and ARC families.
-    If ``rmg_family_set`` is a list of family labels and does not contain family sets, it will be returned as is.
-    ``'all'`` returns the union of every recommended family set whose label does not contain
-    'surface' with every family that exists as a directory in the RMG database, de-duplicated and
-    in order of first appearance. The database directories are appended last, so a family reachable
-    only through them is always positioned after every family a recommended set contributes. Callers
+    If ``rmg_family_set`` is a list of family labels and does not contain family sets, it will be returned as is
+    (an explicitly given list defines its own order).
+
+    ``'all'`` considers every recommended family set whose label does not contain 'surface' together
+    with every family that exists as a directory in the RMG database.
+
+    Otherwise the result is assembled from three tiers, concatenated in this order: the families the
+    requested recommended family set(s) contribute, then the families that exist as an RMG database
+    directory, then ARC's families. Each tier is sorted by label, and duplicates are removed while
+    keeping the first occurrence, so a family a recommended set contributes stays in the recommended
+    tier and is always positioned before a family reachable only as a database directory. Callers
     that take the first matching family therefore resolve to a recommended family whenever one
-    matches. This ordering is part of the contract: sorting the result or de-duplicating it through
-    a set would break it.
+    matches, and resolve to the same family in every process: the order depends neither on
+    ``PYTHONHASHSEED`` nor on dict, set or file system iteration. Both properties are part of the
+    contract: sorting across the tiers, appending the directories first, or de-duplicating the
+    result through a set would break the first, and leaving a tier unsorted would break the second.
 
     Args:
         rmg_family_set (list[str] | str, optional): The RMG family set to use.
@@ -870,25 +878,29 @@ def get_all_families(rmg_family_set: list[str] | str | None = None,
     family_sets = get_rmg_recommended_family_sets()
     if isinstance(rmg_family_set, list) and all(fam not in family_sets for fam in rmg_family_set):
         return rmg_family_set
-    rmg_families, arc_families = list(), list()
+    recommended_families, directory_families, arc_families = list(), list(), list()
     if consider_rmg_families:
         if not isinstance(rmg_family_set, list) and rmg_family_set not in list(family_sets) + ['all']:
             raise ValueError(f'Invalid RMG family set: {rmg_family_set}')
         if rmg_family_set == 'all':
             for family_set_label, families in family_sets.items():
                 if 'surface' not in family_set_label:
-                    rmg_families.extend(list(families))
-            rmg_families.extend(get_rmg_family_directories())
-            rmg_families = list(dict.fromkeys(rmg_families))
+                    recommended_families.extend(families)
+            directory_families = list(get_rmg_family_directories())
         else:
-            rmg_families = list(family_sets[rmg_family_set]) \
-                if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else [rmg_family_set]
+            recommended_families = list(family_sets[rmg_family_set]) \
+                if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else list(rmg_family_set)
     if consider_arc_families:
         for family in os.listdir(ARC_FAMILIES_PATH):
             if family.startswith('.') or family.startswith('_'):
                 continue
             arc_families.append(os.path.splitext(family)[0])
-    return rmg_families + arc_families if rmg_families is not None else arc_families
+    ordered, seen = list(), set()
+    for family in sorted(recommended_families) + sorted(directory_families) + sorted(arc_families):
+        if family not in seen:
+            seen.add(family)
+            ordered.append(family)
+    return ordered
 
 
 @functools.lru_cache(maxsize=1)
@@ -919,12 +931,17 @@ def get_rmg_family_directories() -> list[str]:
 
 
 @functools.lru_cache(maxsize=1)
-def get_rmg_recommended_family_sets() -> dict[str, str]:
+def get_rmg_recommended_family_sets() -> dict[str, tuple[str, ...]]:
     """
     Get the recommended RMG family sets from RMG-database/input/kinetics/families/recommended.py.
 
+    The family labels of each set are returned as a tuple in the order in which they are written
+    in ``recommended.py``, since the sets are declared there as Python set literals whose iteration
+    order depends on ``PYTHONHASHSEED``. A set whose elements are not all plain string literals
+    is sorted instead, so that the returned order never depends on the hash seed.
+
     Returns:
-        dict[str, str]: The recommended RMG family sets.
+        dict[str, tuple[str, ...]]: The recommended RMG family sets.
     """
     family_sets = dict()
     recommended_path = get_rmg_db_subpath('kinetics', 'families', 'recommended.py', must_exist=True)
@@ -932,13 +949,20 @@ def get_rmg_recommended_family_sets() -> dict[str, str]:
         raise FileNotFoundError(f'Could not find the recommended RMG families file at {recommended_path}')
     with open(recommended_path, 'r') as f:
         recommended_content = f.read()
-    dict_strings = re.findall(r'(\w+)\s*=\s*\{[^}]*\}', recommended_content, re.DOTALL)
-    for dict_name in dict_strings:
-        pattern = rf'{dict_name}\s*=\s*(\{{[^}}]*\}})'
-        match = re.search(pattern, recommended_content, re.DOTALL)
-        if match:
-            dict_str = match.group(1)
-            family_sets[dict_name] = ast.literal_eval(dict_str)
+    for node in ast.parse(recommended_content).body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, (ast.Set, ast.List, ast.Tuple)):
+            continue
+        elements = [element.value for element in node.value.elts
+                    if isinstance(element, ast.Constant) and isinstance(element.value, str)]
+        if len(elements) != len(node.value.elts):
+            try:
+                elements = sorted(ast.literal_eval(node.value))
+            except ValueError:
+                logger.debug(f'Could not parse a family set from {recommended_path}, skipping it.')
+                continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                family_sets[target.id] = tuple(elements)
     return family_sets
 
 

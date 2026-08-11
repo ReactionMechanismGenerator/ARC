@@ -721,6 +721,25 @@ H      -0.83821148   -0.26602407    0.00000000"""
         families = get_all_families(rmg_family_set=['H_Abstraction'])
         self.assertEqual(families, ['H_Abstraction'])
 
+    def test_get_all_families_is_deterministically_ordered(self):
+        """Test that the family order within each tier does not depend on set or file system iteration order"""
+        rmg_families = get_all_families(consider_arc_families=False)
+        arc_families = get_all_families(consider_rmg_families=False)
+        self.assertEqual(rmg_families, sorted(rmg_families))
+        self.assertEqual(arc_families, sorted(arc_families))
+        self.assertEqual(get_all_families(), rmg_families + arc_families)
+        recommended = set()
+        for family_set_label, families in get_rmg_recommended_family_sets().items():
+            if 'surface' not in family_set_label:
+                recommended.update(families)
+        all_families = get_all_families(rmg_family_set='all', consider_arc_families=False)
+        self.assertEqual(len(all_families), len(set(all_families)))
+        recommended_tier = [family for family in all_families if family in recommended]
+        directory_tier = [family for family in all_families if family not in recommended]
+        self.assertEqual(recommended_tier, sorted(recommended_tier))
+        self.assertEqual(directory_tier, sorted(directory_tier))
+        self.assertLess(all_families.index('Intra_Diels_alder_monocyclic'), all_families.index('Intra_R_Add_Exocyclic'))
+
     def test_get_all_families_rejects_unknown_set_name(self):
         """An unknown family-set string should raise ValueError, not fall through to KeyError."""
         with self.assertRaises(ValueError):
@@ -804,6 +823,9 @@ H      -0.83821148   -0.26602407    0.00000000"""
         self.assertIn('default', recommended_families)
         self.assertIn('ch_pyrolysis', recommended_families)
         self.assertIn('liquid_peroxide', recommended_families)
+        for family_set in recommended_families.values():
+            self.assertIsInstance(family_set, tuple)
+        self.assertIn('H_Abstraction', recommended_families['default'])
 
     def test_load(self):
         """Test loading a reaction family from the RMG database"""

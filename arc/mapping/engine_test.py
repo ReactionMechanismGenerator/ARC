@@ -1703,6 +1703,24 @@ class TestMappingEngine(unittest.TestCase):
                                  r_label_dict={'*1': 0, '*2': 1, '*3': 2, '*4': 6})
         self.assertTrue(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
 
+    def test_make_bond_changes_keeps_electron_counts_non_negative(self):
+        """Test that a charge-separating bond change is skipped rather than yielding a negative electron count"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label="N4", smiles="NNNN")],
+                          p_species=[ARCSpecies(label="NH3", smiles="N"),
+                                     ARCSpecies(label="NH2NHN_p", smiles="[N-]=[NH+]N")])
+        rxn.family = '1,2_NH3_elimination'
+        r_cut = ARCSpecies(label='CH2O_rad', smiles='[CH2]O')
+        engine.label_species_atoms([r_cut])
+        c_index = [i for i, atom in enumerate(r_cut.mol.atoms) if atom.element.symbol == 'C'][0]
+        o_index = [i for i, atom in enumerate(r_cut.mol.atoms) if atom.element.symbol == 'O'][0]
+        self.assertEqual(r_cut.mol.atoms[c_index].radical_electrons, 1)
+        self.assertEqual(r_cut.mol.atoms[o_index].radical_electrons, 0)
+        engine.make_bond_changes(rxn=rxn, r_cuts=[r_cut], r_label_dict={'*2': o_index, '*3': c_index})
+        for atom in r_cut.mol.atoms:
+            self.assertGreaterEqual(atom.radical_electrons, 0)
+            self.assertGreaterEqual(atom.lone_pairs, 0)
+        self.assertTrue(r_cut.mol.is_isomorphic(ARCSpecies(label='ref', smiles='[CH2]O').mol))
+
     def test_update_xyz(self):
         """tests the update_xyz() function"""
         for smiles in ['BrC(F)Cl', 'OCl', 'BrOCl']:

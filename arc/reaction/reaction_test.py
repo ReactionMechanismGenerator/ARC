@@ -553,6 +553,72 @@ class TestARCReaction(unittest.TestCase):
             self.assertTrue(len(wider_product_dicts))
             self.assertEqual({pd['family'] for pd in wider_product_dicts}, {'H2_Loss'})
 
+    def test_product_dicts_all_belong_to_the_reaction_family(self):
+        """Test that the product dicts of a reaction that matches several families are restricted to one family"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH]1C=Cc2ccccc21')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH]1C=CC2C3=C1C=CC32')])
+        self.assertEqual(rxn.family, 'Intra_Diels_alder_monocyclic')
+        self.assertTrue(len(rxn.product_dicts))
+        self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts}, {rxn.family})
+
+    def test_pinned_family_restricts_the_product_dicts(self):
+        """Test that pinning a family restricts the product dicts to that family's atom label maps.
+        The reactant atoms are C0 C1 C2 C3 O4 S5, and the breaking bond is one of its bonds."""
+        r_species = [ARCSpecies(label='R', smiles='[CH2]C(C=C)OS')]
+        p_species = [ARCSpecies(label='P', smiles='[O]C(C=C)CS')]
+        rxn = ARCReaction(r_species=r_species, p_species=p_species)
+        self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts}, {'intra_OH_migration'})
+        pinned = ARCReaction(r_species=r_species, p_species=p_species, family='intra_substitutionS_isomerization')
+        self.assertEqual(pinned.family, 'intra_substitutionS_isomerization')
+        self.assertEqual({product_dict['family'] for product_dict in pinned.product_dicts},
+                         {'intra_substitutionS_isomerization'})
+        breaking_bonds, forming_bonds = rxn.get_expected_changing_bonds(
+            r_label_dict=rxn.product_dicts[0]['r_label_map'])
+        self.assertEqual(breaking_bonds, [(4, 5)])
+        self.assertEqual(forming_bonds, [(0, 5)])
+
+    def test_setting_a_family_restricts_already_generated_product_dicts(self):
+        """Test that assigning a family restricts product dicts that were already set to that family,
+        and discards them only if none of them belong to it"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                     ARCSpecies(label='HO2', smiles='[O]O')],
+                          p_species=[ARCSpecies(label='H2O2', smiles='OO'),
+                                     ARCSpecies(label='O', smiles='[O]')])
+        rxn.product_dicts = rxn.get_product_dicts(rmg_family_set='all')
+        self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts},
+                         {'H_Abstraction', 'Substitution_O'})
+        rxn.family = 'Substitution_O'
+        self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts}, {'Substitution_O'})
+        rxn.family = 'intra_H_migration'
+        with self.assertRaises(ReactionError):
+            _ = rxn.product_dicts
+
+    def test_pinning_a_family_that_does_not_match_raises(self):
+        """Test that pinning a family which the reaction does not match raises an error"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]C(C=C)OS')],
+                          p_species=[ARCSpecies(label='P', smiles='[O]C(C=C)CS')],
+                          family='intra_H_migration')
+        with self.assertRaises(ReactionError):
+            _ = rxn.product_dicts
+
+    def test_family_own_reverse_is_derived_from_a_pinned_family(self):
+        """Test that pinning a family also determines whether that family is its own reverse"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='C2H5', smiles='C[CH2]'),
+                                     ARCSpecies(label='H2O', smiles='O')],
+                          family='H_Abstraction')
+        self.assertTrue(rxn.family_own_reverse)
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]C(C=C)OS')],
+                            p_species=[ARCSpecies(label='P', smiles='[O]C(C=C)CS')],
+                            family='intra_OH_migration')
+        self.assertFalse(rxn_2.family_own_reverse)
+        rxn_3 = ARCReaction(reaction_dict={'label': 'C2H6 + OH <=> C2H5 + H2O',
+                                           'r_species': [spc.as_dict() for spc in rxn.r_species],
+                                           'p_species': [spc.as_dict() for spc in rxn.p_species],
+                                           'family': 'H_Abstraction'})
+        self.assertTrue(rxn_3.family_own_reverse)
+
     def test_charge_property(self):
         """Test determining charge"""
         self.assertEqual(self.rxn1.charge, 0)
