@@ -386,15 +386,26 @@ class GaussianAdapter(JobAdapter):
         if self.level.solvation_method is not None:
             input_dict['job_type_1'] += f' SCRF=({self.level.solvation_method}, Solvent={self.level.solvent})'
 
+        restricted_flags = is_restricted(self)
+        restricted_flags = [restricted_flags] if isinstance(restricted_flags, bool) else restricted_flags
+
         if self.species[0].number_of_atoms > 1:
-            if input_dict['job_type_1']:
-                input_dict['job_type_1'] += ' '
+            guess = ''
             if 'guess=INDO' in input_dict['trsh']:
-                input_dict['job_type_1'] += 'guess=INDO'
+                guess = 'guess=INDO'
                 input_dict['trsh'] = input_dict['trsh'].replace('guess=INDO', '')
-            else:
-                input_dict['job_type_1'] += ' guess=read' if self.checkfile is not None and os.path.isfile(self.checkfile) \
-                    else ' guess=mix'
+            elif self.checkfile is not None and os.path.isfile(self.checkfile):
+                guess = 'guess=read'
+            elif not all(restricted_flags):
+                guess = 'guess=mix'
+            elif self.is_ts:
+                logger.info(f'Not using guess=mix for TS {self.species_label}, which is computed with a restricted '
+                            f'reference (multiplicity {self.multiplicity}): guess=mix only acts on an unrestricted '
+                            f'reference.')
+            if guess:
+                if input_dict['job_type_1']:
+                    input_dict['job_type_1'] += ' '
+                input_dict['job_type_1'] += guess
 
         # Fix OPT
         terms_opt = [r'opt=\((.*?)\)', r'opt=(\w+)']
@@ -424,9 +435,7 @@ class GaussianAdapter(JobAdapter):
         input_file = ''
         input_dict_origin = input_dict.copy()
 
-        restricted_list_bool = is_restricted(self)
-        restricted_list = ["" if flag else 'u' for flag in ([restricted_list_bool]
-                           if isinstance(restricted_list_bool, bool) else restricted_list_bool)]
+        restricted_list = ["" if flag else 'u' for flag in restricted_flags]
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             if not self.run_multi_species:

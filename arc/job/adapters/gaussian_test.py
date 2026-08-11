@@ -174,6 +174,57 @@ class TestGaussianAdapter(unittest.TestCase):
                             testing=True,
                             )
 
+        ts_xyz = """O      -0.80000000    0.00000000    0.00000000
+                    H       0.00000000    0.00000000    0.00000000
+                    C       1.30000000    0.00000000    0.00000000
+                    H       1.70000000    1.02000000    0.00000000
+                    H       1.70000000   -0.51000000    0.88000000
+                    H       1.70000000   -0.51000000   -0.88000000"""
+        cls.job_singlet_ts = GaussianAdapter(execution_type='queue',
+                            job_type='opt',
+                            level=Level(method='wb97xd', basis='def2-TZVP'),
+                            project='test',
+                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                            species=[ARCSpecies(label='TS_singlet', xyz=ts_xyz, is_ts=True, multiplicity=1)],
+                            testing=True,
+                            )
+        cls.job_doublet_ts = GaussianAdapter(execution_type='queue',
+                            job_type='opt',
+                            level=Level(method='wb97xd', basis='def2-TZVP'),
+                            project='test',
+                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                            species=[ARCSpecies(label='TS_doublet',
+                                                xyz="""C       0.00000000    0.00000000    0.00000000
+                                                       H       0.00000000    0.00000000    1.09000000
+                                                       H       1.02000000    0.00000000   -0.36000000
+                                                       H      -0.51000000    0.88000000   -0.36000000
+                                                       H      -0.51000000   -0.88000000   -0.36000000
+                                                       H      -1.30000000    2.24000000   -0.92000000""",
+                                                is_ts=True, multiplicity=2)],
+                            testing=True,
+                            )
+        cls.job_singlet_spc = GaussianAdapter(execution_type='queue',
+                            job_type='opt',
+                            level=Level(method='wb97xd', basis='def2-TZVP'),
+                            project='test',
+                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                            species=[ARCSpecies(label='methanol', smiles='CO')],
+                            testing=True,
+                            )
+        checkfile_path = os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter', 'check.chk')
+        os.makedirs(os.path.dirname(checkfile_path), exist_ok=True)
+        with open(checkfile_path, 'w') as f:
+            f.write('')
+        cls.job_singlet_ts_with_checkfile = GaussianAdapter(execution_type='queue',
+                            job_type='opt',
+                            level=Level(method='wb97xd', basis='def2-TZVP'),
+                            checkfile=checkfile_path,
+                            project='test',
+                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                            species=[ARCSpecies(label='TS_singlet_restart', xyz=ts_xyz, is_ts=True, multiplicity=1)],
+                            testing=True,
+                            )
+
         # Setting up for ESS troubleshooting input file writing
 
         label = 'anion'
@@ -666,7 +717,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxStep=5,modredundant,noeigentest) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000)    scf=(direct,tight)
+#P opt=(calcfc,maxStep=5,modredundant,noeigentest) integral=(grid=ultrafine, Acc2E=12) wb97xd/def2tzvp   IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -764,6 +815,49 @@ O       0.00000000    0.00000000    1.00000000
 """
         self.assertEqual(content_opt_uff, job_opt_uff_expected_input_file)
 
+    def get_route(self, job) -> str:
+        """
+        Write a job's input file and return its route section.
+
+        Args:
+            job (GaussianAdapter): The job adapter object.
+
+        Returns:
+            str: The route section (the line starting with '#P').
+        """
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            content = f.read()
+        return [line for line in content.splitlines() if line.startswith('#P')][0]
+
+    def test_guess_mix_requires_an_unrestricted_reference(self):
+        """Test that guess=mix is only added to the route of an unrestricted job"""
+        route_singlet_ts = self.get_route(self.job_singlet_ts)
+        self.assertNotIn('guess=mix', route_singlet_ts)
+        self.assertIn(' wb97xd', route_singlet_ts)
+
+        route_doublet_ts = self.get_route(self.job_doublet_ts)
+        self.assertIn('guess=mix', route_doublet_ts)
+        self.assertIn(' uwb97xd', route_doublet_ts)
+
+        route_singlet_spc = self.get_route(self.job_singlet_spc)
+        self.assertNotIn('guess=mix', route_singlet_spc)
+
+        route_with_checkfile = self.get_route(self.job_singlet_ts_with_checkfile)
+        self.assertIn('guess=read', route_with_checkfile)
+        self.assertNotIn('guess=mix', route_with_checkfile)
+
+    def test_guess_mix_omission_is_logged_once_for_a_ts(self):
+        """Test that omitting guess=mix from a restricted TS job is reported once, and is silent for a non-TS"""
+        with self.assertLogs('arc', level='INFO') as context_manager:
+            self.job_singlet_ts.write_input_file()
+        guess_mix_records = [record for record in context_manager.output if 'guess=mix' in record]
+        self.assertEqual(len(guess_mix_records), 1)
+        self.assertIn('TS_singlet', guess_mix_records[0])
+
+        with self.assertNoLogs('arc', level='INFO'):
+            self.job_singlet_spc.write_input_file()
+
     def test_set_files(self):
         """Test setting files"""
         job_3_files_to_upload = [{'file_name': 'submit.sub',
@@ -796,7 +890,7 @@ O       0.00000000    0.00000000    1.00000000
     def test_trsh_write_input_file(self):
         """Test writing a trsh input file
         10. Create an input file for a job with int=(Acc2E=14) included
-        11. Create an input file for a job with guess=mix included (removal of Checkfile via ess_trsh_methods)
+        11. Create an input file for a job whose checkfile was removed via ess_trsh_methods
         12. Create an input file for a job with nosymm included, and also the first pass of SCF error troubleshooting
         13. Create an input file for a job with NDamp=30 included, and also the previous pass of SCF error troubleshooting
         14. Create an input file for a job with NoDIIS included, and also previous passes of SCF error troubleshooting
@@ -836,7 +930,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -862,7 +956,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(direct,tight,xqc)
 
 ethanol
 
@@ -888,7 +982,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,direct,tight,xqc)
 
 ethanol
 
@@ -914,7 +1008,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -940,7 +1034,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,cartesian,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,cartesian,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -994,7 +1088,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       scf=(direct,tight,xqc)
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       scf=(direct,tight,xqc)
 
 ethanol
 
@@ -1020,7 +1114,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
 
 ethanol
 
@@ -1046,7 +1140,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
 
 ethanol
 
@@ -1072,7 +1166,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
 
 ethanol
 
@@ -1126,7 +1220,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
@@ -1153,7 +1247,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(RFO,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(RFO,calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
@@ -1180,7 +1274,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
