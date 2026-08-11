@@ -1472,8 +1472,8 @@ def distance_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     if a.shape[1] != b.shape[1]:
         raise ValueError(f"Inner dimensions must match. Got {a.shape[1]}D and {b.shape[1]}D")
     diff = a[:, np.newaxis, :] - b[np.newaxis, :, :]
-    sq_diff = diff ** 2
-    return np.sqrt(np.sum(sq_diff, axis=-1))
+    np.square(diff, out=diff)
+    return np.sqrt(np.sum(diff, axis=-1))
 
 
 def get_ordered_intersection_of_two_lists(l1: list,

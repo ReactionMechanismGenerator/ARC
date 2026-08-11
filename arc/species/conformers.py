@@ -44,6 +44,7 @@ from itertools import product
 from openbabel import openbabel as ob
 from openbabel import pybel as pyb
 from rdkit import Chem
+from rdkit.Chem import AllChem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
 import arc.molecule.group as gr
@@ -87,7 +88,7 @@ CONFS_VS_TORSIONS = {(0, 1): 75,
 # The resolution (in degrees) for scanning smeared wells
 SMEARED_SCAN_RESOLUTIONS = 30.0
 
-# An energy threshold (in kJ/mol) above which wells in a torsion will not be considered (rel. to the most stable well)
+# An energy threshold (in kcal/mol) above which wells in a torsion will not be considered (rel. to the most stable well)
 DE_THRESHOLD = 5.
 
 # The gap (in degrees) that defines different wells
@@ -95,6 +96,9 @@ WELL_GAP = 20
 
 # The maximum number of times to iteratively search for the lowest conformer
 MAX_COMBINATION_ITERATIONS = 25
+
+# The force field energy improvement (in kcal/mol) below which the iterative base conformer descent has converged
+BASE_CONFORMER_ENERGY_TOL = 0.01
 
 # A threshold below which all combinations will be generated. Above it just samples of the entire search space.
 COMBINATION_THRESHOLD = 1000
@@ -180,9 +184,9 @@ def generate_conformers(mol_list: list[Molecule] | Molecule,
         multiplicity (int, optional): The species multiplicity. Used to perceive a molecule from xyz.
         num_confs_to_generate (int, optional): The number of conformers to generate (can be determined automatically)
         n_confs (int, optional): The number of conformers to return.
-        e_confs (float, optional): The energy threshold in kJ/mol above the lowest energy conformer
+        e_confs (float, optional): The energy threshold in kcal/mol above the lowest energy conformer
                                    below which all (unique) generated conformers will be returned.
-        de_threshold (float, optional): Energy threshold (in kJ/mol) above which wells will not be considered.
+        de_threshold (float, optional): Energy threshold (in kcal/mol) above which wells will not be considered.
         smeared_scan_res (float, optional): The resolution (in degrees) for scanning smeared wells.
         combination_threshold (int, optional): A threshold below which all combinations will be generated.
         force_field (str, optional): The type of force field to use (MMFF94, MMFF94s, UFF, GAFF).
@@ -329,7 +333,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         max_combination_iterations (int, optional): The max num of times to iteratively search for the lowest conformer.
         diastereomers (list, optional): Entries are xyz's in a dictionary format or conformer structures
                                         representing specific diastereomers to keep.
-        de_threshold (float, optional): An energy threshold (in kJ/mol) above which wells in a torsion
+        de_threshold (float, optional): An energy threshold (in kcal/mol) above which wells in a torsion
                                         will not be considered.
 
     Returns:
@@ -438,7 +442,7 @@ def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb,
         multiple_sampling_points (list): Entries are lists of dihedral angles (sampling points), respectively correspond
                                          to torsions in multiple_tors.
         len_conformers (int, optional): The length of the existing conformers list (for consecutive numbering).
-        de_threshold (float, optional): An energy threshold (in kJ/mol) above which wells in a torsion
+        de_threshold (float, optional): An energy threshold (in kcal/mol) above which wells in a torsion
                                         will not be considered.
         force_field (str, optional): The type of force field to use.
         max_combination_iterations (int, optional): The max num of times to iteratively search for the lowest conformer.
@@ -490,7 +494,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         multiple_sampling_points (list): Entries are lists of dihedral angles (sampling points), respectively correspond
                                          to torsions in multiple_tors.
         len_conformers (int, optional): The length of the existing conformers list (for consecutive numbering).
-        de_threshold (float, optional): An energy threshold (in kJ/mol) above which wells in a torsion
+        de_threshold (float, optional): An energy threshold (in kcal/mol) above which wells in a torsion
                                         will not be considered.
         force_field (str, optional): The type of force field to use.
         max_combination_iterations (int, optional): The max num of times to iteratively search for the lowest conformer.
@@ -520,24 +524,30 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
         for tor, sampling_points in zip(multiple_tors, multiple_sampling_points):
             xyzs, energies = change_dihedrals_and_force_field_it(label, mol, xyz=base_xyz, torsions=[tor],
                                                                  new_dihedrals=[[sp] for sp in sampling_points],
-                                                                 force_field=force_field, optimize=False)
+                                                                 force_field=force_field)
             newest_conformers_dict[tor] = list()  # Keys are torsions for plotting.
             for xyz, energy, dihedral in zip(xyzs, energies, sampling_points):
                 exists = False
                 dmat1, fl_distance1 = None, None
                 for conf in new_conformers + newest_conformer_list:
-                    fl_distance1, dmat1, conf, similar = converter.compare_confs_fl(xyz,conf)
+                    # compare_confs_fl() returns ``dmat1`` unchanged on the dissimilar path and a
+                    # computed one on the similar path, so it is only ever None while it has not
+                    # been needed yet.
+                    fl_distance1, dmat1, conf, similar = converter.compare_confs_fl(
+                        xyz, conf, fl_distance1=fl_distance1, dmat1=dmat1)
                     if not similar:
-                        break
+                        continue
                     if converter.compare_confs(xyz, conf['xyz'], skip_conversion=True, dmat1=dmat1, dmat2=conf['dmat']):
                         exists = True
                         break
                 if xyz is not None and energy is not None:
                     conformer = {'index': len_conformers + len(new_conformers) + len(newest_conformer_list),
                                  'xyz': xyz,
-                                 'FF energy': round(energy, 3),
+                                 'FF energy': energy,
                                  'source': f'Changing dihedrals on most stable conformer, iteration {i}',
                                  'torsion': tor,
+                                 # The seed angle this conformer was generated from, not a measurement
+                                 # of 'xyz' (see change_dihedrals_and_force_field_it).
                                  'dihedral': round(dihedral, 2),
                                  'dmat': dmat1,
                                  'fl_distance': fl_distance1}
@@ -559,14 +569,14 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                          'fl_distance': fl_distance1})
         new_conformers.extend(newest_conformer_list)
         if not newest_conformer_list:
-            newest_conformer_list = [lowest_conf_i]
-        lowest_conf_i = get_lowest_confs(label, newest_conformer_list, n=1)[0]
-        if lowest_conf_i['FF energy'] == base_energy \
-                and converter.compare_confs(lowest_conf_i['xyz'], base_xyz):
             break
-        elif lowest_conf_i['FF energy'] < base_energy:
+        lowest_conf_i = get_lowest_confs(label, newest_conformer_list, n=1)[0]
+        if lowest_conf_i['FF energy'] < base_energy - BASE_CONFORMER_ENERGY_TOL:
             base_energy = lowest_conf_i['FF energy']
-    if plot_path is not None:
+            base_xyz = lowest_conf_i['xyz']
+        else:
+            break
+    if plot_path is not None and lowest_conf_i is not None:
         logger.info(converter.xyz_to_str(lowest_conf_i['xyz']))
         arc.plotter.draw_structure(xyz=lowest_conf_i['xyz'])
         num_comb = arc.plotter.plot_torsion_angles(torsion_angles, multiple_sampling_points_dict,
@@ -578,8 +588,8 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
             else:
                 num_comb_str = str(num_comb)
             logger.info(f'Number of conformer combinations for {label} after reduction: {num_comb_str}')
-    if de_threshold is not None:
-        min_e = min([conf['FF energy'] for conf in new_conformers])
+    if de_threshold is not None and new_conformers:
+        min_e = min(conf['FF energy'] for conf in new_conformers)
         new_conformers = [conf for conf in new_conformers if conf['FF energy'] - min_e < de_threshold]
     if len(new_conformers) == 0 and len(new_conformers_no_energy) > 0:
         return new_conformers_no_energy
@@ -611,7 +621,7 @@ def generate_all_combinations(label, mol, base_xyz, multiple_tors, multiple_samp
 
     if multiple_tors:
         xyzs, energies = change_dihedrals_and_force_field_it(label, mol, xyz=base_xyz, torsions=multiple_tors,
-                                                             new_dihedrals=product_combinations, optimize=True,
+                                                             new_dihedrals=product_combinations,
                                                              force_field=force_field)
         for xyz, energy in zip(xyzs, energies):
             if xyz is not None:
@@ -712,7 +722,8 @@ def generate_force_field_conformers(label,
     return conformers
 
 
-def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals, optimize=True, force_field='MMFF94s'):
+def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals, optimize=None,
+                                        force_field='MMFF94s'):
     """
     Change dihedrals of specified torsions according to the new dihedrals specified, and get FF energies.
 
@@ -726,13 +737,22 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
     generated conformer are kept.
     We assume that each list entry in new_dihedrals is of the length of the torsions list (2 in the example).
 
+    Note that each requested dihedral is a *seed* for the force field minimization, not a constraint: the
+    torsion is set rigidly and the resulting geometry is then relaxed, so the returned conformer's actual
+    dihedral may differ from the requested one (the minimum of a torsional well does not generally sit on
+    the sampling grid). The returned xyz and energy always describe the same relaxed structure.
+
     Args:
         label (str): The species' label.
         mol (Molecule): The RMG molecule with the connectivity information.
         xyz (dict): The base 3D geometry to be changed.
         torsions (list): Entries are torsion tuples for which the dihedral will be changed relative to xyz.
         new_dihedrals (list): Entries are same size lists of dihedral angles (floats) corresponding to the torsions.
-        optimize (bool, optional): Whether to optimize the coordinates using FF. True to optimize.
+        optimize (bool, optional): Deprecated and ignored. Kept only so that legacy positional calls
+                                   (which used to bind this argument to the removed ``optimize`` parameter)
+                                   do not silently corrupt ``force_field``. The returned geometry is always
+                                   the FF-optimized one, matching the returned energy. If a caller passes a
+                                   value explicitly, a deprecation warning is logged.
         force_field (str, optional): The type of force field to use.
 
     Returns:
@@ -740,6 +760,9 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
             - The conformer FF energies corresponding to the list of dihedrals.
             - The conformer xyz geometries corresponding to the list of dihedrals.
     """
+    if optimize is not None:
+        logger.warning('The "optimize" argument of change_dihedrals_and_force_field_it is deprecated and ignored; '
+                       'the returned geometry is always FF-optimized to match the returned energy.')
     if isinstance(xyz, str):
         xyz = converter.str_to_xyz(xyz)
 
@@ -766,10 +789,7 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
                                                 force_field=force_field, suppress_warning=True)
         if energy and xyz_:
             energies.append(energy[0])
-            if optimize:
-                xyzs.append(xyz_[0])
-            else:
-                xyzs.append(xyz_dihedrals)
+            xyzs.append(xyz_[0])
         else:
             energies.append(None)
             xyzs.append(xyz_dihedrals)
@@ -1092,7 +1112,7 @@ def get_lowest_confs(label: str,
         label (str): The species' label.
         confs (dict, list): Entries are either conformer dictionaries or a length two list of xyz coordinates and energy
         n (int, optional): Number of lowest conformers to return.
-        e (float, optional): The energy threshold above the lowest energy conformer in kJ/mol
+        e (float, optional): The energy threshold above the lowest energy conformer in kcal/mol
                              below which all conformers will be returned.
         energy (str, optional): The energy attribute to search by. Currently only 'FF energy' is supported.
 
@@ -1207,7 +1227,7 @@ def get_force_field_energies(label: str,
     Returns:
         tuple[list, list]:
             - Entries are xyz coordinates, each in a dict format.
-            - Entries are the FF energies (in kJ/mol).
+            - Entries are the FF energies (in kcal/mol).
     """
     xyzs, energies = list(), list()
     if force_field.lower() in ['mmff94', 'mmff94s', 'uff']:
@@ -1251,7 +1271,7 @@ def openbabel_force_field_on_rdkit_conformers(label, rd_mol, force_field='MMFF94
     Returns:
         tuple[list, list]:
             - Entries are optimized xyz's in a dictionary format.
-            - Entries are float numbers representing the energies (in kJ/mol).
+            - Entries are float numbers representing the energies (in kcal/mol).
     """
     xyzs, energies = list(), list()
     if not rd_mol.GetNumConformers():
@@ -1309,7 +1329,7 @@ def mix_rdkit_and_openbabel_force_field(label,
     Returns:
         tuple[list, list]:
             - Entries are optimized xyz's in a list format.
-            - Entries are float numbers representing the energies in kJ/mol.
+            - Entries are float numbers representing the energies in kcal/mol.
     """
     xyzs, energies = list(), list()
     rd_mol = embed_rdkit(label, mol, num_confs=num_confs, xyz=xyz)
@@ -1355,7 +1375,7 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
     Returns:
         tuple[list, list]:
             - Entries are optimized xyz's in a list format.
-            - Entries are float numbers representing the energies in kJ/mol.
+            - Entries are float numbers representing the energies in kcal/mol.
     """
     xyzs, energies = list(), list()
     ff = ob.OBForceField.FindForceField(force_field)
@@ -1460,7 +1480,7 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
                              f'Got {type(mol)} for {label}')
     if num_confs is not None:
         try:
-            Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
+            AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
         except:
             logger.warning(f'Could not embed conformers using RDKit for {label}')
             return None
@@ -1557,35 +1577,43 @@ def rdkit_force_field(label: str,
     xyzs, energies = list(), list()
     if rd_mol is None:
         return xyzs, energies
+    mol_properties = AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field)
     for i in range(rd_mol.GetNumConformers()):
+        optimization_failed = False
         if optimize:
             v, j = 1, 0
             while v == 1 and j < 200:  # v == 1: continue, v == 0: enough steps, v == -1: unable to set up
                 try:
-                    v = Chem.AllChem.MMFFOptimizeMolecule(rd_mol,
-                                                          mmffVariant=force_field,
-                                                          confId=i,
-                                                          maxIters=500,
-                                                          ignoreInterfragInteractions=False,
-                                                          )
-                except:
-                    pass
+                    v = AllChem.MMFFOptimizeMolecule(rd_mol,
+                                                     mmffVariant=force_field,
+                                                     confId=i,
+                                                     maxIters=500,
+                                                     ignoreInterfragInteractions=False,
+                                                     )
+                except (RuntimeError, ValueError) as e:
+                    logger.debug(f'MMFF optimization failed for {label} conformer {i}: {e}')
+                    optimization_failed = True
+                    break
                 else:
                     j += 1
-        mol_properties = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field)
+        if optimize and optimization_failed:
+            # The FF optimization did not run to completion, skip this conformer so it does not get reported
+            # as optimized; the UFF/OpenBabel fallback below may still pick it up if all conformers fail.
+            continue
         if mol_properties is not None:
-            ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, mol_properties, confId=i)
-            if optimize:
-                energies.append(ff.CalcEnergy())
-            xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
+            ff = AllChem.MMFFGetMoleculeForceField(rd_mol, mol_properties, confId=i)
+            if not optimize or ff is not None:
+                if optimize:
+                    energies.append(ff.CalcEnergy())
+                xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
     if not len(xyzs) and 'MMFF' in force_field and try_uff:
         output = None
         if optimize:
             try:
-                output = Chem.AllChem.UFFOptimizeMoleculeConfs(rd_mol,
-                                                               maxIters=200,
-                                                               ignoreInterfragInteractions=True,
-                                                               )
+                output = AllChem.UFFOptimizeMoleculeConfs(rd_mol,
+                                                          maxIters=200,
+                                                          ignoreInterfragInteractions=True,
+                                                          )
             except (RuntimeError, ValueError):
                 if try_ob:
                     logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers '
@@ -1596,10 +1624,18 @@ def rdkit_force_field(label: str,
                                                                                optimize=optimize,
                                                                                )
                     return xyzs, energies
+                logger.warning(f'Both the MMFF and the UFF optimizations failed for {label} and the OpenBabel '
+                               f'fall back is disabled, not reporting any conformers.')
+                return xyzs, energies
         for i in range(rd_mol.GetNumConformers()):
-            if output is not None and output[i][0] == 0:  # The optimization converged.
+            if output is None:
+                # Optimization was not requested, so there are no energies to report;
+                # keep all conformer geometries. A failed optimization returns above instead,
+                # so that unoptimized geometries are never reported as optimized ones.
+                xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
+            elif output[i][0] == 0:  # The optimization converged.
                 energies.append(output[i][1])
-            xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
+                xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
     return xyzs, energies
 
 
