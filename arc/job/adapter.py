@@ -589,9 +589,9 @@ class JobAdapter(ABC):
         self.cpu_cores = self.cpu_cores or job_cpu_cores
         max_mem = servers[self.server].get('memory', None) if self.server is not None else 32.0  # Max memory per node in GB.
         job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
-        if max_mem is not None and self.job_memory_gb > max_mem * job_max_server_node_memory_allocation:
+        if max_mem is not None and self.job_memory_gb >= max_mem * job_max_server_node_memory_allocation:
             logger.warning(f'The memory for job {self.job_name} using {self.job_adapter} ({self.job_memory_gb} GB) '
-                           f'exceeds {100 * job_max_server_node_memory_allocation}% of the the maximum node memory on '
+                           f'reaches {100 * job_max_server_node_memory_allocation}% of the the maximum node memory on '
                            f'{self.server}. Setting it to {job_max_server_node_memory_allocation * max_mem:.2f} GB.')
             self.job_memory_gb = job_max_server_node_memory_allocation * max_mem
             total_submit_script_memory_mib = math.ceil(self.job_memory_gb * MEMORY_GB_TO_MIB * CAPPED_JOB_MEMORY_OVERHEAD)

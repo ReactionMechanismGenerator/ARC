@@ -22,7 +22,8 @@ from arc.job.adapters.gaussian import GaussianAdapter
 from arc.level import Level
 from arc.species import ARCSpecies
 
-servers, submit_filenames = settings['servers'], settings['submit_filenames']
+default_job_settings, servers, submit_filenames = \
+    settings['default_job_settings'], settings['servers'], settings['submit_filenames']
 
 
 class TestEnumerationClasses(unittest.TestCase):
@@ -248,6 +249,23 @@ class TestJobAdapter(unittest.TestCase):
         self.job_4.set_cpu_and_mem()
         expected_memory = math.ceil(14 * 1024 * 1.1)
         self.assertEqual(self.job_4.submit_script_memory, expected_memory)
+        self.job_4.server = 'local'
+
+        capped_memory_gb = servers['server2']['memory'] \
+            * default_job_settings['job_max_server_node_memory_allocation']
+        original_job_memory_gb = self.job_4.job_memory_gb
+        self.addCleanup(setattr, self.job_4, 'job_memory_gb', original_job_memory_gb)
+        self.addCleanup(setattr, self.job_4, 'server', 'local')
+        self.job_4.server = 'server2'
+        self.job_4.cpu_cores = None
+        self.job_4.job_memory_gb = capped_memory_gb
+        self.job_4.set_cpu_and_mem()
+        self.assertEqual(self.job_4.job_memory_gb, capped_memory_gb)
+        self.assertEqual(self.job_4.submit_script_memory_mib, math.ceil(capped_memory_gb * 1024 * 1.05))
+        self.assertLess(self.job_4.submit_script_memory_mib, servers['server2']['memory'] * 1024)
+        self.assertIn('max_total_job_memory', self.job_4.job_status[1]['keywords'])
+        self.job_4.job_status[1]['keywords'].remove('max_total_job_memory')
+        self.job_4.job_memory_gb = original_job_memory_gb
         self.job_4.server = 'local'
 
     def test_set_file_paths(self):
