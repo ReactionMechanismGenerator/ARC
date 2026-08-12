@@ -87,6 +87,7 @@ class TestARC(unittest.TestCase):
                                           'openbabel': ['local'],
                                           'orca': ['local'],
                                           'orca_neb': ['local'],
+                                          'pyscf': ['local'],
                                           'qchem': ['server1'],
                                           'rits': ['local'],
                                           'terachem': ['server1'],

@@ -125,6 +125,51 @@ submitted using the configured scheduler and submit template.
        'xtb': 'local',
    }
 
+Run PySCF In-Core (Queueless)
+-----------------------------
+
+PySCF is supported as a local, **in-core** ESS: ARC calls it in-process on the machine ARC runs
+on, with no external scheduler. This is aimed at workstations that have no queueing system.
+
+Install PySCF into its dedicated ``pyscf_env`` environment with the bundled script (also wired
+into ``devtools/install_all.sh``). ARC discovers the environment via ``find_executable('pyscf_env')``:
+
+.. code-block:: bash
+
+   bash devtools/install_pyscf.sh            # CPU baseline
+   bash devtools/install_pyscf.sh --cuda     # additionally install the gpu4pyscf GPU stack
+
+To run PySCF jobs, set the reserved ``local`` server's ``cluster_soft`` to ``'local'`` (no queue)
+and route ``pyscf`` to it. When ``cluster_soft`` is ``'local'``, the server's ``cpus`` is a single
+machine-wide CPU budget: it caps the cores any one in-core job may use and bounds the local worker
+pool. Set it below the physical core count to leave headroom:
+
+.. code-block:: python
+
+   servers = {
+       'local': {
+           'cluster_soft': 'local',   # no queueing system
+           'un': 'my_user',
+           'cpus': 12,                # machine-wide CPU budget (e.g. on a 16-core box)
+       },
+   }
+
+   global_ess_settings = {
+       'pyscf': 'local',
+   }
+
+Supported job types are single-point energy (``sp``), geometry optimization (``opt``), and
+frequencies (``freq``). A few things to know:
+
+* **GPU**: after installing with ``--cuda``, select the GPU globally by setting
+  ``PYSCF_DEVICE = 'gpu'`` in ``settings.py``, or per job via the ``args`` keyword
+  ``{'keyword': {'device': 'gpu'}}``. The GPU stack (gpu4pyscf) is pinned to a version that avoids
+  a known upstream Hessian regression, so GPU ``freq`` jobs are supported.
+* **Method and basis** always come from the job's level of theory. If an ``args`` keyword tries to
+  set a conflicting ``method`` or ``basis``, it is ignored (with a warning) so the computed result
+  matches the level ARC records.
+* If a PySCF job is ever routed to a queue, it transparently falls back to in-core execution.
+
 Run over SSH
 ------------
 

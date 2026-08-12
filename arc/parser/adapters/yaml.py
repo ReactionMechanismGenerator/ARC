@@ -26,12 +26,17 @@ class YAMLParser(ESSAdapter, ABC):
 
     def logfile_contains_errors(self) -> str | None:
         """
-        Check if the TeraChem log file contains any errors.
+        Check if the YAML output file reports a failed in-core ESS job.
+
+        In-core adapters (e.g. PySCF) set ``success: false`` and populate ``error`` when the
+        local job crashes, so a failed run is not silently treated as done. Producers that do
+        not emit ``success`` (e.g. legacy ASE/TorchANI output) are unaffected.
 
         Returns: str | None
-            None if no errors, else error message string.
+            None if no errors, else the error message string.
         """
-        # YAML files don't contain runtime errors like ESS logs.
+        if self.data.get('success') is False:
+            return self.data.get('error') or 'The in-core ESS job reported a failure.'
         return None
 
     def parse_geometry(self) -> dict[str, tuple] | None:

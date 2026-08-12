@@ -64,8 +64,16 @@ servers = {
         'un': '<username>',
         'key': 'path_to_rsa_key',
     },
+    # The machine ARC itself runs on. A 'local' server entry is required for any ESS that runs
+    # in-core (e.g., 'pyscf'), since ARC validates every ESS's server against this dictionary.
+    # Set 'cluster_soft' to 'local' on a workstation with no queueing system: jobs then run
+    # in-core or as a local pipe worker pool rather than being submitted to a queue.
+    # When 'cluster_soft' is 'local', 'cpus' is the single machine-wide CPU budget: it both caps
+    # the cores any one in-core job may use and bounds the local worker pool (workers x cores/worker
+    # <= cpus). Set it below the physical core count to leave headroom (e.g., 'cpus': 12 on a
+    # 16-core box). 'pipe_settings['local_max_workers']' can override the derived worker count.
     'local': {
-        'cluster_soft': 'HTCondor',
+        'cluster_soft': 'HTCondor',  # or 'Slurm'/'PBS'/'OGE'/'SGE', or 'local' if there is no queue
         'un': '<username>',
         'cpus': 48,
         'queues': {'':''},  # {'queue_name':'HH:MM:SS'}
@@ -93,10 +101,11 @@ global_ess_settings = {
     'openbabel': 'local',
     'orca_neb': 'local',
     'ase': 'local',
+    'pyscf': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase']
+supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase', 'pyscf']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 # Note: 'goflow' and 'rits' are intentionally NOT in the default — their envs
@@ -132,6 +141,9 @@ levels_ess = {
     'xtb': ['xtb', 'gfn'],
     'torchani': ['torchani'],
     'openbabel': ['mmff94s', 'mmff94', 'gaff', 'uff', 'ghemical'],
+    # Note: 'pyscf' is deliberately not listed here. Adding a phrase such as 'wb97m-v' would
+    # silently re-route levels that currently run on QChem/Gaussian to the local PySCF adapter.
+    # PySCF is opt-in: request it explicitly (e.g. Level(..., software='pyscf')).
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
@@ -181,6 +193,7 @@ input_filenames = {'ase': 'input.yml',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
                    'xtb': 'input.sh',
+                   'pyscf': 'input.yml',
                    }
 
 output_filenames = {'ase': 'output.yml',
@@ -199,6 +212,7 @@ output_filenames = {'ase': 'output.yml',
                     'torchani': 'output.yml',
                     'xtb': 'output.out',
                     'openbabel':'output.yml',
+                    'pyscf': 'output.yml',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
@@ -340,6 +354,13 @@ pipe_settings = {
     'enabled': False,          # Set to True to enable pipe mode (it is off by default, use it for large compute campaigns).
     'min_tasks': 10,           # Minimum batch size to trigger pipe mode.
     'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
+    'run_locally': False,      # Run the pipe array as a local pool of worker processes instead of
+                               # submitting it to a queue. Use on a workstation with no queueing
+                               # system (e.g., to parallelize local PySCF jobs).
+    'local_max_workers': None, # Concurrent local workers. None derives a limit from the local CPU
+                               # budget (the 'local' server's 'cpus') and available memory. Set an
+                               # int to override; note an explicit value wins outright and can exceed
+                               # the CPU budget, so total cores may pass servers['local']['cpus'].
     'max_attempts': 3,         # Retry budget per task before terminal failure.
     'lease_duration_hrs': 1,   # Worker lease duration in hours (default 1h).
     'env_setup': {},           # Engine-specific shell setup commands, e.g.,
@@ -426,6 +447,10 @@ GOFLOW_PYTHON = find_executable('goflow_env')
 RITS_PYTHON = find_executable('rits_env')
 ARC_PYTHON = find_executable('arc_env')
 XTB_PYTHON = find_executable('xtb_env')
+PYSCF_PYTHON = find_executable('pyscf_env')
+# Device PySCF runs on: 'cpu', or 'gpu' to use an NVIDIA GPU via gpu4pyscf (which must be
+# installed in pyscf_env). Closed-shell analytic Hessians always fall back to the CPU.
+PYSCF_DEVICE = 'cpu'
 RMG_ENV_NAME = 'rmg_env'
 RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')

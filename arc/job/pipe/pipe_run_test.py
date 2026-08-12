@@ -11,16 +11,18 @@ import shutil
 import tempfile
 import time
 import unittest
+from unittest import mock
 
+import arc.job.pipe.pipe_run as pipe_run_module
 from arc.job.adapters.mockter import MockAdapter
 from arc.job.pipe.pipe_state import TaskState, PipeRunState, TaskSpec, read_task_state, update_task_state
-from arc.job.pipe.pipe_run import PipeRun
+from arc.job.pipe.pipe_run import PipeRun, local_cpu_budget, local_worker_limit, worker_cpu_cores
 from arc.level import Level
 from arc.species import ARCSpecies
 
 
 def _make_spec(task_id, label='H2O', smiles='O', task_family='conf_opt',
-               engine='mockter', level=None):
+               engine='mockter', level=None, required_cores=1, required_memory_mb=512):
     """Helper to create a TaskSpec for testing."""
     spc = ARCSpecies(label=label, smiles=smiles)
     return TaskSpec(
@@ -31,8 +33,8 @@ def _make_spec(task_id, label='H2O', smiles='O', task_family='conf_opt',
         input_fingerprint=f'{task_id}_fp',
         engine=engine,
         level=level or {'method': 'mock', 'basis': 'mock'},
-        required_cores=1,
-        required_memory_mb=512,
+        required_cores=required_cores,
+        required_memory_mb=required_memory_mb,
         input_payload={'species_dicts': [spc.as_dict()]},
         ingestion_metadata={'conformer_index': 0},
     )
@@ -169,6 +171,56 @@ class TestPipeRunWriteSubmitScript(unittest.TestCase):
         with open(path) as f:
             content = f.read()
         self.assertIn('queue 12', content)
+
+    def test_local_content(self):
+        """A local pipe run renders a plain background worker pool, with no queue directives."""
+        run = self._make_run('local', max_workers=4, n_tasks=4)
+        path = run.write_submit_script()
+        self.assertEqual(os.path.basename(path), 'submit.sh')
+        with open(path) as f:
+            content = f.read()
+        self.assertIn('-m arc.scripts.pipe_worker', content)
+        self.assertIn('for WORKER_ID in $(seq 1', content)
+        self.assertIn('wait', content)
+        self.assertIn('export OMP_NUM_THREADS=', content)
+        self.assertIn('export ARC_PIPE_LOCAL_CPUS=', content)  # carries the capped budget to the worker
+        self.assertNotIn('#SBATCH', content)
+        self.assertNotIn('#PBS', content)
+
+    def test_queue_scripts_do_not_export_local_worker_cpus(self):
+        """Only the local template sets ARC_PIPE_LOCAL_CPUS, so queued workers keep ARC's default cores."""
+        for soft in ('slurm', 'pbs', 'sge', 'htcondor'):
+            tasks = [_make_spec(f't_{i}') for i in range(4)]
+            run = PipeRun(project_directory=self.tmpdir, run_id=f'sub_{soft}',
+                          tasks=tasks, cluster_software=soft, max_workers=4)
+            run.stage()
+            with open(run.write_submit_script()) as f:
+                self.assertNotIn('ARC_PIPE_LOCAL_CPUS', f.read())
+
+    def test_local_worker_count_is_capped_by_machine(self):
+        """The local pool never exceeds what the machine can run concurrently."""
+        run = self._make_run('local', max_workers=1000, n_tasks=1000)
+        _, _, array_size = run._submission_resources()
+        self.assertLessEqual(array_size, local_worker_limit(run.tasks[0].required_cores,
+                                                            run.tasks[0].required_memory_mb))
+        self.assertGreaterEqual(array_size, 1)
+
+    def test_local_per_worker_cores_capped_by_cpu_budget(self):
+        """A worker asking for more cores than the local CPU budget is capped at the budget.
+
+        Otherwise a single worker's OMP/MKL/OPENBLAS thread exports would exceed the budget.
+        """
+        tasks = [_make_spec(f't{i}', required_cores=8) for i in range(4)]
+        run = PipeRun(project_directory=self.tmpdir, run_id='budget_cap',
+                      tasks=tasks, cluster_software='local', max_workers=4)
+        run.stage()
+        servers = {'local': {'cluster_soft': 'local', 'cpus': 4}}
+        pipe = {'local_max_workers': None}
+        with mock.patch.object(pipe_run_module, 'servers_dict', servers), \
+                mock.patch.dict(pipe_run_module.settings, {'pipe_settings': pipe, 'servers': servers}):
+            cpus, _, array_size = run._submission_resources()
+        self.assertEqual(cpus, 4)                  # capped from 8 down to the 4-core budget
+        self.assertLessEqual(cpus * array_size, 4)  # workers x cores stays within the budget
 
     def test_overwrite_is_safe(self):
         run = self._make_run('slurm')
@@ -577,6 +629,80 @@ class TestPipeRunHomogeneity(unittest.TestCase):
         restored = PipeRun.from_dir(run.pipe_root)
         self.assertEqual(len(restored.tasks), 2)
         self.assertEqual(restored.tasks[0].task_family, 'rotor_scan_1d')
+
+
+class TestLocalCpuBudget(unittest.TestCase):
+    """Unit tests for the single global local CPU budget and how it sizes the local worker pool."""
+
+    def test_local_cpu_budget_reads_local_server_cpus(self):
+        """The budget is the 'cpus' of the server whose cluster_soft is 'local'."""
+        servers = {'local': {'cluster_soft': 'local', 'cpus': 12, 'memory': 32}}
+        with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+            self.assertEqual(local_cpu_budget(), 12)
+
+    def test_local_cpu_budget_falls_back_to_machine_cores(self):
+        """Without a local server 'cpus', the budget falls back to the physical core count."""
+        servers = {'zeus': {'cluster_soft': 'pbs', 'cpus': 24}}
+        with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+            self.assertEqual(local_cpu_budget(), max(1, os.cpu_count() or 1))
+
+    def test_local_cpu_budget_prefers_server_named_local(self):
+        """When several servers are 'local', the one named 'local' wins (matches the submit script)."""
+        servers = {'workstation': {'cluster_soft': 'local', 'cpus': 64},
+                   'local': {'cluster_soft': 'local', 'cpus': 12}}
+        with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+            self.assertEqual(local_cpu_budget(), 12)
+
+    def test_local_cpu_budget_uses_first_local_when_none_named_local(self):
+        """If no server is named 'local', the first server with cluster_soft 'local' is used."""
+        servers = {'workstation': {'cluster_soft': 'local', 'cpus': 16}}
+        with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+            self.assertEqual(local_cpu_budget(), 16)
+
+    def test_local_cpu_budget_tolerates_whitespace_and_case(self):
+        """'cluster_soft' matching ignores surrounding whitespace and case."""
+        servers = {'local': {'cluster_soft': '  Local ', 'cpus': 8}}
+        with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+            self.assertEqual(local_cpu_budget(), 8)
+
+    def test_local_cpu_budget_rejects_invalid_cpus(self):
+        """A non-positive or non-numeric 'cpus' fails safe to the machine core count, not a crash."""
+        fallback = max(1, os.cpu_count() or 1)
+        for bad in (0, None, -8, 'local'):
+            servers = {'local': {'cluster_soft': 'local', 'cpus': bad}}
+            with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+                self.assertEqual(local_cpu_budget(), fallback)
+
+    def test_local_worker_limit_bounded_by_cpu_budget(self):
+        """The derived worker count is the CPU budget divided by the cores each worker needs."""
+        servers = {'local': {'cluster_soft': 'local', 'cpus': 12}}
+        pipe = {'local_max_workers': None}
+        with mock.patch.object(pipe_run_module, 'servers_dict', servers), \
+                mock.patch.dict(pipe_run_module.settings, {'pipe_settings': pipe, 'servers': servers}):
+            self.assertEqual(local_worker_limit(cpus_per_worker=1, memory_mb_per_worker=0), 12)
+            self.assertEqual(local_worker_limit(cpus_per_worker=4, memory_mb_per_worker=0), 3)
+
+    def test_local_max_workers_overrides_cpu_budget(self):
+        """An explicit local_max_workers wins over the derived CPU budget."""
+        servers = {'local': {'cluster_soft': 'local', 'cpus': 12}}
+        pipe = {'local_max_workers': 4}
+        with mock.patch.object(pipe_run_module, 'servers_dict', servers), \
+                mock.patch.dict(pipe_run_module.settings, {'pipe_settings': pipe, 'servers': servers}):
+            self.assertEqual(local_worker_limit(cpus_per_worker=1, memory_mb_per_worker=0), 4)
+
+    def test_worker_cpu_cores_reads_dedicated_env(self):
+        """A local worker pins its job to the budget-capped cores exported as ARC_PIPE_LOCAL_CPUS."""
+        self.assertEqual(worker_cpu_cores({'ARC_PIPE_LOCAL_CPUS': '4'}), 4)
+        self.assertEqual(worker_cpu_cores({'ARC_PIPE_LOCAL_CPUS': '4,1'}), 4)
+
+    def test_worker_cpu_cores_ignores_ambient_omp(self):
+        """A queued worker (no ARC_PIPE_LOCAL_CPUS) never picks up an ambient OMP_NUM_THREADS."""
+        self.assertIsNone(worker_cpu_cores({'OMP_NUM_THREADS': '64'}))
+
+    def test_worker_cpu_cores_falls_back_to_none(self):
+        """Unset or unparseable value yields None, so the caller uses ARC's default allocation."""
+        for env in ({}, {'ARC_PIPE_LOCAL_CPUS': ''}, {'ARC_PIPE_LOCAL_CPUS': '0'}, {'ARC_PIPE_LOCAL_CPUS': 'abc'}):
+            self.assertIsNone(worker_cpu_cores(env))
 
 
 if __name__ == '__main__':

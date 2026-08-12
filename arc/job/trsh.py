@@ -16,7 +16,8 @@ from arc.common import (check_torsion_change,
                         get_number_with_ordinal_indicator,
                         is_same_pivot,
                         is_same_sequence_sublist,
-                        is_str_float
+                        is_str_float,
+                        read_yaml_file
                         )
 from arc.exceptions import InputError, SpeciesError, TrshError
 from arc.imports import settings
@@ -75,6 +76,9 @@ def determine_ess_status(output_path: str,
 
     if software is None:
         software = determine_ess(log_file_path=output_path)
+
+    if output_path.endswith('.yml'):
+        return determine_ess_status_from_yaml(output_path=output_path)
 
     keywords, error, = list(), ''
     with open(output_path, 'r') as f:
@@ -482,6 +486,42 @@ def determine_ess_status(output_path: str,
             return 'errored', keywords, error, line
 
     return '', list(), '', ''
+
+
+def determine_ess_status_from_yaml(output_path: str) -> tuple[str, list[str], str, str]:
+    """
+    Determine the status of a job run by an in-core ESS adapter that reports results via YAML.
+
+    In-core adapters (e.g., 'ase', 'pyscf', 'torchani') hand off results in ARC's internal schema
+    rather than writing a text log, so the textual error signatures used for the queue-based ESS
+    software do not apply.
+
+    Two conventions are supported. An adapter that reports an explicit ``success`` key (e.g., 'pyscf')
+    is taken at its word. The older adapters ('ase', 'torchani', 'openbabel') omit ``success`` and
+    write an ``error`` key only when something goes wrong, so for those the absence of an error means
+    the job is done -- treating a missing ``success`` as failure would mark every one of their
+    successful jobs as errored.
+
+    Args:
+        output_path (str): The path to the adapter's output.yml file.
+
+    Returns: tuple[str, list[str], str, str]
+        - The status, either 'done' or 'errored'.
+        - The standardized error keywords.
+        - A description of the error.
+        - The parsed line indicating the error (always empty for a YAML output).
+    """
+    content = read_yaml_file(path=output_path)
+    if not isinstance(content, dict):
+        return 'errored', ['NoOutput'], f'Could not read {output_path}', ''
+    error = content.get('error')
+    if 'success' in content:
+        if content['success']:
+            return 'done', list(), '', ''
+        return 'errored', ['Unknown'], error or 'The in-core ESS job did not report success.', ''
+    if error:
+        return 'errored', ['Unknown'], error, ''
+    return 'done', list(), '', ''
 
 
 def determine_job_log_memory_issues(job_log: str | None = None) -> tuple[list[str], str, str]:

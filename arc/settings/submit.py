@@ -102,6 +102,26 @@ error = {pipe_root}/err_$(Process).txt
 log = {pipe_root}/condor.log
 queue {max_task_num}
 """,
+    # No queueing system: run the array locally as a pool of background worker processes.
+    # Pipe workers claim tasks from the shared pipe root themselves, so plain concurrent
+    # workers reproduce array semantics without a scheduler. Each worker is pinned to
+    # {cpus} threads so the pool cannot oversubscribe the machine.
+    'local': """#!/bin/bash
+
+export OMP_NUM_THREADS={cpus}
+export MKL_NUM_THREADS={cpus}
+export OPENBLAS_NUM_THREADS={cpus}
+
+for WORKER_ID in $(seq 1 {max_task_num}); do
+    (
+{env_setup}
+        export ARC_PIPE_LOCAL_CPUS={cpus}
+        {python_exe} -m arc.scripts.pipe_worker --pipe_root {pipe_root} --worker_id $WORKER_ID
+    ) > {pipe_root}/out_$WORKER_ID.txt 2> {pipe_root}/err_$WORKER_ID.txt &
+done
+
+wait
+""",
 }
 
 
