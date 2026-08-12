@@ -19,6 +19,7 @@ from arc.constants import E_h_kJmol
 from arc.imports import settings
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
+from arc.level import get_freq_scale_factor_key
 from arc.parser.parser import parse_1d_scan_energies, parse_e_elect, parse_ess_version, parse_opt_steps, parse_zpe_correction
 from arc.species.converter import xyz_to_str
 from arc.statmech.arkane import (
@@ -188,8 +189,7 @@ def _resolve_freq_scale_factor_source(freq_level) -> str | None:
 
     sources = data.get('sources', {})
     factors = data.get('freq_scale_factors', {})
-    level_key = str(freq_level) if not isinstance(freq_level, str) else freq_level
-    entry = factors.get(level_key)
+    entry = factors.get(get_freq_scale_factor_key(freq_level))
     if not isinstance(entry, dict):
         return None
     source_key = entry.get('source')
