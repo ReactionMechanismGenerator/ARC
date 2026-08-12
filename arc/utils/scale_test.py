@@ -12,10 +12,12 @@ import unittest
 
 from arc.common import almost_equal_coords_lists
 from arc.level import Level
-from arc.utils.scale import (calculate_truhlar_scaling_factors,
+from arc.utils.scale import (MAX_RENAMED_LEVEL_LENGTH,
+                             calculate_truhlar_scaling_factors,
                              get_species_list,
                              rename_level,
                              summarize_results,
+                             valid_chars,
                              )
 
 
@@ -121,6 +123,29 @@ class TestScale(unittest.TestCase):
         self.assertEqual(renamed_level1, 'b3lyp_6-311pGss')
         self.assertEqual(renamed_level2, 'wb97xd_6-311pGb2d,2pb')
         self.assertEqual(renamed_level3, 'wb97xd_aug-ccpZQZ,_solvation_method.._SMD,_solvent.._DMSO,_software.._gaussian')
+
+    def test_rename_level_sanitizes_args(self):
+        """Test that rename_level() maps the characters an args-carrying level contributes onto valid ones."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='orca',
+                      args={'block': {'general': '%scf\nMaxIter 500\nend'}})
+        renamed_level = rename_level(str(level))
+        for char in renamed_level:
+            self.assertIn(char, valid_chars)
+        self.assertNotIn(os.sep, renamed_level)
+        self.assertEqual(rename_level("a/b, keyword args: {'general': '$(rm -rf ~)'}"),
+                         'a_b,_keyword_args..___general_..___brm_-rf__b__')
+
+    def test_rename_level_bounds_long_names(self):
+        """Test that a long args-carrying level yields a bounded folder name that stays distinct from a sibling"""
+        levels = [Level(method='wb97xd', basis='def2tzvp', software='orca',
+                        args={'block': {'general': f'%scf\n{"MaxIter 500 " * 40}{suffix}\nend'}})
+                  for suffix in ('{', '}')]
+        names = [rename_level(str(level)) for level in levels]
+        for name in names:
+            self.assertLessEqual(len(('scaling_' + name).encode()), 255)
+            self.assertLessEqual(len(name), MAX_RENAMED_LEVEL_LENGTH)
+        self.assertNotEqual(names[0], names[1])
+        self.assertEqual(names[0], rename_level(str(levels[0])))
 
 
 if __name__ == '__main__':

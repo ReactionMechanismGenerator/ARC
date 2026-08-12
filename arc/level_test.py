@@ -10,7 +10,11 @@ import unittest
 from unittest import mock
 
 from arc.common import ARC_PATH, read_yaml_file
-from arc.level import Level, assign_frequency_scale_factor, get_freq_level_for_composite_method
+from arc.level import (Level,
+                       assign_frequency_scale_factor,
+                       get_freq_level_for_composite_method,
+                       get_freq_scale_factor_key,
+                       )
 from arc.settings.settings import default_levels_of_theory as repo_default_levels_of_theory
 
 
@@ -161,6 +165,23 @@ class TestLevel(unittest.TestCase):
 
         empty_args = Level(method='wb97xd', basis='def2tzvp')
         self.assertNotIn('args', empty_args.as_dict())
+
+    def test_keyword_args_order_does_not_affect_equality(self):
+        """Test that levels whose keyword args differ only in key order are equal, and whose block args do are not"""
+        level_1 = Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                        args={'keyword': {'opt': 'opt=(verytight)', 'freq': 'freq(noraman)'}})
+        level_2 = Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                        args={'keyword': {'freq': 'freq(noraman)', 'opt': 'opt=(verytight)'}})
+        self.assertEqual(level_1, level_2)
+        self.assertEqual(str(level_1), str(level_2))
+        level_3 = Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                        args={'keyword': {'opt': 'opt=(tight)', 'freq': 'freq(noraman)'}})
+        self.assertNotEqual(level_1, level_3)
+        block_1 = Level(method='wb97xd', basis='def2tzvp', software='molpro',
+                        args={'block': {'1': 'first block', '2': 'second block'}})
+        block_2 = Level(method='wb97xd', basis='def2tzvp', software='molpro',
+                        args={'block': {'2': 'second block', '1': 'first block'}})
+        self.assertNotEqual(block_1, block_2)
 
     def test_copy_preserves_args(self):
         """Test that copy() preserves args populated in only one of the 'keyword'/'block' slots."""
@@ -323,6 +344,61 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(str(Level(basis='def2svp', compatible_ess=['gaussian', 'terachem'],method='wb97xd',
                                    method_type='dft', software='gaussian')), 'wb97xd/def2svp, software: gaussian')
 
+    def test_str_with_args(self):
+        """Test the __str__() method for levels carrying args."""
+        keyword_level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'general': 'IOp(99/33=1)'}})
+        self.assertEqual(str(keyword_level),
+                         "wb97xd/def2tzvp, software: gaussian, keyword args: {'general': 'iop(99/33=1)'}")
+        block_level = Level(method='wb97xd', basis='def2tzvp', args={'block': {'general': '%scf MaxIter 500 end'}})
+        self.assertEqual(str(block_level),
+                         "wb97xd/def2tzvp, software: gaussian, block args: {'general': '%scf maxiter 500 end'}")
+        both_level = Level(method='wb97xd', basis='def2tzvp',
+                           args={'keyword': {'general': 'IOp(99/33=1)'}, 'block': {'general': '%scf MaxIter 500 end'}})
+        self.assertEqual(str(both_level),
+                         "wb97xd/def2tzvp, software: gaussian, keyword args: {'general': 'iop(99/33=1)'}, "
+                         "block args: {'general': '%scf maxiter 500 end'}")
+        self.assertNotEqual(keyword_level, block_level)
+        self.assertNotEqual(keyword_level, Level(method='wb97xd', basis='def2tzvp'))
+
+    def test_str_keeps_year_and_software_version(self):
+        """Test that __str__() retains the year and the software_version."""
+        self.assertEqual(str(Level(method='wb97xd', basis='def2tzvp', year=2023)),
+                         'wb97xd/def2tzvp, year: 2023, software: gaussian')
+        self.assertEqual(str(Level(method='wb97xd', basis='def2tzvp', software_version=16)),
+                         'wb97xd/def2tzvp, software: gaussian, software_version: 16')
+        self.assertNotEqual(Level(method='wb97xd', basis='def2tzvp', year=2023),
+                            Level(method='wb97xd', basis='def2tzvp'))
+        self.assertNotEqual(Level(method='wb97xd', basis='def2tzvp', software_version=16),
+                            Level(method='wb97xd', basis='def2tzvp'))
+
+    def test_get_freq_scale_factor_key(self):
+        """Test the get_freq_scale_factor_key() function."""
+        key = 'wb97xd/def2tzvp, software: gaussian'
+        self.assertEqual(get_freq_scale_factor_key(key), key)
+        self.assertEqual(get_freq_scale_factor_key(Level(method='wb97xd', basis='def2tzvp')), key)
+        self.assertEqual(get_freq_scale_factor_key(Level(method='wb97xd', basis='def2tzvp',
+                                                         args={'keyword': {'general': 'IOp(99/33=1)'}})), key)
+        self.assertEqual(get_freq_scale_factor_key(Level(method='wb97xd', basis='def2tzvp',
+                                                         args={'block': {'general': '%scf MaxIter 500 end'}})), key)
+        self.assertEqual(get_freq_scale_factor_key({'method': 'wb97xd', 'basis': 'def2tzvp',
+                                                    'args': {'keyword': {'general': 'IOp(99/33=1)'}}}), key)
+        self.assertEqual(get_freq_scale_factor_key(Level(method='wb97xd', basis='def2tzvp', solvation_method='smd',
+                                                         solvent='water',
+                                                         args={'keyword': {'general': 'IOp(99/33=1)'}})),
+                         'wb97xd/def2tzvp, solvation_method: smd, solvent: water, software: gaussian')
+
+    def test_get_freq_scale_factor_key_keeps_the_level_identity(self):
+        """Test that get_freq_scale_factor_key() retains every attribute other than args."""
+        self.assertEqual(get_freq_scale_factor_key(Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj')),
+                         'b3lyp/def2tzvp, dispersion: gd3bj, software: gaussian')
+        self.assertEqual(get_freq_scale_factor_key(Level(method='dlpno-ccsd(t)', basis='def2-tzvp',
+                                                         auxiliary_basis='def2-tzvp/c')),
+                         'dlpno-ccsd(t)/def2-tzvp, auxiliary_basis: def2-tzvp/c, software: orca')
+        self.assertEqual(get_freq_scale_factor_key(Level(method='wb97xd', basis='def2tzvp', year=2023,
+                                                         software_version=16,
+                                                         args={'keyword': {'general': 'IOp(99/33=1)'}})),
+                         'wb97xd/def2tzvp, year: 2023, software: gaussian, software_version: 16')
+
     def test_assign_frequency_scale_factor(self):
         """Test the assign_frequency_scale_factor() method."""
         self.assertEqual(assign_frequency_scale_factor(Level(method='CCSD(T)', basis='cc-pvtz')), 0.975)
@@ -415,6 +491,18 @@ class TestLevel(unittest.TestCase):
             with self.assertLogs('arc', level='WARNING') as cm:
                 self.assertEqual(get_freq_level_for_composite_method('g4'), 'B3LYP/CBSB7')
             self.assertIn('predates per-composite frequency levels', ' '.join(cm.output))
+
+    def test_assign_frequency_scale_factor_with_args(self):
+        """Test that assign_frequency_scale_factor() resolves for levels carrying args."""
+        self.assertEqual(assign_frequency_scale_factor(
+            Level(method='wb97xd', basis='Def2TZVP', args={'keyword': {'general': 'IOp(99/33=1)'}})), 0.988)
+        self.assertEqual(assign_frequency_scale_factor(
+            Level(method='wb97xd', basis='Def2TZVP', args={'block': {'general': '%scf MaxIter 500 end'}})), 0.988)
+        self.assertEqual(assign_frequency_scale_factor(
+            Level(method='wb97xd', basis='Def2TZVP', args={'keyword': {'general': 'IOp(99/33=1)'},
+                                                           'block': {'general': '%scf MaxIter 500 end'}})), 0.988)
+        self.assertEqual(assign_frequency_scale_factor(
+            Level(method='CBS-QB3', args={'keyword': {'general': 'IOp(99/33=1)'}})), 1.004)
 
 
 if __name__ == '__main__':

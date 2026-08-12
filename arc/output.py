@@ -35,6 +35,7 @@ from arc.imports import settings
 from arc.job.adapters.common import open_shell_character_source
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
+from arc.level import get_freq_scale_factor_key
 from arc.parser.adapters.gaussian import parse_gaussian_constraints
 from arc.parser.adapters.orca import parse_orca_constraints
 from arc.parser.parser import (
@@ -498,7 +499,7 @@ def _resolve_freq_scale_factor_entry(freq_level) -> tuple[str | None, str | None
     factors = data.get('freq_scale_factors')
     if not isinstance(factors, dict):
         return None, None
-    level_key = freq_level if isinstance(freq_level, str) else str(freq_level)
+    level_key = get_freq_scale_factor_key(freq_level)
     entry = factors.get(level_key)
     if not isinstance(entry, dict):
         return None, None

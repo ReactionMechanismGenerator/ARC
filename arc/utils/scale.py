@@ -5,6 +5,7 @@ Based on DOI: 10.1016/j.cpc.2016.09.004
 Adapted by Duminda Ranasinghe and Alon Grinberg Dana
 """
 
+import hashlib
 import os
 import time
 
@@ -17,7 +18,8 @@ from arc.common import (ARC_PATH,
                         initialize_log,
                         time_lapse,
                         )
-from arc.level import Level
+from arc.imports import settings
+from arc.level import Level, get_freq_scale_factor_key
 from arc.parser.parser import parse_zpe_correction
 from arc.scheduler import Scheduler
 from arc.species.species import ARCSpecies
@@ -29,6 +31,9 @@ except ImportError:
 
 
 logger = get_logger()
+
+valid_chars = settings['valid_chars']
+MAX_RENAMED_LEVEL_LENGTH = 100
 
 HEADER = 'FREQ: A PROGRAM FOR OPTIMIZING SCALE FACTORS (Version 1)\n'\
          '                 written by                 \n'\
@@ -241,7 +246,8 @@ def summarize_results(lambda_zpes: list,
             text += f'(execution time: {execution_time})\n'
             logger.info(text)
             f.write(text)
-            database_formats.append(f"""  '{level}': {harmonic_freq_scaling_factor:.3f},  # [4]\n""")
+            database_formats.append(
+                f"""  '{get_freq_scale_factor_key(level)}': {harmonic_freq_scaling_factor:.3f},  # [4]\n""")
         logger.info(database_text)
         f.write(database_text)
         for database_format in database_formats:
@@ -340,6 +346,7 @@ def get_species_list() -> list:
 def rename_level(level: str) -> str:
     """
     Rename the level of theory so it can be used for folder names.
+    A name longer than ``MAX_RENAMED_LEVEL_LENGTH`` is truncated and suffixed with a hash of the full level string.
 
     Args:
         level (str): The level of theory to be renamed.
@@ -347,6 +354,7 @@ def rename_level(level: str) -> str:
     Returns:
         str: The renamed level of theory
     """
+    original = level
     level = level.replace('/', '_')
     level = level.replace('*', 's')
     level = level.replace('+', 'p')
@@ -355,4 +363,8 @@ def rename_level(level: str) -> str:
     level = level.replace(')', 'b')
     level = level.replace(' ', '_')
     level = level.replace(':', '..')
-    return level
+    renamed = ''.join([char if char in valid_chars else '_' for char in level])
+    if len(renamed) > MAX_RENAMED_LEVEL_LENGTH:
+        digest = hashlib.sha256(original.encode()).hexdigest()[:12]
+        renamed = f'{renamed[:MAX_RENAMED_LEVEL_LENGTH - len(digest) - 1]}_{digest}'
+    return renamed
