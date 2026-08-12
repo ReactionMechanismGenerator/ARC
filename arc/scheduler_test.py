@@ -5,7 +5,9 @@
 This module contains unit tests for the arc.scheduler module
 """
 
+import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 import os
 import shutil
@@ -374,6 +376,225 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                    'methylamine': empty_species_dict,
                                    }
         self.assertEqual(self.sched1.output, initialized_output_dict)
+
+    def test_stability_does_not_gate_convergence(self):
+        """Test that the stability diagnostic never holds a species back from converging"""
+        original_output = self.sched1.output
+        original_job_types = self.sched1.job_types
+        self.addCleanup(setattr, self.sched1, 'output', original_output)
+        self.addCleanup(setattr, self.sched1, 'job_types', original_job_types)
+        self.sched1.output = dict()
+        self.sched1.initialize_output_dict()
+        self.sched1.job_types = dict(original_job_types)
+        self.sched1.job_types['stability'] = True
+        label = 'C2H6'
+
+        self.sched1.output[label]['job_types'] = {job_type: True for job_type in self.sched1.job_types}
+        self.sched1.output[label]['job_types']['stability'] = False
+        self.sched1.output[label]['convergence'] = None
+        self.sched1.check_all_done(label=label)
+        self.assertTrue(self.sched1.output[label]['convergence'],
+                        msg='an unrun stability diagnostic held the species back from converging')
+
+        self.sched1.output[label]['job_types'] = {job_type: True for job_type in self.sched1.job_types}
+        self.sched1.output[label]['job_types']['sp'] = False
+        self.sched1.output[label]['convergence'] = None
+        self.sched1.check_all_done(label=label)
+        self.assertNotEqual(self.sched1.output[label]['convergence'], True,
+                            msg='the stability exemption is over-broad: a missing sp job still converged')
+
+    def test_stability_lookup_survives_a_restart_predating_the_job_type(self):
+        """Test that enabling the diagnostic cannot raise on a restart.yml written without it"""
+        original_output = self.sched1.output
+        original_job_types = self.sched1.job_types
+        self.addCleanup(setattr, self.sched1, 'output', original_output)
+        self.addCleanup(setattr, self.sched1, 'job_types', original_job_types)
+        label = 'C2H6'
+        restart_shaped = {'conf_opt': True, 'opt': True, 'fine': False, 'freq': True, 'sp': True,
+                          'rotors': True, 'orbitals': False, 'lennard_jones': False, 'conf_sp': False,
+                          'composite': False, 'onedmin': False}
+        self.sched1.output = {label: {'job_types': dict(restart_shaped), 'paths': {}, 'convergence': None,
+                                      'conformers': '', 'isomorphism': '', 'restart': '', 'errors': '',
+                                      'warnings': '', 'info': ''}}
+        self.sched1.job_types = dict(restart_shaped)
+        self.sched1.job_types['stability'] = True
+        self.assertNotIn('stability', self.sched1.output[label]['job_types'])
+        self.sched1.check_all_done(label=label)
+        self.assertTrue(self.sched1.output[label]['convergence'])
+
+    def test_errored_orbitals_job_is_still_rerun_on_memory_error(self):
+        """Test that the stability diagnostic did not change how an errored orbitals job is handled"""
+        for job_type, expected_rerun in [('orbitals', True), ('stability', False)]:
+            job = MagicMock()
+            job.job_type = job_type
+            job.job_name = f'{job_type}_a1'
+            job.job_id = 1
+            job.job_memory_gb = 14
+            job.job_status = ['done', {'status': 'errored', 'keywords': ['memory'],
+                                       'error': 'Insufficient job memory'}]
+            self.sched1.running_jobs['C2H6'] = [job.job_name]
+            with patch.object(self.sched1, '_run_a_job') as run_a_job:
+                self.sched1.end_job(job=job, label='C2H6', job_name=job.job_name)
+            self.assertEqual(run_a_job.called, expected_rerun,
+                             msg=f'{job_type} job re-run was {run_a_job.called}, expected {expected_rerun}')
+
+    def _stability_freq_job(self, checkfile, xyz=None, method='wb97xd', adapter='gaussian'):
+        """Build a minimal stand-in for a converged Gaussian freq job."""
+        job = MagicMock()
+        job.job_adapter = adapter
+        job.job_name = 'freq_a1'
+        job.level = Level(method=method, basis='def2-TZVP')
+        job.xyz = xyz if xyz is not None else {'symbols': ('O', 'H'), 'isotopes': (16, 1),
+                                               'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))}
+        job.checkfile = checkfile
+        job.local_path_to_output_file = '/nonexistent/freq.out'
+        return job
+
+    def _prepare_stability_ts(self, label='C2H6', checkfile=None):
+        """Point a scheduler species at a checkfile and enable the stability diagnostic."""
+        original_job_types = self.sched1.job_types
+        original_checkfile = self.sched1.species_dict[label].checkfile
+        original_is_ts = self.sched1.species_dict[label].is_ts
+        original_jobs = self.sched1.job_dict.get(label)
+        self.addCleanup(setattr, self.sched1, 'job_types', original_job_types)
+        self.addCleanup(setattr, self.sched1.species_dict[label], 'checkfile', original_checkfile)
+        self.addCleanup(setattr, self.sched1.species_dict[label], 'is_ts', original_is_ts)
+
+        def _restore_jobs():
+            if original_jobs is None:
+                self.sched1.job_dict.pop(label, None)
+            else:
+                self.sched1.job_dict[label] = original_jobs
+        self.addCleanup(_restore_jobs)
+
+        self.sched1.job_types = dict(original_job_types)
+        self.sched1.job_types['stability'] = True
+        self.sched1.species_dict[label].is_ts = True
+        self.sched1.species_dict[label].checkfile = checkfile
+        self.sched1.job_dict[label] = dict()
+        return label
+
+    def test_stability_job_spawned_from_the_freq_job_state(self):
+        """Test that the stability job takes its level, geometry and checkfile from the freq job"""
+        with tempfile.NamedTemporaryFile(suffix='.chk', delete=False) as f:
+            checkfile = f.name
+        self.addCleanup(lambda: os.path.isfile(checkfile) and os.remove(checkfile))
+        label = self._prepare_stability_ts(checkfile=checkfile)
+        job = self._stability_freq_job(checkfile=checkfile)
+        with patch.object(self.sched1, 'run_job') as run_job:
+            self.sched1.run_stability_job(label=label, freq_job=job)
+        self.assertTrue(run_job.called)
+        kwargs = run_job.call_args.kwargs
+        self.assertEqual(kwargs['job_type'], 'stability')
+        self.assertEqual(kwargs['job_adapter'], 'gaussian')
+        self.assertIs(kwargs['xyz'], job.xyz)
+        self.assertIs(kwargs['level_of_theory'], job.level)
+
+    def test_stability_job_not_spawned_when_checkfile_superseded(self):
+        """Test that a species holding a different checkfile than its freq job is skipped"""
+        with tempfile.NamedTemporaryFile(suffix='.chk', delete=False) as f_old, \
+                tempfile.NamedTemporaryFile(suffix='.chk', delete=False) as f_new:
+            old_checkfile, new_checkfile = f_old.name, f_new.name
+        for path in (old_checkfile, new_checkfile):
+            self.addCleanup(lambda p=path: os.path.isfile(p) and os.remove(p))
+        label = self._prepare_stability_ts(checkfile=new_checkfile)
+        job = self._stability_freq_job(checkfile=old_checkfile)
+        with patch.object(self.sched1, 'run_job') as run_job:
+            self.sched1.run_stability_job(label=label, freq_job=job)
+        self.assertFalse(run_job.called)
+
+    def test_stability_job_not_spawned_without_a_checkfile(self):
+        """Test that a freq job with no checkfile is skipped rather than run with guess=mix"""
+        label = self._prepare_stability_ts(checkfile=None)
+        job = self._stability_freq_job(checkfile=None)
+        with patch.object(self.sched1, 'run_job') as run_job:
+            self.sched1.run_stability_job(label=label, freq_job=job)
+        self.assertFalse(run_job.called)
+
+    def test_stability_job_not_spawned_for_a_piped_freq_job(self):
+        """Test that a freq job that is not a submitted ESS job is skipped"""
+        label = self._prepare_stability_ts(checkfile=None)
+        piped = SimpleNamespace(local_path_to_output_file='/nonexistent/freq.out',
+                                level=Level(method='wb97xd', basis='def2-TZVP'),
+                                job_status=['done', {'status': 'done'}])
+        with patch.object(self.sched1, 'run_job') as run_job:
+            self.sched1.run_stability_job(label=label, freq_job=piped)
+        self.assertFalse(run_job.called)
+
+    def test_stability_job_not_spawned_twice(self):
+        """Test that a TS gets at most one stability job"""
+        with tempfile.NamedTemporaryFile(suffix='.chk', delete=False) as f:
+            checkfile = f.name
+        self.addCleanup(lambda: os.path.isfile(checkfile) and os.remove(checkfile))
+        label = self._prepare_stability_ts(checkfile=checkfile)
+        job = self._stability_freq_job(checkfile=checkfile)
+        self.sched1.job_dict[label]['stability'] = {'stability_a1': job}
+        with patch.object(self.sched1, 'run_job') as run_job:
+            self.sched1.run_stability_job(label=label, freq_job=job)
+        self.assertFalse(run_job.called)
+
+    def test_stability_job_not_spawned_for_a_non_dft_level(self):
+        """Test that a level Gaussian offers no stability analysis for is skipped"""
+        with tempfile.NamedTemporaryFile(suffix='.chk', delete=False) as f:
+            checkfile = f.name
+        self.addCleanup(lambda: os.path.isfile(checkfile) and os.remove(checkfile))
+        label = self._prepare_stability_ts(checkfile=checkfile)
+        for method, expected in [('ccsd(t)', False), ('cbs-qb3', False), ('hf', True), ('wb97xd', True)]:
+            job = self._stability_freq_job(checkfile=checkfile, method=method)
+            self.sched1.job_dict[label] = dict()
+            with patch.object(self.sched1, 'run_job') as run_job:
+                self.sched1.run_stability_job(label=label, freq_job=job)
+            self.assertEqual(run_job.called, expected, msg=f'{method} spawned={run_job.called}')
+
+    def test_stability_job_not_spawned_after_a_ts_switch(self):
+        """Test that a TS guess abandoned by the NMD check gets no stability verdict"""
+        label = 'C2H6'
+        original_is_ts = self.sched1.species_dict[label].is_ts
+        self.addCleanup(setattr, self.sched1.species_dict[label], 'is_ts', original_is_ts)
+        self.sched1.species_dict[label].is_ts = True
+        self.sched1.species_dict[label].ts_checks = {'NMD': False}
+        job = self._stability_freq_job(checkfile=None)
+        with patch.object(self.sched1, 'check_negative_freq', return_value=True), \
+                patch.object(self.sched1, 'switch_ts') as switch_ts, \
+                patch.object(self.sched1, 'run_stability_job') as run_stability, \
+                patch('arc.scheduler.safe_copy_file'), \
+                patch('arc.scheduler.parser.parse_polarizability', return_value=None):
+            freq_ok, switched = self.sched1.post_freq_actions(label=label, job=job, vibfreqs=[-1000.0])
+        self.assertTrue(freq_ok)
+        self.assertTrue(switched)
+        self.assertTrue(switch_ts.called)
+        self.assertFalse(run_stability.called)
+
+    def test_stability_job_spawned_for_an_accepted_ts(self):
+        """Test that a TS that passes the NMD check does get a stability verdict"""
+        label = 'C2H6'
+        original_is_ts = self.sched1.species_dict[label].is_ts
+        self.addCleanup(setattr, self.sched1.species_dict[label], 'is_ts', original_is_ts)
+        self.sched1.species_dict[label].is_ts = True
+        self.sched1.species_dict[label].ts_checks = {'NMD': True}
+        job = self._stability_freq_job(checkfile=None)
+        with patch.object(self.sched1, 'check_negative_freq', return_value=True), \
+                patch.object(self.sched1, 'run_stability_job') as run_stability, \
+                patch('arc.scheduler.safe_copy_file'), \
+                patch('arc.scheduler.parser.parse_polarizability', return_value=None):
+            freq_ok, switched = self.sched1.post_freq_actions(label=label, job=job, vibfreqs=[-1000.0])
+        self.assertTrue(freq_ok)
+        self.assertFalse(switched)
+        self.assertTrue(run_stability.called)
+
+    def test_check_stability_job_survives_an_unreadable_log(self):
+        """Test that a corrupt stability log is reported and does not propagate"""
+        label = 'C2H6'
+        with tempfile.NamedTemporaryFile(suffix='.log', delete=False) as f:
+            f.write(b'\xff\xfe\x00binary garbage\n')
+            log_path = f.name
+        self.addCleanup(lambda: os.path.isfile(log_path) and os.remove(log_path))
+        job = MagicMock()
+        job.job_status = ['done', {'status': 'done'}]
+        job.local_path_to_output_file = log_path
+        self.sched1.output[label]['paths'].pop('stability', None)
+        self.sched1.check_stability_job(label=label, job=job)
+        self.assertNotIn('stability', self.sched1.output[label]['paths'])
 
     def test_does_output_dict_contain_info(self):
         """Test Scheduler.does_output_dict_contain_info"""

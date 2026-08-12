@@ -136,6 +136,7 @@ class JobTypeEnum(str, Enum):
     scan = 'scan'
     directed_scan = 'directed_scan'
     sp = 'sp'
+    stability = 'stability'
     tsg = 'tsg'  # TS search (TS guess)
 
 

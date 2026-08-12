@@ -195,6 +195,120 @@ class GaussianParser(ESSAdapter, ABC):
         # Not implemented for Gaussian.
         return None
 
+    def parse_wavefunction_stability(self) -> dict | None:
+        """
+        Parse the verdict of a Gaussian ``Stable`` wavefunction stability analysis.
+
+        Gaussian reports one verdict line per stability test it ran::
+
+            The wavefunction is stable under the perturbations considered.
+            The wavefunction has an internal instability.
+            The wavefunction has an RHF -> UHF instability.
+
+        A ``Stable=RExt`` run emits one analysis with one verdict line, which names
+        the perturbation that broke first; the internal and external roots share a
+        single stability matrix. ``verdict`` is ``'stable'``,
+        ``'internal_instability'`` or ``'external_instability'``, with an internal
+        instability taking precedence should a log ever carry both. A log that ran
+        an analysis but whose verdict line none of these patterns matched yields
+        ``'unknown'`` rather than ``'stable'``, so an unread verdict cannot pass for
+        a clean one.
+
+        ``relaxations`` lists the relaxed constraint named by each external verdict
+        (e.g. ``'RHF -> UHF'``). ``negative_eigenvectors`` carries the label and
+        value of each negative stability-matrix eigenvalue. The label identifies
+        the perturbation the root came from and its format follows the reference:
+        a restricted log labels roots by spin (``Triplet-A``, ``Singlet-A``) while
+        an unrestricted one labels them by the root's own spin expectation value
+        (``2.012-A``). ``lowest_eigenvalue`` is the smallest eigenvalue reported in
+        the eigenvector block whether or not any is negative, so it also gives the
+        margin by which a stable wavefunction is stable.
+
+        ``restricted`` is read from the reference the log reports on its
+        ``SCF Done:  E(RwB97XD)`` / ``E(UwB97XD)`` line. ``invalidates_analytic_freq``
+        applies Gaussian's rule that a restricted wavefunction need only be free of
+        internal instabilities, while for an unrestricted one any instability makes
+        the analytic frequencies invalid; it is ``None`` when the verdict or the
+        reference could not be read.
+
+        Returns: dict | None
+            ``{'verdict': str, 'internal_instability': bool | None,
+               'external_instability': bool | None, 'relaxations': list[str],
+               'negative_eigenvectors': list[dict], 'lowest_eigenvalue': float | None,
+               'restricted': bool | None, 'invalidates_analytic_freq': bool | None}``,
+            or ``None`` when the log holds no stability analysis.
+        """
+        internal_instability, external_instability = None, None
+        relaxations, negative_eigenvectors = list(), list()
+        lowest_eigenvalue, analyzed, verdict_read, restricted = None, False, False, None
+        for line in _get_lines_from_file(self.log_file_path):
+            if 'SCF Done:' in line:
+                match = re.search(r'SCF Done:\s*E\((RO|R|U)\S*\)', line)
+                if match is not None:
+                    restricted = match.group(1) != 'U'
+                continue
+            if 'Stability analysis using' in line:
+                analyzed = True
+                continue
+            if 'wavefunction' not in line and 'Eigenvector' not in line:
+                continue
+            if 'is stable under the perturbations considered' in line:
+                analyzed, verdict_read = True, True
+                if internal_instability is None:
+                    internal_instability = False
+                if external_instability is None:
+                    external_instability = False
+            elif 'has an internal instability' in line:
+                analyzed, verdict_read = True, True
+                internal_instability = True
+            else:
+                match = re.search(r'wavefunction has an?\s+(\S+\s*->\s*\S+)\s+instability', line)
+                if match is not None:
+                    analyzed, verdict_read = True, True
+                    external_instability = True
+                    relaxation = re.sub(r'\s*->\s*', ' -> ', match.group(1).strip())
+                    if relaxation not in relaxations:
+                        relaxations.append(relaxation)
+                    continue
+                match = re.search(r'Eigenvector\s+\d+:\s*(\S+)?\s*Eigenvalue=\s*'
+                                  r'([-+]?\d*\.?\d+(?:[DdEe][-+]?\d+)?)', line)
+                if match is not None:
+                    try:
+                        eigenvalue = float(re.sub(r'[Dd]', 'e', match.group(2)))
+                    except ValueError:
+                        continue
+                    if eigenvalue < 0:
+                        negative_eigenvectors.append({'label': match.group(1), 'eigenvalue': eigenvalue})
+                    if lowest_eigenvalue is None or eigenvalue < lowest_eigenvalue:
+                        lowest_eigenvalue = eigenvalue
+        if not analyzed:
+            return None
+        if not verdict_read:
+            verdict = 'unknown'
+        elif internal_instability:
+            verdict = 'internal_instability'
+        elif external_instability:
+            verdict = 'external_instability'
+        else:
+            verdict = 'stable'
+        if verdict == 'internal_instability':
+            invalidates_analytic_freq = True
+        elif verdict == 'stable':
+            invalidates_analytic_freq = False
+        elif verdict == 'external_instability' and restricted is not None:
+            invalidates_analytic_freq = not restricted
+        else:
+            invalidates_analytic_freq = None
+        return {'verdict': verdict,
+                'internal_instability': internal_instability,
+                'external_instability': external_instability,
+                'relaxations': relaxations,
+                'negative_eigenvectors': negative_eigenvectors,
+                'lowest_eigenvalue': lowest_eigenvalue,
+                'restricted': restricted,
+                'invalidates_analytic_freq': invalidates_analytic_freq,
+                }
+
     def parse_e_elect(self) -> float | None:
         """
         Parse the electronic energy from an sp job output file.

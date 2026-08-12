@@ -119,6 +119,7 @@ class Scheduler(object):
                                       'sp': <path to sp output file>,
                                       'composite': <path to composite output file>,
                                       'irc': [list of two IRC paths],
+                                      'stability': <path to wavefunction stability analysis output file>,
                                      },
                             'conformers': <comments>,
                             'isomorphism': <comments>,
@@ -824,6 +825,14 @@ class Scheduler(object):
                                         pass
                             self.timer = False
                             break
+                    elif 'stability' in job_name:
+                        job = self.job_dict[label]['stability'][job_name]
+                        if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
+                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                            if successful_server_termination:
+                                self.check_stability_job(label=label, job=job)
+                            self.timer = False
+                            break
                     elif 'onedmin' in job_name:
                         job = self.job_dict[label]['onedmin'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
@@ -1109,12 +1118,18 @@ class Scheduler(object):
             try:
                 job.determine_job_status()  # Also downloads the output file.
             except IOError:
-                if job.job_type not in ['orbitals']:
+                if job.job_type not in ['orbitals', 'stability']:
                     logger.warning(f'Tried to determine status of job {job.job_name}, '
                                    f'but it seems like the job never ran. Re-running job.')
                     self._run_a_job(job=job, label=label)
                 if job_name in self.running_jobs[label]:
                     self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+
+        if job.job_status[1]['status'] == 'errored' and job.job_type == 'stability':
+            logger.info(f'The wavefunction stability analysis {job.job_name} errored, not re-running it.')
+            if job_name in self.running_jobs[label]:
+                self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+            return False
 
         if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['memory']:
             original_mem = job.job_memory_gb
@@ -1156,7 +1171,7 @@ class Scheduler(object):
                 job.job_status[1]['status'] = 'errored'
                 logger.warning(f'Job {job.job_name} errored because for the second time ARC did not find the output '
                                f'file path {job.local_path_to_output_file}.')
-            elif job.job_type not in ['orbitals']:
+            elif job.job_type not in ['orbitals', 'stability']:
                 job.ess_trsh_methods.append('restart_due_to_file_not_found')
                 logger.warning(f'Did not find the output file of job {job.job_name} with path '
                                f'{job.local_path_to_output_file}. Maybe the job never ran. Re-running job.')
@@ -1638,6 +1653,123 @@ class Scheduler(object):
                      level_of_theory=self.orbitals_level,
                      job_type='orbitals',
                      )
+
+    def run_stability_job(self,
+                          label: str,
+                          freq_job: JobAdapter,
+                          ):
+        """
+        Spawn a wavefunction stability analysis job for a TS.
+
+        The analysis takes its level, geometry and checkfile from the frequency job it is
+        given, so its SCF converges to the wavefunction that job built its Hessian from. It
+        is spawned at most once per TS, only for Gaussian, only for a DFT or Hartree-Fock
+        level (the only ones Gaussian offers the analysis for), and only while the species
+        still holds the checkfile the frequency job used: without a checkfile the route
+        would fall back to ``guess=mix``, whose deliberately symmetry-broken SCF is a
+        different wavefunction than the one under test, and a checkfile belonging to a
+        superseded TS guess describes a different geometry. A frequency job that is not a
+        submitted ESS job, as in pipe mode, carries none of these and is skipped with a
+        message. Its verdict is recorded and logged, and no other job or check consumes it.
+
+        Args:
+            label (str): The species label.
+            freq_job (JobAdapter): The frequency job whose wavefunction is tested.
+        """
+        if not self.job_types.get('stability', False) or 'stability' in self.job_dict[label].keys():
+            return
+        job_adapter = getattr(freq_job, 'job_adapter', None)
+        level = getattr(freq_job, 'level', None)
+        xyz = getattr(freq_job, 'xyz', None)
+        checkfile = getattr(freq_job, 'checkfile', None)
+        if job_adapter is None or xyz is None:
+            logger.info(f'Not running a wavefunction stability analysis for {label}: its frequency job is '
+                        f'not a submitted ESS job, so the wavefunction under test is not reachable.')
+            return
+        if job_adapter != 'gaussian':
+            return
+        method = (level.method or '').lower() if level is not None else ''
+        if level is None or not (level.method_type == 'dft' or method in ['hf', 'rhf', 'uhf', 'rohf']):
+            logger.info(f'Not running a wavefunction stability analysis for {label}: Gaussian offers it for '
+                        f'DFT and Hartree-Fock levels only, and the frequency job ran at {level}.')
+            return
+        if checkfile is None or not os.path.isfile(checkfile):
+            logger.info(f'Not running a wavefunction stability analysis for {label}: its frequency job had '
+                        f'no checkfile to read the tested wavefunction from.')
+            return
+        species_checkfile = self.species_dict[label].checkfile
+        if species_checkfile is None or not os.path.isfile(species_checkfile) \
+                or os.path.realpath(species_checkfile) != os.path.realpath(checkfile):
+            logger.info(f'Not running a wavefunction stability analysis for {label}: the species no longer '
+                        f'holds the checkfile its frequency job used.')
+            return
+        self.run_job(label=label,
+                     xyz=xyz,
+                     level_of_theory=level,
+                     job_type='stability',
+                     job_adapter=job_adapter,
+                     )
+
+    def check_stability_job(self,
+                            label: str,
+                            job: JobAdapter,
+                            ):
+        """
+        Parse and record the verdict of a wavefunction stability analysis job.
+
+        Stores the verdict under the species' output entry and logs it. A job that did not
+        complete, or a log holding no stability analysis, records nothing and is not
+        troubleshooted or re-run.
+
+        Whether an instability bears on the validity of the analytic frequencies depends on
+        the reference. Gaussian's rule is that for a restricted wavefunction it suffices that
+        no singlet (internal) instability exists, while for an unrestricted one any
+        instability, internal or external, invalidates them. So the frequency-validity
+        warning is raised for an internal instability of either reference, and additionally
+        for an external instability of an unrestricted one. An external instability of a
+        restricted reference is reported without that warning: it means a lower
+        symmetry-broken solution exists, which for a TS with stretched partial bonds is
+        expected and is a statement about the restricted description, not about the Hessian.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The stability analysis job object instance.
+        """
+        if job.job_status[1]['status'] != 'done' or not os.path.isfile(job.local_path_to_output_file):
+            logger.info(f'The wavefunction stability analysis for {label} did not complete, '
+                        f'no verdict was recorded.')
+            return
+        try:
+            result = parser.parse_wavefunction_stability(log_file_path=str(job.local_path_to_output_file))
+        except Exception as e:
+            logger.info(f'Could not read the wavefunction stability analysis for {label} from '
+                        f'{job.local_path_to_output_file}: {e.__class__.__name__}: {e}')
+            return
+        if result is None:
+            logger.info(f'Could not parse a wavefunction stability verdict for {label} from '
+                        f'{job.local_path_to_output_file}.')
+            return
+        verdict, restricted = result['verdict'], result['restricted']
+        self.output[label]['paths']['stability'] = job.local_path_to_output_file
+        self.output[label]['job_types']['stability'] = True
+        relaxations = ', '.join(result['relaxations']) or 'an external relaxation'
+        if verdict == 'internal_instability':
+            logger.warning(f'The wavefunction of {label} has an internal instability, so its analytic '
+                           f'frequencies are outside the range in which they are defined.')
+        elif verdict == 'external_instability' and restricted is False:
+            logger.warning(f'The unrestricted wavefunction of {label} has an instability ({relaxations}), '
+                           f'so its analytic frequencies are outside the range in which they are defined.')
+        elif verdict == 'external_instability':
+            logger.info(f'The restricted wavefunction of {label} has an external instability '
+                        f'({relaxations}): a lower symmetry-broken solution exists.')
+        elif verdict == 'unknown':
+            logger.info(f'A wavefunction stability analysis ran for {label} but reported no verdict '
+                        f'that ARC could read.')
+        else:
+            logger.info(f'The wavefunction of {label} is stable under the perturbations considered.')
+        self.output[label]['info'] += f'Wavefunction stability: {verdict}; '
+        if not self.testing:
+            self.save_restart_dict()
 
     def run_onedmin_job(self, label):
         """
@@ -2727,6 +2859,8 @@ class Scheduler(object):
             self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(WRONG_FREQ_MESSAGE))
         if not switch_ts and species_has_sp(self.output[label], self.species_dict[label].yml_path):
             self.check_rxn_e0_by_spc(label)
+        if not switch_ts and self.species_dict[label].is_ts:
+            self.run_stability_job(label=label, freq_job=job)
         return True, switch_ts
 
     def check_negative_freq(self,
@@ -3295,6 +3429,8 @@ class Scheduler(object):
                 all_converged = False
             else:
                 for job_type, spawn_job_type in self.job_types.items():
+                    if job_type == 'stability':
+                        continue
                     if spawn_job_type and not self.output[label]['job_types'][job_type] \
                             and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conf_opt'])
                                      or (self.species_dict[label].number_of_atoms == 1

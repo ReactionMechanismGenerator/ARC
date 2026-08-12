@@ -11,7 +11,7 @@ import unittest
 
 import arc.parser.parser as parser
 from arc.common import ARC_TESTING_PATH, almost_equal_coords
-from arc.parser.adapters.gaussian import parse_ic_info, parse_ic_values
+from arc.parser.adapters.gaussian import GaussianParser, parse_ic_info, parse_ic_values
 from arc.species import ARCSpecies
 from arc.species.converter import str_to_xyz, xyz_to_str
 
@@ -1216,6 +1216,253 @@ H      -1.69381305    0.40788834    0.90078104"""
         finally:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
+
+
+class TestParseRealStabilityLogs(unittest.TestCase):
+    """
+    Contains unit tests for parsing real Gaussian stable=(rext,noopt) logs of campaign TSs.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.path = lambda name: os.path.join(ARC_TESTING_PATH, 'stability', name)
+
+    def _parse(self, name: str) -> dict:
+        """Parse a stability fixture by file name."""
+        result = parser.parse_wavefunction_stability(os.path.join(ARC_TESTING_PATH, 'stability', name))
+        self.assertIsNotNone(result, msg=f'no stability verdict parsed from {name}')
+        return result
+
+    def test_one_analysis_and_one_verdict_per_rext_run(self):
+        """Test that a RExt run reports a single analysis with a single verdict line"""
+        for name in ['rhf_uhf_instability_singlet_ts.out', 'stable_unrestricted_doublet_ts.out',
+                     'stable_restricted_singlet_ts.out', 'stable_spin_contaminated_doublet_ts.out']:
+            with open(os.path.join(ARC_TESTING_PATH, 'stability', name), 'r') as f:
+                lines = f.readlines()
+            headers = [line for line in lines if 'Stability analysis using' in line]
+            verdicts = [line for line in lines
+                        if 'wavefunction is stable' in line or 'wavefunction has an' in line]
+            self.assertEqual(len(headers), 1, msg=f'{name} has {len(headers)} stability analyses')
+            self.assertEqual(len(verdicts), 1, msg=f'{name} has {len(verdicts)} verdict lines')
+
+    def test_restricted_singlet_ts_with_an_rhf_uhf_instability(self):
+        """Test the verdict of a restricted singlet TS whose wavefunction is RHF -> UHF unstable"""
+        result = self._parse('rhf_uhf_instability_singlet_ts.out')
+        self.assertEqual(result['verdict'], 'external_instability')
+        self.assertTrue(result['restricted'])
+        self.assertTrue(result['external_instability'])
+        self.assertEqual(result['relaxations'], ['RHF -> UHF'])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.0642219, places=6)
+        self.assertEqual([e['label'] for e in result['negative_eigenvectors']], ['Triplet-A'])
+        self.assertAlmostEqual(result['negative_eigenvectors'][0]['eigenvalue'], -0.0642219, places=6)
+
+    def test_restricted_external_instability_leaves_the_analytic_hessian_defined(self):
+        """Test that the sole negative root of the unstable singlet TS is triplet, not singlet"""
+        result = self._parse('rhf_uhf_instability_singlet_ts.out')
+        self.assertNotIn('Singlet', [e['label'].split('-')[0] for e in result['negative_eigenvectors']])
+        self.assertFalse(result['internal_instability'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+
+    def test_stable_unrestricted_doublet_ts(self):
+        """Test the verdict of a stable unrestricted doublet TS"""
+        result = self._parse('stable_unrestricted_doublet_ts.out')
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertFalse(result['restricted'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+        self.assertEqual(result['relaxations'], [])
+        self.assertEqual(result['negative_eigenvectors'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0024619, places=6)
+
+    def test_stable_restricted_singlet_ts(self):
+        """Test the verdict of a stable restricted singlet TS"""
+        result = self._parse('stable_restricted_singlet_ts.out')
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertTrue(result['restricted'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+        self.assertEqual(result['negative_eigenvectors'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0241461, places=6)
+
+    def test_spin_contaminated_doublet_ts_is_stable(self):
+        """Test that a spin-contaminated doublet TS is reported stable, with no relaxation left to find"""
+        result = self._parse('stable_spin_contaminated_doublet_ts.out')
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertFalse(result['restricted'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+        self.assertEqual(result['negative_eigenvectors'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0005803, places=6)
+
+    def test_unrestricted_eigenvector_labels_are_read(self):
+        """Test that the numeric symmetry label of an unrestricted eigenvector is parsed"""
+        adapter = GaussianParser(os.path.join(ARC_TESTING_PATH, 'stability',
+                                              'stable_unrestricted_doublet_ts.out'))
+        result = adapter.parse_wavefunction_stability()
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0024619, places=6)
+        self.assertFalse(result['restricted'])
+
+
+class TestParseWavefunctionStability(unittest.TestCase):
+    """
+    Contains unit tests for parsing a Gaussian wavefunction stability analysis.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.header = ' Entering Gaussian System, Link 0=g16\n' \
+                     ' #P stable=(rext,noopt) uwb97xd/def2tzvp guess=read\n'
+        cls.stable_block = """ Stability analysis using <AA,BB:AA,BB> singles matrix:
+
+ Eigenvector   1:  3.026-?Sym  Eigenvalue= 0.0219147  <S**2>=2.039
+ Eigenvector   2:  3.026-?Sym  Eigenvalue= 0.0451128  <S**2>=2.041
+
+ The wavefunction is stable under the perturbations considered.
+
+ Normal termination of Gaussian 16.
+"""
+        cls.internal_block = """ Stability analysis using <AA,BB:AA,BB> singles matrix:
+
+ Eigenvector   1:      Singlet-?Sym  Eigenvalue=-0.0731205  <S**2>=0.000
+
+ The wavefunction has an internal instability.
+
+ Normal termination of Gaussian 16.
+"""
+        cls.external_block = """ Stability analysis using <AA,BB:AA,BB> singles matrix:
+
+ Eigenvector   1:      Triplet-?Sym  Eigenvalue=-0.1434007  <S**2>=2.000
+ Eigenvector   3:      Singlet-?Sym  Eigenvalue= 0.0000259  <S**2>=0.000
+
+ The wavefunction has an RHF -> UHF instability.
+
+ Normal termination of Gaussian 16.
+"""
+
+    def _parse(self, block: str):
+        """Write a Gaussian log holding the given block to a temporary file and parse its verdict."""
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.log', mode='w', delete=False) as f:
+            f.write(self.header + block)
+            temp_path = f.name
+        try:
+            return parser.parse_wavefunction_stability(temp_path)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def test_stable_verdict(self):
+        """Test parsing a stable wavefunction verdict"""
+        result = self._parse(self.stable_block)
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertFalse(result['internal_instability'])
+        self.assertFalse(result['external_instability'])
+        self.assertEqual(result['relaxations'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0219147, places=6)
+
+    def test_internal_instability_verdict(self):
+        """Test parsing an internal instability verdict"""
+        result = self._parse(self.internal_block)
+        self.assertEqual(result['verdict'], 'internal_instability')
+        self.assertTrue(result['internal_instability'])
+        self.assertEqual(result['relaxations'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.0731205, places=6)
+
+    def test_external_instability_verdict(self):
+        """Test parsing an external instability verdict and the relaxed constraint"""
+        result = self._parse(self.external_block)
+        self.assertEqual(result['verdict'], 'external_instability')
+        self.assertTrue(result['external_instability'])
+        self.assertEqual(result['relaxations'], ['RHF -> UHF'])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.1434007, places=6)
+
+    def test_internal_takes_precedence_over_external(self):
+        """Test that an internal instability outranks an external one in the same log"""
+        result = self._parse(self.internal_block + self.external_block)
+        self.assertEqual(result['verdict'], 'internal_instability')
+        self.assertTrue(result['internal_instability'])
+        self.assertTrue(result['external_instability'])
+        self.assertEqual(result['relaxations'], ['RHF -> UHF'])
+
+    def test_restricted_external_instability_does_not_invalidate_freq(self):
+        """Test that an external instability of a restricted reference leaves the freq valid"""
+        result = self._parse(' SCF Done:  E(RwB97XD) =  -78.5936     A.U.\n' + self.external_block)
+        self.assertTrue(result['restricted'])
+        self.assertEqual(result['verdict'], 'external_instability')
+        self.assertFalse(result['invalidates_analytic_freq'])
+
+    def test_unrestricted_external_instability_invalidates_freq(self):
+        """Test that any instability of an unrestricted reference invalidates the freq"""
+        result = self._parse(' SCF Done:  E(UwB97XD) =  -78.5936     A.U.\n' + self.external_block)
+        self.assertFalse(result['restricted'])
+        self.assertEqual(result['verdict'], 'external_instability')
+        self.assertTrue(result['invalidates_analytic_freq'])
+
+    def test_internal_instability_invalidates_either_reference(self):
+        """Test that an internal instability invalidates the freq for both references"""
+        for reference in ['R', 'U']:
+            result = self._parse(f' SCF Done:  E({reference}wB97XD) =  -78.5936     A.U.\n' + self.internal_block)
+            self.assertTrue(result['invalidates_analytic_freq'])
+        stable = self._parse(' SCF Done:  E(UwB97XD) =  -78.5936     A.U.\n' + self.stable_block)
+        self.assertFalse(stable['invalidates_analytic_freq'])
+
+    def test_unknown_reference_leaves_freq_validity_undecided(self):
+        """Test that an unreadable reference does not resolve an external verdict either way"""
+        result = self._parse(self.external_block)
+        self.assertIsNone(result['restricted'])
+        self.assertIsNone(result['invalidates_analytic_freq'])
+
+    def test_negative_unrestricted_eigenvector_label_is_read(self):
+        """Test that a negative root carrying an unrestricted numeric label is recorded"""
+        result = self._parse(' SCF Done:  E(UB3LYP) =  -614.0536     A.U.\n'
+                             ' Stability analysis using <AA,BB:AA,BB> singles matrix:\n'
+                             '\n'
+                             ' Eigenvectors of the stability matrix:\n'
+                             '\n'
+                             ' Eigenvector   1:  2.012-A    Eigenvalue=-0.0311204  <S**2>=0.762\n'
+                             ' Eigenvector   2:  2.041-A    Eigenvalue= 0.0744695  <S**2>=0.791\n'
+                             '\n'
+                             ' The wavefunction has an internal instability.\n')
+        self.assertEqual(result['verdict'], 'internal_instability')
+        self.assertFalse(result['restricted'])
+        self.assertTrue(result['invalidates_analytic_freq'])
+        self.assertEqual([e['label'] for e in result['negative_eigenvectors']], ['2.012-A'])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.0311204, places=6)
+
+    def test_unparsed_verdict_is_not_reported_as_stable(self):
+        """Test that an analysis whose verdict line was not recognized yields 'unknown'"""
+        result = self._parse(' Stability analysis using <AA,BB:AA,BB> singles matrix:\n'
+                             ' Eigenvector   1:      Singlet-?Sym  Eigenvalue=-0.0731205  <S**2>=0.000\n'
+                             ' The wavefunction has some phrasing ARC does not know.\n')
+        self.assertEqual(result['verdict'], 'unknown')
+        self.assertIsNone(result['internal_instability'])
+        self.assertIsNone(result['external_instability'])
+
+    def test_negative_eigenvector_labels_are_kept(self):
+        """Test that the label of each negative stability-matrix eigenvalue is recorded"""
+        result = self._parse(self.external_block)
+        self.assertEqual([e['label'] for e in result['negative_eigenvectors']], ['Triplet-?Sym'])
+        self.assertEqual(len(result['negative_eigenvectors']), 1)
+        self.assertEqual(self._parse(self.stable_block)['negative_eigenvectors'], [])
+
+    def test_fortran_double_exponent_eigenvalue(self):
+        """Test that an eigenvalue in Fortran D notation is not read as its mantissa"""
+        result = self._parse(' Stability analysis using <AA,BB:AA,BB> singles matrix:\n'
+                             ' Eigenvector   1:      Singlet-?Sym  Eigenvalue=-0.53D-02  <S**2>=0.000\n'
+                             ' The wavefunction has an internal instability.\n')
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.0053, places=6)
+
+    def test_no_stability_analysis(self):
+        """Test that a log with no stability analysis yields no verdict"""
+        self.assertIsNone(self._parse(' SCF Done:  E(UB3LYP) =  -78.5936    A.U.\n'
+                                      ' Normal termination of Gaussian 16.\n'))
+        freq_path = os.path.join(ARC_TESTING_PATH, 'freq', 'CH3OO_freq_gaussian.out')
+        self.assertIsNone(parser.parse_wavefunction_stability(freq_path))
 
 
 if __name__ == '__main__':

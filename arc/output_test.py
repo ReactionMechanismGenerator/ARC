@@ -22,6 +22,7 @@ from arc.output import (
     _level_to_dict,
     _make_rel_path,
     _parse_opt_log,
+    _parse_wavefunction_stability,
     _parse_zpe,
     _resolve_freq_scale_factor_source,
     _rxn_to_dict,
@@ -1185,6 +1186,56 @@ class TestGetPointGroupsScript(unittest.TestCase):
         finally:
             if added:
                 sys.path.remove(scripts_dir)
+
+
+class TestParseWavefunctionStabilityForOutput(unittest.TestCase):
+    """
+    Contains unit tests for the wavefunction stability entry written to output.yml.
+    """
+
+    def _write_log(self, body: str) -> str:
+        """Write a Gaussian stability log to a temporary file and return its path."""
+        with tempfile.NamedTemporaryFile(suffix='.log', mode='w', delete=False) as f:
+            f.write(' Entering Gaussian System, Link 0=g16\n' + body)
+            return f.name
+
+    def test_freq_validity_reaches_the_output_record(self):
+        """Test that output.yml carries the reference and the frequency-validity verdict"""
+        body = ' SCF Done:  E(UwB97XD) =  -78.5936     A.U.\n' \
+               ' Stability analysis using <AA,BB:AA,BB> singles matrix:\n' \
+               ' Eigenvector   1:      Triplet-?Sym  Eigenvalue=-0.1434007  <S**2>=2.000\n' \
+               ' The wavefunction has an RHF -> UHF instability.\n'
+        path = self._write_log(body)
+        try:
+            result = _parse_wavefunction_stability(path, os.path.dirname(path))
+            self.assertEqual(result['verdict'], 'external_instability')
+            self.assertIn('restricted', result)
+            self.assertIn('invalidates_analytic_freq', result)
+            self.assertFalse(result['restricted'])
+            self.assertTrue(result['invalidates_analytic_freq'])
+            self.assertIsNotNone(result['log'])
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_restricted_external_instability_reaches_output_as_valid(self):
+        """Test that a restricted external instability is recorded as not invalidating the freq"""
+        body = ' SCF Done:  E(RwB97XD) =  -78.5936     A.U.\n' \
+               ' Stability analysis using <AA,BB:AA,BB> singles matrix:\n' \
+               ' The wavefunction has an RHF -> UHF instability.\n'
+        path = self._write_log(body)
+        try:
+            result = _parse_wavefunction_stability(path, os.path.dirname(path))
+            self.assertTrue(result['restricted'])
+            self.assertFalse(result['invalidates_analytic_freq'])
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_no_stability_log_yields_nothing(self):
+        """Test that a species with no stability analysis records no entry"""
+        self.assertIsNone(_parse_wavefunction_stability(None, '/tmp'))
+        self.assertIsNone(_parse_wavefunction_stability('/nonexistent/stability.log', '/tmp'))
 
 
 if __name__ == '__main__':

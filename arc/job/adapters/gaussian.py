@@ -43,6 +43,8 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
 # the explicit %mem budget.
 GAUSSIAN_MEMORY_HEADROOM_FRACTION = 0.90
 
+STABILITY_KEYWORD = 'stable=(rext,noopt)'
+
 
 # job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',
 # job_type_2: '' or 'freq iop(7/33=1)' (cannot be combined with CBS-QB3)
@@ -321,6 +323,13 @@ class GaussianAdapter(JobAdapter):
 
         elif self.job_type in ['sp', 'conf_sp']:
             input_dict['job_type_1'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+            if input_dict['trsh']:
+                input_dict['trsh'] += ' '
+            input_dict['trsh'] += 'scf=(tight, direct)'
+
+        elif self.job_type == 'stability':
+            input_dict['job_type_1'] = f'{STABILITY_KEYWORD} ' \
+                                       f'integral=(grid=ultrafine, {integral_algorithm})'
             if input_dict['trsh']:
                 input_dict['trsh'] += ' '
             input_dict['trsh'] += 'scf=(tight, direct)'

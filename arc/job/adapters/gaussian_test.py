@@ -7,11 +7,12 @@ This module contains unit tests of the arc.job.adapters.gaussian module
 
 import math
 import os
+import re
 import shutil
 import unittest
 
 from arc.common import ARC_TESTING_PATH
-from arc.job.adapters.gaussian import GaussianAdapter
+from arc.job.adapters.gaussian import STABILITY_KEYWORD, GaussianAdapter
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames, servers, submit_filenames
 from arc.species import ARCSpecies
@@ -1164,6 +1165,47 @@ H       0.04768200    1.19305700   -0.88359100
 
         self.assertEqual(content_24, job_24_expected_input_file)
 
+
+    def _route_for_job_type(self, job_type: str) -> str:
+        """Write a Gaussian input file for a TS job of the given type and return its route line."""
+        job = GaussianAdapter(execution_type='queue',
+                              job_type=job_type,
+                              level=Level(method='wb97xd', basis='def2-TZVP'),
+                              project='test',
+                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                              species=[ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2'])],
+                              testing=True,
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            content = f.read()
+        return [line for line in content.splitlines() if line.startswith('#P')][0]
+
+    def test_stability_keyword_in_route(self):
+        """Test that the wavefunction stability keyword is written for a stability job only"""
+        stability_route = self._route_for_job_type('stability')
+        self.assertIn('stable=(rext,noopt)', stability_route)
+        for job_type in ['opt', 'freq', 'sp', 'composite']:
+            self.assertNotIn('stable', self._route_for_job_type(job_type))
+
+    def test_stability_keyword_never_reoptimizes(self):
+        """Test that the stability route asks for no reoptimization and no complex orbitals"""
+        route = self._route_for_job_type('stability').lower()
+        options = re.search(r'stable=\(([^)]*)\)', route)
+        self.assertIsNotNone(options, msg=f'no stable=(...) group in route {route!r}')
+        options = [option.strip() for option in options.group(1).split(',')]
+        self.assertIn('noopt', options)
+        self.assertIn('rext', options)
+        for option in options:
+            self.assertNotIn(option, ['opt', 'repopt', '1opt', 'crhf', 'cuhf', 'int'],
+                             msg=f'route {route!r} carries the {option!r} stability option')
+        self.assertNotIn('stable=opt', route)
+        self.assertEqual(STABILITY_KEYWORD.lower(), f"stable=({','.join(options)})")
+
+    def test_stability_keyword_absent_from_other_job_types(self):
+        """Test that no other job type emits any form of the stability keyword"""
+        for job_type in ['opt', 'freq', 'sp', 'composite']:
+            self.assertNotIn('stable', self._route_for_job_type(job_type).lower())
 
     @classmethod
     def tearDownClass(cls):

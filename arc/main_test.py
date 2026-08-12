@@ -115,7 +115,8 @@ class TestARC(unittest.TestCase):
                                        'opt': True,
                                        'orbitals': False,
                                        'rotors': False,
-                                       'sp': True},
+                                       'sp': True,
+                                       'stability': False},
                          'max_job_time': 120,
                          'opt_level': {'basis': '6-311+g(3df,2p)',
                                        'method': 'b3lyp',
@@ -195,7 +196,8 @@ class TestARC(unittest.TestCase):
                         }
         arc1 = ARC(**restart_dict)
         job_type_expected = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
-                             'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False}
+                             'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False,
+                             'stability': False}
         self.assertEqual(arc1.job_types, job_type_expected)
 
     def test_check_project_name(self):

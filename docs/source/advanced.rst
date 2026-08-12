@@ -48,6 +48,8 @@ ARC recognizes these current job type keys:
 * ``rotors`` - rotor scans;
 * ``irc`` - intrinsic reaction coordinate;
 * ``orbitals`` - molecular orbitals;
+* ``stability`` - wavefunction stability analysis of a TS (Gaussian only, diagnostic,
+  off by default);
 * ``onedmin`` - Lennard-Jones / OneDMin workflow;
 * ``bde`` - bond dissociation energy workflow.
 
@@ -593,6 +595,7 @@ input::
                                'rotors': True,
                                'conf_sp': False,
                                'orbitals': False,
+                               'stability': False,
                                'lennard_jones': False,
                               }
 
@@ -640,6 +643,7 @@ The above code generates the following input file::
       lennard_jones: false
       opt: true
       orbitals: false
+      stability: false
       sp: true
 
     species:

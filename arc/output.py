@@ -19,7 +19,8 @@ from arc.constants import E_h_kJmol
 from arc.imports import settings
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
-from arc.parser.parser import parse_1d_scan_energies, parse_e_elect, parse_ess_version, parse_opt_steps, parse_zpe_correction
+from arc.parser.parser import (parse_1d_scan_energies, parse_e_elect, parse_ess_version, parse_opt_steps,
+                               parse_wavefunction_stability, parse_zpe_correction)
 from arc.species.converter import xyz_to_str
 from arc.statmech.arkane import (
     AEC_SECTION_START, AEC_SECTION_END,
@@ -227,6 +228,40 @@ def _parse_zpe(freq_path: str | None, project_directory: str) -> float | None:
         return zpe_kj / E_h_kJmol if zpe_kj is not None else None
     except Exception:
         return None
+
+
+def _parse_wavefunction_stability(stability_path: str | None, project_directory: str) -> dict | None:
+    """
+    Parse the wavefunction stability verdict from a stability analysis log.
+
+    Returns ``None`` when no stability analysis was run, when its log is missing,
+    or when the log holds no verdict. Otherwise returns the parsed verdict with the
+    log's run-relative path added under ``'log'``.
+
+    Returns: dict | None
+        ``{'verdict': 'stable' | 'internal_instability' | 'external_instability' | 'unknown',
+           'internal_instability': bool | None, 'external_instability': bool | None,
+           'relaxations': list[str], 'negative_eigenvectors': list[dict],
+           'lowest_eigenvalue': float | None, 'restricted': bool | None,
+           'invalidates_analytic_freq': bool | None, 'log': str}``.
+        ``'unknown'`` means an analysis ran but its verdict could not be read, and is
+        never to be treated as ``'stable'``.
+    """
+    if not stability_path:
+        return None
+    path = stability_path if os.path.isabs(stability_path) else os.path.join(project_directory, stability_path)
+    if not os.path.isfile(path):
+        return None
+    try:
+        result = parse_wavefunction_stability(path)
+    except Exception:
+        logger.debug(f'Failed to parse a wavefunction stability verdict from {path!r}', exc_info=True)
+        return None
+    if not result:
+        return None
+    result = dict(result)
+    result['log'] = _make_rel_path(path, project_directory)
+    return result
 
 
 def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
@@ -491,6 +526,10 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     d['opt_log'] = _make_rel_path(paths.get('geo') or None, project_directory)
     d['freq_log'] = _make_rel_path(paths.get('freq') or None, project_directory)
     d['sp_log'] = _make_rel_path(paths.get('sp') or None, project_directory)
+
+    # ── wavefunction stability diagnostic (null unless the job ran) ──────────
+    d['wavefunction_stability'] = _parse_wavefunction_stability(
+        paths.get('stability') or None, project_directory)
 
     # ── ESS software version (from SP log, or fall back to geo/freq log) ──
     d['ess_versions'] = _get_ess_versions(paths, project_directory) if converged else None
