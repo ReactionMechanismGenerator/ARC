@@ -211,6 +211,8 @@ class AutoTSTAdapter(JobAdapter):
     def execute_incore(self):
         """
         Execute a job incore.
+        The reverse-direction reaction label repeats each species by the number of times it
+        participates in its well, so a well with a repeated species stays atom-balanced.
         """
         if not AUTOTST_PYTHON or not os.path.isfile(AUTOTST_PYTHON):
             raise FileNotFoundError('AutoTST python executable was not found. '
@@ -230,10 +232,14 @@ class AutoTSTAdapter(JobAdapter):
                                                 multiplicity=rxn.multiplicity,
                                                 )
                 reaction_label_fwd = get_autotst_reaction_string(rxn)
+                rev_reactant_labels = [lbl for lbl in rxn.products
+                                       for _ in range(rxn.get_species_count(label=lbl, well=1))]
+                rev_product_labels = [lbl for lbl in rxn.reactants
+                                      for _ in range(rxn.get_species_count(label=lbl, well=0))]
                 reaction_label_rev = get_autotst_reaction_string(ARCReaction(r_species=rxn.p_species,
                                                                              p_species=rxn.r_species,
-                                                                             reactants=rxn.products,
-                                                                             products=rxn.reactants))
+                                                                             reactants=rev_reactant_labels,
+                                                                             products=rev_product_labels))
 
                 i = 0
                 for reaction_label, direction in zip([reaction_label_fwd, reaction_label_rev], ['F', 'R']):

@@ -602,6 +602,36 @@ class TestARCReaction(unittest.TestCase):
         rxn2 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
         self.assertEqual(rxn2.get_species_count(label=n2h3.label, well=1), 2)
 
+    def test_get_reactants_xyz_repeated_species(self):
+        """Test that a reactant appearing twice (e.g. OH + OH) contributes all of its atoms,
+        even though r_species holds a single deduplicated entry for it."""
+        oh = ARCSpecies(label='R1', smiles='[OH]',
+                        xyz={'coords': ((0.0, 0.0, 0.109), (0.0, 0.0, -0.868)),
+                             'isotopes': (16, 1), 'symbols': ('O', 'H')})
+        h2o = ARCSpecies(label='P1', smiles='O')
+        o = ARCSpecies(label='P2', smiles='[O]')
+        rxn = ARCReaction(r_species=[oh, oh], p_species=[h2o, o])
+        self.assertEqual(len(rxn.r_species), 1)
+        self.assertEqual(rxn.get_species_count(species=oh, well=0), 2)
+        reactants_xyz = rxn.get_reactants_xyz(return_format='dict')
+        self.assertEqual(len(reactants_xyz['symbols']), 4)
+        self.assertEqual(sorted(reactants_xyz['symbols']), ['H', 'H', 'O', 'O'])
+
+    def test_reverse_reaction_of_repeated_species(self):
+        """Test that the reverse of a reaction with a repeated species (OH + OH <=> H2O + O) stays
+        atom-balanced when its label lists are expanded by get_species_count, as consumers building
+        the reverse reaction from the deduplicated reactants/products lists do."""
+        oh = ARCSpecies(label='R1', smiles='[OH]', multiplicity=2)
+        h2o = ARCSpecies(label='P1', smiles='O', multiplicity=1)
+        o = ARCSpecies(label='P2', smiles='[O]', multiplicity=3)
+        fwd = ARCReaction(label='R1 + R1 <=> P1 + P2', r_species=[oh, oh], p_species=[h2o, o])
+        rev_reactants = [lbl for lbl in fwd.products for _ in range(fwd.get_species_count(label=lbl, well=1))]
+        rev_products = [lbl for lbl in fwd.reactants for _ in range(fwd.get_species_count(label=lbl, well=0))]
+        self.assertEqual(rev_products, ['R1', 'R1'])
+        rev = ARCReaction(r_species=fwd.p_species, p_species=fwd.r_species,
+                          reactants=rev_reactants, products=rev_products)
+        self.assertEqual(rev.label, 'P1 + P2 <=> R1 + R1')
+
     def test_get_reactants_and_products(self):
         """Test getting reactants and products"""
         self.rxn1.remove_dup_species()

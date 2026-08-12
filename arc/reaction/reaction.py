@@ -873,6 +873,8 @@ class ARCReaction(object):
     def get_reactants_xyz(self, return_format='str') -> dict | str:
         """
         Get a combined string/dict representation of the cartesian coordinates of all reactant species.
+        A species participating more than once in the reactant well contributes its atoms once per
+        occurrence.
 
         Args:
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
@@ -885,15 +887,17 @@ class ARCReaction(object):
             Orient the fragments according to the reactive site.
         """
         xyz_dict = dict()
-        if len(self.r_species) == 1:
-            xyz_dict = self.r_species[0].get_xyz()
-        elif len(self.r_species) >= 2:
+        reactants = [spc for spc in self.r_species
+                     for _ in range(self.get_species_count(species=spc, well=0))]
+        if len(reactants) == 1:
+            xyz_dict = reactants[0].get_xyz()
+        elif len(reactants) >= 2:
             xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-            for i, reactant in enumerate(self.r_species):
+            for i, reactant in enumerate(reactants):
                 xyz = translate_to_center_of_mass(reactant.get_xyz())
                 if i:
                     xyz = translate_xyz(xyz_dict=xyz,
-                                        translation=(sum(spc.radius for spc in self.r_species[:i]) * 1.1 * i, 0, 0))
+                                        translation=(sum(spc.radius for spc in reactants[:i]) * 1.1 * i, 0, 0))
                 xyz_dict['symbols'] += xyz['symbols']
                 xyz_dict['isotopes'] += xyz['isotopes']
                 xyz_dict['coords'] += xyz['coords']
@@ -906,6 +910,8 @@ class ARCReaction(object):
         """
         Get a combined string/dict representation of the cartesian coordinates of all product species.
         The resulting coordinates are ordered as the reactants using an atom map.
+        A species participating more than once in the product well contributes its atoms once per
+        occurrence.
 
         Args:
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
@@ -917,15 +923,17 @@ class ARCReaction(object):
         Todo:
             Orient the fragments according to the reactive site.
         """
-        if len(self.p_species) == 1:
-            xyz_dict = self.p_species[0].get_xyz()
+        products = [spc for spc in self.p_species
+                    for _ in range(self.get_species_count(species=spc, well=1))]
+        if len(products) == 1:
+            xyz_dict = products[0].get_xyz()
         else:
             xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-            for i, product in enumerate(self.p_species):
+            for i, product in enumerate(products):
                 xyz = translate_to_center_of_mass(product.get_xyz())
                 if i:
                     xyz = translate_xyz(xyz_dict=xyz,
-                                        translation=(sum(spc.radius for spc in self.p_species[:i]) * 1.1 * i, 0, 0))
+                                        translation=(sum(spc.radius for spc in products[:i]) * 1.1 * i, 0, 0))
                 xyz_dict['symbols'] += xyz['symbols']
                 xyz_dict['isotopes'] += xyz['isotopes']
                 xyz_dict['coords'] += xyz['coords']
