@@ -6,6 +6,7 @@ This module contains unit tests of the arc.species.conformers module
 """
 
 import unittest
+import unittest.mock
 
 from rdkit.Chem import rdMolTransforms as rdMT
 
@@ -665,6 +666,26 @@ H       0.68104300    0.74807180    0.61546062""")]
         xyzs, energies = conformers.rdkit_force_field(label='CJ', rd_mol=rd_mol)
         for atom, symbol in zip(self.cj_spc.mol.atoms, xyzs[0]['symbols']):
             self.assertEqual(atom.symbol, symbol)
+
+    def test_embed_rdkit_reports_why_embedding_failed(self):
+        """Test that a failure to embed names the underlying error instead of swallowing it"""
+        with unittest.mock.patch('rdkit.Chem.AllChem.EmbedMultipleConfs',
+                                 side_effect=RuntimeError('Bad Conformer Id')):
+            with self.assertLogs('arc', level='WARNING') as captured:
+                rd_mol = conformers.embed_rdkit(label='CJ', mol=self.cj_spc.mol, num_confs=1)
+        self.assertIsNone(rd_mol)
+        self.assertIn('Bad Conformer Id', '\n'.join(captured.output))
+
+    def test_rdkit_force_field_abandons_an_optimization_that_raises(self):
+        """Test that a raising optimization is logged and attempted once per conformer"""
+        rd_mol = conformers.embed_rdkit(label='CJ', mol=self.cj_spc.mol, num_confs=1)
+        num_confs = rd_mol.GetNumConformers()
+        with unittest.mock.patch('rdkit.Chem.AllChem.MMFFOptimizeMolecule',
+                                 side_effect=[RuntimeError('no MMFF parameters'), 0] * num_confs) as optimize:
+            with self.assertLogs('arc', level='WARNING') as captured:
+                conformers.rdkit_force_field(label='CJ', rd_mol=rd_mol)
+        self.assertEqual(optimize.call_count, num_confs)
+        self.assertIn('no MMFF parameters', '\n'.join(captured.output))
 
     def test_read_rdkit_embedded_conformers(self):
         """Test reading coordinates from embedded RDKit conformers"""
