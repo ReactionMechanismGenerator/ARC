@@ -558,40 +558,21 @@ class ARCSpecies(object):
                                        f'Expected tuples of two 1-indexed atoms, got:\n{self.bdes}')
 
         self.set_mol_list()
-        self._init_monoatomic_geometry()
         if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
             self.populate_ts_checks()
+        self._init_monoatomic_geometry()
 
     def _init_monoatomic_geometry(self) -> None:
-        """Promote (or synthesize) a one-atom geometry into ``final_xyz``.
+        """Populate ``final_xyz`` for a monoatomic species.
 
-        ARC skips opt for atoms (nothing to optimize), so without this hook
-        ``final_xyz`` would stay ``None`` for the entire run. That breaks
-        invariants downstream — most visibly ``Reaction.check_done_opt_r_n_p``
-        gates TS-search dispatch on every reactant/product having a non-None
-        ``final_xyz``, so atomic reactants (e.g. ``[H]`` in H_Abstraction)
-        silently block all TSG jobs. Setting the one-atom geometry up front
-        gives every consumer a single, consistent invariant: a converged
-        species has a geometry.
-
-        Prefers any user-supplied geometry already on the species
-        (``initial_xyz`` / first conformer / cheap conformer) so we don't
-        clobber explicit input. Falls back to origin coordinates when none of
-        those exist — for an atom, the choice of frame is arbitrary anyway.
+        An atom has nothing to optimize, so ARC never runs an opt job for it and
+        ``final_xyz`` is simply the geometry it was given. Any geometry already on
+        the species is used as-is; otherwise a conformer is generated. TSs and
+        polyatomic species are left untouched.
         """
-        if self.is_ts or self.final_xyz is not None:
+        if self.is_ts or self.final_xyz is not None or not self.is_monoatomic():
             return
-        if self.mol is None or len(self.mol.atoms) != 1:
-            return
-        existing = (self.initial_xyz
-                    or (self.conformers[0] if self.conformers else None)
-                    or self.most_stable_conformer
-                    or self.cheap_conformer)
-        if existing is not None:
-            self.final_xyz = existing
-            return
-        symbol = self.mol.atoms[0].element.symbol
-        self.final_xyz = xyz_from_data(coords=((0.0, 0.0, 0.0),), symbols=(symbol,))
+        self.final_xyz = self.get_xyz(generate=True)
 
     def __str__(self) -> str:
         """Return a string representation of the object"""

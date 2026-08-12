@@ -284,34 +284,30 @@ class TestARCSpecies(unittest.TestCase):
         n_rad = ARCSpecies(label='N', smiles='[N]')
         self.assertTrue(n_rad.is_monoatomic())
 
-    def test_monoatomic_species_get_trivial_final_xyz(self):
-        """Atoms skip opt, so ``__init__`` synthesizes the origin geometry up
-        front. Without this, every consumer that checks ``final_xyz is not
-        None`` (TS-search dispatch in particular) silently misbehaves on
-        reactions involving a monoatomic reactant or product."""
-        h_rad = ARCSpecies(label='H_atom', smiles='[H]')
-        self.assertIsNotNone(h_rad.final_xyz)
-        self.assertEqual(h_rad.final_xyz['symbols'], ('H',))
-        self.assertEqual(h_rad.final_xyz['coords'], ((0.0, 0.0, 0.0),))
+    def test_init_monoatomic_geometry_sets_final_xyz(self):
+        """Test that a monoatomic species gets a final_xyz at initialization."""
+        for label, smiles in [('H', '[H]'), ('O', '[O]'), ('Cl', '[Cl]')]:
+            spc = ARCSpecies(label=label, smiles=smiles)
+            self.assertIsNotNone(spc.final_xyz)
+            self.assertEqual(spc.final_xyz['symbols'], (label,))
+            self.assertEqual(spc.final_xyz['coords'], ((0.0, 0.0, 0.0),))
 
-        n_rad = ARCSpecies(label='N_atom', smiles='[N]')
-        self.assertIsNotNone(n_rad.final_xyz)
-        self.assertEqual(n_rad.final_xyz['symbols'], ('N',))
+    def test_init_monoatomic_geometry_preserves_user_xyz(self):
+        """Test that a user-supplied monoatomic geometry is used as-is, from any input route."""
+        xyz = {'symbols': ('O',), 'isotopes': (16,), 'coords': ((1.5, -2.5, 3.5),)}
+        for kwargs in [{'smiles': '[O]', 'xyz': xyz}, {'xyz': xyz}]:
+            spc = ARCSpecies(label='O', **kwargs)
+            self.assertEqual(spc.final_xyz['coords'], ((1.5, -2.5, 3.5),))
 
-    def test_polyatomic_species_no_synthesized_final_xyz(self):
-        """Negative case: don't invent geometry for species that legitimately
-        need an opt to determine their geometry."""
-        ch3 = ARCSpecies(label='CH3', smiles='[CH3]')
-        self.assertIsNone(ch3.final_xyz)
+    def test_init_monoatomic_geometry_skips_ts(self):
+        """Test that a TS is not assigned a monoatomic final_xyz."""
+        ts = ARCSpecies(label='TS0', is_ts=True, smiles='[H]')
+        self.assertIsNone(ts.final_xyz)
 
-    def test_existing_final_xyz_not_overwritten_for_atom(self):
-        """If an atom is constructed with a user-supplied xyz (non-origin), the
-        synthesis must not clobber it."""
-        cl_xyz = """Cl     0.10000000    0.20000000    0.30000000"""
-        cl = ARCSpecies(label='Cl', smiles='[Cl]', xyz=cl_xyz)
-        self.assertIsNotNone(cl.final_xyz)
-        self.assertEqual(cl.final_xyz['symbols'], ('Cl',))
-        self.assertNotEqual(cl.final_xyz['coords'], ((0.0, 0.0, 0.0),))
+    def test_init_monoatomic_geometry_ignores_polyatomic(self):
+        """Test that a polyatomic species is unaffected."""
+        for smiles in ['C', '[H][H]', 'O']:
+            self.assertIsNone(ARCSpecies(label='spc', smiles=smiles).final_xyz)
 
     def test_is_diatomic(self):
         """Test the is_diatomic() method."""
@@ -1816,41 +1812,41 @@ H       1.32129900    0.71837500    0.38017700
 
     def test_xyz_from_dict(self):
         """Test correctly assigning xyz from dictionary"""
-        species_dict1 = {'label': 'tst_spc_1', 'xyz': 'C 0.1 0.5 0.0'}
-        species_dict2 = {'label': 'tst_spc_2', 'initial_xyz': 'C 0.2 0.5 0.0'}
-        species_dict3 = {'label': 'tst_spc_3', 'final_xyz': 'C 0.3 0.5 0.0'}
-        species_dict4 = {'label': 'tst_spc_4', 'xyz': ['C 0.4 0.5 0.0', 'C 0.5 0.5 0.0']}
+        species_dict1 = {'label': 'tst_spc_1', 'xyz': 'C 0.1 0.5 0.0\nH 1.2 0.5 0.0'}
+        species_dict2 = {'label': 'tst_spc_2', 'initial_xyz': 'C 0.2 0.5 0.0\nH 1.3 0.5 0.0'}
+        species_dict3 = {'label': 'tst_spc_3', 'final_xyz': 'C 0.3 0.5 0.0\nH 1.4 0.5 0.0'}
+        species_dict4 = {'label': 'tst_spc_4', 'xyz': ['C 0.4 0.5 0.0\nH 1.5 0.5 0.0',
+                                                       'C 0.5 0.5 0.0\nH 1.6 0.5 0.0']}
 
         spc1 = ARCSpecies(species_dict=species_dict1)
         spc2 = ARCSpecies(species_dict=species_dict2)
         spc3 = ARCSpecies(species_dict=species_dict3)
         spc4 = ARCSpecies(species_dict=species_dict4)
 
-        # All four fixtures use atomic carbon 'C', so the monoatomic
-        # geometry hook in __init__ promotes the available conformer/
-        # initial_xyz into final_xyz. Conformer routing still works
-        # exactly as before — that's what this test's original intent
-        # was — but final_xyz is now the source of truth even for atoms
-        # that never run an opt.
         self.assertIsNone(spc1.initial_xyz)
-        self.assertEqual(spc1.final_xyz, {'coords': ((0.1, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
-        self.assertEqual(spc1.conformers, [{'coords': ((0.1, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
+        self.assertIsNone(spc1.final_xyz)
+        self.assertEqual(spc1.conformers, [{'coords': ((0.1, 0.5, 0.0), (1.2, 0.5, 0.0)),
+                                            'isotopes': (12, 1), 'symbols': ('C', 'H')}])
         self.assertEqual(spc1.conformer_energies, [None])
 
-        self.assertEqual(spc2.initial_xyz, {'coords': ((0.2, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
-        self.assertEqual(spc2.final_xyz, {'coords': ((0.2, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertEqual(spc2.initial_xyz, {'coords': ((0.2, 0.5, 0.0), (1.3, 0.5, 0.0)),
+                                            'isotopes': (12, 1), 'symbols': ('C', 'H')})
+        self.assertIsNone(spc2.final_xyz)
         self.assertEqual(spc2.conformers, [])
         self.assertEqual(spc2.conformer_energies, [])
 
         self.assertIsNone(spc3.initial_xyz)
-        self.assertEqual(spc3.final_xyz, {'coords': ((0.3, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertEqual(spc3.final_xyz, {'coords': ((0.3, 0.5, 0.0), (1.4, 0.5, 0.0)),
+                                          'isotopes': (12, 1), 'symbols': ('C', 'H')})
         self.assertEqual(spc3.conformers, [])
         self.assertEqual(spc3.conformer_energies, [])
 
         self.assertIsNone(spc4.initial_xyz)
-        self.assertEqual(spc4.final_xyz, {'coords': ((0.4, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
-        self.assertEqual(spc4.conformers, [{'coords': ((0.4, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)},
-                                           {'coords': ((0.5, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
+        self.assertIsNone(spc4.final_xyz)
+        self.assertEqual(spc4.conformers, [{'coords': ((0.4, 0.5, 0.0), (1.5, 0.5, 0.0)),
+                                            'isotopes': (12, 1), 'symbols': ('C', 'H')},
+                                           {'coords': ((0.5, 0.5, 0.0), (1.6, 0.5, 0.0)),
+                                            'isotopes': (12, 1), 'symbols': ('C', 'H')}])
         self.assertEqual(spc4.conformer_energies, [None, None])
 
     def test_mol_from_xyz(self):
