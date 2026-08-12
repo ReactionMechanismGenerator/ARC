@@ -556,6 +556,7 @@ class ARCSpecies(object):
         self.set_mol_list()
         if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
             self.populate_ts_checks()
+        self._set_final_xyz_for_monoatomic()
 
     def __str__(self) -> str:
         """Return a string representation of the object"""
@@ -579,6 +580,20 @@ class ARCSpecies(object):
 
     def __hash__(self):
         return hash(self.label)
+
+    def _set_final_xyz_for_monoatomic(self) -> None:
+        """
+        Set ``final_xyz`` for a monoatomic species.
+
+        An atom has nothing to optimize, so ARC never runs an opt job for it and
+        ``final_xyz`` is simply the geometry it was given. Any geometry already on
+        the species is used as-is; otherwise a conformer is generated, which also
+        sets ``initial_xyz`` and ``cheap_conformer``. TSs and polyatomic species
+        are left untouched.
+        """
+        if self.is_ts or self.final_xyz is not None or not self.is_monoatomic():
+            return
+        self.final_xyz = self.get_xyz(generate=True)
 
     @property
     def number_of_atoms(self):
