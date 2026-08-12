@@ -33,7 +33,8 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
     """
     Analyze the normal mode displacement by identifying bonds that break and form
     and comparing them to the expected given reaction.
-    Note that the TS geometry must be in the standard orientation for the normal mode displacement to be relevant.
+    The TS geometry is taken from the frequency job's output file so that it is in the same coordinate frame
+    as the normal mode displacements parsed from that file.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
@@ -58,11 +59,18 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
                 not in reaction.ts_species.ts_checks['warnings']:
             reaction.ts_species.ts_checks['warnings'] += 'Atom map is None; skipped the TS normal mode displacement check; '
         return None
-    ts_xyz = reaction.ts_species.get_xyz()
+    ts_xyz = get_ts_xyz_in_normal_mode_frame(reaction=reaction, job=job)
     n_ts = len(ts_xyz['symbols'])
     n_expected = sum(spc.number_of_atoms for spc in reaction.r_species)
     if n_ts != n_expected:
         return False
+    if not is_ts_atom_order_consistent_with_reactants(reaction=reaction, ts_xyz=ts_xyz):
+        logger.warning(f'The geometry of TS {reaction.ts_species.label} lists its atoms as '
+                       f'{tuple(ts_xyz["symbols"])}, while the reactants of reaction {reaction.label} are ordered '
+                       f'{tuple(reaction.get_reactants_xyz(return_format="dict")["symbols"])}. The forming and '
+                       f'breaking bond indices refer to the reactant order, so they do not describe the intended '
+                       f'atoms of this TS. Skipping the normal mode displacement analysis.')
+        return None
     try:
         freqs, normal_mode_disp = parser.parse_normal_mode_displacement(log_file_path=job.local_path_to_output_file)
     except NotImplementedError:
@@ -92,6 +100,64 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
         if nmd_correct:
             return True
     return False
+
+
+def get_ts_xyz_in_normal_mode_frame(reaction: ARCReaction,
+                                    job: JobAdapter,
+                                    ) -> dict | None:
+    """
+    Get the TS geometry in the coordinate frame in which the normal mode displacements of ``job`` are reported.
+
+    The geometry is taken from the frequency job's output file, the same file the normal mode displacements
+    are parsed from. The TS species geometry is returned instead if the geometry cannot be parsed from that
+    file, or if the parsed geometry's element symbol sequence differs from the TS species' symbol sequence.
+    The parsed geometry is returned when the TS species has no geometry to compare it against, and ``None``
+    is returned only when neither source yields a geometry.
+
+    Args:
+        reaction (ARCReaction): The reaction for which the TS is checked.
+        job (JobAdapter): The frequency job object instance that points to the respective log file.
+
+    Returns:
+        dict | None: The TS Cartesian coordinates.
+    """
+    species_xyz = reaction.ts_species.get_xyz()
+    try:
+        log_xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+    except Exception as e:
+        logger.warning(f'Could not parse a geometry from {job.local_path_to_output_file}, got:\n{e}\n'
+                       f'Using the geometry of TS {reaction.ts_species.label} for the normal mode '
+                       f'displacement analysis, which may not be in the frame of the normal modes.')
+        log_xyz = None
+    if log_xyz is None or species_xyz is None:
+        return log_xyz if log_xyz is not None else species_xyz
+    if tuple(log_xyz['symbols']) != tuple(species_xyz['symbols']):
+        logger.warning(f'The geometry parsed from {job.local_path_to_output_file} has the element symbol sequence '
+                       f'{tuple(log_xyz["symbols"])}, while the geometry of TS {reaction.ts_species.label} has '
+                       f'{tuple(species_xyz["symbols"])}. Using the TS species geometry for the normal mode '
+                       f'displacement analysis, which may not be in the frame of the normal modes.')
+        return species_xyz
+    return log_xyz
+
+
+def is_ts_atom_order_consistent_with_reactants(reaction: ARCReaction,
+                                               ts_xyz: dict,
+                                               ) -> bool:
+    """
+    Check whether a TS geometry lists its atoms in the element order of the reaction's reactants.
+
+    The forming, breaking and changed bond indices of a reaction are expressed as indices into the
+    concatenated reactant geometry, and are only meaningful for a TS geometry that uses that same order.
+
+    Args:
+        reaction (ARCReaction): The reaction for which the TS is checked.
+        ts_xyz (dict): The TS Cartesian coordinates.
+
+    Returns:
+        bool: Whether the TS and the concatenated reactants have identical element symbol sequences.
+    """
+    r_xyz = reaction.get_reactants_xyz(return_format='dict')
+    return tuple(ts_xyz['symbols']) == tuple(r_xyz['symbols'])
 
 
 def check_bond_directionality(formed_bonds: list[tuple[int, int]],
