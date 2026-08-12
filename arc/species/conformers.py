@@ -1461,8 +1461,8 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
     if num_confs is not None:
         try:
             Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
-        except:
-            logger.warning(f'Could not embed conformers using RDKit for {label}')
+        except Exception as e:
+            logger.warning(f'Could not embed conformers using RDKit for {label}, failed with: {e}')
             return None
     elif xyz is not None:
         rd_conf = Chem.Conformer(rd_mol.GetNumAtoms())
@@ -1568,8 +1568,9 @@ def rdkit_force_field(label: str,
                                                           maxIters=500,
                                                           ignoreInterfragInteractions=False,
                                                           )
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f'Could not optimize conformer {i} of {label} using RDKit, failed with: {e}')
+                    break
                 else:
                     j += 1
         mol_properties = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field)
