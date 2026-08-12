@@ -29,6 +29,7 @@ import pandas as pd
 # don't import any ARC module other than exceptions and imports, to avoid circular imports
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
+from arc.settings import external_paths
 
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom, Molecule
@@ -217,6 +218,10 @@ def initialize_log(log_file: str,
     warnings.filterwarnings(action='ignore', module='.*cclib.*')
     warnings.filterwarnings(action='ignore', module='.*matplotlib.*')
     logging.captureWarnings(capture=False)
+
+    # Flush any import-time warnings that were queued before this file handler existed.
+    for msg in external_paths.drain_deferred_warnings():
+        logger.warning(msg)
 
 
 def get_logger():

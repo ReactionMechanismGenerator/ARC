@@ -49,6 +49,47 @@ class TestFindGoFlowRepo(unittest.TestCase):
                                        return_value=os.path.join(tmp, 'no_goflow')):
                     self.assertIsNone(external_paths.find_goflow_repo())
 
+    def test_invalid_env_var_override_does_not_fall_through(self):
+        """An invalid ARC_GOFLOW_REPO must not silently fall back to another
+        candidate, even when that candidate is valid — the override is
+        authoritative and its failure must be reported, not swallowed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_override = os.path.join(tmp, 'not_a_goflow_repo')
+            os.makedirs(bad_override)
+            valid_fallback = os.path.join(tmp, 'goflow_lean')
+            init_dir = os.path.join(valid_fallback, 'src', 'goflow')
+            os.makedirs(init_dir)
+            with open(os.path.join(init_dir, '__init__.py'), 'w') as f:
+                f.write('')
+            with mock.patch.dict(os.environ, {'ARC_GOFLOW_REPO': bad_override, 'HOME': tmp}):
+                with mock.patch.object(external_paths, '_goflow_sibling_of_arc',
+                                       return_value=valid_fallback):
+                    with self.assertLogs(logger='arc', level='WARNING') as cm:
+                        result = external_paths.find_goflow_repo()
+            self.assertIsNone(result)
+            self.assertTrue(any('ARC_GOFLOW_REPO' in line and bad_override in line
+                                for line in cm.output))
+
+    def test_valid_env_var_override_wins_over_valid_fallback(self):
+        """Both the override and a fallback candidate are valid → the
+        override must win (authoritative), not merely "a" valid candidate."""
+        with tempfile.TemporaryDirectory() as tmp:
+            override = os.path.join(tmp, 'override_goflow')
+            override_init = os.path.join(override, 'src', 'goflow')
+            os.makedirs(override_init)
+            with open(os.path.join(override_init, '__init__.py'), 'w') as f:
+                f.write('')
+            fallback = os.path.join(tmp, 'goflow_lean')
+            fallback_init = os.path.join(fallback, 'src', 'goflow')
+            os.makedirs(fallback_init)
+            with open(os.path.join(fallback_init, '__init__.py'), 'w') as f:
+                f.write('')
+            with mock.patch.dict(os.environ, {'ARC_GOFLOW_REPO': override, 'HOME': tmp}):
+                with mock.patch.object(external_paths, '_goflow_sibling_of_arc',
+                                       return_value=fallback):
+                    result = external_paths.find_goflow_repo()
+            self.assertEqual(os.path.abspath(override), result)
+
 
 class TestFindGoFlowCkpt(unittest.TestCase):
     """find_goflow_ckpt() — locates the pretrained checkpoint file."""
@@ -91,6 +132,37 @@ class TestFindGoFlowCkpt(unittest.TestCase):
                 self.assertEqual(os.path.abspath(ckpt_path),
                                  external_paths.find_goflow_ckpt(repo_path=tmp))
 
+    def test_invalid_env_var_override_does_not_fall_through(self):
+        """An undersized ARC_GOFLOW_CKPT must not silently fall back to a
+        valid in-repo checkpoint — the override is authoritative."""
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_override = os.path.join(tmp, 'tiny.ckpt')
+            with open(bad_override, 'wb') as f:
+                f.write(b'\0' * 45)
+            ckpt_path = os.path.join(tmp, 'data', 'RDB7', 'epoch_337.ckpt')
+            os.makedirs(os.path.dirname(ckpt_path))
+            with open(ckpt_path, 'wb') as f:
+                f.write(b'\0' * (1_000_001))
+            with mock.patch.dict(os.environ, {'ARC_GOFLOW_CKPT': bad_override}):
+                with self.assertLogs(logger='arc', level='WARNING') as cm:
+                    result = external_paths.find_goflow_ckpt(repo_path=tmp)
+            self.assertIsNone(result)
+            self.assertTrue(any('ARC_GOFLOW_CKPT' in line and bad_override in line
+                                for line in cm.output))
+
+    def test_valid_env_var_override_wins_over_valid_repo_ckpt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            override = os.path.join(tmp, 'override.ckpt')
+            with open(override, 'wb') as f:
+                f.write(b'\0' * (1_000_001))
+            ckpt_path = os.path.join(tmp, 'data', 'RDB7', 'epoch_337.ckpt')
+            os.makedirs(os.path.dirname(ckpt_path))
+            with open(ckpt_path, 'wb') as f:
+                f.write(b'\0' * (1_000_001))
+            with mock.patch.dict(os.environ, {'ARC_GOFLOW_CKPT': override}):
+                result = external_paths.find_goflow_ckpt(repo_path=tmp)
+            self.assertEqual(os.path.abspath(override), result)
+
 
 class TestFindGoFlowFeatDict(unittest.TestCase):
     """find_goflow_feat_dict() — locates the atom-feature codebook pickle."""
@@ -126,6 +198,39 @@ class TestFindGoFlowFeatDict(unittest.TestCase):
                 os.environ.pop('ARC_GOFLOW_FEAT_DICT', None)
                 self.assertEqual(os.path.abspath(fd_path),
                                  external_paths.find_goflow_feat_dict(repo_path=tmp))
+
+    def test_invalid_env_var_override_does_not_fall_through(self):
+        """A trivially-small ARC_GOFLOW_FEAT_DICT must not silently fall back
+        to a valid in-repo feat-dict — the override is authoritative."""
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_override = os.path.join(tmp, 'tiny.pkl')
+            with open(bad_override, 'wb') as f:
+                f.write(b'\0' * 10)
+            fd_path = os.path.join(tmp, 'data', 'RDB7', 'feat_dict_organic.pkl')
+            os.makedirs(os.path.dirname(fd_path))
+            real_dict = {f'feat_{i}': {j: j for j in range(20)} for i in range(20)}
+            with open(fd_path, 'wb') as f:
+                pickle.dump(real_dict, f)
+            with mock.patch.dict(os.environ, {'ARC_GOFLOW_FEAT_DICT': bad_override}):
+                with self.assertLogs(logger='arc', level='WARNING') as cm:
+                    result = external_paths.find_goflow_feat_dict(repo_path=tmp)
+            self.assertIsNone(result)
+            self.assertTrue(any('ARC_GOFLOW_FEAT_DICT' in line and bad_override in line
+                                for line in cm.output))
+
+    def test_valid_env_var_override_wins_over_valid_repo_feat_dict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            override = os.path.join(tmp, 'override_feat_dict.pkl')
+            real_dict = {f'feat_{i}': {j: j for j in range(20)} for i in range(20)}
+            with open(override, 'wb') as f:
+                pickle.dump(real_dict, f)
+            fd_path = os.path.join(tmp, 'data', 'RDB7', 'feat_dict_organic.pkl')
+            os.makedirs(os.path.dirname(fd_path))
+            with open(fd_path, 'wb') as f:
+                pickle.dump(real_dict, f)
+            with mock.patch.dict(os.environ, {'ARC_GOFLOW_FEAT_DICT': override}):
+                result = external_paths.find_goflow_feat_dict(repo_path=tmp)
+            self.assertEqual(os.path.abspath(override), result)
 
 
 class TestFindRitsRepo(unittest.TestCase):
@@ -174,6 +279,44 @@ class TestFindRitsRepo(unittest.TestCase):
                                        return_value=sibling):
                     self.assertEqual(os.path.abspath(sibling), external_paths.find_rits_repo())
 
+    def test_invalid_env_var_override_does_not_fall_through(self):
+        """An invalid ARC_RITS_REPO must not silently fall back to another
+        candidate, even when that candidate is valid."""
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_override = os.path.join(tmp, 'not_a_rits_repo')
+            os.makedirs(bad_override)
+            valid_fallback = os.path.join(tmp, 'RitS')
+            scripts_dir = os.path.join(valid_fallback, 'scripts')
+            os.makedirs(scripts_dir)
+            with open(os.path.join(scripts_dir, 'sample_transition_state.py'), 'w') as f:
+                f.write('')
+            with mock.patch.dict(os.environ, {'ARC_RITS_REPO': bad_override, 'HOME': tmp}):
+                with mock.patch.object(external_paths, '_rits_sibling_of_arc',
+                                       return_value=valid_fallback):
+                    with self.assertLogs(logger='arc', level='WARNING') as cm:
+                        result = external_paths.find_rits_repo()
+            self.assertIsNone(result)
+            self.assertTrue(any('ARC_RITS_REPO' in line and bad_override in line
+                                for line in cm.output))
+
+    def test_valid_env_var_override_wins_over_valid_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            override = os.path.join(tmp, 'override_rits')
+            override_scripts = os.path.join(override, 'scripts')
+            os.makedirs(override_scripts)
+            with open(os.path.join(override_scripts, 'sample_transition_state.py'), 'w') as f:
+                f.write('')
+            fallback = os.path.join(tmp, 'RitS')
+            fallback_scripts = os.path.join(fallback, 'scripts')
+            os.makedirs(fallback_scripts)
+            with open(os.path.join(fallback_scripts, 'sample_transition_state.py'), 'w') as f:
+                f.write('')
+            with mock.patch.dict(os.environ, {'ARC_RITS_REPO': override, 'HOME': tmp}):
+                with mock.patch.object(external_paths, '_rits_sibling_of_arc',
+                                       return_value=fallback):
+                    result = external_paths.find_rits_repo()
+            self.assertEqual(os.path.abspath(override), result)
+
 
 class TestFindRitsCkpt(unittest.TestCase):
     """find_rits_ckpt() — locates the pretrained RitS checkpoint."""
@@ -214,6 +357,70 @@ class TestFindRitsCkpt(unittest.TestCase):
             with mock.patch.dict(os.environ, {}, clear=False):
                 os.environ.pop('ARC_RITS_CKPT', None)
                 self.assertIsNone(external_paths.find_rits_ckpt(repo_path=tmp))
+
+    def test_invalid_env_var_override_does_not_fall_through(self):
+        """A missing-file ARC_RITS_CKPT must not silently fall back to a
+        valid in-repo checkpoint — the override is authoritative."""
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_override = os.path.join(tmp, 'does_not_exist.ckpt')
+            ckpt_path = os.path.join(tmp, 'data', 'rits.ckpt')
+            os.makedirs(os.path.dirname(ckpt_path))
+            with open(ckpt_path, 'wb') as f:
+                f.write(b'\0' * 1024)
+            with mock.patch.dict(os.environ, {'ARC_RITS_CKPT': bad_override}):
+                with self.assertLogs(logger='arc', level='WARNING') as cm:
+                    result = external_paths.find_rits_ckpt(repo_path=tmp)
+            self.assertIsNone(result)
+            self.assertTrue(any('ARC_RITS_CKPT' in line and bad_override in line
+                                for line in cm.output))
+
+    def test_valid_env_var_override_wins_over_valid_repo_ckpt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            override = os.path.join(tmp, 'override.ckpt')
+            with open(override, 'wb') as f:
+                f.write(b'\0' * 1024)
+            ckpt_path = os.path.join(tmp, 'data', 'rits.ckpt')
+            os.makedirs(os.path.dirname(ckpt_path))
+            with open(ckpt_path, 'wb') as f:
+                f.write(b'\0' * 1024)
+            with mock.patch.dict(os.environ, {'ARC_RITS_CKPT': override}):
+                result = external_paths.find_rits_ckpt(repo_path=tmp)
+            self.assertEqual(os.path.abspath(override), result)
+
+
+class TestDeferredWarnings(unittest.TestCase):
+    """queue_deferred_warning() / drain_deferred_warnings() — the buffer
+    that lets import-time warnings (logged before arc.common.initialize_log()
+    attaches handlers to the 'arc' logger) reach arc.log once it flushes."""
+
+    def setUp(self):
+        external_paths.drain_deferred_warnings()
+
+    def test_drain_returns_empty_list_when_nothing_queued(self):
+        self.assertEqual(external_paths.drain_deferred_warnings(), [])
+
+    def test_queued_message_is_returned_by_drain(self):
+        external_paths.queue_deferred_warning('first warning')
+        external_paths.queue_deferred_warning('second warning')
+        self.assertEqual(external_paths.drain_deferred_warnings(), ['first warning', 'second warning'])
+
+    def test_drain_is_idempotent_and_clears_the_buffer(self):
+        external_paths.queue_deferred_warning('only once')
+        self.assertEqual(external_paths.drain_deferred_warnings(), ['only once'])
+        self.assertEqual(external_paths.drain_deferred_warnings(), [])
+
+    def test_invalid_env_var_override_queues_a_deferred_warning(self):
+        """A validation-failure logger.warning() call site must also queue
+        the same message, so it isn't lost when logged before handlers exist."""
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_override = os.path.join(tmp, 'not_a_goflow_repo')
+            os.makedirs(bad_override)
+            with mock.patch.dict(os.environ, {'ARC_GOFLOW_REPO': bad_override, 'HOME': tmp}):
+                with mock.patch.object(external_paths, '_goflow_sibling_of_arc',
+                                       return_value=os.path.join(tmp, 'no_fallback')):
+                    external_paths.find_goflow_repo()
+            queued = external_paths.drain_deferred_warnings()
+            self.assertTrue(any('ARC_GOFLOW_REPO' in msg and bad_override in msg for msg in queued))
 
 
 if __name__ == '__main__':
