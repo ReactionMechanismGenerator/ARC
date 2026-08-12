@@ -5,8 +5,8 @@
 A standalone script to read an Arknane thermo job and save in the same folder a YAML file with the thermo data.
 """
 
+import ast
 import os
-import re
 import sys
 
 from common import save_yaml_file
@@ -86,36 +86,21 @@ def _extract_thermo_points(thermo_data):
 
 
 def _iter_thermo_calls(content):
-    """Return the source text of each top-level ``thermo(...)`` call in ``content``.
+    """Return the :class:`ast.Call` node of each ``thermo(...)`` call in ``content``.
 
-    Uses balanced-parenthesis scanning rather than a single regex because a
-    ``thermo(...)`` call spans multiple lines and contains nested calls
-    (``NASA(NASAPolynomial(...), ...)``). The lookbehind ensures we only match a
-    standalone ``thermo(`` call, not the ``thermo=`` keyword inside it.
+    Selects calls to the bare name ``thermo`` only, so the ``thermo=`` keyword nested inside each
+    call is not mistaken for one. If ``content`` is not parseable Python, a message is written to
+    stderr and an empty list is returned.
     """
-    calls = []
-    for m in re.finditer(r'(?<![A-Za-z0-9_.])thermo\s*\(', content):
-        idx = m.end() - 1  # position of the opening '('
-        depth = 0
-        matched = False
-        while idx < len(content):
-            char = content[idx]
-            if char == '(':
-                depth += 1
-            elif char == ')':
-                depth -= 1
-                if depth == 0:
-                    calls.append(content[m.start():idx + 1])
-                    matched = True
-                    break
-            idx += 1
-        if not matched:
-            # Unbalanced parentheses (e.g. an unpaired '(' inside a NASA comment) — warn rather
-            # than silently drop the block, which would recreate the very null-thermo symptom
-            # this fallback exists to prevent.
-            sys.stderr.write('Could not extract a balanced thermo() block from an Arkane output.py '
-                             f'starting at offset {m.start()}; skipping it.\n')
-    return calls
+    try:
+        tree = ast.parse(content)
+    except SyntaxError as e:
+        sys.stderr.write(f'Could not parse an Arkane output.py as Python: {e}\n')
+        return []
+    return [node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == 'thermo']
 
 
 def _load_thermo_entries_from_output_py(output_path, local_context):
@@ -127,7 +112,8 @@ def _load_thermo_entries_from_output_py(output_path, local_context):
     multiplicity clash). ``output.py`` holds one ``thermo(label=..., thermo=NASA(...))``
     call per species; each is evaluated with the real rmgpy thermo classes in scope —
     exactly the context Arkane itself uses to read these files back — so no thermo data
-    is lost to the library-save failure.
+    is lost to the library-save failure. A block that fails to evaluate is reported on
+    stderr and the remaining blocks are still parsed.
     """
     with open(output_path, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -139,10 +125,10 @@ def _load_thermo_entries_from_output_py(output_path, local_context):
 
     eval_context = dict(local_context)
     eval_context['thermo'] = _capture
-    for call_src in _iter_thermo_calls(content):
+    for node in _iter_thermo_calls(content):
         try:
-            eval(call_src, {'__builtins__': {}}, eval_context)
-        except Exception as e:  # noqa: BLE001 - log which block failed, keep parsing the rest
+            eval(compile(ast.Expression(body=node), '<arkane_output>', 'eval'), eval_context)
+        except Exception as e:
             sys.stderr.write(f'Could not parse an Arkane thermo() block from {output_path}: {e}\n')
     return entries
 
@@ -154,6 +140,8 @@ def main():
     It loads the computed thermo (from the RMG thermo library Arkane wrote, or — when
     that library save failed — straight from ``output.py``), extracts H298, S298, NASA
     polynomial coefficients, and tabulated thermo points, saving the results in a YAML file.
+    A species whose thermo cannot be evaluated is reported on stderr and skipped, so the
+    remaining species are still written.
     """
     cwd = os.getcwd()
     thermo_lib_path = os.path.join(cwd, 'RMG_libraries', 'thermo.py')
@@ -176,11 +164,15 @@ def main():
     for label, thermo_data in entries.items():
         if thermo_data is None:
             continue
-        H298 = thermo_data.get_enthalpy(RT) / 1000.0
-        S298 = thermo_data.get_entropy(RT)
-        data = str(thermo_data)
-        nasa_low, nasa_high = _extract_nasa(thermo_data)
-        thermo_points = _extract_thermo_points(thermo_data)
+        try:
+            H298 = thermo_data.get_enthalpy(RT) / 1000.0
+            S298 = thermo_data.get_entropy(RT)
+            data = str(thermo_data)
+            nasa_low, nasa_high = _extract_nasa(thermo_data)
+            thermo_points = _extract_thermo_points(thermo_data)
+        except Exception as e:
+            sys.stderr.write(f'Could not evaluate the computed thermo of {label}: {e}\n')
+            continue
         result[label] = {
             'H298': H298,
             'S298': S298,
