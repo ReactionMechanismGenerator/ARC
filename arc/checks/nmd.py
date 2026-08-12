@@ -34,6 +34,9 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
     Analyze the normal mode displacement by identifying bonds that break and form
     and comparing them to the expected given reaction.
     Note that the TS geometry must be in the standard orientation for the normal mode displacement to be relevant.
+    The forming, breaking and changed bonds of the reaction are indexed into the concatenated reactant atoms,
+    where a species participating more than once (e.g. ``A + A``, for which ``r_species`` holds a single entry)
+    contributes its atoms once per occurrence. The TS geometry must span that same set of atoms.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
@@ -46,15 +49,23 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
 
     Returns:
         bool | None: Whether the TS normal mode displacement is consistent with the desired reaction.
+                     ``None`` if the analysis could not be performed, either because no frequency job was
+                     given, because the TS geometry does not span the reactant atoms the bond indices refer
+                     to, or because no normal mode displacements could be parsed from the job's output file.
+                     Only ``False`` marks the TS as inconsistent with the reaction.
     """
     if job is None:
         return None
     ts_xyz = reaction.ts_species.get_xyz()
     n_ts = len(ts_xyz['symbols'])
-    n_expected = sum(spc.number_of_atoms * reaction.get_species_count(species=spc, well=0)
-                     for spc in reaction.r_species)
+    reactants, _ = reaction.get_reactants_and_products(return_copies=False)
+    n_expected = sum(spc.number_of_atoms for spc in reactants)
     if n_ts != n_expected:
-        return False
+        logger.warning(f'The geometry of TS {reaction.ts_species.label} has {n_ts} atoms, while the reactants of '
+                       f'reaction {reaction.label} have {n_expected} atoms in total. The forming, breaking and '
+                       f'changed bonds of the reaction are indexed into the reactant atoms, so they cannot be '
+                       f'applied to this TS geometry. Skipping the normal mode displacement analysis.')
+        return None
     try:
         freqs, normal_mode_disp = parser.parse_normal_mode_displacement(log_file_path=job.local_path_to_output_file)
     except NotImplementedError:
