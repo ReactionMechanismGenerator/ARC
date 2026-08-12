@@ -9,6 +9,7 @@ import unittest
 import math
 import os
 import shutil
+from unittest.mock import patch
 
 import numpy as np
 
@@ -20,6 +21,7 @@ from arc.level import Level
 from arc.molecule import Molecule
 from arc.parser.parser import parse_normal_mode_displacement
 from arc.reaction import ARCReaction
+from arc.scheduler import Scheduler
 from arc.species.species import ARCSpecies
 from arc.species.converter import check_xyz_dict
 from arc.species.vectors import rotate_vector
@@ -538,6 +540,85 @@ class TestNMD(unittest.TestCase):
                                                         amplitude=0.25,
                                                         weights=True)
         self.assertTrue(valid)
+
+    def test_analyze_ts_normal_mode_displacement_skips_an_unsupported_ess(self):
+        """Test that an ESS ARC cannot parse normal mode displacements from is skipped rather than raising."""
+        for file_name in ['orca_neg_freq_ts.out', 'orca_example_freq.log', 'CH2O_freq_molpro.out',
+                          'C2H6_freq_QChem.out', 'CH2O_freq_terachem.dat']:
+            log_file_path = os.path.join(ARC_TESTING_PATH, 'freq', file_name)
+            self.assertEqual(parse_normal_mode_displacement(log_file_path=log_file_path), (None, None))
+            self.generic_job.local_path_to_output_file = log_file_path
+            valid = nmd.analyze_ts_normal_mode_displacement(reaction=self.rxn_1,
+                                                            job=self.generic_job,
+                                                            amplitude=0.25)
+            self.assertIsNone(valid)
+
+    def test_analyze_ts_normal_mode_displacement_skips_a_log_without_normal_modes(self):
+        """Test that a supported ESS log file that holds no normal modes is skipped rather than raising."""
+        log_file_path = os.path.join(ARC_TESTING_PATH, 'freq', 'yml_no_freqs.yml')
+        self.assertEqual(parse_normal_mode_displacement(log_file_path=log_file_path), (None, None))
+        self.generic_job.local_path_to_output_file = log_file_path
+        valid = nmd.analyze_ts_normal_mode_displacement(reaction=self.rxn_1, job=self.generic_job, amplitude=0.25)
+        self.assertIsNone(valid)
+
+    def test_analyze_ts_normal_mode_displacement_reaches_a_verdict_for_an_xtb_log(self):
+        """Test that an ESS whose normal mode displacements do parse still reaches a verdict."""
+        base_path = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C',
+                                                xyz=os.path.join(base_path, 'iC3H7.gjf'))],
+                          p_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC',
+                                                xyz=os.path.join(base_path, 'nC3H7.gjf'))])
+        xtb_path = os.path.join(ARC_TESTING_PATH, 'normal_mode', 'TS_0')
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=os.path.join(xtb_path, 'g98.out'))
+        self.generic_job.local_path_to_output_file = os.path.join(xtb_path, 'output.out')
+        valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
+        self.assertIsInstance(valid, bool)
+
+    def test_the_scheduler_does_not_switch_a_ts_for_an_unsupported_ess(self):
+        """Test that a TS is not discarded when its ESS reports no normal mode displacements."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz),
+                                     ARCSpecies(label='OH', smiles='[OH]', xyz="""O 0.48890387 0.0 0.0
+                                                                                 H -0.48890387 0.0 0.0""")],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz="""C 0.0 0.0 0.0
+                                                                                    H 1.06690511 -0.17519582 0.05416493
+                                                                                    H -0.68531716 -0.83753536 -0.02808565
+                                                                                    H -0.38158795 1.01273118 -0.02607927"""),
+                                     ARCSpecies(label='H2O', smiles='O', xyz="""O -0.00032832 0.39781490 0.0
+                                                                                H -0.76330345 -0.19953755 0.0
+                                                                                H 0.76363177 -0.19827735 0.0""")])
+        rxn.index = 0
+        rxn.ts_label = 'TS_unsupported_ess'
+        rxn.ts_species = ARCSpecies(label='TS_unsupported_ess', is_ts=True, xyz=self.ts_1_xyz)
+        rxn.ts_species.rxn_index = 0
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'tmp_nmd_unsupported_ess_project')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='tmp_nmd_unsupported_ess_project',
+                          ess_settings={'gaussian': ['local']},
+                          species_list=[rxn.ts_species] + rxn.r_species + rxn.p_species,
+                          rxn_list=[rxn],
+                          opt_level=Level(repr='b3lyp/6-31g'),
+                          freq_level=Level(repr='b3lyp/6-31g'),
+                          sp_level=Level(repr='b3lyp/6-31g'),
+                          project_directory=project_directory,
+                          testing=True,
+                          )
+        job = job_factory(job_adapter='gaussian',
+                          species=[rxn.ts_species],
+                          job_type='freq',
+                          level=Level(method='b3lyp', basis='6-31g'),
+                          project='tmp_nmd_unsupported_ess_project',
+                          project_directory=project_directory,
+                          )
+        job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        job.job_status = ['done', {'status': 'done', 'keywords': [], 'error': '', 'line': ''}]
+        with patch.object(Scheduler, 'switch_ts') as mock_switch_ts:
+            freq_ok, switched = sched.post_freq_actions(label='TS_unsupported_ess',
+                                                        job=job,
+                                                        vibfreqs=[-1200.0, 500.0, 900.0])
+        self.assertTrue(freq_ok)
+        self.assertFalse(switched)
+        self.assertFalse(mock_switch_ts.called)
+        self.assertIsNone(sched.species_dict['TS_unsupported_ess'].ts_checks['NMD'])
 
     def test_translate_all_tuples_simultaneously(self):
         """Test the translate_all_tuples_simultaneously() function."""

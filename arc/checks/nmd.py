@@ -47,6 +47,8 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
 
     Returns:
         bool | None: Whether the TS normal mode displacement is consistent with the desired reaction.
+                     ``None`` if the analysis could not be performed, either because no job was given
+                     or because no normal mode displacements could be parsed from the job's output file.
     """
     if job is None:
         return None
@@ -71,11 +73,11 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
                        f'breaking bond indices refer to the reactant order, so they do not describe the intended '
                        f'atoms of this TS. Skipping the normal mode displacement analysis.')
         return None
-    try:
-        freqs, normal_mode_disp = parser.parse_normal_mode_displacement(log_file_path=job.local_path_to_output_file)
-    except NotImplementedError:
-        logger.warning(f'Could not parse frequencies for TS {reaction.ts_species.label}.')
+    parsed_modes = parser.get_normal_mode_displacement(log_file_path=job.local_path_to_output_file,
+                                                       label=reaction.ts_species.label)
+    if parsed_modes is None:
         return None
+    normal_mode_disp = parsed_modes[1]
 
     amplitude_list = [amplitude] if isinstance(amplitude, (float, int)) else amplitude
     weights_array = get_weights_from_xyz(xyz=ts_xyz, weights=weights)

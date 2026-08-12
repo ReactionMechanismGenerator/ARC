@@ -30,9 +30,9 @@ from arc.species.conformers import determine_smallest_atom_index_in_scan
 from arc.species.converter import (displace_xyz, ics_to_scan_constraints)
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
-from arc.parser.parser import (parse_1d_scan_coords,
+from arc.parser.parser import (get_normal_mode_displacement,
+                               parse_1d_scan_coords,
                                parse_geometry,
-                               parse_normal_mode_displacement,
                                parse_scan_args,
                                parse_scan_conformers,
                                determine_ess
@@ -598,10 +598,11 @@ def trsh_negative_freq(label: str,
     factors = [0.25, 0.50, 0.75, 1.0, 1.5, 2.5]
     factor = factors[0]
     max_times_to_trsh_neg_freq = len(factors) + 1
-    freqs, normal_modes_disp = parse_normal_mode_displacement(log_file_path=log_file, raise_error=False)
-    if not len(normal_modes_disp):
+    parsed_modes = get_normal_mode_displacement(log_file_path=log_file, label=label)
+    if parsed_modes is None:
         logger.error(f'Could not troubleshoot negative frequency for species {label}.')
         return [], [], output_errors, []
+    freqs, normal_modes_disp = parsed_modes
     if len(neg_freqs_trshed) > max_times_to_trsh_neg_freq:
         logger.error(f'Species {label} was troubleshooted for negative frequencies too many times.')
         if 'rotors' not in job_types:
