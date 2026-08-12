@@ -96,6 +96,14 @@ class TestResolveFreqScaleFactorSource(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn('10.1021/ct100326h', result)
 
+    def test_known_level_with_args_returns_citation(self):
+        """A level carrying args should resolve to the same citation as the same level without args."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                      args={'keyword': {'general': 'IOp(99/33=1)'}})
+        result = _resolve_freq_scale_factor_source(level)
+        self.assertIsNotNone(result)
+        self.assertIn('10.1021/ct100326h', result)
+
 
 class TestParseThermoDataBlock(unittest.TestCase):
     """Tests for parse_thermo_data_block in arkane.py."""
