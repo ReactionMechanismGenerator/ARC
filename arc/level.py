@@ -128,6 +128,18 @@ class Level(object):
         Returns:
             str: The level of theory string representation.
         """
+        return self.string_representation()
+
+    def string_representation(self, include_args: bool = True) -> str:
+        """
+        Return a humane-readable string representation of the object.
+
+        Args:
+            include_args (bool, optional): Whether to include the software-specific ``args``.
+
+        Returns:
+            str: The level of theory string representation.
+        """
         str_ = self.method
         if self.basis is not None:
             str_ += f'/{self.basis}'
@@ -149,12 +161,10 @@ class Level(object):
             str_ += f', software: {self.software}'
             if self.software_version is not None:
                 str_ += f', software_version: {self.software_version}'
-        if self.args is not None and self.args and all([val for val in self.args.values()]):
-            if any([key == 'keyword' for key in self.args.keys()]):
-                str_ += ', keyword args:'
-                for key, arg in self.args.items():
-                    if key == 'keyword':
-                        str_ += f' {arg}'
+        if include_args and self.args is not None and any([val for val in self.args.values()]):
+            for key, arg in self.args.items():
+                if arg:
+                    str_ += f', {key} args: {arg}'
         return str_
 
     def copy(self):
@@ -464,6 +474,24 @@ class Level(object):
                     self.compatible_ess.append(ess)
 
 
+def get_freq_scale_factor_key(level: str | dict | Level) -> str:
+    """
+    Get the key under which a level of theory is stored in ``data/freq_scale_factors.yml``.
+    The key is the level of theory string representation without the software-specific ``args``.
+
+    Args:
+        level (str | dict | Level): The level of theory.
+
+    Returns:
+        str: The frequency scale factor database key.
+    """
+    if isinstance(level, dict):
+        level = Level(repr=level)
+    if isinstance(level, Level):
+        return level.string_representation(include_args=False)
+    return str(level)
+
+
 def assign_frequency_scale_factor(level: str | Level) -> float | None:
     """
     Assign a frequency scaling factor to a level of theory.
@@ -484,8 +512,7 @@ def assign_frequency_scale_factor(level: str | Level) -> float | None:
         except ValueError:
             # A string ARC cannot parse as a level has no scale factor on file.
             return None
-    level_str = str(level)
-    entry = freq_scale_factors.get(level_str)
+    entry = freq_scale_factors.get(get_freq_scale_factor_key(level))
     if entry is not None:
         return entry['factor'] if isinstance(entry, dict) else entry
     return None
