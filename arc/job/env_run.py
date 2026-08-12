@@ -30,6 +30,7 @@ The launcher is detected at call time, with the active one (per
 """
 
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -181,7 +182,7 @@ _ARC_ENV_ACTIVATION_VARS = (
 _NO_LAUNCHER_MSG = 'micromamba, mamba, or conda is required to run RMG helper scripts'
 
 
-def rmg_env_command(py_args: str,
+def rmg_env_command(py_args: str | list[str],
                     cwd: str | None = None,
                     env_vars: dict[str, str] | None = None,
                     suffix: str = '',
@@ -200,13 +201,22 @@ def rmg_env_command(py_args: str,
     still honoured.
 
     Args:
-        py_args (str): Everything after ``python``, e.g. ``'-m arkane input.py'``
-                       or ``f'{script_path} {in_path} {out_path}'``.
+        py_args (str | list[str]): Everything after ``python``. Passing a
+                       ``list[str]`` is the safe, recommended form: each
+                       element is one argv token, shell-quoted independently
+                       via ``shlex.quote`` before joining, so caller-derived
+                       values (e.g. paths from ``input.yml``) cannot break
+                       out of their token or trigger command substitution.
+                       Passing a plain ``str``, e.g. ``'-m arkane input.py'``
+                       or ``f'{script_path} {in_path} {out_path}'``, is
+                       spliced into the script verbatim as before; the caller
+                       is entirely responsible for shell-quoting it.
         cwd (str, optional): A directory to change into before running.
         env_vars (dict, optional): Extra variables to export, e.g. ``RMG_DB_PATH``.
         suffix (str, optional): Appended verbatim to the python invocation, for
                                 redirections such as ``' | tee -a stdout.log'``.
                                 Process substitution is fine, the script is bash.
+                                Never pass externally-derived/untrusted data here.
 
     Returns:
         str: A bash script. Run it with
@@ -214,22 +224,26 @@ def rmg_env_command(py_args: str,
     """
     env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
     rmg_python = settings.get('RMG_PYTHON')
+    if isinstance(py_args, list):
+        py_args = ' '.join(shlex.quote(arg) for arg in py_args)
 
     preamble = ['set -euo pipefail']
     if cwd:
-        preamble.append(f'cd "{cwd}"')
+        preamble.append(f'cd {shlex.quote(cwd)}')
     for key, val in (env_vars or {}).items():
-        preamble.append(f'export {key}="{val}"')
+        preamble.append(f'export {key}={shlex.quote(val)}')
 
     mamba_exe = os.environ.get('MAMBA_EXE', '')
     if mamba_exe and os.path.isfile(mamba_exe):
-        return '\n'.join(preamble + [f'"{mamba_exe}" run -n {env_name} python {py_args}{suffix}'])
+        return '\n'.join(preamble + [
+            f'{shlex.quote(mamba_exe)} run -n {env_name} python {py_args}{suffix}',
+        ])
 
     if rmg_python and os.path.isfile(rmg_python):
         return '\n'.join(preamble + [
             f'unset {" ".join(_ARC_ENV_ACTIVATION_VARS)}',
-            f'export PATH="{os.path.dirname(rmg_python)}:$PATH"',
-            f'"{rmg_python}" {py_args}{suffix}',
+            f'export PATH={shlex.quote(os.path.dirname(rmg_python))}:"$PATH"',
+            f'{shlex.quote(rmg_python)} {py_args}{suffix}',
         ])
 
     # No launcher pinned by an env var and no configured interpreter: hunt for a

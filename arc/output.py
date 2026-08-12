@@ -326,7 +326,7 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> tup
                 'bac_type': bac_type,
             })
 
-            command = rmg_env_command(py_args=f'{script_path} {tmp_in} {tmp_out}')
+            command = rmg_env_command(py_args=[script_path, tmp_in, tmp_out])
             _, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
             if stderr:
                 logger.warning(f'get_qm_corrections.py stderr: {stderr}')
@@ -387,7 +387,7 @@ def _compute_point_groups(species_dict: dict, project_directory: str) -> dict[st
         os.close(fd_out)
         save_yaml_file(path=tmp_in, content=pg_input)
 
-        command = rmg_env_command(py_args=f'{script_path} {tmp_in} {tmp_out}')
+        command = rmg_env_command(py_args=[script_path, tmp_in, tmp_out])
         _, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
         if stderr:
             logger.warning(f'get_point_groups.py stderr: {stderr}')

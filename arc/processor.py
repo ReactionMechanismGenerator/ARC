@@ -258,7 +258,7 @@ def compare_thermo(species_for_thermo_lib: list,
     save_yaml_file(path=species_thermo_path,
                    content=[{'label': spc.label, 'adjlist': spc.mol.copy(deep=True).to_adjacency_list()} for spc in species_for_thermo_lib])
     rmg_db_path = settings.get('RMG_DB_PATH') or ""
-    command = rmg_env_command(py_args=f'{THERMO_SCRIPT_PATH} {species_thermo_path}',
+    command = rmg_env_command(py_args=[THERMO_SCRIPT_PATH, species_thermo_path],
                               env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path})
     stdout, stderr = execute_command(command=command, shell=True, no_fail=True, executable='/bin/bash')
     if len(stderr):
@@ -307,7 +307,7 @@ def compare_rates(rxns_for_kinetics_lib: list,
                    )
     rmg_db_path = settings.get('RMG_DB_PATH') or ""
     log_suffix = ' > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)'
-    shell_script = rmg_env_command(py_args=f'{KINETICS_SCRIPT_PATH} {reactions_kinetics_path}',
+    shell_script = rmg_env_command(py_args=[KINETICS_SCRIPT_PATH, reactions_kinetics_path],
                                    env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path},
                                    suffix=log_suffix)
     o, e = execute_command(command=shell_script,
