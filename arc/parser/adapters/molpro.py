@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import re
 
-from arc.common import SYMBOL_BY_NUMBER
-from arc.constants import E_h_kJmol
+from arc.common import NUMBER_BY_SYMBOL, SYMBOL_BY_NUMBER
+from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
@@ -51,9 +51,10 @@ class MolproParser(ESSAdapter, ABC):
     def parse_geometry(self) -> dict[str, tuple] | None:
         """
         Parse the xyz geometry from an ESS log file.
+        The ``ATOMIC COORDINATES`` block is reported by Molpro in Bohr and is converted to Angstrom.
 
         Returns: dict[str, tuple] | None
-            The cartesian geometry.
+            The cartesian geometry in Angstrom.
         """
         lines = _get_lines_from_file(self.log_file_path)
         coords = []
@@ -78,24 +79,27 @@ class MolproParser(ESSAdapter, ABC):
                 if coords:
                     return xyz_from_data(coords=np.array(coords), numbers=np.array(numbers))
 
-        # Fallback to input geometry
-        for line in lines:
+        for i, line in enumerate(lines):
             if 'ATOMIC COORDINATES' in line:
                 coords = []
                 numbers = []
-                for _ in range(3):  # Skip header lines
-                    line = next(lines)
-                while line.strip() and 'Bond' not in line:
-                    parts = line.split()
-                    if len(parts) >= 5:
+                reading = False
+                j = i + 1
+                while j < len(lines):
+                    parts = lines[j].split()
+                    if len(parts) >= 6 and parts[0].isdigit():
                         try:
-                            atom_symbol = parts[1].capitalize()
-                            atomic_number = next(k for k, v in SYMBOL_BY_NUMBER.items() if v == atom_symbol)
-                            numbers.append(atomic_number)
-                            coords.append([float(parts[2]), float(parts[3]), float(parts[4])])
-                        except (ValueError, StopIteration):
+                            atomic_number = NUMBER_BY_SYMBOL[parts[1].capitalize()]
+                            xyz_bohr = [float(parts[3]), float(parts[4]), float(parts[5])]
+                        except (ValueError, KeyError):
+                            j += 1
                             continue
-                    line = next(lines)
+                        numbers.append(atomic_number)
+                        coords.append([coord * bohr_to_angstrom for coord in xyz_bohr])
+                        reading = True
+                    elif reading:
+                        break
+                    j += 1
                 if coords:
                     return xyz_from_data(coords=np.array(coords), numbers=np.array(numbers))
         return None
