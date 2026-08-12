@@ -289,6 +289,10 @@
 <span class="sd">        list[str]: List of job IDs.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">cluster_soft</span> <span class="o">==</span> <span class="s1">&#39;local&#39;</span><span class="p">:</span>
+        <span class="c1"># This machine has no queueing system, so there are no queue job IDs to report.</span>
+        <span class="c1"># Jobs here run in-core (e.g., PySCF) or as a local pipe worker pool.</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">()</span>
     <span class="k">if</span> <span class="n">cluster_soft</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;slurm&#39;</span><span class="p">,</span> <span class="s1">&#39;oge&#39;</span><span class="p">,</span> <span class="s1">&#39;sge&#39;</span><span class="p">,</span> <span class="s1">&#39;pbs&#39;</span><span class="p">,</span> <span class="s1">&#39;htcondor&#39;</span><span class="p">]:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Server cluster software </span><span class="si">{</span><span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> is not supported.&quot;</span><span class="p">)</span>
     <span class="n">cmd</span> <span class="o">=</span> <span class="n">check_status_command</span><span class="p">[</span><span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]]</span>

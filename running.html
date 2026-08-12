@@ -55,6 +55,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#restart-a-project">Restart a Project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#run-from-python">Run from Python</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#run-locally">Run Locally</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#run-pyscf-in-core-queueless">Run PySCF In-Core (Queueless)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#run-over-ssh">Run over SSH</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#run-on-hpc">Run on HPC</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#run-arkane-independently">Run Arkane Independently</a></li>
@@ -208,6 +209,46 @@ submitted using the configured scheduler and submit template.</p>
 <span class="p">}</span>
 </pre></div>
 </div>
+</section>
+<section id="run-pyscf-in-core-queueless">
+<h2>Run PySCF In-Core (Queueless)<a class="headerlink" href="#run-pyscf-in-core-queueless" title="Link to this heading"></a></h2>
+<p>PySCF is supported as a local, <strong>in-core</strong> ESS: ARC calls it in-process on the machine ARC runs
+on, with no external scheduler. This is aimed at workstations that have no queueing system.</p>
+<p>Install PySCF into its dedicated <code class="docutils literal notranslate"><span class="pre">pyscf_env</span></code> environment with the bundled script (also wired
+into <code class="docutils literal notranslate"><span class="pre">devtools/install_all.sh</span></code>). ARC discovers the environment via <code class="docutils literal notranslate"><span class="pre">find_executable('pyscf_env')</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>bash<span class="w"> </span>devtools/install_pyscf.sh<span class="w">            </span><span class="c1"># CPU baseline</span>
+bash<span class="w"> </span>devtools/install_pyscf.sh<span class="w"> </span>--cuda<span class="w">     </span><span class="c1"># additionally install the gpu4pyscf GPU stack</span>
+</pre></div>
+</div>
+<p>To run PySCF jobs, set the reserved <code class="docutils literal notranslate"><span class="pre">local</span></code> server’s <code class="docutils literal notranslate"><span class="pre">cluster_soft</span></code> to <code class="docutils literal notranslate"><span class="pre">'local'</span></code> (no queue)
+and route <code class="docutils literal notranslate"><span class="pre">pyscf</span></code> to it. When <code class="docutils literal notranslate"><span class="pre">cluster_soft</span></code> is <code class="docutils literal notranslate"><span class="pre">'local'</span></code>, the server’s <code class="docutils literal notranslate"><span class="pre">cpus</span></code> is a single
+machine-wide CPU budget: it caps the cores any one in-core job may use and bounds the local worker
+pool. Set it below the physical core count to leave headroom:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;local&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;cluster_soft&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>   <span class="c1"># no queueing system</span>
+        <span class="s1">&#39;un&#39;</span><span class="p">:</span> <span class="s1">&#39;my_user&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cpus&#39;</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span>                <span class="c1"># machine-wide CPU budget (e.g. on a 16-core box)</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+
+<span class="n">global_ess_settings</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;pyscf&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Supported job types are single-point energy (<code class="docutils literal notranslate"><span class="pre">sp</span></code>), geometry optimization (<code class="docutils literal notranslate"><span class="pre">opt</span></code>), and
+frequencies (<code class="docutils literal notranslate"><span class="pre">freq</span></code>). A few things to know:</p>
+<ul class="simple">
+<li><p><strong>GPU</strong>: after installing with <code class="docutils literal notranslate"><span class="pre">--cuda</span></code>, select the GPU globally by setting
+<code class="docutils literal notranslate"><span class="pre">PYSCF_DEVICE</span> <span class="pre">=</span> <span class="pre">'gpu'</span></code> in <code class="docutils literal notranslate"><span class="pre">settings.py</span></code>, or per job via the <code class="docutils literal notranslate"><span class="pre">args</span></code> keyword
+<code class="docutils literal notranslate"><span class="pre">{'keyword':</span> <span class="pre">{'device':</span> <span class="pre">'gpu'}}</span></code>. The GPU stack (gpu4pyscf) is pinned to a version that avoids
+a known upstream Hessian regression, so GPU <code class="docutils literal notranslate"><span class="pre">freq</span></code> jobs are supported.</p></li>
+<li><p><strong>Method and basis</strong> always come from the job’s level of theory. If an <code class="docutils literal notranslate"><span class="pre">args</span></code> keyword tries to
+set a conflicting <code class="docutils literal notranslate"><span class="pre">method</span></code> or <code class="docutils literal notranslate"><span class="pre">basis</span></code>, it is ignored (with a warning) so the computed result
+matches the level ARC records.</p></li>
+<li><p>If a PySCF job is ever routed to a queue, it transparently falls back to in-core execution.</p></li>
+</ul>
 </section>
 <section id="run-over-ssh">
 <h2>Run over SSH<a class="headerlink" href="#run-over-ssh" title="Link to this heading"></a></h2>

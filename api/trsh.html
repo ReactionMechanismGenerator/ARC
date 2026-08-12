@@ -74,6 +74,7 @@
 <li class="toctree-l2"><a class="reference internal" href="local.html">arc.job.local</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">arc.job.trsh</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.determine_ess_status"><code class="docutils literal notranslate"><span class="pre">determine_ess_status()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.determine_ess_status_from_yaml"><code class="docutils literal notranslate"><span class="pre">determine_ess_status_from_yaml()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.determine_job_log_memory_issues"><code class="docutils literal notranslate"><span class="pre">determine_job_log_memory_issues()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.scan_quality_check"><code class="docutils literal notranslate"><span class="pre">scan_quality_check()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_conformer_isomorphism"><code class="docutils literal notranslate"><span class="pre">trsh_conformer_isomorphism()</span></code></a></li>
@@ -164,6 +165,34 @@
 <li><p>The standardized error keywords.</p></li>
 <li><p>A description of the error.</p></li>
 <li><p>The parsed line from the ESS output file indicating the error.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.determine_ess_status_from_yaml">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">determine_ess_status_from_yaml</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/trsh.html#determine_ess_status_from_yaml"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.determine_ess_status_from_yaml" title="Link to this definition"></a></dt>
+<dd><p>Determine the status of a job run by an in-core ESS adapter that reports results via YAML.</p>
+<p>In-core adapters (e.g., ‘ase’, ‘pyscf’, ‘torchani’) hand off results in ARC’s internal schema
+rather than writing a text log, so the textual error signatures used for the queue-based ESS
+software do not apply.</p>
+<p>Two conventions are supported. An adapter that reports an explicit <code class="docutils literal notranslate"><span class="pre">success</span></code> key (e.g., ‘pyscf’)
+is taken at its word. The older adapters (‘ase’, ‘torchani’, ‘openbabel’) omit <code class="docutils literal notranslate"><span class="pre">success</span></code> and
+write an <code class="docutils literal notranslate"><span class="pre">error</span></code> key only when something goes wrong, so for those the absence of an error means
+the job is done – treating a missing <code class="docutils literal notranslate"><span class="pre">success</span></code> as failure would mark every one of their
+successful jobs as errored.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>output_path</strong> (<em>str</em>) – The path to the adapter’s output.yml file.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: tuple[str, list[str], str, str]</dt><dd><ul class="simple">
+<li><p>The status, either ‘done’ or ‘errored’.</p></li>
+<li><p>The standardized error keywords.</p></li>
+<li><p>A description of the error.</p></li>
+<li><p>The parsed line indicating the error (always empty for a YAML output).</p></li>
 </ul>
 </dd>
 </dl>

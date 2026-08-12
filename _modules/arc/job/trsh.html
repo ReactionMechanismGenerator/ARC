@@ -112,7 +112,8 @@
                         <span class="n">get_number_with_ordinal_indicator</span><span class="p">,</span>
                         <span class="n">is_same_pivot</span><span class="p">,</span>
                         <span class="n">is_same_sequence_sublist</span><span class="p">,</span>
-                        <span class="n">is_str_float</span>
+                        <span class="n">is_str_float</span><span class="p">,</span>
+                        <span class="n">read_yaml_file</span>
                         <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SpeciesError</span><span class="p">,</span> <span class="n">TrshError</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.imports</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
@@ -173,6 +174,9 @@
 
     <span class="k">if</span> <span class="n">software</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">software</span> <span class="o">=</span> <span class="n">determine_ess</span><span class="p">(</span><span class="n">log_file_path</span><span class="o">=</span><span class="n">output_path</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output_path</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;.yml&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">determine_ess_status_from_yaml</span><span class="p">(</span><span class="n">output_path</span><span class="o">=</span><span class="n">output_path</span><span class="p">)</span>
 
     <span class="n">keywords</span><span class="p">,</span> <span class="n">error</span><span class="p">,</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(),</span> <span class="s1">&#39;&#39;</span>
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
@@ -580,6 +584,45 @@
             <span class="k">return</span> <span class="s1">&#39;errored&#39;</span><span class="p">,</span> <span class="n">keywords</span><span class="p">,</span> <span class="n">error</span><span class="p">,</span> <span class="n">line</span>
 
     <span class="k">return</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="nb">list</span><span class="p">(),</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span></div>
+
+
+
+<div class="viewcode-block" id="determine_ess_status_from_yaml">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.determine_ess_status_from_yaml">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_ess_status_from_yaml</span><span class="p">(</span><span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Determine the status of a job run by an in-core ESS adapter that reports results via YAML.</span>
+
+<span class="sd">    In-core adapters (e.g., &#39;ase&#39;, &#39;pyscf&#39;, &#39;torchani&#39;) hand off results in ARC&#39;s internal schema</span>
+<span class="sd">    rather than writing a text log, so the textual error signatures used for the queue-based ESS</span>
+<span class="sd">    software do not apply.</span>
+
+<span class="sd">    Two conventions are supported. An adapter that reports an explicit ``success`` key (e.g., &#39;pyscf&#39;)</span>
+<span class="sd">    is taken at its word. The older adapters (&#39;ase&#39;, &#39;torchani&#39;, &#39;openbabel&#39;) omit ``success`` and</span>
+<span class="sd">    write an ``error`` key only when something goes wrong, so for those the absence of an error means</span>
+<span class="sd">    the job is done -- treating a missing ``success`` as failure would mark every one of their</span>
+<span class="sd">    successful jobs as errored.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        output_path (str): The path to the adapter&#39;s output.yml file.</span>
+
+<span class="sd">    Returns: tuple[str, list[str], str, str]</span>
+<span class="sd">        - The status, either &#39;done&#39; or &#39;errored&#39;.</span>
+<span class="sd">        - The standardized error keywords.</span>
+<span class="sd">        - A description of the error.</span>
+<span class="sd">        - The parsed line indicating the error (always empty for a YAML output).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">content</span> <span class="o">=</span> <span class="n">read_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">output_path</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s1">&#39;errored&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;NoOutput&#39;</span><span class="p">],</span> <span class="sa">f</span><span class="s1">&#39;Could not read </span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span>
+    <span class="n">error</span> <span class="o">=</span> <span class="n">content</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;error&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s1">&#39;success&#39;</span> <span class="ow">in</span> <span class="n">content</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">content</span><span class="p">[</span><span class="s1">&#39;success&#39;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="s1">&#39;done&#39;</span><span class="p">,</span> <span class="nb">list</span><span class="p">(),</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span>
+        <span class="k">return</span> <span class="s1">&#39;errored&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;Unknown&#39;</span><span class="p">],</span> <span class="n">error</span> <span class="ow">or</span> <span class="s1">&#39;The in-core ESS job did not report success.&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">error</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s1">&#39;errored&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;Unknown&#39;</span><span class="p">],</span> <span class="n">error</span><span class="p">,</span> <span class="s1">&#39;&#39;</span>
+    <span class="k">return</span> <span class="s1">&#39;done&#39;</span><span class="p">,</span> <span class="nb">list</span><span class="p">(),</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span></div>
 
 
 
