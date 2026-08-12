@@ -76,6 +76,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.vectors.get_dihedral"><code class="docutils literal notranslate"><span class="pre">get_dihedral()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.vectors.get_lp_vector"><code class="docutils literal notranslate"><span class="pre">get_lp_vector()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.vectors.get_normal"><code class="docutils literal notranslate"><span class="pre">get_normal()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.vectors.get_perpendicular_unit_vector"><code class="docutils literal notranslate"><span class="pre">get_perpendicular_unit_vector()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.vectors.get_vector"><code class="docutils literal notranslate"><span class="pre">get_vector()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.vectors.get_vector_length"><code class="docutils literal notranslate"><span class="pre">get_vector_length()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.vectors.rotate_vector"><code class="docutils literal notranslate"><span class="pre">rotate_vector()</span></code></a></li>
@@ -367,6 +368,32 @@ The approach is to reverse the average of the three unit vectors between the piv
 </dl>
 <dl class="simple">
 <dt>Returns: list</dt><dd><p>A normal unit vector to v1 and v2.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.vectors.get_perpendicular_unit_vector">
+<span class="sig-prename descclassname"><span class="pre">arc.species.vectors.</span></span><span class="sig-name descname"><span class="pre">get_perpendicular_unit_vector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vector</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/vectors.html#get_perpendicular_unit_vector"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.vectors.get_perpendicular_unit_vector" title="Link to this definition"></a></dt>
+<dd><p>Get a deterministic unit vector perpendicular to <code class="docutils literal notranslate"><span class="pre">vector</span></code>.</p>
+<p>Crossing <code class="docutils literal notranslate"><span class="pre">vector</span></code> with the Cartesian axis it is least aligned with can never be degenerate:
+the smallest component of a vector of length L is at most L / sqrt(3), so the cross product has
+a length of at least L * sqrt(2/3). Picking the axis by magnitude rather than arbitrarily keeps
+the result reproducible for a given input.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vector</strong> (<em>list</em>) – The vector to find a perpendicular of. Need not be normalized.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>VectorsError</strong> – If <code class="docutils literal notranslate"><span class="pre">vector</span></code> is not a finite, non-zero vector of length three.</p></li>
+<li><p><strong>ZeroDivisionError</strong> – If <code class="docutils literal notranslate"><span class="pre">vector</span></code> is non-zero but its squared length underflows to zero,
+    which happens below a magnitude of about 1e-162.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: list</dt><dd><p>A unit vector perpendicular to <code class="docutils literal notranslate"><span class="pre">vector</span></code>.</p>
 </dd>
 </dl>
 </dd></dl>
