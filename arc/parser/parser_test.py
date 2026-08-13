@@ -1465,5 +1465,68 @@ class TestParseWavefunctionStability(unittest.TestCase):
         self.assertIsNone(parser.parse_wavefunction_stability(freq_path))
 
 
+class TestParseSpinSquared(unittest.TestCase):
+    """
+    Contains unit tests for parsing the converged SCF <S**2> from a Gaussian log.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+
+    @staticmethod
+    def _parse(name: str) -> float | None:
+        """Parse <S**2> from a stability fixture by file name."""
+        return parser.parse_spin_squared(os.path.join(ARC_TESTING_PATH, 'stability', name))
+
+    def test_unrestricted_doublet(self):
+        """Test parsing <S**2> of a clean unrestricted doublet"""
+        self.assertAlmostEqual(self._parse('stable_unrestricted_doublet_ts.out'), 0.7536, places=4)
+
+    def test_spin_contaminated_doublet(self):
+        """Test parsing <S**2> of a spin-contaminated doublet"""
+        self.assertAlmostEqual(self._parse('stable_spin_contaminated_doublet_ts.out'), 1.7488, places=4)
+
+    def test_restricted_logs_report_no_spin_expectation_value(self):
+        """Test that a restricted log yields None, its <S**2> being zero by construction"""
+        self.assertIsNone(self._parse('stable_restricted_singlet_ts.out'))
+        self.assertIsNone(self._parse('rhf_uhf_instability_singlet_ts.out'))
+
+    def test_the_value_read_is_the_one_before_annihilation(self):
+        """Test that the SCF <S**2> is read, not the value after annihilating the first contaminant"""
+        with open(os.path.join(ARC_TESTING_PATH, 'stability',
+                               'stable_spin_contaminated_doublet_ts.out'), 'r') as f:
+            lines = [line for line in f.readlines() if 'S**2 before annihilation' in line]
+        self.assertEqual(len(lines), 1)
+        before, after = lines[0].split()[3].rstrip(','), lines[0].split()[-1]
+        self.assertAlmostEqual(self._parse('stable_spin_contaminated_doublet_ts.out'),
+                               float(before), places=4)
+        self.assertNotAlmostEqual(self._parse('stable_spin_contaminated_doublet_ts.out'),
+                                  float(after), places=4)
+
+    def test_stability_eigenvector_spins_are_not_read_as_the_reference(self):
+        """Test that the <S**2> of a stability-matrix eigenvector is not mistaken for the reference's"""
+        with open(os.path.join(ARC_TESTING_PATH, 'stability',
+                               'stable_unrestricted_doublet_ts.out'), 'r') as f:
+            eigenvector_spins = [float(line.split('<S**2>=')[1])
+                                 for line in f.readlines() if 'Eigenvector' in line and '<S**2>=' in line]
+        self.assertTrue(len(eigenvector_spins) > 1)
+        self.assertNotIn(round(self._parse('stable_unrestricted_doublet_ts.out'), 3),
+                         [round(spin, 3) for spin in eigenvector_spins])
+
+    def test_initial_guess_spin_is_not_read(self):
+        """Test that the pre-SCF initial guess <S**2> is not reported as the converged value"""
+        self.assertNotAlmostEqual(self._parse('stable_unrestricted_doublet_ts.out'), 0.7500, places=4)
+
+    def test_an_ordinary_unrestricted_freq_log(self):
+        """Test that <S**2> is read from a log carrying no stability analysis"""
+        freq_path = os.path.join(ARC_TESTING_PATH, 'freq', 'CH3OO_freq_gaussian.out')
+        self.assertIsNone(parser.parse_wavefunction_stability(freq_path))
+        self.assertAlmostEqual(parser.parse_spin_squared(freq_path), 0.7544, places=4)
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

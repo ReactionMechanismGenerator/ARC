@@ -309,6 +309,41 @@ class GaussianParser(ESSAdapter, ABC):
                 'invalidates_analytic_freq': invalidates_analytic_freq,
                 }
 
+    def parse_spin_squared(self) -> float | None:
+        """
+        Parse the converged SCF spin expectation value ``<S**2>``.
+
+        Gaussian reports it on the spin line an unrestricted SCF prints once it has
+        converged::
+
+            <Sx>= 0.0000 <Sy>= 0.0000 <Sz>= 0.5000 <S**2>= 0.7536 S= 0.5018
+
+        The value is read only from a line that also carries ``<Sx>=``, and the last such
+        line is taken. Two other lines in the same log carry the ``<S**2>=`` substring and
+        neither is the wavefunction's expectation value: the ``Initial guess`` spin line,
+        which precedes the SCF, and the ``Eigenvector`` lines of a ``Stable`` analysis,
+        which report the spin of each stability-matrix root rather than of the reference.
+        The value is the one before annihilation of the first spin contaminant, which is
+        the expectation value of the wavefunction the energy belongs to.
+
+        Returns ``None`` for a restricted calculation, which prints no spin line because
+        its ``<S**2>`` is zero by construction.
+
+        Returns: float | None
+            The converged ``<S**2>``, or ``None`` if the log holds no SCF spin line.
+        """
+        spin_squared = None
+        for line in _get_lines_from_file(self.log_file_path):
+            if '<Sx>=' not in line or '<S**2>=' not in line or 'Initial guess' in line:
+                continue
+            match = re.search(r'<S\*\*2>=\s*([-+]?\d*\.?\d+(?:[DdEe][-+]?\d+)?)', line)
+            if match is not None:
+                try:
+                    spin_squared = float(re.sub(r'[Dd]', 'e', match.group(1)))
+                except ValueError:
+                    continue
+        return spin_squared
+
     def parse_e_elect(self) -> float | None:
         """
         Parse the electronic energy from an sp job output file.
