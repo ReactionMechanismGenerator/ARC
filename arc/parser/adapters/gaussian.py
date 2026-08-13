@@ -284,10 +284,18 @@ class GaussianParser(ESSAdapter, ABC):
 
             S**2 before annihilation     2.0086,   after     2.0000
 
-        The value of record is the *last* (converged) ``<S**2>=`` on the log,
-        ignoring the ``Initial guess`` line (which reports the guess, not the
-        converged wavefunction). Restricted (RHF/RKS, closed-shell) logs never
-        print ``<S**2>``, so this returns ``None`` for them.
+        The value of record is read only from a line that also carries ``<Sx>=``,
+        and the last such line is taken. Two other kinds of line in a Gaussian log
+        carry the ``<S**2>=`` substring and are not the wavefunction's expectation
+        value: the ``Initial guess`` spin line, which precedes the SCF, and the
+        ``Eigenvector`` lines of a ``Stable`` analysis, which report the spin of
+        each stability-matrix root::
+
+            Eigenvector   3:  2.041-A    Eigenvalue= 0.0744695  <S**2>=0.791
+
+        Restricted (RHF/RKS, closed-shell) logs print no spin line, so this returns
+        ``None`` for them, including for a restricted ``Stable`` log whose
+        eigenvector lines are the only ``<S**2>=`` it holds.
 
         The ideal ``S(S+1)`` is computed from the multiplicity parsed off the
         log's ``Charge = C Multiplicity = M`` line (Gaussian doesn't print an
@@ -303,7 +311,7 @@ class GaussianParser(ESSAdapter, ABC):
                 match = re.search(r'Multiplicity\s*=\s*(\d+)', line)
                 if match:
                     multiplicity = int(match.group(1))
-            elif '<S**2>=' in line and 'Initial guess' not in line:
+            elif '<Sx>=' in line and '<S**2>=' in line and 'Initial guess' not in line:
                 match = re.search(r'<S\*\*2>=\s*([-+]?\d*\.?\d+)', line)
                 if match:
                     try:
