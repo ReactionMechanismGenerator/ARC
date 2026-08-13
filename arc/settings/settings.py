@@ -348,6 +348,12 @@ default_job_settings = {
     'job_max_server_node_memory_allocation': 0.95,  # e.g., at most 95% node memory will be used per job **if needed**
 }
 
+# The fraction of a Gaussian job's total memory allocation given to Gaussian's %mem.
+# The remainder is headroom for Gaussian's allocations outside %mem. The first entry is the
+# default; on a Gaussian memory allocation failure ARC steps down this ladder while holding the
+# queue reservation constant, so each step leaves strictly more headroom.
+gaussian_memory_headroom_fractions = [0.90, 0.75, 0.60]
+
 # Pipe mode settings: distributed HPC execution via job arrays.
 # These can be overridden in ~/.arc/settings.py.
 pipe_settings = {

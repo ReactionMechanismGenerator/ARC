@@ -231,6 +231,27 @@ def get_logger():
     return logger
 
 
+def get_memory_headroom_fraction(ess_trsh_methods: list[str] | None) -> float:
+    """
+    Determine the Gaussian %mem headroom fraction to use from accumulated ess_trsh_methods markers.
+
+    Args:
+        ess_trsh_methods (list[str] | None): The list of troubleshooting methods already attempted.
+
+    Returns:
+        float: The headroom fraction to use (the lowest of any `memory_headroom_<fraction>` markers
+               present, or the default first entry of `gaussian_memory_headroom_fractions` if none).
+    """
+    fractions = []
+    for method in ess_trsh_methods or list():
+        if method.startswith('memory_headroom_'):
+            try:
+                fractions.append(float(method.split('memory_headroom_')[1]))
+            except ValueError:
+                continue
+    return min(fractions) if fractions else settings['gaussian_memory_headroom_fractions'][0]
+
+
 def log_header(project: str,
                level: int = logging.INFO,
                ) -> None:
