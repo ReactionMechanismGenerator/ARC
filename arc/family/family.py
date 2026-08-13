@@ -517,7 +517,13 @@ def get_reaction_family_products(rxn: ARCReaction,
                                                           RMG-database/input/kinetics/families/recommended.py.
                                                           Can be a name of a defined set, or a list
                                                           of explicit family labels to consider.
-                                                          Note that surface families are excluded if 'all' is used.
+                                                          Note that 'all' skips family sets whose label contains
+                                                          'surface' and surface family directories, but still
+                                                          includes an individual surface family that a set with a
+                                                          non-surface label lists (e.g. the electrochem set's
+                                                          Surface_Proton_Electron_Reduction_* families).
+                                                          ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                          read on every call.
         consider_rmg_families (bool, optional): Whether to consider RMG's families.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
         discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover reactions belonging to a family
@@ -835,23 +841,32 @@ def check_product_isomorphism(products: list[Molecule],
     return all(isomorphic)
 
 
-def get_all_families(rmg_family_set: list[str] | str = 'default',
+def get_all_families(rmg_family_set: list[str] | str | None = None,
                      consider_rmg_families: bool = True,
                      consider_arc_families: bool = True,
                      ) -> list[str]:
     """
     Get all available RMG and ARC families.
     If ``rmg_family_set`` is a list of family labels and does not contain family sets, it will be returned as is.
+    ``'all'`` returns the union of every recommended family set whose label does not contain
+    'surface' with every family that exists as a directory in the RMG database, de-duplicated and
+    in order of first appearance. The database directories are appended last, so a family reachable
+    only through them is always positioned after every family a recommended set contributes. Callers
+    that take the first matching family therefore resolve to a recommended family whenever one
+    matches. This ordering is part of the contract: sorting the result or de-duplicating it through
+    a set would break it.
 
     Args:
         rmg_family_set (list[str] | str, optional): The RMG family set to use.
+                                                    ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                    read on every call.
         consider_rmg_families (bool, optional): Whether to consider RMG's families.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
 
     Returns:
         list[str]: A list of all available families.
     """
-    rmg_family_set = rmg_family_set or 'default'
+    rmg_family_set = rmg_family_set or settings['rmg_family_set']
     family_sets = get_rmg_recommended_family_sets()
     if isinstance(rmg_family_set, list) and all(fam not in family_sets for fam in rmg_family_set):
         return rmg_family_set
@@ -863,6 +878,8 @@ def get_all_families(rmg_family_set: list[str] | str = 'default',
             for family_set_label, families in family_sets.items():
                 if 'surface' not in family_set_label:
                     rmg_families.extend(list(families))
+            rmg_families.extend(get_rmg_family_directories())
+            rmg_families = list(dict.fromkeys(rmg_families))
         else:
             rmg_families = list(family_sets[rmg_family_set]) \
                 if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else [rmg_family_set]
@@ -872,6 +889,33 @@ def get_all_families(rmg_family_set: list[str] | str = 'default',
                 continue
             arc_families.append(os.path.splitext(family)[0])
     return rmg_families + arc_families if rmg_families is not None else arc_families
+
+
+@functools.lru_cache(maxsize=1)
+def get_rmg_family_directories() -> list[str]:
+    """
+    List every reaction family that exists as a directory in the RMG database, whether or not it
+    belongs to a recommended family set. A directory counts as a family only if it holds a
+    ``groups.py`` template. Directories whose name contains 'surface' are skipped; a surface family
+    that a recommended set lists still reaches ``get_all_families`` through that set.
+    An empty list is returned if the RMG database is unavailable.
+
+    Returns:
+        list[str]: The family directory names available in the RMG database, sorted by name.
+    """
+    if RMG_DB_PATH is None:
+        return list()
+    families_dir = get_rmg_db_subpath('kinetics', 'families', must_exist=True)
+    if not os.path.isdir(families_dir):
+        return list()
+    families = list()
+    for name in sorted(os.listdir(families_dir)):
+        if name.startswith('.') or name.startswith('_') or 'surface' in name.lower():
+            continue
+        family_path = os.path.join(families_dir, name)
+        if os.path.isdir(family_path) and os.path.isfile(os.path.join(family_path, 'groups.py')):
+            families.append(name)
+    return families
 
 
 @functools.lru_cache(maxsize=1)

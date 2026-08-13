@@ -526,7 +526,7 @@ class ARCReaction(object):
         return multiplicity
 
     def get_product_dicts(self,
-                          rmg_family_set: str = 'default',
+                          rmg_family_set: list[str] | str | None = None,
                           consider_rmg_families: bool = True,
                           consider_arc_families: bool = True,
                           discover_own_reverse_rxns_in_reverse: bool = False,
@@ -547,6 +547,14 @@ class ARCReaction(object):
               'discovered_in_reverse': bool: Whether the reaction was discovered in reverse},
              ]
 
+        Args:
+            rmg_family_set (list[str] | str, optional): The RMG family set to use.
+                                                        ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                        read on every call.
+            consider_rmg_families (bool, optional): Whether to consider RMG's families in addition to ARC's.
+            consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
+            discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
+
         Returns:
             list[dict]: A list of dictionaries with the RMG reaction family products.
         """
@@ -559,16 +567,20 @@ class ARCReaction(object):
         return product_dicts
 
     def determine_family(self,
-                         rmg_family_set: str = 'default',
+                         rmg_family_set: list[str] | str | None = None,
                          consider_rmg_families: bool = True,
                          consider_arc_families: bool = True,
                          discover_own_reverse_rxns_in_reverse: bool = False,
                          ):
         """
         Determine the RMG reaction family.
+        When all arguments are left at their defaults, the cached ``product_dicts`` property is used
+        instead of generating a new product dicts list.
 
         Args:
-            rmg_family_set (str, optional): The RMG family set to use.
+            rmg_family_set (list[str] | str, optional): The RMG family set to use.
+                                                        ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                        read on every call.
             consider_rmg_families (bool, optional): Whether to consider RMG's families in addition to ARC's.
             consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
@@ -577,8 +589,7 @@ class ARCReaction(object):
             tuple[str | None, bool | None]: The reaction family label,
                 and whether the family's template also represents its own reverse.
         """
-        if rmg_family_set == 'default' and consider_rmg_families and consider_arc_families and not discover_own_reverse_rxns_in_reverse:
-            # these are the default values, don't bother generating a new product_dicts list, use the property
+        if rmg_family_set is None and consider_rmg_families and consider_arc_families and not discover_own_reverse_rxns_in_reverse:
             product_dicts = self.product_dicts
         else:
             product_dicts = get_reaction_family_products(rxn=self,

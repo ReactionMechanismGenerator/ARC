@@ -7,6 +7,7 @@ This module contains unit tests of the arc.reaction.family module
 
 import os
 import unittest
+from unittest import mock
 
 from arc.common import is_equal_family_product_dicts
 from arc.family.family import (ReactionFamily,
@@ -20,6 +21,7 @@ from arc.family.family import (ReactionFamily,
                                filter_products_by_reaction,
                                get_reaction_family_products,
                                get_all_families,
+                               get_rmg_family_directories,
                                get_entries,
                                split_entries,
                                get_group_adjlist,
@@ -34,9 +36,11 @@ from arc.family.family import (ReactionFamily,
                                check_family_name,
                                read_groups_file_lines,
                                )
+from arc.imports import settings
 from arc.molecule import Group, Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.reaction.reaction import ARCReaction
+from arc.settings.settings import rmg_family_set as shipped_rmg_family_set
 from arc.species.species import ARCSpecies
 
 
@@ -721,6 +725,78 @@ H      -0.83821148   -0.26602407    0.00000000"""
         """An unknown family-set string should raise ValueError, not fall through to KeyError."""
         with self.assertRaises(ValueError):
             get_all_families(rmg_family_set='not_a_real_family_set', consider_arc_families=False)
+
+    def test_rmg_family_set_setting_ships_as_default(self):
+        """ARC ships with the 'default' family set, so an untouched installation considers
+        only RMG's recommended families."""
+        self.assertEqual(shipped_rmg_family_set, 'default')
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(get_all_families(consider_arc_families=False),
+                             get_all_families(rmg_family_set='default', consider_arc_families=False))
+            self.assertIn('H_Abstraction', get_all_families(consider_arc_families=False))
+
+    def test_bare_calls_honour_the_rmg_family_set_setting(self):
+        """get_all_families() and check_family_name() consider the configured family set when no
+        set is named at the call site, rather than a hard-coded 'default'."""
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            default_families = get_all_families(consider_arc_families=False)
+            self.assertNotIn('Br_Abstraction', default_families)
+            self.assertFalse(check_family_name('Br_Abstraction'))
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            all_families = get_all_families(consider_arc_families=False)
+            self.assertIn('Br_Abstraction', all_families)
+            self.assertTrue(check_family_name('Br_Abstraction'))
+            self.assertEqual(get_all_families(rmg_family_set='default', consider_arc_families=False),
+                             default_families)
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(get_all_families(consider_arc_families=False), default_families)
+            self.assertFalse(check_family_name('Br_Abstraction'))
+
+    def test_all_includes_database_directory_families(self):
+        """'all' includes families that exist in the RMG database as directories but belong to no
+        recommended family set, e.g. Intra_RH_Add_Exocyclic, without introducing duplicates."""
+        directory_families = get_rmg_family_directories()
+        self.assertIsInstance(directory_families, list)
+        self.assertIn('Intra_RH_Add_Exocyclic', directory_families)
+        self.assertIn('Intra_RH_Add_Endocyclic', directory_families)
+        all_families = get_all_families(rmg_family_set='all', consider_arc_families=False)
+        default_families = get_all_families(rmg_family_set='default', consider_arc_families=False)
+        self.assertTrue(set(default_families).issubset(set(all_families)))
+        for family in directory_families:
+            self.assertIn(family, all_families)
+        self.assertEqual(len(all_families), len(set(all_families)))
+        self.assertNotIn('Intra_RH_Add_Exocyclic', default_families)
+        self.assertIn('Surface_Proton_Electron_Reduction_Alpha', all_families)
+
+    def test_directory_only_families_are_ordered_last(self):
+        """Under 'all', every family reachable only as an RMG database directory is positioned after
+        every family a recommended family set contributes, and the result is not alphabetically
+        sorted. Sorting the result or de-duplicating it through a set would break this."""
+        all_families = get_all_families(rmg_family_set='all', consider_arc_families=False)
+        recommended = set()
+        for family_set_label, families in get_rmg_recommended_family_sets().items():
+            if 'surface' not in family_set_label:
+                recommended.update(families)
+        recommended_positions = [i for i, fam in enumerate(all_families) if fam in recommended]
+        directory_only_positions = [i for i, fam in enumerate(all_families) if fam not in recommended]
+        self.assertTrue(len(recommended_positions))
+        self.assertTrue(len(directory_only_positions))
+        self.assertLess(max(recommended_positions), min(directory_only_positions))
+        self.assertLess(all_families.index('Intra_R_Add_Exocyclic'),
+                        all_families.index('Intra_RH_Add_Endocyclic'))
+        self.assertLess(all_families.index('Intra_R_Add_Exocyclic'),
+                        all_families.index('Intra_RH_Add_Exocyclic'))
+        self.assertNotEqual(all_families, sorted(all_families))
+
+    def test_rmg_family_set_setting_reaches_a_directory_only_family(self):
+        """Setting rmg_family_set to 'all' makes a family that exists only as a database directory
+        reachable through the bare call and through check_family_name()."""
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertNotIn('Intra_RH_Add_Exocyclic', get_all_families(consider_arc_families=False))
+            self.assertFalse(check_family_name('Intra_RH_Add_Exocyclic'))
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            self.assertIn('Intra_RH_Add_Exocyclic', get_all_families(consider_arc_families=False))
+            self.assertTrue(check_family_name('Intra_RH_Add_Exocyclic'))
 
     def test_get_rmg_recommended_family_sets(self):
         """Test getting RMG recommended family sets"""

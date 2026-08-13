@@ -10,9 +10,12 @@ import os
 import shutil
 import time
 import unittest
+from unittest import mock
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, read_yaml_file
 from arc.exceptions import ReactionError
+from arc.family.family import get_all_families, get_rmg_recommended_family_sets
+from arc.imports import settings
 from arc.main import ARC
 from arc.reaction.reaction import ARCReaction, remove_dup_species
 from arc.scheduler import Scheduler
@@ -468,6 +471,87 @@ class TestARCReaction(unittest.TestCase):
                                       ARCSpecies(label='NH2NO', smiles='NN=O', yml_path=os.path.join(base_path, 'NH2NO.yml'))])
         self.assertEqual(rxn2.family, 'H_Abstraction')
         self.assertEqual(self.rxn12.family, 'H_Abstraction')
+
+    def test_bare_calls_honour_the_rmg_family_set_setting(self):
+        """determine_family() and get_product_dicts() consider the configured family set when no
+        set is named at the call site, rather than a hard-coded 'default'."""
+        def build_rxn():
+            return ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                          ARCSpecies(label='CH3Br', smiles='CBr')],
+                               p_species=[ARCSpecies(label='HBr', smiles='Br'),
+                                          ARCSpecies(label='CH3', smiles='[CH3]')])
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(build_rxn().determine_family(), (None, None))
+            self.assertEqual(build_rxn().get_product_dicts(), list())
+            self.assertEqual(self.rxn1.determine_family()[0], 'H_Abstraction')
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            self.assertEqual(build_rxn().determine_family(), ('Br_Abstraction', True))
+            product_dicts = build_rxn().get_product_dicts()
+            self.assertTrue(len(product_dicts))
+            self.assertTrue(all(product_dict['family'] == 'Br_Abstraction' for product_dict in product_dicts))
+            self.assertEqual(build_rxn().determine_family(rmg_family_set='default'), (None, None))
+            self.assertEqual(build_rxn().get_product_dicts(rmg_family_set='default'), list())
+
+    def test_determine_family_reaches_a_directory_only_family(self):
+        """2-methyl-1-butene <=> 1,1-dimethylcyclopropane belongs to Intra_RH_Add_Exocyclic, which
+        exists only as an RMG database directory. It is discoverable under rmg_family_set 'all'
+        and remains undiscoverable under 'default'."""
+        def build_rxn():
+            return ARCReaction(r_species=[ARCSpecies(label='2-methyl-1-butene', smiles='C=C(C)CC')],
+                               p_species=[ARCSpecies(label='1,1-dimethylcyclopropane', smiles='CC1(C)CC1')])
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(build_rxn().determine_family(), (None, None))
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            self.assertEqual(build_rxn().determine_family()[0], 'Intra_RH_Add_Exocyclic')
+            self.assertEqual(build_rxn().determine_family(rmg_family_set='default'), (None, None))
+
+    def test_widening_keeps_the_recommended_family_when_both_match(self):
+        """OH + HO2 <=> H2O2 + O matches the recommended H_Abstraction and the directory-only
+        Substitution_O, each on its own. Under 'all' both are discovered, the recommended one comes
+        first, and the family resolves to H_Abstraction, as it does under 'default'."""
+        def build_rxn():
+            return ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                          ARCSpecies(label='HO2', smiles='[O]O')],
+                               p_species=[ARCSpecies(label='H2O2', smiles='OO'),
+                                          ARCSpecies(label='O', smiles='[O]')])
+        for family in ['H_Abstraction', 'Substitution_O']:
+            self.assertEqual(len(build_rxn().get_product_dicts(rmg_family_set=[family],
+                                                               consider_arc_families=False)), 1)
+        all_families = get_all_families(rmg_family_set='all', consider_arc_families=False)
+        recommended = set()
+        for family_set_label, families in get_rmg_recommended_family_sets().items():
+            if 'surface' not in family_set_label:
+                recommended.update(families)
+        self.assertIn('H_Abstraction', recommended)
+        self.assertNotIn('Substitution_O', recommended)
+        self.assertLess(max(i for i, fam in enumerate(all_families) if fam in recommended),
+                        all_families.index('Substitution_O'))
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual([pd['family'] for pd in build_rxn().get_product_dicts()], ['H_Abstraction'])
+            self.assertEqual(build_rxn().determine_family(), ('H_Abstraction', True))
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            self.assertEqual([pd['family'] for pd in build_rxn().get_product_dicts()],
+                             ['H_Abstraction', 'Substitution_O'])
+            self.assertEqual(build_rxn().determine_family(), ('H_Abstraction', True))
+
+    def test_wider_family_set_scan_used_by_the_linear_ts_adapter(self):
+        """The Linear TS adapter retries with rmg_family_set='all' whenever the configured set
+        yields no product dicts, so what 'all' means reaches an installation that never changes the
+        setting. 1,4-cyclohexadiene <=> benzene + H2 has no family under the shipped default and
+        resolves to H2_Loss, an RMG database directory family, under that retry."""
+        def build_rxn():
+            return ARCReaction(r_species=[ARCSpecies(label='1,4-cyclohexadiene', smiles='C1=CCC=CC1')],
+                               p_species=[ARCSpecies(label='benzene', smiles='c1ccccc1'),
+                                          ARCSpecies(label='H2', smiles='[H][H]')])
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(build_rxn().product_dicts, list())
+            self.assertIsNone(build_rxn().family)
+            wider_product_dicts = build_rxn().get_product_dicts(rmg_family_set='all',
+                                                                consider_rmg_families=True,
+                                                                consider_arc_families=True,
+                                                                discover_own_reverse_rxns_in_reverse=True)
+            self.assertTrue(len(wider_product_dicts))
+            self.assertEqual({pd['family'] for pd in wider_product_dicts}, {'H2_Loss'})
 
     def test_charge_property(self):
         """Test determining charge"""
