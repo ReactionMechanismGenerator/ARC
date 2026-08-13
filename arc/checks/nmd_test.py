@@ -916,6 +916,25 @@ class TestNMD(unittest.TestCase):
         valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25, weights=True)
         self.assertTrue(valid)
 
+    def test_analyze_ts_normal_mode_displacement_unmapped_reaction(self):
+        """
+        A reaction ARC cannot atom-map (e.g. CH3 + CS <=> CCS, R_Addition_MultipleBond with a charged
+        CS) must skip the NMD check and return None, not crash the run with a ReactionError.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='CS', smiles='[C-]#[S+]')],
+                          p_species=[ARCSpecies(label='CCS', smiles='C[C]=S')])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True,
+                                    xyz=ARCSpecies(label='CCS', smiles='C[C]=S').get_xyz())
+        self.assertIsNone(rxn.atom_map)
+        self.assertIsNone(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job))
+        self.assertIn('Atom map is None; skipped the TS normal mode displacement check; ',
+                      rxn.ts_species.ts_checks['warnings'])
+        # Calling it again must not duplicate the warning text.
+        self.assertIsNone(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job))
+        self.assertEqual(rxn.ts_species.ts_checks['warnings'].count(
+            'Atom map is None; skipped the TS normal mode displacement check; '), 1)
+
     @classmethod
     def tearDownClass(cls):
         """
