@@ -978,6 +978,37 @@ H       1.12853146   -0.86793870    0.06973060"""
         self.assertEqual(broken, [tuple(sorted((star1, star2)))])
         self.assertEqual(rxn.get_changed_bonds(), [])
 
+    def test_get_reactive_bonds_from_family_reverse_discovery(self):
+        """
+        A product dict discovered in reverse holds its r_label_map in product index space,
+        so get_reactive_bonds_from_family() must not derive reactant-space bonds from it.
+        """
+        # Ene reaction of ethene + propene, matched by Retroene only in the reverse direction.
+        rxn = ARCReaction(r_species=[ARCSpecies(label='ethene', smiles='C=C'),
+                                     ARCSpecies(label='propene', smiles='C=CC')],
+                          p_species=[ARCSpecies(label='pentene', smiles='C=CCCC')])
+        self.assertEqual(rxn.family, 'Retroene')
+        self.assertTrue(all(product_dict['discovered_in_reverse'] for product_dict in rxn.product_dicts))
+        self.assertIsNone(rxn.get_reactive_bonds_from_family())
+
+        r1 = ARCSpecies(label='r1', smiles='CC[CH]OCC')
+        r2 = ARCSpecies(label='r2', smiles='CCCOCC')
+        p1 = ARCSpecies(label='p1', smiles='C[CH]OCCC')
+        p2 = ARCSpecies(label='p2', smiles='CCCOCC')
+        fwd_rxn = ARCReaction(r_species=[r1, r2], p_species=[p1, p2])
+        self.assertEqual(fwd_rxn.family, 'H_Abstraction')
+        self.assertFalse(fwd_rxn.product_dicts[0]['discovered_in_reverse'])
+        forward_bonds = fwd_rxn.get_reactive_bonds_from_family()
+        self.assertIsNotNone(forward_bonds)
+
+        reverse_dict = dict(fwd_rxn.product_dicts[0])
+        reverse_dict['discovered_in_reverse'] = True
+        reverse_dict['r_label_map'] = {label: index + 1 for label, index in reverse_dict['r_label_map'].items()}
+        foreign_dict = dict(fwd_rxn.product_dicts[0])
+        foreign_dict['family'] = 'Disproportionation'
+        fwd_rxn.product_dicts = [reverse_dict, foreign_dict] + fwd_rxn.product_dicts
+        self.assertEqual(fwd_rxn.get_reactive_bonds_from_family(), forward_bonds)
+
     def test_get_changed_bonds(self):
         """Test the get_changed_bonds() function."""
         rxn_7 = ARCReaction(r_species=[ARCSpecies(label='C2H5NO2', smiles='[O-][N+](=O)CC',
