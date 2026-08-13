@@ -34,18 +34,51 @@ def _extract_nasa(thermo_data):
     )
 
 
-def _extract_cp(thermo_data):
-    """Return a list of {temperature_k, cp_j_mol_k} dicts, or None."""
+def _extract_thermo_points(thermo_data):
+    """Return a list of per-temperature thermochemistry dicts, or None.
+
+    Each entry carries explicit thermodynamic values and units:
+
+        ``temperature_k``  - the evaluation temperature in K
+        ``cp_j_mol_k``     - heat capacity        (J/(mol*K))
+        ``h_kj_mol``       - enthalpy             (kJ/mol)
+        ``s_j_mol_k``      - entropy              (J/(mol*K))
+        ``g_kj_mol``       - Gibbs free energy    (kJ/mol)
+
+    RMG's NASA / ThermoData accessors return SI units (J/mol for energies,
+    J/(mol*K) for capacities/entropies); enthalpy and free energy are
+    converted to kJ/mol for a compact, explicit output contract.
+
+    Any per-temperature evaluation that raises (e.g., the polynomial is
+    not valid at that T) is skipped silently — the goal is best-effort
+    enrichment, not failing the whole library extraction over one out-
+    of-range point.
+    """
     try:
         tmin = thermo_data.Tmin.value_si
         tmax = thermo_data.Tmax.value_si
-        return [
-            {'temperature_k': T, 'cp_j_mol_k': float(thermo_data.get_heat_capacity(T))}
-            for T in _CP_TEMPS
-            if tmin <= T <= tmax
-        ]
     except Exception:
         return None
+
+    points = []
+    for T in _CP_TEMPS:
+        if not (tmin <= T <= tmax):
+            continue
+        try:
+            cp = float(thermo_data.get_heat_capacity(T))
+            h_kj = float(thermo_data.get_enthalpy(T)) / 1000.0
+            s = float(thermo_data.get_entropy(T))
+            g_kj = float(thermo_data.get_free_energy(T)) / 1000.0
+        except Exception:
+            continue
+        points.append({
+            'temperature_k': T,
+            'cp_j_mol_k': cp,
+            'h_kj_mol': h_kj,
+            's_j_mol_k': s,
+            'g_kj_mol': g_kj,
+        })
+    return points or None
 
 
 def main():
@@ -72,14 +105,14 @@ def main():
         S298 = thermo_data.get_entropy(RT)
         data = str(thermo_data)
         nasa_low, nasa_high = _extract_nasa(thermo_data)
-        cp_data = _extract_cp(thermo_data)
+        thermo_points = _extract_thermo_points(thermo_data)
         result[entry.label] = {
             'H298': H298,
             'S298': S298,
             'data': data,
             'nasa_low': nasa_low,
             'nasa_high': nasa_high,
-            'cp_data': cp_data,
+            'thermo_points': thermo_points,
         }
     if result:
         result_path = os.path.join(os.getcwd(), 'thermo.yaml')
