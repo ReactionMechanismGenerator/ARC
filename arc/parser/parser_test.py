@@ -762,6 +762,18 @@ H      -1.69381305    0.40788834    0.90078104"""
         path = os.path.join(ARC_TESTING_PATH, 'mockter.yml')
         self.assertIsNone(parser.parse_s_squared(path))
 
+    def test_parse_s_squared_from_a_stability_log(self):
+        """Test that a Stable job's eigenvector spins are not read as the wavefunction's S**2"""
+        path = os.path.join(ARC_TESTING_PATH, 'stability', 'stable_unrestricted_doublet_ts.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7536)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertAlmostEqual(sd['s_squared_annihilated'], 0.75)
+
+        path = os.path.join(ARC_TESTING_PATH, 'stability', 'stable_restricted_singlet_ts.out')
+        self.assertIsNone(parser.parse_s_squared(path))
+
     def test_s_squared_expected_from_multiplicity(self):
         """Test the ideal S(S+1) helper"""
         self.assertEqual(parser.s_squared_expected_from_multiplicity(2), 0.75)
