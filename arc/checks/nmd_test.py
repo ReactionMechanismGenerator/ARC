@@ -257,6 +257,26 @@ class TestNMD(unittest.TestCase):
         self.assertEqual(sorted(broken), [(0, 4), (1, 2)])  # C-H (beta-H) and C-O (C_alpha-O)
         self.assertEqual(sorted(changed), [(0, 1)])  # C-C -> C=C
 
+    def test_get_bond_change_candidates_reverse_discovered_family(self):
+        """
+        A family match discovered in reverse cannot supply reactant-space bonds, so it must not
+        become a candidate. Without an atom map there is then no candidate at all, and the
+        map-derived derivation must be skipped rather than raise for a missing atom map.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='ethene', smiles='C=C'),
+                                     ARCSpecies(label='propene', smiles='C=CC')],
+                          p_species=[ARCSpecies(label='pentene', smiles='C=CCCC')])
+        self.assertEqual(rxn.family, 'Retroene')
+        self.assertTrue(all(product_dict['discovered_in_reverse'] for product_dict in rxn.product_dicts))
+        self.assertIsNone(rxn.get_reactive_bonds_from_family())
+
+        original_atom_map = ARCReaction.atom_map
+        try:
+            ARCReaction.atom_map = property(lambda self: None, lambda self, value: None)
+            self.assertEqual(nmd.get_bond_change_candidates(reaction=rxn), list())
+        finally:
+            ARCReaction.atom_map = original_atom_map
+
     def test_analyze_ts_normal_mode_displacement_ho2_elimination(self):
         """
         HO2 elimination from ethylperoxy: CCO[O] <=> C=C + [O]O (benchmark reaction 04 regression).

@@ -110,6 +110,9 @@ def get_bond_change_candidates(reaction: ARCReaction,
     defines the canonical reactive bonds independently of the atom map, so it is tried first when
     available, with the map-derived sets kept as a fallback candidate.
 
+    The map-derived sets require an atom map. When none is available, only the family-derived
+    candidate is returned, and the list is empty if the family recipe cannot supply one either.
+
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
 
@@ -121,6 +124,10 @@ def get_bond_change_candidates(reaction: ARCReaction,
     family_bonds = reaction.get_reactive_bonds_from_family()
     if family_bonds is not None:
         candidates.append(family_bonds)
+    if reaction.atom_map is None:
+        logger.warning(f'Cannot derive atom-map-based bond changes for reaction {reaction}, '
+                       f'no atom map is available.')
+        return candidates
     formed_bonds, broken_bonds = reaction.get_formed_and_broken_bonds()
     changed_bonds = reaction.get_changed_bonds()
     map_bonds = (formed_bonds, broken_bonds, changed_bonds)

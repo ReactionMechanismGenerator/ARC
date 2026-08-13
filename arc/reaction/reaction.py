@@ -1130,17 +1130,29 @@ class ARCReaction(object):
         Derive formed, broken, and order-changed bonds directly from the RMG family's
         recipe actions and ``r_label_map``, bypassing ``atom_map``.
 
-        All tuples are in reactant global index space. This is the canonical source
+        All returned tuples are in reactant global index space. This is the canonical source
         used elsewhere in ARC (see ``arc.mapping.engine.find_all_breaking_bonds``),
         and is sufficient for NMD validation which only needs reactive-atom roles.
 
+        Only a product dict of the reaction's family that was discovered in the forward
+        direction is used. A product dict discovered in reverse carries an ``r_label_map``
+        in *product* global index space and recipe actions that describe the reverse
+        direction, so it cannot express reactant-space bonds and is skipped.
+
         Returns:
-            tuple[formed, broken, changed] | None: ``None`` when the family or
-            ``r_label_map`` is unavailable and the label-based path cannot be taken.
+            tuple[formed, broken, changed] | None: ``None`` when the family is unavailable,
+            when no forward-discovered product dict of the reaction's family exists, or when
+            a recipe label cannot be resolved, in which case the label-based path cannot be
+            taken and the caller falls back to atom-map-derived bonds.
         """
         if self.family is None or not self.product_dicts:
             return None
-        r_label_map = self.product_dicts[0].get('r_label_map')
+        product_dict = next((product_dict for product_dict in self.product_dicts
+                             if product_dict.get('family') == self.family
+                             and not product_dict.get('discovered_in_reverse', False)), None)
+        if product_dict is None:
+            return None
+        r_label_map = product_dict.get('r_label_map')
         if not r_label_map:
             return None
         actions = ReactionFamily(label=self.family).actions
