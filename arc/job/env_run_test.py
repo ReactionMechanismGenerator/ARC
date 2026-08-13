@@ -6,7 +6,9 @@ This module contains unit tests of the arc.job.env_run module.
 """
 
 import os
+import shlex
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,6 +18,7 @@ from arc.job.env_run import (
     _detect_launcher,
     _run_flags_for,
     env_prefix_from_python,
+    rmg_env_command,
     run_in_conda_env,
 )
 
@@ -268,6 +271,117 @@ class TestRunInCondaEnv(unittest.TestCase):
             )
         mock_logger.warning.assert_not_called()
         mock_logger.debug.assert_called()
+
+
+class TestRmgEnvCommand(unittest.TestCase):
+    """rmg_env_command must shell-quote caller-supplied cwd/env_vars values;
+    wrapping them in bare double quotes does not stop command substitution."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        # A stand-in launcher: strips ``run -n <env> python`` and execs the
+        # rest with the real interpreter, so the generated script can be
+        # executed end-to-end without a real conda/mamba env present.
+        fake_mamba = Path(self.tmpdir.name) / 'fake_mamba'
+        fake_mamba.write_text(f'#!/bin/bash\nshift 4\nexec "{sys.executable}" "$@"\n')
+        fake_mamba.chmod(0o755)
+        self.fake_mamba = str(fake_mamba)
+        self.env_patch = patch.dict(os.environ, {'MAMBA_EXE': self.fake_mamba})
+        self.env_patch.start()
+        self.addCleanup(self.env_patch.stop)
+
+    @staticmethod
+    def _run_script(script: str) -> subprocess.CompletedProcess:
+        return subprocess.run(['bash', '-c', script], capture_output=True, text=True)
+
+    def test_cwd_command_substitution_is_neutralized(self):
+        marker = Path(self.tmpdir.name) / 'pwned_dollar'
+        cwd = f'{self.tmpdir.name}/$(touch {marker})'
+        script = rmg_env_command("-c 'pass'", cwd=cwd)
+        self._run_script(script)
+        self.assertFalse(marker.exists())
+
+    def test_cwd_with_backticks_is_neutralized(self):
+        marker = Path(self.tmpdir.name) / 'pwned_backtick'
+        cwd = f'{self.tmpdir.name}/`touch {marker}`'
+        script = rmg_env_command("-c 'pass'", cwd=cwd)
+        self._run_script(script)
+        self.assertFalse(marker.exists())
+
+    def test_env_vars_command_substitution_is_neutralized(self):
+        marker = Path(self.tmpdir.name) / 'pwned_env'
+        script = rmg_env_command("-c 'pass'", env_vars={'FOO': f'$(touch {marker})'})
+        self._run_script(script)
+        self.assertFalse(marker.exists())
+
+    def test_cwd_with_space_is_quoted_in_script(self):
+        cwd = f'{self.tmpdir.name}/a dir with spaces'
+        script = rmg_env_command("-c 'pass'", cwd=cwd)
+        self.assertIn(shlex.quote(cwd), script)
+
+    def test_cwd_with_single_quote_is_quoted_in_script(self):
+        cwd = f"{self.tmpdir.name}/o'brien"
+        script = rmg_env_command("-c 'pass'", cwd=cwd)
+        self.assertIn(shlex.quote(cwd), script)
+
+    def test_env_vars_with_space_is_quoted_in_script(self):
+        script = rmg_env_command("-c 'pass'", env_vars={'FOO': 'a value with spaces'})
+        self.assertIn(shlex.quote('a value with spaces'), script)
+
+    def test_cwd_happy_path_still_cds(self):
+        target = Path(self.tmpdir.name) / 'target dir'
+        target.mkdir()
+        marker = target / 'marker'
+        script = rmg_env_command("-c \"open('marker', 'w').close()\"", cwd=str(target))
+        result = self._run_script(script)
+        self.assertTrue(marker.exists(), f'stdout={result.stdout!r} stderr={result.stderr!r}')
+
+    def test_py_args_list_with_space_survives_as_single_token(self):
+        marker = Path(self.tmpdir.name) / 'received_arg.txt'
+        path_with_space = '/tmp/My Runs/proj/RMG_thermo.yml'
+        script = rmg_env_command(['-c',
+                                  f"import sys; open({str(marker)!r}, 'w').write(sys.argv[1])",
+                                  path_with_space])
+        result = self._run_script(script)
+        self.assertTrue(marker.exists(), f'stdout={result.stdout!r} stderr={result.stderr!r}')
+        self.assertEqual(marker.read_text(), path_with_space)
+
+    def test_py_args_list_with_parens_runs_successfully(self):
+        marker = Path(self.tmpdir.name) / 'received_arg_parens.txt'
+        path_with_parens = '/tmp/2026-08 (rerun)/x.yml'
+        script = rmg_env_command(['-c',
+                                  f"import sys; open({str(marker)!r}, 'w').write(sys.argv[1])",
+                                  path_with_parens])
+        result = self._run_script(script)
+        self.assertTrue(marker.exists(), f'stdout={result.stdout!r} stderr={result.stderr!r}')
+        self.assertEqual(marker.read_text(), path_with_parens)
+
+    def test_py_args_list_dollar_paren_substitution_is_neutralized(self):
+        marker = Path(self.tmpdir.name) / 'pwned_py_args_dollar'
+        malicious = f'$(touch {marker})'
+        script = rmg_env_command(['-c', 'pass', malicious])
+        self._run_script(script)
+        self.assertFalse(marker.exists())
+
+    def test_py_args_list_backtick_substitution_is_neutralized(self):
+        marker = Path(self.tmpdir.name) / 'pwned_py_args_backtick'
+        malicious = f'`touch {marker}`'
+        script = rmg_env_command(['-c', 'pass', malicious])
+        self._run_script(script)
+        self.assertFalse(marker.exists())
+
+    def test_py_args_str_backward_compatible_unquoted(self):
+        script = rmg_env_command("-c 'pass'")
+        self.assertIn("python -c 'pass'", script)
+
+    def test_py_args_list_ordinary_path_unmangled(self):
+        script = rmg_env_command(['script.py', '/tmp/plain/path.yml'])
+        self.assertIn('python script.py /tmp/plain/path.yml', script)
+
+    def test_py_args_list_arkane_module_invocation_three_tokens(self):
+        script = rmg_env_command(['-m', 'arkane', 'input.py'])
+        self.assertIn('python -m arkane input.py', script)
 
 
 if __name__ == '__main__':

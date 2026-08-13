@@ -483,7 +483,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
         script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'save_arkane_thermo.py')
         rmg_db_path = RMG_DB_PATH or ""
-        command = rmg_env_command(py_args=script_path,
+        command = rmg_env_command(py_args=[script_path],
                                   cwd=statmech_dir,
                                   env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path})
         stdout, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
@@ -558,7 +558,7 @@ def run_arkane(statmech_dir: str) -> bool:
         return False
     rmg_db_path = RMG_DB_PATH or ""
     arkane_suffix = ' 2> >(tee -a stderr.log >&2) | tee -a stdout.log'
-    shell_script = rmg_env_command(py_args='-m arkane input.py',
+    shell_script = rmg_env_command(py_args=['-m', 'arkane', 'input.py'],
                                    cwd=statmech_dir,
                                    env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path},
                                    suffix=arkane_suffix)

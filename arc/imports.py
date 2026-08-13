@@ -2,12 +2,58 @@
 This module contains functionality to import user settings and fill in default values from ARC's settings.
 """
 
+import logging
 import os
 import sys
 
 import arc.settings.settings as arc_settings
+from arc.settings.external_paths import (find_goflow_ckpt,
+                                          find_goflow_feat_dict,
+                                          find_rits_ckpt,
+                                          queue_deferred_warning)
 from arc.settings.inputs import input_files
 from arc.settings.submit import incore_commands, pipe_submit, submit_scripts
+
+logger = logging.getLogger('arc')
+
+
+# (parent_key, dependent_key, finder_fn) triples: when a local ~/.arc/settings.py
+# overrides parent_key without also overriding dependent_key, dependent_key was
+# derived from the OLD parent_key at auto-discovery time and must be re-derived
+# from the new one, or it silently keeps pointing at a mismatched checkout/artifact.
+_OVERRIDDEN_DEPENDENTS = (
+    ('GOFLOW_REPO_PATH', 'GOFLOW_CKPT_PATH', find_goflow_ckpt),
+    ('GOFLOW_REPO_PATH', 'GOFLOW_FEAT_DICT_PATH', find_goflow_feat_dict),
+    ('RITS_REPO_PATH', 'RITS_CKPT_PATH', find_rits_ckpt),
+)
+
+
+def resolve_overridden_dependents(settings: dict, local_settings_dict: dict) -> None:
+    """
+    Re-derive dependent settings whose parent was overridden without the dependent itself.
+
+    A local ~/.arc/settings.py may override e.g. GOFLOW_REPO_PATH while leaving
+    GOFLOW_CKPT_PATH unset; since arc/settings/settings.py derives GOFLOW_CKPT_PATH
+    from GOFLOW_REPO_PATH at auto-discovery time (before the overlay), leaving it
+    untouched here would mix the new repo with the old, auto-discovered checkpoint.
+    An explicit override of the dependent itself always wins and is left alone.
+
+    Args:
+        settings (dict): The merged settings dict, updated in place.
+        local_settings_dict (dict): The keys explicitly set by the local
+            ~/.arc/settings.py overlay.
+
+    Returns:
+        None: `settings` is mutated in place.
+    """
+    for parent_key, dependent_key, finder in _OVERRIDDEN_DEPENDENTS:
+        if parent_key in local_settings_dict and dependent_key not in local_settings_dict:
+            settings[dependent_key] = finder(settings[parent_key])
+            if settings[dependent_key] is None:
+                msg = f'{parent_key} was overridden to "{settings[parent_key]}", but no valid ' \
+                      f'{dependent_key} could be re-derived from it; {dependent_key} is unset.'
+                logger.warning(msg)
+                queue_deferred_warning(msg)
 
 
 # Common imports where the user can optionally put a modified copy of settings.py or submit.py file under ~/.arc
@@ -27,6 +73,7 @@ if os.path.isfile(local_arc_settings_path):
     if local_settings:
         local_settings_dict = {key: val for key, val in vars(local_settings).items() if '__' not in key}
         settings.update(local_settings_dict)
+        resolve_overridden_dependents(settings, local_settings_dict)
         # Set global_ess_settings to None if using a local settings file (ARC's defaults are dummies)
         settings['global_ess_settings'] = local_settings_dict['global_ess_settings'] \
             if 'global_ess_settings' in local_settings_dict and local_settings_dict['global_ess_settings'] else None

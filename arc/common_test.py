@@ -8,6 +8,7 @@ This module contains unit tests for ARC's common module
 import copy
 import datetime
 import os
+import tempfile
 import time
 import unittest
 
@@ -20,6 +21,7 @@ import arc.species.converter as converter
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.molecule import Molecule
+from arc.settings import external_paths
 from arc.species.species import ARCSpecies
 
 
@@ -1450,6 +1452,37 @@ class TestCommon(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         """
         cls._clean_globalized_restart_artifact()
+
+
+class TestInitializeLogDeferredWarnings(unittest.TestCase):
+    """initialize_log() must flush any deferred import-time warnings
+    (queued in arc.settings.external_paths before handlers were attached
+    to the 'arc' logger) into the log once its handlers exist."""
+
+    def setUp(self):
+        external_paths.drain_deferred_warnings()
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp_dir.cleanup)
+        self.log_file = os.path.join(self.tmp_dir.name, 'arc.log')
+
+    def _read_log(self) -> str:
+        with open(self.log_file, 'r') as f:
+            return f.read()
+
+    def test_deferred_warning_is_flushed_into_the_log_file(self):
+        external_paths.queue_deferred_warning('a deferred warning that must reach arc.log')
+        common.initialize_log(log_file=self.log_file, project='test_deferred_warnings')
+        self.assertIn('a deferred warning that must reach arc.log', self._read_log())
+
+    def test_no_deferred_warnings_leaves_nothing_to_flush(self):
+        common.initialize_log(log_file=self.log_file, project='test_deferred_warnings')
+        self.assertNotIn('Warning: ', self._read_log())
+
+    def test_repeated_initialize_log_does_not_re_log_a_drained_warning(self):
+        external_paths.queue_deferred_warning('only flushed once')
+        common.initialize_log(log_file=self.log_file, project='test_deferred_warnings')
+        common.initialize_log(log_file=self.log_file, project='test_deferred_warnings')
+        self.assertEqual(self._read_log().count('only flushed once'), 1)
 
 
 if __name__ == '__main__':

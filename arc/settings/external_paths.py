@@ -29,11 +29,49 @@ located by env-var override (``ARC_RITS_REPO``, ``ARC_RITS_CKPT``) or by
 filesystem convention.
 """
 
+import logging
 import os
 
+# Using logging.getLogger('arc') directly (matching arc.common's own
+# instantiation) rather than importing arc.common.get_logger(): this module
+# is imported by arc.settings.settings, which arc.common imports at module
+# load time, so importing arc.common here would create a circular import.
+logger = logging.getLogger('arc')
 
 _GOFLOW_CKPT_MIN_SIZE = 1_000_000      # any real Lightning ckpt is >> 1 MB
 _GOFLOW_FEAT_DICT_MIN_SIZE = 100       # rejects only trivially-empty stubs
+
+# Import-time ``logger.warning`` calls (this module and ``arc.imports`` both
+# run before ``arc.common.initialize_log()`` attaches handlers to the 'arc'
+# logger) only ever reach stderr and never arc.log. Buffer them here so
+# ``initialize_log()`` can flush them into the logger once handlers exist.
+_deferred_warnings: list[str] = []
+
+
+def queue_deferred_warning(message: str) -> None:
+    """
+    Queue an import-time warning message for later flushing into arc.log.
+
+    Args:
+        message (str): The warning message to queue.
+    """
+    _deferred_warnings.append(message)
+
+
+def drain_deferred_warnings() -> list[str]:
+    """
+    Return and clear all queued deferred warning messages.
+
+    Idempotent by construction: the buffer is cleared as part of draining,
+    so a repeated call (e.g. ``initialize_log()`` running more than once in
+    a process) returns an empty list rather than re-emitting stale entries.
+
+    Returns:
+        list[str]: The queued messages, in the order they were queued.
+    """
+    messages = list(_deferred_warnings)
+    _deferred_warnings.clear()
+    return messages
 
 
 def _arc_root() -> str:
@@ -76,7 +114,10 @@ def find_goflow_repo() -> str | None:
     configs) and the (validated) shipped ``data/RDB7/`` artifacts.
 
     Search order:
-        1. ``ARC_GOFLOW_REPO`` environment variable (explicit override).
+        1. ``ARC_GOFLOW_REPO`` environment variable — an explicit override
+           is authoritative: if set, it is validated and either returned
+           or, if invalid, ``None`` is returned immediately (a warning is
+           logged); other candidates are never consulted.
         2. ``~/Code/goflow_lean`` (default for ARC dev machines).
         3. Sibling-of-ARC location ``<parent-of-arc-repo>/goflow_lean`` —
            matches what ``devtools/install_goflow.sh`` produces.
@@ -88,14 +129,17 @@ def find_goflow_repo() -> str | None:
         str | None: Absolute path to the checkout, or ``None`` if no
         candidate was located.
     """
-    home = os.getenv('HOME') or os.path.expanduser('~')
-    candidates = []
     env_override = os.getenv('ARC_GOFLOW_REPO')
     if env_override:
-        candidates.append(env_override)
-    candidates.append(os.path.join(home, 'Code', 'goflow_lean'))
-    candidates.append(_goflow_sibling_of_arc())
-    for path in candidates:
+        if os.path.isfile(os.path.join(env_override, 'src', 'goflow', '__init__.py')):
+            return os.path.abspath(env_override)
+        msg = (f'ARC_GOFLOW_REPO is set to "{env_override}", but it does not contain '
+               f'src/goflow/__init__.py. Not falling back to other candidates.')
+        logger.warning(msg)
+        queue_deferred_warning(msg)
+        return None
+    home = os.getenv('HOME') or os.path.expanduser('~')
+    for path in [os.path.join(home, 'Code', 'goflow_lean'), _goflow_sibling_of_arc()]:
         if path and os.path.isfile(os.path.join(path, 'src', 'goflow', '__init__.py')):
             return os.path.abspath(path)
     return None
@@ -109,7 +153,10 @@ def find_goflow_ckpt(repo_path: str | None) -> str | None:
     shipped in goflow_lean@main.
 
     Search order:
-        1. ``ARC_GOFLOW_CKPT`` env-var override.
+        1. ``ARC_GOFLOW_CKPT`` env-var override — authoritative: if set, it
+           is validated and either returned or, if invalid, ``None`` is
+           returned immediately (a warning is logged); ``repo_path`` is
+           never consulted.
         2. ``<repo_path>/data/RDB7/epoch_*.ckpt`` — any ``epoch_NNN.ckpt``
            past the size guard. Matches both the Zenodo-installed
            ``epoch_316.ckpt`` and the upstream-canonical ``epoch_337.ckpt``;
@@ -128,9 +175,14 @@ def find_goflow_ckpt(repo_path: str | None) -> str | None:
         str | None: Absolute path to a real ckpt, or ``None``.
     """
     env_override = os.getenv('ARC_GOFLOW_CKPT')
-    if env_override and os.path.isfile(env_override) \
-            and os.path.getsize(env_override) >= _GOFLOW_CKPT_MIN_SIZE:
-        return os.path.abspath(env_override)
+    if env_override:
+        if os.path.isfile(env_override) and os.path.getsize(env_override) >= _GOFLOW_CKPT_MIN_SIZE:
+            return os.path.abspath(env_override)
+        msg = (f'ARC_GOFLOW_CKPT is set to "{env_override}", but it is not a file of '
+               f'at least {_GOFLOW_CKPT_MIN_SIZE} bytes. Not falling back to other candidates.')
+        logger.warning(msg)
+        queue_deferred_warning(msg)
+        return None
     if repo_path:
         ckpt_dir = os.path.join(repo_path, 'data', 'RDB7')
         if os.path.isdir(ckpt_dir):
@@ -160,7 +212,10 @@ def find_goflow_feat_dict(repo_path: str | None) -> str | None:
     as-is.
 
     Search order:
-        1. ``ARC_GOFLOW_FEAT_DICT`` env-var override.
+        1. ``ARC_GOFLOW_FEAT_DICT`` env-var override — authoritative: if
+           set, it is validated and either returned or, if invalid,
+           ``None`` is returned immediately (a warning is logged);
+           ``repo_path`` is never consulted.
         2. ``<repo_path>/data/RDB7/feat_dict_organic.pkl``.
 
     Pickle-level validation is deferred to the adapter's runtime.
@@ -171,14 +226,19 @@ def find_goflow_feat_dict(repo_path: str | None) -> str | None:
     Returns:
         str | None: Absolute path to a feat-dict pickle, or ``None``.
     """
-    candidates = []
     env_override = os.getenv('ARC_GOFLOW_FEAT_DICT')
     if env_override:
-        candidates.append(env_override)
+        if os.path.isfile(env_override) and os.path.getsize(env_override) >= _GOFLOW_FEAT_DICT_MIN_SIZE:
+            return os.path.abspath(env_override)
+        msg = (f'ARC_GOFLOW_FEAT_DICT is set to "{env_override}", but it is not a file '
+               f'of at least {_GOFLOW_FEAT_DICT_MIN_SIZE} bytes. Not falling back to '
+               f'other candidates.')
+        logger.warning(msg)
+        queue_deferred_warning(msg)
+        return None
     if repo_path:
-        candidates.append(os.path.join(repo_path, 'data', 'RDB7', 'feat_dict_organic.pkl'))
-    for path in candidates:
-        if path and os.path.isfile(path) and os.path.getsize(path) >= _GOFLOW_FEAT_DICT_MIN_SIZE:
+        path = os.path.join(repo_path, 'data', 'RDB7', 'feat_dict_organic.pkl')
+        if os.path.isfile(path) and os.path.getsize(path) >= _GOFLOW_FEAT_DICT_MIN_SIZE:
             return os.path.abspath(path)
     return None
 
@@ -192,7 +252,10 @@ def find_rits_repo() -> str | None:
     ``megalodon`` package.
 
     Search order:
-        1. ``ARC_RITS_REPO`` environment variable (explicit override).
+        1. ``ARC_RITS_REPO`` environment variable — an explicit override
+           is authoritative: if set, it is validated and either returned
+           or, if invalid, ``None`` is returned immediately (a warning is
+           logged); other candidates are never consulted.
         2. ``~/Code/RitS`` (default for ARC dev machines).
         3. Sibling-of-ARC location ``<parent-of-arc-repo>/RitS`` —
            matches what ``devtools/install_rits.sh`` produces.
@@ -204,14 +267,17 @@ def find_rits_repo() -> str | None:
         str | None: Absolute path to the checkout, or ``None`` if no
         candidate was located.
     """
-    home = os.getenv('HOME') or os.path.expanduser('~')
-    candidates = []
     env_override = os.getenv('ARC_RITS_REPO')
     if env_override:
-        candidates.append(env_override)
-    candidates.append(os.path.join(home, 'Code', 'RitS'))
-    candidates.append(_rits_sibling_of_arc())
-    for path in candidates:
+        if os.path.isfile(os.path.join(env_override, 'scripts', 'sample_transition_state.py')):
+            return os.path.abspath(env_override)
+        msg = (f'ARC_RITS_REPO is set to "{env_override}", but it does not contain '
+               f'scripts/sample_transition_state.py. Not falling back to other candidates.')
+        logger.warning(msg)
+        queue_deferred_warning(msg)
+        return None
+    home = os.getenv('HOME') or os.path.expanduser('~')
+    for path in [os.path.join(home, 'Code', 'RitS'), _rits_sibling_of_arc()]:
         if path and os.path.isfile(os.path.join(path, 'scripts', 'sample_transition_state.py')):
             return os.path.abspath(path)
     return None
@@ -222,7 +288,10 @@ def find_rits_ckpt(repo_path: str | None) -> str | None:
     Locate the pretrained RitS checkpoint file (``rits.ckpt``).
 
     Search order:
-        1. ``ARC_RITS_CKPT`` environment variable (explicit override).
+        1. ``ARC_RITS_CKPT`` environment variable — authoritative: if set,
+           it is validated and either returned or, if invalid, ``None`` is
+           returned immediately (a warning is logged); ``repo_path`` is
+           never consulted.
         2. ``<repo_path>/data/rits.ckpt`` — what ``install_rits.sh`` writes.
 
     No size guard is applied: the upstream Zenodo-distributed checkpoint is
@@ -239,8 +308,13 @@ def find_rits_ckpt(repo_path: str | None) -> str | None:
         str | None: Absolute path to the checkpoint, or ``None``.
     """
     env_override = os.getenv('ARC_RITS_CKPT')
-    if env_override and os.path.isfile(env_override):
-        return os.path.abspath(env_override)
+    if env_override:
+        if os.path.isfile(env_override):
+            return os.path.abspath(env_override)
+        msg = f'ARC_RITS_CKPT is set to "{env_override}", but it is not a file. Not falling back to other candidates.'
+        logger.warning(msg)
+        queue_deferred_warning(msg)
+        return None
     if repo_path:
         candidate = os.path.join(repo_path, 'data', 'rits.ckpt')
         if os.path.isfile(candidate):
