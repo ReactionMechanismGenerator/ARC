@@ -557,7 +557,7 @@ class TestARCReaction(unittest.TestCase):
         """Test that the product dicts of a reaction that matches several families are restricted to one family"""
         rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH]1C=Cc2ccccc21')],
                           p_species=[ARCSpecies(label='P', smiles='[CH]1C=CC2C3=C1C=CC32')])
-        self.assertEqual(rxn.family, 'Intra_Diels_alder_monocyclic')
+        self.assertEqual(rxn.family, 'Intra_R_Add_Endocyclic')
         self.assertTrue(len(rxn.product_dicts))
         self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts}, {rxn.family})
 

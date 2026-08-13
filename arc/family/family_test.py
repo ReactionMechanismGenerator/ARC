@@ -29,8 +29,12 @@ from arc.family.family import (ReactionFamily,
                                get_isomorphic_subgraph,
                                get_product_num,
                                get_reactant_groups_from_template,
+                               get_reaction_family,
                                get_recipe_actions,
                                get_rmg_recommended_family_sets,
+                               count_recipe_bond_changes,
+                               has_radical_recipe_action,
+                               prioritize_family_product_dicts,
                                is_own_reverse,
                                is_reversible,
                                check_family_name,
@@ -1702,6 +1706,190 @@ H       1.24252625    0.91583948   -0.84155142"""
         self.assertTrue(check_family_name(None))
         with self.assertRaises(TypeError):
             check_family_name(123)
+
+
+class TestFamilyChoiceGates(unittest.TestCase):
+    """Unit tests for the non-lexical gates that choose between co-matching families"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.maxDiff = None
+        cls.radical_rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]C=CC=C')],
+                                      p_species=[ARCSpecies(label='P', smiles='[CH2]C1C=CC1')])
+        cls.closed_shell_rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CC(=C)N')],
+                                           p_species=[ARCSpecies(label='P', smiles='NC1=CCC1')])
+        cls.abstraction_rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5', smiles='C[CH2]'),
+                                                     ARCSpecies(label='C2H3', smiles='[CH]=C')],
+                                          p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                                     ARCSpecies(label='C2H4b', smiles='[CH]C')])
+
+    @staticmethod
+    def make_product_dicts(*entries) -> list[dict]:
+        """Build minimal product dicts, each entry being a (family, discovered_in_reverse) tuple
+        or a (family, discovered_in_reverse, group_labels) tuple."""
+        product_dicts = list()
+        for entry in entries:
+            family, reverse = entry[0], entry[1]
+            product_dicts.append({'family': family,
+                                  'group_labels': entry[2] if len(entry) > 2 else ('a', 'b'),
+                                  'products': list(),
+                                  'r_label_map': dict(),
+                                  'p_label_map': dict(),
+                                  'own_reverse': False,
+                                  'discovered_in_reverse': reverse,
+                                  })
+        return product_dicts
+
+    def test_has_radical_recipe_action(self):
+        """Test identifying the recipes that change an unpaired electron count"""
+        self.assertTrue(has_radical_recipe_action(get_reaction_family(label='Intra_R_Add_Exocyclic').actions))
+        self.assertTrue(has_radical_recipe_action(get_reaction_family(label='H_Abstraction').actions))
+        self.assertFalse(has_radical_recipe_action(get_reaction_family(label='Intra_RH_Add_Endocyclic').actions))
+        self.assertFalse(has_radical_recipe_action(get_reaction_family(label='Intra_2+2_cycloaddition_Cd').actions))
+        self.assertFalse(has_radical_recipe_action(list()))
+
+    def test_count_recipe_bond_changes(self):
+        """Test counting the bond changes a recipe prescribes"""
+        self.assertEqual(count_recipe_bond_changes(get_reaction_family(label='H_Abstraction').actions), (2, 0))
+        self.assertEqual(count_recipe_bond_changes(get_reaction_family(label='Disproportionation').actions), (2, 1))
+        self.assertEqual(count_recipe_bond_changes(get_reaction_family(label='Intra_R_Add_Exocyclic').actions), (1, 1))
+        self.assertEqual(count_recipe_bond_changes(get_reaction_family(label='Intra_RH_Add_Endocyclic').actions), (3, 1))
+        self.assertEqual(count_recipe_bond_changes(list()), (0, 0))
+
+    def test_forward_matches_are_preferred_over_reverse_discovered_matches(self):
+        """A match discovered in reverse carries a label map of the flipped reaction,
+        so it is dropped whenever a forward match exists"""
+        product_dicts = self.make_product_dicts(('R_Addition_MultipleBond', True), ('Retroene', False))
+        prioritized = prioritize_family_product_dicts(rxn=self.radical_rxn, product_dicts=product_dicts)
+        self.assertEqual([product_dict['family'] for product_dict in prioritized], ['Retroene'])
+
+    def test_reverse_discovered_matches_are_kept_when_no_forward_match_exists(self):
+        """Nothing is dropped when every match was discovered in reverse"""
+        product_dicts = self.make_product_dicts(('Intra_2+2_cycloaddition_Cd', True), ('Intra_R_Add_Exocyclic', True))
+        prioritized = prioritize_family_product_dicts(rxn=self.closed_shell_rxn, product_dicts=product_dicts)
+        self.assertEqual([product_dict['family'] for product_dict in prioritized],
+                         ['Intra_R_Add_Exocyclic', 'Intra_2+2_cycloaddition_Cd'])
+
+    def test_a_radical_reactant_requires_a_recipe_that_accounts_for_the_radical(self):
+        """A family whose recipe leaves the unpaired electron untouched is dropped
+        when the reactants carry one and a family that accounts for it also matches"""
+        product_dicts = self.make_product_dicts(('Intra_2+2_cycloaddition_Cd', False), ('Intra_R_Add_Exocyclic', False))
+        prioritized = prioritize_family_product_dicts(rxn=self.radical_rxn, product_dicts=product_dicts)
+        self.assertEqual([product_dict['family'] for product_dict in prioritized], ['Intra_R_Add_Exocyclic'])
+
+    def test_the_radical_gate_keeps_all_matches_when_no_recipe_accounts_for_the_radical(self):
+        """The radical gate does not empty the candidates when no recipe changes a radical count"""
+        product_dicts = self.make_product_dicts(('Intra_2+2_cycloaddition_Cd', False),
+                                                ('Intra_RH_Add_Endocyclic', False))
+        prioritized = prioritize_family_product_dicts(rxn=self.radical_rxn, product_dicts=product_dicts)
+        self.assertEqual({product_dict['family'] for product_dict in prioritized},
+                         {'Intra_2+2_cycloaddition_Cd', 'Intra_RH_Add_Endocyclic'})
+
+    def test_the_radical_gate_is_silent_for_closed_shell_reactants(self):
+        """Closed-shell reactants keep every family match, whatever its recipe does to radicals"""
+        product_dicts = self.make_product_dicts(('Intra_2+2_cycloaddition_Cd', False), ('Intra_R_Add_Exocyclic', False))
+        prioritized = prioritize_family_product_dicts(rxn=self.closed_shell_rxn, product_dicts=product_dicts)
+        self.assertEqual({product_dict['family'] for product_dict in prioritized},
+                         {'Intra_2+2_cycloaddition_Cd', 'Intra_R_Add_Exocyclic'})
+
+    def test_the_fewest_bond_changes_win_the_tie_break(self):
+        """Two families that both account for the radical are ordered by the bond changes
+        their recipes prescribe, before any lexical consideration"""
+        product_dicts = self.make_product_dicts(('Disproportionation', False), ('H_Abstraction', False))
+        prioritized = prioritize_family_product_dicts(rxn=self.abstraction_rxn, product_dicts=product_dicts)
+        self.assertEqual([product_dict['family'] for product_dict in prioritized],
+                         ['H_Abstraction', 'Disproportionation'])
+
+    def test_matches_of_the_same_family_keep_their_relative_order(self):
+        """Ordering the families does not reorder the label maps within a family"""
+        product_dicts = self.make_product_dicts(('Intra_2+2_cycloaddition_Cd', False, ('c1', 'c2')),
+                                                ('Intra_R_Add_Exocyclic', False, ('r1', 'r2')),
+                                                ('Intra_2+2_cycloaddition_Cd', False, ('c3', 'c4')),
+                                                ('Intra_R_Add_Exocyclic', False, ('r3', 'r4')))
+        prioritized = prioritize_family_product_dicts(rxn=self.closed_shell_rxn, product_dicts=product_dicts)
+        self.assertEqual([product_dict['group_labels'] for product_dict in prioritized],
+                         [('r1', 'r2'), ('r3', 'r4'), ('c1', 'c2'), ('c3', 'c4')])
+
+    def test_a_single_match_is_returned_as_is(self):
+        """A single match is returned unchanged, radical reactants notwithstanding"""
+        product_dicts = self.make_product_dicts(('Intra_2+2_cycloaddition_Cd', True))
+        self.assertEqual(prioritize_family_product_dicts(rxn=self.radical_rxn, product_dicts=product_dicts),
+                         product_dicts)
+        self.assertEqual(prioritize_family_product_dicts(rxn=self.radical_rxn, product_dicts=list()), list())
+
+    def test_a_radical_cyclization_is_not_labeled_as_a_cycloaddition(self):
+        """The pentadienyl radical cyclization matches both a concerted cycloaddition and a radical
+        addition, and resolves to the radical addition although the cycloaddition sorts first"""
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            concerted = determine_possible_reaction_products_from_family(
+                rxn=self.radical_rxn, family_label='Intra_2+2_cycloaddition_Cd')
+            self.assertTrue(len(concerted))
+            all_families = get_all_families(rmg_family_set='all')
+            self.assertLess(all_families.index('Intra_2+2_cycloaddition_Cd'),
+                            all_families.index('Intra_R_Add_Exocyclic'))
+            product_dicts = get_reaction_family_products(rxn=self.radical_rxn, rmg_family_set='all')
+            self.assertEqual({product_dict['family'] for product_dict in product_dicts}, {'Intra_R_Add_Exocyclic'})
+
+    def test_the_direction_gate_holds_when_a_recipe_cannot_be_read(self):
+        """The direction gate reads only 'discovered_in_reverse', so an unreadable recipe must not
+        resurrect a reverse-discovered match, and only the recipe-based gates degrade"""
+        product_dicts = self.make_product_dicts(('Intra_R_Add_Exocyclic', True),
+                                                ('Intra_2+2_cycloaddition_Cd', False),
+                                                ('Intra_RH_Add_Endocyclic', False))
+        with mock.patch('arc.family.family.get_reaction_family',
+                        side_effect=FileNotFoundError('groups.py')):
+            prioritized = prioritize_family_product_dicts(rxn=self.radical_rxn, product_dicts=product_dicts)
+        self.assertEqual([product_dict['family'] for product_dict in prioritized],
+                         ['Intra_2+2_cycloaddition_Cd', 'Intra_RH_Add_Endocyclic'])
+
+    def test_an_unreadable_recipe_is_reported_as_a_warning(self):
+        """Losing the radical gate and the bond-change ordering degrades the family choice,
+        so it is reported above the debug level"""
+        product_dicts = self.make_product_dicts(('Intra_2+2_cycloaddition_Cd', False),
+                                                ('Intra_R_Add_Exocyclic', False))
+        with mock.patch('arc.family.family.get_reaction_family',
+                        side_effect=FileNotFoundError('groups.py')):
+            with self.assertLogs('arc', level='WARNING') as captured:
+                prioritize_family_product_dicts(rxn=self.radical_rxn, product_dicts=product_dicts)
+        self.assertIn('Could not read the recipe', '\n'.join(captured.output))
+
+    def test_a_recipe_is_not_read_for_a_reverse_discovered_match(self):
+        """The direction gate runs first, so a match it drops cannot disable the remaining gates"""
+        product_dicts = self.make_product_dicts(('Intra_R_Add_Exocyclic', True),
+                                                ('Intra_2+2_cycloaddition_Cd', False),
+                                                ('Intra_RH_Add_Endocyclic', False))
+        with mock.patch('arc.family.family.get_reaction_family',
+                        wraps=get_reaction_family) as mocked_get_reaction_family:
+            prioritize_family_product_dicts(rxn=self.radical_rxn, product_dicts=product_dicts)
+        self.assertEqual({call.kwargs['label'] for call in mocked_get_reaction_family.call_args_list},
+                         {'Intra_2+2_cycloaddition_Cd', 'Intra_RH_Add_Endocyclic'})
+
+    def test_the_direction_gate_holds_for_a_caller_that_did_not_ask_for_reverse_discovery(self):
+        """The allyl + propene addition matches R_Addition_MultipleBond in the forward direction and
+        Retroene in the reverse one. Retroene's label map indexes the product, so it is dropped even
+        though 'discover_own_reverse_rxns_in_reverse' never admitted it in the first place"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='allyl', smiles='C=C[CH2]'),
+                                     ARCSpecies(label='propene', smiles='CC=C')],
+                          p_species=[ARCSpecies(label='P', smiles='C=CCC(C)[CH2]')])
+        product_dicts = get_reaction_family_products(rxn=rxn, rmg_family_set='all',
+                                                     discover_own_reverse_rxns_in_reverse=False)
+        self.assertEqual({product_dict['family'] for product_dict in product_dicts},
+                         {'R_Addition_MultipleBond'})
+        self.assertFalse(any(product_dict['discovered_in_reverse'] for product_dict in product_dicts))
+
+    def test_asking_for_reverse_discovery_does_not_defeat_the_direction_gate(self):
+        """'discover_own_reverse_rxns_in_reverse' widens the search, it does not license a label map of
+        the flipped reaction, so a forward match still wins. H_Abstraction is its own reverse, so the
+        flag admits two reverse-discovered matches that the gate then drops"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        product_dicts = get_reaction_family_products(rxn=rxn, rmg_family_set='all',
+                                                     discover_own_reverse_rxns_in_reverse=True)
+        self.assertTrue(len(product_dicts))
+        self.assertEqual({product_dict['family'] for product_dict in product_dicts}, {'H_Abstraction'})
+        self.assertFalse(any(product_dict['discovered_in_reverse'] for product_dict in product_dicts))
 
 
 class TestSplitEntries(unittest.TestCase):
