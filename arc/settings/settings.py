@@ -385,11 +385,13 @@ kinbot_uma_settings = {
 # ARC families folder path
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
-# The RMG reaction family set ARC uses to determine and validate reaction families.
-# 'default' matches RMG's recommended families (suitable for mechanism generation). Set to 'all'
-# to consider every family available in the RMG database — including families that ARC's TS
-# adapters support (see ts_adapters_by_rmg_family) but that RMG does not list as recommended
-# (e.g. Intra_RH_Add_Endocyclic, XY_Addition_MultipleBond). Useful when running specific
+# The RMG reaction family set ARC uses to determine and validate reaction families whenever a
+# family set is not given explicitly. 'default' considers only RMG's recommended families, as is
+# appropriate for mechanism generation. Any other family set defined in
+# RMG-database/input/kinetics/families/recommended.py may be used (e.g. 'halogens'), as may 'all',
+# which considers every family in those sets except the surface ones. 'all' also reaches families
+# that ARC's TS adapters support (see ts_adapters_by_rmg_family) but RMG does not recommend
+# (e.g. Intra_RH_Add_Endocyclic, XY_Addition_MultipleBond) — useful when running specific
 # reactions across many families (e.g. a benchmark) rather than generating a mechanism.
 rmg_family_set = 'default'
 

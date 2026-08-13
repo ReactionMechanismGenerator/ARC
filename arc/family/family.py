@@ -500,6 +500,8 @@ def get_reaction_family_products(rxn: ARCReaction,
                                                           Can be a name of a defined set, or a list
                                                           of explicit family labels to consider.
                                                           Note that surface families are excluded if 'all' is used.
+                                                          ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                          read on every call.
         consider_rmg_families (bool, optional): Whether to consider RMG's families.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
         discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover reactions belonging to a family
@@ -728,7 +730,7 @@ def check_product_isomorphism(products: list[Molecule],
     return all(isomorphic)
 
 
-def get_all_families(rmg_family_set: list[str] | str = 'default',
+def get_all_families(rmg_family_set: list[str] | str | None = None,
                      consider_rmg_families: bool = True,
                      consider_arc_families: bool = True,
                      ) -> list[str]:
@@ -738,13 +740,15 @@ def get_all_families(rmg_family_set: list[str] | str = 'default',
 
     Args:
         rmg_family_set (list[str] | str, optional): The RMG family set to use.
+                                                    ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                    read on every call.
         consider_rmg_families (bool, optional): Whether to consider RMG's families.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
 
     Returns:
         list[str]: A list of all available families.
     """
-    rmg_family_set = rmg_family_set or 'default'
+    rmg_family_set = rmg_family_set or settings['rmg_family_set']
     family_sets = get_rmg_recommended_family_sets()
     if isinstance(rmg_family_set, list) and all(fam not in family_sets for fam in rmg_family_set):
         return rmg_family_set

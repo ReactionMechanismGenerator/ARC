@@ -10,12 +10,14 @@ import os
 import shutil
 import time
 import unittest
+from unittest import mock
 
 import numpy as np
 from scipy.spatial.transform import Rotation
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, calc_rmsd, read_yaml_file
 from arc.exceptions import ReactionError
+from arc.imports import settings
 from arc.main import ARC
 from arc.molecule.molecule import Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
@@ -473,6 +475,26 @@ class TestARCReaction(unittest.TestCase):
                                       ARCSpecies(label='NH2NO', smiles='NN=O', yml_path=os.path.join(base_path, 'NH2NO.yml'))])
         self.assertEqual(rxn2.family, 'H_Abstraction')
         self.assertEqual(self.rxn12.family, 'H_Abstraction')
+
+    def test_determine_family_reads_rmg_family_set_setting_at_call_time(self):
+        """Changing settings['rmg_family_set'] after the reaction module was imported changes
+        which families determine_family() and get_product_dicts() can discover."""
+        def build_rxn():
+            return ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                          ARCSpecies(label='CH3Br', smiles='CBr')],
+                               p_species=[ARCSpecies(label='HBr', smiles='Br'),
+                                          ARCSpecies(label='CH3', smiles='[CH3]')])
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(build_rxn().determine_family(), (None, None))
+            self.assertEqual(build_rxn().get_product_dicts(), list())
+            self.assertEqual(self.rxn1.determine_family()[0], 'H_Abstraction')
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            self.assertEqual(build_rxn().determine_family(), ('Br_Abstraction', True))
+            product_dicts = build_rxn().get_product_dicts()
+            self.assertTrue(len(product_dicts))
+            self.assertTrue(all(product_dict['family'] == 'Br_Abstraction' for product_dict in product_dicts))
+            self.assertEqual(build_rxn().determine_family(rmg_family_set='default'), (None, None))
+            self.assertEqual(build_rxn().get_product_dicts(rmg_family_set='default'), list())
 
     def test_charge_property(self):
         """Test determining charge"""

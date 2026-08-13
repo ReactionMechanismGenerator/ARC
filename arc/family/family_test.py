@@ -7,6 +7,7 @@ This module contains unit tests of the arc.reaction.family module
 
 import os
 import unittest
+from unittest import mock
 
 from arc.common import is_equal_family_product_dicts
 from arc.family.family import (ReactionFamily,
@@ -35,9 +36,11 @@ from arc.family.family import (ReactionFamily,
                                check_family_name,
                                read_groups_file_lines,
                                )
+from arc.imports import settings
 from arc.molecule import Group, Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.reaction.reaction import ARCReaction
+from arc.settings.settings import rmg_family_set as shipped_rmg_family_set
 from arc.species.species import ARCSpecies
 
 
@@ -753,6 +756,31 @@ H      -0.83821148   -0.26602407    0.00000000"""
         product_dicts = rxn.get_product_dicts(rmg_family_set=['Intra_RH_Add_Endocyclic'])
         self.assertTrue(len(product_dicts) > 0)
         self.assertEqual(product_dicts[0]['family'], 'Intra_RH_Add_Endocyclic')
+    def test_rmg_family_set_setting_ships_as_default(self):
+        """ARC ships with the 'default' family set, so an untouched installation considers
+        only RMG's recommended families."""
+        self.assertEqual(shipped_rmg_family_set, 'default')
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(get_all_families(consider_arc_families=False),
+                             get_all_families(rmg_family_set='default', consider_arc_families=False))
+            self.assertIn('H_Abstraction', get_all_families(consider_arc_families=False))
+
+    def test_rmg_family_set_setting_is_read_at_call_time(self):
+        """Changing settings['rmg_family_set'] after the family module was imported changes
+        which families get_all_families() and check_family_name() consider."""
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            default_families = get_all_families(consider_arc_families=False)
+            self.assertNotIn('Br_Abstraction', default_families)
+            self.assertFalse(check_family_name('Br_Abstraction'))
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            all_families = get_all_families(consider_arc_families=False)
+            self.assertIn('Br_Abstraction', all_families)
+            self.assertTrue(check_family_name('Br_Abstraction'))
+            self.assertEqual(get_all_families(rmg_family_set='default', consider_arc_families=False),
+                             default_families)
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(get_all_families(consider_arc_families=False), default_families)
+            self.assertFalse(check_family_name('Br_Abstraction'))
 
     def test_get_rmg_recommended_family_sets(self):
         """Test getting RMG recommended family sets"""
