@@ -1249,6 +1249,26 @@ def get_most_common_isotope_for_element(element_symbol):
     return isotope
 
 
+def resolve_isotope(element_symbol: str,
+                    isotope: int | None = None,
+                    ) -> int | None:
+    """
+    Resolve the isotope number of an element.
+    An ``isotope`` of ``None`` or of a non-positive number (RMG represents an unspecified isotope
+    of an Element as ``-1``) is resolved into the most common isotope of the element.
+
+    Args:
+        element_symbol (str): The element symbol.
+        isotope (int, optional): The isotope number, if specified.
+
+    Returns: int | None
+        The resolved isotope number. Returns ``None`` for a dummy atom ('X') with an unspecified isotope.
+    """
+    if isotope is None or isotope <= 0:
+        return get_most_common_isotope_for_element(element_symbol)
+    return isotope
+
+
 def xyz_to_pybel_mol(xyz: dict):
     """
     Convert xyz into an Open Babel molecule object.

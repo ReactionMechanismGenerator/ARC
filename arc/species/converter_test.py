@@ -914,6 +914,20 @@ $$$$
         common_isotopes.append(converter.get_most_common_isotope_for_element('Og'))
         self.assertEqual(common_isotopes, [1, 11, 12, 64, 238, 294])
 
+    def test_resolve_isotope(self):
+        """Test the resolve_isotope function"""
+        self.assertEqual(converter.resolve_isotope('H'), 1)
+        self.assertEqual(converter.resolve_isotope('H', None), 1)
+        self.assertEqual(converter.resolve_isotope('H', -1), 1)
+        self.assertEqual(converter.resolve_isotope('H', 1), 1)
+        self.assertEqual(converter.resolve_isotope('H', 2), 2)
+        self.assertEqual(converter.resolve_isotope('H', 3), 3)
+        self.assertEqual(converter.resolve_isotope('C', 13), 13)
+        self.assertEqual(converter.resolve_isotope('C', -1), 12)
+        self.assertEqual(converter.resolve_isotope('O', 18), 18)
+        self.assertIsNone(converter.resolve_isotope('X'))
+        self.assertIsNone(converter.resolve_isotope('X', -1))
+
     def test_standardize_xyz_string(self):
         """Test the standardize_xyz_string() function"""
         xyz = """
