@@ -277,9 +277,8 @@ class AutoTSTAdapter(JobAdapter):
                                                        execution_time=tok,
                                                        xyz=xyz,
                                                        success=True,
-                                                       index=len(rxn.ts_species.ts_guesses),
                                                        )
-                                    rxn.ts_species.ts_guesses.append(ts_guess)
+                                    rxn.ts_species.append_ts_guess(ts_guess)
                                     save_geo(xyz=xyz,
                                              path=self.local_path,
                                              filename=f'AutoTST {direction}',
@@ -294,9 +293,8 @@ class AutoTSTAdapter(JobAdapter):
                                                t0=tic,
                                                execution_time=tok,
                                                success=False,
-                                               index=len(rxn.ts_species.ts_guesses),
                                                )
-                            rxn.ts_species.ts_guesses.append(ts_guess)
+                            rxn.ts_species.append_ts_guess(ts_guess)
                             i += 1
 
             if len(self.reactions) < 5:

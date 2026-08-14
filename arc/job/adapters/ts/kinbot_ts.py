@@ -380,7 +380,6 @@ class KinBotAdapter(JobAdapter):
             ts_guess = TSGuess(method=method,
                                method_direction=method_direction,
                                method_index=method_index,
-                               index=len(rxn.ts_species.ts_guesses),
                                execution_time=result.get('execution_time'),
                                )
             success = bool(result.get('success')) and result.get('coords') is not None
@@ -409,7 +408,7 @@ class KinBotAdapter(JobAdapter):
             if not success:
                 ts_guess.success = False
             if unique:
-                rxn.ts_species.ts_guesses.append(ts_guess)
+                rxn.ts_species.append_ts_guess(ts_guess)
                 method_index += 1
 
     def execute_queue(self):

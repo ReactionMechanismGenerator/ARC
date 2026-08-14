@@ -210,16 +210,31 @@ class TestGetTsImagFreq(unittest.TestCase):
 
     def test_valid_imag_freq(self):
         ts_guess = MagicMock()
+        ts_guess.index = 0
         ts_guess.imaginary_freqs = [-1500.0, -200.0]
         spc = MagicMock()
         spc.chosen_ts = 0
         spc.ts_guesses = [ts_guess]
         self.assertAlmostEqual(_get_ts_imag_freq(spc), -1500.0)
 
-    def test_chosen_ts_out_of_range(self):
+    def test_chosen_ts_is_an_index_not_a_position(self):
+        """``chosen_ts`` is the chosen TSGuess.index; the list position must not be used."""
+        other_guess, chosen_guess = MagicMock(), MagicMock()
+        other_guess.index, other_guess.imaginary_freqs = 0, [-100.0]
+        chosen_guess.index, chosen_guess.imaginary_freqs = 4, [-1500.0]
         spc = MagicMock()
+        spc.freqs = None
+        spc.chosen_ts = 4
+        spc.ts_guesses = [other_guess, chosen_guess]
+        self.assertAlmostEqual(_get_ts_imag_freq(spc), -1500.0)
+
+    def test_chosen_ts_matches_no_guess(self):
+        guess = MagicMock()
+        guess.index, guess.imaginary_freqs = 0, [-100.0]
+        spc = MagicMock()
+        spc.freqs = None
         spc.chosen_ts = 5
-        spc.ts_guesses = [MagicMock()]
+        spc.ts_guesses = [guess]
         self.assertIsNone(_get_ts_imag_freq(spc))
 
 
@@ -828,6 +843,7 @@ class TestSpcToDict(unittest.TestCase):
         spc.rxn_label = 'CH4 + OH <=> CH3 + H2O'
         spc.thermo = None
         ts_guess = MagicMock()
+        ts_guess.index = 0
         ts_guess.imaginary_freqs = [-1500.0]
         spc.ts_guesses = [ts_guess]
         spc.chosen_ts = 0

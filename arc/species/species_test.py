@@ -10,7 +10,12 @@ import shutil
 import tempfile
 import unittest
 
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, check_that_all_entries_are_in_list
+from arc.common import (ARC_PATH,
+                        ARC_TESTING_PATH,
+                        almost_equal_coords_lists,
+                        check_that_all_entries_are_in_list,
+                        save_yaml_file,
+                        )
 from arc.species.converter import check_xyz_dict
 from arc.exceptions import SpeciesError
 from arc.level import Level
@@ -2625,6 +2630,162 @@ H       1.11582953    0.94384729   -0.10134685"""
         # No coordinate-less guess was added as a successful clusterable guess.
         self.assertTrue(all(tsg.get_xyz() is not None or not tsg.success for tsg in spc.ts_guesses))
         self.assertFalse(any(tsg.success and tsg.get_xyz() is None for tsg in spc.ts_guesses))
+
+    def test_next_ts_guess_index_survives_clustering(self):
+        """A TSGuess identity must never be reused after clustering shrank the ts_guesses list."""
+        xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_2 = xyz_1.replace('0.8327683174', '1.8327683174')
+        spc = ARCSpecies(label='TS_identity', is_ts=True)
+        for i, xyz in enumerate([xyz_1, xyz_1, xyz_2, xyz_2]):
+            spc.ts_guesses.append(TSGuess(index=i, method=f'gcn {i}', xyz=xyz, success=True,
+                                          execution_time='00:00:01'))
+        spc.cluster_tsgs()
+        # Clustering keeps the first guess of each cluster, so the surviving indices are sparse
+        # and len(ts_guesses) is an index that is still in use.
+        surviving = [tsg.index for tsg in spc.ts_guesses]
+        self.assertEqual(surviving, [0, 2])
+        self.assertIn(len(spc.ts_guesses), surviving)
+        self.assertNotIn(spc.next_ts_guess_index(), surviving)
+        spc.ts_guesses.append(TSGuess(index=spc.next_ts_guess_index(), method='orca_neb', xyz=xyz_2,
+                                      success=True, execution_time='00:00:01'))
+        indices = [tsg.index for tsg in spc.ts_guesses]
+        self.assertEqual(len(indices), len(set(indices)))
+
+    def test_append_ts_guess_assigns_an_identity_to_an_index_less_guess(self):
+        """A guess appended without an index must be given one: this is the path every TS adapter uses.
+
+        The TS adapters construct a TSGuess without an index and let append_ts_guess() allocate it,
+        so a guess that keeps ``index=None`` can never be referred to by ``chosen_ts``.
+        """
+        xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_2 = xyz_1.replace('0.9177905887', '9.9177905887')
+        spc = ARCSpecies(label='TS_append', is_ts=True)
+        first = spc.append_ts_guess(TSGuess(method='gcn', success=True, xyz=xyz_1, execution_time='00:00:01'))
+        second = spc.append_ts_guess(TSGuess(method='autotst', success=True, xyz=xyz_2, execution_time='00:00:01'))
+        self.assertEqual([first.index, second.index], [0, 1])
+        self.assertNotIn(None, [tsg.index for tsg in spc.ts_guesses])
+        # An index already taken is reallocated; a free one is left alone.
+        collide = spc.append_ts_guess(TSGuess(index=0, method='kinbot', success=True, xyz=xyz_1,
+                                              execution_time='00:00:01'))
+        self.assertEqual(collide.index, 2)
+        free = spc.append_ts_guess(TSGuess(index=9, method='qst2', success=True, xyz=xyz_2,
+                                           execution_time='00:00:01'))
+        self.assertEqual(free.index, 9)
+        indices = [tsg.index for tsg in spc.ts_guesses]
+        self.assertEqual(len(indices), len(set(indices)))
+
+    def test_next_ts_guess_index_skips_indices_recorded_in_a_cluster(self):
+        """An index absorbed by clustering is still spoken for and must not be handed out again."""
+        xyz = """N       0.9177905887     0.5194617797     0.0000000000
+                 H       1.8140204898     1.0381941417     0.0000000000
+                 H      -0.4763167868     0.7509348722     0.0000000000
+                 N       0.9992350860    -0.7048575683     0.0000000000
+                 N      -1.4430010939     0.0274543367     0.0000000000
+                 H      -0.6371484821    -0.7497769134     0.0000000000
+                 H      -2.0093636431     0.0331190314    -0.8327683174
+                 H      -2.0093636431     0.0331190314     0.8327683174"""
+        spc = ARCSpecies(label='TS_cluster_idx', is_ts=True)
+        tsg = TSGuess(index=0, method='gcn', success=True, xyz=xyz, execution_time='00:00:01')
+        tsg.cluster = [0, 1, 5]
+        spc.ts_guesses = [tsg]
+        self.assertEqual(spc.next_ts_guess_index(), 6)
+
+    def test_process_completed_tsg_queue_jobs_keeps_indices_unique(self):
+        """A TS guess ingested from a queue job must not reuse an index that is already taken."""
+        xyz = """N       0.9177905887     0.5194617797     0.0000000000
+                 H       1.8140204898     1.0381941417     0.0000000000
+                 H      -0.4763167868     0.7509348722     0.0000000000
+                 N       0.9992350860    -0.7048575683     0.0000000000
+                 N      -1.4430010939     0.0274543367     0.0000000000
+                 H      -0.6371484821    -0.7497769134     0.0000000000
+                 H      -2.0093636431     0.0331190314    -0.8327683174
+                 H      -2.0093636431     0.0331190314     0.8327683174"""
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        yml_path = os.path.join(tmp_dir, 'tsgs.yml')
+        save_yaml_file(path=yml_path, content=[{'index': 4,
+                                                'method': 'orca_neb',
+                                                'success': True,
+                                                'initial_xyz': str_to_xyz(xyz.replace('0.8327683174',
+                                                                                      '1.8327683174')),
+                                                'execution_time': '00:00:01'}])
+        spc = ARCSpecies(label='TS_queue_identity', is_ts=True)
+        spc.ts_guesses = [TSGuess(index=4, method='gcn', xyz=xyz, success=True, execution_time='00:00:01')]
+        spc.process_completed_tsg_queue_jobs(path=yml_path)
+        indices = [tsg.index for tsg in spc.ts_guesses]
+        self.assertEqual(len(spc.ts_guesses), 2)
+        self.assertEqual(len(indices), len(set(indices)))
+
+    def test_renumber_ambiguous_ts_guesses_on_restart(self):
+        """A restart file holding duplicated TSGuess indices is repaired, and an ambiguous chosen_ts is reset."""
+        xyz = """N       0.9177905887     0.5194617797     0.0000000000
+                 H       1.8140204898     1.0381941417     0.0000000000
+                 H      -0.4763167868     0.7509348722     0.0000000000
+                 N       0.9992350860    -0.7048575683     0.0000000000
+                 N      -1.4430010939     0.0274543367     0.0000000000
+                 H      -0.6371484821    -0.7497769134     0.0000000000
+                 H      -2.0093636431     0.0331190314    -0.8327683174
+                 H      -2.0093636431     0.0331190314     0.8327683174"""
+        spc = ARCSpecies(label='TS_restart_identity', is_ts=True)
+        spc.ts_guesses = [TSGuess(index=0, method='gcn', xyz=xyz, success=True, execution_time='00:00:01'),
+                          TSGuess(index=2, method='heuristics', xyz=xyz, success=True, execution_time='00:00:01'),
+                          TSGuess(index=2, method='kinbot', xyz=xyz, success=True, execution_time='00:00:01'),
+                          TSGuess(method='autotst', xyz=xyz, success=True, execution_time='00:00:01')]
+        spc.chosen_ts = 2
+        spc.chosen_ts_list = [0, 2]
+        spc_dict = spc.as_dict()
+        restored = ARCSpecies(species_dict=spc_dict)
+        indices = [tsg.index for tsg in restored.ts_guesses]
+        self.assertEqual(len(indices), len(set(indices)))
+        self.assertNotIn(None, indices)
+        # An unambiguous identity is preserved, and the first holder of a duplicated index keeps it.
+        self.assertEqual(indices[0], 0)
+        self.assertEqual(indices[1], 2)
+        self.assertIsNone(restored.chosen_ts)
+        # The ambiguous index is dropped from chosen_ts_list so that neither the guess that kept it
+        # nor the guess that was re-indexed is barred from selection; unambiguous entries remain.
+        self.assertEqual(restored.chosen_ts_list, [0])
+
+    def test_process_xyz_assigns_ts_guess_indices(self):
+        """User TS guesses must get an explicit TSGuess.index, continuing past the indices in use.
+
+        A surviving guess keeps its index when clustering shrinks the list, so the next index must
+        come from the indices in use, not from the list length.
+        """
+        xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_2 = xyz_1.replace('0.9177905887', '9.9177905887')
+        spc = ARCSpecies(label='TS_user_guesses', is_ts=True, xyz=[xyz_1, xyz_2])
+        self.assertEqual([tsg.index for tsg in spc.ts_guesses], [0, 1])
+        self.assertEqual([tsg.method for tsg in spc.ts_guesses], ['user guess 0', 'user guess 1'])
+        self.assertTrue(all(tsg.success for tsg in spc.ts_guesses))
+        spc_2 = ARCSpecies(label='TS_gapped', is_ts=True)
+        spc_2.ts_guesses = [TSGuess(index=0, method='gcn', success=True, xyz=xyz_1),
+                            TSGuess(index=4, method='qst2', success=True, xyz=xyz_2),
+                            ]
+        spc_2.process_xyz([xyz_1])
+        self.assertEqual(spc_2.ts_guesses[-1].index, 5)
+        self.assertEqual(spc_2.ts_guesses[-1].method, 'user guess 5')
 
     def test_are_coords_compliant_with_graph(self):
         """Test coordinates compliant with 2D graph connectivity"""

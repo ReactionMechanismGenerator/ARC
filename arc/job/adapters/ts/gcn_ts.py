@@ -378,7 +378,6 @@ def run_subprocess_locally(direction: str,
     ts_xyz = None
     tsg = TSGuess(method='GCN',
                   method_direction=direction,
-                  index=len(ts_species.ts_guesses),
                   )
     tsg.tic()
     # Routed via run_in_conda_env so arc_env's activation vars don't
@@ -434,16 +433,18 @@ def process_tsg(direction: str,
         if unique:
             tsg.success = True
             tsg.process_xyz(ts_xyz)
-            save_geo(xyz=ts_xyz,
-                     path=local_path,
-                     filename=f'GCN {direction} {tsg.index}',
-                     format_='xyz',
-                     comment=f'GCN {direction}',
-                     )
     else:
         tsg.success = False
     if unique and tsg.success:
-        ts_species.ts_guesses.append(tsg)
+        # Appended before the geometry is saved, so the file is named with the identity the guess
+        # actually ends up holding rather than one predicted before the append.
+        ts_species.append_ts_guess(tsg)
+        save_geo(xyz=ts_xyz,
+                 path=local_path,
+                 filename=f'GCN {direction} {tsg.index}',
+                 format_='xyz',
+                 comment=f'GCN {direction}',
+                 )
 
 
 register_job_adapter('gcn', GCNAdapter)

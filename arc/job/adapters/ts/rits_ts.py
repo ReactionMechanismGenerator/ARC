@@ -435,11 +435,10 @@ def process_rits_tsg(tsg_dict: dict,
     tsg = TSGuess(method='RitS',
                   method_direction=tsg_dict.get('method_direction', 'F'),
                   method_index=method_index,
-                  index=len(ts_species.ts_guesses),
                   success=True,
                   )
     tsg.process_xyz(ts_xyz)
-    ts_species.ts_guesses.append(tsg)
+    ts_species.append_ts_guess(tsg)
     save_geo(xyz=ts_xyz,
              path=local_path,
              filename=f'RitS {method_index}',

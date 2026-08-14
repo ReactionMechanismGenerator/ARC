@@ -318,7 +318,6 @@ class OrcaNEBAdapter(OrcaAdapter):
         Process a completed orca-NEB run.
         """
         tsg = TSGuess(method='orca_neb',
-                      index=len(self.reactions[0].ts_species.ts_guesses),
                       success=False,
                       t0=self.initial_time,
                       )
@@ -327,7 +326,7 @@ class OrcaNEBAdapter(OrcaAdapter):
             tsg.execution_time = self.final_time - self.initial_time
             tsg.log_path = self.local_path_to_output_file
             tsg.success = True
-        self.reactions[0].ts_species.ts_guesses.append(tsg)
+        self.reactions[0].ts_species.append_ts_guess(tsg)
 
     def write_submit_script(self) -> None:
         """
