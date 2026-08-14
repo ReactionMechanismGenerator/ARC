@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from mako.template import Template
 
-from arc.common import get_logger, torsions_to_scans
+from arc.common import get_logger, get_memory_headroom_fraction, torsions_to_scans
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter, constraint_type_dict
 from arc.job.adapters.common import (_initialize_adapter,
@@ -33,15 +33,18 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-default_job_settings, global_ess_settings, input_filenames, output_filenames, servers, submit_filenames = \
-    settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
-    settings['output_filenames'], settings['servers'], settings['submit_filenames']
+default_job_settings, gaussian_memory_headroom_fractions, global_ess_settings, input_filenames, \
+    output_filenames, servers, submit_filenames = \
+    settings['default_job_settings'], settings['gaussian_memory_headroom_fractions'], settings['global_ess_settings'], \
+    settings['input_filenames'], settings['output_filenames'], settings['servers'], settings['submit_filenames']
 
 # Gaussian should not consume the entire scheduler allocation. ARC reserves a
 # fixed fraction of the submit-script memory for non-Gaussian overhead such as
 # the scheduler, runtime, scratch bookkeeping, and Gaussian allocations outside
-# the explicit %mem budget.
-GAUSSIAN_MEMORY_HEADROOM_FRACTION = 0.90
+# the explicit %mem budget. On a Gaussian memory allocation failure, ARC steps down
+# gaussian_memory_headroom_fractions (see settings.py) while holding the queue
+# reservation constant.
+GAUSSIAN_MEMORY_HEADROOM_FRACTION = gaussian_memory_headroom_fractions[0]
 
 
 # job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',
@@ -507,7 +510,8 @@ class GaussianAdapter(JobAdapter):
         # ARC already requests ~95% of a node, passing the entire allocation to
         # %mem leaves too little room for runtime overhead and can trigger galloc.
         submit_script_memory_mib = self.submit_script_memory_mib or math.ceil(self.job_memory_gb * 1024)
-        self.input_file_memory = max(1, math.floor(submit_script_memory_mib * GAUSSIAN_MEMORY_HEADROOM_FRACTION))
+        headroom_fraction = get_memory_headroom_fraction(self.ess_trsh_methods)
+        self.input_file_memory = max(1, math.floor(submit_script_memory_mib * headroom_fraction))
 
     def execute_incore(self):
         """

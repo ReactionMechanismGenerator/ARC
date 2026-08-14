@@ -13,6 +13,7 @@ from arc.common import (check_torsion_change,
                         convert_to_hours,
                         estimate_orca_mem_cpu_requirement,
                         get_logger,
+                        get_memory_headroom_fraction,
                         get_number_with_ordinal_indicator,
                         is_same_pivot,
                         is_same_sequence_sublist,
@@ -40,12 +41,12 @@ from arc.parser.parser import (parse_1d_scan_coords,
 
 logger = get_logger()
 
-delete_command, inconsistency_ab, inconsistency_az, maximum_barrier, preserve_params_in_scan, rotor_scan_resolution, \
-    servers, submit_filenames, default_job_settings = settings['delete_command'], settings['inconsistency_ab'], \
-                                                      settings['inconsistency_az'], settings['maximum_barrier'], \
-                                                      settings['preserve_params_in_scan'], \
-                                                      settings['rotor_scan_resolution'], settings['servers'], \
-                                                      settings['submit_filenames'], settings['default_job_settings']
+delete_command, gaussian_memory_headroom_fractions, inconsistency_ab, inconsistency_az, maximum_barrier, \
+    preserve_params_in_scan, rotor_scan_resolution, servers, submit_filenames, default_job_settings = \
+    settings['delete_command'], settings['gaussian_memory_headroom_fractions'], settings['inconsistency_ab'], \
+    settings['inconsistency_az'], settings['maximum_barrier'], settings['preserve_params_in_scan'], \
+    settings['rotor_scan_resolution'], settings['servers'], settings['submit_filenames'], \
+    settings['default_job_settings']
 
 
 def determine_ess_status(output_path: str,
@@ -205,8 +206,8 @@ def determine_ess_status(output_path: str,
                     error = 'An operation on the check file was specified, but a .chk was not found or is incomplete.'
                     line = ''
                 elif 'malloc failed' in line or 'galloc' in line:
-                    keywords = ['Memory']
-                    error = 'Memory allocation failed (did you ask for too much?)'
+                    keywords = ['GaussianMemoryAllocation']
+                    error = 'Gaussian could not allocate memory within its allocation.'
                     line = ''
                 elif 'PGFIO/stdio: No such file or directory' in line:
                     keywords = ['Scratch']
@@ -1014,6 +1015,32 @@ def trsh_ess_job(label: str,
         if 'no_qc' in ess_trsh_methods:
             logger_info.append('removed QC')
         
+
+        # Gaussian ran out of memory within an already-granted queue allocation (galloc/malloc failure).
+        # Hold the queue reservation (memory_gb) constant and instead give Gaussian more headroom by
+        # stepping down the %mem fraction along a fixed ladder.
+        if 'GaussianMemoryAllocation' in job_status['keywords'] and server is not None:
+            current_fraction = get_memory_headroom_fraction(ess_trsh_methods)
+            fraction_index = gaussian_memory_headroom_fractions.index(current_fraction) \
+                if current_fraction in gaussian_memory_headroom_fractions else 0
+            if fraction_index + 1 < len(gaussian_memory_headroom_fractions):
+                next_fraction = gaussian_memory_headroom_fractions[fraction_index + 1]
+                couldnt_trsh = False
+                ess_trsh_methods.append(f'memory_headroom_{next_fraction}')
+                logger.info(f'Troubleshooting {job_type} job in {software} for {label} by holding the memory '
+                            f'request constant at {memory_gb} GB and giving Gaussian more headroom: reducing '
+                            f'the %mem fraction from {current_fraction} to {next_fraction}.')
+            else:
+                couldnt_trsh = True
+                output_errors.append(
+                    f'Error: Could not troubleshoot {job_type} for {label}! Gaussian could not allocate memory '
+                    f'within its allocation even at the lowest %mem headroom fraction '
+                    f'({gaussian_memory_headroom_fractions[-1]}). Consider raising job_total_memory_gb, using a '
+                    f'node with more memory per core, or reducing the job cost (e.g., a smaller basis set or '
+                    f'fewer cores); ')
+                logger.error(f'Could not troubleshoot {job_type} job in {software} for {label}. Gaussian could not '
+                             f'allocate memory within its allocation even at the lowest %mem headroom fraction '
+                             f'({gaussian_memory_headroom_fractions[-1]}).')
 
         # Check if memory is in the keyword
         if 'Memory' in job_status['keywords'] and 'too high' not in job_status['error'] and server is not None:
