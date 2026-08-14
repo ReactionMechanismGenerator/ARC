@@ -269,20 +269,34 @@ class SSHClient(object):
         Returns: list
             A list of job IDs.
         """
+        return list(self.check_running_jobs_ids_and_states().keys())
+
+    def check_running_jobs_ids_and_states(self) -> dict[str, str]:
+        """
+        Check all jobs submitted by the user on a server, including their queue states.
+
+        Returns: dict[str, str]
+            Job IDs as keys, normalized queue states ('running', 'pending', 'held',
+            'exiting', or 'unknown') as values.
+        """
         if servers[self.server]['cluster_soft'].lower() not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
             raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
-        running_job_ids = list()
+        job_states = dict()
         cmd = check_status_command[servers[self.server]['cluster_soft']]
         stdout = self._send_command_to_server(cmd)[0]
         i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
         split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' '}
+        state_index_dict = {'slurm': 4, 'oge': 4, 'sge': 4, 'pbs': 9, 'htcondor': 1}
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         for i, status_line in enumerate(stdout):
             if i > i_dict[cluster_soft]:
                 job_id = status_line.split(split_by_dict[cluster_soft])[0]
                 job_id = job_id.split('.')[0] if '.' in job_id else job_id
-                running_job_ids.append(job_id)
-        return running_job_ids
+                tokens = status_line.split()
+                state_index = state_index_dict[cluster_soft]
+                raw_state = tokens[state_index] if len(tokens) > state_index else ''
+                job_states[job_id] = normalize_queue_state(raw_state, cluster_soft)
+        return job_states
 
     def submit_job(self, remote_path: str,
                    recursion: bool = False,
@@ -448,23 +462,22 @@ class SSHClient(object):
             list: lines of the node hostnames.
         """
         cluster_soft = servers[self.server]['cluster_soft'].lower()
-        if cluster_soft == 'htcondor':
+        if cluster_soft in ['htcondor', 'pbs']:
+            # Node listing is not implemented for these schedulers; return empty.
             return list()
-        cmd = list_available_nodes_command[cluster_soft]
+        cmd = {key.lower(): val for key, val in list_available_nodes_command.items()}[cluster_soft]
         stdout = self._send_command_to_server(command=cmd)[0]
         nodes = list()
-        if cluster_soft.lower() in ['oge', 'sge']:
+        if cluster_soft in ['oge', 'sge']:
             # Stdout line example:
             # long1@node01.cluster           BIP   0/0/8          -NA-     lx24-amd64    aAdu
             nodes = [line.split()[0].split('@')[1]
                      for line in stdout if '0/0/8' in line]
-        elif cluster_soft.lower() == 'slurm':
+        elif cluster_soft == 'slurm':
             # Stdout line example:
             # node01 alloc 1.00 none
             nodes = [line.split()[0] for line in stdout
                      if line.split()[1] in ['mix', 'alloc', 'idle']]
-        elif cluster_soft.lower() in ['pbs', 'htcondor']:
-            logger.warning(f'Listing available nodes is not yet implemented for {cluster_soft}.')
         return nodes
 
     def change_mode(self,
@@ -535,6 +548,38 @@ class SSHClient(object):
         if stderr:
             raise ServerError(
                 f'Cannot create dir for the given path ({remote_path}).\nGot: {stderr}')
+
+
+def normalize_queue_state(raw_state: str, cluster_soft: str) -> str:
+    """
+    Normalize a raw queue state token to a common vocabulary.
+
+    Recognized states per cluster software: Slurm 'PD'/'R'/'CG'; PBS/OGE/SGE
+    'Q' (or 'qw'), 'R' (or 'r'), 'H' (any token containing it, e.g. 'hqw'), 'E';
+    HTCondor 'P'/'R'/'H'. Anything else maps to 'unknown'.
+
+    Args:
+        raw_state (str): The raw state token from the queue listing.
+        cluster_soft (str): The cluster software name (case insensitive).
+
+    Returns:
+        str: One of 'running', 'pending', 'held', 'exiting', or 'unknown'.
+    """
+    state = raw_state.strip().upper()
+    soft = cluster_soft.lower()
+    if soft == 'slurm':
+        return {'PD': 'pending', 'R': 'running', 'CG': 'exiting'}.get(state, 'unknown')
+    if soft == 'htcondor':
+        return {'P': 'pending', 'R': 'running', 'H': 'held'}.get(state, 'unknown')
+    if 'H' in state:
+        return 'held'
+    if 'R' in state or state == 'T':
+        return 'running'
+    if 'Q' in state or 'W' in state:
+        return 'pending'
+    if 'E' in state:
+        return 'exiting'
+    return 'unknown'
 
 
 def check_job_status_in_stdout(job_id: int,

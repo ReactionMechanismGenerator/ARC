@@ -42,6 +42,38 @@ class TestProcessor(unittest.TestCase):
                                                           'CH4_BDE_1_2_A': self.ch4_bde_1_2_a})
         self.assertEqual(bde_report, {(1, 2): 50})
 
+    def test_classify_species_for_thermo_skips_irc_endpoints(self):
+        """IRC endpoint species and TSs must be skipped, not flagged as unconverged."""
+        ch4 = ARCSpecies(label='CH4', smiles='C')
+        nh3 = ARCSpecies(label='NH3', smiles='N')  # converged but compute_thermo unset → unconverged bucket
+        nh3.compute_thermo = False
+        ts1 = ARCSpecies(label='TS1', smiles='[CH3]', is_ts=True)
+        irc_fwd = ARCSpecies(label='IRC_TS1_1', smiles='C', compute_thermo=False, irc_label='TS1')
+        irc_rev = ARCSpecies(label='IRC_TS1_2', smiles='C', compute_thermo=False, irc_label='TS1')
+        species_dict = {'CH4': ch4, 'NH3': nh3, 'TS1': ts1,
+                        'IRC_TS1_1': irc_fwd, 'IRC_TS1_2': irc_rev}
+        # IRC labels intentionally absent from output_dict — the helper must not look them up.
+        output_dict = {'CH4': {'convergence': True}, 'NH3': {'convergence': True},
+                       'TS1': {'convergence': True}}
+        converged, e0_only, unconverged = processor.classify_species_for_thermo(
+            species_dict=species_dict, output_dict=output_dict)
+        self.assertEqual([s.label for s in converged], ['CH4'])
+        self.assertEqual(e0_only, [])
+        self.assertEqual([s.label for s in unconverged], ['NH3'])
+
+    def test_classify_species_for_thermo_e0_only_and_unconverged(self):
+        """e0_only species route to e0 bucket; species with compute_thermo but no convergence go unconverged."""
+        e0_spc = ARCSpecies(label='E0_only_spc', smiles='C')
+        e0_spc.e0_only = True
+        unconv = ARCSpecies(label='Unconv', smiles='N')
+        species_dict = {'E0_only_spc': e0_spc, 'Unconv': unconv}
+        output_dict = {'E0_only_spc': {'convergence': True}, 'Unconv': {'convergence': False}}
+        converged, e0_only, unconverged = processor.classify_species_for_thermo(
+            species_dict=species_dict, output_dict=output_dict)
+        self.assertEqual(converged, [])
+        self.assertEqual([s.label for s in e0_only], ['E0_only_spc'])
+        self.assertEqual([s.label for s in unconverged], ['Unconv'])
+
     def test_compare_rates(self):
         """Test the compare_rates() method"""
         rxn_1 = ARCReaction(r_species=[self.ch4, self.h],
