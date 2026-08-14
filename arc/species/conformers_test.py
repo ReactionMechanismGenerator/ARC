@@ -2532,6 +2532,24 @@ Cl      2.38846685    0.24054066    0.55443324
                          'source': 'monoatomic species', 'torsion_dihedrals': None}
         self.assertEqual(conf, expected_conf)
 
+        conf = conformers.generate_monoatomic_conformer('H', isotope=2)
+        expected_conf = {'xyz': {'symbols': ('H',), 'isotopes': (2,), 'coords': ((0.0, 0.0, 0.0),)},
+                         'index': 0, 'FF energy': 0.0, 'chirality': None,
+                         'source': 'monoatomic species', 'torsion_dihedrals': None}
+        self.assertEqual(conf, expected_conf)
+
+        conf = conformers.generate_monoatomic_conformer('C', isotope=13)
+        self.assertEqual(conf['xyz']['isotopes'], (13,))
+
+        conf = conformers.generate_monoatomic_conformer('H', isotope=None)
+        self.assertEqual(conf['xyz']['isotopes'], (1,))
+
+        conf = conformers.generate_monoatomic_conformer('H', isotope=-1)
+        self.assertEqual(conf['xyz']['isotopes'], (1,))
+
+        conf = conformers.generate_monoatomic_conformer('O', isotope=-1)
+        self.assertEqual(conf['xyz']['isotopes'], (16,))
+
     def test_generate_diatomic_conformer(self):
         """Test generating a diatomic conformer"""
         conf = conformers.generate_diatomic_conformer('O', 'O')
@@ -2587,6 +2605,61 @@ Cl      2.38846685    0.24054066    0.55443324
         conf = conformers.generate_diatomic_conformer('H', 'O', multiplicity=2)
         expected_xyz = {'symbols': ('H', 'O'), 'isotopes': (1, 16), 'coords': ((0.0, 0.0, 0.6131), (0.0, 0.0, -0.6131))}
         self.assertEqual(conf['xyz'], expected_xyz)
+
+        conf = conformers.generate_diatomic_conformer('H', 'H', multiplicity=1, isotope_1=2, isotope_2=2)
+        expected_xyz = {'symbols': ('H', 'H'), 'isotopes': (2, 2), 'coords': ((0.0, 0.0, 0.371), (0.0, 0.0, -0.371))}
+        self.assertEqual(conf['xyz'], expected_xyz)
+
+        conf = conformers.generate_diatomic_conformer('H', 'H', multiplicity=1, isotope_1=-1, isotope_2=2)
+        expected_xyz = {'symbols': ('H', 'H'), 'isotopes': (1, 2), 'coords': ((0.0, 0.0, 0.371), (0.0, 0.0, -0.371))}
+        self.assertEqual(conf['xyz'], expected_xyz)
+
+        conf = conformers.generate_diatomic_conformer('O', 'H', multiplicity=2, isotope_1=-1, isotope_2=-1)
+        expected_xyz = {'symbols': ('O', 'H'), 'isotopes': (16, 1), 'coords': ((0.0, 0.0, 0.6131), (0.0, 0.0, -0.6131))}
+        self.assertEqual(conf['xyz'], expected_xyz)
+
+        conf = conformers.generate_diatomic_conformer('O', 'H', multiplicity=2, isotope_1=18)
+        self.assertEqual(conf['xyz']['isotopes'], (18, 1))
+
+    def test_generate_conformers_of_isotopologues(self):
+        """Test that isotope labels of mono- and diatomic species are kept in their generated conformers"""
+        spc_d = ARCSpecies(label='D', smiles='[2H]')
+        self.assertEqual(spc_d.mol_list[0].atoms[0].element.isotope, 2)
+        self.assertEqual(spc_d.get_xyz(generate=True)['isotopes'], (2,))
+
+        spc_h = ARCSpecies(label='H', smiles='[H]')
+        self.assertEqual(spc_h.mol_list[0].atoms[0].element.isotope, -1)
+        self.assertEqual(spc_h.get_xyz(generate=True)['isotopes'], (1,))
+
+        spc_o = ARCSpecies(label='O', smiles='[O]')
+        self.assertEqual(spc_o.get_xyz(generate=True)['isotopes'], (16,))
+
+        spc_d2 = ARCSpecies(label='D2', smiles='[2H][2H]')
+        self.assertEqual(spc_d2.get_xyz(generate=True)['isotopes'], (2, 2))
+
+        spc_hd = ARCSpecies(label='HD', smiles='[H][2H]')
+        self.assertEqual(spc_hd.get_xyz(generate=True)['isotopes'], (1, 2))
+
+        spc_oh = ARCSpecies(label='OH', smiles='[OH]')
+        self.assertEqual(spc_oh.get_xyz(generate=True)['isotopes'], (16, 1))
+
+        self.assertEqual(conformers.generate_conformers(mol_list=spc_d.mol_list, label='D')[0]['xyz']['isotopes'],
+                         (2,))
+        self.assertEqual(conformers.generate_conformers(mol_list=spc_h.mol_list, label='H')[0]['xyz']['isotopes'],
+                         (1,))
+        self.assertEqual(conformers.generate_conformers(mol_list=spc_hd.mol_list, label='HD')[0]['xyz']['isotopes'],
+                         (1, 2))
+        self.assertEqual(conformers.generate_conformers(mol_list=spc_oh.mol_list, label='OH')[0]['xyz']['isotopes'],
+                         (16, 1))
+
+        spc_d.get_cheap_conformer()
+        self.assertEqual(spc_d.cheap_conformer['isotopes'], (2,))
+        spc_hd.get_cheap_conformer()
+        self.assertEqual(spc_hd.cheap_conformer['isotopes'], (1, 2))
+        spc_h.get_cheap_conformer()
+        self.assertEqual(spc_h.cheap_conformer['isotopes'], (1,))
+        spc_oh.get_cheap_conformer()
+        self.assertEqual(spc_oh.cheap_conformer['isotopes'], (16, 1))
 
     def test_determine_smallest_atom_index_in_scan(self):
         """Test determine_smallest_atom_index_in_scan()"""

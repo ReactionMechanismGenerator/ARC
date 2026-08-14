@@ -241,11 +241,15 @@ def generate_conformers(mol_list: list[Molecule] | Molecule,
     # A quick bypass for monoatomic and diatomic species:
     confs = None
     if len(mol_list[0].atoms) == 1:
-        confs = [generate_monoatomic_conformer(symbol=mol_list[0].atoms[0].element.symbol)]
+        confs = [generate_monoatomic_conformer(symbol=mol_list[0].atoms[0].element.symbol,
+                                               isotope=mol_list[0].atoms[0].element.isotope,
+                                               )]
     elif len(mol_list[0].atoms) == 2:
         confs = [generate_diatomic_conformer(symbol_1=mol_list[0].atoms[0].element.symbol,
                                              symbol_2=mol_list[0].atoms[1].element.symbol,
                                              multiplicity=multiplicity,
+                                             isotope_1=mol_list[0].atoms[0].element.isotope,
+                                             isotope_2=mol_list[0].atoms[1].element.isotope,
                                              )]
     if confs is not None:
         if return_all_conformers:
@@ -1816,18 +1820,22 @@ def update_mol(mol):
     return mol
 
 
-def generate_monoatomic_conformer(symbol: str) -> dict:
+def generate_monoatomic_conformer(symbol: str,
+                                  isotope: int | None = None,
+                                  ) -> dict:
     """
     Generate a conformer for a monoatomic species.
+    An unspecified isotope is resolved into the most common isotope of the element.
 
     Args:
         symbol (str): The atomic symbol.
+        isotope (int, optional): The isotope number of the atom.
 
     Returns:
         dict: The monoatomic conformer.
     """
     conf = {'xyz': {'symbols': (symbol,),
-                    'isotopes': (converter.get_most_common_isotope_for_element(symbol),),
+                    'isotopes': (converter.resolve_isotope(symbol, isotope),),
                     'coords': ((0.0, 0.0, 0.0),)},
             'index': 0,
             'FF energy': 0.0,
@@ -1841,15 +1849,20 @@ def generate_monoatomic_conformer(symbol: str) -> dict:
 def generate_diatomic_conformer(symbol_1: str,
                                 symbol_2: str,
                                 multiplicity: int | None = None,
+                                isotope_1: int | None = None,
+                                isotope_2: int | None = None,
                                 ) -> dict:
     """
     Generate a conformer for a diatomic species.
     Data from CCCBDB.
+    An unspecified isotope is resolved into the most common isotope of the respective element.
 
     Args:
         symbol_1 (str): The atomic symbol of atom 1.
         symbol_2 (str): The atomic symbol of atom 2.
         multiplicity (int, optional): The diatomic species multiplicity
+        isotope_1 (int, optional): The isotope number of atom 1.
+        isotope_2 (int, optional): The isotope number of atom 2.
 
     Returns:
         dict: The diatomic conformer.
@@ -1898,8 +1911,8 @@ def generate_diatomic_conformer(symbol_1: str,
     if r is None:
         r = get_single_bond_length(symbol_1, symbol_2) * 0.5
     conf = {'xyz': {'symbols': (symbol_1, symbol_2),
-                    'isotopes': (converter.get_most_common_isotope_for_element(symbol_1),
-                                 converter.get_most_common_isotope_for_element(symbol_2)),
+                    'isotopes': (converter.resolve_isotope(symbol_1, isotope_1),
+                                 converter.resolve_isotope(symbol_2, isotope_2)),
                     'coords': ((0.0, 0.0, r), (0.0, 0.0, -1 * r))},
             'index': 0,
             'FF energy': 0.0,

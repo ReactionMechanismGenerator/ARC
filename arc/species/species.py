@@ -1210,13 +1210,16 @@ class ARCSpecies(object):
         """
         if self.is_monoatomic():
             self.cheap_conformer = \
-                conformers.generate_monoatomic_conformer(symbol=self.mol_list[0].atoms[0].element.symbol)['xyz']
+                conformers.generate_monoatomic_conformer(symbol=self.mol_list[0].atoms[0].element.symbol,
+                                                         isotope=self.mol_list[0].atoms[0].element.isotope)['xyz']
             self.initial_xyz = self.final_xyz = self.cheap_conformer
         elif self.is_diatomic():
             self.cheap_conformer = \
                 conformers.generate_diatomic_conformer(symbol_1=self.mol_list[0].atoms[0].element.symbol,
                                                        symbol_2=self.mol_list[0].atoms[1].element.symbol,
-                                                       multiplicity=self.multiplicity)['xyz']
+                                                       multiplicity=self.multiplicity,
+                                                       isotope_1=self.mol_list[0].atoms[0].element.isotope,
+                                                       isotope_2=self.mol_list[0].atoms[1].element.isotope)['xyz']
         else:
             num_confs = min(500, max(50, len(self.mol.atoms) * 3))
             rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
