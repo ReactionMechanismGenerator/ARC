@@ -136,6 +136,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.multi_species"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.multi_species</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.symmetry_number"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.symmetry_number</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.index"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.index</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.append_ts_guess"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.append_ts_guess()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.as_dict"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.as_dict()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.check_multiplicity_parity"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.check_multiplicity_parity()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.check_xyz_isomorphism"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.check_xyz_isomorphism()</span></code></a></li>
@@ -165,6 +166,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.label_atoms"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.label_atoms()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.make_ts_report"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.make_ts_report()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.mol_from_xyz"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.mol_from_xyz()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.next_ts_guess_index"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.next_ts_guess_index()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.number_of_atoms"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.number_of_atoms</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.number_of_heavy_atoms"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.number_of_heavy_atoms</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.populate_ts_checks"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.populate_ts_checks()</span></code></a></li>
@@ -172,6 +174,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.process_xyz"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.process_xyz()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.radius"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.radius</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.reconcile_mol_multiplicity"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.reconcile_mol_multiplicity()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.renumber_ambiguous_ts_guesses"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.renumber_ambiguous_ts_guesses()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.scissors"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.scissors()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.set_dihedral"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.set_dihedral()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.set_mol_list"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.set_mol_list()</span></code></a></li>
@@ -1252,6 +1255,26 @@ simultaneously in a single ESS input file.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.append_ts_guess">
+<span class="sig-name descname"><span class="pre">append_ts_guess</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tsg</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.append_ts_guess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.append_ts_guess" title="Link to this definition"></a></dt>
+<dd><p>Append a TS guess to this species, assigning it a unique identity.</p>
+<p><code class="docutils literal notranslate"><span class="pre">tsg.index</span></code> is set from <code class="docutils literal notranslate"><span class="pre">next_ts_guess_index()</span></code> whenever it is missing or already taken
+by another guess of this species, so that a caller cannot give two guesses the same
+identity. An index that is free is left as it is.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>tsg</strong> (<a class="reference internal" href="#arc.species.species.TSGuess" title="arc.species.species.TSGuess"><em>TSGuess</em></a>) – The TS guess to append.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The appended TS guess.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#arc.species.species.TSGuess" title="arc.species.species.TSGuess">TSGuess</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.species.species.ARCSpecies.as_dict">
 <span class="sig-name descname"><span class="pre">as_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reset_atom_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.as_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.as_dict" title="Link to this definition"></a></dt>
 <dd><p>A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.</p>
@@ -1654,6 +1677,26 @@ If <code class="docutils literal notranslate"><span class="pre">xyz</span></code
 </dl>
 </dd></dl>
 
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.next_ts_guess_index">
+<span class="sig-name descname"><span class="pre">next_ts_guess_index</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.next_ts_guess_index"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.next_ts_guess_index" title="Link to this definition"></a></dt>
+<dd><p>Get the next available <code class="docutils literal notranslate"><span class="pre">TSGuess.index</span></code> identity for this species.</p>
+<p>The returned index is one greater than the largest index in use by this species, counting
+both the indices its TS guesses hold and the indices recorded in their <code class="docutils literal notranslate"><span class="pre">cluster</span></code> lists,
+so an identity is never reused. It is deliberately not the length of the <code class="docutils literal notranslate"><span class="pre">ts_guesses</span></code>
+list: <code class="docutils literal notranslate"><span class="pre">cluster_tsgs()</span></code> shrinks that list while the surviving guesses retain their
+original indices and record the indices they absorbed, so a length-based identity would
+collide with an index that is still spoken for.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The next available TSGuess index.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py property">
 <dt class="sig sig-object py" id="arc.species.species.ARCSpecies.number_of_atoms">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">number_of_atoms</span></span><a class="headerlink" href="#arc.species.species.ARCSpecies.number_of_atoms" title="Link to this definition"></a></dt>
@@ -1687,6 +1730,11 @@ If <code class="docutils literal notranslate"><span class="pre">xyz</span></code
 <dt class="sig sig-object py" id="arc.species.species.ARCSpecies.process_xyz">
 <span class="sig-name descname"><span class="pre">process_xyz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz_list</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.process_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.process_xyz" title="Link to this definition"></a></dt>
 <dd><p>Process the user’s input and add either to the .conformers attribute or to .ts_guesses.</p>
+<p>For a TS, each user guess is given an explicit <code class="docutils literal notranslate"><span class="pre">TSGuess.index</span></code> allocated by
+<code class="docutils literal notranslate"><span class="pre">next_ts_guess_index()</span></code>. <code class="docutils literal notranslate"><span class="pre">TSGuess.index</span></code> is the guess’s stable identity: it is what
+<code class="docutils literal notranslate"><span class="pre">cluster_tsgs()</span></code> orders by, what <code class="docutils literal notranslate"><span class="pre">ARCSpecies.chosen_ts</span></code> / <code class="docutils literal notranslate"><span class="pre">chosen_ts_list</span></code> refer to,
+and what keys the TS guess report. Leaving it <code class="docutils literal notranslate"><span class="pre">None</span></code> (the <code class="docutils literal notranslate"><span class="pre">TSGuess</span></code> default) makes a
+user guess unselectable as the chosen TS.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>xyz_list</strong> (<em>list</em><em>, </em><em>str</em><em>, </em><em>dict</em>) – Entries are either string-format, dict-format coordinates or file paths.
@@ -1730,6 +1778,21 @@ that must NOT be collapsed; such species are declared with <code class="docutils
 filtered out before this method is called. If the requested multiplicity cannot be reached
 purely by same-atom pairing, the molecule is left untouched (the caller keeps the perceived
 structure, i.e. the pre-existing behavior).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.renumber_ambiguous_ts_guesses">
+<span class="sig-name descname"><span class="pre">renumber_ambiguous_ts_guesses</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.renumber_ambiguous_ts_guesses"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.renumber_ambiguous_ts_guesses" title="Link to this definition"></a></dt>
+<dd><p>Assign fresh identities to TS guesses whose <code class="docutils literal notranslate"><span class="pre">index</span></code> is missing or duplicated.</p>
+<p>A restart file written before TSGuess identities were allocated uniquely may hold guesses
+that share an index or that have none, which makes a lookup by identity ambiguous. Only the
+ambiguous guesses are re-indexed, so references to unambiguous identities remain valid.</p>
+<p>A contested index is kept by the successful guess that holds it, because <code class="docutils literal notranslate"><span class="pre">chosen_ts</span></code> and
+<code class="docutils literal notranslate"><span class="pre">chosen_ts_list</span></code> can only ever refer to a successful guess. An index contested by a single
+successful guess is therefore resolved without touching either attribute. Only an index held
+by several successful guesses stays ambiguous, and there <code class="docutils literal notranslate"><span class="pre">chosen_ts</span></code> is reset so that a TS
+conformer is selected again rather than paired arbitrarily, and the index is dropped from
+<code class="docutils literal notranslate"><span class="pre">chosen_ts_list</span></code> so that neither holder is barred from being selected.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -1974,7 +2037,8 @@ Counts separately for each direction, ‘F’ and ‘R’.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="arc.species.species.TSGuess.index">
 <span class="sig-name descname"><span class="pre">index</span></span><a class="headerlink" href="#arc.species.species.TSGuess.index" title="Link to this definition"></a></dt>
-<dd><p>A running index of all TSGuess objects belonging to an ARCSpecies object.</p>
+<dd><p>A unique identity assigned to a TSGuess object when it is appended to an
+ARCSpecies object. It is not a position in a list.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>int</p>

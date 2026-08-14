@@ -133,6 +133,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.end_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.end_job()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.flush_pending_pipe_batches"><code class="docutils literal notranslate"><span class="pre">Scheduler.flush_pending_pipe_batches()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.generate_final_ts_guess_report"><code class="docutils literal notranslate"><span class="pre">Scheduler.generate_final_ts_guess_report()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.get_chosen_tsg"><code class="docutils literal notranslate"><span class="pre">Scheduler.get_chosen_tsg()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.get_completed_incore_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.get_completed_incore_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.get_server_job_ids"><code class="docutils literal notranslate"><span class="pre">Scheduler.get_server_job_ids()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.has_pending_pipe_work"><code class="docutils literal notranslate"><span class="pre">Scheduler.has_pending_pipe_work()</span></code></a></li>
@@ -147,6 +148,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.post_sp_actions"><code class="docutils literal notranslate"><span class="pre">Scheduler.post_sp_actions()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.process_conformers"><code class="docutils literal notranslate"><span class="pre">Scheduler.process_conformers()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.process_directed_scans"><code class="docutils literal notranslate"><span class="pre">Scheduler.process_directed_scans()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.record_tsg_job_error"><code class="docutils literal notranslate"><span class="pre">Scheduler.record_tsg_job_error()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.report_running_jobs_snapshot"><code class="docutils literal notranslate"><span class="pre">Scheduler.report_running_jobs_snapshot()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.restore_running_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.restore_running_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_composite_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_composite_job()</span></code></a></li>
@@ -179,6 +181,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.scheduler.species_has_geo"><code class="docutils literal notranslate"><span class="pre">species_has_geo()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.scheduler.species_has_sp"><code class="docutils literal notranslate"><span class="pre">species_has_sp()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.scheduler.species_has_sp_and_freq"><code class="docutils literal notranslate"><span class="pre">species_has_sp_and_freq()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.scheduler.tsg_method_matches_adapter"><code class="docutils literal notranslate"><span class="pre">tsg_method_matches_adapter()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="job.html">arc.job</a></li>
@@ -932,8 +935,7 @@ stable species, and that exactly one imaginary frequency was assigned for a TS.<
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.check_negative_freq">
 <span class="sig-name descname"><span class="pre">check_negative_freq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vibfreqs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.check_negative_freq"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.check_negative_freq" title="Link to this definition"></a></dt>
-<dd><p>A helper function for determining the number of negative frequencies. Also logs appropriate errors.
-Returns <code class="docutils literal notranslate"><span class="pre">True</span></code> if the number of negative frequencies is as excepted, <code class="docutils literal notranslate"><span class="pre">False</span></code> otherwise.</p>
+<dd><p>A helper function for determining the number of negative frequencies. Also logs appropriate errors.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -941,6 +943,16 @@ Returns <code class="docutils literal notranslate"><span class="pre">True</span>
 <li><p><strong>job</strong> (<em>JobAdapter</em>) – The optimization job object.</p></li>
 <li><p><strong>vibfreqs</strong> (<em>list</em><em> | </em><em>np.ndarray</em><em> | </em><em>None</em>) – The vibrational frequencies, or <code class="docutils literal notranslate"><span class="pre">None</span></code> if they could not be parsed.</p></li>
 </ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Whether the number of negative frequencies is as expected,</dt><dd><p>and whether a different TS guess was selected as a result.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple[bool, bool]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1103,6 +1115,31 @@ discovered and before the loop sleeps.</p>
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.generate_final_ts_guess_report">
 <span class="sig-name descname"><span class="pre">generate_final_ts_guess_report</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.generate_final_ts_guess_report"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.generate_final_ts_guess_report" title="Link to this definition"></a></dt>
 <dd><p>Generate a TS report for this ARC project and saves it as a YAML file.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.get_chosen_tsg">
+<span class="sig-name descname"><span class="pre">get_chosen_tsg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.get_chosen_tsg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.get_chosen_tsg" title="Link to this definition"></a></dt>
+<dd><p>Get the TSGuess object of a TS species that is currently being optimized.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">chosen_ts</span></code> attribute of an ARCSpecies object stores a <code class="docutils literal notranslate"><span class="pre">TSGuess.index</span></code>, which is an identity
+assigned to a TS guess when it is appended to the species. It is not a position in a list, and in
+particular it is not the <code class="docutils literal notranslate"><span class="pre">TSGuess.conformer_index</span></code> attribute, which is the index of the conformer
+optimization job spawned for the guess (i.e., a position in the list of <em>successful</em> TS guesses).
+If <code class="docutils literal notranslate"><span class="pre">chosen_ts</span></code> is <code class="docutils literal notranslate"><span class="pre">None</span></code>, no selection was made among several guesses. That happens when only a
+single TS guess was successful and was sent directly to a geometry optimization, in which case that
+guess is returned, and after a restart file with ambiguous TS guess identities was repaired, in which
+case there may be several successful guesses and <code class="docutils literal notranslate"><span class="pre">None</span></code> is returned.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>label</strong> (<em>str</em>) – The TS species label.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The chosen TSGuess object, or <code class="docutils literal notranslate"><span class="pre">None</span></code> if it could not be determined.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="species.html#arc.species.species.TSGuess" title="arc.species.species.TSGuess">TSGuess</a> | None</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -1340,6 +1377,27 @@ If more than one conformer is available, they will be optimized at the DFT confo
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.record_tsg_job_error">
+<span class="sig-name descname"><span class="pre">record_tsg_job_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_error</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.record_tsg_job_error"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.record_tsg_job_error" title="Link to this definition"></a></dt>
+<dd><p>Record an unrecoverable TS-search job error on the TS guesses that job produced.</p>
+<p>A <code class="docutils literal notranslate"><span class="pre">tsg&lt;i&gt;</span></code> job name numbers the TS-search <em>adapter</em> that was dispatched for the
+reaction, it is not a position in <code class="docutils literal notranslate"><span class="pre">species.ts_guesses</span></code>: one adapter may contribute
+several guesses or none at all, and guesses from other adapters are interleaved.
+Using the job number as a list index therefore either annotates an unrelated guess or
+raises an <code class="docutils literal notranslate"><span class="pre">IndexError</span></code> when the adapter number exceeds the number of guesses
+generated so far. Match on the adapter that produced each guess instead.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The TS species label.</p></li>
+<li><p><strong>job</strong> (<em>JobAdapter</em>) – The failed TS-search job.</p></li>
+<li><p><strong>output_error</strong> (<em>str</em>) – The error string to record.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.report_running_jobs_snapshot">
 <span class="sig-name descname"><span class="pre">report_running_jobs_snapshot</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.report_running_jobs_snapshot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.report_running_jobs_snapshot" title="Link to this definition"></a></dt>
 <dd><p>Overwrite <code class="docutils literal notranslate"><span class="pre">&lt;project&gt;/running_jobs.yml</span></code> with a timestamped snapshot of
@@ -1509,6 +1567,11 @@ If the method is MRCI, first spawn a simple CCSD(T) job, and use orbital determi
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.run_ts_conformer_jobs">
 <span class="sig-name descname"><span class="pre">run_ts_conformer_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.run_ts_conformer_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.run_ts_conformer_jobs" title="Link to this definition"></a></dt>
 <dd><p>Spawn opt jobs at the ts_guesses level of theory for the TS guesses.</p>
+<p>When only a single guess succeeded, its geometry is optimized directly. The reported
+provenance (relative energy, <code class="docutils literal notranslate"><span class="pre">chosen_ts_method</span></code>, <code class="docutils literal notranslate"><span class="pre">successful_methods</span></code> and the guess
+log path) is taken from that same guess rather than from <code class="docutils literal notranslate"><span class="pre">ts_guesses[0]</span></code>: several TS
+adapters append <code class="docutils literal notranslate"><span class="pre">success=False</span></code> guesses, so the first entry of <code class="docutils literal notranslate"><span class="pre">ts_guesses</span></code> is not
+necessarily the guess whose coordinates are being optimized.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>label</strong> (<em>str</em>) – The TS species label.</p>
@@ -1765,6 +1828,29 @@ Using the following methods:
 </dl>
 <dl class="simple">
 <dt>Returns: bool</dt><dd><p>Whether a species has a valid converged single-point energy and frequencies.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.scheduler.tsg_method_matches_adapter">
+<span class="sig-prename descclassname"><span class="pre">arc.scheduler.</span></span><span class="sig-name descname"><span class="pre">tsg_method_matches_adapter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">method</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_adapter</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#tsg_method_matches_adapter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.tsg_method_matches_adapter" title="Link to this definition"></a></dt>
+<dd><p>Determine whether a <code class="docutils literal notranslate"><span class="pre">TSGuess.method</span></code> was produced by a given TS-search adapter.</p>
+<p>The two spellings differ (e.g. the <code class="docutils literal notranslate"><span class="pre">xtb_gsm</span></code> adapter labels its guesses <code class="docutils literal notranslate"><span class="pre">'xTB-GSM'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">kinbot</span></code> labels them <code class="docutils literal notranslate"><span class="pre">'KinBot'</span></code> or <code class="docutils literal notranslate"><span class="pre">'KinBot-UMA'</span></code>), so both strings are lower-cased
+and stripped of <code class="docutils literal notranslate"><span class="pre">'-'</span></code> and <code class="docutils literal notranslate"><span class="pre">'_'</span></code> before testing for containment.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>method</strong> (<em>str</em><em>, </em><em>optional</em>) – The <code class="docutils literal notranslate"><span class="pre">TSGuess.method</span></code> string.</p></li>
+<li><p><strong>job_adapter</strong> (<em>str</em><em>, </em><em>optional</em>) – The TS-search job adapter name.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Whether the guess was produced by this adapter.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
 </dd>
 </dl>
 </dd></dl>

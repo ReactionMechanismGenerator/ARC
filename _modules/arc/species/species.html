@@ -1010,6 +1010,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">ts_checks</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;ts_checks&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;ts_checks&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="nb">dict</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts_list</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;chosen_ts_list&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;chosen_ts_list&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="nb">list</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">checkfile</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;checkfile&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;checkfile&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">renumber_ambiguous_ts_guesses</span><span class="p">()</span>
         <span class="k">if</span> <span class="s1">&#39;xyz&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">final_xyz</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">process_xyz</span><span class="p">(</span><span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;xyz&#39;</span><span class="p">])</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;multiplicity&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;multiplicity&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
@@ -1833,6 +1834,99 @@
                                   <span class="sa">f</span><span class="s1">&#39;optimization: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts_method</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span></div>
 
 
+<div class="viewcode-block" id="ARCSpecies.next_ts_guess_index">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.next_ts_guess_index">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">next_ts_guess_index</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get the next available ``TSGuess.index`` identity for this species.</span>
+
+<span class="sd">        The returned index is one greater than the largest index in use by this species, counting</span>
+<span class="sd">        both the indices its TS guesses hold and the indices recorded in their ``cluster`` lists,</span>
+<span class="sd">        so an identity is never reused. It is deliberately not the length of the ``ts_guesses``</span>
+<span class="sd">        list: ``cluster_tsgs()`` shrinks that list while the surviving guesses retain their</span>
+<span class="sd">        original indices and record the indices they absorbed, so a length-based identity would</span>
+<span class="sd">        collide with an index that is still spoken for.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            int: The next available TSGuess index.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">used</span> <span class="o">=</span> <span class="p">[</span><span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span> <span class="k">if</span> <span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">used</span> <span class="o">+=</span> <span class="p">[</span><span class="n">index</span> <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span> <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="p">(</span><span class="n">tsg</span><span class="o">.</span><span class="n">cluster</span> <span class="ow">or</span> <span class="p">[])</span> <span class="k">if</span> <span class="n">index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">used</span><span class="p">,</span> <span class="n">default</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span></div>
+
+
+<div class="viewcode-block" id="ARCSpecies.append_ts_guess">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.append_ts_guess">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">append_ts_guess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tsg</span><span class="p">:</span> <span class="s1">&#39;TSGuess&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">&#39;TSGuess&#39;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Append a TS guess to this species, assigning it a unique identity.</span>
+
+<span class="sd">        ``tsg.index`` is set from ``next_ts_guess_index()`` whenever it is missing or already taken</span>
+<span class="sd">        by another guess of this species, so that a caller cannot give two guesses the same</span>
+<span class="sd">        identity. An index that is free is left as it is.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            tsg (TSGuess): The TS guess to append.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            TSGuess: The appended TS guess.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">any</span><span class="p">(</span><span class="n">guess</span><span class="o">.</span><span class="n">index</span> <span class="o">==</span> <span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="k">for</span> <span class="n">guess</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">):</span>
+            <span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">next_ts_guess_index</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tsg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">tsg</span></div>
+
+
+<div class="viewcode-block" id="ARCSpecies.renumber_ambiguous_ts_guesses">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.renumber_ambiguous_ts_guesses">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">renumber_ambiguous_ts_guesses</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Assign fresh identities to TS guesses whose ``index`` is missing or duplicated.</span>
+
+<span class="sd">        A restart file written before TSGuess identities were allocated uniquely may hold guesses</span>
+<span class="sd">        that share an index or that have none, which makes a lookup by identity ambiguous. Only the</span>
+<span class="sd">        ambiguous guesses are re-indexed, so references to unambiguous identities remain valid.</span>
+
+<span class="sd">        A contested index is kept by the successful guess that holds it, because ``chosen_ts`` and</span>
+<span class="sd">        ``chosen_ts_list`` can only ever refer to a successful guess. An index contested by a single</span>
+<span class="sd">        successful guess is therefore resolved without touching either attribute. Only an index held</span>
+<span class="sd">        by several successful guesses stays ambiguous, and there ``chosen_ts`` is reset so that a TS</span>
+<span class="sd">        conformer is selected again rather than paired arbitrarily, and the index is dropped from</span>
+<span class="sd">        ``chosen_ts_list`` so that neither holder is barred from being selected.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_ts</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">holders</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">holders</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">tsg</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="nb">list</span><span class="p">())</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tsg</span><span class="p">)</span>
+        <span class="n">ambiguous</span><span class="p">,</span> <span class="n">unresolved</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(),</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">guesses</span> <span class="ow">in</span> <span class="n">holders</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">guesses</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">successful</span> <span class="o">=</span> <span class="p">[</span><span class="n">tsg</span> <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="n">guesses</span> <span class="k">if</span> <span class="n">tsg</span><span class="o">.</span><span class="n">success</span><span class="p">]</span>
+            <span class="n">keeper</span> <span class="o">=</span> <span class="n">successful</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">successful</span> <span class="k">else</span> <span class="n">guesses</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">ambiguous</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">tsg</span> <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="n">guesses</span> <span class="k">if</span> <span class="n">tsg</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">keeper</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">successful</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">unresolved</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">index</span><span class="p">)</span>
+        <span class="n">ambiguous</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">tsg</span> <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span> <span class="k">if</span> <span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ambiguous</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="n">ambiguous</span><span class="p">:</span>
+            <span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">next_ts_guess_index</span><span class="p">()</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ambiguous</span><span class="p">)</span><span class="si">}</span><span class="s1"> TS guess(es) of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> had a missing or a duplicated index &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;(duplicated indices: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">index</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">g</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">holders</span><span class="o">.</span><span class="n">items</span><span class="p">()</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="n">g</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="si">}</span><span class="s1">), &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;and were re-indexed to keep TS guess identities unique.&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">unresolved</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts</span> <span class="ow">in</span> <span class="n">unresolved</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The chosen TS guess index </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts</span><span class="si">}</span><span class="s1"> of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> was held by several &#39;</span>
+                           <span class="sa">f</span><span class="s1">&#39;successful guesses, a TS conformer will be selected again.&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">index</span> <span class="ow">in</span> <span class="n">unresolved</span> <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts_list</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">index</span> <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts_list</span> <span class="k">if</span> <span class="n">index</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">unresolved</span><span class="p">]</span></div>
+
+
 <div class="viewcode-block" id="ARCSpecies.cluster_tsgs">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.cluster_tsgs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">cluster_tsgs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -1880,9 +1974,7 @@
                           <span class="n">log_path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span>
                           <span class="p">)</span>
             <span class="k">if</span> <span class="n">tsg</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">colliding_atoms</span><span class="p">(</span><span class="n">tsg</span><span class="o">.</span><span class="n">initial_xyz</span><span class="p">):</span>
-                <span class="k">if</span> <span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                    <span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">)</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tsg</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">append_ts_guess</span><span class="p">(</span><span class="n">tsg</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="c1"># The queue TS-search job produced no usable geometry (nothing parseable, or</span>
                 <span class="c1"># colliding atoms). Mark it failed and do NOT add it as a clusterable guess: a</span>
@@ -1898,9 +1990,7 @@
             <span class="n">tsgs</span> <span class="o">=</span> <span class="p">[</span><span class="n">TSGuess</span><span class="p">(</span><span class="n">ts_dict</span><span class="o">=</span><span class="n">tsg_dict</span><span class="p">)</span> <span class="k">for</span> <span class="n">tsg_dict</span> <span class="ow">in</span> <span class="n">tsg_list</span><span class="p">]</span>
             <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="n">tsgs</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">tsg</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">colliding_atoms</span><span class="p">(</span><span class="n">tsg</span><span class="o">.</span><span class="n">initial_xyz</span><span class="p">):</span>
-                    <span class="k">if</span> <span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                        <span class="n">tsg</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">)</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tsg</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">append_ts_guess</span><span class="p">(</span><span class="n">tsg</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">cluster_tsgs</span><span class="p">()</span></div>
 
 
@@ -2000,6 +2090,12 @@
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Process the user&#39;s input and add either to the .conformers attribute or to .ts_guesses.</span>
 
+<span class="sd">        For a TS, each user guess is given an explicit ``TSGuess.index`` allocated by</span>
+<span class="sd">        ``next_ts_guess_index()``. ``TSGuess.index`` is the guess&#39;s stable identity: it is what</span>
+<span class="sd">        ``cluster_tsgs()`` orders by, what ``ARCSpecies.chosen_ts`` / ``chosen_ts_list`` refer to,</span>
+<span class="sd">        and what keys the TS guess report. Leaving it ``None`` (the ``TSGuess`` default) makes a</span>
+<span class="sd">        user guess unselectable as the chosen TS.</span>
+
 <span class="sd">        Args:</span>
 <span class="sd">            xyz_list (list, str, dict): Entries are either string-format, dict-format coordinates or file paths.</span>
 <span class="sd">                                        (If there&#39;s only one entry, it could be given directly, not in a list)</span>
@@ -2051,16 +2147,14 @@
                 <span class="bp">self</span><span class="o">.</span><span class="n">conformers</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">xyzs</span><span class="p">)</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">conformer_energies</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="n">tsg_index</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">)</span>
                 <span class="k">for</span> <span class="n">xyz</span><span class="p">,</span> <span class="n">energy</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">xyzs</span><span class="p">,</span> <span class="n">energies</span><span class="p">):</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TSGuess</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;user guess </span><span class="si">{</span><span class="n">tsg_index</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">,</span>
-                                                   <span class="n">xyz</span><span class="o">=</span><span class="n">remove_dummies</span><span class="p">(</span><span class="n">xyz</span><span class="p">),</span>
-                                                   <span class="n">energy</span><span class="o">=</span><span class="n">energy</span><span class="p">,</span>
-                                                   <span class="n">success</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-                                                   <span class="p">))</span>
-                    <span class="c1"># user guesses are always successful in generating a *guess*:</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">[</span><span class="n">tsg_index</span><span class="p">]</span><span class="o">.</span><span class="n">success</span> <span class="o">=</span> <span class="kc">True</span>
-                    <span class="n">tsg_index</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">tsg_index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">next_ts_guess_index</span><span class="p">()</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">append_ts_guess</span><span class="p">(</span><span class="n">TSGuess</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="n">tsg_index</span><span class="p">,</span>
+                                                 <span class="n">method</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;user guess </span><span class="si">{</span><span class="n">tsg_index</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">,</span>
+                                                 <span class="n">xyz</span><span class="o">=</span><span class="n">remove_dummies</span><span class="p">(</span><span class="n">xyz</span><span class="p">),</span>
+                                                 <span class="n">energy</span><span class="o">=</span><span class="n">energy</span><span class="p">,</span>
+                                                 <span class="n">success</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                                                 <span class="p">))</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">charge</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="k">for</span> <span class="n">xyz</span> <span class="ow">in</span> <span class="n">xyzs</span><span class="p">:</span>
                     <span class="n">consistent</span> <span class="o">=</span> <span class="n">check_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span> <span class="n">multiplicity</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span><span class="p">,</span> <span class="n">charge</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">charge</span><span class="p">)</span>
@@ -2604,7 +2698,8 @@
 <span class="sd">        execution_time (str): Overall execution time for the TS guess method.</span>
 <span class="sd">        success (bool): Whether the TS guess method succeeded in generating an XYZ guess or not.</span>
 <span class="sd">        energy (float): Relative energy of all TS conformers in kJ/mol.</span>
-<span class="sd">        index (int): A running index of all TSGuess objects belonging to an ARCSpecies object.</span>
+<span class="sd">        index (int): A unique identity assigned to a TSGuess object when it is appended to an</span>
+<span class="sd">                     ARCSpecies object. It is not a position in a list.</span>
 <span class="sd">        imaginary_freqs (list[float]): The imaginary frequencies of the TS guess after optimization.</span>
 <span class="sd">        conformer_index (int): An index corresponding to the conformer jobs spawned for each TSGuess object.</span>
 <span class="sd">                               Assigned only if self.success is ``True``.</span>
