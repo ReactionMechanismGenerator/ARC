@@ -763,8 +763,15 @@ def check_product_isomorphism(products: list[Molecule],
                               ) -> bool:
     """
     Check whether the products are isomorphic to the given species.
-    Falls back to InChI comparison when graph isomorphism fails
+    Falls back to comparing the standard InChI, the multiplicity, and the electron-agnostic
+    connectivity (elements and explicit hydrogen positions, ignoring bond orders, charges and
+    radical electrons) when graph isomorphism fails
     (e.g., different Lewis structures perceived from XYZ vs SMILES).
+    Tautomers, which share a standard InChI but place their hydrogens on different heavy atoms,
+    are rejected.
+    The connectivity comparison is made first, so an InChI is only ever generated for a
+    candidate/species pair that it admits.
+    Neither the given molecules nor the molecules of the given species are modified.
 
     Args:
         products (list[Molecule]): The products to check.
@@ -802,37 +809,49 @@ def check_product_isomorphism(products: list[Molecule],
     # Fall back to InChI comparison for unmatched products.
     # Different Lewis structures perceived from XYZ vs SMILES (e.g., O=C=C(O)C=O vs O=C[C-](O)C#[O+])
     # may not be graph-isomorphic but share the same InChI.
-    # InChI does not encode radical electrons, so also require matching multiplicity
-    # to avoid false matches between biradicals and closed-shell species
-    # (e.g., [CH2][CH2] vs C=C both give InChI=1S/C2H4/c1-2/h1-2H2).
-    # Gate behind molecular-formula check to avoid expensive InChI generation
-    # for products that can't possibly match.
-    species_fingerprints = {spc.mol.fingerprint for spc in p_species if spc.mol is not None}
-    needs_inchi = False
-    for i in range(len(products)):
-        if not isomorphic[i] and products[i].fingerprint in species_fingerprints:
-            needs_inchi = True
-            break
-    if not needs_inchi:
-        return False
-    # Precompute p_species InChIs once (not per candidate product).
-    try:
-        species_inchi_mult = [(spc.mol.to_inchi(), spc.mol.multiplicity) for spc in p_species]
-    except Exception:
-        return False
-    for i in range(len(products)):
-        if not isomorphic[i]:
-            if products[i].fingerprint not in species_fingerprints:
+    inchi_cache: dict[int, str | None] = dict()
+    for i, product in enumerate(products):
+        if isomorphic[i]:
+            continue
+        for spc in p_species:
+            if not product.is_isomorphic(spc.mol, save_order=True, strict=False):
                 continue
-            try:
-                inchi_a = products[i].to_inchi()
-                mult_a = products[i].multiplicity
-            except Exception:
-                continue
-            if any(inchi_a == inchi_b and mult_a == mult_b
-                   for inchi_b, mult_b in species_inchi_mult):
+            inchi_a = _get_inchi(product, inchi_cache)
+            if inchi_a is None:
+                break
+            if inchi_a == _get_inchi(spc.mol, inchi_cache):
                 isomorphic[i] = True
+                break
     return all(isomorphic)
+
+
+def _get_inchi(mol: Molecule,
+               cache: dict[int, str | None],
+               ) -> str | None:
+    """
+    Get the standard InChI of a molecule.
+
+    ``mol`` is not modified: the conversion, which reorders the atoms of the molecule it is
+    given, is run on a deep copy.
+    Results, including failures, are memoized in ``cache`` keyed by the identity of ``mol``,
+    so that no molecule is converted more than once per cache. Every molecule passed with a
+    given ``cache`` must be kept alive for as long as that ``cache`` is in use.
+
+    Args:
+        mol (Molecule): The molecule to convert.
+        cache (dict): An identity-keyed InChI cache to read from and populate.
+
+    Returns:
+        str | None: The standard InChI, or ``None`` if no backend could generate one.
+    """
+    key = id(mol)
+    if key not in cache:
+        try:
+            cache[key] = mol.copy(deep=True).to_inchi()
+        except Exception as e:
+            logger.debug(f'Could not generate an InChI for:\n{mol.to_adjacency_list()}\nGot: {e}')
+            cache[key] = None
+    return cache[key]
 
 
 def get_all_families(rmg_family_set: list[str] | str = 'default',
