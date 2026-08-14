@@ -105,6 +105,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.get_git_branch"><code class="docutils literal notranslate"><span class="pre">get_git_branch()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.get_git_commit"><code class="docutils literal notranslate"><span class="pre">get_git_commit()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.get_logger"><code class="docutils literal notranslate"><span class="pre">get_logger()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.common.get_memory_headroom_fraction"><code class="docutils literal notranslate"><span class="pre">get_memory_headroom_fraction()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.get_number_with_ordinal_indicator"><code class="docutils literal notranslate"><span class="pre">get_number_with_ordinal_indicator()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.get_ordered_intersection_of_two_lists"><code class="docutils literal notranslate"><span class="pre">get_ordered_intersection_of_two_lists()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.get_ordinal_indicator"><code class="docutils literal notranslate"><span class="pre">get_ordinal_indicator()</span></code></a></li>
@@ -749,6 +750,27 @@ where some entries could be <code class="docutils literal notranslate"><span cla
 <dt class="sig sig-object py" id="arc.common.get_logger">
 <span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">get_logger</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/common.html#get_logger"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.get_logger" title="Link to this definition"></a></dt>
 <dd><p>Get the ARC logger (avoid having multiple entries of the logger).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.common.get_memory_headroom_fraction">
+<span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">get_memory_headroom_fraction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/common.html#get_memory_headroom_fraction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.get_memory_headroom_fraction" title="Link to this definition"></a></dt>
+<dd><p>Determine the Gaussian %mem headroom fraction to use from accumulated ess_trsh_methods markers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ess_trsh_methods</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – The list of troubleshooting methods already attempted.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>The headroom fraction to use (the lowest of any <cite>memory_headroom_&lt;fraction&gt;</cite> markers</dt><dd><p>present, or the default first entry of <cite>gaussian_memory_headroom_fractions</cite> if none).</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">

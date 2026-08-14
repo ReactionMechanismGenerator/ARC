@@ -109,6 +109,7 @@
                         <span class="n">convert_to_hours</span><span class="p">,</span>
                         <span class="n">estimate_orca_mem_cpu_requirement</span><span class="p">,</span>
                         <span class="n">get_logger</span><span class="p">,</span>
+                        <span class="n">get_memory_headroom_fraction</span><span class="p">,</span>
                         <span class="n">get_number_with_ordinal_indicator</span><span class="p">,</span>
                         <span class="n">is_same_pivot</span><span class="p">,</span>
                         <span class="n">is_same_sequence_sublist</span><span class="p">,</span>
@@ -136,12 +137,12 @@
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
-<span class="n">delete_command</span><span class="p">,</span> <span class="n">inconsistency_ab</span><span class="p">,</span> <span class="n">inconsistency_az</span><span class="p">,</span> <span class="n">maximum_barrier</span><span class="p">,</span> <span class="n">preserve_params_in_scan</span><span class="p">,</span> <span class="n">rotor_scan_resolution</span><span class="p">,</span> \
-    <span class="n">servers</span><span class="p">,</span> <span class="n">submit_filenames</span><span class="p">,</span> <span class="n">default_job_settings</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;delete_command&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;inconsistency_ab&#39;</span><span class="p">],</span> \
-                                                      <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;inconsistency_az&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;maximum_barrier&#39;</span><span class="p">],</span> \
-                                                      <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;preserve_params_in_scan&#39;</span><span class="p">],</span> \
-                                                      <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;rotor_scan_resolution&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;servers&#39;</span><span class="p">],</span> \
-                                                      <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;submit_filenames&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;default_job_settings&#39;</span><span class="p">]</span>
+<span class="n">delete_command</span><span class="p">,</span> <span class="n">gaussian_memory_headroom_fractions</span><span class="p">,</span> <span class="n">inconsistency_ab</span><span class="p">,</span> <span class="n">inconsistency_az</span><span class="p">,</span> <span class="n">maximum_barrier</span><span class="p">,</span> \
+    <span class="n">preserve_params_in_scan</span><span class="p">,</span> <span class="n">rotor_scan_resolution</span><span class="p">,</span> <span class="n">servers</span><span class="p">,</span> <span class="n">submit_filenames</span><span class="p">,</span> <span class="n">default_job_settings</span> <span class="o">=</span> \
+    <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;delete_command&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;gaussian_memory_headroom_fractions&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;inconsistency_ab&#39;</span><span class="p">],</span> \
+    <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;inconsistency_az&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;maximum_barrier&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;preserve_params_in_scan&#39;</span><span class="p">],</span> \
+    <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;rotor_scan_resolution&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;servers&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;submit_filenames&#39;</span><span class="p">],</span> \
+    <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;default_job_settings&#39;</span><span class="p">]</span>
 
 
 <div class="viewcode-block" id="determine_ess_status">
@@ -303,8 +304,8 @@
                     <span class="n">error</span> <span class="o">=</span> <span class="s1">&#39;An operation on the check file was specified, but a .chk was not found or is incomplete.&#39;</span>
                     <span class="n">line</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
                 <span class="k">elif</span> <span class="s1">&#39;malloc failed&#39;</span> <span class="ow">in</span> <span class="n">line</span> <span class="ow">or</span> <span class="s1">&#39;galloc&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
-                    <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;Memory&#39;</span><span class="p">]</span>
-                    <span class="n">error</span> <span class="o">=</span> <span class="s1">&#39;Memory allocation failed (did you ask for too much?)&#39;</span>
+                    <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;GaussianMemoryAllocation&#39;</span><span class="p">]</span>
+                    <span class="n">error</span> <span class="o">=</span> <span class="s1">&#39;Gaussian could not allocate memory within its allocation.&#39;</span>
                     <span class="n">line</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
                 <span class="k">elif</span> <span class="s1">&#39;PGFIO/stdio: No such file or directory&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
                     <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;Scratch&#39;</span><span class="p">]</span>
@@ -1130,6 +1131,32 @@
         <span class="k">if</span> <span class="s1">&#39;no_qc&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
             <span class="n">logger_info</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;removed QC&#39;</span><span class="p">)</span>
         
+
+        <span class="c1"># Gaussian ran out of memory within an already-granted queue allocation (galloc/malloc failure).</span>
+        <span class="c1"># Hold the queue reservation (memory_gb) constant and instead give Gaussian more headroom by</span>
+        <span class="c1"># stepping down the %mem fraction along a fixed ladder.</span>
+        <span class="k">if</span> <span class="s1">&#39;GaussianMemoryAllocation&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">server</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">current_fraction</span> <span class="o">=</span> <span class="n">get_memory_headroom_fraction</span><span class="p">(</span><span class="n">ess_trsh_methods</span><span class="p">)</span>
+            <span class="n">fraction_index</span> <span class="o">=</span> <span class="n">gaussian_memory_headroom_fractions</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">current_fraction</span><span class="p">)</span> \
+                <span class="k">if</span> <span class="n">current_fraction</span> <span class="ow">in</span> <span class="n">gaussian_memory_headroom_fractions</span> <span class="k">else</span> <span class="mi">0</span>
+            <span class="k">if</span> <span class="n">fraction_index</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">gaussian_memory_headroom_fractions</span><span class="p">):</span>
+                <span class="n">next_fraction</span> <span class="o">=</span> <span class="n">gaussian_memory_headroom_fractions</span><span class="p">[</span><span class="n">fraction_index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+                <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;memory_headroom_</span><span class="si">{</span><span class="n">next_fraction</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Troubleshooting </span><span class="si">{</span><span class="n">job_type</span><span class="si">}</span><span class="s1"> job in </span><span class="si">{</span><span class="n">software</span><span class="si">}</span><span class="s1"> for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> by holding the memory &#39;</span>
+                            <span class="sa">f</span><span class="s1">&#39;request constant at </span><span class="si">{</span><span class="n">memory_gb</span><span class="si">}</span><span class="s1"> GB and giving Gaussian more headroom: reducing &#39;</span>
+                            <span class="sa">f</span><span class="s1">&#39;the %mem fraction from </span><span class="si">{</span><span class="n">current_fraction</span><span class="si">}</span><span class="s1"> to </span><span class="si">{</span><span class="n">next_fraction</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">output_errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s1">&#39;Error: Could not troubleshoot </span><span class="si">{</span><span class="n">job_type</span><span class="si">}</span><span class="s1"> for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">! Gaussian could not allocate memory &#39;</span>
+                    <span class="sa">f</span><span class="s1">&#39;within its allocation even at the lowest %mem headroom fraction &#39;</span>
+                    <span class="sa">f</span><span class="s1">&#39;(</span><span class="si">{</span><span class="n">gaussian_memory_headroom_fractions</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s1">). Consider raising job_total_memory_gb, using a &#39;</span>
+                    <span class="sa">f</span><span class="s1">&#39;node with more memory per core, or reducing the job cost (e.g., a smaller basis set or &#39;</span>
+                    <span class="sa">f</span><span class="s1">&#39;fewer cores); &#39;</span><span class="p">)</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not troubleshoot </span><span class="si">{</span><span class="n">job_type</span><span class="si">}</span><span class="s1"> job in </span><span class="si">{</span><span class="n">software</span><span class="si">}</span><span class="s1"> for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">. Gaussian could not &#39;</span>
+                             <span class="sa">f</span><span class="s1">&#39;allocate memory within its allocation even at the lowest %mem headroom fraction &#39;</span>
+                             <span class="sa">f</span><span class="s1">&#39;(</span><span class="si">{</span><span class="n">gaussian_memory_headroom_fractions</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s1">).&#39;</span><span class="p">)</span>
 
         <span class="c1"># Check if memory is in the keyword</span>
         <span class="k">if</span> <span class="s1">&#39;Memory&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">&#39;too high&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;error&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">server</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>

@@ -339,6 +339,30 @@
 
 
 
+<div class="viewcode-block" id="get_memory_headroom_fraction">
+<a class="viewcode-back" href="../../api/common.html#arc.common.get_memory_headroom_fraction">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_memory_headroom_fraction</span><span class="p">(</span><span class="n">ess_trsh_methods</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Determine the Gaussian %mem headroom fraction to use from accumulated ess_trsh_methods markers.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        ess_trsh_methods (list[str] | None): The list of troubleshooting methods already attempted.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        float: The headroom fraction to use (the lowest of any `memory_headroom_&lt;fraction&gt;` markers</span>
+<span class="sd">               present, or the default first entry of `gaussian_memory_headroom_fractions` if none).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fractions</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">method</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;memory_headroom_&#39;</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">fractions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">method</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;memory_headroom_&#39;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]))</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">continue</span>
+    <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="n">fractions</span><span class="p">)</span> <span class="k">if</span> <span class="n">fractions</span> <span class="k">else</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;gaussian_memory_headroom_fractions&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span></div>
+
+
+
 <div class="viewcode-block" id="log_header">
 <a class="viewcode-back" href="../../api/common.html#arc.common.log_header">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">log_header</span><span class="p">(</span><span class="n">project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
