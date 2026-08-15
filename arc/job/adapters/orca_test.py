@@ -475,6 +475,28 @@ end
         self.assertNotIn('Calc_Hess true', content)
         self.assertNotIn('Recalc_Hess 5', content)
 
+    def test_writing_input_does_not_pollute_level_args(self):
+        """Test that adapter-injected keywords do not reach the Level nor its serialized dict."""
+        level = Level(method='b3lyp', basis='def2tzvp', software='orca')
+        self.assertNotIn('args', level.as_dict())
+        job = OrcaAdapter(execution_type='queue',
+                          job_type='opt',
+                          level=level,
+                          project='test',
+                          project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                          species=[ARCSpecies(label='CH3O',
+                                              xyz="""C       0.03807240    0.00035621   -0.00484242
+                                                     O       1.35198769    0.01264937   -0.17195885
+                                                     H      -0.33965241   -0.14992727    1.02079480
+                                                     H      -0.51702680    0.90828035   -0.29592912
+                                                     H      -0.53338088   -0.77135867   -0.54806440""")],
+                          testing=True,
+                          )
+        job.write_input_file()
+        self.assertIn('defgrid2', job.args['keyword'].values())
+        self.assertEqual(level.args, {'keyword': dict(), 'block': dict()})
+        self.assertNotIn('args', level.as_dict())
+
     @classmethod
     def tearDownClass(cls):
         """

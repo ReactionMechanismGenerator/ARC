@@ -1692,6 +1692,36 @@ H      -1.82570782    0.42754384   -0.56130718"""
 
         os.remove(path)
 
+    @patch('arc.scheduler.job_factory')
+    def test_run_job_does_not_alias_level_args(self, mock_job_factory):
+        """Test that run_job() passes a detached copy of the level args to the job."""
+        job_mock = MagicMock()
+        job_mock.job_name = 'opt_a0000'
+        job_mock.server = None
+        mock_job_factory.return_value = job_mock
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                      args={'keyword': {'opt': 'opt=(verytight)'}})
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_run_job_level_args')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_run_job_level_args', ess_settings=self.ess_settings,
+                          species_list=[ARCSpecies(label='C2H6', smiles='CC')],
+                          opt_level=level,
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.run_job(label='C2H6', job_type='opt', level_of_theory=level, job_adapter='gaussian')
+
+        args = mock_job_factory.call_args.kwargs['args']
+        self.assertEqual(args['keyword'], {'opt': 'opt=(verytight)'})
+        self.assertIsNot(args['keyword'], level.args['keyword'])
+        args['keyword']['dft_grid'] = 'defgrid2'
+        self.assertEqual(level.args, {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()})
+
     @classmethod
     def tearDownClass(cls):
         """
