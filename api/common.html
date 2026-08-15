@@ -77,6 +77,7 @@
 <li class="toctree-l2"><a class="reference internal" href="plotter.html">arc.plotter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="processor.html">arc.processor</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">arc.common</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#arc.common.ARCYAMLLoader"><code class="docutils literal notranslate"><span class="pre">ARCYAMLLoader</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.almost_equal_coords"><code class="docutils literal notranslate"><span class="pre">almost_equal_coords()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.almost_equal_coords_lists"><code class="docutils literal notranslate"><span class="pre">almost_equal_coords_lists()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.almost_equal_lists"><code class="docutils literal notranslate"><span class="pre">almost_equal_lists()</span></code></a></li>
@@ -188,6 +189,17 @@
 As such, it should not import any other ARC module (specifically ones that use the logger defined here)
 to avoid circular imports.</p>
 <p>VERSION is the full ARC version, using <a class="reference external" href="https://semver.org/">semantic versioning</a>.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="arc.common.ARCYAMLLoader">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">ARCYAMLLoader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/common.html#ARCYAMLLoader"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.ARCYAMLLoader" title="Link to this definition"></a></dt>
+<dd><p>A YAML loader that does not coerce YAML 1.1 boolean aliases into booleans.</p>
+<p>PyYAML implements YAML 1.1, in which <code class="docutils literal notranslate"><span class="pre">yes</span></code>, <code class="docutils literal notranslate"><span class="pre">no</span></code>, <code class="docutils literal notranslate"><span class="pre">on</span></code>, and <code class="docutils literal notranslate"><span class="pre">off</span></code> (in any case) are
+booleans just like <code class="docutils literal notranslate"><span class="pre">true</span></code> and <code class="docutils literal notranslate"><span class="pre">false</span></code>. That silently turns a bare SMILES such as <code class="docutils literal notranslate"><span class="pre">NO</span></code>
+(hydroxylamine) or an element symbol such as <code class="docutils literal notranslate"><span class="pre">No</span></code> (nobelium) into <code class="docutils literal notranslate"><span class="pre">False</span></code> before ARC ever
+sees it. Here only the YAML 1.2 spellings <code class="docutils literal notranslate"><span class="pre">true</span></code> and <code class="docutils literal notranslate"><span class="pre">false</span></code> resolve as booleans, and
+every other alias loads as the string the user wrote.</p>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.common.almost_equal_coords">
 <span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">almost_equal_coords</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rtol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0001</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/common.html#almost_equal_coords"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.almost_equal_coords" title="Link to this definition"></a></dt>

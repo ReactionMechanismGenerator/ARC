@@ -476,6 +476,29 @@
 
 
 
+<div class="viewcode-block" id="ARCYAMLLoader">
+<a class="viewcode-back" href="../../api/common.html#arc.common.ARCYAMLLoader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ARCYAMLLoader</span><span class="p">(</span><span class="n">yaml</span><span class="o">.</span><span class="n">FullLoader</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A YAML loader that does not coerce YAML 1.1 boolean aliases into booleans.</span>
+
+<span class="sd">    PyYAML implements YAML 1.1, in which ``yes``, ``no``, ``on``, and ``off`` (in any case) are</span>
+<span class="sd">    booleans just like ``true`` and ``false``. That silently turns a bare SMILES such as ``NO``</span>
+<span class="sd">    (hydroxylamine) or an element symbol such as ``No`` (nobelium) into ``False`` before ARC ever</span>
+<span class="sd">    sees it. Here only the YAML 1.2 spellings ``true`` and ``false`` resolve as booleans, and</span>
+<span class="sd">    every other alias loads as the string the user wrote.</span>
+<span class="sd">    &quot;&quot;&quot;</span></div>
+
+
+
+<span class="n">ARCYAMLLoader</span><span class="o">.</span><span class="n">yaml_implicit_resolvers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">first_char</span><span class="p">:</span> <span class="p">[(</span><span class="n">tag</span><span class="p">,</span> <span class="n">regexp</span><span class="p">)</span> <span class="k">for</span> <span class="n">tag</span><span class="p">,</span> <span class="n">regexp</span> <span class="ow">in</span> <span class="n">resolvers</span> <span class="k">if</span> <span class="n">tag</span> <span class="o">!=</span> <span class="s1">&#39;tag:yaml.org,2002:bool&#39;</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">first_char</span><span class="p">,</span> <span class="n">resolvers</span> <span class="ow">in</span> <span class="n">yaml</span><span class="o">.</span><span class="n">FullLoader</span><span class="o">.</span><span class="n">yaml_implicit_resolvers</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<span class="p">}</span>
+<span class="n">ARCYAMLLoader</span><span class="o">.</span><span class="n">add_implicit_resolver</span><span class="p">(</span><span class="s1">&#39;tag:yaml.org,2002:bool&#39;</span><span class="p">,</span>
+                                    <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;^(?:true|True|TRUE|false|False|FALSE)$&#39;</span><span class="p">),</span>
+                                    <span class="nb">list</span><span class="p">(</span><span class="s1">&#39;tTfF&#39;</span><span class="p">))</span>
+
+
 <div class="viewcode-block" id="read_yaml_file">
 <a class="viewcode-back" href="../../api/common.html#arc.common.read_yaml_file">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">read_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
@@ -499,7 +522,7 @@
     <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
         <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not find the YAML file </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-        <span class="n">content</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">stream</span><span class="o">=</span><span class="n">f</span><span class="p">,</span> <span class="n">Loader</span><span class="o">=</span><span class="n">yaml</span><span class="o">.</span><span class="n">FullLoader</span><span class="p">)</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">stream</span><span class="o">=</span><span class="n">f</span><span class="p">,</span> <span class="n">Loader</span><span class="o">=</span><span class="n">ARCYAMLLoader</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">content</span></div>
 
 
@@ -536,7 +559,7 @@
 <span class="sd">    Returns: dict | list</span>
 <span class="sd">        The respective Python object.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">stream</span><span class="o">=</span><span class="n">yaml_str</span><span class="p">,</span> <span class="n">Loader</span><span class="o">=</span><span class="n">yaml</span><span class="o">.</span><span class="n">FullLoader</span><span class="p">)</span></div>
+    <span class="k">return</span> <span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">stream</span><span class="o">=</span><span class="n">yaml_str</span><span class="p">,</span> <span class="n">Loader</span><span class="o">=</span><span class="n">ARCYAMLLoader</span><span class="p">)</span></div>
 
 
 

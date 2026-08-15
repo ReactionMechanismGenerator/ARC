@@ -221,6 +221,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.are_coords_compliant_with_graph"><code class="docutils literal notranslate"><span class="pre">are_coords_compliant_with_graph()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.check_atom_balance"><code class="docutils literal notranslate"><span class="pre">check_atom_balance()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.check_label"><code class="docutils literal notranslate"><span class="pre">check_label()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.species.check_smiles"><code class="docutils literal notranslate"><span class="pre">check_smiles()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.check_xyz"><code class="docutils literal notranslate"><span class="pre">check_xyz()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.colliding_atoms"><code class="docutils literal notranslate"><span class="pre">colliding_atoms()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.cyclic_index_i_minus_1"><code class="docutils literal notranslate"><span class="pre">cyclic_index_i_minus_1()</span></code></a></li>
@@ -2322,6 +2323,26 @@ below 120% of the single bond length of the respective elements.</p>
 <li><p>A legal label.</p></li>
 <li><p>The original label if the label was modified, else <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
 </ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.species.check_smiles">
+<span class="sig-prename descclassname"><span class="pre">arc.species.species.</span></span><span class="sig-name descname"><span class="pre">check_smiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">smiles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#check_smiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.check_smiles" title="Link to this definition"></a></dt>
+<dd><p>Check that a SMILES descriptor is a string, and raise a descriptive error if it isn’t.</p>
+<p>A bare SMILES that spells a YAML 1.1 boolean alias (e.g., <code class="docutils literal notranslate"><span class="pre">NO</span></code> for hydroxylamine) used to
+reach ARC as a bool, which cannot be translated into a molecule and eventually caused an
+uninformative RecursionError. Fail here instead, naming the species.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>smiles</strong> (<em>Any</em>) – The SMILES descriptor to check.</p></li>
+<li><p><strong>label</strong> (<em>str</em><em>, </em><em>optional</em>) – The species label, used in the error message.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>SpeciesError</strong> – If <code class="docutils literal notranslate"><span class="pre">smiles</span></code> is neither <code class="docutils literal notranslate"><span class="pre">None</span></code> nor a string.</p>
 </dd>
 </dl>
 </dd></dl>
