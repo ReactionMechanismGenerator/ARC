@@ -613,6 +613,33 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc7.multiplicity, 2)
         self.assertEqual(spc8.multiplicity, 1)
 
+    def test_non_str_smiles_raises_named_error(self):
+        """Test that a non-string SMILES raises a SpeciesError naming the species, not a RecursionError."""
+        for smiles in [False, True, 5]:
+            with self.assertRaises(SpeciesError) as cm:
+                ARCSpecies(label='hydroxylamine', smiles=smiles, compute_thermo=False)
+            self.assertIn('hydroxylamine', str(cm.exception))
+            self.assertIn('SMILES', str(cm.exception))
+            self.assertIn(str(type(smiles)), str(cm.exception))
+            with self.assertRaises(SpeciesError) as cm:
+                ARCSpecies(species_dict={'label': 'hydroxylamine', 'smiles': smiles, 'compute_thermo': False})
+            self.assertIn('hydroxylamine', str(cm.exception))
+        # A SMILES that is a string but chemically invalid must not recurse either.
+        with self.assertRaises((SpeciesError, ValueError)):
+            ARCSpecies(label='junk', smiles='this is not a SMILES', compute_thermo=False)
+
+    def test_is_diatomic_does_not_generate_conformers(self):
+        """Test that is_diatomic() queries existing coordinates only and never triggers conformer generation."""
+        spc = ARCSpecies(label='NO', smiles='[N]=O', compute_thermo=False)
+        self.assertTrue(spc.is_diatomic())
+        spc_no_structure = ARCSpecies(label='no_structure', smiles='C', compute_thermo=False)
+        spc_no_structure.mol = None
+        spc_no_structure.mol_list = None
+        spc_no_structure.conformers = list()
+        spc_no_structure.final_xyz, spc_no_structure.initial_xyz = None, None
+        spc_no_structure.most_stable_conformer, spc_no_structure.cheap_conformer = None, None
+        self.assertIsNone(spc_no_structure.is_diatomic())
+
     def test_check_multiplicity_parity_neutral(self):
         """Test that an impossible electron-count/multiplicity parity of a neutral species raises SpeciesError."""
         spc_even = ARCSpecies(label='ethylene', smiles='C=C', multiplicity=1, compute_thermo=False)

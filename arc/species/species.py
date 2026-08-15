@@ -7,6 +7,7 @@ import datetime
 import numpy as np
 import os
 from math import isclose
+from typing import Any
 
 import arc.molecule.element as elements
 from arc.common import (almost_equal_coords,
@@ -390,6 +391,7 @@ class ARCSpecies(object):
         self.label = label
         self.symmetry_number = None
         self.index = None
+        check_smiles(smiles=smiles, label=label)
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
@@ -933,6 +935,7 @@ class ARCSpecies(object):
         else:
             self.mol = None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
+        check_smiles(smiles=smiles, label=self.label)
         inchi = species_dict['inchi'] if 'inchi' in species_dict else None
         adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
         if self.mol is None:
@@ -942,11 +945,6 @@ class ARCSpecies(object):
             elif inchi is not None:
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
-                if isinstance(smiles, list):
-                    raise SpeciesError(f'Got a list value type for SMILES of species {self.label}:\n'
-                                       f'{smiles}, type: {type(smiles)}\n'
-                                       f'Did you mean to enter this as a string? Consider adding quotation marks '
-                                       f'before and after the SMILES value if entering through a YAML file.')
                 self.mol = Molecule(smiles=smiles)
         # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
         # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
@@ -1116,7 +1114,9 @@ class ARCSpecies(object):
         """
         if self.mol is not None and len(self.mol.atoms):
             return len(self.mol.atoms) == 2
-        xyz = self.get_xyz()
+        if self.mol_list is not None and len(self.mol_list):
+            return len(self.mol_list[0].atoms) == 2
+        xyz = self.get_xyz(generate=False)
         if xyz is not None:
             return len(xyz['symbols']) == 2
         return None
@@ -3186,6 +3186,32 @@ def colliding_atoms(xyz: dict,
             if actual_r < single_bond_r * threshold:
                 return True
     return False
+
+
+def check_smiles(smiles: Any,
+                 label: str | None = None,
+                 ) -> None:
+    """
+    Check that a SMILES descriptor is a string, and raise a descriptive error if it isn't.
+
+    A bare SMILES that spells a YAML 1.1 boolean alias (e.g., ``NO`` for hydroxylamine) used to
+    reach ARC as a bool, which cannot be translated into a molecule and eventually caused an
+    uninformative RecursionError. Fail here instead, naming the species.
+
+    Args:
+        smiles (Any): The SMILES descriptor to check.
+        label (str, optional): The species label, used in the error message.
+
+    Raises:
+        SpeciesError: If ``smiles`` is neither ``None`` nor a string.
+    """
+    if smiles is None or isinstance(smiles, str):
+        return
+    raise SpeciesError(f'The SMILES descriptor of species {label} must be a string, '
+                       f'got {smiles}, type: {type(smiles)}.\n'
+                       f'If entering through a YAML file, consider adding quotation marks before and after the '
+                       f'SMILES value, e.g., "NO". A bare list is read by YAML as a list, and a bare NO, ON, '
+                       f'YES, or OFF is read as a boolean.')
 
 
 def check_label(label: str,

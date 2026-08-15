@@ -353,6 +353,26 @@ def get_git_branch(path: str | None = None) -> str:
         return ''
 
 
+class ARCYAMLLoader(yaml.FullLoader):
+    """A YAML loader that does not coerce YAML 1.1 boolean aliases into booleans.
+
+    PyYAML implements YAML 1.1, in which ``yes``, ``no``, ``on``, and ``off`` (in any case) are
+    booleans just like ``true`` and ``false``. That silently turns a bare SMILES such as ``NO``
+    (hydroxylamine) or an element symbol such as ``No`` (nobelium) into ``False`` before ARC ever
+    sees it. Here only the YAML 1.2 spellings ``true`` and ``false`` resolve as booleans, and
+    every other alias loads as the string the user wrote.
+    """
+
+
+ARCYAMLLoader.yaml_implicit_resolvers = {
+    first_char: [(tag, regexp) for tag, regexp in resolvers if tag != 'tag:yaml.org,2002:bool']
+    for first_char, resolvers in yaml.FullLoader.yaml_implicit_resolvers.items()
+}
+ARCYAMLLoader.add_implicit_resolver('tag:yaml.org,2002:bool',
+                                    re.compile(r'^(?:true|True|TRUE|false|False|FALSE)$'),
+                                    list('tTfF'))
+
+
 def read_yaml_file(path: str,
                    project_directory: str | None = None,
                    ) -> dict | list:
@@ -374,7 +394,7 @@ def read_yaml_file(path: str,
     if not os.path.isfile(path):
         raise InputError(f'Could not find the YAML file {path}')
     with open(path, 'r') as f:
-        content = yaml.load(stream=f, Loader=yaml.FullLoader)
+        content = yaml.load(stream=f, Loader=ARCYAMLLoader)
     return content
 
 
@@ -405,7 +425,7 @@ def from_yaml(yaml_str: str) -> dict | list:
     Returns: dict | list
         The respective Python object.
     """
-    return yaml.load(stream=yaml_str, Loader=yaml.FullLoader)
+    return yaml.load(stream=yaml_str, Loader=ARCYAMLLoader)
 
 
 def to_yaml(py_content: list | dict) -> str:

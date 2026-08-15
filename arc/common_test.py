@@ -86,6 +86,46 @@ class TestCommon(unittest.TestCase):
         with self.assertRaises(InputError):
             common.read_yaml_file('nopath')
 
+    def test_read_yaml_file_does_not_coerce_yaml_1_1_booleans(self):
+        """Test that YAML 1.1 boolean aliases are read as strings, not as booleans.
+
+        A bare SMILES that looks like a YAML 1.1 boolean (e.g., ``NO`` for hydroxylamine)
+        must survive as a string, while genuine ``true``/``false`` values must still load as bools.
+        """
+        content = ('smiles_1: NO\n'
+                   'smiles_2: ON\n'
+                   'word_1: yes\n'
+                   'word_2: Off\n'
+                   'word_3: n\n'
+                   'bool_1: true\n'
+                   'bool_2: False\n'
+                   'bool_3: TRUE\n')
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            f.write(content)
+            path = f.name
+        try:
+            loaded = common.read_yaml_file(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(loaded['smiles_1'], 'NO')
+        self.assertEqual(loaded['smiles_2'], 'ON')
+        self.assertEqual(loaded['word_1'], 'yes')
+        self.assertEqual(loaded['word_2'], 'Off')
+        self.assertEqual(loaded['word_3'], 'n')
+        self.assertIs(loaded['bool_1'], True)
+        self.assertIs(loaded['bool_2'], False)
+        self.assertIs(loaded['bool_3'], True)
+        self.assertEqual(common.from_yaml('smiles: NO\nkeep_files: true\n'),
+                         {'smiles': 'NO', 'keep_files': True})
+
+    def test_read_element_dicts_nobelium(self):
+        """Test that nobelium ('No') is not coerced into a boolean by the YAML loader."""
+        self.assertEqual(common.SYMBOL_BY_NUMBER[102], 'No')
+        self.assertEqual(common.NUMBER_BY_SYMBOL['No'], 102)
+        self.assertIn('No', common.MASS_BY_SYMBOL)
+        self.assertTrue(all(isinstance(symbol, str) for symbol in common.NUMBER_BY_SYMBOL.keys()))
+        self.assertTrue(all(isinstance(symbol, str) for symbol in common.MASS_BY_SYMBOL.keys()))
+
     def test_get_git_commit(self):
         """Test the get_git_commit() function"""
         git_commit = common.get_git_commit()
