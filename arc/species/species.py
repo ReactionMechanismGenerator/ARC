@@ -2668,10 +2668,11 @@ class TSGuess(object):
         self.success = ts_dict['success'] if 'success' in ts_dict else None
         self.energy = ts_dict['energy'] if 'energy' in ts_dict else None
         self.cluster = ts_dict['cluster'] if 'cluster' in ts_dict else None
-        self.execution_time = timedelta_from_str(ts_dict['execution_time']) if 'execution_time' in ts_dict \
+        self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
+        self.execution_time = None if 'user guess' in self.method \
+            else timedelta_from_str(ts_dict['execution_time']) if 'execution_time' in ts_dict \
             and isinstance(ts_dict['execution_time'], str) \
             else ts_dict['execution_time'] if 'execution_time' in ts_dict else None
-        self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
         if 'method_sources' in ts_dict and isinstance(ts_dict['method_sources'], list):
             self.method_sources = self._normalize_method_sources(ts_dict['method_sources'])
         else:
