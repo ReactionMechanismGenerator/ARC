@@ -218,18 +218,25 @@ cdef class Graph(object):
 
     cpdef list get_all_edges(self):
         """
-        Returns a list of all edges in the graph.
+        Returns a list of all edges in the graph, each edge appearing once,
+        ordered by the graph's vertex order and, within a vertex, by the order
+        in which its edges were added. The order does not depend on the hash
+        values of the edges, so it is identical in every process.
         """
-        cdef set edge_set
+        cdef list edges
+        cdef set seen
         cdef Vertex vertex
         cdef Edge edge
 
-        edge_set = set()
+        edges = []
+        seen = set()
         for vertex in self.vertices:
             for edge in vertex.edges.values():
-                edge_set.add(edge)
+                if id(edge) not in seen:
+                    seen.add(id(edge))
+                    edges.append(edge)
 
-        return list(edge_set)
+        return edges
 
     cpdef dict get_edges(self, Vertex vertex):
         """
