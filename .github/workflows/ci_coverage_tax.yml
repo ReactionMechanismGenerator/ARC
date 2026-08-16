@@ -166,6 +166,7 @@ jobs:
             -n ${XDIST_WORKERS:-6} --dist worksteal \
             --durations=0 --durations-min=0 > arm_a1.txt 2>&1 || true
           echo "TESTS_A1=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
+          echo "COV_A1=$(coverage report --format=total 2>/dev/null || echo NA)" >> "$GITHUB_ENV"
           tail -5 arm_a1.txt
 
       # ------------------------------------------------------------------ arm B
@@ -193,6 +194,33 @@ jobs:
             --durations=0 --durations-min=0 > arm_b.txt 2>&1 || true
           echo "TESTS_B=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
           tail -5 arm_b.txt
+
+      # ------------------------------------------------------------------ arm D
+      # Reuses arm B's plain build and turns --cov back on. This is the configuration
+      # that keeps coverage reporting -- including diff coverage on a pull request --
+      # while not paying for the Cython file tracer, which is where the tax actually
+      # sits (up to 41.5x per test on the subset). arc/molecule reports 0% here rather
+      # than being excluded, since .coveragerc still loads plugins = Cython.Coverage
+      # against modules that were not compiled with linetrace, so the reported total is
+      # recorded below to quantify exactly what an omit would have to cover.
+      - name: 'Arm D - plain build, --cov ON (keep coverage, drop the Cython tracer)'
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        env:
+          COVERAGE_CORE: ctrace
+          ARC_GOFLOW_CKPT: ${{ github.workspace }}/goflow_lean/data/RDB7/epoch_316.ckpt
+          ARC_RITS_CKPT: ${{ github.workspace }}/RitS/data/rits.ckpt
+          TEST_PATHS: ${{ inputs.test_paths }}
+          XDIST_WORKERS: ${{ inputs.xdist_workers }}
+        run: |
+          export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          S=$(date +%s)
+          pytest ${TEST_PATHS:-arc/} --cov --cov-report=xml -ra -q \
+            -n ${XDIST_WORKERS:-6} --dist worksteal \
+            --durations=0 --durations-min=0 > arm_d.txt 2>&1 || true
+          echo "TESTS_D=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
+          echo "COV_D=$(coverage report --format=total 2>/dev/null || echo NA)" >> "$GITHUB_ENV"
+          tail -5 arm_d.txt
 
       # ------------------------------------------------------------------ arm A2
       - name: 'Arm A2 - compile INSTRUMENTED again (order-effect control)'
@@ -260,7 +288,9 @@ jobs:
           import os
           g = lambda k: int(os.environ.get(k) or 0)
           ca1, cb, ca2 = g('COMPILE_A1'), g('COMPILE_B'), g('COMPILE_A2')
-          ta1, tb, ta2, tc = g('TESTS_A1'), g('TESTS_B'), g('TESTS_A2'), g('TESTS_C')
+          ta1, tb, ta2, tc, td = (g('TESTS_A1'), g('TESTS_B'), g('TESTS_A2'),
+                                  g('TESTS_C'), g('TESTS_D'))
+          cov_a1, cov_d = os.environ.get('COV_A1', 'NA'), os.environ.get('COV_D', 'NA')
           ta = (ta1 + ta2) / 2 if ta2 else ta1
           print('## Coverage tax\n')
           print('| arm | build | collects coverage | compile | tests |')
@@ -269,6 +299,7 @@ jobs:
           print(f'| B plain | plain | no | {cb}s | {tb}s |')
           print(f'| A2 control | linetrace | yes | {ca2}s | {ta2}s |')
           print(f'| C | linetrace | no | reused | {tc}s |')
+          print(f'| D | plain | yes | reused | {td}s |')
           print()
           if ta1 and ta2:
               drift = abs(ta1 - ta2) / ((ta1 + ta2) / 2) * 100
@@ -283,6 +314,13 @@ jobs:
           if tb and tc:
               print(f'- Attribution: coverage collection {ta-tc:.0f}s, '
                     f'linetrace build {tc-tb:+.0f}s. Whichever dominates is the one to remove.')
+          if td:
+              print(f'- Keeping --cov on a plain build (A -> D): **{ta/td:.2f}x** '
+                    f'({ta:.0f}s -> {td}s). This is the option that retains coverage '
+                    f'reporting, including diff coverage on a PR.')
+              print(f'- Reported total: instrumented **{cov_a1}%**, plain-build **{cov_d}%**. '
+                    f'The gap is what an omit for the compiled modules would have to cover, '
+                    f'since .coveragerc still loads the Cython plugin against them.')
           if cb:
               print(f'- Compile is {ca1/cb:.2f}x slower instrumented ({ca1}s vs {cb}s), '
                     f'paid once per run.')
@@ -298,4 +336,5 @@ jobs:
             ARC/arm_b.txt
             ARC/arm_a2.txt
             ARC/arm_c.txt
+            ARC/arm_d.txt
           if-no-files-found: warn
