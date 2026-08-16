@@ -166,11 +166,13 @@ jobs:
             -n ${XDIST_WORKERS:-6} --dist worksteal \
             --durations=0 --durations-min=0 > arm_a1.txt 2>&1 || true
           echo "TESTS_A1=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
-          echo "COV_A1=$(coverage report --format=total 2>/dev/null || echo NA)" >> "$GITHUB_ENV"
+          COV=$(coverage report --format=total 2>/dev/null | tail -1 | tr -dc "0-9." )
+          echo "COV_A1=${COV:-NA}" >> "$GITHUB_ENV"
           tail -5 arm_a1.txt
 
       # ------------------------------------------------------------------ arm B
       - name: 'Arm B - compile PLAIN (no ARC_COVERAGE)'
+        if: always()
         shell: micromamba-shell {0}
         working-directory: ARC
         run: |
@@ -179,6 +181,7 @@ jobs:
           S=$(date +%s); make compile; echo "COMPILE_B=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
 
       - name: 'Arm B - run tests PLAIN (no --cov, no tracing)'
+        if: always()
         shell: micromamba-shell {0}
         working-directory: ARC
         env:
@@ -204,6 +207,7 @@ jobs:
       # against modules that were not compiled with linetrace, so the reported total is
       # recorded below to quantify exactly what an omit would have to cover.
       - name: 'Arm D - plain build, --cov ON (keep coverage, drop the Cython tracer)'
+        if: always()
         shell: micromamba-shell {0}
         working-directory: ARC
         env:
@@ -219,12 +223,13 @@ jobs:
             -n ${XDIST_WORKERS:-6} --dist worksteal \
             --durations=0 --durations-min=0 > arm_d.txt 2>&1 || true
           echo "TESTS_D=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
-          echo "COV_D=$(coverage report --format=total 2>/dev/null || echo NA)" >> "$GITHUB_ENV"
+          COV=$(coverage report --format=total 2>/dev/null | tail -1 | tr -dc "0-9." )
+          echo "COV_D=${COV:-NA}" >> "$GITHUB_ENV"
           tail -5 arm_d.txt
 
       # ------------------------------------------------------------------ arm A2
       - name: 'Arm A2 - compile INSTRUMENTED again (order-effect control)'
-        if: env.RUN_CONTROL_ARMS == 'true'
+        if: always() && env.RUN_CONTROL_ARMS == 'true'
         shell: micromamba-shell {0}
         working-directory: ARC
         env:
@@ -235,7 +240,7 @@ jobs:
           S=$(date +%s); make compile; echo "COMPILE_A2=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
 
       - name: 'Arm A2 - run tests INSTRUMENTED again'
-        if: env.RUN_CONTROL_ARMS == 'true'
+        if: always() && env.RUN_CONTROL_ARMS == 'true'
         shell: micromamba-shell {0}
         working-directory: ARC
         env:
@@ -262,7 +267,7 @@ jobs:
       # against 4.56s for a plain build), which if it holds means the remedy is a pytest
       # flag rather than a build flag.
       - name: 'Arm C - run tests on the INSTRUMENTED build with NO --cov'
-        if: env.RUN_CONTROL_ARMS == 'true'
+        if: always() && env.RUN_CONTROL_ARMS == 'true'
         shell: micromamba-shell {0}
         working-directory: ARC
         env:
