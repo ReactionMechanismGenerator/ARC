@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
+import os
+import subprocess
+import sys
 import unittest
 
 from arc.molecule.graph import Edge, Graph, Vertex
+
+
+REPOSITORY_DIRECTORY = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class TestGraph(unittest.TestCase):
@@ -107,6 +113,39 @@ class TestGraph(unittest.TestCase):
         edges = self.graph.get_all_edges()
         self.assertIsInstance(edges, list)
         self.assertEqual(len(edges), 5)
+
+    def test_order_vertex_set(self):
+        """
+        Test that Graph.order_vertex_set() returns the vertices in the graph's vertex order.
+        """
+        vertices = self.graph.vertices
+        self.assertEqual(self.graph.order_vertex_set({vertices[4], vertices[1], vertices[3]}),
+                         [vertices[1], vertices[3], vertices[4]])
+        self.assertEqual(self.graph.order_vertex_set(set()), [])
+        self.assertEqual(self.graph.order_vertex_set(set(vertices)), vertices)
+
+    def test_cycle_vertex_order_does_not_depend_on_the_hash_seed(self):
+        """
+        Test that the cycles a graph returns are ordered identically in processes with different hash seeds.
+        """
+        script = ('from arc.molecule.molecule import Molecule\n'
+                  'mol = Molecule(smiles="C1CC2CCC1C2")\n'
+                  'atoms = mol.atoms\n'
+                  'index = lambda cycle: [atoms.index(atom) for atom in cycle]\n'
+                  'monocyclic, polycyclic = mol.get_disparate_cycles()\n'
+                  'print([index(cycle) for cycle in monocyclic + polycyclic])\n'
+                  'print([index(cycle) for cycle in mol.get_polycycles()])\n'
+                  'print([index(cycle) for cycle in mol.get_all_cycles_of_size(5)])\n')
+        orders = list()
+        for seed in ('1', '5', '87'):
+            environment = dict(os.environ, PYTHONHASHSEED=seed, PYTHONPATH=REPOSITORY_DIRECTORY)
+            result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True,
+                                    env=environment, cwd=REPOSITORY_DIRECTORY, timeout=300)
+            self.assertEqual(result.returncode, 0, f'Subprocess failed: {result.stderr}')
+            orders.append(result.stdout.strip())
+        self.assertTrue(orders[0])
+        for order in orders[1:]:
+            self.assertEqual(orders[0], order)
 
     def test_has_vertex(self):
         """

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
+import os
+import subprocess
+import sys
 import unittest
 
 from arc.molecule.molecule import Molecule
@@ -8,6 +11,9 @@ from arc.molecule.resonance import generate_optimal_aromatic_resonance_structure
 from arc.molecule.symmetry import (calculate_atom_symmetry_number, calculate_axis_symmetry_number,
     calculate_bond_symmetry_number, calculate_cyclic_symmetry_number, _indistinguishable)
 from arc.species.species import ARCSpecies
+
+
+REPOSITORY_DIRECTORY = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class TestMoleculeSymmetry(unittest.TestCase):
@@ -675,6 +681,29 @@ multiplicity 3
         self.assertTrue(_indistinguishable(mol.atoms[1], mol.atoms[3]))
         # O is different from H
         self.assertFalse(_indistinguishable(mol.atoms[6], mol.atoms[7]))
+
+    def test_symmetry_number_does_not_depend_on_the_hash_seed(self):
+        """
+        Test that calculate_symmetry_number() returns the same value in processes with different hash seeds.
+
+        The bridged polycyclics listed here reach calculate_cyclic_symmetry_number() through
+        get_disparate_cycles(), whose cycles used to be ordered by the hash values of their atoms.
+        The value asserted is only that every process agrees, not what that value is.
+        """
+        script = ('from arc.molecule.molecule import Molecule\n'
+                  'from arc.molecule.symmetry import calculate_symmetry_number\n'
+                  'print([calculate_symmetry_number(Molecule(smiles=smiles)) '
+                  'for smiles in ("C1CC2CCC1C2", "C1CC2CCC1CC2", "C1CC2CCC3CCC1C23", "C1CC2CCC1O2")])\n')
+        symmetry_numbers = list()
+        for seed in ('1', '5', '87'):
+            environment = dict(os.environ, PYTHONHASHSEED=seed, PYTHONPATH=REPOSITORY_DIRECTORY)
+            result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True,
+                                    env=environment, cwd=REPOSITORY_DIRECTORY, timeout=300)
+            self.assertEqual(result.returncode, 0, f'Subprocess failed: {result.stderr}')
+            symmetry_numbers.append(result.stdout.strip())
+        self.assertTrue(symmetry_numbers[0])
+        for symmetry_number in symmetry_numbers[1:]:
+            self.assertEqual(symmetry_numbers[0], symmetry_number)
 
 
 if __name__ == '__main__':
