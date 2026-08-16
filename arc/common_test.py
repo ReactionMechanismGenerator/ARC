@@ -147,6 +147,76 @@ class TestCommon(unittest.TestCase):
         lap = common.time_lapse(t0)
         self.assertEqual(lap, '00:00:02')
 
+    def test_format_duration(self):
+        """Test the format_duration() function"""
+        self.assertEqual(common.format_duration(datetime.timedelta(0)), '0.0 s')
+        self.assertEqual(common.format_duration(datetime.timedelta(seconds=3.42)), '3.4 s')
+        self.assertEqual(common.format_duration(datetime.timedelta(minutes=7)), '7.0 m')
+        self.assertEqual(common.format_duration(datetime.timedelta(hours=13, minutes=7)), '13.1 h')
+        self.assertEqual(common.format_duration(datetime.timedelta(days=2, hours=3)), '2.1 d')
+        self.assertEqual(common.format_duration(datetime.timedelta(days=140, hours=1)), '140.0 d')
+
+    def test_format_duration_keeps_sub_minute_timings_distinct(self):
+        """Test that the sub-minute TS guess timings of a real run render to three distinct strings"""
+        rendered = [common.format_duration(datetime.timedelta(seconds=seconds))
+                    for seconds in [3.4, 16.8, 18.1]]
+        self.assertEqual(rendered, ['3.4 s', '16.8 s', '18.1 s'])
+        self.assertEqual(len(set(rendered)), 3)
+
+    def test_format_duration_unit_boundaries(self):
+        """Test that format_duration() steps up a unit rather than reporting a full unit's worth of the smaller"""
+        self.assertEqual(common.format_duration(datetime.timedelta(seconds=59.9)), '59.9 s')
+        self.assertEqual(common.format_duration(datetime.timedelta(seconds=59.99)), '1.0 m')
+        self.assertEqual(common.format_duration(datetime.timedelta(seconds=60)), '1.0 m')
+        self.assertEqual(common.format_duration(datetime.timedelta(minutes=59.99)), '1.0 h')
+        self.assertEqual(common.format_duration(datetime.timedelta(hours=23.99)), '1.0 d')
+
+    def test_format_duration_is_narrow(self):
+        """Test that format_duration() stays within seven characters over a wide range of durations"""
+        for seconds in [0, 0.05, 3.4, 59.9, 60, 3599, 3600, 86399, 86400, 12096000]:
+            self.assertLessEqual(len(common.format_duration(datetime.timedelta(seconds=seconds))), 7)
+
+    def test_format_duration_from_str(self):
+        """Test that format_duration() accepts the str() representation of a timedelta"""
+        for delta in [datetime.timedelta(seconds=3.42),
+                      datetime.timedelta(hours=13, minutes=7, seconds=6.5),
+                      datetime.timedelta(days=1, seconds=12),
+                      datetime.timedelta(days=2, hours=3)]:
+            self.assertEqual(common.format_duration(str(delta)), common.format_duration(delta))
+
+    def test_format_duration_uninterpretable(self):
+        """Test that format_duration() reports an absent or negative duration as an empty string"""
+        for duration in [None, '', 'not a duration', 24, datetime.timedelta(seconds=-1)]:
+            self.assertEqual(common.format_duration(duration), '')
+
+    def test_format_table(self):
+        """Test the format_table() function"""
+        table = common.format_table(headers=['Label', ('H298', '(kJ/mol)')],
+                                    rows=[['CH4', '-74.60'], ['a longer label', '1.00']],
+                                    alignments='<>',
+                                    )
+        self.assertEqual(table, ['Label               H298',
+                                 '                (kJ/mol)',
+                                 '--------------  --------',
+                                 'CH4               -74.60',
+                                 'a longer label      1.00'])
+
+    def test_format_table_column_widths(self):
+        """Test that format_table() sizes each column to its widest entry, header or cell"""
+        table = common.format_table(headers=['A', 'BBBBB'], rows=[['CCC', 'D']], separator='|', rule_char='')
+        self.assertEqual(table, ['A  |BBBBB', 'CCC|D'])
+
+    def test_format_table_no_rows(self):
+        """Test that format_table() renders the header alone when there are no rows"""
+        self.assertEqual(common.format_table(headers=['A', 'BB'], rows=[]), ['A  BB', '-  --'])
+
+    def test_format_table_raises_on_a_ragged_row(self):
+        """Test that format_table() rejects a row or an alignment string that does not match the headers"""
+        with self.assertRaises(InputError):
+            common.format_table(headers=['A', 'B'], rows=[['1']])
+        with self.assertRaises(InputError):
+            common.format_table(headers=['A', 'B'], rows=[['1', '2']], alignments='<')
+
     def test_check_ess_settings(self):
         """Test the check_ess_settings function"""
         server_names = list(servers.keys())

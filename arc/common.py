@@ -305,6 +305,59 @@ def log_footer(execution_time: str,
     logger.log(level, f'ARC execution terminated on {time.asctime()}')
 
 
+def format_table(headers: Sequence[str | Sequence[str]],
+                 rows: Sequence[Sequence[str]],
+                 alignments: str | None = None,
+                 separator: str = '  ',
+                 rule_char: str = '-',
+                 ) -> list[str]:
+    """
+    Format a table as a list of lines with aligned columns.
+
+    Each column is exactly as wide as its widest entry, considering both its header and its cells.
+    A header may be given as a sequence of strings to render it on several lines, e.g., a title
+    line and a units line; shorter headers are padded with blank lines at the bottom, so that all
+    header titles share the first line. Trailing whitespace is stripped from every line.
+
+    Args:
+        headers (Sequence[str | Sequence[str]]): The column headers, each a string,
+                                                 or a sequence of strings for a multi-line header.
+        rows (Sequence[Sequence[str]]): The table rows, each a sequence of one cell string per column.
+        alignments (str, optional): One alignment character ('<', '>' or '^') per column.
+                                    Columns are left-aligned if not given.
+        separator (str, optional): The string separating two adjacent columns.
+        rule_char (str, optional): The character to draw the rule under the header with,
+                                   an empty string to omit the rule.
+
+    Returns: list[str]
+        The rendered lines: the header line(s), a rule, and one line per row.
+
+    Raises:
+        InputError: If a row, or the alignments, does not have exactly one entry per column.
+    """
+    headers = [(header,) if isinstance(header, str) else tuple(header) for header in headers]
+    alignments = alignments if alignments is not None else '<' * len(headers)
+    if len(alignments) != len(headers):
+        raise InputError(f'Expected {len(headers)} alignment characters, got {len(alignments)}: {alignments}')
+    for row in rows:
+        if len(row) != len(headers):
+            raise InputError(f'Expected {len(headers)} cells per row, got {len(row)}: {row}')
+    header_height = max((len(header) for header in headers), default=0)
+    headers = [header + ('',) * (header_height - len(header)) for header in headers]
+    widths = [max([len(line) for line in header] + [len(row[i]) for row in rows])
+              for i, header in enumerate(headers)]
+
+    def render(cells: Sequence[str]) -> str:
+        """Render one line of cells, padded to the column widths and stripped of trailing space."""
+        return separator.join(f'{cell:{alignment}{width}}'
+                              for cell, alignment, width in zip(cells, alignments, widths)).rstrip()
+
+    lines = [render([header[i] for header in headers]) for i in range(header_height)]
+    if rule_char:
+        lines.append(render([rule_char * width for width in widths]))
+    return lines + [render(row) for row in rows]
+
+
 def get_git_commit(path: str | None = None) -> tuple[str, str]:
     """
     Get the recent git commit to be logged.
@@ -1371,6 +1424,41 @@ def time_lapse(t0) -> str:
     else:
         d = ''
     return f'{d}{h:02.0f}:{m:02.0f}:{s:02.0f}'
+
+
+def format_duration(duration: 'datetime.timedelta | str | None') -> str:
+    """
+    Format a duration briefly, in the largest unit it fills, e.g. '3.4 s', '47.2 m', '13.1 h', '2.1 d'.
+
+    Seconds ('s') are used below a minute, minutes ('m') below an hour, hours ('h') below a day,
+    and days ('d') beyond that. The value is given to one decimal place, so a sub-minute duration
+    keeps a resolution of 0.1 s and two guesses seconds apart stay distinguishable. Every cell
+    names its own unit, and no cell exceeds seven characters. A duration of exactly zero is
+    reported as '0.0 s'. A negative duration, and a value that cannot be read as a duration,
+    are reported as an empty string.
+
+    Args:
+        duration (datetime.timedelta, str, optional): The duration, either a timedelta object
+                                                      or its ``str()`` representation,
+                                                      e.g. '2 days, 3:04:05.678'.
+
+    Returns: str
+        The brief representation of the duration.
+    """
+    if isinstance(duration, str):
+        match = re.fullmatch(r'\s*(?:(?P<days>\d+)\s*days?,\s*)?'
+                             r'(?P<hours>\d+):(?P<minutes>\d{2}):(?P<seconds>\d{2}(?:\.\d+)?)\s*', duration)
+        duration = datetime.timedelta(days=int(match.group('days') or 0),
+                                      hours=int(match.group('hours')),
+                                      minutes=int(match.group('minutes')),
+                                      seconds=float(match.group('seconds'))) if match is not None else None
+    if not isinstance(duration, datetime.timedelta) or duration.total_seconds() < 0:
+        return ''
+    seconds = duration.total_seconds()
+    for limit, divisor, unit in ((60, 1, 's'), (60, 60, 'm'), (24, 3600, 'h'), (None, 86400, 'd')):
+        value = seconds / divisor
+        if limit is None or round(value, 1) < limit:
+            return f'{value:.1f} {unit}'
 
 
 def estimate_orca_mem_cpu_requirement(num_heavy_atoms: int,
