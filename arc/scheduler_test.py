@@ -7,6 +7,7 @@ This module contains unit tests for the arc.scheduler module
 
 import unittest
 from unittest.mock import MagicMock, patch
+import datetime
 import os
 import shutil
 from types import SimpleNamespace
@@ -1970,6 +1971,164 @@ class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
         collider = ARCSpecies(label='CH4_TS0', smiles='O')
         with self.assertRaises(SchedulerError):
             self.build_scheduler(rxn, r + p + [collider], 'adaptive_collision')
+
+
+class TestSchedulerTSGuessReportAlignment(unittest.TestCase):
+    """
+    Contains unit tests for the column alignment of the successful TS guess block reported by
+    Scheduler.determine_most_likely_ts_conformer().
+    """
+
+    TITLES = ['TS Guess', 'Method', 'Rel. Energy', 'Guess Time', 'Img Freq']
+
+    @staticmethod
+    def make_ts_guess(index, method, method_sources, energy, execution_time,
+                      success=True, errors='', imaginary_freqs=None):
+        """Return a TSGuess with the given reporting attributes and a geometry unique to its index."""
+        tsg = TSGuess(index=index,
+                      method=method,
+                      energy=energy,
+                      execution_time=execution_time,
+                      xyz={'symbols': ('H', 'H'), 'isotopes': (1, 1),
+                           'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 0.74 + 0.01 * index))},
+                      )
+        tsg.method_sources = method_sources
+        tsg.success = success
+        tsg.errors = errors
+        tsg.imaginary_freqs = imaginary_freqs if imaginary_freqs is not None else [-500.0 - index]
+        tsg.opt_xyz = tsg.initial_xyz
+        return tsg
+
+    def report(self, ts_guesses):
+        """Run the TS guess selection on the given guesses and return the emitted table lines."""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.ts_guesses = ts_guesses
+        scheduler = Scheduler.__new__(Scheduler)
+        scheduler.species_dict = {'TS0': ts}
+        scheduler.output = {'TS0': {'paths': dict()}}
+        scheduler.project_directory = ''
+        scheduler.ts_guess_level = None
+        with patch('arc.scheduler.plotter.draw_structure'), patch('arc.scheduler.plotter.save_conformers_file'):
+            with self.assertLogs('arc', level='INFO') as cm:
+                scheduler.determine_most_likely_ts_conformer(label='TS0')
+        messages = [record.getMessage() for record in cm.records]
+        start = next(i for i, message in enumerate(messages) if 'Geometry *guesses*' in message)
+        return [message for message in messages[start + 1:] if message.strip()]
+
+    def column_spans(self, lines):
+        """Return the (start, stop) offset of each column, read off the rule line of the given table."""
+        rules = [line for line in lines if line and set(line) <= set('- ')]
+        self.assertTrue(rules, msg='the reported block has no rule line, so it is not a table:\n' + '\n'.join(lines))
+        rule = rules[0]
+        spans, start = list(), None
+        for i, char in enumerate(rule + ' '):
+            if char == '-' and start is None:
+                start = i
+            elif char != '-' and start is not None:
+                spans.append((start, i))
+                start = None
+        return spans
+
+    def assert_tabulated(self, lines, n_rows, titles=None):
+        """Assert that the given lines form a table whose cells stay inside their own columns."""
+        titles = titles if titles is not None else self.TITLES
+        spans = self.column_spans(lines)
+        rendered = '\n'.join(lines)
+        self.assertEqual(len(spans), len(titles), msg=f'expected {len(titles)} columns in:\n{rendered}')
+        title_line = lines[0]
+        for title, (start, stop) in zip(titles, spans):
+            self.assertIn(title, title_line[start:stop], msg=f'{title!r} is not in its own column in:\n{rendered}')
+        for line in lines:
+            padded = line.ljust(spans[-1][1])
+            for start, stop in spans:
+                if start:
+                    self.assertEqual(padded[start - 1], ' ',
+                                     msg=f'a cell bleeds into the column at offset {start} in:\n{rendered}')
+            self.assertEqual(''.join(padded[start:stop] for start, stop in spans).replace(' ', ''),
+                             line.replace(' ', ''),
+                             msg=f'a character falls outside every column in:\n{rendered}')
+        self.assertEqual(len(self.column_cells(lines, 0)), n_rows, msg=f'expected {n_rows} rows in:\n{rendered}')
+
+    def column_cells(self, lines, column):
+        """Return the stripped cells of the given column, for the data rows only."""
+        spans = self.column_spans(lines)
+        rule_index = next(i for i, line in enumerate(lines) if line and set(line) <= set('- '))
+        start, stop = spans[column]
+        return [line.ljust(stop)[start:stop].strip() for line in lines[rule_index + 1:]]
+
+    def test_columns_align_across_mixed_methods_and_indices(self):
+        """Test that the table holds given mixed method name lengths and 1-, 2- and 3-digit indices."""
+        lines = self.report([
+            self.make_ts_guess(0, 'heuristics', ['heuristics', 'crest'], -50.0, datetime.timedelta(seconds=3.42)),
+            self.make_ts_guess(36, 'autotst', ['autotst'], -48.27, datetime.timedelta(seconds=18.15)),
+            self.make_ts_guess(136, 'gcn', ['gcn'], 1234.5, datetime.timedelta(hours=13, minutes=7, seconds=6.5)),
+        ])
+        self.assert_tabulated(lines, n_rows=3)
+        self.assertEqual(self.column_cells(lines, 0), ['0', '36', '136'])
+        self.assertEqual(self.column_cells(lines, 1), ['heuristics (also: crest)', 'autotst', 'gcn'])
+        self.assertEqual(self.column_cells(lines, 2), ['0.00', '1.73', '1284.50'])
+
+    def test_a_status_column_is_added_only_when_a_reported_guess_has_an_error(self):
+        """Test that the status column appears given an error on a reported guess, and is omitted otherwise."""
+        lines = self.report([
+            self.make_ts_guess(1, 'kinbot', ['kinbot'], 0.0, datetime.timedelta(seconds=1.5), errors='some error'),
+            self.make_ts_guess(2, 'xtb_gsm', ['xtb_gsm', 'gcn', 'autotst'], 7.5, datetime.timedelta(days=2, hours=3)),
+        ])
+        self.assert_tabulated(lines, n_rows=2, titles=self.TITLES + ['Status'])
+        self.assertEqual(self.column_cells(lines, 5), ['some error', ''])
+        lines = self.report([
+            self.make_ts_guess(1, 'kinbot', ['kinbot'], 0.0, datetime.timedelta(seconds=1.5)),
+            self.make_ts_guess(2, 'xtb_gsm', ['xtb_gsm', 'gcn', 'autotst'], 7.5, datetime.timedelta(days=2, hours=3)),
+        ])
+        self.assert_tabulated(lines, n_rows=2)
+        self.assertNotIn('Status', '\n'.join(lines))
+
+    def test_the_guess_time_column_spans_seconds_to_days(self):
+        """Test that the guess time column reports each duration in the largest unit it fills."""
+        lines = self.report([
+            self.make_ts_guess(1, 'heuristics', ['heuristics'], 0.0, datetime.timedelta(seconds=3.42)),
+            self.make_ts_guess(2, 'autotst', ['autotst'], 1.0, datetime.timedelta(hours=13, minutes=7, seconds=6.5)),
+            self.make_ts_guess(3, 'kinbot', ['kinbot'], 2.0, datetime.timedelta(days=2, hours=3)),
+        ])
+        self.assert_tabulated(lines, n_rows=3)
+        self.assertEqual(self.column_cells(lines, 3), ['3.4 s', '13.1 h', '2.1 d'])
+
+    def test_sub_minute_guess_times_stay_distinct(self):
+        """Test that the sub-minute guess timings of a real run do not collapse into one cell."""
+        lines = self.report([
+            self.make_ts_guess(1, 'heuristics', ['heuristics'], 0.0, datetime.timedelta(seconds=3.4)),
+            self.make_ts_guess(2, 'gcn', ['gcn'], 1.0, datetime.timedelta(seconds=16.8)),
+            self.make_ts_guess(3, 'autotst', ['autotst'], 2.0, datetime.timedelta(seconds=18.1)),
+        ])
+        cells = self.column_cells(lines, 3)
+        self.assertEqual(len(set(cells)), 3, msg=f'the guess times collapsed into {set(cells)} in:\n'
+                                                 + '\n'.join(lines))
+        self.assertEqual(cells, ['3.4 s', '16.8 s', '18.1 s'])
+
+    def test_the_imaginary_frequency_column(self):
+        """Test that the imaginary frequency column lists the frequencies and is blank when there are none."""
+        lines = self.report([
+            self.make_ts_guess(1, 'heuristics', ['heuristics'], 0.0, datetime.timedelta(seconds=1),
+                               imaginary_freqs=[-1204.53]),
+            self.make_ts_guess(2, 'autotst', ['autotst'], 1.0, datetime.timedelta(seconds=1),
+                               imaginary_freqs=[-209.4, -109.9]),
+        ])
+        self.assert_tabulated(lines, n_rows=2)
+        self.assertEqual(self.column_cells(lines, 4), ['-1204.5', '-209.4, -109.9'])
+
+    def test_column_widths_ignore_unreported_guesses(self):
+        """Test that a guess which is not reported does not widen the columns of the guesses that are."""
+        def reported_guesses():
+            return [self.make_ts_guess(3, 'heuristics', ['heuristics'], 0.0, datetime.timedelta(seconds=2.5)),
+                    self.make_ts_guess(4, 'autotst', ['autotst'], 3.5, datetime.timedelta(seconds=4.5))]
+        omitted = self.make_ts_guess(1234, 'user guess', ['user guess', 'heuristics', 'autotst', 'gcn'],
+                                     9.5, datetime.timedelta(days=5), success=False, errors='a very long error')
+        narrow = self.report(reported_guesses())
+        wide = self.report(reported_guesses() + [omitted])
+        self.assert_tabulated(narrow, n_rows=2)
+        self.assert_tabulated(wide, n_rows=2)
+        self.assertEqual(narrow, wide)
+        self.assertNotIn('a very long error', '\n'.join(wide))
 
 
 if __name__ == '__main__':
