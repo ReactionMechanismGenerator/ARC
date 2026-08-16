@@ -283,6 +283,66 @@ def log_footer(execution_time: str,
     logger.log(level, f'ARC execution terminated on {time.asctime()}')
 
 
+def format_table(headers: Sequence[str | Sequence[str]],
+                 rows: Sequence[Sequence[str]],
+                 alignments: str | None = None,
+                 separator: str = '  ',
+                 rule_char: str = '-',
+                 ) -> list[str]:
+    """
+    Format a table as a list of lines with aligned columns.
+
+    Each column is exactly as wide as its widest entry, considering both its header and its cells.
+    Widths are counted in characters, so the columns line up for single-width text.
+    A header may be given as a sequence of strings to render it on several lines, e.g., a title
+    line and a units line; shorter headers are padded with blank lines at the bottom, placing every
+    header's first string on the first line. Trailing whitespace is stripped from every line.
+
+    Args:
+        headers (Sequence[str | Sequence[str]]): The column headers, each a string,
+                                                 or a sequence of strings for a multi-line header.
+        rows (Sequence[Sequence[str]]): The table rows, each a sequence of one cell string per column.
+        alignments (str, optional): One alignment character ('<', '>' or '^') per column.
+                                    Columns are left-aligned if not given.
+        separator (str, optional): The string separating two adjacent columns.
+        rule_char (str, optional): The character to draw the rule under the header with,
+                                   an empty string to omit the rule.
+
+    Returns: list[str]
+        The rendered lines: the header line(s), a rule, and one line per row.
+
+    Raises:
+        InputError: If a row, or the alignments, does not have exactly one entry per column,
+                    if an alignment character is not one of '<', '>' and '^',
+                    or if a cell is not a string.
+    """
+    headers = [(header,) if isinstance(header, str) else tuple(header) for header in headers]
+    alignments = alignments if alignments is not None else '<' * len(headers)
+    if len(alignments) != len(headers):
+        raise InputError(f'Expected {len(headers)} alignment characters, got {len(alignments)}: {alignments}')
+    if any(alignment not in '<>^' for alignment in alignments):
+        raise InputError(f'Alignment characters must each be one of "<", ">" and "^", got {alignments}')
+    for row in rows:
+        if len(row) != len(headers):
+            raise InputError(f'Expected {len(headers)} cells per row, got {len(row)}: {row}')
+        if any(not isinstance(cell, str) for cell in row):
+            raise InputError(f'Table cells must be strings, got {row}')
+    header_height = max((len(header) for header in headers), default=0)
+    headers = [header + ('',) * (header_height - len(header)) for header in headers]
+    widths = [max([len(line) for line in header] + [len(row[i]) for row in rows] + [0])
+              for i, header in enumerate(headers)]
+
+    def render(cells: Sequence[str]) -> str:
+        """Render one line of cells, padded to the column widths and stripped of trailing space."""
+        return separator.join(f'{cell:{alignment}{width}}'
+                              for cell, alignment, width in zip(cells, alignments, widths)).rstrip()
+
+    lines = [render([header[i] for header in headers]) for i in range(header_height)]
+    if rule_char:
+        lines.append(render([rule_char * width for width in widths]))
+    return lines + [render(row) for row in rows]
+
+
 def get_git_commit(path: str | None = None) -> tuple[str, str]:
     """
     Get the recent git commit to be logged.
@@ -1309,10 +1369,42 @@ def time_lapse(t0) -> str:
     h, m = divmod(m, 60)
     d, h = divmod(h, 24)
     if d > 0:
-        d = str(d) + ' days, '
+        d = f'{d:.0f} days, '
     else:
         d = ''
     return f'{d}{h:02.0f}:{m:02.0f}:{s:02.0f}'
+
+
+def format_duration(duration: 'datetime.timedelta | str | None') -> str:
+    """
+    Format a duration briefly, in the largest unit it fills, e.g. '3.4 s', '47.2 m', '13.1 h', '2.1 d'.
+
+    Seconds ('s') are used below a minute, minutes ('m') below an hour, hours ('h') below a day,
+    and days ('d') beyond that. The value is given to one decimal place and is followed by a space
+    and the symbol of its unit. A duration of exactly zero is reported as '0.0 s'. A negative
+    duration, and a value that cannot be read as a duration, are reported as an empty string.
+
+    A string duration is read by :func:`timedelta_from_str`, so both accept the same grammars.
+    An empty or blank string is treated as an absent duration and is not reported as unreadable.
+
+    Args:
+        duration (datetime.timedelta, str, optional): The duration, either a timedelta object
+                                                      or its ``str()`` representation,
+                                                      e.g. '2 days, 3:04:05.678'.
+
+    Returns: str
+        The brief representation of the duration.
+    """
+    if isinstance(duration, str):
+        duration = timedelta_from_str(duration) if duration.strip() else None
+    if not isinstance(duration, datetime.timedelta) or duration.total_seconds() < 0:
+        return ''
+    seconds = duration.total_seconds()
+    for limit, divisor, unit in ((60, 1, 's'), (60, 60, 'm'), (24, 3600, 'h')):
+        value = seconds / divisor
+        if round(value, 1) < limit:
+            return f'{value:.1f} {unit}'
+    return f'{seconds / 86400:.1f} d'
 
 
 def estimate_orca_mem_cpu_requirement(num_heavy_atoms: int,
@@ -1653,26 +1745,41 @@ def get_close_tuple(key_1: tuple[float | str, ...],
     raise ValueError(f'Could not locate a key close to {key_1} within the tolerance {tolerance} in the given keys list.')
 
 
-def timedelta_from_str(time_str: str):
+TIMEDELTA_STR_REGEX = re.compile(r'^(?:(?P<days>[-+]?\d+)\s+days?,\s*)?'
+                                 r'(?P<hours>\d{1,2}):(?P<minutes>\d{2}):(?P<seconds>\d{2})'
+                                 r'(?:\.(?P<microseconds>\d{1,6}))?$')
+TIMEDELTA_COMPACT_REGEX = re.compile(r'^(?:(?P<hours>\d+)hr)?(?:(?P<minutes>\d+)m)?(?:(?P<seconds>\d+)s)?$')
+
+
+def timedelta_from_str(time_str: str) -> datetime.timedelta | None:
     """
-    Get a datetime.timedelta object from its str() representation
+    Get a datetime.timedelta object from its string representation.
+
+    Two grammars are accepted. The primary one is the ``str(datetime.timedelta)`` representation,
+    e.g., '0:00:03.420000', '2 days, 3:00:00', or '-1 day, 23:59:59', which is the form ARC persists
+    in restart.yml and output.yml. The secondary one is a compact 'hr'/'m'/'s' form, e.g., '1hr2m3s'
+    or '45s', in which at least one of the three components must be present.
 
     Args:
         time_str (str): The string representation of a datetime.timedelta object.
 
     Returns:
-        datetime.timedelta: The corresponding timedelta object.
+        datetime.timedelta | None: The corresponding timedelta object,
+                                   or ``None`` if ``time_str`` does not represent a duration.
     """
-    regex = re.compile(r'((?P<hours>\d+?)hr)?((?P<minutes>\d+?)m)?((?P<seconds>\d+?)s)?')
-
-    parts = regex.match(time_str)
-    if not parts:
-        return
-    parts = parts.groupdict()
+    if not isinstance(time_str, str) or not time_str.strip():
+        logger.warning(f'Could not interpret {time_str!r} as a time delta, returning None.')
+        return None
+    match = TIMEDELTA_STR_REGEX.match(time_str.strip())
+    if match is None:
+        match = TIMEDELTA_COMPACT_REGEX.match(time_str.strip())
+        if match is None or not any(match.groupdict().values()):
+            logger.warning(f'Could not interpret {time_str!r} as a time delta, returning None.')
+            return None
     time_params = {}
-    for (name, param) in parts.items():
-        if param:
-            time_params[name] = int(param)
+    for name, param in match.groupdict().items():
+        if param is not None:
+            time_params[name] = int(param.ljust(6, '0')) if name == 'microseconds' else int(param)
     return datetime.timedelta(**time_params)
 
 
