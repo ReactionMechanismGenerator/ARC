@@ -12,16 +12,8 @@ import warnings
 
 from arc.molecule.molecule import Molecule
 
-from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file
+from arc.common import ARC_PATH, ARC_TESTING_PATH, get_test_project_name, read_yaml_file
 from arc.main import ARC
-
-
-def _project_name(base: str) -> str:
-    """Return a per-xdist-worker project name to avoid parallel cleanup collisions."""
-    worker_id = os.environ.get('PYTEST_XDIST_WORKER')
-    if worker_id:
-        return f'{base}_{worker_id}'
-    return base
 
 
 class TestRestart(unittest.TestCase):
@@ -44,7 +36,7 @@ class TestRestart(unittest.TestCase):
         """
         restart_dir = os.path.join(ARC_TESTING_PATH, 'restart', '1_restart_thermo')
         restart_path = os.path.join(restart_dir, 'restart.yml')
-        project = _project_name('arc_project_for_testing_delete_after_usage_restart_thermo')
+        project = get_test_project_name('arc_project_for_testing_delete_after_usage_restart_thermo')
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs', 'Species'), dirs_exist_ok=True)
@@ -141,7 +133,7 @@ class TestRestart(unittest.TestCase):
         """Test restarting ARC and attaining a reaction rate coefficient"""
         restart_dir = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate')
         restart_path = os.path.join(restart_dir, 'restart.yml')
-        project = _project_name('arc_project_for_testing_delete_after_usage_restart_rate_1')
+        project = get_test_project_name('arc_project_for_testing_delete_after_usage_restart_rate_1')
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs'), dirs_exist_ok=True)
@@ -162,7 +154,7 @@ class TestRestart(unittest.TestCase):
 
     def test_restart_rate_2(self):
         """Test restarting ARC and attaining a reaction rate coefficient"""
-        project = _project_name('arc_project_for_testing_delete_after_usage_restart_rate_2')
+        project = get_test_project_name('arc_project_for_testing_delete_after_usage_restart_rate_2')
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         base_path = os.path.join(ARC_TESTING_PATH, 'restart', '5_TS1')
         restart_path = os.path.join(base_path, 'restart.yml')
@@ -191,7 +183,7 @@ class TestRestart(unittest.TestCase):
         """Test restarting ARC and attaining a BDE for anilino_radical."""
         restart_dir   = os.path.join(ARC_TESTING_PATH, 'restart', '3_restart_bde')
         restart_path  = os.path.join(restart_dir, 'restart.yml')
-        project = _project_name('test_restart_bde')
+        project = get_test_project_name('test_restart_bde')
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs'), dirs_exist_ok=True)
@@ -226,10 +218,10 @@ class TestRestart(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = [_project_name('arc_project_for_testing_delete_after_usage_restart_thermo'),
-                    _project_name('arc_project_for_testing_delete_after_usage_restart_rate_1'),
-                    _project_name('arc_project_for_testing_delete_after_usage_restart_rate_2'),
-                    _project_name('test_restart_bde'),
+        projects = [get_test_project_name('arc_project_for_testing_delete_after_usage_restart_thermo'),
+                    get_test_project_name('arc_project_for_testing_delete_after_usage_restart_rate_1'),
+                    get_test_project_name('arc_project_for_testing_delete_after_usage_restart_rate_2'),
+                    get_test_project_name('test_restart_bde'),
                     ]
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)

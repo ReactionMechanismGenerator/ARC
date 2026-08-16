@@ -13,7 +13,7 @@ import shutil
 import numpy as np
 
 import arc.checks.nmd as nmd
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, get_test_project_directory
 from arc.exceptions import ReactionError
 from arc.job.factory import job_factory
 from arc.level import Level
@@ -34,12 +34,13 @@ class TestNMD(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.project_directory = get_test_project_directory('tmp_nmd_project')
         cls.generic_job = job_factory(job_adapter='gaussian',
                                       species=[ARCSpecies(label='SPC', smiles='C')],
                                       job_type='composite',
                                       level=Level(method='CBS-QB3'),
                                       project='test_project',
-                                      project_directory=os.path.join(ARC_PATH, 'Projects', 'tmp_nmd_project'),
+                                      project_directory=cls.project_directory,
                                       )
         cls.xyz_1 = {'symbols': ('C', 'N', 'H', 'H', 'H', 'H'),
                      'isotopes': (13, 14, 1, 1, 1, 1),
@@ -1021,10 +1022,7 @@ class TestNMD(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['tmp_nmd_project']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
+        shutil.rmtree(cls.project_directory, ignore_errors=True)
         file_paths = [os.path.join(ARC_PATH, 'arc', 'checks', 'nul'), os.path.join(ARC_PATH, 'arc', 'checks', 'run.out')]
         for file_path in file_paths:
             if os.path.isfile(file_path):

@@ -1061,6 +1061,34 @@ class TestCommon(unittest.TestCase):
         globalized_string = common.globalize_path(string=string, project_directory='~/Code/runs/run_1/')
         self.assertEqual(globalized_string, '    project_directory: ~/Code/runs/run_1/')
 
+    def test_get_test_project_name(self):
+        """Test getting a pytest-xdist worker scoped project name"""
+        original = os.environ.get('PYTEST_XDIST_WORKER')
+        self.addCleanup(self._restore_xdist_worker_env, original)
+        os.environ.pop('PYTEST_XDIST_WORKER', None)
+        self.assertEqual(common.get_test_project_name('project_1'), 'project_1')
+        os.environ['PYTEST_XDIST_WORKER'] = 'gw3'
+        self.assertEqual(common.get_test_project_name('project_1'), 'project_1_gw3')
+
+    def test_get_test_project_directory(self):
+        """Test getting a pytest-xdist worker scoped project directory"""
+        original = os.environ.get('PYTEST_XDIST_WORKER')
+        self.addCleanup(self._restore_xdist_worker_env, original)
+        os.environ['PYTEST_XDIST_WORKER'] = 'gw5'
+        self.assertEqual(common.get_test_project_directory('project_2'),
+                         os.path.join(common.ARC_PATH, 'Projects', 'project_2_gw5'))
+        os.environ.pop('PYTEST_XDIST_WORKER', None)
+        self.assertEqual(common.get_test_project_directory('project_2'),
+                         os.path.join(common.ARC_PATH, 'Projects', 'project_2'))
+
+    @staticmethod
+    def _restore_xdist_worker_env(original: str | None):
+        """Restore the PYTEST_XDIST_WORKER environment variable to its original value"""
+        if original is None:
+            os.environ.pop('PYTEST_XDIST_WORKER', None)
+        else:
+            os.environ['PYTEST_XDIST_WORKER'] = original
+
     def test_estimate_orca_mem_cpu_requirement(self):
         """Test estimating memory and cpu requirements for an Orca job."""
         num_heavy_atoms_0 = 0

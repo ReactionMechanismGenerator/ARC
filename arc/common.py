@@ -526,6 +526,35 @@ def globalize_path(string: str,
     return string
 
 
+def get_test_project_name(base_name: str) -> str:
+    """
+    Get a project name for a unit test that is unique per pytest-xdist worker.
+
+    Args:
+        base_name (str): The base project name.
+
+    Returns:
+        str: ``base_name`` suffixed by the pytest-xdist worker ID when running under pytest-xdist,
+             otherwise ``base_name`` unchanged.
+    """
+    worker_id = os.environ.get('PYTEST_XDIST_WORKER')
+    return f'{base_name}_{worker_id}' if worker_id else base_name
+
+
+def get_test_project_directory(base_name: str) -> str:
+    """
+    Get a path to a project directory for a unit test that is unique per pytest-xdist worker.
+
+    Args:
+        base_name (str): The base project name.
+
+    Returns:
+        str: The path under ARC's ``Projects`` folder to a directory named ``base_name`` suffixed by the
+             pytest-xdist worker ID when running under pytest-xdist, and named ``base_name`` otherwise.
+    """
+    return os.path.join(ARC_PATH, 'Projects', get_test_project_name(base_name))
+
+
 def delete_check_files(project_directory: str):
     """
     Delete ESS checkfiles. They usually take up lots of space and are not needed after ARC terminates.
