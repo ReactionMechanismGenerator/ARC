@@ -12,7 +12,7 @@ import shutil
 import numpy as np
 
 import arc.checks.ts as ts
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, get_test_project_directory
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
@@ -103,9 +103,7 @@ class TestTSChecks(unittest.TestCase):
                                job_type='composite',
                                level=Level(method='CBS-QB3'),
                                project='test_project',
-                               project_directory=os.path.join(ARC_PATH,
-                                                              'Projects',
-                                                              'arc_project_for_testing_delete_after_usage4'),
+                               project_directory=get_test_project_directory('arc_project_for_testing_delete_after_usage4'),
                                )
 
         cls.rxn_3 = ARCReaction(r_species=[ARCSpecies(label='NH3', smiles='N'), ARCSpecies(label='H', smiles='[H]')],
@@ -213,7 +211,7 @@ class TestTSChecks(unittest.TestCase):
                                    (-1.1265684046717404, -0.2344009055503307, -1.0127644068816903))}
 
         cls.species_dict_8 = {spc.label: spc for spc in cls.rxn_8.r_species + cls.rxn_8.p_species + [cls.rxn_8.ts_species]}
-        cls.project_directory_8 = os.path.join(ts.ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage5')
+        cls.project_directory_5 = get_test_project_directory('arc_project_for_testing_delete_after_usage5')
         cls.output_dict_8 = {'iC3H7': {'paths': {'freq': os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out'),
                                                  'sp': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'),
                                                  'opt': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'),
@@ -331,9 +329,9 @@ class TestTSChecks(unittest.TestCase):
         """Test the compute_rxn_e0() function."""
         for spc_label in self.rxn_8.reactants + self.rxn_8.products + [self.rxn_8.ts_label]:
             folder = 'rxns' if self.species_dict_8[spc_label].is_ts else 'Species'
-            base_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry')
+            base_path = os.path.join(self.project_directory_5, 'output', folder, spc_label, 'geometry')
             os.makedirs(base_path, exist_ok=True)
-            freq_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry', 'freq.out')
+            freq_path = os.path.join(self.project_directory_5, 'output', folder, spc_label, 'geometry', 'freq.out')
             shutil.copy(src=self.output_dict_8[spc_label]['paths']['freq'], dst=freq_path)
 
         self.assertIsNone(self.rxn_8.r_species[0].e0)
@@ -342,7 +340,7 @@ class TestTSChecks(unittest.TestCase):
 
         rxn_copy = ts.compute_rxn_e0(reaction=self.rxn_8,
                                      species_dict=self.species_dict_8,
-                                     project_directory=self.project_directory_8,
+                                     project_directory=self.project_directory_5,
                                      kinetics_adapter='arkane',
                                      output=self.output_dict_8,
                                      sp_level=Level(repr='cbs-qb3'),
@@ -356,13 +354,13 @@ class TestTSChecks(unittest.TestCase):
         """Test the check_rxn_e0() function."""
         for spc_label in self.rxn_8.reactants + self.rxn_8.products + [self.rxn_8.ts_label]:
             folder = 'rxns' if self.species_dict_8[spc_label].is_ts else 'Species'
-            base_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry')
+            base_path = os.path.join(self.project_directory_5, 'output', folder, spc_label, 'geometry')
             os.makedirs(base_path, exist_ok=True)
-            freq_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry', 'freq.out')
+            freq_path = os.path.join(self.project_directory_5, 'output', folder, spc_label, 'geometry', 'freq.out')
             shutil.copy(src=self.output_dict_8[spc_label]['paths']['freq'], dst=freq_path)
         rxn_copy = ts.compute_rxn_e0(reaction=self.rxn_8,
                                      species_dict=self.species_dict_8,
-                                     project_directory=self.project_directory_8,
+                                     project_directory=self.project_directory_5,
                                      kinetics_adapter='arkane',
                                      output=self.output_dict_8,
                                      sp_level=Level(repr='CBS-QB3'),
@@ -858,9 +856,8 @@ class TestTSChecks(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage4', 'arc_project_for_testing_delete_after_usage5']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        for project_directory in [get_test_project_directory('arc_project_for_testing_delete_after_usage4'),
+                                  cls.project_directory_5]:
             shutil.rmtree(project_directory, ignore_errors=True)
         file_paths = [os.path.join(ARC_PATH, 'arc', 'checks', 'nul'), os.path.join(ARC_PATH, 'arc', 'checks', 'run.out')]
         for file_path in file_paths:

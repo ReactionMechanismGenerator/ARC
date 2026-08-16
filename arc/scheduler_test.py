@@ -14,7 +14,13 @@ from types import SimpleNamespace
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
+from arc.common import (ARC_PATH,
+                        ARC_TESTING_PATH,
+                        almost_equal_coords_lists,
+                        get_test_project_directory,
+                        initialize_job_types,
+                        read_yaml_file,
+                        )
 from arc.job.adapters.common import default_incore_adapters, ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular
 from arc.job.factory import job_factory
 from arc.level import Level
@@ -82,7 +88,7 @@ class TestScheduler(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
-        cls.project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage3')
+        cls.project_directory = get_test_project_directory('arc_project_for_testing_delete_after_usage3')
         xyz1 = str_to_xyz("""C      -0.57422867   -0.01669771    0.01229213
 N       0.82084044    0.08279104   -0.37769346
 H      -1.05737005   -0.84067772   -0.52007494
@@ -745,7 +751,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           'job_types': {'conf_opt': True, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
                             },
                   }
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage6')
+        project_directory = get_test_project_directory('arc_project_for_testing_delete_after_usage6')
         os.makedirs(os.path.join(project_directory, 'output', 'Species', 'nC3H7', 'geometry'), exist_ok=True)
         os.makedirs(os.path.join(project_directory, 'output', 'Species', 'iC3H7', 'geometry'), exist_ok=True)
         os.makedirs(os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry'), exist_ok=True)
@@ -757,7 +763,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                     dst=os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry', 'freq.out'))
         sched = Scheduler(project='test_rxn_e0_check',
                           ess_settings=self.ess_settings,
-                          project_directory=os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage6'),
+                          project_directory=get_test_project_directory('arc_project_for_testing_delete_after_usage6'),
                           rxn_list=[rxn],
                           species_list=rxn.r_species + rxn.p_species + [rxn.ts_species],
                           kinetics_adapter='arkane',
@@ -774,9 +780,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                             job_type='freq',
                             level=Level(repr='B3LYP/6-31G(d,p)'),
                             project='test_project',
-                            project_directory=os.path.join(ARC_PATH,
-                                                           'Projects',
-                                                           'arc_project_for_testing_delete_after_usage6'),
+                            project_directory=get_test_project_directory('arc_project_for_testing_delete_after_usage6'),
                             )
         job_1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_nC3H7-iC3H7.out')
         check_ts(reaction=rxn, verbose=True, job=job_1, checks=['NMD'])
@@ -903,7 +907,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         ts_spc.ts_guesses = [TSGuess(index=0, method='GCN', success=False),
                              TSGuess(index=1, method='xTB-GSM', success=False),
                              ]
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_tsg_err')
+        project_directory = get_test_project_directory('arc_project_for_testing_delete_after_usage_tsg_err')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project='project_test_tsg_err', ess_settings=self.ess_settings,
                           species_list=[ts_spc],
@@ -946,7 +950,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         ts_spc.ts_guesses = [TSGuess(index=0, method='GCN', success=False),
                              TSGuess(index=1, method='xTB-GSM', success=False),
                              ]
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_trsh_tsg')
+        project_directory = get_test_project_directory('arc_project_for_testing_delete_after_usage_trsh_tsg')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project='project_test_trsh_tsg', ess_settings=self.ess_settings,
                           species_list=[ts_spc],
@@ -984,7 +988,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         failed = TSGuess(index=0, method='qst2', success=False)
         good = TSGuess(index=1, method='xTB-GSM', success=True, xyz=ts_xyz)
         ts_spc.ts_guesses = [failed, good]
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_tsg_single')
+        project_directory = get_test_project_directory('arc_project_for_testing_delete_after_usage_tsg_single')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         good.log_path = os.path.join(project_directory, 'stringfile.xyz0000')
         sched = Scheduler(project='project_test_tsg_single', ess_settings=self.ess_settings,
@@ -1031,8 +1035,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         ts_spc.chosen_ts_list = [0]
         ts_spc.ts_guesses_exhausted = False
 
-        project_directory = os.path.join(ARC_PATH, 'Projects',
-                                         'arc_project_for_testing_delete_after_usage4')
+        project_directory = get_test_project_directory('arc_project_for_testing_delete_after_usage4')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project='test_switch_ts', ess_settings=self.ess_settings,
                           species_list=[ts_spc],
@@ -1146,8 +1149,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'scan_path': '', 'success': True}}
         ts_spc.number_of_rotors = 1
 
-        project_directory = os.path.join(ARC_PATH, 'Projects',
-                                         'arc_project_for_testing_delete_after_usage5')
+        project_directory = get_test_project_directory('arc_project_for_testing_delete_after_usage5')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project='test_switch_ts_rot', ess_settings=self.ess_settings,
                           species_list=[ts_spc],
@@ -1190,8 +1192,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         ts_spc2.ts_guesses_exhausted = False
         ts_spc2.rotors_dict = None  # Sentinel: skip rotor scans.
 
-        project_directory2 = os.path.join(ARC_PATH, 'Projects',
-                                          'arc_project_for_testing_delete_after_usage6')
+        project_directory2 = get_test_project_directory('arc_project_for_testing_delete_after_usage6')
         self.addCleanup(shutil.rmtree, project_directory2, ignore_errors=True)
         sched2 = Scheduler(project='test_switch_ts_norot', ess_settings=self.ess_settings,
                            species_list=[ts_spc2],
@@ -1771,8 +1772,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         """
         projects = ['arc_project_for_testing_delete_after_usage3', 'arc_project_for_testing_delete_after_usage6']
         for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
+            shutil.rmtree(get_test_project_directory(project), ignore_errors=True)
 
 
 class TestSpawnTsJobsAdmission(unittest.TestCase):
