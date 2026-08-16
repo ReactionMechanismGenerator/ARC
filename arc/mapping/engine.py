@@ -47,6 +47,9 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
     If a dict type atom map is returned, it could conveniently be used to map ``spc_2`` -> ``spc_1`` by doing::
         ordered_spc1.atoms = [spc_2.atoms[atom_map[i]] for i in range(len(spc_2.atoms))]
 
+    A ``ValueError`` is raised if the resulting map is not a permutation of the atoms of the two
+    species.
+
     When several superimposable backbone candidates are identified, each is scored by the RMSD
     between the two backbone distance matrices, so candidates tie within ``RMSD_TIE_TOLERANCE``
     when the permutation leaves every backbone interatomic distance unchanged. That score covers
@@ -141,6 +144,11 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
             atom_maps = dict()
             for i in tied_indices:
                 atom_maps[i] = map_hydrogens(fixed_spcs[i][0], fixed_spcs[i][1], candidates[i])
+                if sorted(atom_maps[i].keys()) != list(range(spc_1.number_of_atoms)) \
+                        or sorted(atom_maps[i].values()) != list(range(spc_2.number_of_atoms)):
+                    raise ValueError(f'The atom map of {spc_1.label} and {spc_2.label} is not a permutation of their '
+                                     f'{spc_1.number_of_atoms} and {spc_2.number_of_atoms} atoms, '
+                                     f'got:\n{atom_maps[i]}')
             if len(tied_indices) > 1:
                 displacements = {i: fixed_spcs[i][0].kabsch(fixed_spcs[i][1],
                                                             [v for k, v in sorted(atom_maps[i].items(),
@@ -1280,6 +1288,8 @@ def map_hydrogens(spc_1: ARCSpecies,
     If only a single hydrogen atom is bonded to a given heavy atom, it is straight-forwardly mapped.
     The three hydrogens of an XH3 group are always assigned, and their azimuthal cyclic order about
     the bond to the mapped heavy neighbor is retained whenever 3D coordinates are available.
+    Every hydrogen of every heavy atom in ``backbone_map`` is assigned, falling back to the order in
+    which the hydrogens appear in the two species when no geometric refinement applies to them.
 
     Args:
         spc_1 (ARCSpecies): Species 1.
@@ -1310,12 +1320,18 @@ def map_hydrogens(spc_1: ARCSpecies,
             continue
         elif len(h_indices_1) == 2:
             mapped = _map_xh2_group(heavy_index_1, heavy_index_2, spc_1, spc_2, atom_map)
-            if mapped:
-                atom_map.update(mapped)
-                continue
+            if not mapped:
+                logger.debug(f'Assigning the hydrogens of the XH2 center {heavy_index_1} of {spc_1.label} by '
+                             f'their order, their dihedrals could not be compared.')
+                mapped = dict(zip(h_indices_1, h_indices_2))
+            atom_map.update(mapped)
         elif len(h_indices_1) == 3:
             atom_map.update(_map_xh3_hydrogens(heavy_index_1, heavy_index_2, spc_1, spc_2, atom_map,
                                                h_indices_1, h_indices_2))
+        else:
+            logger.debug(f'Assigning the {len(h_indices_1)} hydrogens of the heavy atom {heavy_index_1} of '
+                         f'{spc_1.label} by their order, no geometric refinement is available for them.')
+            atom_map.update(dict(zip(h_indices_1, h_indices_2)))
     return atom_map
 
 
