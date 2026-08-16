@@ -24,7 +24,7 @@ on:
       test_paths:
         description: 'Test selection to time (space separated). Use "arc/" for the whole unit suite.'
         required: false
-        default: 'arc/mapping arc/species/species_test.py arc/family arc/checks/nmd_test.py arc/molecule'
+        default: 'arc/'
       xdist_workers:
         description: 'Number of xdist workers, matching ci.yml'
         required: false
@@ -35,6 +35,11 @@ jobs:
     name: Coverage Tax (instrumented vs plain)
     runs-on: ubuntu-latest
     timeout-minutes: 240
+    env:
+      # A2 repeats A1 to bound the ordering effect; C reuses A2's build to separate
+      # collection from the build. Run 31947808861 put those at 0.5% and ~0s on the
+      # mapping/molecule subset, so they are off by default now.
+      RUN_CONTROL_ARMS: 'false'
     defaults:
       run:
         shell: bash -el {0}
@@ -157,7 +162,7 @@ jobs:
         run: |
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
           S=$(date +%s)
-          pytest ${TEST_PATHS:-arc/mapping arc/species/species_test.py arc/family arc/checks/nmd_test.py arc/molecule} --cov --cov-report=xml -ra -q \
+          pytest ${TEST_PATHS:-arc/} --cov --cov-report=xml -ra -q \
             -n ${XDIST_WORKERS:-6} --dist worksteal \
             --durations=0 --durations-min=0 > arm_a1.txt 2>&1 || true
           echo "TESTS_A1=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
@@ -183,7 +188,7 @@ jobs:
         run: |
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
           S=$(date +%s)
-          pytest ${TEST_PATHS:-arc/mapping arc/species/species_test.py arc/family arc/checks/nmd_test.py arc/molecule} -ra -q \
+          pytest ${TEST_PATHS:-arc/} -ra -q \
             -n ${XDIST_WORKERS:-6} --dist worksteal \
             --durations=0 --durations-min=0 > arm_b.txt 2>&1 || true
           echo "TESTS_B=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
@@ -191,6 +196,7 @@ jobs:
 
       # ------------------------------------------------------------------ arm A2
       - name: 'Arm A2 - compile INSTRUMENTED again (order-effect control)'
+        if: env.RUN_CONTROL_ARMS == 'true'
         shell: micromamba-shell {0}
         working-directory: ARC
         env:
@@ -201,6 +207,7 @@ jobs:
           S=$(date +%s); make compile; echo "COMPILE_A2=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
 
       - name: 'Arm A2 - run tests INSTRUMENTED again'
+        if: env.RUN_CONTROL_ARMS == 'true'
         shell: micromamba-shell {0}
         working-directory: ARC
         env:
@@ -214,7 +221,7 @@ jobs:
         run: |
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
           S=$(date +%s)
-          pytest ${TEST_PATHS:-arc/mapping arc/species/species_test.py arc/family arc/checks/nmd_test.py arc/molecule} --cov --cov-report=xml -ra -q \
+          pytest ${TEST_PATHS:-arc/} --cov --cov-report=xml -ra -q \
             -n ${XDIST_WORKERS:-6} --dist worksteal \
             --durations=0 --durations-min=0 > arm_a2.txt 2>&1 || true
           echo "TESTS_A2=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
@@ -227,6 +234,7 @@ jobs:
       # against 4.56s for a plain build), which if it holds means the remedy is a pytest
       # flag rather than a build flag.
       - name: 'Arm C - run tests on the INSTRUMENTED build with NO --cov'
+        if: env.RUN_CONTROL_ARMS == 'true'
         shell: micromamba-shell {0}
         working-directory: ARC
         env:
@@ -237,7 +245,7 @@ jobs:
         run: |
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
           S=$(date +%s)
-          pytest ${TEST_PATHS:-arc/mapping arc/species/species_test.py arc/family arc/checks/nmd_test.py arc/molecule} -ra -q \
+          pytest ${TEST_PATHS:-arc/} -ra -q \
             -n ${XDIST_WORKERS:-6} --dist worksteal \
             --durations=0 --durations-min=0 > arm_c.txt 2>&1 || true
           echo "TESTS_C=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
