@@ -1,0 +1,293 @@
+name: CI Coverage Tax Measurement
+
+# Measures how much of CI wall-clock is spent on coverage instrumentation rather than
+# on the tests themselves.
+#
+# ARC_COVERAGE=1 builds arc.molecule and arc.constants with Cython `linetrace` plus the
+# CYTHON_TRACE macros, and the test run additionally collects coverage. Those are two
+# separate costs paid on top of every PR. This workflow runs the same test selection four
+# times on one runner -- A1 status quo, B neither, A2 status quo again, C instrumented
+# build but no collection -- so the difference is a paired measurement rather than a
+# comparison across runners. A2 bounds the ordering effect from warm caches; C separates
+# the cost of collecting coverage from the cost of having compiled for it.
+#
+# Runs only on this measurement branch. workflow_dispatch is declared too, but GitHub only
+# exposes that trigger for workflows that exist on the default branch, so until this file
+# is on main the push trigger below is the only way to start it. It is scoped to this one
+# branch, so it can never fire on main or on a pull request.
+
+on:
+  push:
+    branches: [ci_coverage_tax_measurement]
+  workflow_dispatch:
+    inputs:
+      test_paths:
+        description: 'Test selection to time (space separated). Use "arc/" for the whole unit suite.'
+        required: false
+        default: 'arc/mapping arc/species/species_test.py arc/family arc/checks/nmd_test.py arc/molecule'
+      xdist_workers:
+        description: 'Number of xdist workers, matching ci.yml'
+        required: false
+        default: '6'
+
+jobs:
+  coverage-tax:
+    name: Coverage Tax (instrumented vs plain)
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - name: Checkout ARC
+        uses: actions/checkout@v6
+        with:
+          path: ARC
+
+      - name: Clean Ubuntu Image
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
+      - name: Set up micromamba (arc_env)
+        uses: mamba-org/setup-micromamba@v3.1.0
+        with:
+          environment-name: arc_env
+          environment-file: ARC/environment.yml
+          cache-environment: true
+          cache-downloads: true
+          generate-run-shell: true
+
+      - name: Install conda in micromamba base
+        shell: micromamba-shell {0}
+        run: micromamba install -n base -c conda-forge conda
+
+      - name: Export ARC paths
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          echo "PATH=$PATH:$PWD" >> "$GITHUB_ENV"
+          echo "PYTHONPATH=$PYTHONPATH:$PWD" >> "$GITHUB_ENV"
+
+      - name: Install all extras - CI
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        env:
+          MAMBA_ALWAYS_YES: "true"
+          CONDA_ALWAYS_YES: "true"
+        run: make install-ci
+
+      - name: Restore GoFlow cache (clone + goflow_env + checkpoint)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/goflow_lean
+            ~/micromamba/envs/goflow_env
+          key: goflow-cpu-${{ runner.os }}-${{ hashFiles('ARC/devtools/install_goflow.sh') }}
+
+      - name: Install GoFlow (CPU)
+        shell: micromamba-shell {0}
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [[ -d goflow_lean/.git ]]; then
+            bash ARC/devtools/install_goflow.sh --cpu --path "$PWD/goflow_lean"
+          else
+            bash ARC/devtools/install_goflow.sh --cpu
+          fi
+
+      - name: Restore RitS cache (clone + rits_env + checkpoint)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/RitS
+            ~/micromamba/envs/rits_env
+          key: rits-cpu-${{ runner.os }}-${{ hashFiles('ARC/devtools/install_rits.sh') }}
+
+      - name: Install RitS (CPU)
+        shell: micromamba-shell {0}
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [[ -d RitS/.git ]]; then
+            bash ARC/devtools/install_rits.sh --cpu --path "$PWD/RitS"
+          else
+            bash ARC/devtools/install_rits.sh --cpu
+          fi
+
+      - name: Set TS-GCN and AutoTST in PYTHONPATH
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: echo "PYTHONPATH=$(realpath ../TS-GCN):$(realpath ../AutoTST):$PYTHONPATH" >> $GITHUB_ENV
+
+      - name: Record runner CPU count
+        shell: micromamba-shell {0}
+        env:
+          XDIST_WORKERS: ${{ inputs.xdist_workers }}
+        run: |
+          echo "runner vCPUs: $(nproc)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "xdist workers requested: ${XDIST_WORKERS:-6}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # ------------------------------------------------------------------ arm A1
+      - name: 'Arm A1 - compile INSTRUMENTED (ARC_COVERAGE=1)'
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        env:
+          ARC_COVERAGE: 1
+        run: |
+          rm -rf build
+          find arc -name '*.so' -delete
+          S=$(date +%s); make compile; echo "COMPILE_A1=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
+
+      - name: 'Arm A1 - run tests INSTRUMENTED (--cov, CYTHON_TRACE=1)'
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        env:
+          ARC_COVERAGE: 1
+          CYTHON_TRACE: 1
+          COVERAGE_CORE: ctrace
+          ARC_GOFLOW_CKPT: ${{ github.workspace }}/goflow_lean/data/RDB7/epoch_316.ckpt
+          ARC_RITS_CKPT: ${{ github.workspace }}/RitS/data/rits.ckpt
+          TEST_PATHS: ${{ inputs.test_paths }}
+          XDIST_WORKERS: ${{ inputs.xdist_workers }}
+        run: |
+          export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          S=$(date +%s)
+          pytest ${TEST_PATHS:-arc/mapping arc/species/species_test.py arc/family arc/checks/nmd_test.py arc/molecule} --cov --cov-report=xml -ra -q \
+            -n ${XDIST_WORKERS:-6} --dist worksteal \
+            --durations=0 --durations-min=0 > arm_a1.txt 2>&1 || true
+          echo "TESTS_A1=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
+          tail -5 arm_a1.txt
+
+      # ------------------------------------------------------------------ arm B
+      - name: 'Arm B - compile PLAIN (no ARC_COVERAGE)'
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          rm -rf build
+          find arc -name '*.so' -delete
+          S=$(date +%s); make compile; echo "COMPILE_B=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
+
+      - name: 'Arm B - run tests PLAIN (no --cov, no tracing)'
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        env:
+          ARC_GOFLOW_CKPT: ${{ github.workspace }}/goflow_lean/data/RDB7/epoch_316.ckpt
+          ARC_RITS_CKPT: ${{ github.workspace }}/RitS/data/rits.ckpt
+          TEST_PATHS: ${{ inputs.test_paths }}
+          XDIST_WORKERS: ${{ inputs.xdist_workers }}
+        run: |
+          export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          S=$(date +%s)
+          pytest ${TEST_PATHS:-arc/mapping arc/species/species_test.py arc/family arc/checks/nmd_test.py arc/molecule} -ra -q \
+            -n ${XDIST_WORKERS:-6} --dist worksteal \
+            --durations=0 --durations-min=0 > arm_b.txt 2>&1 || true
+          echo "TESTS_B=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
+          tail -5 arm_b.txt
+
+      # ------------------------------------------------------------------ arm A2
+      - name: 'Arm A2 - compile INSTRUMENTED again (order-effect control)'
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        env:
+          ARC_COVERAGE: 1
+        run: |
+          rm -rf build
+          find arc -name '*.so' -delete
+          S=$(date +%s); make compile; echo "COMPILE_A2=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
+
+      - name: 'Arm A2 - run tests INSTRUMENTED again'
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        env:
+          ARC_COVERAGE: 1
+          CYTHON_TRACE: 1
+          COVERAGE_CORE: ctrace
+          ARC_GOFLOW_CKPT: ${{ github.workspace }}/goflow_lean/data/RDB7/epoch_316.ckpt
+          ARC_RITS_CKPT: ${{ github.workspace }}/RitS/data/rits.ckpt
+          TEST_PATHS: ${{ inputs.test_paths }}
+          XDIST_WORKERS: ${{ inputs.xdist_workers }}
+        run: |
+          export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          S=$(date +%s)
+          pytest ${TEST_PATHS:-arc/mapping arc/species/species_test.py arc/family arc/checks/nmd_test.py arc/molecule} --cov --cov-report=xml -ra -q \
+            -n ${XDIST_WORKERS:-6} --dist worksteal \
+            --durations=0 --durations-min=0 > arm_a2.txt 2>&1 || true
+          echo "TESTS_A2=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
+          tail -5 arm_a2.txt
+
+      # ------------------------------------------------------------------ arm C
+      # Same instrumented build as A2, no recompile: isolates the cost of collecting
+      # coverage from the cost of having built with linetrace. A local pre-flight on
+      # arc/molecule put the whole difference here (11.13s -> 4.35s with --cov dropped,
+      # against 4.56s for a plain build), which if it holds means the remedy is a pytest
+      # flag rather than a build flag.
+      - name: 'Arm C - run tests on the INSTRUMENTED build with NO --cov'
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        env:
+          ARC_GOFLOW_CKPT: ${{ github.workspace }}/goflow_lean/data/RDB7/epoch_316.ckpt
+          ARC_RITS_CKPT: ${{ github.workspace }}/RitS/data/rits.ckpt
+          TEST_PATHS: ${{ inputs.test_paths }}
+          XDIST_WORKERS: ${{ inputs.xdist_workers }}
+        run: |
+          export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          S=$(date +%s)
+          pytest ${TEST_PATHS:-arc/mapping arc/species/species_test.py arc/family arc/checks/nmd_test.py arc/molecule} -ra -q \
+            -n ${XDIST_WORKERS:-6} --dist worksteal \
+            --durations=0 --durations-min=0 > arm_c.txt 2>&1 || true
+          echo "TESTS_C=$(( $(date +%s) - S ))" >> "$GITHUB_ENV"
+          tail -5 arm_c.txt
+
+      - name: Report
+        if: always()
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          python - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import os
+          g = lambda k: int(os.environ.get(k) or 0)
+          ca1, cb, ca2 = g('COMPILE_A1'), g('COMPILE_B'), g('COMPILE_A2')
+          ta1, tb, ta2, tc = g('TESTS_A1'), g('TESTS_B'), g('TESTS_A2'), g('TESTS_C')
+          ta = (ta1 + ta2) / 2 if ta2 else ta1
+          print('## Coverage tax\n')
+          print('| arm | build | collects coverage | compile | tests |')
+          print('|---|---|---|---|---|')
+          print(f'| A1 status quo | linetrace | yes | {ca1}s | {ta1}s |')
+          print(f'| B plain | plain | no | {cb}s | {tb}s |')
+          print(f'| A2 control | linetrace | yes | {ca2}s | {ta2}s |')
+          print(f'| C | linetrace | no | reused | {tc}s |')
+          print()
+          if ta1 and ta2:
+              drift = abs(ta1 - ta2) / ((ta1 + ta2) / 2) * 100
+              print(f'- Order effect between the two instrumented arms: **{drift:.1f}%** '
+                    f'({ta1}s vs {ta2}s). Treat any speedup below this as noise.')
+          if tb:
+              print(f'- Dropping instrumentation entirely (A -> B): **{ta/tb:.2f}x** '
+                    f'({ta:.0f}s -> {tb}s, saving {ta-tb:.0f}s of test time).')
+          if tc:
+              print(f'- Dropping only the --cov collection, same build (A -> C): '
+                    f'**{ta/tc:.2f}x** ({ta:.0f}s -> {tc}s).')
+          if tb and tc:
+              print(f'- Attribution: coverage collection {ta-tc:.0f}s, '
+                    f'linetrace build {tc-tb:+.0f}s. Whichever dominates is the one to remove.')
+          if cb:
+              print(f'- Compile is {ca1/cb:.2f}x slower instrumented ({ca1}s vs {cb}s), '
+                    f'paid once per run.')
+          PY
+
+      - name: Upload durations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-tax-durations
+          path: |
+            ARC/arm_a1.txt
+            ARC/arm_b.txt
+            ARC/arm_a2.txt
+            ARC/arm_c.txt
+          if-no-files-found: warn
