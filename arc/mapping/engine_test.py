@@ -562,6 +562,34 @@ class TestMappingEngine(unittest.TestCase):
                              H      -0.00000000    1.01981200   -1.62685500
                              H       0.88318300   -0.50990600   -1.62685500
                              H      -0.88318300   -0.50990600   -1.62685500"""
+        cls.ch2con_1_xyz = """C       1.71777985    0.22186921   -0.32888859
+                              C       0.44722671   -0.23882480    0.28782542
+                              O      -0.48797990    0.84313759    0.23934840
+                              N      -1.74672519    0.40251813    0.83397838
+                              H       2.63121996   -0.33161432   -0.15320366
+                              H       1.70806777    0.99933016   -1.08280545
+                              H       0.62398733   -0.52636323    1.32981975
+                              H       0.05456545   -1.09437630   -0.27196331
+                              H      -1.88642313    1.12251331    1.54492954
+                              H      -2.40284632    0.62316863    0.08295105"""
+        cls.ch2con_2_xyz = """C      -1.31502876    0.82850696   -2.07759014
+                              C      -0.39947562    0.21077887   -1.00438259
+                              O      -1.19482148   -0.26236793    0.08578119
+                              N      -1.88870944    0.77572628    0.62474305
+                              H      -1.24822024    1.46878060    0.95557426
+                              H       0.28584783    0.95234699   -0.65039319
+                              H       0.14645095   -0.60595702   -1.42841876
+                              H      -1.70702067    0.21669181   -2.86303559
+                              H      -1.55916794    1.86952281   -2.03781486
+                              H      -2.48322447    1.17684842   -0.07214496"""
+        cls.ethane_xyz = """C      -0.75655400    0.00000000    0.00000000
+                            C       0.75655400    0.00000000    0.00000000
+                            H      -1.15563800    0.65808100    0.78050200
+                            H      -1.15563800    0.34718900   -0.96042500
+                            H      -1.15563800   -1.00527000    0.17992300
+                            H       1.15563800   -0.65808100   -0.78050200
+                            H       1.15563800   -0.34718900    0.96042500
+                            H       1.15563800    1.00527000   -0.17992300"""
         cls.ch3f_xyz = """C      -0.00000000    0.00000000    0.63706000
                           F      -0.00000000    0.00000000   -0.75694000
                           H      -0.00000000    1.02755000    0.99106000
@@ -1716,28 +1744,8 @@ class TestMappingEngine(unittest.TestCase):
 
     def test_map_xh2_group(self):
         """Test the _map_xh2_group() function"""
-        xyz_1 = """C       1.71777985    0.22186921   -0.32888859
-                   C       0.44722671   -0.23882480    0.28782542
-                   O      -0.48797990    0.84313759    0.23934840
-                   N      -1.74672519    0.40251813    0.83397838
-                   H       2.63121996   -0.33161432   -0.15320366
-                   H       1.70806777    0.99933016   -1.08280545
-                   H       0.62398733   -0.52636323    1.32981975
-                   H       0.05456545   -1.09437630   -0.27196331
-                   H      -1.88642313    1.12251331    1.54492954
-                   H      -2.40284632    0.62316863    0.08295105"""
-        xyz_2 = """C      -1.31502876    0.82850696   -2.07759014
-                   C      -0.39947562    0.21077887   -1.00438259
-                   O      -1.19482148   -0.26236793    0.08578119
-                   N      -1.88870944    0.77572628    0.62474305
-                   H      -1.24822024    1.46878060    0.95557426
-                   H       0.28584783    0.95234699   -0.65039319
-                   H       0.14645095   -0.60595702   -1.42841876
-                   H      -1.70702067    0.21669181   -2.86303559
-                   H      -1.55916794    1.86952281   -2.03781486
-                   H      -2.48322447    1.17684842   -0.07214496"""
-        spc_1 = ARCSpecies(label='spc1', smiles='[CH2]CON', xyz=xyz_1)
-        spc_2 = ARCSpecies(label='spc2', smiles='[CH2]CON', xyz=xyz_2)
+        spc_1 = ARCSpecies(label='spc1', smiles='[CH2]CON', xyz=self.ch2con_1_xyz)
+        spc_2 = ARCSpecies(label='spc2', smiles='[CH2]CON', xyz=self.ch2con_2_xyz)
         spc_1, spc_2 = engine.fix_dihedrals_by_backbone_mapping(spc_1=spc_1, spc_2=spc_2,
                                                                 backbone_map={0: 0, 1: 1, 2: 2, 3: 3})
         atom_map = engine.map_hydrogens(spc_1, spc_2, backbone_map={0: 0, 1: 1, 2: 2, 3: 3})
@@ -1786,6 +1794,47 @@ class TestMappingEngine(unittest.TestCase):
         self.assertIn(atom_map,
                       [{0: 0, 1: 2, 2: 13, 3: 14, 4: 6, 5: 8, 6: 10, 7: 9, 8: 7, 9: 11, 10: 16, 11: 3, 12: 5, 13: 1, 14: 12, 15: 4, 16: 15},
                        {0: 0, 1: 2, 2: 13, 3: 14, 4: 6, 5: 8, 6: 10, 7: 9, 8: 7, 9: 11, 10: 16, 11: 3, 12: 5, 13: 1, 14: 12, 15: 15, 16: 4}])
+
+    def test_map_hydrogens_assigns_the_hydrogens_of_an_unrefined_xh2_group(self):
+        """Test that map_hydrogens() assigns both hydrogens of an XH2 group whose refinement returns nothing."""
+        spc_1 = ARCSpecies(label='spc1', smiles='[CH2]CON', xyz=self.ch2con_1_xyz)
+        spc_2 = ARCSpecies(label='spc2', smiles='[CH2]CON', xyz=self.ch2con_2_xyz)
+        backbone_map = {0: 0, 1: 1, 2: 2, 3: 3}
+        spc_1, spc_2 = engine.fix_dihedrals_by_backbone_mapping(spc_1=spc_1, spc_2=spc_2,
+                                                                backbone_map=backbone_map)
+        with mock.patch.object(engine, '_map_xh2_group', return_value=dict()) as patched:
+            atom_map = engine.map_hydrogens(spc_1, spc_2, backbone_map)
+        self.assertTrue(patched.called)
+        self.assertEqual(sorted(atom_map.keys()), list(range(spc_1.number_of_atoms)))
+        self.assertEqual(sorted(atom_map.values()), list(range(spc_2.number_of_atoms)))
+
+    def test_map_hydrogens_assigns_more_than_three_hydrogens(self):
+        """Test that map_hydrogens() assigns the hydrogens of a heavy atom that carries more than three."""
+        spc_1 = ARCSpecies(label='ethane_1', smiles='CC', xyz=self.ethane_xyz)
+        spc_2 = ARCSpecies(label='ethane_2', smiles='CC', xyz=self.ethane_xyz)
+
+        def four_hydrogens(heavy_index, atoms):
+            """Report four hydrogens on the first carbon and two on the second one."""
+            return [2, 3, 4, 5] if heavy_index == 0 else [6, 7]
+
+        with mock.patch.object(engine, '_find_hydrogen_neighbors', side_effect=four_hydrogens):
+            atom_map = engine.map_hydrogens(spc_1, spc_2, {0: 0, 1: 1})
+        self.assertEqual(sorted(atom_map.keys()), list(range(8)))
+        self.assertEqual(sorted(atom_map.values()), list(range(8)))
+
+    def test_map_two_species_rejects_an_incomplete_map(self):
+        """Test that map_two_species() raises rather than returning a list built from an incomplete map."""
+        spc_1 = ARCSpecies(label='ethane_1', smiles='CC', xyz=self.ethane_xyz)
+        spc_2 = ARCSpecies(label='ethane_2', smiles='CC', xyz=self.ethane_xyz)
+        complete_map = engine.map_two_species(spc_1, spc_2, map_type='dict')
+        self.assertEqual(sorted(complete_map.keys()), list(range(8)))
+
+        for dropped_key in [2, 7]:
+            partial_map = {key: value for key, value in complete_map.items() if key != dropped_key}
+            with mock.patch.object(engine, 'map_hydrogens', return_value=partial_map):
+                for map_type in ['dict', 'list']:
+                    with self.assertRaises(ValueError):
+                        engine.map_two_species(spc_1, spc_2, map_type=map_type)
 
     def test_map_hydrogens_for_rotors(self):
         """Test the map_hydrogens() function for a species with 5 heavy atoms."""
