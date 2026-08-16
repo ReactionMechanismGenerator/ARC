@@ -1712,26 +1712,41 @@ def get_close_tuple(key_1: tuple[float | str, ...],
     raise ValueError(f'Could not locate a key close to {key_1} within the tolerance {tolerance} in the given keys list.')
 
 
-def timedelta_from_str(time_str: str):
+TIMEDELTA_STR_REGEX = re.compile(r'^(?:(?P<days>[-+]?\d+)\s+days?,\s*)?'
+                                 r'(?P<hours>\d{1,2}):(?P<minutes>\d{2}):(?P<seconds>\d{2})'
+                                 r'(?:\.(?P<microseconds>\d{1,6}))?$')
+TIMEDELTA_COMPACT_REGEX = re.compile(r'^(?:(?P<hours>\d+)hr)?(?:(?P<minutes>\d+)m)?(?:(?P<seconds>\d+)s)?$')
+
+
+def timedelta_from_str(time_str: str) -> datetime.timedelta | None:
     """
-    Get a datetime.timedelta object from its str() representation
+    Get a datetime.timedelta object from its string representation.
+
+    Two grammars are accepted. The primary one is the ``str(datetime.timedelta)`` representation,
+    e.g., '0:00:03.420000', '2 days, 3:00:00', or '-1 day, 23:59:59', which is the form ARC persists
+    in restart.yml and output.yml. The secondary one is a compact 'hr'/'m'/'s' form, e.g., '1hr2m3s'
+    or '45s', in which at least one of the three components must be present.
 
     Args:
         time_str (str): The string representation of a datetime.timedelta object.
 
     Returns:
-        datetime.timedelta: The corresponding timedelta object.
+        datetime.timedelta | None: The corresponding timedelta object,
+                                   or ``None`` if ``time_str`` does not represent a duration.
     """
-    regex = re.compile(r'((?P<hours>\d+?)hr)?((?P<minutes>\d+?)m)?((?P<seconds>\d+?)s)?')
-
-    parts = regex.match(time_str)
-    if not parts:
-        return
-    parts = parts.groupdict()
+    if not isinstance(time_str, str) or not time_str.strip():
+        logger.warning(f'Could not interpret {time_str!r} as a time delta, returning None.')
+        return None
+    match = TIMEDELTA_STR_REGEX.match(time_str.strip())
+    if match is None:
+        match = TIMEDELTA_COMPACT_REGEX.match(time_str.strip())
+        if match is None or not any(match.groupdict().values()):
+            logger.warning(f'Could not interpret {time_str!r} as a time delta, returning None.')
+            return None
     time_params = {}
-    for (name, param) in parts.items():
-        if param:
-            time_params[name] = int(param)
+    for name, param in match.groupdict().items():
+        if param is not None:
+            time_params[name] = int(param.ljust(6, '0')) if name == 'microseconds' else int(param)
     return datetime.timedelta(**time_params)
 
 

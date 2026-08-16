@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.species.species module
 """
 
+import datetime
 import os
 import shutil
 import tempfile
@@ -3494,6 +3495,20 @@ class TestTSGuess(unittest.TestCase):
         ts_dict_for_report = self.tsg1.as_dict(for_report=True)
         self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_sources', 'method_index', 'success', 'index',
                                                            'conformer_index', 'initial_xyz', 'opt_xyz'])
+
+    def test_execution_time_survives_the_dict_round_trip(self):
+        """Test that a non-zero execution time is not zeroed by an as_dict()/from_dict() restart round trip"""
+        for execution_time in [datetime.timedelta(seconds=3, microseconds=420000),
+                               datetime.timedelta(days=2, hours=3),
+                               datetime.timedelta(0),
+                               ]:
+            tsg = TSGuess(method='KinBot', family='H_Abstraction', xyz=self.xyz_3, success=True)
+            tsg.execution_time = execution_time
+            tsg_dict = tsg.as_dict()
+            self.assertEqual(tsg_dict['execution_time'], str(execution_time))
+            restored = TSGuess(ts_dict=tsg_dict)
+            self.assertEqual(restored.execution_time, execution_time,
+                             msg=f'execution time {str(execution_time)!r} was not preserved by the round trip')
 
     def test_process_xyz(self):
         """Test the process_xyz() method"""

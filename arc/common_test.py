@@ -1255,6 +1255,41 @@ class TestCommon(unittest.TestCase):
         self.assertIn('0:00:00.5', str_delta)
         reconstructed_delta = common.timedelta_from_str(str_delta)
         self.assertIsInstance(reconstructed_delta, datetime.timedelta)
+        self.assertEqual(reconstructed_delta, delta)
+
+        self.assertEqual(common.timedelta_from_str('0:00:03.420000'),
+                         datetime.timedelta(seconds=3, microseconds=420000))
+        self.assertEqual(common.timedelta_from_str('2 days, 3:00:00'), datetime.timedelta(days=2, hours=3))
+        self.assertEqual(common.timedelta_from_str('1 day, 0:00:00'), datetime.timedelta(days=1))
+        self.assertEqual(common.timedelta_from_str('400 days, 0:00:01'), datetime.timedelta(days=400, seconds=1))
+        self.assertEqual(common.timedelta_from_str('-1 day, 23:59:59'), datetime.timedelta(seconds=-1))
+
+        self.assertEqual(common.timedelta_from_str('0:00:00'), datetime.timedelta(0))
+        self.assertIsNotNone(common.timedelta_from_str('0:00:00'))
+
+        self.assertEqual(common.timedelta_from_str('1hr2m3s'), datetime.timedelta(hours=1, minutes=2, seconds=3))
+        self.assertEqual(common.timedelta_from_str('45s'), datetime.timedelta(seconds=45))
+        self.assertEqual(common.timedelta_from_str('2m'), datetime.timedelta(minutes=2))
+
+        for time_str in ['', '   ', '0', 'None', 'nonsense', '1:2', '3:04', 'hrms', '0:00:03.42x']:
+            self.assertIsNone(common.timedelta_from_str(time_str), msg=f'{time_str!r} must not parse')
+        self.assertIsNone(common.timedelta_from_str(None))
+        self.assertIsNone(common.timedelta_from_str(5))
+
+    def test_timedelta_from_str_round_trip(self):
+        """Test that timedelta_from_str() inverts str() for a spread of durations"""
+        for delta in [datetime.timedelta(0),
+                      datetime.timedelta(microseconds=1),
+                      datetime.timedelta(seconds=0.5),
+                      datetime.timedelta(seconds=3, microseconds=420000),
+                      datetime.timedelta(minutes=17, seconds=5),
+                      datetime.timedelta(hours=26, minutes=3, seconds=9, microseconds=123456),
+                      datetime.timedelta(days=2, hours=3),
+                      datetime.timedelta(days=400, seconds=1),
+                      datetime.timedelta(seconds=-1),
+                      datetime.timedelta(days=-3, hours=5),
+                      ]:
+            self.assertEqual(common.timedelta_from_str(str(delta)), delta, msg=f'failed to round-trip {str(delta)!r}')
 
     def test_torsions_to_scans(self):
         """Test the torsions_to_scans() function"""
