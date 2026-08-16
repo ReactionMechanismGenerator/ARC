@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
+import os
+import subprocess
+import sys
 import unittest
 
+import arc
 from arc.molecule.graph import Edge, Graph, Vertex
 
 
@@ -107,6 +111,37 @@ class TestGraph(unittest.TestCase):
         edges = self.graph.get_all_edges()
         self.assertIsInstance(edges, list)
         self.assertEqual(len(edges), 5)
+
+    def test_get_all_edges_orders_the_edges_by_vertex(self):
+        """
+        Test that Graph.get_all_edges() returns the edges in vertex order, each edge once.
+        """
+        expected = []
+        for vertex in self.graph.vertices:
+            for edge in vertex.edges.values():
+                if not any(edge is seen for seen in expected):
+                    expected.append(edge)
+        self.assertEqual(self.graph.get_all_edges(), expected)
+
+    def test_get_all_edges_order_does_not_depend_on_the_hash_seed(self):
+        """
+        Test that Graph.get_all_edges() returns the same order in processes with different hash seeds.
+        """
+        script = ('from arc.molecule.molecule import Molecule\n'
+                  'mol = Molecule(smiles="c1ccccc1Cc1ccccc1")\n'
+                  'atoms = mol.atoms\n'
+                  'print([(atoms.index(edge.vertex1), atoms.index(edge.vertex2)) '
+                  'for edge in mol.get_all_edges()])\n')
+        orders = list()
+        for seed in ('1', '35'):
+            arc_root = os.path.dirname(os.path.dirname(os.path.abspath(arc.__file__)))
+            environment = dict(os.environ, PYTHONHASHSEED=seed, PYTHONPATH=arc_root)
+            result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True,
+                                    env=environment, timeout=300)
+            self.assertEqual(result.returncode, 0, f'Subprocess failed: {result.stderr}')
+            orders.append(result.stdout.strip())
+        self.assertTrue(orders[0])
+        self.assertEqual(orders[0], orders[1])
 
     def test_has_vertex(self):
         """
