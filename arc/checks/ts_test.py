@@ -17,7 +17,7 @@ from arc.job.factory import job_factory
 from arc.level import Level
 from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
 from arc.reaction import ARCReaction
-from arc.species.converter import xyz_from_data
+from arc.species.converter import check_isomorphism, xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess
 
 
@@ -682,6 +682,67 @@ class TestTSChecks(unittest.TestCase):
                                      rxn=rxn,
                                      )
         self.assertTrue(rxn.ts_species.ts_checks['IRC'])
+
+    def test_check_irc_species_and_rxn_using_bond_orders(self):
+        """Test that check_irc_species_and_rxn() uses the computed Mayer bond orders when log files are given."""
+        # An isoxazole ring opening, both endpoints were optimized with Orca and hold Mayer bond orders.
+        log_path_1 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C4H5NO2_mayer_orca.out')
+        log_path_2 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C4H5NO2_isomer_mayer_orca.out')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='OCc1ccon1')],
+                          p_species=[ARCSpecies(label='P', smiles='OCC1=NC1C=O')])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        ts.check_irc_species_and_rxn(xyz_1=parse_geometry(log_path_1),
+                                     xyz_2=parse_geometry(log_path_2),
+                                     rxn=rxn,
+                                     log_path_1=log_path_1,
+                                     log_path_2=log_path_2,
+                                     )
+        self.assertTrue(rxn.ts_species.ts_checks['IRC'])
+
+        # Without the log files, the distance-based perception of the strained three-membered ring of the
+        # product does not reproduce the expected species, and the check fails. This is the case the
+        # bond-order-based perception was added for.
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        ts.check_irc_species_and_rxn(xyz_1=parse_geometry(log_path_1),
+                                     xyz_2=parse_geometry(log_path_2),
+                                     rxn=rxn,
+                                     )
+        self.assertFalse(rxn.ts_species.ts_checks['IRC'])
+
+        # The endpoints may also be given in the reverse order.
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        ts.check_irc_species_and_rxn(xyz_1=parse_geometry(log_path_2),
+                                     xyz_2=parse_geometry(log_path_1),
+                                     rxn=rxn,
+                                     log_path_1=log_path_2,
+                                     log_path_2=log_path_1,
+                                     )
+        self.assertTrue(rxn.ts_species.ts_checks['IRC'])
+
+        # A reaction the endpoints do not correspond to must not pass.
+        other_rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='OCc1ccon1')],
+                                p_species=[ARCSpecies(label='P', smiles='OCc1cnoc1')])
+        other_rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        ts.check_irc_species_and_rxn(xyz_1=parse_geometry(log_path_1),
+                                     xyz_2=parse_geometry(log_path_2),
+                                     rxn=other_rxn,
+                                     log_path_1=log_path_1,
+                                     log_path_2=log_path_2,
+                                     )
+        self.assertFalse(other_rxn.ts_species.ts_checks['IRC'])
+
+    def test_perceive_irc_fragments_from_bond_orders(self):
+        """Test the _perceive_irc_fragments_from_bond_orders() function."""
+        log_path = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C4H5NO2_mayer_orca.out')
+        fragments = ts._perceive_irc_fragments_from_bond_orders(log_path)
+        self.assertEqual(len(fragments), 1)
+        self.assertTrue(check_isomorphism(fragments[0], ARCSpecies(label='S', smiles='OCc1ccon1').mol))
+
+        # A log file without Mayer bond orders, and a nonexistent path, both fall back to ``None``.
+        self.assertIsNone(ts._perceive_irc_fragments_from_bond_orders(
+            os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')))
+        self.assertIsNone(ts._perceive_irc_fragments_from_bond_orders(None))
+        self.assertIsNone(ts._perceive_irc_fragments_from_bond_orders('nonexistent.out'))
 
     def test_check_equal_bonds_list(self):
         """Test the _check_equal_bonds_list() function."""

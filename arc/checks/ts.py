@@ -19,7 +19,7 @@ from arc.common import (ARC_PATH,
                         sum_list_entries,
                         )
 from arc.imports import settings
-from arc.species.converter import check_isomorphism, check_xyz_dict, xyz_from_data, xyz_to_dmat
+from arc.species.converter import check_isomorphism, check_xyz_dict, mol_from_dft, xyz_from_data, xyz_to_dmat
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.statmech.factory import statmech_factory
 
@@ -497,20 +497,25 @@ def get_rxn_normal_mode_disp_atom_number(rxn_family: str | None = None,
 def check_irc_species_and_rxn(xyz_1: dict,
                               xyz_2: dict,
                               rxn: ARCReaction | None,
+                              log_path_1: str | None = None,
+                              log_path_2: str | None = None,
                               ):
     """
     Check that the two species that result from optimizing the outputs of two IRC runs
     correspond to the desired reactants and products of the corresponding reaction.
 
-    Uses molecular graph isomorphism (including bond orders and resonance structures)
-    when molecule perception succeeds for both endpoints. Falls back to distance-matrix-based
-    bond-list comparison if perception fails for either endpoint or if the expected
-    reactant/product ``Molecule`` objects are unavailable.
+    Uses molecular graph isomorphism (including bond orders and resonance structures).
+    Connectivity is taken from the computed Mayer bond orders when the respective log files are given
+    and contain them, otherwise it is perceived from interatomic distances. Falls back to a
+    distance-matrix-based bond-list comparison if perception fails for either endpoint or if the
+    expected reactant/product ``Molecule`` objects are unavailable.
 
     Args:
         xyz_1 (dict): The coordinates of IRC species 1.
         xyz_2 (dict): The coordinates of IRC species 2.
         rxn (ARCReaction): The corresponding reaction object instance.
+        log_path_1 (str, optional): The path to the log file IRC species 1 was optimized in.
+        log_path_2 (str, optional): The path to the log file IRC species 2 was optimized in.
     """
     if rxn is None:
         return None
@@ -524,8 +529,8 @@ def check_irc_species_and_rxn(xyz_1: dict,
 
     if not any(m is None for m in r_mols + p_mols):
         charge = rxn.charge or 0
-        frags_1 = _perceive_irc_fragments(xyz_1, charge=charge)
-        frags_2 = _perceive_irc_fragments(xyz_2, charge=charge)
+        frags_1 = _perceive_irc_fragments_from_bond_orders(log_path_1) or _perceive_irc_fragments(xyz_1, charge=charge)
+        frags_2 = _perceive_irc_fragments_from_bond_orders(log_path_2) or _perceive_irc_fragments(xyz_2, charge=charge)
         if frags_1 is not None and frags_2 is not None:
             if (_match_fragments_to_species(frags_1, r_mols)
                     and _match_fragments_to_species(frags_2, p_mols)) \
@@ -550,6 +555,35 @@ def check_irc_species_and_rxn(xyz_1: dict,
     if _check_equal_bonds_list(dmat_bonds_1, r_bonds) and _check_equal_bonds_list(dmat_bonds_2, p_bonds) \
             or _check_equal_bonds_list(dmat_bonds_2, r_bonds) and _check_equal_bonds_list(dmat_bonds_1, p_bonds):
         rxn.ts_species.ts_checks['IRC'] = True
+
+
+def _perceive_irc_fragments_from_bond_orders(log_path: str | None,
+                                             charge: int = 0,
+                                             ) -> list[Molecule] | None:
+    """
+    Perceive the molecular fragments of an IRC endpoint using the computed Mayer bond orders.
+
+    This is more reliable than the distance-based criterion used by ``_perceive_irc_fragments()``,
+    since IRC endpoints often have stretched bonds and loosely bound fragments for which
+    interatomic distances are not conclusive.
+
+    Args:
+        log_path (str, optional): The path to the log file of the optimized IRC endpoint.
+        charge (int, optional): The net charge of the full system.
+
+    Returns: list[Molecule] | None
+        A list of perceived ``Molecule`` objects (one per fragment), or ``None`` if ``log_path`` was not
+        given, does not contain Mayer bond orders, or could not be perceived.
+    """
+    if log_path is None or not os.path.isfile(log_path):
+        return None
+    mol, _ = mol_from_dft(log_path, charge=charge)
+    if mol is None:
+        return None
+    fragments = mol.split()
+    for fragment in fragments:
+        fragment.update_multiplicity()
+    return fragments
 
 
 def _perceive_irc_fragments(xyz: dict,
