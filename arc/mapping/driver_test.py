@@ -846,6 +846,47 @@ class TestMappingDriver(unittest.TestCase):
         self.assertIn(atom_map[7], [3, 4, 5, 8])
         self.assertIn(atom_map[8], [3, 4, 5, 8])
 
+    def test_flatten_bond_orders(self):
+        """Test the flatten_bond_orders() function."""
+        spc_1 = ARCSpecies(label='2-butene', smiles='CC=CC')
+        spc_2 = ARCSpecies(label='1,3-butadiene', smiles='C=CC=C')
+        spc_1.determine_rotors()
+        self.assertIn(2, [bond.order for atom in spc_1.mol.atoms for bond in atom.bonds.values()])
+        self.assertIsNotNone(spc_1.mol_list)
+        self.assertEqual(spc_1.number_of_rotors, 2)
+
+        flatten_bond_orders(spc_1, spc_2)
+
+        for spc in [spc_1, spc_2]:
+            self.assertTrue(all(bond.order == 1 for atom in spc.mol.atoms for bond in atom.bonds.values()))
+            self.assertIsNone(spc.mol_list)
+            self.assertEqual(spc.rotors_dict, dict())
+            self.assertEqual(spc.number_of_rotors, 0)
+
+        spc_1.determine_rotors()
+        self.assertIn([2, 3], [rotor['pivots'] for rotor in spc_1.rotors_dict.values()])
+
+    def test_flatten_bond_orders_discards_the_directed_rotors(self):
+        """Test that flatten_bond_orders() discards the directed rotor scans along with the rotors."""
+        spc = ARCSpecies(label='nbutane', smiles='CCCC', directed_rotors={'brute_force_sp': [[[1, 2], [2, 3]]]})
+        spc.determine_rotors()
+        self.assertEqual(spc.directed_rotors, {'brute_force_sp': [[[5, 1, 2, 3], [1, 2, 3, 4]]]})
+
+        flatten_bond_orders(spc)
+
+        self.assertEqual(spc.directed_rotors, dict())
+        spc.determine_rotors()
+        self.assertEqual([rotor['pivots'] for rotor in spc.rotors_dict.values()], [[1, 2], [2, 3], [3, 4]])
+
+    def test_flatten_bond_orders_keeps_the_skip_rotor_scans_mark(self):
+        """Test that flatten_bond_orders() keeps a None rotors_dict, which marks a species to skip rotor scans."""
+        spc = ARCSpecies(label='2-butene', smiles='CC=CC')
+        spc.rotors_dict = None
+
+        flatten_bond_orders(spc)
+
+        self.assertIsNone(spc.rotors_dict)
+
     def test_map_isomerization_reaction(self):
         """Test the map_isomerization_reaction() function."""
         reactant_xyz = """C  -1.3087    0.0068    0.0318

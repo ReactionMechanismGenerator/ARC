@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from arc.reaction import ARCReaction
 
 RESERVED_FINGERPRINT_KEYS = ['self', 'chirality', 'label']
+RMSD_TIE_TOLERANCE = 1e-6
 
 
 def map_two_species(spc_1: ARCSpecies | Molecule,
@@ -43,6 +44,14 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
     All indices are 0-indexed.
     If a dict type atom map is returned, it could conveniently be used to map ``spc_2`` -> ``spc_1`` by doing::
         ordered_spc1.atoms = [spc_2.atoms[atom_map[i]] for i in range(len(spc_2.atoms))]
+
+    When several superimposable backbone candidates are identified, each is scored by the RMSD
+    between the two backbone distance matrices, so candidates tie within ``RMSD_TIE_TOLERANCE``
+    when the permutation leaves every backbone interatomic distance unchanged. That score covers
+    the backbone only, so the tied candidates are further scored by the Kabsch RMSD of the full
+    atom map each of them yields, and the last candidate that also ties on that displacement is
+    used. Both the backbone map and the dihedral-corrected geometries of that same candidate are
+    used to map the hydrogen atoms.
 
     Args:
         spc_1 (ARCSpecies | Molecule): Species 1.
@@ -110,7 +119,6 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
                 return None
         else:
             rmsds, fixed_spcs = list(), list()
-            candidate = None
             for candidate in candidates:
                 fixed_spc_1, fixed_spc_2 = fix_dihedrals_by_backbone_mapping(spc_1, spc_2, backbone_map=candidate)
                 fixed_spcs.append((fixed_spc_1, fixed_spc_2))
@@ -126,12 +134,23 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
                 xyz2 = sort_xyz_using_indices(xyz2, indices=[v for k, v in sorted(no_gap_candidate.items(),
                                                                                   key=lambda item: item[0])])
                 rmsds.append(compare_confs(xyz1=xyz1, xyz2=xyz2, rmsd_score=True))
-            chosen_candidate_index = rmsds.index(min(rmsds))
-            fixed_spc_1, fixed_spc_2 = fixed_spcs[chosen_candidate_index]
-            if candidate is not None:
-                atom_map = map_hydrogens(fixed_spc_1, fixed_spc_2, candidate)
-                if map_type == 'list':
-                    atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
+            lowest_rmsd = min(rmsds)
+            tied_indices = [i for i, rmsd in enumerate(rmsds) if rmsd - lowest_rmsd <= RMSD_TIE_TOLERANCE]
+            atom_maps = dict()
+            for i in tied_indices:
+                atom_maps[i] = map_hydrogens(fixed_spcs[i][0], fixed_spcs[i][1], candidates[i])
+            if len(tied_indices) > 1:
+                displacements = {i: fixed_spcs[i][0].kabsch(fixed_spcs[i][1],
+                                                            [v for k, v in sorted(atom_maps[i].items(),
+                                                                                  key=lambda item: item[0])])
+                                 for i in tied_indices}
+                lowest_displacement = min(displacements.values())
+                tied_indices = [i for i in tied_indices
+                                if displacements[i] - lowest_displacement <= RMSD_TIE_TOLERANCE]
+            chosen_candidate_index = max(tied_indices)
+            atom_map = atom_maps[chosen_candidate_index]
+            if map_type == 'list':
+                atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
 
     if inc_vals is not None:
         atom_map = [value + inc_vals for value in atom_map]
