@@ -518,6 +518,10 @@ def check_irc_species_and_rxn(xyz_1: dict,
     (e.g., the expected connectivity of the reaction is unavailable). Downstream consumers
     rely on this distinction: ``False`` means "checked and failed", never "could not check".
 
+    The bond-list comparison perceives bonds without assuming that an endpoint is a single
+    connected molecule, so a dissociated fragment stays dissociated instead of being bonded
+    to its nearest neighbour regardless of distance.
+
     Args:
         xyz_1 (dict): The coordinates of IRC species 1.
         xyz_2 (dict): The coordinates of IRC species 2.
@@ -560,8 +564,8 @@ def check_irc_species_and_rxn(xyz_1: dict,
                        f'{rxn.ts_species.ts_checks["IRC"]}.')
         return
     dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
-    dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1, elements=xyz_1['symbols'])
-    dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2, elements=xyz_2['symbols'])
+    dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1, elements=xyz_1['symbols'], n_fragments=0)
+    dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2, elements=xyz_2['symbols'], n_fragments=0)
     if _check_equal_bonds_list(dmat_bonds_1, r_bonds) and _check_equal_bonds_list(dmat_bonds_2, p_bonds) \
             or _check_equal_bonds_list(dmat_bonds_2, r_bonds) and _check_equal_bonds_list(dmat_bonds_1, p_bonds):
         rxn.ts_species.ts_checks['IRC'] = True
