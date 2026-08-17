@@ -1458,7 +1458,8 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
         xyz (dict, optional): The 3D coordinates.
 
     Returns:
-        RDMol | None: An RDKIt molecule with embedded conformers.
+        RDMol | None: An RDKIt molecule with embedded conformers,
+                      or ``None`` if no conformers could be embedded.
     """
     if num_confs is None and xyz is None:
         raise ConformerError(f'Either num_confs or xyz must be set when calling embed_rdkit() for {label}')
@@ -1474,6 +1475,10 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
             Chem.AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
         except:
             logger.warning(f'Could not embed conformers using RDKit for {label}')
+            return None
+        if not rd_mol.GetNumConformers():
+            logger.warning(f'Could not embed conformers using RDKit for {label}, '
+                           f'RDKit returned no conformers without raising an error.')
             return None
     elif xyz is not None:
         rd_conf = Chem.Conformer(rd_mol.GetNumAtoms())

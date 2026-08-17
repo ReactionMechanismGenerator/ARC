@@ -666,6 +666,17 @@ H       0.68104300    0.74807180    0.61546062""")]
         for atom, symbol in zip(self.cj_spc.mol.atoms, xyzs[0]['symbols']):
             self.assertEqual(atom.symbol, symbol)
 
+    def test_embed_rdkit_does_not_return_a_conformer_less_molecule(self):
+        """Test that an embedding which yields no conformers returns None rather than an unusable molecule"""
+        spc = ARCSpecies(label='c-C3H2', smiles='C1#CC1')
+        with self.assertLogs('arc', level='WARNING') as captured:
+            rd_mol = conformers.embed_rdkit(label='c-C3H2', mol=spc.mol, num_confs=5)
+            if rd_mol is not None:
+                xyzs = conformers.read_rdkit_embedded_conformers(label='c-C3H2', rd_mol=rd_mol)
+                self.assertIsInstance(xyzs[0], dict)
+        self.assertIsNone(rd_mol)
+        self.assertIn('c-C3H2', '\n'.join(captured.output))
+
     def test_read_rdkit_embedded_conformers(self):
         """Test reading coordinates from embedded RDKit conformers"""
         xyz = """S      -0.19093478    0.57933906    0.00000000
