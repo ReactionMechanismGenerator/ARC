@@ -2809,7 +2809,7 @@ class Scheduler(object):
             if self.species_dict[label].rxn_index in self.rxn_dict.keys():
                 check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
                          job=job,
-                         checks=['NMD'],
+                         checks=['NMD', 'BO'],
                          skip_nmd=self.skip_nmd,
                          )
             if self.species_dict[label].ts_checks['NMD'] is False:
