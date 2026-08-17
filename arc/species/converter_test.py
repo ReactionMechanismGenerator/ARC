@@ -14,7 +14,7 @@ import unittest
 
 from ase import Atoms
 from rdkit import Chem
-from rdkit.Chem import rdMolTransforms as rdMT, rdchem
+from rdkit.Chem import AllChem, rdMolTransforms as rdMT, rdchem
 
 import arc.species.converter as converter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
@@ -3410,6 +3410,33 @@ R1=1.0912"""
         self.assertIsInstance(rd_mol, rdchem.Mol)
         rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
         self._check_atom_connectivity_in_rd_mol_block(spc3.mol, rd_mol_block)
+
+    def test_to_rdkit_mol_excludes_vdw_bonds(self):
+        """Test that vdW bonds are excluded from the RDKit molecule rather than mapped to a real
+        RDKit bond type. RDKit has no vdW bond type, and adding one anyway (e.g., as UNSPECIFIED)
+        breaks its force-field-based conformer embedding, since the force field has no parameters
+        for a bond between two non-covalently-associated atoms."""
+        adjlist = """1 O u0 p3 c-1 {4,vdW} {6,S}
+2 O u0 p2 c0 {4,S} {7,S}
+3 O u0 p2 c0 {5,S} {8,S}
+4 H u0 p0 c0 {1,vdW} {2,S} {5,vdW}
+5 H u0 p0 c0 {3,S} {4,vdW}
+6 H u0 p0 c0 {1,S}
+7 H u0 p0 c0 {2,S}
+8 H u0 p0 c0 {3,S}
+"""
+        mol = Molecule().from_adjacency_list(adjlist)
+        rd_mol = converter.to_rdkit_mol(mol=mol, remove_h=False)
+        self.assertIsInstance(rd_mol, rdchem.Mol)
+        # The vdW-bonded atom pairs (O1-H4, H4-H5) must not appear as RDKit bonds.
+        self.assertIsNone(rd_mol.GetBondBetweenAtoms(0, 3))
+        self.assertIsNone(rd_mol.GetBondBetweenAtoms(3, 4))
+        # Embedding and MMFF optimization must succeed now that the vdW bonds are excluded
+        # (they previously raised RuntimeError: Invariant Violation, bad direction in linearSearch).
+        rd_mol = Chem.AddHs(rd_mol, addCoords=False)
+        conf_id = AllChem.EmbedMolecule(rd_mol, randomSeed=1, useRandomCoords=True)
+        self.assertGreaterEqual(conf_id, 0)
+        self.assertEqual(AllChem.MMFFOptimizeMolecule(rd_mol), 0)
 
     def test_xyz_to_ase(self):
         """Test the xyz_to_ase function"""

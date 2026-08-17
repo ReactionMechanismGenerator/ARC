@@ -1638,11 +1638,12 @@ def to_rdkit_mol(mol, remove_h=False, sanitize=True):
 
     rd_bonds = Chem.rdchem.BondType
     orders = {'S': rd_bonds.SINGLE, 'D': rd_bonds.DOUBLE, 'T': rd_bonds.TRIPLE, 'B': rd_bonds.AROMATIC,
-              'Q': rd_bonds.QUADRUPLE, 'vdW': rd_bonds.UNSPECIFIED}  # no vdW bond in RDKit, so use UNSPECIFIED
-    # Add the bonds
+              'Q': rd_bonds.QUADRUPLE}
+    # Add the bonds. Non-covalent bonds (vdW / hydrogen) have no RDKit bond type and, if added anyway
+    # (e.g., as UNSPECIFIED), make RDKit's force-field-based conformer embedding fail; skip them instead.
     for atom1 in atoms_copy:
         for atom2, bond12 in atom1.edges.items():
-            if bond12.is_hydrogen_bond():
+            if bond12.is_hydrogen_bond() or bond12.is_van_der_waals():
                 continue
             if atoms_copy.index(atom1) < atoms_copy.index(atom2):
                 rd_mol.AddBond(atom_id_map[atom1.id], atom_id_map[atom2.id], orders[bond12.get_order_str()])

@@ -54,10 +54,11 @@ def to_rdkit_mol(mol, remove_h=True, return_mapping=False, sanitize=True, save_o
 
     rd_bonds = Chem.rdchem.BondType
     orders = {'S': rd_bonds.SINGLE, 'D': rd_bonds.DOUBLE, 'T': rd_bonds.TRIPLE, 'B': rd_bonds.AROMATIC, 'Q': rd_bonds.QUADRUPLE}
-    # Add the bonds
+    # Add the bonds. Non-covalent bonds (vdW / hydrogen) have no RDKit bond type and are skipped
+    # rather than mapped to e.g. UNSPECIFIED, which would otherwise break RDKit conformer embedding.
     for atom1 in mol.vertices:
         for atom2, bond in atom1.edges.items():
-            if bond.is_hydrogen_bond():
+            if bond.is_hydrogen_bond() or bond.is_van_der_waals():
                 continue
             index1 = atoms.index(atom1)
             index2 = atoms.index(atom2)

@@ -7,6 +7,8 @@ This module contains unit test for the converter module.
 
 import unittest
 
+from rdkit.Chem import AllChem
+
 from arc.molecule.converter import debug_rdkit_mol, to_rdkit_mol, from_rdkit_mol, to_ob_mol, from_ob_mol
 from arc.molecule.molecule import Molecule
 
@@ -101,6 +103,30 @@ class RDKitTest(unittest.TestCase):
 
         self.assertSequenceEqual([atom.number for atom in mol.atoms], [1, 6, 7])
         self.assertSequenceEqual([rdkitmol.GetAtomWithIdx(idx).GetAtomicNum() for idx in range(3)], [1, 6, 7])
+
+    def test_vdw_bonds_excluded(self):
+        """Test that vdW bonds are excluded from the RDKit molecule (not mapped to a real RDKit
+        bond type), mirroring how hydrogen bonds are already excluded. RDKit has no vdW bond type,
+        and adding one anyway (e.g., as UNSPECIFIED) breaks RDKit's force-field conformer embedding."""
+        adjlist = """1 O u0 p3 c-1 {4,vdW} {6,S}
+2 O u0 p2 c0 {4,S} {7,S}
+3 O u0 p2 c0 {5,S} {8,S}
+4 H u0 p0 c0 {1,vdW} {2,S} {5,vdW}
+5 H u0 p0 c0 {3,S} {4,vdW}
+6 H u0 p0 c0 {1,S}
+7 H u0 p0 c0 {2,S}
+8 H u0 p0 c0 {3,S}
+"""
+        mol = Molecule().from_adjacency_list(adjlist)
+        atom1, atom4, atom5 = mol.atoms[0], mol.atoms[3], mol.atoms[4]  # capture before to_rdkit_mol may re-sort
+        rdkitmol, rd_atom_indices = to_rdkit_mol(mol, remove_h=False, return_mapping=True)
+        self.assertIsNone(rdkitmol.GetBondBetweenAtoms(rd_atom_indices[atom1], rd_atom_indices[atom4]))
+        self.assertIsNone(rdkitmol.GetBondBetweenAtoms(rd_atom_indices[atom4], rd_atom_indices[atom5]))
+        # Embedding must succeed now that the vdW bonds are excluded (they previously raised
+        # RuntimeError: Invariant Violation, bad direction in linearSearch, during MMFF optimization).
+        conf_id = AllChem.EmbedMolecule(rdkitmol, randomSeed=1, useRandomCoords=True)
+        self.assertGreaterEqual(conf_id, 0)
+        self.assertEqual(AllChem.MMFFOptimizeMolecule(rdkitmol), 0)
 
 
 class ConverterTest(unittest.TestCase):
