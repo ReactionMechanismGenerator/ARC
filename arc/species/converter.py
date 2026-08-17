@@ -1576,6 +1576,68 @@ def update_molecule(mol: Molecule, to_single_bonds: bool = False) -> Molecule:
     return new_mol
 
 
+def mol_from_dft(log_file_path: str,
+                 charge: int | None = None,
+                 multiplicity: int | None = None,
+                 bond_order_threshold: float = 0.5,
+                 ) -> tuple[Molecule | None, Molecule | None]:
+    """
+    Perceive a Molecule from an electronic structure software output file,
+    inferring connectivity from the computed Mayer bond orders rather than from interatomic distances.
+
+    This is more reliable than a distance-based criterion whenever bond lengths are not conclusive,
+    e.g., for IRC endpoints, van der Waals complexes, and stretched or partially formed bonds.
+    Requires a log file that contains a Mayer population analysis: Orca prints it by default,
+    Gaussian requires ``IOp(6/80=1)`` in the route section (which ARC adds to all of its Gaussian jobs).
+
+    Args:
+        log_file_path (str): The path to the ESS log file.
+        charge (int, optional): The net charge of the species. Defaults to 0.
+        multiplicity (int, optional): The spin multiplicity of the species. Inferred if not given.
+        bond_order_threshold (float, optional): The minimal Mayer bond order for considering two atoms bonded.
+                                                Note that Orca only prints bond orders above 0.1.
+
+    Returns: tuple[Molecule | None, Molecule | None]
+        The perceived molecule with its respective bond orders, and a copy of it in which all of the
+        Mayer-derived bonds are single bonds. Both preserve the atom order of the log file, and may consist
+        of several disconnected fragments (use ``.split()`` to separate them).
+        The first entry is ``None`` if the molecule could not be perceived, both entries are ``None``
+        if the log file does not contain Mayer bond orders.
+    """
+    from arc.parser.parser import parse_bond_orders, parse_geometry
+    bond_orders_matrix = parse_bond_orders(log_file_path)
+    xyz = parse_geometry(log_file_path)
+    if bond_orders_matrix is None or xyz is None:
+        return None, None
+    symbols, coords = xyz['symbols'], xyz['coords']
+    if len(symbols) != bond_orders_matrix.shape[0]:
+        logger.error(f'The number of atoms ({len(symbols)}) does not match the bond order matrix dimension '
+                     f'({bond_orders_matrix.shape[0]}) in {log_file_path}.')
+        return None, None
+    bonds, bond_orders = list(), dict()
+    for i in range(len(symbols)):
+        for j in range(i + 1, len(symbols)):
+            if bond_orders_matrix[i, j] > bond_order_threshold:
+                bonds.append((i, j))
+                bond_orders[(i, j)] = float(bond_orders_matrix[i, j])
+
+    single_bond_mol = Molecule(atoms=[Atom(element=symbol, coords=np.array(coord, np.float64))
+                                      for symbol, coord in zip(symbols, coords)])
+    for i, j in bonds:
+        single_bond_mol.add_bond(Bond(single_bond_mol.atoms[i], single_bond_mol.atoms[j], order=1))
+    single_bond_mol.update_atomtypes(raise_exception=False)
+
+    mol = perceive_molecule_from_xyz(xyz,
+                                     charge=charge,
+                                     multiplicity=multiplicity,
+                                     bonds=bonds,
+                                     bond_orders=bond_orders,
+                                     )
+    if mol is not None:
+        single_bond_mol.multiplicity = mol.multiplicity
+    return mol, single_bond_mol
+
+
 def s_bonds_mol_from_xyz(xyz: dict) -> Molecule | None:
     """
     Create a single bonded molecule from xyz using RMG's connect_the_dots() method.

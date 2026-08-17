@@ -17,6 +17,7 @@ from arc.species.perceive import (
     get_representative_resonance_structure,
     infer_multiplicity,
     perceive_molecule_from_xyz,
+    round_bond_order,
     validate_xyz,
     xyz_to_str,
 )
@@ -39,6 +40,18 @@ class TestPerceive(unittest.TestCase):
                 (0.0, 0.0, 0.0),
                 (0.96, 0.0, 0.0),
                 (-0.24, 0.93, 0.0),
+            )}
+        # A planar ethene molecule
+        cls.xyz_ethene = {
+            'symbols': ('C', 'C', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 1, 1, 1, 1),
+            'coords': (
+                (0.0, 0.0, 0.6695),
+                (0.0, 0.0, -0.6695),
+                (0.0, 0.9289, 1.2321),
+                (0.0, -0.9289, 1.2321),
+                (0.0, 0.9289, -1.2321),
+                (0.0, -0.9289, -1.2321),
             )}
         # A single hydrogen atom (radical)
         cls.xyz_h = {
@@ -297,6 +310,54 @@ H      -0.57000001    0.25001318    0.00000000"""
             self.assertEqual(atom.charge, 0)
         # Multiplicity is singlet
         self.assertEqual(mol.multiplicity, 1)
+
+    def test_perceive_with_given_bonds(self):
+        """
+        Test that an explicitly given connectivity list overrides the distance-based perception.
+        """
+        # Only three of methane's four C-H bonds are given, the fourth H atom must remain unbonded.
+        mol = perceive_molecule_from_xyz(self.xyz_methane, bonds=[(0, 1), (0, 2), (0, 3)])
+        self.assertIsInstance(mol, Molecule)
+        self.assertEqual(len(mol.atoms), 5)
+        self.assertEqual(len(mol.get_all_edges()), 3)
+        self.assertEqual(len(mol.atoms[4].edges), 0)
+        # The distance-based perception of the same coordinates does find all four bonds.
+        self.assertEqual(len(perceive_molecule_from_xyz(self.xyz_methane).get_all_edges()), 4)
+
+    def test_perceive_with_given_bond_orders(self):
+        """
+        Test that computed (e.g., Mayer) bond orders are used to assign multiple bonds.
+        """
+        bonds = [(0, 1), (0, 2), (0, 3), (1, 4), (1, 5)]
+        # Mayer bond orders of ethene at the wB97X-D/def2-TZVP level of theory.
+        bond_orders = {(0, 1): 1.9179, (0, 2): 0.9635, (0, 3): 0.9635, (1, 4): 0.9635, (1, 5): 0.9635}
+        mol = perceive_molecule_from_xyz(self.xyz_ethene, bonds=bonds, bond_orders=bond_orders)
+        self.assertIsInstance(mol, Molecule)
+        self.assertEqual(mol.multiplicity, 1)
+        self.assertTrue(mol.get_bond(mol.atoms[0], mol.atoms[1]).is_double())
+        self.assertTrue(all(mol.get_bond(mol.atoms[i], mol.atoms[j]).is_single() for i, j in bonds[1:]))
+        for atom in mol.atoms:
+            self.assertEqual(atom.radical_electrons, 0)
+            self.assertEqual(atom.charge, 0)
+        # A higher computed bond order yields a triple bond.
+        xyz_acetylene = {'symbols': ('C', 'C', 'H', 'H'), 'isotopes': (12, 12, 1, 1),
+                         'coords': ((0.0, 0.0, 0.6015), (0.0, 0.0, -0.6015),
+                                    (0.0, 0.0, 1.6644), (0.0, 0.0, -1.6644))}
+        mol = perceive_molecule_from_xyz(xyz_acetylene,
+                                         bonds=[(0, 1), (0, 2), (1, 3)],
+                                         bond_orders={(0, 1): 2.8557, (0, 2): 0.9349, (1, 3): 0.9349})
+        self.assertTrue(mol.get_bond(mol.atoms[0], mol.atoms[1]).is_triple())
+
+    def test_round_bond_order(self):
+        """
+        Test converting computed bond orders into formal bond orders.
+        """
+        self.assertEqual(round_bond_order(0.62), 1)
+        self.assertEqual(round_bond_order(1.0121), 1)
+        self.assertEqual(round_bond_order(1.203), 1)
+        self.assertEqual(round_bond_order(1.5612), 2)
+        self.assertEqual(round_bond_order(2.1427), 2)
+        self.assertEqual(round_bond_order(2.9), 3)
 
     def test_perceive_water(self):
         """
