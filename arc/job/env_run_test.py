@@ -384,5 +384,77 @@ class TestRmgEnvCommand(unittest.TestCase):
         self.assertIn('python -m arkane input.py', script)
 
 
+class TestRmgEnvCommandPythonPath(unittest.TestCase):
+    """PYTHONPATH is normalized identically on all three branches: a launcher's
+    ``run`` never manages it, and the direct-interpreter branch has no launcher,
+    so ARC's own PYTHONPATH would otherwise leak into the child. When RMG_PATH is
+    set the child gets exactly that (so a source-tree RMG-Py/Arkane checkout
+    reachable only via PYTHONPATH is importable); otherwise PYTHONPATH is
+    scrubbed so rmg_env's own site-packages win."""
+
+    def setUp(self):
+        # Force the RMG_PYTHON branch: no MAMBA_EXE, and RMG_PYTHON resolves
+        # to a real file (RMG_PATH/RMG_PYTHON come from the patched settings
+        # dict below; os.path.isfile still needs a real path on disk, so
+        # point it at this test file itself).
+        self.env_patch = patch.dict(os.environ, {}, clear=False)
+        self.env_patch.start()
+        self.addCleanup(self.env_patch.stop)
+        os.environ.pop('MAMBA_EXE', None)
+        self.fake_rmg_python = __file__
+
+    def test_pythonpath_reexported_from_rmg_path(self):
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PYTHON': self.fake_rmg_python,
+                               'RMG_PATH': '/opt/RMG-Py'}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertIn(f'export PYTHONPATH={shlex.quote("/opt/RMG-Py")}', script)
+        # The re-export must come after the unset, so it is not clobbered.
+        unset_idx = script.index('unset ')
+        export_idx = script.index('export PYTHONPATH=')
+        self.assertLess(unset_idx, export_idx)
+
+    def test_no_pythonpath_export_when_rmg_path_falsy(self):
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PYTHON': self.fake_rmg_python,
+                               'RMG_PATH': None}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertNotIn('export PYTHONPATH=', script)
+
+    def test_mamba_branch_exports_pythonpath_from_rmg_path(self):
+        os.environ['MAMBA_EXE'] = __file__  # a real file forces the MAMBA_EXE branch
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PATH': '/opt/RMG-Py'}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertIn(f'export PYTHONPATH={shlex.quote("/opt/RMG-Py")}', script)
+        # Set before the launcher's ``run`` so the child inherits it.
+        self.assertLess(script.index('export PYTHONPATH='), script.index('run -n rmg_env'))
+
+    def test_mamba_branch_scrubs_pythonpath_when_rmg_path_falsy(self):
+        os.environ['MAMBA_EXE'] = __file__
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PATH': None}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertIn('unset PYTHONPATH', script)
+        self.assertNotIn('export PYTHONPATH=', script)
+
+    def test_hunt_branch_exports_pythonpath_from_rmg_path(self):
+        os.environ.pop('MAMBA_EXE', None)  # no MAMBA_EXE + no RMG_PYTHON forces the hunt branch
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PYTHON': None, 'RMG_PATH': '/opt/RMG-Py'}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertIn(f'export PYTHONPATH={shlex.quote("/opt/RMG-Py")}', script)
+        # Set inside the login-shell heredoc, before the launcher-hunt loop.
+        self.assertLess(script.index('export PYTHONPATH='), script.index('for _launcher in'))
+
+    def test_hunt_branch_scrubs_pythonpath_when_rmg_path_falsy(self):
+        os.environ.pop('MAMBA_EXE', None)
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PYTHON': None, 'RMG_PATH': None}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertIn('unset PYTHONPATH', script)
+        self.assertNotIn('export PYTHONPATH=', script)
+
+
 if __name__ == '__main__':
     unittest.main()

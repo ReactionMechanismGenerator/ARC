@@ -168,11 +168,16 @@ def run_in_conda_env(
 # target env, but invoking rmg_env's interpreter *directly* does not: they stay
 # pointed at arc_env's tree and make the child resolve shared-library plugins
 # against the wrong env, which is what silently kills Arkane's OpenBabel
-# import. Only the direct-interpreter branch below has to scrub them.
-# PYTHONPATH is included because the RMG helper scripts in arc/scripts/ import
-# only rmgpy/arkane/rdkit plus a sibling ``common`` module (found via the
-# script's own directory), so nothing there needs ARC on the path -- while a
-# stale entry would shadow rmg_env's site-packages.
+# import. Only the direct-interpreter branch below has to scrub this whole set;
+# the launcher branches leave the ABI-sensitive vars to ``run``'s re-activation.
+# PYTHONPATH is the exception: a launcher's ``run`` re-fires the target env's
+# activation hooks but does NOT manage PYTHONPATH, so ARC's own PYTHONPATH would
+# leak into the child on *every* branch and shadow rmg_env's site-packages.
+# ``_pythonpath_lines`` therefore normalizes it uniformly across all three
+# branches. It is kept in this tuple too so the direct-interpreter branch scrubs
+# it as part of the single ``unset``; the RMG helper scripts in arc/scripts/
+# import only rmgpy/arkane/rdkit plus a sibling ``common`` module (found via the
+# script's own directory), so nothing there needs ARC on the path.
 _ARC_ENV_ACTIVATION_VARS = (
     'CONDA_PREFIX', 'CONDA_PREFIX_1', 'CONDA_DEFAULT_ENV', 'CONDA_PROMPT_MODIFIER',
     'CONDA_SHLVL', 'LD_LIBRARY_PATH', 'BABEL_LIBDIR', 'BABEL_DATADIR',
@@ -180,6 +185,31 @@ _ARC_ENV_ACTIVATION_VARS = (
 )
 
 _NO_LAUNCHER_MSG = 'micromamba, mamba, or conda is required to run RMG helper scripts'
+
+
+def _pythonpath_lines(rmg_path: str | None) -> list[str]:
+    """Bash lines that normalize ``PYTHONPATH`` for the RMG child.
+
+    A launcher's ``run`` rebinds the ABI-sensitive activation vars but never
+    manages ``PYTHONPATH``, and the direct-interpreter branch has no launcher at
+    all -- so on every branch ARC's own ``PYTHONPATH`` would otherwise leak into
+    the child. Scrub it, then re-point it at a source-tree RMG-Py/Arkane checkout
+    when ``RMG_PATH`` is configured (reachable only via ``PYTHONPATH``, rather
+    than pip-installed into rmg_env), giving all three branches one and the same
+    ``PYTHONPATH`` policy.
+
+    Args:
+        rmg_path (str | None): ARC's configured ``RMG_PATH``, or a falsy value
+                               when RMG-Py/Arkane come from rmg_env's own
+                               site-packages.
+
+    Returns:
+        list[str]: A single bash line -- ``export PYTHONPATH=<rmg_path>`` when
+                   ``rmg_path`` is truthy, else ``unset PYTHONPATH``.
+    """
+    if rmg_path:
+        return [f'export PYTHONPATH={shlex.quote(rmg_path)}']
+    return ['unset PYTHONPATH']
 
 
 def rmg_env_command(py_args: str | list[str],
@@ -196,9 +226,19 @@ def rmg_env_command(py_args: str | list[str],
     Resolution order, preserved from the call sites this replaced:
     ``MAMBA_EXE`` (exported by setup-micromamba in CI) → ``RMG_PYTHON`` from
     ARC's settings (needed on conda/mambaforge installs where micromamba's
-    ``conda`` shim is broken) → a launcher found on PATH, hunted for under a
-    login shell so that a conda initialization block in the user's profile is
-    still honoured.
+    ``conda`` shim is broken; this branch invokes the interpreter directly, so
+    it also has to scrub ARC's leaked activation vars) → a launcher found on
+    PATH, hunted for under a login shell so that a conda initialization block in
+    the user's profile is still honoured.
+
+    Every branch normalizes ``PYTHONPATH`` identically via ``_pythonpath_lines``
+    (``RMG_PATH`` when set, scrubbed otherwise): a launcher's ``run`` re-fires
+    the target env's activation hooks but never manages ``PYTHONPATH``, so
+    without this ARC's own ``PYTHONPATH`` would leak into the child on the two
+    launcher branches -- and on all three a source-tree RMG-Py/Arkane checkout
+    reachable only via ``PYTHONPATH`` would be invisible. The direct-interpreter
+    branch additionally scrubs the ABI-sensitive vars (``LD_LIBRARY_PATH``,
+    ``BABEL_LIBDIR``, ...) that the launcher branches leave to ``run``.
 
     Args:
         py_args (str | list[str]): Everything after ``python``. Passing a
@@ -224,6 +264,7 @@ def rmg_env_command(py_args: str | list[str],
     """
     env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
     rmg_python = settings.get('RMG_PYTHON')
+    rmg_path = settings.get('RMG_PATH')
     if isinstance(py_args, list):
         py_args = ' '.join(shlex.quote(arg) for arg in py_args)
 
@@ -235,23 +276,25 @@ def rmg_env_command(py_args: str | list[str],
 
     mamba_exe = os.environ.get('MAMBA_EXE', '')
     if mamba_exe and os.path.isfile(mamba_exe):
-        return '\n'.join(preamble + [
+        return '\n'.join(preamble + _pythonpath_lines(rmg_path) + [
             f'{shlex.quote(mamba_exe)} run -n {env_name} python {py_args}{suffix}',
         ])
 
     if rmg_python and os.path.isfile(rmg_python):
-        return '\n'.join(preamble + [
+        lines = preamble + [
             f'unset {" ".join(_ARC_ENV_ACTIVATION_VARS)}',
             f'export PATH={shlex.quote(os.path.dirname(rmg_python))}:"$PATH"',
-            f'{shlex.quote(rmg_python)} {py_args}{suffix}',
-        ])
+        ]
+        lines += _pythonpath_lines(rmg_path)
+        lines.append(f'{shlex.quote(rmg_python)} {py_args}{suffix}')
+        return '\n'.join(lines)
 
     # No launcher pinned by an env var and no configured interpreter: hunt for a
     # launcher on PATH. This runs under ``bash -l`` so the user's profile (where
     # conda's init block usually lives) is sourced first. The script is fed on
     # stdin via a quoted heredoc, which keeps it free of the nested shell
     # quoting the per-call-site copies of this ladder each had to get right.
-    hunted = preamble + [
+    hunted = preamble + _pythonpath_lines(rmg_path) + [
         'for _launcher in micromamba mamba conda; do',
         '    if command -v "$_launcher" >/dev/null 2>&1; then',
         f'        "$_launcher" run -n {env_name} python {py_args}{suffix}',
