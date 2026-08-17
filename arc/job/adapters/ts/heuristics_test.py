@@ -30,6 +30,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             generate_dihedral_variants,
                                             check_dao_angle,
                                             check_ts_bonds,
+                                            h_abstraction,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
@@ -547,6 +548,17 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                    (-0.5075499920716767, 1.0297354786962867, 1.666119475718375e-08),
                                    (2.063927797423041, -2.798718649055232e-07, -1.7157539600187732e-07))}
         self.assertTrue(almost_equal_coords(rxn4.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
+
+    def test_h_abstraction_with_empty_product_dicts(self):
+        """
+        Test that h_abstraction() does not raise and returns an empty list of TS guesses
+        when reaction.product_dicts is empty (rather than crashing on an unguarded [0] index).
+        """
+        rxn1 = ARCReaction(r_species=[self.h2, self.o], p_species=[self.h, self.oh])
+        self.assertEqual(rxn1.family, 'H_Abstraction')
+        rxn1.product_dicts = []
+        xyz_guesses = h_abstraction(reaction=rxn1)
+        self.assertEqual(xyz_guesses, [])
 
     def test_heuristics_for_h_abstraction_2(self):
         # C3H8 + HO2 <=> C3H7 + H2O2
