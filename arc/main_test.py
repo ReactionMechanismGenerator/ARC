@@ -11,7 +11,7 @@ import shutil
 import unittest
 from unittest.mock import patch
 
-from arc.common import get_test_project_directory, get_test_project_name
+from arc.common import ARC_PATH, get_test_project_directory, get_test_project_name
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.level import Level

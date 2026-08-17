@@ -2641,9 +2641,9 @@ class Scheduler(object):
                                  )
             for line in table:
                 logger.info(line)
-            self.report_omitted_ts_guesses(label=label)
             for tsg, _ in reported_tsgs:
                 plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
+            self.report_omitted_ts_guesses(label=label)
             logger.info('\n')
             if self.species_dict[label].chosen_ts is None:
                 raise SpeciesError(f'Could not pair most stable conformer {selected_i} of {label} to a respective '

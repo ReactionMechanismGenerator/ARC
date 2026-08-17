@@ -2723,7 +2723,8 @@ class TestSchedulerTSGuessReportAlignment(unittest.TestCase):
                 scheduler.determine_most_likely_ts_conformer(label='TS0')
         messages = [record.getMessage() for record in cm.records]
         start = next(i for i, message in enumerate(messages) if 'Geometry *guesses*' in message)
-        return [message for message in messages[start + 1:] if message.strip()]
+        return [message for message in messages[start + 1:]
+                if message.strip() and not message.startswith('TS guesses not listed above')]
 
     def report(self, ts_guesses):
         """Run the TS guess selection on the given guesses and return the emitted table lines."""
