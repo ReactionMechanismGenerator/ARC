@@ -1638,7 +1638,7 @@ def to_rdkit_mol(mol, remove_h=False, sanitize=True):
 
     rd_bonds = Chem.rdchem.BondType
     orders = {'S': rd_bonds.SINGLE, 'D': rd_bonds.DOUBLE, 'T': rd_bonds.TRIPLE, 'B': rd_bonds.AROMATIC,
-              'Q': rd_bonds.QUADRUPLE}
+              'Q': rd_bonds.QUADRUPLE, 'vdW': rd_bonds.UNSPECIFIED}  # no vdW bond in RDKit, so use UNSPECIFIED
     # Add the bonds
     for atom1 in atoms_copy:
         for atom2, bond12 in atom1.edges.items():
