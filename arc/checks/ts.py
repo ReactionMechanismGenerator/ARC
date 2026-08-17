@@ -518,6 +518,10 @@ def check_irc_species_and_rxn(xyz_1: dict,
     (e.g., the expected connectivity of the reaction is unavailable). Downstream consumers
     rely on this distinction: ``False`` means "checked and failed", never "could not check".
 
+    A negative isomorphism result alone does not set ``False``: it is treated as inconclusive
+    and the bond-list comparison decides. The verdict remains ``None`` if that comparison
+    cannot be carried out.
+
     The bond-list comparison perceives bonds without assuming that an endpoint is a single
     connected molecule, so a dissociated fragment stays dissociated instead of being bonded
     to its nearest neighbour regardless of distance.
@@ -548,7 +552,6 @@ def check_irc_species_and_rxn(xyz_1: dict,
                         and _match_fragments_to_species(frags_2, r_mols)):
                 rxn.ts_species.ts_checks['IRC'] = True
                 return
-            rxn.ts_species.ts_checks['IRC'] = False
             logger.debug('IRC isomorphism check failed, falling back to bond-list comparison.')
         else:
             logger.debug('IRC molecule perception failed for one or both endpoints, '
@@ -560,8 +563,7 @@ def check_irc_species_and_rxn(xyz_1: dict,
     except Exception as e:
         logger.warning(f'Could not get the reaction bonds of {rxn} for the IRC fallback check, '
                        f'got:\n{e.__class__.__name__}: {e}\n'
-                       f'The IRC check of {rxn.ts_species.label} remains '
-                       f'{rxn.ts_species.ts_checks["IRC"]}.')
+                       f'The IRC check of {rxn.ts_species.label} is therefore left undetermined.')
         return
     dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
     dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1, elements=xyz_1['symbols'], n_fragments=0)
