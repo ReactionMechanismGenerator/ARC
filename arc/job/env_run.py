@@ -196,7 +196,10 @@ def rmg_env_command(py_args: str | list[str],
     Resolution order, preserved from the call sites this replaced:
     ``MAMBA_EXE`` (exported by setup-micromamba in CI) → ``RMG_PYTHON`` from
     ARC's settings (needed on conda/mambaforge installs where micromamba's
-    ``conda`` shim is broken) → a launcher found on PATH, hunted for under a
+    ``conda`` shim is broken; this branch invokes the interpreter directly,
+    so it also re-exports ``PYTHONPATH`` from ``RMG_PATH`` after scrubbing
+    ARC's leaked activation vars, restoring visibility of a source-tree
+    RMG-Py/Arkane checkout) → a launcher found on PATH, hunted for under a
     login shell so that a conda initialization block in the user's profile is
     still honoured.
 
@@ -240,11 +243,21 @@ def rmg_env_command(py_args: str | list[str],
         ])
 
     if rmg_python and os.path.isfile(rmg_python):
-        return '\n'.join(preamble + [
+        rmg_path = settings.get('RMG_PATH')
+        lines = preamble + [
             f'unset {" ".join(_ARC_ENV_ACTIVATION_VARS)}',
             f'export PATH={shlex.quote(os.path.dirname(rmg_python))}:"$PATH"',
-            f'{shlex.quote(rmg_python)} {py_args}{suffix}',
-        ])
+        ]
+        if rmg_path:
+            # Restore PYTHONPATH to RMG_PATH after scrubbing ARC's leakage above.
+            # rmg_python is invoked directly (no launcher, no activation hooks), so
+            # on a source-tree RMG-Py/Arkane checkout reachable only via
+            # PYTHONPATH -- rather than pip-installed into rmg_env -- unsetting
+            # PYTHONPATH and stopping there leaves the child unable to import
+            # rmgpy/arkane at all.
+            lines.append(f'export PYTHONPATH={shlex.quote(rmg_path)}')
+        lines.append(f'{shlex.quote(rmg_python)} {py_args}{suffix}')
+        return '\n'.join(lines)
 
     # No launcher pinned by an env var and no configured interpreter: hunt for a
     # launcher on PATH. This runs under ``bash -l`` so the user's profile (where

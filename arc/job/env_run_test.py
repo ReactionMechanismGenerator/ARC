@@ -384,5 +384,42 @@ class TestRmgEnvCommand(unittest.TestCase):
         self.assertIn('python -m arkane input.py', script)
 
 
+class TestRmgEnvCommandPythonPath(unittest.TestCase):
+    """The RMG_PYTHON (direct-interpreter) branch unsets PYTHONPATH along
+    with the rest of ARC's leaked activation vars, then must re-export it
+    from RMG_PATH -- otherwise a source-tree RMG-Py/Arkane checkout that is
+    only reachable via PYTHONPATH (not pip-installed into rmg_env) can never
+    be imported by the child interpreter."""
+
+    def setUp(self):
+        # Force the RMG_PYTHON branch: no MAMBA_EXE, and RMG_PYTHON resolves
+        # to a real file (RMG_PATH/RMG_PYTHON come from the patched settings
+        # dict below; os.path.isfile still needs a real path on disk, so
+        # point it at this test file itself).
+        self.env_patch = patch.dict(os.environ, {}, clear=False)
+        self.env_patch.start()
+        self.addCleanup(self.env_patch.stop)
+        os.environ.pop('MAMBA_EXE', None)
+        self.fake_rmg_python = __file__
+
+    def test_pythonpath_reexported_from_rmg_path(self):
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PYTHON': self.fake_rmg_python,
+                               'RMG_PATH': '/home/alon/Code/RMG-Py-t3pes'}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertIn(f'export PYTHONPATH={shlex.quote("/home/alon/Code/RMG-Py-t3pes")}', script)
+        # The re-export must come after the unset, so it is not clobbered.
+        unset_idx = script.index('unset ')
+        export_idx = script.index('export PYTHONPATH=')
+        self.assertLess(unset_idx, export_idx)
+
+    def test_no_pythonpath_export_when_rmg_path_falsy(self):
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PYTHON': self.fake_rmg_python,
+                               'RMG_PATH': None}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertNotIn('export PYTHONPATH=', script)
+
+
 if __name__ == '__main__':
     unittest.main()
