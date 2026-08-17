@@ -10,7 +10,7 @@ import shutil
 import tempfile
 import unittest
 
-from arc.common import ARC_PATH, ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, save_yaml_file
 from arc.exceptions import InputError
 from arc.level import Level
 from arc.reaction import ARCReaction
@@ -143,6 +143,51 @@ class TestArkaneAdapter(unittest.TestCase):
             self.fail(f'Arkane did not generate {plot_path}.\nstdout.log:\n{stdout_text}\nstderr.log:\n{stderr_text}')
         self.assertTrue(os.path.isfile(plot_path))
         self.assertAlmostEqual(self.ic3h7.e0, 6.75565e+07)
+
+    def test_parse_arkane_thermo_output_recovers_missing_thermo_container(self):
+        """
+        Test that ``parse_arkane_thermo_output`` does not crash when a species reaches the
+        result-assignment loop with ``spc.thermo`` set to ``None`` (rather than the
+        ``ARCSpecies.__init__`` default of a ``ThermoData`` instance), and that a well-formed
+        sibling species (with the default ``ThermoData``) is populated correctly regardless.
+
+        This is a regression test for a real campaign crash: ``arc/statmech/arkane.py`` assumed
+        ``spc.thermo`` is never ``None`` at this point, even though other call sites in the
+        codebase (``ArkaneAdapter.set_reaction_dh_rxn``, ``processor.process_arc_project``,
+        ``output.get_species_output_dict``) already guard against exactly that.
+        """
+        tmpdir = tempfile.mkdtemp(prefix='test_Arkane_thermo_none_')
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        output_dir = os.path.join(tmpdir, 'output')
+        calcs_dir = os.path.join(tmpdir, 'calcs')
+        statmech_dir = os.path.join(calcs_dir, 'statmech', 'thermo')
+        os.makedirs(statmech_dir)
+        with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+            f.write('')
+        content = {
+            'none_thermo': {'H298': 1.0, 'S298': 2.0, 'data': 'NASA()'},
+            'ok_thermo': {'H298': 3.0, 'S298': 4.0, 'data': 'NASA()'},
+        }
+        save_yaml_file(path=os.path.join(statmech_dir, 'thermo.yaml'), content=content)
+
+        spc_none = ARCSpecies(label='none_thermo', smiles='O')
+        spc_none.thermo = None
+        spc_ok = ARCSpecies(label='ok_thermo', smiles='C')
+        arkane = ArkaneAdapter(output_directory=output_dir,
+                               calcs_directory=calcs_dir,
+                               output_dict=dict(),
+                               bac_type=None,
+                               species=[spc_none, spc_ok])
+
+        with patch('arc.statmech.arkane.execute_command', return_value=('', '')):
+            arkane.parse_arkane_thermo_output(statmech_dir)
+
+        self.assertIsNotNone(spc_none.thermo)
+        self.assertEqual(spc_none.thermo.H298, 1.0)
+        self.assertEqual(spc_none.thermo.S298, 2.0)
+        self.assertIsNotNone(spc_ok.thermo)
+        self.assertEqual(spc_ok.thermo.H298, 3.0)
+        self.assertEqual(spc_ok.thermo.S298, 4.0)
 
     def test_level_to_str(self):
         """Test the _level_to_str function"""

@@ -20,6 +20,8 @@ from arc.job.local import execute_command
 from arc.statmech.adapter import StatmechAdapter
 from arc.statmech.factory import register_statmech_adapter
 
+from arc.species.species import ThermoData
+
 if TYPE_CHECKING:
     from arc.level import Level
     from arc.reaction import ARCReaction
@@ -506,6 +508,24 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                 logger.info(header)
                 for lbl in valid_labels:
                     spc = self.species_dict[lbl]
+                    if spc.thermo is None:
+                        # ``ARCSpecies.__init__`` sets ``self.thermo = ThermoData()`` unconditionally,
+                        # so no species ARC builds itself can reach this loop with ``None``. A caller's
+                        # subclass can, though, by re-assigning the attribute after ``super().__init__()``
+                        # -- which is exactly how T3's ``T3Species`` produced the crash this guards
+                        # (fixed at the source in T3 PR #187). Other call sites across the codebase
+                        # (e.g., ``ArkaneAdapter.set_reaction_dh_rxn``, ``processor.process_arc_project``,
+                        # ``output.get_species_output_dict``) already tolerate ``None`` here.
+                        #
+                        # Supply the container rather than crash: the Arkane results being assigned are
+                        # real and already computed, and losing them means discarding converged QM jobs
+                        # at the reporting stage. Warn rather than repair silently, so a caller
+                        # re-introducing this stays visible instead of being absorbed.
+                        logger.warning(f'Species {lbl} reached the Arkane thermo assignment loop with '
+                                       f'.thermo set to None, instead of the ThermoData() instance '
+                                       f'ARCSpecies.__init__() assigns. Supplying an empty ThermoData() '
+                                       f'container so the computed results are not lost.')
+                        spc.thermo = ThermoData()
                     spc.thermo.H298 = content[lbl]['H298']
                     spc.thermo.S298 = content[lbl]['S298']
                     spc.thermo.data = content[lbl]['data']
