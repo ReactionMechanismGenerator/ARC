@@ -361,5 +361,53 @@ class OrcaParser(ESSAdapter, ABC):
                     return f'ORCA {m.group(1)}'
         return None
 
+    def parse_bond_orders(self) -> np.ndarray | None:
+        """
+        Parse the Mayer bond order matrix from an Orca log file.
+
+        Orca prints a "MAYER POPULATION ANALYSIS" section by default. It consists of a per-atom
+        table (from which the number of atoms and the Mayer total valence ``VA`` are taken) followed
+        by a sparse list of atom pairs, e.g. ``B(  0-O ,  1-C ) :   1.0172``. Note that Orca only
+        prints pairs above a threshold (0.1 by default), so bond orders below that threshold are
+        reported here as zero. The last such section in the file is used.
+
+        Returns: np.ndarray | None
+            A symmetric NxN matrix of Mayer bond orders in the log file's atom order.
+            The diagonal holds the Mayer atomic valence of each atom.
+            ``None`` if the log file does not contain a Mayer population analysis.
+        """
+        lines = _get_lines_from_file(self.log_file_path)
+        start = None
+        for i in reversed(range(len(lines))):
+            if 'MAYER POPULATION ANALYSIS' in lines[i]:
+                start = i + 1
+                break
+        if start is None:
+            return None
+        atom_pattern = re.compile(r'^\s*(\d+)\s+[A-Za-z]{1,3}\s+(-?\d+\.\d+(?:\s+-?\d+\.\d+){5})\s*$')
+        bond_pattern = re.compile(r'B\(\s*(\d+)-\w+\s*,\s*(\d+)-\w+\s*\)\s*:\s*(-?\d+\.\d+)')
+        valences, bonds = dict(), dict()
+        for line in lines[start:]:
+            if 'TIMINGS' in line:
+                break
+            match = atom_pattern.match(line)
+            if match is not None:
+                # The six columns are NA, ZA, QA, VA, BVA and FA; VA is the Mayer total valence.
+                valences[int(match.group(1))] = float(match.group(2).split()[3])
+                continue
+            for i, j, value in bond_pattern.findall(line):
+                bonds[(int(i), int(j))] = float(value)
+        if not valences:
+            return None
+        n = max(valences.keys()) + 1
+        bond_orders = np.zeros((n, n), np.float64)
+        for i, valence in valences.items():
+            bond_orders[i, i] = valence
+        for (i, j), value in bonds.items():
+            if i >= n or j >= n:
+                return None
+            bond_orders[i, j] = bond_orders[j, i] = value
+        return bond_orders
+
 
 register_ess_adapter('orca', OrcaParser)
