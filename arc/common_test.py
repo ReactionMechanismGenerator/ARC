@@ -1453,6 +1453,34 @@ class TestCommon(unittest.TestCase):
         time_str = '190:40:10'
         self.assertAlmostEqual(common.convert_to_hours(time_str), 190.66944444444442)
 
+    def test_get_ts_validation_comment(self):
+        """
+        Test the get_ts_validation_comment() function.
+        """
+        self.assertIsNone(common.get_ts_validation_comment(None))
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        self.assertIsNone(common.get_ts_validation_comment(ts))
+        ts.ts_checks['IRC'] = True
+        self.assertIsNone(common.get_ts_validation_comment(ts))
+        ts.ts_checks['IRC'] = None
+        ts.ts_checks['NMD'] = False
+        self.assertIsNone(common.get_ts_validation_comment(ts))
+        ts.ts_checks['IRC'] = False
+        comment = common.get_ts_validation_comment(ts)
+        self.assertIn(common.TS_IRC_FAILED_MARKER, comment)
+        self.assertIn('NMD', comment)
+        ts.ts_checks['NMD'] = True
+        comment = common.get_ts_validation_comment(ts)
+        self.assertIn(common.TS_IRC_FAILED_MARKER, comment)
+        self.assertNotIn('NMD', comment)
+        ts.ts_checks['e_elect'] = False
+        ts.ts_checks['E0'] = True
+        self.assertNotIn('e_elect', common.get_ts_validation_comment(ts))
+        ts.ts_checks['E0'] = False
+        comment = common.get_ts_validation_comment(ts)
+        self.assertIn('e_elect', comment)
+        self.assertIn('E0', comment)
+
     def test_calculate_arrhenius_rate_coefficient(self):
         """
         Test the calculate_arrhenius_rate() function.

@@ -10,7 +10,7 @@ import shutil
 import tempfile
 import unittest
 
-from arc.common import ARC_PATH, ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, TS_IRC_FAILED_MARKER
 from arc.exceptions import InputError
 from arc.level import Level
 from arc.reaction import ARCReaction
@@ -429,6 +429,23 @@ class TestArkaneAdapter(unittest.TestCase):
 class TestArkaneOutputParsing(unittest.TestCase):
     """Tests for parsing functions that read Arkane output.py content."""
 
+    kinetics_output_content = """
+conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)
+
+kinetics(
+    label = 'X <=> Y',
+    kinetics = Arrhenius(
+        A = (5.0, 's^-1'),
+        n = 1.0,
+        Ea = (20.0, 'kJ/mol'),
+        T0 = (1, 'K'),
+        Tmin = (300, 'K'),
+        Tmax = (2000, 'K'),
+        comment = 'Fitted to 10 data points; dA = *|/ 1.1, dn = +|- 0.01, dEa = +|- 0.1 kJ/mol',
+    ),
+)
+"""
+
     def test_parse_e0(self):
         """Test parse_e0 extracts E0 from conformer blocks."""
         from arc.statmech.arkane import parse_e0
@@ -560,6 +577,38 @@ kinetics(
         self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
         self.assertAlmostEqual(rxn.kinetics['n'], 1.0)
         self.assertNotIn('dA', rxn.kinetics)
+
+    def test_parse_reaction_kinetics_marks_an_irc_invalid_ts(self):
+        """Kinetics of a TS that failed the IRC check are reported, and are labeled as invalid."""
+        from arc.statmech.arkane import parse_reaction_kinetics
+        from unittest.mock import MagicMock
+        content = self.kinetics_output_content
+        rxn = MagicMock()
+        rxn.label = 'X <=> Y'
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True)
+        rxn.ts_species.ts_checks['IRC'] = False
+        rxn.ts_species.ts_checks['NMD'] = True
+        parse_reaction_kinetics(rxn, content)
+        self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
+        self.assertAlmostEqual(rxn.kinetics['Ea'][0], 20.0)
+        self.assertIn(TS_IRC_FAILED_MARKER, rxn.kinetics['ts_validation'])
+        self.assertIn(TS_IRC_FAILED_MARKER, rxn.kinetics['comment'])
+        self.assertIn('Fitted to 10 data points', rxn.kinetics['comment'])
+
+    def test_parse_reaction_kinetics_does_not_mark_an_unchecked_or_valid_ts(self):
+        """Kinetics of a TS for which the IRC check was not performed or was passed are not labeled."""
+        from arc.statmech.arkane import parse_reaction_kinetics
+        from unittest.mock import MagicMock
+        content = self.kinetics_output_content
+        for irc_value in [None, True]:
+            rxn = MagicMock()
+            rxn.label = 'X <=> Y'
+            rxn.ts_species = ARCSpecies(label='TS0', is_ts=True)
+            rxn.ts_species.ts_checks['IRC'] = irc_value
+            parse_reaction_kinetics(rxn, content)
+            self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
+            self.assertNotIn('ts_validation', rxn.kinetics)
+            self.assertNotIn(TS_IRC_FAILED_MARKER, rxn.kinetics['comment'])
 
     def test_parse_thermo_data_block_scalars_are_float(self):
         """Verify Tmin, Tmax, H298, S298 are parsed as floats, not strings."""
