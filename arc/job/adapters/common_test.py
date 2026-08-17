@@ -10,18 +10,14 @@ import shutil
 import unittest
 
 import arc.job.adapters.common as common
-from arc.common import ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, get_test_project_name
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.adapters.molpro import MolproAdapter
 from arc.level import Level
 from arc.species import ARCSpecies
 
-# Scratch project directories, scoped to the pytest-xdist worker: tearDownClass rmtree's these trees,
-# so a shared path lets one worker delete files out from under another worker's test. The base names
-# are also kept distinct from gaussian_test.py's, so the two modules cannot collide.
-_WORKER = os.environ.get('PYTEST_XDIST_WORKER', 'main')
-GAUSSIAN_PROJECT_DIR = os.path.join(ARC_TESTING_PATH, f'test_GaussianAdapter_common_{_WORKER}')
-MOLPRO_PROJECT_DIR = os.path.join(ARC_TESTING_PATH, f'test_MolproAdapter_common_{_WORKER}')
+GAUSSIAN_PROJECT_DIR = os.path.join(ARC_TESTING_PATH, get_test_project_name('test_GaussianAdapter_common'))
+MOLPRO_PROJECT_DIR = os.path.join(ARC_TESTING_PATH, get_test_project_name('test_MolproAdapter_common'))
 
 
 class TestJobCommon(unittest.TestCase):

@@ -12,7 +12,7 @@ import unittest
 import unittest.mock
 import pytest
 
-from arc.common import ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, get_test_project_name
 from arc.job.adapters.ts.orca_neb import OrcaNEBAdapter
 from arc.level import Level
 from arc.reaction import ARCReaction
@@ -31,11 +31,8 @@ class TestOrcaNEB(unittest.TestCase):
         """
         cls.maxDiff = None
         
-        # setUpClass runs once per pytest-xdist worker that receives any test of this class, so a
-        # single shared path would let one worker rmtree the project directory out from under
-        # another worker's running test. Scope the directory to the worker to keep them disjoint.
         cls.project_directory = os.path.join(ARC_TESTING_PATH,
-                                             f'test_OrcaNEBAdapter_{os.environ.get("PYTEST_XDIST_WORKER", "main")}')
+                                             get_test_project_name('test_OrcaNEBAdapter'))
         if os.path.exists(cls.project_directory):
             shutil.rmtree(cls.project_directory, ignore_errors=True)
         cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)

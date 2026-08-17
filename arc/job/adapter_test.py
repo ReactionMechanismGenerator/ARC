@@ -15,7 +15,7 @@ import shutil
 import unittest
 from unittest.mock import patch
 
-from arc.common import ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, get_test_project_name
 from arc.imports import settings
 from arc.job.adapter import JobAdapter, JobEnum, JobTypeEnum, JobExecutionTypeEnum
 from arc.job.adapters.gaussian import GaussianAdapter
@@ -28,15 +28,11 @@ from arc.job.ssh_pool import (
 from arc.level import Level
 from arc.species import ARCSpecies
 
-# Scratch project directories, scoped to the pytest-xdist worker: the class cleanups rmtree these
-# trees, so a shared path lets one worker delete fixtures out from under another worker's test.
-_WORKER = os.environ.get('PYTEST_XDIST_WORKER', 'main')
-JOB_ADAPTER_DIRS = tuple(f'test_JobAdapter{suffix}_{_WORKER}'
-                         for suffix in ('', '_scan', '_ServerTimeLimit'))
-JOB_ADAPTER_DIR, JOB_ADAPTER_SCAN_DIR, JOB_ADAPTER_STL_DIR = (
-    os.path.join(ARC_TESTING_PATH, name) for name in JOB_ADAPTER_DIRS)
-
 servers, submit_filenames = settings['servers'], settings['submit_filenames']
+
+JOB_ADAPTER_DIRS = tuple(os.path.join(ARC_TESTING_PATH, get_test_project_name(f'test_JobAdapter{suffix}'))
+                         for suffix in ('', '_scan', '_ServerTimeLimit'))
+JOB_ADAPTER_DIR, JOB_ADAPTER_SCAN_DIR, JOB_ADAPTER_STL_DIR = JOB_ADAPTER_DIRS
 
 
 class TestEnumerationClasses(unittest.TestCase):
@@ -103,8 +99,8 @@ class TestJobAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        for dir_name in JOB_ADAPTER_DIRS:
-            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, dir_name), ignore_errors=True)
+        for dir_path in JOB_ADAPTER_DIRS:
+            cls.addClassCleanup(shutil.rmtree, dir_path, ignore_errors=True)
         cls.job_1 = GaussianAdapter(execution_type='queue',
                                     job_type='conf_opt',
                                     level=Level(method='cbs-qb3'),

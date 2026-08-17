@@ -10,18 +10,14 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, get_test_project_name
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames, servers, submit_filenames
 from arc.species import ARCSpecies
 import arc.job.trsh as trsh
 
-# Scratch project directory, scoped to the pytest-xdist worker: the teardowns rmtree this tree, so a
-# shared path lets one worker delete files out from under another worker's test. The base name is also
-# kept distinct from common_test.py's, so the two modules cannot collide.
-_WORKER = os.environ.get('PYTEST_XDIST_WORKER', 'main')
-PROJECT_DIR = os.path.join(ARC_TESTING_PATH, f'test_GaussianAdapter_{_WORKER}')
+PROJECT_DIR = os.path.join(ARC_TESTING_PATH, get_test_project_name('test_GaussianAdapter'))
 
 
 class TestGaussianAdapter(unittest.TestCase):
@@ -535,7 +531,7 @@ class TestGaussianAdapter(unittest.TestCase):
         expected_memory = math.floor(math.ceil(14 * 1024 * 1.1) * 0.9)
         self.assertEqual(self.job_1.input_file_memory, expected_memory)
         self.assertEqual(self.job_2.input_file_memory, expected_memory)
-    
+
     def test_write_input_file_multi(self):
         """Test writing Gaussian input files"""
         self.job_multi.write_input_file()
@@ -1207,7 +1203,7 @@ H       0.04768200    1.19305700   -0.88359100
                               job_type='opt',
                               level=rebuilt_level,
                               project='test',
-                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                              project_directory=PROJECT_DIR,
                               species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                               testing=True,
                               )

@@ -11,7 +11,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, get_test_project_name
 from arc.job.adapters.orca import (OrcaAdapter,
                                    _format_orca_basis,
                                    _format_orca_basis_token,
@@ -21,12 +21,7 @@ from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames
 from arc.species import ARCSpecies
 
-# Writable scratch project directory, scoped to the pytest-xdist worker.
-# setUpClass runs once per worker that receives any test of this class, and tearDownClass rmtree's this
-# tree, so a path shared between workers lets one worker delete the input files out from under another
-# worker's running test.
-_WORKER = os.environ.get('PYTEST_XDIST_WORKER', 'main')
-PROJECT_DIR = os.path.join(ARC_TESTING_PATH, f'test_OrcaAdapter_{_WORKER}')
+PROJECT_DIR = os.path.join(ARC_TESTING_PATH, get_test_project_name('test_OrcaAdapter'))
 
 
 class TestOrcaAdapter(unittest.TestCase):
@@ -518,7 +513,7 @@ end
                           job_type='opt',
                           level=level,
                           project='test',
-                          project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                          project_directory=PROJECT_DIR,
                           species=[ARCSpecies(label='CH3O',
                                               xyz="""C       0.03807240    0.00035621   -0.00484242
                                                      O       1.35198769    0.01264937   -0.17195885
