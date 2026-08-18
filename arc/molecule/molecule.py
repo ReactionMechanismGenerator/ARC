@@ -1435,50 +1435,72 @@ class Molecule(Graph):
         for atom in hydrogens:
             self.remove_atom(atom)
 
-    def connect_the_dots(self, critical_distance_factor=0.45, raise_atomtype_exception=True):
+    def connect_the_dots(self, critical_distance_factor: float = 0.45, raise_atomtype_exception: bool = True) -> None:
         """
         Delete all bonds, and set them again based on the Atoms' coords.
         Does not detect bond type.
+
+        Args:
+            critical_distance_factor (float): An additive fudge factor (in Angstrom) applied to the sum of
+                covalent radii when determining the upper distance limit for a bond.
+            raise_atomtype_exception (bool): Whether to raise an exception if an atom type cannot be perceived.
+
+        Raises:
+            ValueError: If an atom has non-finite (NaN or infinite) coordinates, or coordinates
+                that are not 3-dimensional.
         """
-        cython.declare(criticalDistance=float, i=int, atom1=Atom, atom2=Atom,
-                       bond=Bond, atoms=list, zBoundary=float)
-        # groupBond=GroupBond,
         self._fingerprint = None
 
         atoms = self.vertices
 
-        # Ensure there are coordinates to work with
-        for atom in atoms:
-            assert len(atom.coords) != 0
+        # Ensure there are 3D coordinates to work with
+        for index, atom in enumerate(atoms):
+            if len(atom.coords) != 3:
+                raise ValueError(f'Expected 3D coordinates for atom {index} ({atom.element.symbol}) '
+                                 f'in connect_the_dots, got coordinates of shape {np.shape(atom.coords)}.')
 
         # If there are any bonds, remove them
+        bonds = set()
         for atom1 in atoms:
-            for bond in self.get_bonds(atom1):
-                self.remove_edge(bond)
+            bonds.update(self.get_bonds(atom1).values())
+        for bond in bonds:
+            self.remove_edge(bond)
 
         # Sort atoms by distance on the z-axis
         sorted_atoms = sorted(atoms, key=lambda x: x.coords[2])
+        num_atoms = len(sorted_atoms)
 
-        for i, atom1 in enumerate(sorted_atoms):
-            for atom2 in sorted_atoms[i + 1:]:
-                # Set upper limit for bond distance
-                critical_distance = (
-                    atom1.element.cov_radius + atom2.element.cov_radius + critical_distance_factor) ** 2
+        if num_atoms:
+            coords = np.array([atom.coords for atom in sorted_atoms])
+            finite_atoms = np.isfinite(coords).all(axis=1)
+            if not finite_atoms.all():
+                bad_atom = sorted_atoms[int(np.argmax(~finite_atoms))]
+                index = next(k for k, atom in enumerate(atoms) if atom is bad_atom)
+                raise ValueError(f'Non-finite coordinates for atom {index} ({bad_atom.element.symbol}) '
+                                 f'in connect_the_dots: {bad_atom.coords}.')
 
-                # First atom that is more than 4.0 Anstroms away in the z-axis, break the loop
-                # Atoms are sorted along the z-axis, so all following atoms should be even further
-                z_boundary = (atom1.coords[2] - atom2.coords[2]) ** 2
-                if z_boundary > 16.0:
-                    break
+        if num_atoms > 1:
+            cov_radii = np.array([atom.element.cov_radius for atom in sorted_atoms])
 
-                distance_squared = sum((atom1.coords - atom2.coords) ** 2)
+            # Accumulate one axis at a time, in axis order, to avoid allocating an (N, N, num_axes)
+            # cube while keeping the same floating-point result as summing over its last axis.
+            distance_squared = np.zeros((num_atoms, num_atoms))
+            z_boundary = None
+            for axis in range(coords.shape[1]):
+                delta = coords[:, axis][:, np.newaxis] - coords[np.newaxis, :, axis]
+                delta **= 2
+                distance_squared += delta
+                if axis == 2:
+                    z_boundary = delta
+            critical_distance = (cov_radii[:, np.newaxis] + cov_radii[np.newaxis, :] + critical_distance_factor) ** 2
 
-                if distance_squared > critical_distance or distance_squared < 0.40:
-                    continue
-                else:
-                    # groupBond = GroupBond(atom1, atom2, [1,2,3,1.5])
-                    bond = Bond(atom1, atom2, 1)
-                    self.add_bond(bond)
+            mask = (z_boundary <= 16.0) & (distance_squared <= critical_distance) & (distance_squared >= 0.40)
+            mask &= np.arange(num_atoms)[:, np.newaxis] < np.arange(num_atoms)[np.newaxis, :]
+
+            for i, j in zip(*np.nonzero(mask)):
+                bond = Bond(sorted_atoms[i], sorted_atoms[j], 1)
+                self.add_bond(bond)
+
         self.update_atomtypes(raise_exception=raise_atomtype_exception)
 
     def update_atomtypes(self, log_species=True, raise_exception=True):
