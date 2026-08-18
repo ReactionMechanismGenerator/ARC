@@ -415,7 +415,7 @@ are added together to compare against the absolute difference between (value in 
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.species.converter.compare_confs_fl">
-<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">compare_confs_fl</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conf2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rtol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.01</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#compare_confs_fl"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.compare_confs_fl" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">compare_confs_fl</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conf2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rtol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.01</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fl_distance1</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dmat1</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#compare_confs_fl"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.compare_confs_fl" title="Link to this definition"></a></dt>
 <dd><p>Compare two Cartesian coordinates representing conformers using first and last atom distances. If the distances are the same,
 the distance matrices are computed and returned.</p>
 <p>The relative difference (<code class="docutils literal notranslate"><span class="pre">rtol</span></code> * fl_distance1) is compared against the absolute difference abs(fl_distance1 - fl_distance2).</p>
@@ -425,6 +425,13 @@ the distance matrices are computed and returned.</p>
 <li><p><strong>xyz1</strong> (<em>dict</em>) – Conformer 1.</p></li>
 <li><p><strong>conf2</strong> (<em>dict</em>) – Conformer 2.</p></li>
 <li><p><strong>rtol</strong> (<em>float</em>) – The relative tolerance parameter (see Notes).</p></li>
+<li><p><strong>fl_distance1</strong> (<em>float</em><em>, </em><em>optional</em>) – A precomputed first/last atom distance for <code class="docutils literal notranslate"><span class="pre">xyz1</span></code>. Since <code class="docutils literal notranslate"><span class="pre">xyz1</span></code> is
+typically invariant across repeated calls (e.g., a caller scanning many
+<code class="docutils literal notranslate"><span class="pre">conf2</span></code> candidates against the same <code class="docutils literal notranslate"><span class="pre">xyz1</span></code>), passing this in avoids
+recomputing it on every call.</p></li>
+<li><p><strong>dmat1</strong> (<em>np.ndarray</em><em>, </em><em>optional</em>) – A precomputed distance matrix for <code class="docutils literal notranslate"><span class="pre">xyz1</span></code>, passed in for the same reason
+as <code class="docutils literal notranslate"><span class="pre">fl_distance1</span></code>. Only used (and only needs to be provided) once a prior
+call has already found the two conformers similar.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -960,11 +967,12 @@ permutation of <code class="docutils literal notranslate"><span class="pre">rang
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>ConverterError</strong> – if <code class="docutils literal notranslate"><span class="pre">xyz</span></code> is of wrong type.</p>
+<dd class="field-even"><p><strong>ConverterError</strong> – if <code class="docutils literal notranslate"><span class="pre">xyz</span></code> is of wrong type, or if the number of coordinates in <code class="docutils literal notranslate"><span class="pre">xyz</span></code> does not
+    match the number of atoms in <code class="docutils literal notranslate"><span class="pre">mol</span></code>.</p>
 </dd>
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p><ul class="simple">
-<li><p>Conformer: An RDKit Conformer object.</p></li>
+<li><p>Conformer: An RDKit Conformer object with atom positions set directly from <code class="docutils literal notranslate"><span class="pre">xyz</span></code>.</p></li>
 <li><p>RDMol: An RDKit Molecule object.</p></li>
 </ul>
 </p>

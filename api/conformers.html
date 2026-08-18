@@ -217,7 +217,7 @@ while atoms in Molecules are 0-indexed.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.species.conformers.change_dihedrals_and_force_field_it">
-<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">change_dihedrals_and_force_field_it</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_dihedrals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#change_dihedrals_and_force_field_it"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.change_dihedrals_and_force_field_it" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">change_dihedrals_and_force_field_it</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_dihedrals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#change_dihedrals_and_force_field_it"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.change_dihedrals_and_force_field_it" title="Link to this definition"></a></dt>
 <dd><p>Change dihedrals of specified torsions according to the new dihedrals specified, and get FF energies.</p>
 <p>Example:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">torsions</span> <span class="o">=</span> <span class="p">[(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="p">(</span><span class="mi">9</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">1</span><span class="p">)]</span>
@@ -228,6 +228,10 @@ while atoms in Molecules are 0-indexed.</p>
 We iterate through new_dihedrals. The torsions are set accordingly and the energy and xyz of the newly
 generated conformer are kept.
 We assume that each list entry in new_dihedrals is of the length of the torsions list (2 in the example).</p>
+<p>Note that each requested dihedral is a <em>seed</em> for the force field minimization, not a constraint: the
+torsion is set rigidly and the resulting geometry is then relaxed, so the returned conformer’s actual
+dihedral may differ from the requested one (the minimum of a torsional well does not generally sit on
+the sampling grid). The returned xyz and energy always describe the same relaxed structure.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -236,7 +240,11 @@ We assume that each list entry in new_dihedrals is of the length of the torsions
 <li><p><strong>xyz</strong> (<em>dict</em>) – The base 3D geometry to be changed.</p></li>
 <li><p><strong>torsions</strong> (<em>list</em>) – Entries are torsion tuples for which the dihedral will be changed relative to xyz.</p></li>
 <li><p><strong>new_dihedrals</strong> (<em>list</em>) – Entries are same size lists of dihedral angles (floats) corresponding to the torsions.</p></li>
-<li><p><strong>optimize</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to optimize the coordinates using FF. True to optimize.</p></li>
+<li><p><strong>optimize</strong> (<em>bool</em><em>, </em><em>optional</em>) – Deprecated and ignored. Kept only so that legacy positional calls
+(which used to bind this argument to the removed <code class="docutils literal notranslate"><span class="pre">optimize</span></code> parameter)
+do not silently corrupt <code class="docutils literal notranslate"><span class="pre">force_field</span></code>. The returned geometry is always
+the FF-optimized one, matching the returned energy. If a caller passes a
+value explicitly, a deprecation warning is logged.</p></li>
 <li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
 </ul>
 </dd>
@@ -324,7 +332,7 @@ until convergence.</p>
 <li><p><strong>multiple_sampling_points</strong> (<em>list</em>) – Entries are lists of dihedral angles (sampling points), respectively correspond
 to torsions in multiple_tors.</p></li>
 <li><p><strong>len_conformers</strong> (<em>int</em><em>, </em><em>optional</em>) – The length of the existing conformers list (for consecutive numbering).</p></li>
-<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – An energy threshold (in kJ/mol) above which wells in a torsion
+<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – An energy threshold (in kcal/mol) above which wells in a torsion
 will not be considered.</p></li>
 <li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
 <li><p><strong>max_combination_iterations</strong> (<em>int</em><em>, </em><em>optional</em>) – The max num of times to iteratively search for the lowest conformer.</p></li>
@@ -368,7 +376,7 @@ If None, the plot will not be shown (nor saved).</p></li>
 <li><p><strong>max_combination_iterations</strong> (<em>int</em><em>, </em><em>optional</em>) – The max num of times to iteratively search for the lowest conformer.</p></li>
 <li><p><strong>diastereomers</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are xyz’s in a dictionary format or conformer structures
 representing specific diastereomers to keep.</p></li>
-<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – An energy threshold (in kJ/mol) above which wells in a torsion
+<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – An energy threshold (in kcal/mol) above which wells in a torsion
 will not be considered.</p></li>
 </ul>
 </dd>
@@ -666,7 +674,7 @@ considering symmetry but not considering atom collisions.</p></li>
 <li><p><strong>multiple_sampling_points</strong> (<em>list</em>) – Entries are lists of dihedral angles (sampling points), respectively correspond
 to torsions in multiple_tors.</p></li>
 <li><p><strong>len_conformers</strong> (<em>int</em><em>, </em><em>optional</em>) – The length of the existing conformers list (for consecutive numbering).</p></li>
-<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – An energy threshold (in kJ/mol) above which wells in a torsion
+<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – An energy threshold (in kcal/mol) above which wells in a torsion
 will not be considered.</p></li>
 <li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
 <li><p><strong>max_combination_iterations</strong> (<em>int</em><em>, </em><em>optional</em>) – The max num of times to iteratively search for the lowest conformer.</p></li>
@@ -706,9 +714,9 @@ rotation symmetry numbers (sigma).</p></li>
 <li><p><strong>multiplicity</strong> (<em>int</em><em>, </em><em>optional</em>) – The species multiplicity. Used to perceive a molecule from xyz.</p></li>
 <li><p><strong>num_confs_to_generate</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of conformers to generate (can be determined automatically)</p></li>
 <li><p><strong>n_confs</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of conformers to return.</p></li>
-<li><p><strong>e_confs</strong> (<em>float</em><em>, </em><em>optional</em>) – The energy threshold in kJ/mol above the lowest energy conformer
+<li><p><strong>e_confs</strong> (<em>float</em><em>, </em><em>optional</em>) – The energy threshold in kcal/mol above the lowest energy conformer
 below which all (unique) generated conformers will be returned.</p></li>
-<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – Energy threshold (in kJ/mol) above which wells will not be considered.</p></li>
+<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – Energy threshold (in kcal/mol) above which wells will not be considered.</p></li>
 <li><p><strong>smeared_scan_res</strong> (<em>float</em><em>, </em><em>optional</em>) – The resolution (in degrees) for scanning smeared wells.</p></li>
 <li><p><strong>combination_threshold</strong> (<em>int</em><em>, </em><em>optional</em>) – A threshold below which all combinations will be generated.</p></li>
 <li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use (MMFF94, MMFF94s, UFF, GAFF).</p></li>
@@ -841,7 +849,7 @@ The coordinates are returned in the order of atoms in mol.</p>
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p><ul class="simple">
 <li><p>Entries are xyz coordinates, each in a dict format.</p></li>
-<li><p>Entries are the FF energies (in kJ/mol).</p></li>
+<li><p>Entries are the FF energies (in kcal/mol).</p></li>
 </ul>
 </p>
 </dd>
@@ -861,7 +869,7 @@ The coordinates are returned in the order of atoms in mol.</p>
 <li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
 <li><p><strong>confs</strong> (<em>dict</em><em>, </em><em>list</em>) – Entries are either conformer dictionaries or a length two list of xyz coordinates and energy</p></li>
 <li><p><strong>n</strong> (<em>int</em><em>, </em><em>optional</em>) – Number of lowest conformers to return.</p></li>
-<li><p><strong>e</strong> (<em>float</em><em>, </em><em>optional</em>) – The energy threshold above the lowest energy conformer in kJ/mol
+<li><p><strong>e</strong> (<em>float</em><em>, </em><em>optional</em>) – The energy threshold above the lowest energy conformer in kcal/mol
 below which all conformers will be returned.</p></li>
 <li><p><strong>energy</strong> (<em>str</em><em>, </em><em>optional</em>) – The energy attribute to search by. Currently only ‘FF energy’ is supported.</p></li>
 </ul>
@@ -1072,7 +1080,7 @@ but use OpenBabel to optimize them (RDKit doesn’t have GAFF).</p>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p><ul class="simple">
 <li><p>Entries are optimized xyz’s in a list format.</p></li>
-<li><p>Entries are float numbers representing the energies in kJ/mol.</p></li>
+<li><p>Entries are float numbers representing the energies in kcal/mol.</p></li>
 </ul>
 </p>
 </dd>
@@ -1101,7 +1109,7 @@ For method description, see <a class="reference external" href="https://openbabe
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p><ul class="simple">
 <li><p>Entries are optimized xyz’s in a list format.</p></li>
-<li><p>Entries are float numbers representing the energies in kJ/mol.</p></li>
+<li><p>Entries are float numbers representing the energies in kcal/mol.</p></li>
 </ul>
 </p>
 </dd>
@@ -1128,7 +1136,7 @@ This is a fallback method when RDKit fails to generate force field optimized con
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p><ul class="simple">
 <li><p>Entries are optimized xyz’s in a dictionary format.</p></li>
-<li><p>Entries are float numbers representing the energies (in kJ/mol).</p></li>
+<li><p>Entries are float numbers representing the energies (in kcal/mol).</p></li>
 </ul>
 </p>
 </dd>

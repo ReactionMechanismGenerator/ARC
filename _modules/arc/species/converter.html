@@ -110,7 +110,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">openbabel</span><span class="w"> </span><span class="kn">import</span> <span class="n">pybel</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">rdkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chem</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">rdkit.Chem</span><span class="w"> </span><span class="kn">import</span> <span class="n">rdMolTransforms</span> <span class="k">as</span> <span class="n">rdMT</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">rdkit.Chem</span><span class="w"> </span><span class="kn">import</span> <span class="n">AllChem</span><span class="p">,</span> <span class="n">SDWriter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rdkit.Chem</span><span class="w"> </span><span class="kn">import</span> <span class="n">SDWriter</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">rdkit.Chem.rdchem</span><span class="w"> </span><span class="kn">import</span> <span class="n">AtomValenceException</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.optimize</span><span class="w"> </span><span class="kn">import</span> <span class="n">brentq</span><span class="p">,</span> <span class="n">minimize</span>
 
@@ -485,8 +485,8 @@
     <span class="k">if</span> <span class="n">xyz_dict</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz_dict</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">(</span><span class="ow">not</span> <span class="n">val</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">xyz_dict</span><span class="o">.</span><span class="n">values</span><span class="p">()):</span>
         <span class="k">return</span> <span class="kc">None</span>
     <span class="n">xyz_dict</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz_dict</span><span class="p">)</span>
-    <span class="n">dmat</span> <span class="o">=</span> <span class="n">distance_matrix</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz_to_coords_list</span><span class="p">(</span><span class="n">xyz_dict</span><span class="p">)),</span>
-                           <span class="n">b</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz_to_coords_list</span><span class="p">(</span><span class="n">xyz_dict</span><span class="p">)))</span>
+    <span class="n">coords</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz_to_coords_list</span><span class="p">(</span><span class="n">xyz_dict</span><span class="p">))</span>
+    <span class="n">dmat</span> <span class="o">=</span> <span class="n">distance_matrix</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="n">coords</span><span class="p">,</span> <span class="n">b</span><span class="o">=</span><span class="n">coords</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">dmat</span></div>
 
 
@@ -1907,11 +1907,12 @@
 <span class="sd">        xyz (dict): The xyz coordinates of the conformer, atoms must be ordered as in ``mol``.</span>
 
 <span class="sd">    Raises:</span>
-<span class="sd">        ConverterError: if ``xyz`` is of wrong type.</span>
+<span class="sd">        ConverterError: if ``xyz`` is of wrong type, or if the number of coordinates in ``xyz`` does not</span>
+<span class="sd">                        match the number of atoms in ``mol``.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        tuple:</span>
-<span class="sd">            - Conformer: An RDKit Conformer object.</span>
+<span class="sd">            - Conformer: An RDKit Conformer object with atom positions set directly from ``xyz``.</span>
 <span class="sd">            - RDMol: An RDKit Molecule object.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">mol</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -1920,15 +1921,17 @@
         <span class="k">raise</span> <span class="n">ConverterError</span><span class="p">(</span><span class="s1">&#39;The xyz argument seem to be of wrong type. Expected a dictionary, &#39;</span>
                              <span class="s1">&#39;got</span><span class="se">\n</span><span class="si">{0}</span><span class="se">\n</span><span class="s1">which is a </span><span class="si">{1}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">xyz</span><span class="p">)))</span>
     <span class="n">rd_mol</span> <span class="o">=</span> <span class="n">to_rdkit_mol</span><span class="p">(</span><span class="n">mol</span><span class="o">=</span><span class="n">mol</span><span class="p">,</span> <span class="n">remove_h</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="n">AllChem</span><span class="o">.</span><span class="n">EmbedMolecule</span><span class="p">(</span><span class="n">rd_mol</span><span class="p">)</span>
-    <span class="k">except</span><span class="p">:</span>
-        <span class="k">pass</span>
-    <span class="n">conf</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="k">if</span> <span class="n">rd_mol</span><span class="o">.</span><span class="n">GetNumConformers</span><span class="p">():</span>
-        <span class="n">conf</span> <span class="o">=</span> <span class="n">rd_mol</span><span class="o">.</span><span class="n">GetConformer</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">rd_mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()):</span>
-            <span class="n">conf</span><span class="o">.</span><span class="n">SetAtomPosition</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">])</span>  <span class="c1"># reset atom coordinates</span>
+    <span class="n">num_atoms</span> <span class="o">=</span> <span class="n">rd_mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()</span>
+    <span class="n">num_coords</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">num_coords</span> <span class="o">!=</span> <span class="n">num_atoms</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">ConverterError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The number of coordinates (</span><span class="si">{</span><span class="n">num_coords</span><span class="si">}</span><span class="s1">) does not match the number of &#39;</span>
+                             <span class="sa">f</span><span class="s1">&#39;atoms in the molecule (</span><span class="si">{</span><span class="n">num_atoms</span><span class="si">}</span><span class="s1">).&#39;</span><span class="p">)</span>
+    <span class="n">rd_conf</span> <span class="o">=</span> <span class="n">Chem</span><span class="o">.</span><span class="n">Conformer</span><span class="p">(</span><span class="n">num_atoms</span><span class="p">)</span>
+    <span class="n">rd_conf</span><span class="o">.</span><span class="n">Set3D</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_atoms</span><span class="p">):</span>
+        <span class="n">rd_conf</span><span class="o">.</span><span class="n">SetAtomPosition</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">])</span>
+    <span class="n">conf_id</span> <span class="o">=</span> <span class="n">rd_mol</span><span class="o">.</span><span class="n">AddConformer</span><span class="p">(</span><span class="n">rd_conf</span><span class="p">,</span> <span class="n">assignId</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">conf</span> <span class="o">=</span> <span class="n">rd_mol</span><span class="o">.</span><span class="n">GetConformer</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="n">conf_id</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">conf</span><span class="p">,</span> <span class="n">rd_mol</span></div>
 
 
@@ -2168,6 +2171,8 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">compare_confs_fl</span><span class="p">(</span><span class="n">xyz1</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                      <span class="n">conf2</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                      <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.01</span><span class="p">,</span>
+                     <span class="n">fl_distance1</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="n">dmat1</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Compare two Cartesian coordinates representing conformers using first and last atom distances. If the distances are the same,</span>
@@ -2179,6 +2184,13 @@
 <span class="sd">        xyz1 (dict): Conformer 1.</span>
 <span class="sd">        conf2 (dict): Conformer 2.</span>
 <span class="sd">        rtol (float): The relative tolerance parameter (see Notes).</span>
+<span class="sd">        fl_distance1 (float, optional): A precomputed first/last atom distance for ``xyz1``. Since ``xyz1`` is</span>
+<span class="sd">                                        typically invariant across repeated calls (e.g., a caller scanning many</span>
+<span class="sd">                                        ``conf2`` candidates against the same ``xyz1``), passing this in avoids</span>
+<span class="sd">                                        recomputing it on every call.</span>
+<span class="sd">        dmat1 (np.ndarray, optional): A precomputed distance matrix for ``xyz1``, passed in for the same reason</span>
+<span class="sd">                                      as ``fl_distance1``. Only used (and only needs to be provided) once a prior</span>
+<span class="sd">                                      call has already found the two conformers similar.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        Tuple containing distances and matrices:</span>
@@ -2189,14 +2201,15 @@
     <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;fl_distance&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">conf2</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;fl_distance&#39;</span><span class="p">)</span>
     <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;dmat&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">conf2</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;dmat&#39;</span><span class="p">)</span>
     <span class="n">xyz1</span><span class="p">,</span> <span class="n">xyz2</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz1</span><span class="p">),</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;xyz&#39;</span><span class="p">])</span>
-    <span class="n">dmat1</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">fl_distance1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz1</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz1</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+    <span class="k">if</span> <span class="n">fl_distance1</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">fl_distance1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz1</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz1</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
     <span class="k">if</span> <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;fl_distance&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;fl_distance&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz2</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz2</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">fl_distance1</span><span class="p">,</span> <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;fl_distance&#39;</span><span class="p">],</span> <span class="n">rtol</span><span class="o">=</span><span class="n">rtol</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">fl_distance1</span><span class="p">,</span> <span class="n">dmat1</span><span class="p">,</span> <span class="n">conf2</span><span class="p">,</span> <span class="n">similar</span>
     <span class="n">similar</span> <span class="o">=</span> <span class="kc">True</span>
-    <span class="n">dmat1</span> <span class="o">=</span> <span class="n">xyz_to_dmat</span><span class="p">(</span><span class="n">xyz1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">dmat1</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">dmat1</span> <span class="o">=</span> <span class="n">xyz_to_dmat</span><span class="p">(</span><span class="n">xyz1</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;dmat&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;dmat&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">xyz_to_dmat</span><span class="p">(</span><span class="n">xyz2</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">fl_distance1</span><span class="p">,</span> <span class="n">dmat1</span><span class="p">,</span> <span class="n">conf2</span><span class="p">,</span> <span class="n">similar</span></div>
@@ -2271,12 +2284,14 @@
 <span class="sd">        tuple[dict[str, tuple]]: Conformers with distinctive geometries.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">xyzs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">xyzs</span><span class="p">)</span>
-    <span class="n">distinct_xyzs</span> <span class="o">=</span> <span class="p">[</span><span class="n">xyzs</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
-    <span class="k">for</span> <span class="n">xyz</span> <span class="ow">in</span> <span class="n">xyzs</span><span class="p">:</span>
-        <span class="n">rmsd_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">compare_confs</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">distinct_xyz</span><span class="p">,</span> <span class="n">rmsd_score</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">for</span> <span class="n">distinct_xyz</span> <span class="ow">in</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">distinct_xyzs</span><span class="p">)]</span>
-        <span class="k">if</span> <span class="nb">all</span><span class="p">([</span><span class="n">rmsd</span> <span class="o">&gt;</span> <span class="n">rmsd_threshold</span> <span class="k">for</span> <span class="n">rmsd</span> <span class="ow">in</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rmsd_list</span><span class="p">)]):</span>
-            <span class="n">distinct_xyzs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span>
-    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">distinct_xyzs</span><span class="p">)</span></div>
+    <span class="n">triu_dmats</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">triu</span><span class="p">(</span><span class="n">xyz_to_dmat</span><span class="p">(</span><span class="n">xyz</span><span class="p">))</span> <span class="k">for</span> <span class="n">xyz</span> <span class="ow">in</span> <span class="n">xyzs</span><span class="p">]</span>
+    <span class="n">distinct_indices</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">xyz</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">xyzs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="n">compare_confs</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">xyzs</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">rmsd_score</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">skip_conversion</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                             <span class="n">dmat1</span><span class="o">=</span><span class="n">triu_dmats</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">dmat2</span><span class="o">=</span><span class="n">triu_dmats</span><span class="p">[</span><span class="n">j</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">rmsd_threshold</span>
+               <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">distinct_indices</span><span class="p">)):</span>
+            <span class="n">distinct_indices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">xyzs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">distinct_indices</span><span class="p">)</span></div>
 
 
 
