@@ -30,7 +30,8 @@ from arc.common import (extremum_list,
                         sort_two_lists_by_the_first,
                         torsions_to_scans,
                         )
-from arc.exceptions import (InputError,
+from arc.exceptions import (DependencyError,
+                            InputError,
                             SchedulerError,
                             SpeciesError,
                             TrshError,
@@ -1855,10 +1856,9 @@ class Scheduler(object):
                     logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
                 else:
                     rxn.ts_species.tsg_spawned = True
-                    tsg_index = 0
+                    tsg_index, eligible_methods = 0, list()
+                    family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
                     for method in self.ts_adapters:
-                        family_known = (rxn.family is not None
-                                        and rxn.family in ts_adapters_by_rmg_family)
                         admit_unknown_family = (not family_known
                                                 and method in ts_adapters_for_unknown_unimolecular
                                                 and rxn.is_unimolecular())
@@ -1870,12 +1870,47 @@ class Scheduler(object):
                                 logger.info(f'Admitting TS adapter {method!r} for reaction {rxn.label} '
                                             f'via ts_adapters_for_unknown_unimolecular '
                                             f'(RMG family is {rxn.family!r}).')
-                            self.run_job(job_type='tsg',
-                                         job_adapter=method,
-                                         reactions=[rxn],
-                                         tsg=tsg_index,
-                                         )
+                            eligible_methods.append(method)
+                            try:
+                                self.run_job(job_type='tsg',
+                                             job_adapter=method,
+                                             reactions=[rxn],
+                                             tsg=tsg_index,
+                                             )
+                            except DependencyError as e:
+                                # An optional adapter's backend (e.g. KinBot, AutoTST) is not installed;
+                                # record it and carry on so one missing dependency can't abort the run.
+                                logger.error(f'The {method!r} TS search adapter is not available and '
+                                             f'was skipped for reaction {rxn.label}: {e}')
+                                if method not in rxn.ts_species.unsuccessful_methods:
+                                    rxn.ts_species.unsuccessful_methods.append(method)
+                                # Roll back the job run_job() registered before it raised, so a
+                                # never-run 'tsg<i>' entry isn't serialized and parsed as completed.
+                                if f'tsg{tsg_index}' in self.running_jobs.get(rxn.ts_label, list()):
+                                    self.running_jobs[rxn.ts_label].remove(f'tsg{tsg_index}')
+                                self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict()).pop(tsg_index, None)
+                                continue
                             tsg_index += 1
+                    if not tsg_index and not rxn.ts_species.ts_guesses:
+                        # No adapter ran and no user guess was given, and tsg_spawned is already
+                        # latched True, so warn explicitly rather than fail silently much later.
+                        eligible = ts_adapters_by_rmg_family.get(rxn.family) if family_known else None
+                        if eligible_methods:
+                            reason = (f'all of its eligible adapters {eligible_methods} are unavailable '
+                                      f'on this machine (see the errors above). Install one of them, or add '
+                                      f'an eligible adapter that is installed')
+                        else:
+                            reason = (f'none of the configured ts_adapters {self.ts_adapters} is eligible for it. '
+                                      + (f'Its RMG family {rxn.family!r} admits {eligible}; the two lists do '
+                                         f'not intersect.' if eligible is not None else
+                                         f'Its RMG family {rxn.family!r} is not in ts_adapters_by_rmg_family, '
+                                         f'and it did not qualify for {ts_adapters_for_unknown_unimolecular} '
+                                         f'(is_unimolecular={rxn.is_unimolecular()}).')
+                                      + ' Add an eligible adapter to ts_adapters')
+                        logger.warning(f'Not spawning any TS search job for reaction {rxn.label}: {reason} '
+                                       f'(in the input file or in ~/.arc/settings.py) to compute this TS. '
+                                       f'No TS guess will be generated and this reaction will be reported '
+                                       f'as not converged.')
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
                     rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])
