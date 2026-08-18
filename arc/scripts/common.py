@@ -17,9 +17,14 @@ def parse_command_line_arguments(command_line_args=None):
 
     Returns:
         The parsed command-line arguments by keywords.
+        ``args.file`` is the input YAML path (positional).
+        ``args.output`` is an optional output path (``-o``/``--output``); when omitted,
+        callers should default to overwriting ``args.file`` to preserve historical behavior.
     """
     parser = argparse.ArgumentParser(description='Automatic Rate Calculator (ARC)')
     parser.add_argument('file', metavar='FILE', type=str, nargs=1, help='a file with input information')
+    parser.add_argument('-o', '--output', type=str, default=None,
+                        help='optional output YAML path; if omitted, the input file is overwritten')
     args = parser.parse_args(command_line_args)
     args.file = args.file[0]
     return args

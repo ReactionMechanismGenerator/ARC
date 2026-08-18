@@ -15,16 +15,24 @@ from collections.abc import Callable
 
 import paramiko
 
-from arc.common import get_logger
-from arc.exceptions import InputError, ServerError
+from arc.common import get_logger, join_stream_lines
+from arc.exceptions import InputError, ServerError, SettingsError
 from arc.imports import settings
 
 
 logger = get_logger()
 
+AMBIGUOUS_RETURN_CODE = 1
+COMMAND_NOT_FOUND_RETURN_CODE = 127
+COMMAND_NOT_FOUND_TOLERANCE = datetime.timedelta(minutes=10)
+QUEUE_QUERY_TOLERANCE = datetime.timedelta(hours=3)
+QUEUE_QUERY_WARNING_INTERVAL = datetime.timedelta(minutes=10)
+
 check_status_command, delete_command, list_available_nodes_command, servers, submit_command, submit_filenames = \
     settings['check_status_command'], settings['delete_command'], settings['list_available_nodes_command'], \
     settings['servers'], settings['submit_command'], settings['submit_filenames']
+
+_queue_query_history = dict()
 
 
 def check_connections(function: Callable[..., Any]) -> Callable[..., Any]:
@@ -183,13 +191,18 @@ class SSHClient(object):
         Raises:
             ServerError: If the file cannot be downloaded with maximum times to try
         """
-        if not self._check_file_exists(remote_file_path):
-            # Check if a file exists
-            # This doesn't have a real impact now to avoid screwing up ESS trsh
-            # but introduce an opportunity for better troubleshooting.
-            # The current behavior is that if the remote path does not exist
-            # an empty file will be created at the local path
-            logger.debug(f'{remote_file_path} does not exist on {self.server}.')
+        # PBS/SGE epilogues sometimes flush stdout/stderr to the work dir a
+        # second or two after qstat reports the job has left the queue. Briefly
+        # retry the existence check so we don't loud-warn on that race.
+        for attempt in range(3):
+            if self._check_file_exists(remote_file_path):
+                break
+            if attempt < 2:
+                time.sleep(1.0)
+        else:
+            logger.debug(f'{remote_file_path} does not exist on {self.server}; '
+                         f'skipping download.')
+            return
         try:
             self._sftp.get(remotepath=remote_file_path,
                            localpath=local_file_path)
@@ -279,7 +292,7 @@ class SSHClient(object):
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         for i, status_line in enumerate(stdout):
             if i > i_dict[cluster_soft]:
-                job_id = status_line.split(split_by_dict[cluster_soft])[0]
+                job_id = status_line.lstrip().split(split_by_dict[cluster_soft])[0]
                 job_id = job_id.split('.')[0] if '.' in job_id else job_id
                 running_job_ids.append(job_id)
         return running_job_ids
@@ -311,19 +324,22 @@ class SSHClient(object):
                 if 'Requested node configuration is not available' in line:
                     logger.warning('User may be requesting more resources than are available. Please check server '
                                    'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
+                if 'Memory specification can not be satisfied' in line:
+                    logger.warning('User may be requesting more memory than is available. Please check server '
+                                   'settings, such as cpus and memory, in ARC/arc/settings/settings.py.')
                 if cluster_soft.lower() == 'slurm' and 'AssocMaxSubmitJobLimit' in line:
                     logger.warning(f'Max number of submitted jobs was reached, sleeping...')
                     time.sleep(5 * 60)
                     self.submit_job(remote_path=remote_path, recursion=True)
         if recursion:
             return None, None
-        elif cluster_soft.lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
+        elif cluster_soft.lower() in ['oge', 'sge'] and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[2]
-        elif cluster_soft.lower() == 'slurm' and 'submitted' in stdout[0].lower():
+        elif cluster_soft.lower() == 'slurm' and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[3]
-        elif cluster_soft.lower() == 'pbs':
+        elif cluster_soft.lower() == 'pbs' and stdout:
             job_id = stdout[0].split('.')[0]
-        elif cluster_soft.lower() == 'htcondor' and 'submitting' in stdout[0].lower():
+        elif cluster_soft.lower() == 'htcondor' and stdout and 'submitting' in stdout[0].lower():
             # Submitting job(s).
             # 1 job(s) submitted to cluster 443069.
             if len(stdout) and len(stdout[1].split()) and len(stdout[1].split()[-1].split('.')):
@@ -370,16 +386,16 @@ class SSHClient(object):
         """
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.load_system_host_keys(filename=self.key)
+        ssh.load_system_host_keys()
         try:
             # If the server accepts the connection but the SSH daemon doesn't respond in
             # 15 seconds (default in paramiko) due to network congestion, faulty switches,
             # etc..., common solution is enlarging the timeout variable.
-            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
+            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200, key_filename=self.key)
         except:
             # This sometimes gives "SSHException: Error reading SSH protocol banner[Error 104] Connection reset by peer"
             # Try again:
-            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
+            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200, key_filename=self.key)
         sftp = ssh.open_sftp()
         return sftp, ssh
 
@@ -489,6 +505,19 @@ class SSHClient(object):
         command = f'chmod{recursive} {mode} {file_name}'
         self._send_command_to_server(command, remote_path)
 
+    def remove_dir(self, remote_path: str) -> None:
+        """
+        Remove a directory on the server.
+
+        Args:
+            remote_path (str): The path to the directory to remove on the remote server.
+        """
+        command = f'rm -r "{remote_path}"'
+        _, stderr = self._send_command_to_server(command)
+        if stderr:
+            raise ServerError(
+                f'Cannot remove dir for the given path ({remote_path}).\nGot: {stderr}')
+
     def _check_file_exists(self,
                            remote_file_path: str,
                            ) -> bool:
@@ -537,21 +566,140 @@ class SSHClient(object):
                 f'Cannot create dir for the given path ({remote_path}).\nGot: {stderr}')
 
 
+def get_check_status_command(server: str) -> str | None:
+    """
+    Get the queue status command configured for a server.
+
+    Args:
+        server (str): The server name.
+
+    Returns:
+        str | None: The configured command, ``None`` if the server or its cluster software is unknown.
+    """
+    return check_status_command.get(servers.get(server, dict()).get('cluster_soft'))
+
+
+def queue_query_failed(return_code: int | None = None,
+                       stderr: list | str | None = None,
+                       ) -> bool:
+    """
+    Determine whether a queue status query failed to answer.
+
+    A query is considered to have failed if it exited with a non-zero status, with one exception:
+    an exit status of 1 with an empty standard error stream is treated as an authoritative answer.
+    An unknown exit status (``None``) is treated as an authoritative answer.
+
+    Args:
+        return_code (int, optional): The exit status of the queue status command, ``None`` if unknown.
+        stderr (list | str, optional): The standard error stream of the queue status command.
+
+    Returns:
+        bool: Whether the query failed to answer.
+    """
+    return return_code not in (None, 0) \
+        and (return_code != AMBIGUOUS_RETURN_CODE or bool(join_stream_lines(stderr)))
+
+
+def reset_queue_query_history(server: str | None = None) -> None:
+    """
+    Forget the recorded outcomes of previous queue status queries.
+
+    Args:
+        server (str, optional): The server to forget, all servers if ``None``.
+    """
+    if server is None:
+        _queue_query_history.clear()
+    else:
+        _queue_query_history.pop(server, None)
+
+
+def register_queue_query(failed: bool,
+                         server: str = 'local',
+                         return_code: int | None = None,
+                         stderr: list | str | None = None,
+                         ) -> None:
+    """
+    Record the outcome of a queue status query and decide whether ARC may keep waiting for the queue.
+
+    A query which answered clears the record of previous failures for that server. A query which
+    failed is tolerated until the server has been continuously unanswerable for
+    ``QUEUE_QUERY_TOLERANCE``, or, if its queue status command was never found and the server has
+    never answered, for ``COMMAND_NOT_FOUND_TOLERANCE``. While a server is unanswerable a warning
+    is logged at most once every ``QUEUE_QUERY_WARNING_INTERVAL``.
+
+    Args:
+        failed (bool): Whether the query failed to answer.
+        server (str, optional): The server name.
+        return_code (int, optional): The exit status of the queue status command.
+        stderr (list | str, optional): The standard error stream of the queue status command.
+
+    Raises:
+        SettingsError: If the configured queue status command has not been found for longer than
+                       ``COMMAND_NOT_FOUND_TOLERANCE`` and no query has ever been answered by this
+                       server in the present ARC session.
+        ServerError: If the server has been unanswerable for longer than ``QUEUE_QUERY_TOLERANCE``.
+    """
+    history = _queue_query_history.setdefault(server, {'failing_since': None,
+                                                       'consecutive_failures': 0,
+                                                       'ever_answered': False,
+                                                       'last_warned': None})
+    if not failed:
+        history.update({'failing_since': None, 'consecutive_failures': 0,
+                        'ever_answered': True, 'last_warned': None})
+        return
+    now = datetime.datetime.now()
+    error = join_stream_lines(stderr)
+    history['failing_since'] = history['failing_since'] or now
+    history['consecutive_failures'] += 1
+    unanswered_for = now - history['failing_since']
+    diagnosis = f'the queue status command exited with code {return_code}{": " + error if error else ""}'
+    if return_code == COMMAND_NOT_FOUND_RETURN_CODE and not history['ever_answered']:
+        diagnosis = (f'the queue status command configured for it was not found: '
+                     f'"{get_check_status_command(server)}".\nLocate it on the server (e.g., by running '
+                     f'"which qstat") and set check_status_command accordingly in arc/settings/settings.py '
+                     f'or in ~/.arc/settings.py.\nGot: {error}')
+        if unanswered_for > COMMAND_NOT_FOUND_TOLERANCE:
+            raise SettingsError(f'Could not query the queue on server "{server}" for {unanswered_for} '
+                                f'({history["consecutive_failures"]} consecutive queries), because {diagnosis}')
+    if unanswered_for > QUEUE_QUERY_TOLERANCE:
+        raise ServerError(f'The queue status command for server "{server}" has been failing for {unanswered_for} '
+                          f'({history["consecutive_failures"]} consecutive queries), the last error was: {error}.\n'
+                          f'ARC cannot tell which of its jobs are still running and is therefore stopping. '
+                          f'The submitted jobs were left on the server; restart ARC once the queue responds.')
+    if history['last_warned'] is None or now - history['last_warned'] > QUEUE_QUERY_WARNING_INTERVAL:
+        history['last_warned'] = now
+        logger.warning(f'Could not determine the queue status on server "{server}": {diagnosis}. '
+                       f'Assuming all jobs are still running. The server has been unanswerable for '
+                       f'{unanswered_for}, ARC will give up after {QUEUE_QUERY_TOLERANCE}.')
+
+
 def check_job_status_in_stdout(job_id: int,
                                stdout: list | str,
                                server: str,
+                               return_code: int | None = None,
+                               stderr: list | str | None = None,
                                ) -> str:
     """
     A helper function for checking job status.
+
+    A query which ``queue_query_failed()`` considers to have failed reports the job as ``'running'``
+    and never as ``'done'``. When ``return_code`` is ``None`` the exit status is unknown and the
+    output is parsed as-is.
 
     Args:
         job_id (int): the job ID recognized by the server.
         stdout (list | str): The output of a queue status check.
         server (str): The server name.
+        return_code (int, optional): The exit status of the queue status command, if known.
+        stderr (list | str, optional): The standard error stream of the queue status command.
 
     Returns:
         str: The job status on the server ('running', 'done', or 'errored').
     """
+    if queue_query_failed(return_code=return_code, stderr=stderr):
+        logger.warning(f'Could not determine the status of job {job_id} on {server}, '
+                       f'assuming that it is still running.')
+        return 'running'
     if not isinstance(stdout, list):
         stdout = stdout.splitlines()
     for status_line in stdout:

@@ -11,7 +11,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, get_test_project_name
 from arc.job.adapters.orca import (OrcaAdapter,
                                    _format_orca_basis,
                                    _format_orca_basis_token,
@@ -20,6 +20,8 @@ from arc.job.adapters.orca import (OrcaAdapter,
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames
 from arc.species import ARCSpecies
+
+PROJECT_DIR = os.path.join(ARC_TESTING_PATH, get_test_project_name('test_OrcaAdapter'))
 
 
 class TestOrcaAdapter(unittest.TestCase):
@@ -36,7 +38,7 @@ class TestOrcaAdapter(unittest.TestCase):
                                 job_type='sp',
                                 level=Level(method='DLPNO-CCSD(T)', basis='def2-tzvp', auxiliary_basis='def2-tzvp/c'),
                                 project='test',
-                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                project_directory=PROJECT_DIR,
                                 species=[ARCSpecies(label='CH3O',
                                                     xyz="""C       0.03807240    0.00035621   -0.00484242
                                                            O       1.35198769    0.01264937   -0.17195885
@@ -50,7 +52,7 @@ class TestOrcaAdapter(unittest.TestCase):
                                 level=Level(method='DLPNO-CCSD(T)', basis='def2-tzvp', auxiliary_basis='def2-tzvp/c',
                                             solvation_method='SMD', solvent='DMSO'),
                                 project='test',
-                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                project_directory=PROJECT_DIR,
                                 species=[ARCSpecies(label='CH3O',
                                                     xyz="""C       0.03807240    0.00035621   -0.00484242
                                                            O       1.35198769    0.01264937   -0.17195885
@@ -64,7 +66,7 @@ class TestOrcaAdapter(unittest.TestCase):
                                 level=Level(method='DLPNO-CCSD(T)', basis='def2-tzvp', auxiliary_basis='def2-tzvp/c',
                                             solvation_method='cpcm', solvent='water'),
                                 project='test',
-                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                project_directory=PROJECT_DIR,
                                 species=[ARCSpecies(label='CH3O',
                                                     xyz="""C       0.03807240    0.00035621   -0.00484242
                                                            O       1.35198769    0.01264937   -0.17195885
@@ -77,7 +79,7 @@ class TestOrcaAdapter(unittest.TestCase):
                                 job_type='sp',
                                 level=Level(method='MP2_CASSCF_MRCI', basis='aug-cc-pVTZ'),
                                 project='test4',
-                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                project_directory=PROJECT_DIR,
                                 species=[ARCSpecies(label='CH3O',
                                                     active=(14, 7),
                                                     xyz="""C       0.03807240    0.00035621   -0.00484242
@@ -98,6 +100,34 @@ class TestOrcaAdapter(unittest.TestCase):
         """Test setting the input_file_memory argument"""
         expected_memory = math.ceil(14 * 1024 / 8)
         self.assertEqual(self.job_1.input_file_memory, expected_memory)
+
+    def test_set_input_file_memory_with_configured_core_count(self):
+        """Test ORCA %%maxcore calculation for a configured total memory and cpu count."""
+        original_memory = self.job_1.job_memory_gb
+        original_cpu_cores = self.job_1.cpu_cores
+        self.job_1.job_memory_gb = 250
+        self.job_1.cpu_cores = 22
+        self.job_1.set_input_file_memory()
+        self.assertEqual(self.job_1.input_file_memory, math.ceil(250 * 1024 / 22))
+        self.job_1.job_memory_gb = original_memory
+        self.job_1.cpu_cores = original_cpu_cores
+        self.job_1.set_input_file_memory()
+
+    def test_write_input_file_with_configured_core_count(self):
+        """Test rendering ORCA input for a configured total memory and cpu count."""
+        original_memory = self.job_1.job_memory_gb
+        original_cpu_cores = self.job_1.cpu_cores
+        self.job_1.job_memory_gb = 250
+        self.job_1.cpu_cores = 22
+        self.job_1.set_input_file_memory()
+        self.job_1.write_input_file()
+        with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('%maxcore 11637', content)
+        self.assertIn('%pal nprocs 22 end', content)
+        self.job_1.job_memory_gb = original_memory
+        self.job_1.cpu_cores = original_cpu_cores
+        self.job_1.set_input_file_memory()
 
     def test_write_input_file(self):
         """Test writing Orca input files"""
@@ -197,7 +227,7 @@ end
                                           auxiliary_basis='aug-cc-pVTZ/C',
                                           cabs='cc-pVTZ-F12-CABS'),
                               project='test_f12',
-                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                              project_directory=PROJECT_DIR,
                               species=[ARCSpecies(label='O_atom', smiles='[O]',
                                                   xyz='O 0.0 0.0 0.0')],
                               testing=True,
@@ -223,7 +253,7 @@ end
                                     basis='cc-pVTZ-F12',
                                     auxiliary_basis='aug-cc-pVTZ/C'),
                         project='test_f12_bad',
-                        project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                        project_directory=PROJECT_DIR,
                         species=[ARCSpecies(label='O_atom', smiles='[O]',
                                             xyz='O 0.0 0.0 0.0')],
                         testing=True,
@@ -321,7 +351,7 @@ end
                               job_type='opt',
                               level=Level(method='wb97x-d3', basis='def2-tzvp'),
                               project='test_dft_grid',
-                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                              project_directory=PROJECT_DIR,
                               species=[ARCSpecies(label='CH3O',
                                                   xyz="""C       0.03807240    0.00035621   -0.00484242
                                                          O       1.35198769    0.01264937   -0.17195885
@@ -343,7 +373,7 @@ end
                                    job_type='opt',
                                    level=Level(method='wb97x-d3', basis='def2-tzvp'),
                                    project='test_dft_grid_fine',
-                                   project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                   project_directory=PROJECT_DIR,
                                    species=[ARCSpecies(label='CH3O',
                                                        xyz="""C       0.03807240    0.00035621   -0.00484242
                                                               O       1.35198769    0.01264937   -0.17195885
@@ -364,7 +394,7 @@ end
                                job_type='freq',
                                level=Level(method='wb97x-d3', basis='def2-tzvp'),
                                project='test_dft_grid_freq',
-                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                               project_directory=PROJECT_DIR,
                                species=[ARCSpecies(label='CH3O',
                                                    xyz="""C       0.03807240    0.00035621   -0.00484242
                                                           O       1.35198769    0.01264937   -0.17195885
@@ -385,7 +415,7 @@ end
                                   job_type='optfreq',
                                   level=Level(method='wb97x-d3', basis='def2-tzvp'),
                                   project='test_dft_grid_optfreq',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                  project_directory=PROJECT_DIR,
                                   species=[ARCSpecies(label='CH3O',
                                                       xyz="""C       0.03807240    0.00035621   -0.00484242
                                                              O       1.35198769    0.01264937   -0.17195885
@@ -406,7 +436,7 @@ end
                                    job_type='opt',
                                    level=Level(method='wb97x-d3', basis='def2-tzvp'),
                                    project='test_fine_opt_conv',
-                                   project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                   project_directory=PROJECT_DIR,
                                    species=[ARCSpecies(label='CH3O',
                                                        xyz="""C       0.03807240    0.00035621   -0.00484242
                                                               O       1.35198769    0.01264937   -0.17195885
@@ -428,7 +458,7 @@ end
                                 job_type='opt',
                                 level=Level(method='wb97x-d3', basis='def2-tzvp'),
                                 project='test_optts_hess',
-                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                project_directory=PROJECT_DIR,
                                 species=[ARCSpecies(label='TS_example',
                                                     xyz="""C       0.03807240    0.00035621   -0.00484242
                                                            O       1.35198769    0.01264937   -0.17195885
@@ -454,7 +484,7 @@ end
                                       job_type='opt',
                                       level=Level(method='wb97x-d3', basis='def2-tzvp'),
                                       project='test_opt_no_hess',
-                                      project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                                      project_directory=PROJECT_DIR,
                                       species=[ARCSpecies(label='CH3O',
                                                           xyz="""C       0.03807240    0.00035621   -0.00484242
                                                                  O       1.35198769    0.01264937   -0.17195885
@@ -483,7 +513,7 @@ end
                           job_type='opt',
                           level=level,
                           project='test',
-                          project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
+                          project_directory=PROJECT_DIR,
                           species=[ARCSpecies(label='CH3O',
                                               xyz="""C       0.03807240    0.00035621   -0.00484242
                                                      O       1.35198769    0.01264937   -0.17195885
@@ -503,7 +533,7 @@ end
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'), ignore_errors=True)
+        shutil.rmtree(PROJECT_DIR, ignore_errors=True)
 
 
 if __name__ == '__main__':

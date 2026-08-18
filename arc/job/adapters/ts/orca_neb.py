@@ -17,7 +17,7 @@ from arc.job.adapters.common import is_restricted, which
 from arc.job.adapters.orca import OrcaAdapter, _format_orca_method, _format_orca_basis
 from arc.job.factory import register_job_adapter
 from arc.job.local import execute_command
-from arc.level import Level
+from arc.level import Level, plain_level_dict
 from arc.parser.parser import parse_geometry
 from arc.species import TSGuess
 from arc.species.converter import xyz_to_xyz_file_format
@@ -39,15 +39,15 @@ input_template = """
 %%maxcore ${memory}
 %%pal nprocs ${cpus} end
 
-%%neb 
+%%neb
    Interpolation    ${interpolation}
    NImages  ${nnodes}
    PrintLevel   3
    PreOpt           ${preopt}
-   NEB_END_XYZFILE "${abs_path}/product.xyz"
+   NEB_END_XYZFILE "product.xyz"
 END
 
-* XYZFILE ${charge} ${multiplicity} ${abs_path}/reactant.xyz
+* XYZFILE ${charge} ${multiplicity} reactant.xyz
 """
 
 
@@ -209,6 +209,11 @@ class OrcaNEBAdapter(OrcaAdapter):
         self.local_path_to_output_file = os.path.join(self.local_path, output_filenames[self.job_adapter])
         self.execution_type = execution_type or 'queue'
 
+    @property
+    def ess_software(self) -> str:
+        """Orca NEB is a TS-search adapter, but its output is an Orca log."""
+        return 'orca'
+
     def write_input_file(self) -> None:
         """
         Write the input file to execute the job on the server.
@@ -222,7 +227,6 @@ class OrcaNEBAdapter(OrcaAdapter):
         input_dict['cpus'] = self.cpu_cores
         input_dict['charge'] = self.charge
         input_dict['multiplicity'] = self.multiplicity
-        input_dict['abs_path'] = self.local_path
 
         # NEB specific parameters
         neb_settings = orca_neb_settings.get('keyword', {})
@@ -236,7 +240,10 @@ class OrcaNEBAdapter(OrcaAdapter):
             raise ValueError('Cannot write Orca NEB input file without an atom map in the reaction.')
 
         reactant_xyz = self.reactions[0].get_reactants_xyz(return_format=dict)
-        product_xyz = self.reactions[0].get_products_xyz(return_format=dict) # This implicitly uses the atom map.
+        # Aligning the products to the reactants (Kabsch, per fragment, using the atom map) keeps the
+        # NEB interpolation short and physical, especially for fragmenting (multi-product) reactions.
+        product_xyz = self.reactions[0].get_products_xyz(return_format=dict,  # This implicitly uses the atom map.
+                                                         align_to_reactants=True)
 
         with open(os.path.join(self.local_path, 'reactant.xyz'), 'w') as f:
             f.write(xyz_to_xyz_file_format(reactant_xyz))
@@ -320,6 +327,7 @@ class OrcaNEBAdapter(OrcaAdapter):
         tsg = TSGuess(method='orca_neb',
                       success=False,
                       t0=self.initial_time,
+                      level=plain_level_dict(self.level),
                       )
         if os.path.isfile(self.local_path_to_output_file):
             tsg.initial_xyz = parse_geometry(self.local_path_to_output_file)

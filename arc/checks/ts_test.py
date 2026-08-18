@@ -8,11 +8,13 @@ This module contains unit tests for the arc.checks.ts module
 import unittest
 import os
 import shutil
+from unittest.mock import patch
 
 import numpy as np
 
 import arc.checks.ts as ts
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, get_test_project_directory
+from arc.exceptions import ReactionError
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
@@ -103,9 +105,7 @@ class TestTSChecks(unittest.TestCase):
                                job_type='composite',
                                level=Level(method='CBS-QB3'),
                                project='test_project',
-                               project_directory=os.path.join(ARC_PATH,
-                                                              'Projects',
-                                                              'arc_project_for_testing_delete_after_usage4'),
+                               project_directory=get_test_project_directory('arc_project_for_testing_delete_after_usage4'),
                                )
 
         cls.rxn_3 = ARCReaction(r_species=[ARCSpecies(label='NH3', smiles='N'), ARCSpecies(label='H', smiles='[H]')],
@@ -213,7 +213,7 @@ class TestTSChecks(unittest.TestCase):
                                    (-1.1265684046717404, -0.2344009055503307, -1.0127644068816903))}
 
         cls.species_dict_8 = {spc.label: spc for spc in cls.rxn_8.r_species + cls.rxn_8.p_species + [cls.rxn_8.ts_species]}
-        cls.project_directory_8 = os.path.join(ts.ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage5')
+        cls.project_directory_5 = get_test_project_directory('arc_project_for_testing_delete_after_usage5')
         cls.output_dict_8 = {'iC3H7': {'paths': {'freq': os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out'),
                                                  'sp': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'),
                                                  'opt': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'),
@@ -271,6 +271,23 @@ class TestTSChecks(unittest.TestCase):
         self.assertFalse(ts.ts_passed_checks(spc))
         self.assertTrue(ts.ts_passed_checks(spc, exemptions=['NMD', 'warnings']))
         spc.ts_checks['e_elect'] = False
+
+    def test_ts_passed_checks_irc(self):
+        """Test that ts_passed_checks() treats the three-valued IRC check correctly."""
+        spc = ARCSpecies(label='TS', is_ts=True)
+        spc.populate_ts_checks()
+        for key in ['E0', 'e_elect', 'freq', 'NMD']:
+            spc.ts_checks[key] = True
+
+        spc.ts_checks['IRC'] = True
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
+        spc.ts_checks['IRC'] = None
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
+        spc.ts_checks['IRC'] = False
+        self.assertFalse(ts.ts_passed_checks(spc, exemptions=['warnings']))
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings', 'IRC']))
 
     def test_check_rxn_e_elect(self):
         """Test the check_rxn_e_elect() function."""
@@ -331,9 +348,9 @@ class TestTSChecks(unittest.TestCase):
         """Test the compute_rxn_e0() function."""
         for spc_label in self.rxn_8.reactants + self.rxn_8.products + [self.rxn_8.ts_label]:
             folder = 'rxns' if self.species_dict_8[spc_label].is_ts else 'Species'
-            base_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry')
+            base_path = os.path.join(self.project_directory_5, 'output', folder, spc_label, 'geometry')
             os.makedirs(base_path, exist_ok=True)
-            freq_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry', 'freq.out')
+            freq_path = os.path.join(self.project_directory_5, 'output', folder, spc_label, 'geometry', 'freq.out')
             shutil.copy(src=self.output_dict_8[spc_label]['paths']['freq'], dst=freq_path)
 
         self.assertIsNone(self.rxn_8.r_species[0].e0)
@@ -342,7 +359,7 @@ class TestTSChecks(unittest.TestCase):
 
         rxn_copy = ts.compute_rxn_e0(reaction=self.rxn_8,
                                      species_dict=self.species_dict_8,
-                                     project_directory=self.project_directory_8,
+                                     project_directory=self.project_directory_5,
                                      kinetics_adapter='arkane',
                                      output=self.output_dict_8,
                                      sp_level=Level(repr='cbs-qb3'),
@@ -356,13 +373,13 @@ class TestTSChecks(unittest.TestCase):
         """Test the check_rxn_e0() function."""
         for spc_label in self.rxn_8.reactants + self.rxn_8.products + [self.rxn_8.ts_label]:
             folder = 'rxns' if self.species_dict_8[spc_label].is_ts else 'Species'
-            base_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry')
+            base_path = os.path.join(self.project_directory_5, 'output', folder, spc_label, 'geometry')
             os.makedirs(base_path, exist_ok=True)
-            freq_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry', 'freq.out')
+            freq_path = os.path.join(self.project_directory_5, 'output', folder, spc_label, 'geometry', 'freq.out')
             shutil.copy(src=self.output_dict_8[spc_label]['paths']['freq'], dst=freq_path)
         rxn_copy = ts.compute_rxn_e0(reaction=self.rxn_8,
                                      species_dict=self.species_dict_8,
-                                     project_directory=self.project_directory_8,
+                                     project_directory=self.project_directory_5,
                                      kinetics_adapter='arkane',
                                      output=self.output_dict_8,
                                      sp_level=Level(repr='CBS-QB3'),
@@ -852,15 +869,38 @@ class TestTSChecks(unittest.TestCase):
         ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
         self.assertFalse(rxn.ts_species.ts_checks['IRC'])
 
+    def test_check_irc_identical_endpoints(self):
+        """Test that two identical IRC endpoints are a positive IRC failure (False, not None)."""
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        # Both endpoints re-perceive as the product, the "TS" connects P <=> P.
+        ts.check_irc_species_and_rxn(xyz_1=xyz_2, xyz_2=xyz_2, rxn=rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], False)
+
+    def test_check_irc_unknown_if_no_comparison_was_performed(self):
+        """Test that the IRC check is None (unknown), not False, if no comparison could be performed."""
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        # Neither the isomorphism check nor the bond-list fallback can be carried out.
+        with patch.object(ts, '_perceive_irc_fragments', return_value=None), \
+                patch.object(rxn, 'get_bonds', side_effect=ReactionError('Cannot get bonds without an atom map.')):
+            ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+        self.assertIsNone(rxn.ts_species.ts_checks['IRC'])
+
     @classmethod
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage4', 'arc_project_for_testing_delete_after_usage5']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        for project_directory in [get_test_project_directory('arc_project_for_testing_delete_after_usage4'),
+                                  cls.project_directory_5]:
             shutil.rmtree(project_directory, ignore_errors=True)
         file_paths = [os.path.join(ARC_PATH, 'arc', 'checks', 'nul'), os.path.join(ARC_PATH, 'arc', 'checks', 'run.out')]
         for file_path in file_paths:

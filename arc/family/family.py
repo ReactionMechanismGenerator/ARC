@@ -421,6 +421,11 @@ class ReactionFamily(object):
             if action[0] in ['CHANGE_BOND', 'FORM_BOND', 'BREAK_BOND']:
                 structure.reset_connectivity_values()
                 label_1, info, label_2 = action[1:]
+                # Bond-order info may be a string in some RMG family recipes (e.g.
+                # Intra_RH_Add_Endocyclic writes ['CHANGE_BOND', '*2', '-1', '*3'] while
+                # Intra_RH_Add_Exocyclic writes an int). Coerce to int so the bond-order
+                # arithmetic doesn't produce an invalid order (e.g. -1.0 from a '-1' string).
+                info = int(info)
                 labeled_1 = structure.get_labeled_atoms(label_1)
                 atom_1 = labeled_1[0] if labeled_1 else None
                 if label_1 == label_2 and len(labeled_1) >= 2:
@@ -518,6 +523,8 @@ def get_reaction_family_products(rxn: ARCReaction,
                                                           Can be a name of a defined set, or a list
                                                           of explicit family labels to consider.
                                                           Note that surface families are excluded if 'all' is used.
+                                                          ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                          read on every call.
         consider_rmg_families (bool, optional): Whether to consider RMG's families.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
         discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover reactions belonging to a family
@@ -763,8 +770,15 @@ def check_product_isomorphism(products: list[Molecule],
                               ) -> bool:
     """
     Check whether the products are isomorphic to the given species.
-    Falls back to InChI comparison when graph isomorphism fails
+    Falls back to comparing the standard InChI, the multiplicity, and the electron-agnostic
+    connectivity (elements and explicit hydrogen positions, ignoring bond orders, charges and
+    radical electrons) when graph isomorphism fails
     (e.g., different Lewis structures perceived from XYZ vs SMILES).
+    Tautomers, which share a standard InChI but place their hydrogens on different heavy atoms,
+    are rejected.
+    The connectivity comparison is made first, so an InChI is only ever generated for a
+    candidate/species pair that it admits.
+    Neither the given molecules nor the molecules of the given species are modified.
 
     Args:
         products (list[Molecule]): The products to check.
@@ -802,40 +816,52 @@ def check_product_isomorphism(products: list[Molecule],
     # Fall back to InChI comparison for unmatched products.
     # Different Lewis structures perceived from XYZ vs SMILES (e.g., O=C=C(O)C=O vs O=C[C-](O)C#[O+])
     # may not be graph-isomorphic but share the same InChI.
-    # InChI does not encode radical electrons, so also require matching multiplicity
-    # to avoid false matches between biradicals and closed-shell species
-    # (e.g., [CH2][CH2] vs C=C both give InChI=1S/C2H4/c1-2/h1-2H2).
-    # Gate behind molecular-formula check to avoid expensive InChI generation
-    # for products that can't possibly match.
-    species_fingerprints = {spc.mol.fingerprint for spc in p_species if spc.mol is not None}
-    needs_inchi = False
-    for i in range(len(products)):
-        if not isomorphic[i] and products[i].fingerprint in species_fingerprints:
-            needs_inchi = True
-            break
-    if not needs_inchi:
-        return False
-    # Precompute p_species InChIs once (not per candidate product).
-    try:
-        species_inchi_mult = [(spc.mol.to_inchi(), spc.mol.multiplicity) for spc in p_species]
-    except Exception:
-        return False
-    for i in range(len(products)):
-        if not isomorphic[i]:
-            if products[i].fingerprint not in species_fingerprints:
+    inchi_cache: dict[int, str | None] = dict()
+    for i, product in enumerate(products):
+        if isomorphic[i]:
+            continue
+        for spc in p_species:
+            if not product.is_isomorphic(spc.mol, save_order=True, strict=False):
                 continue
-            try:
-                inchi_a = products[i].to_inchi()
-                mult_a = products[i].multiplicity
-            except Exception:
-                continue
-            if any(inchi_a == inchi_b and mult_a == mult_b
-                   for inchi_b, mult_b in species_inchi_mult):
+            inchi_a = _get_inchi(product, inchi_cache)
+            if inchi_a is None:
+                break
+            if inchi_a == _get_inchi(spc.mol, inchi_cache):
                 isomorphic[i] = True
+                break
     return all(isomorphic)
 
 
-def get_all_families(rmg_family_set: list[str] | str = 'default',
+def _get_inchi(mol: Molecule,
+               cache: dict[int, str | None],
+               ) -> str | None:
+    """
+    Get the standard InChI of a molecule.
+
+    ``mol`` is not modified: the conversion, which reorders the atoms of the molecule it is
+    given, is run on a deep copy.
+    Results, including failures, are memoized in ``cache`` keyed by the identity of ``mol``,
+    so that no molecule is converted more than once per cache. Every molecule passed with a
+    given ``cache`` must be kept alive for as long as that ``cache`` is in use.
+
+    Args:
+        mol (Molecule): The molecule to convert.
+        cache (dict): An identity-keyed InChI cache to read from and populate.
+
+    Returns:
+        str | None: The standard InChI, or ``None`` if no backend could generate one.
+    """
+    key = id(mol)
+    if key not in cache:
+        try:
+            cache[key] = mol.copy(deep=True).to_inchi()
+        except Exception as e:
+            logger.debug(f'Could not generate an InChI for:\n{mol.to_adjacency_list()}\nGot: {e}')
+            cache[key] = None
+    return cache[key]
+
+
+def get_all_families(rmg_family_set: list[str] | str | None = None,
                      consider_rmg_families: bool = True,
                      consider_arc_families: bool = True,
                      ) -> list[str]:
@@ -845,13 +871,15 @@ def get_all_families(rmg_family_set: list[str] | str = 'default',
 
     Args:
         rmg_family_set (list[str] | str, optional): The RMG family set to use.
+                                                    ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                    read on every call.
         consider_rmg_families (bool, optional): Whether to consider RMG's families.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
 
     Returns:
         list[str]: A list of all available families.
     """
-    rmg_family_set = rmg_family_set or 'default'
+    rmg_family_set = rmg_family_set or settings['rmg_family_set']
     family_sets = get_rmg_recommended_family_sets()
     if isinstance(rmg_family_set, list) and all(fam not in family_sets for fam in rmg_family_set):
         return rmg_family_set
@@ -863,6 +891,13 @@ def get_all_families(rmg_family_set: list[str] | str = 'default',
             for family_set_label, families in family_sets.items():
                 if 'surface' not in family_set_label:
                     rmg_families.extend(list(families))
+            # Also include families that exist in the RMG database as directories but are not
+            # part of any recommended family set. ARC's TS adapters support a broader set than
+            # RMG recommends (see ``ts_adapters_by_rmg_family``), and benchmark/user reactions may
+            # belong to such families (e.g. Intra_RH_Add_Endocyclic). Without this, ARC could not
+            # even determine the family of those reactions, so mapping and TS search would fail.
+            rmg_families.extend(get_rmg_family_directories())
+            rmg_families = list(dict.fromkeys(rmg_families))  # de-duplicate, preserving order
         else:
             rmg_families = list(family_sets[rmg_family_set]) \
                 if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else [rmg_family_set]
@@ -872,6 +907,29 @@ def get_all_families(rmg_family_set: list[str] | str = 'default',
                 continue
             arc_families.append(os.path.splitext(family)[0])
     return rmg_families + arc_families if rmg_families is not None else arc_families
+
+
+@functools.lru_cache(maxsize=1)
+def get_rmg_family_directories() -> list[str]:
+    """
+    List every reaction family that exists as a directory in the RMG database, including families
+    that are not part of any recommended family set. A directory is treated as a family only if it
+    contains a ``groups.py`` template. Surface families are excluded, mirroring ``get_all_families``.
+
+    Returns:
+        list[str]: The family directory names available in the RMG database (empty if unavailable).
+    """
+    families_dir = get_rmg_db_subpath('kinetics', 'families', must_exist=False)
+    if not families_dir or not os.path.isdir(families_dir):
+        return list()
+    families = list()
+    for name in sorted(os.listdir(families_dir)):
+        if name.startswith('.') or name.startswith('_') or 'surface' in name.lower():
+            continue
+        family_path = os.path.join(families_dir, name)
+        if os.path.isdir(family_path) and os.path.isfile(os.path.join(family_path, 'groups.py')):
+            families.append(name)
+    return families
 
 
 @functools.lru_cache(maxsize=1)
@@ -1282,4 +1340,4 @@ def check_family_name(family: str
     """
     if not isinstance(family, str) and family is not None:
         raise TypeError("Family name must be a string or None.")
-    return family in get_all_families() or family is None
+    return family in get_all_families(rmg_family_set=settings['rmg_family_set']) or family is None

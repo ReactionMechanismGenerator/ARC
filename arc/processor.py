@@ -3,10 +3,11 @@ Processor module for computing thermodynamic properties and rate coefficients us
 """
 
 import os
+import re
 import shutil
 
 import arc.plotter as plotter
-from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file
+from arc.common import ARC_PATH, get_logger, get_ts_validation_comment, read_yaml_file, save_yaml_file
 from arc.imports import settings
 from arc.level import Level
 from arc.job.env_run import rmg_env_command
@@ -157,6 +158,12 @@ def process_arc_project(thermo_adapter: str,
         for spc in species_dict.values():
             if spc.is_ts:
                 continue
+            if not (spc.compute_thermo or spc.e0_only):
+                # Thermo was never requested for this species (e.g. IRC endpoint species, which
+                # only run an opt to verify the reaction path). It is neither a converged thermo
+                # target nor an unconverged failure, so skip it rather than reporting it as
+                # "did not converge".
+                continue
             if (spc.compute_thermo or spc.e0_only) and output_dict[spc.label]['convergence']:
                 if spc.e0_only:
                     converged_e0_only_species.append(spc)
@@ -253,6 +260,8 @@ def compare_thermo(species_for_thermo_lib: list,
         species_for_thermo_lib (list): Species for which thermochemical properties were computed.
         output_directory (str): The path to the project's output folder.
     """
+    if not species_for_thermo_lib:
+        return  # nothing to compare; avoid a pointless RMG database load and a spurious error report.
     species_to_compare = list()  # species for which thermo was both calculated and estimated.
     species_thermo_path = os.path.join(output_directory, 'RMG_thermo.yml')
     save_yaml_file(path=species_thermo_path,
@@ -261,9 +270,20 @@ def compare_thermo(species_for_thermo_lib: list,
     command = rmg_env_command(py_args=[THERMO_SCRIPT_PATH, species_thermo_path],
                               env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path})
     stdout, stderr = execute_command(command=command, shell=True, no_fail=True, executable='/bin/bash')
-    if len(stderr):
-        logger.error(f'Error while running RMG thermo script: {stderr}')
-    species_list = read_yaml_file(path=species_thermo_path)
+    species_list = read_yaml_file(path=species_thermo_path) or list()
+    # RMG/Arkane route their normal startup logging (e.g. "INFO:root:Loading thermodynamics library ...",
+    # "WARNING:root:...") to stderr, so a non-empty stderr does NOT imply the script failed. Demote that
+    # benign log chatter to debug, and only report an error if genuine (non-log) content remains on stderr,
+    # or the deliverable wasn't actually produced (execute_command doesn't surface the return code here).
+    stderr_lines = stderr or list()
+    benign_log_regex = re.compile(r'^(INFO|WARNING|DEBUG):root')
+    error_lines = [line for line in stderr_lines if line.strip() and not benign_log_regex.match(line.strip())]
+    thermo_computed = any(isinstance(spc, dict) and spc.get('h298') is not None and spc.get('s298') is not None
+                          for spc in species_list)
+    if error_lines or not thermo_computed:
+        logger.error(f"Error while running RMG thermo script: {error_lines or stderr_lines}")
+    elif stderr_lines:
+        logger.debug('RMG thermo script log output (stderr):\n' + '\n'.join(stderr_lines))
     for original_spc, rmg_spc in zip(species_for_thermo_lib, species_list):
         h298, s298, comment = rmg_spc.get('h298', None), rmg_spc.get('s298', None), rmg_spc.get('comment', None)
         if h298 is not None and s298 is not None:
@@ -297,14 +317,21 @@ def compare_rates(rxns_for_kinetics_lib: list,
     """
     reactions_to_compare = list()  # reactions for which a rate was both calculated and estimated.
     reactions_kinetics_path = os.path.join(output_directory, 'RMG_kinetics.yml')
-    save_yaml_file(path=reactions_kinetics_path,
-                   content=[{'label': rxn.label,
-                             'reactants': [spc.mol.to_adjacency_list() for spc in rxn.r_species],
-                             'products': [spc.mol.to_adjacency_list() for spc in rxn.p_species],
-                             'dh_rxn298': rxn.dh_rxn298,
-                             'family': rxn.family,
-                             } for rxn in rxns_for_kinetics_lib],
-                   )
+    content = list()
+    for rxn in rxns_for_kinetics_lib:
+        rxn_content = {'label': rxn.label,
+                       'reactants': [spc.mol.to_adjacency_list() for spc in rxn.r_species],
+                       'products': [spc.mol.to_adjacency_list() for spc in rxn.p_species],
+                       'dh_rxn298': rxn.dh_rxn298,
+                       'family': rxn.family,
+                       }
+        ts_validation = get_ts_validation_comment(rxn.ts_species)
+        if ts_validation is not None:
+            rxn_content['ts_validation'] = ts_validation
+            logger.error(f'Reporting a rate coefficient for reaction {rxn.label} although its TS failed the IRC '
+                         f'check. {ts_validation}')
+        content.append(rxn_content)
+    save_yaml_file(path=reactions_kinetics_path, content=content)
     rmg_db_path = settings.get('RMG_DB_PATH') or ""
     log_suffix = ' > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)'
     shell_script = rmg_env_command(py_args=[KINETICS_SCRIPT_PATH, reactions_kinetics_path],

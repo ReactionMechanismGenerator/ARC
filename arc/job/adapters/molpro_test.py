@@ -5,11 +5,12 @@
 This module contains unit tests of the arc.job.adapters.molpro module
 """
 
+import math
 import os
 import shutil
 import unittest
 
-from arc.common import ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, get_test_project_name
 from arc.job.adapters.molpro import MolproAdapter
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames
@@ -30,7 +31,8 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='CCSD(T)-F12', basis='cc-pVTZ-f12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_1'),
+                                  project_directory=os.path.join(
+                                      ARC_TESTING_PATH, get_test_project_name('test_MolproAdapter_1')),
                                   species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                   testing=True,
                                   )
@@ -38,7 +40,8 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='opt',
                                   level=Level(method='CCSD(T)', basis='cc-pVQZ'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_2'),
+                                  project_directory=os.path.join(
+                                      ARC_TESTING_PATH, get_test_project_name('test_MolproAdapter_2')),
                                   species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                   testing=True,
                                   )
@@ -46,7 +49,8 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MRCI', basis='aug-cc-pvtz-f12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_3'),
+                                  project_directory=os.path.join(
+                                      ARC_TESTING_PATH, get_test_project_name('test_MolproAdapter_3')),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -57,7 +61,8 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MRCI-F12', basis='aug-cc-pvtz-f12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_4'),
+                                  project_directory=os.path.join(
+                                      ARC_TESTING_PATH, get_test_project_name('test_MolproAdapter_4')),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -68,7 +73,8 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MP2_CASSCF_MRCI-F12', basis='aug-cc-pVTZ-F12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_5'),
+                                  project_directory=os.path.join(
+                                      ARC_TESTING_PATH, get_test_project_name('test_MolproAdapter_5')),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -79,7 +85,8 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MP2_CASSCF_RS2C', basis='aug-cc-pVTZ'),  # CASPT2
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_6'),
+                                  project_directory=os.path.join(
+                                      ARC_TESTING_PATH, get_test_project_name('test_MolproAdapter_6')),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -90,7 +97,8 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MP2_CASSCF_RS2C', basis='aug-cc-pVTZ'),  # CASPT2
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_7'),
+                                  project_directory=os.path.join(
+                                      ARC_TESTING_PATH, get_test_project_name('test_MolproAdapter_7')),
                                   species=[ARCSpecies(label='N', xyz=["""N     0.0    0.0    0.0"""],
                                                       multiplicity=4,
                                                       active={'occ': [3, 1, 1, 0, 1, 0, 0, 0],
@@ -108,19 +116,33 @@ class TestMolproAdapter(unittest.TestCase):
 
     def test_set_input_file_memory(self):
         """Test setting the input_file_memory argument"""
+        # The `memory,Total=N,m` card is the NODE-TOTAL memory pool (Molpro reserves the
+        # Global-Array space and splits the remainder across the `molpro -n cpu_cores` ranks
+        # itself), NOT per process. 125 MW == 1 GB (1 MW == 8e6 bytes), so the node-total card
+        # equals the reserved memory: N = ceil(job_memory_gb * 125), INDEPENDENT of cpu_cores.
+        self.assertEqual(self.job_1.job_memory_gb, 14.0)
+        expected_card = math.ceil(14.0 * 125)  # 1750 MW node-total == 14 GB reservation
+
         self.job_1.input_file_memory = None
         self.job_1.cpu_cores = 48
         self.job_1.set_input_file_memory()
-        self.assertEqual(self.job_1.input_file_memory, 438)
+        self.assertEqual(self.job_1.input_file_memory, expected_card)  # 1750
+        # node-total card (in GB) == the job's reserved memory:
+        self.assertAlmostEqual(self.job_1.input_file_memory * 8e6 / 1e9, 14.0, delta=0.5)
 
+        # The card is INDEPENDENT of the number of MPI ranks (node-total, not per-process):
+        self.job_1.input_file_memory = None
         self.job_1.cpu_cores = 8
         self.job_1.set_input_file_memory()
-        self.assertEqual(self.job_1.input_file_memory, 438)
+        self.assertEqual(self.job_1.input_file_memory, expected_card)  # 1750, unchanged
 
         self.job_1.input_file_memory = None
         self.job_1.cpu_cores = 1
         self.job_1.set_input_file_memory()
-        self.assertEqual(self.job_1.input_file_memory, 438)
+        self.assertEqual(self.job_1.input_file_memory, expected_card)  # 1750, unchanged
+
+        # Invariant: node-total card == ceil(job_memory_gb * 125) and does NOT depend on cpu_cores.
+        self.assertEqual(self.job_1.input_file_memory, math.ceil(self.job_1.job_memory_gb * 125))
 
     def test_write_input_file(self):
         """Test writing Molpro input files"""
@@ -130,7 +152,7 @@ class TestMolproAdapter(unittest.TestCase):
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
         job_1_expected_input_file = """***,spc1
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 O       0.00000000    0.00000000    1.00000000}
@@ -163,7 +185,7 @@ uccsd(t)-f12;
         with open(os.path.join(self.job_2.local_path, input_filenames[self.job_2.job_adapter]), 'r') as f:
             content_2 = f.read()
         job_2_expected_input_file = """***,spc1
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 O       0.00000000    0.00000000    1.00000000}
@@ -198,7 +220,7 @@ optg, savexyz='geometry.xyz'
         with open(os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]), 'r') as f:
             content_3 = f.read()
         job_3_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -246,7 +268,7 @@ table,E_mrci,E_mrci_Davidson;
         with open(os.path.join(self.job_4.local_path, input_filenames[self.job_4.job_adapter]), 'r') as f:
             content_4 = f.read()
         job_4_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -294,7 +316,7 @@ table,E_mrci,E_mrci_Davidson;
         with open(os.path.join(self.job_5.local_path, input_filenames[self.job_5.job_adapter]), 'r') as f:
             content_5 = f.read()
         job_5_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -348,7 +370,7 @@ table,E_mrci,E_mrci_Davidson;
         with open(os.path.join(self.job_6.local_path, input_filenames[self.job_6.job_adapter]), 'r') as f:
             content_6 = f.read()
         job_6_expected_input_file = """***,HNO_t
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N      -0.08142000    0.37454000    0.00000000
@@ -397,7 +419,7 @@ int;
         with open(os.path.join(self.job_7.local_path, input_filenames[self.job_7.job_adapter]), 'r') as f:
             content_7 = f.read()
         job_7_expected_input_file = """***,N
-memory,Total=438,m;
+memory,Total=1750,m;
 
 geometry={angstrom;
 N       0.00000000    0.00000000    0.00000000}

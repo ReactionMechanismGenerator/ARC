@@ -128,6 +128,8 @@ class ARC(object):
                                          if xyz is given.
         compare_to_rmg (bool, optional): If ``True`` data calculated from the RMG-database will be calculated and
                                          included on the parity plot.
+        completed_job_records (list, optional): Per-job cost records accumulated by the Scheduler. Only used for
+                                                restarting, so that a restarted run keeps its cost history.
         compute_thermo (bool, optional): Whether to compute thermodynamic properties for converged species.
         compute_rates (bool, optional): Whether to compute rate coefficients for converged reactions.
         compute_transport (bool, optional): Whether to compute transport properties for converged species.
@@ -203,6 +205,7 @@ class ARC(object):
                                if xyz is given.
         compare_to_rmg (bool): If ``True`` data calculated from the RMG-database will be calculated and included on the
                                parity plot.
+        completed_job_records (list): Per-job cost records accumulated by the Scheduler, carried across a restart.
         compute_thermo (bool): Whether to compute thermodynamic properties for converged species.
         compute_rates (bool): Whether to compute rate coefficients for converged reactions.
         compute_transport (bool): Whether to compute transport properties for converged species.
@@ -226,6 +229,7 @@ class ARC(object):
                  bath_gas: str | None = None,
                  calc_freq_factor: bool = True,
                  compare_to_rmg: bool = True,
+                 completed_job_records: list | None = None,
                  composite_method: str | dict | Level | None = None,
                  compute_rates: bool = True,
                  compute_thermo: bool = True,
@@ -297,6 +301,7 @@ class ARC(object):
         self.calc_freq_factor = calc_freq_factor
         self.keep_checks = keep_checks
         self.compare_to_rmg = compare_to_rmg
+        self.completed_job_records = completed_job_records or list()
         self.compute_thermo = compute_thermo
         self.compute_rates = compute_rates
         self.trsh_ess_jobs = trsh_ess_jobs
@@ -448,6 +453,8 @@ class ARC(object):
             restart_dict['calc_freq_factor'] = self.calc_freq_factor
         if not self.compare_to_rmg:
             restart_dict['compare_to_rmg'] = self.compare_to_rmg
+        if self.completed_job_records:
+            restart_dict['completed_job_records'] = self.completed_job_records
         if self.composite_method is not None:
             restart_dict['composite_method'] = self.composite_method.as_dict()
         if not self.compute_rates:
@@ -663,6 +670,7 @@ class ARC(object):
                 arkane_level_of_theory=self.arkane_level_of_theory,
                 irc_requested=self.job_types.get('irc', True),
                 t0=self.t0,
+                completed_job_records=self.scheduler.completed_job_records,
             )
         except Exception as e:
             logger.error(f'Could not write output.yml: {e}')
@@ -674,6 +682,9 @@ class ARC(object):
     def save_project_info_file(self):
         """
         Save a project info file.
+
+        Species that are absent from ``self.output`` (e.g., an IRC species deleted mid-run)
+        are logged and are not listed in the info file nor in the accompanying YAML file.
         """
         self.execution_time = time_lapse(t0=self.t0)
         path = os.path.join(self.project_directory, f'{self.project}.info')
@@ -707,7 +718,13 @@ class ARC(object):
             txt += 'NOT using bond additivity corrections for thermo\n'
         txt += f'\nUsing the following ESS settings: {self.ess_settings}\n'
         txt += '\nConsidered the following species and TSs:\n'
+        unreported_labels = [species.label for species in self.species if species.label not in self.output]
+        if unreported_labels:
+            logger.warning(f'The following species are missing from the output dictionary and will not be '
+                           f'reported in {self.project}.info nor in {self.project}_info.yml: {unreported_labels}')
         for species in self.species:
+            if species.label not in self.output:
+                continue
             descriptor = 'TS' if species.is_ts else 'Species'
             failed = '' if self.output[species.label]['convergence'] else ' (Failed!)'
             txt += f'{descriptor} {species.label}{failed} (run time: {species.run_time})\n'
@@ -728,7 +745,7 @@ class ARC(object):
         if os.path.exists(path):
             os.remove(path)
         for species in self.species:
-            if not species.is_ts:
+            if not species.is_ts and species.label in self.output:
                 spc_dict = dict()
                 spc_dict['label'] = species.label
                 spc_dict['success'] = self.output[species.label]['convergence']

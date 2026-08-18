@@ -9,7 +9,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import almost_equal_coords_lists, ARC_PATH
+from arc.common import almost_equal_coords_lists, get_test_project_directory
 from arc.level import Level
 from arc.utils.scale import (calculate_truhlar_scaling_factors,
                              get_species_list,
@@ -71,7 +71,7 @@ class TestScale(unittest.TestCase):
                             ]
         times = ['3', '5']
         overall_time = '8.5'
-        base_path = os.path.join(ARC_PATH, 'Projects', 'scaling_factors_arc_testing_delete_after_usage')
+        base_path = get_test_project_directory('scaling_factors_arc_testing_delete_after_usage')
 
         summarize_results(lambda_zpes=lambda_zpes,
                           levels=levels_of_theory,
@@ -126,8 +126,8 @@ class TestScale(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all directories created during these unit tests
         """
-        path = os.path.join(ARC_PATH, 'Projects', 'scaling_factors_arc_testing_delete_after_usage')
-        shutil.rmtree(path, ignore_errors=True)
+        shutil.rmtree(get_test_project_directory('scaling_factors_arc_testing_delete_after_usage'),
+                      ignore_errors=True)
 
 
 if __name__ == '__main__':

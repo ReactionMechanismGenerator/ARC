@@ -7,12 +7,15 @@ This module contains unit tests of the arc.reaction.family module
 
 import os
 import unittest
+from unittest import mock
+from unittest.mock import patch
 
 from arc.common import is_equal_family_product_dicts
 from arc.family.family import (ReactionFamily,
                                ARC_FAMILIES_PATH,
                                RMG_DB_PATH,
                                get_rmg_db_subpath,
+                               _get_inchi,
                                add_labels_to_molecule,
                                check_product_isomorphism,
                                descent_complex_group,
@@ -20,6 +23,7 @@ from arc.family.family import (ReactionFamily,
                                filter_products_by_reaction,
                                get_reaction_family_products,
                                get_all_families,
+                               get_rmg_family_directories,
                                get_entries,
                                split_entries,
                                get_group_adjlist,
@@ -34,9 +38,11 @@ from arc.family.family import (ReactionFamily,
                                check_family_name,
                                read_groups_file_lines,
                                )
+from arc.imports import settings
 from arc.molecule import Group, Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.reaction.reaction import ARCReaction
+from arc.settings.settings import rmg_family_set as shipped_rmg_family_set
 from arc.species.species import ARCSpecies
 
 
@@ -721,6 +727,62 @@ H      -0.83821148   -0.26602407    0.00000000"""
         """An unknown family-set string should raise ValueError, not fall through to KeyError."""
         with self.assertRaises(ValueError):
             get_all_families(rmg_family_set='not_a_real_family_set', consider_arc_families=False)
+
+    def test_all_includes_database_directory_families(self):
+        """'all' must include families that exist in the RMG database as directories but are not in
+        any recommended family set (e.g. Intra_RH_Add_Endocyclic), which ARC's TS adapters support."""
+        directory_families = get_rmg_family_directories()
+        self.assertIsInstance(directory_families, list)
+        all_families = get_all_families(rmg_family_set='all', consider_arc_families=False)
+        default_families = get_all_families(rmg_family_set='default', consider_arc_families=False)
+        # 'all' is a superset of 'default'.
+        self.assertTrue(set(default_families).issubset(set(all_families)))
+        # Every family that exists as a database directory is reachable via 'all'.
+        for family in directory_families:
+            self.assertIn(family, all_families)
+        # No duplicates are introduced by unioning recommended sets with directory families.
+        self.assertEqual(len(all_families), len(set(all_families)))
+
+    def test_apply_recipe_coerces_string_bond_order(self):
+        """A CHANGE_BOND recipe whose bond-order is a string must still produce valid products.
+
+        Some RMG family recipes write the order change as a string (e.g. Intra_RH_Add_Endocyclic
+        has ['CHANGE_BOND', '*2', '-1', '*3']) while others use an int. Without coercion the string
+        corrupts the bond order to -1.0 and the family silently produces 0 products. Regression test.
+        """
+        family_dir = get_rmg_db_subpath('kinetics', 'families', 'Intra_RH_Add_Endocyclic', must_exist=False)
+        if not os.path.isdir(family_dir):
+            self.skipTest('Intra_RH_Add_Endocyclic is not available in this RMG database')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC', multiplicity=1)],
+                          p_species=[ARCSpecies(label='P', smiles='C1CCC1', multiplicity=1)])
+        product_dicts = rxn.get_product_dicts(rmg_family_set=['Intra_RH_Add_Endocyclic'])
+        self.assertTrue(len(product_dicts) > 0)
+        self.assertEqual(product_dicts[0]['family'], 'Intra_RH_Add_Endocyclic')
+    def test_rmg_family_set_setting_ships_as_default(self):
+        """ARC ships with the 'default' family set, so an untouched installation considers
+        only RMG's recommended families."""
+        self.assertEqual(shipped_rmg_family_set, 'default')
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(get_all_families(consider_arc_families=False),
+                             get_all_families(rmg_family_set='default', consider_arc_families=False))
+            self.assertIn('H_Abstraction', get_all_families(consider_arc_families=False))
+
+    def test_rmg_family_set_setting_is_read_at_call_time(self):
+        """Changing settings['rmg_family_set'] after the family module was imported changes
+        which families get_all_families() and check_family_name() consider."""
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            default_families = get_all_families(consider_arc_families=False)
+            self.assertNotIn('Br_Abstraction', default_families)
+            self.assertFalse(check_family_name('Br_Abstraction'))
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            all_families = get_all_families(consider_arc_families=False)
+            self.assertIn('Br_Abstraction', all_families)
+            self.assertTrue(check_family_name('Br_Abstraction'))
+            self.assertEqual(get_all_families(rmg_family_set='default', consider_arc_families=False),
+                             default_families)
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(get_all_families(consider_arc_families=False), default_families)
+            self.assertFalse(check_family_name('Br_Abstraction'))
 
     def test_get_rmg_recommended_family_sets(self):
         """Test getting RMG recommended family sets"""
@@ -1460,6 +1522,108 @@ H       1.24252625    0.91583948   -0.84155142"""
         mol_a = Molecule(smiles='O=C=C(O)C=O')
         spc_b = ARCSpecies(label='test', smiles='O=C=C(O)C=O')
         self.assertTrue(check_product_isomorphism([mol_a], [spc_b]))
+
+    def test_check_product_isomorphism_inchi_fallback_accepts_different_lewis_structures(self):
+        """Test that the InChI fallback still matches two Lewis structures of the same molecule.
+        O=C[C-](O)C#[O+] and O=C=C(O)C=O share a standard InChI and place every hydrogen on the
+        same heavy atom. No resonance structure of either is graph-isomorphic to the other, so
+        the fallback is the only path that admits this pair."""
+        mol_a = Molecule(smiles='O=C[C-](O)C#[O+]')
+        spc_b = ARCSpecies(label='test', smiles='O=C=C(O)C=O')
+        self.assertEqual(mol_a.to_inchi(), spc_b.mol.to_inchi())
+        res_a = generate_resonance_structures_safely(mol_a) or [mol_a]
+        res_b = spc_b.mol_list or [spc_b.mol]
+        self.assertFalse(any(mol_b.is_isomorphic(res) for res in res_a for mol_b in res_b))
+        self.assertTrue(check_product_isomorphism([mol_a], [spc_b]))
+
+    def test_check_product_isomorphism_inchi_fallback_rejects_tautomers(self):
+        """Test that the InChI fallback rejects N-H and O-H tautomers.
+        The mobile-H layer of the standard InChI collapses tautomers onto a single string,
+        while they are distinct molecules that place their hydrogens on different heavy atoms."""
+        for smiles_a, smiles_b in [('NNNN=NN', 'NNNNN=N'),
+                                   ('NN=NN', 'NNN=N'),
+                                   ('NC=O', 'N=CO')]:
+            mol_a = Molecule(smiles=smiles_a)
+            spc_b = ARCSpecies(label='test', smiles=smiles_b)
+            self.assertEqual(mol_a.to_inchi(), spc_b.mol.to_inchi())
+            self.assertEqual(mol_a.multiplicity, spc_b.mol.multiplicity)
+            self.assertFalse(check_product_isomorphism([mol_a], [spc_b]),
+                             f'{smiles_a} must not match the tautomer {smiles_b}')
+
+    def test_check_product_isomorphism_inchi_fallback_rejects_tautomers_with_equal_h_counts(self):
+        """Test that the InChI fallback rejects tautomers that carry the same number of hydrogens
+        on every heavy atom.
+        H2N-NH-N=N-NH-NH2 and H2N-NH-NH-N=N-NH2 share a standard InChI and both place two
+        hydrogens on each terminal nitrogen, one on two of the internal nitrogens and none on the
+        remaining two, yet they are different molecules."""
+        mol_a = Molecule(smiles='NNN=NNN')
+        spc_b = ARCSpecies(label='test', smiles='NNNN=NN')
+        self.assertEqual(mol_a.to_inchi(), spc_b.mol.to_inchi())
+        h_counts_a = sorted(sum(1 for nb in atom.edges if nb.is_hydrogen())
+                            for atom in mol_a.atoms if not atom.is_hydrogen())
+        h_counts_b = sorted(sum(1 for nb in atom.edges if nb.is_hydrogen())
+                            for atom in spc_b.mol.atoms if not atom.is_hydrogen())
+        self.assertEqual(h_counts_a, h_counts_b)
+        self.assertFalse(check_product_isomorphism([mol_a], [spc_b]))
+
+    def test_check_product_isomorphism_does_not_generate_inchi_for_rejected_candidates(self):
+        """Test that a candidate the connectivity comparison rejects never reaches InChI generation.
+        [N-]1O[NH+]=C=C1 is a template-generated tautomer of the oxadiazole c1cnon1: the two share a
+        molecular formula and a multiplicity, but one places a hydrogen on a nitrogen where the other
+        places it on a carbon, so the connectivity comparison rejects the pair on its own. The
+        cumulated C=C=N in a five-membered ring is valence-legal yet geometrically impossible, and
+        neither RDKit nor OpenBabel can convert it, so generating its InChI only logs an error and a
+        traceback for a candidate that is rejected either way."""
+        mol_a = Molecule(smiles='[N-]1O[NH+]=C=C1')
+        spc_b = ARCSpecies(label='test', smiles='c1cnon1')
+        self.assertEqual(mol_a.fingerprint, spc_b.mol.fingerprint)
+        self.assertEqual(mol_a.multiplicity, spc_b.mol.multiplicity)
+        with patch('arc.molecule.translator.to_inchi') as mock_to_inchi:
+            self.assertFalse(check_product_isomorphism([mol_a], [spc_b]))
+            self.assertEqual(mock_to_inchi.call_count, 0)
+
+    def test_check_product_isomorphism_inchi_fallback_rejects_charge_isomers(self):
+        """Test that the InChI fallback rejects a cation matched against the corresponding anion.
+        The connectivity comparison ignores Atom.charge and the fingerprint counts elements only, so
+        the two carry the same connectivity and the same multiplicity and differ only in the /q layer
+        of the standard InChI, which the fallback must therefore keep comparing."""
+        for smiles_a, smiles_b in [('[CH3+]', '[CH3-]'),
+                                   ('C=[CH+]', 'C=[CH-]')]:
+            mol_a = Molecule(smiles=smiles_a)
+            spc_b = ARCSpecies(label='test', smiles=smiles_b)
+            self.assertTrue(mol_a.is_isomorphic(spc_b.mol, save_order=True, strict=False))
+            self.assertEqual(mol_a.multiplicity, spc_b.mol.multiplicity)
+            self.assertNotEqual(mol_a.copy(deep=True).to_inchi(), spc_b.mol.copy(deep=True).to_inchi())
+            self.assertFalse(check_product_isomorphism([mol_a], [spc_b]),
+                             f'{smiles_a} must not match {smiles_b}')
+
+    def test_get_inchi_caches_per_molecule(self):
+        """Test that _get_inchi gives each molecule its own cache entry.
+        Two molecules that share a cache entry would be reported as having the same InChI, so a
+        cached InChI must belong to the molecule it was generated from and to no other."""
+        cache = dict()
+        mol_a, mol_b = Molecule(smiles='C'), Molecule(smiles='CC')
+        inchi_a, inchi_b = _get_inchi(mol_a, cache), _get_inchi(mol_b, cache)
+        self.assertEqual(len(cache), 2)
+        self.assertEqual(inchi_a, Molecule(smiles='C').copy(deep=True).to_inchi())
+        self.assertEqual(inchi_b, Molecule(smiles='CC').copy(deep=True).to_inchi())
+        self.assertNotEqual(inchi_a, inchi_b)
+        self.assertEqual(_get_inchi(mol_a, cache), inchi_a)
+        self.assertEqual(_get_inchi(mol_b, cache), inchi_b)
+
+    def test_check_product_isomorphism_does_not_reorder_the_given_molecules(self):
+        """Test that check_product_isomorphism leaves the atom order of both the given products and
+        the molecules of the given species untouched, including on a pair the InChI fallback admits.
+        Molecule.to_inchi reorders the molecule it is given, and the caller of this function goes on
+        to use these molecules to build an atom map and a TS guess."""
+        products = [Molecule(smiles='O=C[C-](O)C#[O+]')]
+        p_species = [ARCSpecies(label='test', smiles='O=C=C(O)C=O')]
+        order_before = ([[atom.element.symbol for atom in mol.atoms] for mol in products],
+                        [[atom.element.symbol for atom in spc.mol.atoms] for spc in p_species])
+        self.assertTrue(check_product_isomorphism(products, p_species))
+        order_after = ([[atom.element.symbol for atom in mol.atoms] for mol in products],
+                       [[atom.element.symbol for atom in spc.mol.atoms] for spc in p_species])
+        self.assertEqual(order_before, order_after)
 
     def test_check_product_isomorphism_length_mismatch(self):
         """Test that check_product_isomorphism returns False for length mismatch."""

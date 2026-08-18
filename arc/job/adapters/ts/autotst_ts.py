@@ -124,9 +124,13 @@ class AutoTSTAdapter(JobAdapter):
         self.execution_type = execution_type or 'incore'
         self.command = None  # AutoTST does not have an executable file, just an API.
         self.url = 'https://github.com/ReactionMechanismGenerator/AutoTST'
+        # Note: 'Disproportionation' requires the AutoTST env to be on a branch whose
+        # SUPPORTED_FAMILIES includes 'Disproportionation' (e.g. fix/disproportionation-support),
+        # not on AutoTST main.
         self.supported_families = ['intra_H_migration',
                                    'H_Abstraction',
-                                   'R_Addition_MultipleBond']
+                                   'R_Addition_MultipleBond',
+                                   'Disproportionation']
 
         if reactions is None:
             raise ValueError('Cannot execute AutoTST without ARCReaction object(s).')
@@ -208,6 +212,36 @@ class AutoTSTAdapter(JobAdapter):
         """
         pass
 
+    def save_subprocess_error_log(self,
+                                  output,
+                                  rxn: ARCReaction,
+                                  direction_str: str,
+                                  ) -> str | None:
+        """
+        Save the stdout and stderr of a failed AutoTST subprocess to a dedicated file
+        next to the job's output, keeping the (often lengthy) traceback out of arc.log.
+
+        Args:
+            output: The ``CompletedProcess`` instance returned by the AutoTST subprocess.
+            rxn (ARCReaction): The reaction for which AutoTST was executed.
+            direction_str (str): The direction in which AutoTST was executed, 'forward' or 'reverse'.
+
+        Returns:
+            Optional[str]: The path to which the details were written, ``None`` if writing failed.
+        """
+        err_path = os.path.join(os.path.dirname(self.output_path), 'autotst_err.log')
+        try:
+            os.makedirs(os.path.dirname(err_path), exist_ok=True)
+            with open(err_path, 'a') as f:
+                f.write(f'AutoTST subprocess for {rxn} in the {direction_str} direction '
+                        f'returned code {output.returncode} at {datetime.datetime.now()}\n')
+                f.write(f'stdout:\n{output.stdout}\n')
+                f.write(f'stderr:\n{output.stderr}\n\n')
+        except OSError as e:
+            logger.debug(f'Could not write the AutoTST subprocess error details to {err_path}, got:\n{e}')
+            return None
+        return err_path
+
     def execute_incore(self):
         """
         Execute a job incore.
@@ -230,10 +264,17 @@ class AutoTSTAdapter(JobAdapter):
                                                 multiplicity=rxn.multiplicity,
                                                 )
                 reaction_label_fwd = get_autotst_reaction_string(rxn)
+                # remove_dup_species dedups rxn.reactants/products, dropping the count of a repeated
+                # species (e.g. OH + OH). Rebuild count-preserving label lists so the reverse reaction
+                # is atom-balanced (P1 + P2 <=> R1 + R1, not P1 + P2 <=> R1).
+                rev_reactant_labels = [lbl for lbl in rxn.products
+                                       for _ in range(rxn.get_species_count(label=lbl, well=1))]
+                rev_product_labels = [lbl for lbl in rxn.reactants
+                                      for _ in range(rxn.get_species_count(label=lbl, well=0))]
                 reaction_label_rev = get_autotst_reaction_string(ARCReaction(r_species=rxn.p_species,
                                                                              p_species=rxn.r_species,
-                                                                             reactants=rxn.products,
-                                                                             products=rxn.reactants))
+                                                                             reactants=rev_reactant_labels,
+                                                                             products=rev_product_labels))
 
                 i = 0
                 for reaction_label, direction in zip([reaction_label_fwd, reaction_label_rev], ['F', 'R']):
@@ -252,11 +293,15 @@ class AutoTSTAdapter(JobAdapter):
 
                     if output.returncode:
                         direction_str = 'forward' if direction == 'F' else 'reverse'
-                        logger.warning(f'AutoTST subprocess did not give a successful return code for {rxn} '
-                                       f'in the {direction_str} direction.\n'
-                                       f'Got return code: {output.returncode}\n'
-                                       f'stdout: {output.stdout}\n'
-                                       f'stderr: {output.stderr}')
+                        err_path = self.save_subprocess_error_log(output=output,
+                                                                 rxn=rxn,
+                                                                 direction_str=direction_str,
+                                                                 )
+                        logger.warning(f'AutoTST subprocess for {rxn} in the {direction_str} direction returned '
+                                       f'code {output.returncode}, see {err_path} for details.'
+                                       if err_path is not None else
+                                       f'AutoTST subprocess for {rxn} in the {direction_str} direction returned '
+                                       f'code {output.returncode}.')
                     if os.path.isfile(self.output_path):
                         results = read_yaml_file(path=self.output_path)
                         if results:

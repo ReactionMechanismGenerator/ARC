@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
 
 servers, submit_filenames, TS_GCN_PYTHON = settings['servers'], settings['submit_filenames'], settings['TS_GCN_PYTHON']
+TS_SEARCH_RANDOM_SEED = settings['TS_SEARCH_RANDOM_SEED']
 
 DIHEDRAL_INCREMENT = 10
 GCN_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'gcn_script.py')
@@ -307,17 +308,20 @@ class GCNAdapter(JobAdapter):
                           'local_path': self.local_path,
                           'yml_out_path': self.yml_out_path,
                           'repetitions': self.repetitions,
+                          'seed': TS_SEARCH_RANDOM_SEED,
                           }
             save_yaml_file(path=self.yml_in_path, content=input_dict)
             self.legacy_queue_execution()
         elif exe_type == 'incore':
-            for _ in range(self.repetitions):
+            for repetition in range(self.repetitions):
+                seed = TS_SEARCH_RANDOM_SEED + repetition
                 run_subprocess_locally(direction='F',
                                        reactant_path=self.reactant_path,
                                        product_path=self.product_path,
                                        ts_path=self.ts_fwd_path,
                                        local_path=self.local_path,
                                        ts_species=rxn.ts_species,
+                                       seed=seed,
                                        )
                 run_subprocess_locally(direction='R',
                                        reactant_path=self.product_path,
@@ -325,6 +329,7 @@ class GCNAdapter(JobAdapter):
                                        ts_path=self.ts_rev_path,
                                        local_path=self.local_path,
                                        ts_species=rxn.ts_species,
+                                       seed=seed,
                                        )
             if len(self.reactions) < 5:
                 successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'gcn' in tsg.method])
@@ -363,9 +368,16 @@ def run_subprocess_locally(direction: str,
                            ts_path: str,
                            local_path: str,
                            ts_species: ARCSpecies,
+                           seed: int = TS_SEARCH_RANDOM_SEED,
                            ):
     """
     Run GCN incore using a subprocess.
+
+    GCN inference is stochastic, and ARC's own process-level seeding cannot reach a
+    child interpreter, so the seed is handed over explicitly: ``--seed`` seeds
+    python-random / NumPy / PyTorch inside the script, and ``PYTHONHASHSEED`` is
+    exported into the child's environment because it must be set before the child
+    interpreter starts.
 
     Args:
         direction (str): Either 'F' or 'R' for forward ort reverse directions, respectively.
@@ -374,6 +386,7 @@ def run_subprocess_locally(direction: str,
         ts_path (str): The path to the resulting TS guess file.
         local_path (str): The local path to the job folder.
         ts_species (ARCSpecies): The TS ``ARCSpecies`` object instance.
+        seed (int, optional): The random seed to pass to the GCN subprocess.
     """
     ts_xyz = None
     tsg = TSGuess(method='GCN',
@@ -387,6 +400,8 @@ def run_subprocess_locally(direction: str,
         '--r_sdf_path', reactant_path,
         '--p_sdf_path', product_path,
         '--ts_xyz_path', ts_path,
+        '--seed', str(seed),
+        extra_env={'PYTHONHASHSEED': str(seed)},
     )
     if output.returncode:
         direction_str = 'forward' if direction == 'F' else 'reverse'

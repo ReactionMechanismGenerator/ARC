@@ -109,6 +109,7 @@ class JobEnum(str, Enum):
     autotst = 'autotst'  # AutoTST, 10.1021/acs.jpca.7b07361, 10.26434/chemrxiv.13277870.v2
     gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
     heuristics = 'heuristics'  # ARC's heuristics
+    crest = 'crest'  # CREST conformer/TS search
     kinbot = 'kinbot'  # KinBot, 10.1016/j.cpc.2019.106947
     linear = 'linear'  # ARC's linear TS search
     goflow = 'goflow'  # GoFlow, flow-matching E(3)-equivariant TS generator (Galustian et al., Digital Discovery 2025, 10.1039/D5DD00283D); https://github.com/heid-lab/goflow_lean
@@ -116,6 +117,7 @@ class JobEnum(str, Enum):
     user = 'user'  # user guesses
     xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
     orca_neb = 'orca_neb'
+    qst2 = 'qst2'  # Gaussian synchronous-transit-guided quasi-Newton TS search (opt=qst2)
 
 
 class JobTypeEnum(str, Enum):
@@ -153,6 +155,34 @@ class JobAdapter(ABC):
     """
     An abstract class for job adapters.
     """
+
+    def __repr__(self) -> str:
+        """
+        A concise single-line representation of the job, used whenever a job instance is
+        interpolated into a log message. Only attributes that are set by ``_initialize_adapter``
+        are considered, all attributes are accessed defensively so that this method never raises,
+        and attributes which were not set are omitted rather than reported as ``None``.
+
+        Returns:
+            str: The string representation of the job.
+        """
+        descriptors = list()
+        for attribute, key in [('job_name', 'name'),
+                               ('job_num', 'num'),
+                               ('job_id', 'id'),
+                               ('job_adapter', 'adapter'),
+                               ('job_type', 'type'),
+                               ('execution_type', 'execution'),
+                               ('species_label', 'label'),
+                               ('server', 'server'),
+                               ]:
+            value = getattr(self, attribute, None)
+            if value is not None:
+                descriptors.append(f'{key}={value}')
+        status = getattr(self, 'job_status', None)
+        if isinstance(status, (list, tuple)) and len(status):
+            descriptors.append(f'status={status[0]}')
+        return f'{self.__class__.__name__}({", ".join(descriptors)})'
 
     @abstractmethod
     def write_input_file(self) -> None:
@@ -207,6 +237,11 @@ class JobAdapter(ABC):
         """
         pass
 
+    @property
+    def ess_software(self) -> str:
+        """The electronic-structure software used to interpret this adapter's output."""
+        return self.job_adapter
+
     def execute(self):
         """
         Execute a job.
@@ -222,9 +257,82 @@ class JobAdapter(ABC):
         with an HDF5 file that contains specific directions.
         The output is returned within the HDF5 file.
         The new ARC instance, representing a single worker, will run all of its jobs incore.
+
+        Connection sharing: for remote-queue jobs we lease one
+        :class:`SSHClient` from the process-global pool
+        (:mod:`arc.job.ssh_pool`) and reuse it for both file upload and
+        qsub/sbatch submission within this call. Across an entire ARC
+        run, every remote job for a given server reuses the *same*
+        pooled client — 100 TS guess opts share one paramiko Transport
+        instead of opening 200. Pipe mode currently can't bundle these
+        (``should_use_pipe`` refuses non-``local`` servers, see
+        ``arc/job/pipe/pipe_coordinator.py:77``); the pool is the
+        leverage available short of full remote-pipe support.
         """
-        self.upload_files()
         execution_type = JobExecutionTypeEnum(self.execution_type)
+        use_shared_ssh = (
+            execution_type == JobExecutionTypeEnum.queue
+            and self.server is not None
+            and self.server != 'local'
+            and not self.testing
+        )
+        if use_shared_ssh:
+            from arc.job.ssh_pool import get_default_pool
+            with get_default_pool().borrow(self.server) as ssh:
+                self._shared_ssh = ssh
+                try:
+                    self._dispatch_execution(execution_type)
+                finally:
+                    # Pool retains the SSHClient; clearing the attr
+                    # just prevents a later code path on this adapter
+                    # from grabbing a stale reference if the pool
+                    # subsequently reaps and reopens the connection.
+                    self._shared_ssh = None
+        else:
+            self._dispatch_execution(execution_type)
+        if not self.restarted:
+            self._write_initiated_job_to_csv_file()
+
+    def _open_or_borrow_ssh(self):
+        """Yield an :class:`SSHClient` for ``self.server``, in priority order:
+
+        1. ``self._shared_ssh`` if set — the per-call client opened by
+           :meth:`execute`. Available within the upload+submit window.
+        2. The process-global pool (:mod:`arc.job.ssh_pool`) — keeps
+           one client alive across jobs for the run's lifetime, so the
+           hot status-poll loop reuses connections.
+        3. A fresh ``SSHClient`` opened just for this call — only hit
+           when the pool can't construct one (testing, exotic env).
+
+        Returns a context manager that does NOT close the underlying
+        client on exit; the pool retains ownership in case (2), and
+        case (3) opens-and-closes inline.
+        """
+        from contextlib import contextmanager
+        shared = getattr(self, '_shared_ssh', None)
+        if shared is not None:
+            @contextmanager
+            def _shared_cm():
+                yield shared
+            return _shared_cm()
+        try:
+            from arc.job.ssh_pool import get_default_pool
+            return get_default_pool().borrow(self.server)
+        except Exception:
+            # Pool refused (e.g., factory failed). Fall back to a
+            # one-shot client so we degrade gracefully — the caller
+            # gets correctness at the cost of one connection.
+            logger.debug("ssh pool unavailable; opening one-shot client", exc_info=True)
+            @contextmanager
+            def _fresh_cm():
+                with SSHClient(self.server) as fresh:
+                    yield fresh
+            return _fresh_cm()
+
+    def _dispatch_execution(self, execution_type: 'JobExecutionTypeEnum') -> None:
+        """Inner body of :meth:`execute`, factored out so the SSH-share
+        wrapper around it stays small and readable."""
+        self.upload_files()
         if execution_type == JobExecutionTypeEnum.incore:
             self.initial_time = datetime.datetime.now()
             self.job_status[0] = 'running'
@@ -239,19 +347,25 @@ class JobAdapter(ABC):
             raise ValueError('Pipe execution is handled at the Scheduler level. '
                              'JobAdapters inside a pipe must be executed by the worker '
                              "with execution_type='incore'.")
-        if not self.restarted:
-            self._write_initiated_job_to_csv_file()
 
-    def legacy_queue_execution(self):
+    def legacy_queue_execution(self, ssh: 'SSHClient | None' = None):
         """
         Execute a job to the server's queue.
         The server could be either "local" or remote.
+
+        ``ssh`` is an explicitly-passed shared connection. When ``None``
+        we route through :meth:`_open_or_borrow_ssh` which prefers
+        ``self._shared_ssh`` (set by :meth:`execute`), then the
+        process-global pool, then opens fresh.
         """
         self._log_job_execution()
         # Submit to queue, differentiate between local (same machine using its queue) and remote servers.
         if self.server != 'local':
-            with SSHClient(self.server) as ssh:
+            if ssh is not None:
                 self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
+            else:
+                with self._open_or_borrow_ssh() as borrowed:
+                    self.job_status[0], self.job_id = borrowed.submit_job(remote_path=self.remote_path)
         else:
             # submit to the local queue
             self.job_status[0], self.job_id = submit_job(path=self.local_path)
@@ -354,7 +468,7 @@ class JobAdapter(ABC):
         self.local_path_to_xyz = None
 
         if not os.path.isdir(self.local_path):
-            os.makedirs(self.local_path)
+            os.makedirs(self.local_path, exist_ok=True)
 
         if self.server is not None:
             # Parentheses don't play well in folder names:
@@ -367,26 +481,24 @@ class JobAdapter(ABC):
 
         self.set_additional_file_paths()
 
-    def upload_files(self):
+    def upload_files(self, ssh: 'SSHClient | None' = None):
         """
         Upload the relevant files for the job.
+
+        ``ssh`` is an explicitly-passed shared connection. When ``None``
+        we route through :meth:`_open_or_borrow_ssh` which prefers
+        ``self._shared_ssh`` (set by :meth:`execute`), then the
+        process-global pool, then opens fresh.
         """
         if not self.testing:
             if self.execution_type != 'incore' and self.server != 'local':
                 # If the job execution type is incore, then no need to upload any files.
                 # Also, even if the job is submitted to the que, no need to upload files if the server is local.
-                with SSHClient(self.server) as ssh:
-                    for up_file in self.files_to_upload:
-                        logger.debug(f"Uploading {up_file['file_name']} source {up_file['source']} to {self.server}")
-                        if up_file['source'] == 'path':
-                            ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=up_file['local'])
-                        elif up_file['source'] == 'input_files':
-                            ssh.upload_file(remote_file_path=up_file['remote'], file_string=up_file['local'])
-                        else:
-                            raise ValueError(f"Unclear file source for {up_file['file_name']}. Should either be 'path' or "
-                                             f"'input_files', got: {up_file['source']}")
-                        if up_file['make_x']:
-                            ssh.change_mode(mode='+x', file_name=up_file['file_name'], remote_path=self.remote_path)
+                if ssh is not None:
+                    self._upload_with_ssh(ssh)
+                else:
+                    with self._open_or_borrow_ssh() as borrowed:
+                        self._upload_with_ssh(borrowed)
             else:
                 # running locally, just copy the check file, if exists, to the job folder
                 for up_file in self.files_to_upload:
@@ -397,6 +509,25 @@ class JobAdapter(ABC):
                             pass
             self.initial_time = datetime.datetime.now()
 
+    def _upload_with_ssh(self, ssh) -> None:
+        """SFTP-put every entry in ``self.files_to_upload`` over an open client.
+
+        Factored out of :meth:`upload_files` so the with-shared vs.
+        with-new code paths share one body — adding a future per-file
+        knob (compression, retry, throttle) lands in one place.
+        """
+        for up_file in self.files_to_upload:
+            logger.debug(f"Uploading {up_file['file_name']} source {up_file['source']} to {self.server}")
+            if up_file['source'] == 'path':
+                ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=up_file['local'])
+            elif up_file['source'] == 'input_files':
+                ssh.upload_file(remote_file_path=up_file['remote'], file_string=up_file['local'])
+            else:
+                raise ValueError(f"Unclear file source for {up_file['file_name']}. Should either be 'path' or "
+                                 f"'input_files', got: {up_file['source']}")
+            if up_file['make_x']:
+                ssh.change_mode(mode='+x', file_name=up_file['file_name'], remote_path=self.remote_path)
+
     def download_files(self):
         """
         Download the relevant files.
@@ -405,13 +536,23 @@ class JobAdapter(ABC):
             if self.execution_type != 'incore' and self.server != 'local':
                 # If the job execution type is incore, then no need to download any files.
                 # Also, even if the job is submitted to the que, no need to download files if the server is local.
-                with SSHClient(self.server) as ssh:
+                with self._open_or_borrow_ssh() as ssh:
                     for dl_file in self.files_to_download:
                         ssh.download_file(remote_file_path=dl_file['remote'], local_file_path=dl_file['local'])
                     self.set_initial_and_final_times(ssh=ssh)
             elif self.server == 'local':
                 self.set_initial_and_final_times()
         self.final_time = self.final_time or datetime.datetime.now()
+
+    def remove_remote_files(self):
+        """
+        Remove the job's remote work directory after a successful run, to keep cluster quota in check.
+        No-op for local servers or when no remote_path is set.
+        """
+        if self.server is None or self.server == 'local' or not self.remote_path:
+            return
+        with self._open_or_borrow_ssh() as ssh:
+            ssh.remove_dir(remote_path=self.remote_path)
 
     def set_initial_and_final_times(self, ssh: SSHClient | None = None):
         """
@@ -592,9 +733,10 @@ class JobAdapter(ABC):
         max_mem = servers[self.server].get('memory', None) if self.server is not None else 32.0  # Max memory per node in GB.
         job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
         if max_mem is not None and self.job_memory_gb > max_mem * job_max_server_node_memory_allocation:
+            node_str = f' on {self.server}' if self.server is not None else ''
             logger.warning(f'The memory for job {self.job_name} using {self.job_adapter} ({self.job_memory_gb} GB) '
-                           f'exceeds {100 * job_max_server_node_memory_allocation}% of the the maximum node memory on '
-                           f'{self.server}. Setting it to {job_max_server_node_memory_allocation * max_mem:.2f} GB.')
+                           f'exceeds {100 * job_max_server_node_memory_allocation}% of the maximum node memory'
+                           f'{node_str}. Setting it to {job_max_server_node_memory_allocation * max_mem:.2f} GB.')
             self.job_memory_gb = job_max_server_node_memory_allocation * max_mem
             total_submit_script_memory_mib = math.ceil(self.job_memory_gb * MEMORY_GB_TO_MIB * CAPPED_JOB_MEMORY_OVERHEAD)
             self.job_status[1]['keywords'].append('max_total_job_memory')  # Useful info when troubleshooting.
@@ -705,7 +847,7 @@ class JobAdapter(ABC):
         logger.debug(f'Deleting job {self.job_name} for {self.species_label}')
         if self.server != 'local':
             logger.debug(f'deleting job on {self.server}...')
-            with SSHClient(self.server) as ssh:
+            with self._open_or_borrow_ssh() as ssh:
                 ssh.delete_job(self.job_id)
         else:
             logger.debug('deleting job locally...')
@@ -771,20 +913,20 @@ class JobAdapter(ABC):
             # No queueing system, so there are no scheduler stdout/stderr files to collect.
             return
         if cluster_soft in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
+            # job.log is HTCondor's native event log; other clusters don't produce one.
+            include_job_log = cluster_soft == 'htcondor'
             local_file_path_1 = os.path.join(self.local_path, 'out.txt')
             local_file_path_2 = os.path.join(self.local_path, 'err.txt')
-            local_file_path_3 = os.path.join(self.local_path, 'job.log')
+            local_file_path_3 = os.path.join(self.local_path, 'job.log') if include_job_log else None
             if self.server != 'local' and self.remote_path is not None and not self.testing:
-                remote_file_path_1 = os.path.join(self.remote_path, 'out.txt')
-                remote_file_path_2 = os.path.join(self.remote_path, 'err.txt')
-                remote_file_path_3 = os.path.join(self.remote_path, 'job.log')
-                with SSHClient(self.server) as ssh:
-                    for local_file_path, remote_file_path in zip([local_file_path_1,
-                                                                  local_file_path_2,
-                                                                  local_file_path_3],
-                                                                 [remote_file_path_1,
-                                                                  remote_file_path_2,
-                                                                  remote_file_path_3]):
+                remote_paths = [os.path.join(self.remote_path, 'out.txt'),
+                                os.path.join(self.remote_path, 'err.txt')]
+                local_paths = [local_file_path_1, local_file_path_2]
+                if include_job_log:
+                    remote_paths.append(os.path.join(self.remote_path, 'job.log'))
+                    local_paths.append(local_file_path_3)
+                with self._open_or_borrow_ssh() as ssh:
+                    for local_file_path, remote_file_path in zip(local_paths, remote_paths):
                         try:
                             ssh.download_file(remote_file_path=remote_file_path,
                                               local_file_path=local_file_path)
@@ -794,7 +936,7 @@ class JobAdapter(ABC):
                                            f'flags with stdout and stderr of out.txt and err.txt, respectively '
                                            f'(e.g., "#SBATCH -o out.txt"). Error message:')
                             logger.warning(e)
-            for local_file_path in [local_file_path_1, local_file_path_2, local_file_path_3]:
+            for local_file_path in filter(None, [local_file_path_1, local_file_path_2, local_file_path_3]):
                 if os.path.isfile(local_file_path):
                     with open(local_file_path, 'r') as f:
                         lines = f.readlines()
@@ -802,15 +944,14 @@ class JobAdapter(ABC):
                     content += '\n'
         else:
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
-        if content:
-            self.additional_job_info = content.lower()
+        self.additional_job_info = content.lower() if content else None
 
     def _check_job_server_status(self) -> str:
         """
         Possible statuses: ``initializing``, ``running``, ``errored on node xx``, ``done``.
         """
         if self.server != 'local' and not self.testing:
-            with SSHClient(self.server) as ssh:
+            with self._open_or_borrow_ssh() as ssh:
                 return ssh.check_job_status(self.job_id)
         else:
             return check_job_status(self.job_id)
@@ -823,6 +964,10 @@ class JobAdapter(ABC):
         Raises:
             IOError: If the output file and any additional server information cannot be found.
         """
+        existing_keywords = list(self.job_status[1].get('keywords', list()))
+        # Refresh scheduler-side logs before ESS parsing so server-reported OOMs
+        # can be detected even when the output file is absent or incomplete.
+        self._get_additional_job_info()
         if self.server != 'local' and self.execution_type != 'incore':
             if os.path.exists(self.local_path_to_output_file):
                 os.remove(self.local_path_to_output_file)
@@ -847,7 +992,7 @@ class JobAdapter(ABC):
                                                                  species_label=self.species_label,
                                                                  job_type=self.job_type,
                                                                  job_log=self.additional_job_info,
-                                                                 software=self.job_adapter,
+                                                                 software=self.ess_software,
                                                                  )
             if status != 'done' and self.final_time is not None \
                     and datetime.datetime.now() - self.final_time < datetime.timedelta(seconds=30):
@@ -857,11 +1002,26 @@ class JobAdapter(ABC):
                                                                      species_label=self.species_label,
                                                                      job_type=self.job_type,
                                                                      job_log=self.additional_job_info,
-                                                                     software=self.job_adapter,
+                                                                     software=self.ess_software,
                                                                      )
         else:
             status, keywords, error, line = '', '', '', ''
+            if self.additional_job_info:
+                try:
+                    status, keywords, error, line = determine_ess_status(
+                        output_path=self.local_path_to_output_file,
+                        species_label=self.species_label,
+                        job_type=self.job_type,
+                        job_log=self.additional_job_info,
+                        software=self.ess_software,
+                    )
+                except FileNotFoundError:
+                    status, keywords, error, line = '', '', '', ''
         self.job_status[1]['status'] = status
+        if 'max_total_job_memory' in existing_keywords and status == 'errored' \
+                and isinstance(keywords, list) and 'Memory' in keywords \
+                and 'max_total_job_memory' not in keywords:
+            keywords.append('max_total_job_memory')
         self.job_status[1]['keywords'] = keywords
         self.job_status[1]['error'] = error
         self.job_status[1]['line'] = line.rstrip()

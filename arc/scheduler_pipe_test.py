@@ -51,7 +51,9 @@ def _make_task_spec(task_id, engine='mockter', task_family='conf_opt',
 
 def _make_scheduler(project_directory):
     """Create a minimal Scheduler for testing pipe methods."""
-    ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
+    # PipeCoordinator refuses pipe for non-'local' servers (remote pipe
+    # support lives on a separate branch — see pipe_coordinator.py:70-76).
+    ess_settings = {'gaussian': ['local'], 'molpro': ['local'], 'qchem': ['local']}
     spc = ARCSpecies(label='H2O', smiles='O')
     spc.conformers = [None] * 5
     spc.conformer_energies = [None] * 5
@@ -1494,9 +1496,10 @@ class TestEjectToSchedulerJobType(unittest.TestCase):
         from arc.job.pipe.pipe_coordinator import PipeCoordinator
         coord = self.sched.pipe_coordinator
         task = _make_task_spec('t_ts', task_family='ts_opt', species_label='H2O', conformer_index=0)
-        state = type('MockState', (), {'failure_class': 'ess_error'})()
+        state = type('MockState', (), {'failure_class': 'ess_error', 'attempt_index': 0})()
         pipe = MagicMock()
         pipe.run_id = 'test'
+        pipe.pipe_root = self.tmpdir  # No result.json here — parser summary resolves to {}.
         with patch.object(self.sched, 'run_job') as mock_run:
             coord._eject_to_scheduler(pipe, task, state)
             mock_run.assert_called_once()
@@ -1505,9 +1508,10 @@ class TestEjectToSchedulerJobType(unittest.TestCase):
 
     def test_species_sp_ejects_as_sp(self):
         task = _make_task_spec('t_sp', task_family='species_sp', species_label='H2O')
-        state = type('MockState', (), {'failure_class': 'ess_error'})()
+        state = type('MockState', (), {'failure_class': 'ess_error', 'attempt_index': 0})()
         pipe = MagicMock()
         pipe.run_id = 'test'
+        pipe.pipe_root = self.tmpdir  # No result.json here — parser summary resolves to {}.
         with patch.object(self.sched, 'run_job') as mock_run:
             self.sched.pipe_coordinator._eject_to_scheduler(pipe, task, state)
             kwargs = mock_run.call_args[1]
@@ -1516,9 +1520,10 @@ class TestEjectToSchedulerJobType(unittest.TestCase):
     def test_unknown_species_warns(self):
         task = _make_task_spec('t_bad', task_family='ts_opt', species_label='NONEXISTENT')
         task.owner_key = 'NONEXISTENT'
-        state = type('MockState', (), {'failure_class': 'ess_error'})()
+        state = type('MockState', (), {'failure_class': 'ess_error', 'attempt_index': 0})()
         pipe = MagicMock()
         pipe.run_id = 'test'
+        pipe.pipe_root = self.tmpdir  # No result.json here — parser summary resolves to {}.
         # Should not crash, just warn.
         self.sched.pipe_coordinator._eject_to_scheduler(pipe, task, state)
 

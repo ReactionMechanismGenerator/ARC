@@ -24,3 +24,21 @@ tm2orca.py $basename
 rm xtbrestart
 cd ..
 
+# ── Per-node provenance preservation (TCKDB path_search_result.points) ──
+# tm2orca.py renames the xTB-generated Turbomole-format ``energy``
+# and ``gradient`` files (xTB writes its --grad output in Turbomole's
+# on-disk text format; the calculation provenance is xTB, not Turbomole)
+# to ``<basename>.energy`` and ``<basename>.gradient``
+# inside scratch/. The GSM binary then consumes the ORCA-shaped
+# ``.engrad`` and may overwrite or remove the per-node files on
+# subsequent calls. Copy them (plus the captured xtb stdout) into a
+# stable side-effect directory at the run root so the TCKDB adapter's
+# parser can recover per-node electronic energies and gradient metrics
+# later. The copies are not consumed by GSM — the original scratch/
+# files stay in place unchanged for the algorithm.
+node_label="$1"
+preserve_dir="gsm_node_outputs"
+mkdir -p "$preserve_dir"
+[ -f "scratch/${basename}.energy" ]   && cp -p "scratch/${basename}.energy"   "$preserve_dir/${node_label}.energy"
+[ -f "scratch/${basename}.gradient" ] && cp -p "scratch/${basename}.gradient" "$preserve_dir/${node_label}.gradient"
+[ -f "scratch/${ofile}.xtbout" ]      && cp -p "scratch/${ofile}.xtbout"      "$preserve_dir/${node_label}.xtbout"

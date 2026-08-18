@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from mako.template import Template
 
 import arc.plotter as plotter
-from arc.common import ARC_PATH, get_logger, read_yaml_file
+from arc.common import ARC_PATH, get_logger, get_ts_validation_comment, read_yaml_file
 from arc.exceptions import AtomTypeError, InputError
 from arc.imports import incore_commands, settings
 from arc.molecule.molecule import Molecule
@@ -37,6 +37,13 @@ PBAC_SECTION_END = "mbac = {"
 MBAC_SECTION_START = "mbac = {"
 MBAC_SECTION_END = "freq_dict ="
 FREQ_SECTION_START = "freq_dict = {"
+
+# Tunneling method ARC uses for every reaction kinetics fit. Single source
+# of truth: the Arkane input template renders this constant, and output.yml
+# / the TCKDB adapter both read it back so downstream consumers know which
+# correction was applied.
+ARKANE_TUNNELING_METHOD = 'Eckart'
+
 
 main_input_template = """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
@@ -80,7 +87,7 @@ reaction(
     reactants=${rxn.reactants},
     products=${rxn.products},
     transitionState='${rxn.ts_species.label}',
-    tunneling='Eckart',
+    tunneling='${tunneling_method}',
 )
 % endfor
 
@@ -220,7 +227,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                                            delete_existing_subdir=True)
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors, e0_only=e0_only)
         self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=not e0_only)
-        run_arkane(statmech_dir)
+        if not run_arkane(statmech_dir):
+            # No output.py was produced — parsing would either error or
+            # silently miss data. Skip cleanly; matches the kinetics
+            # caller's gate.
+            return
         self.parse_arkane_thermo_output(statmech_dir)
 
     def compute_high_p_rate_coefficient(self,
@@ -248,12 +259,16 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors)
         self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=False)
         self.generate_ts_files(statmech_dir, skip_rotors)
-        success = run_arkane(statmech_dir)
-        if not success:
+        if run_arkane(statmech_dir):
+            self.parse_arkane_kinetics_output(statmech_dir)
+        if not any(reaction.kinetics for reaction in self.reactions):
             return
-        self.parse_arkane_kinetics_output(statmech_dir)
         for reaction in self.reactions:
             plotter.log_kinetics(reaction.ts_species.label, path=statmech_dir)
+            ts_validation = get_ts_validation_comment(reaction.ts_species)
+            if ts_validation is not None:
+                logger.error(f'The above rate coefficient of reaction {reaction.label} is not validated. '
+                             f'{ts_validation}')
             clean_output_directory(species_path=os.path.join(self.output_directory, 'rxns', reaction.ts_species.label),
                                    is_ts=True)
 
@@ -403,6 +418,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             t_min=self.T_min,
             t_max=self.T_max,
             t_count=self.T_count,
+            tunneling_method=ARKANE_TUNNELING_METHOD,
         )
 
     def generate_species_files(self,
@@ -511,7 +527,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     spc.thermo.data = content[lbl]['data']
                     spc.thermo.nasa_low = content[lbl].get('nasa_low')
                     spc.thermo.nasa_high = content[lbl].get('nasa_high')
-                    spc.thermo.cp_data = content[lbl].get('cp_data')
+                    spc.thermo.thermo_points = content[lbl].get('thermo_points')
 
                     line = (
                         f"   {lbl:<{label_width}}  "
@@ -1325,7 +1341,34 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
         if m_dea:
             kinetics['dEa'] = float(m_dea.group(1))
             kinetics['dEa_units'] = m_dea.group(2) or 'kJ/mol'
+    mark_ts_validation_in_kinetics(reaction=reaction, kinetics=kinetics)
     reaction.kinetics = kinetics
+
+
+def mark_ts_validation_in_kinetics(reaction, kinetics: dict) -> None:
+    """
+    Stamp the TS validation verdict onto a parsed kinetics dictionary.
+
+    The rate coefficient itself is never suppressed nor modified: a TS that positively failed the
+    IRC check still yields a number (which is diagnostically valuable), it is only labeled as such
+    via a dedicated ``ts_validation`` key and an addition to the Arrhenius ``comment``, so that the
+    rate cannot silently be mistaken for a validated one. A TS for which the IRC check was not
+    performed (``None``) or was passed (``True``) is left untouched.
+
+    Args:
+        reaction: The reaction object the kinetics were computed for.
+        kinetics (dict): The parsed Arrhenius kinetics dictionary, modified in place.
+    """
+    ts_species = getattr(reaction, 'ts_species', None)
+    marker = get_ts_validation_comment(ts_species)
+    if marker is None:
+        return
+    kinetics['ts_validation'] = marker
+    comment = kinetics.get('comment', None) or ''
+    kinetics['comment'] = f'{comment}\n{marker}' if comment else marker
+    logger.error(f'Computed a rate coefficient for reaction {reaction.label} although its TS '
+                 f'{ts_species.label} failed the IRC check. {marker}\n'
+                 f'TS checks: {ts_species.ts_checks}')
 
 
 def _parse_conformer_statmech(species, content: str) -> None:

@@ -672,6 +672,16 @@ H       0.68104300    0.74807180    0.61546062""")]
         for atom, symbol in zip(self.cj_spc.mol.atoms, xyzs[0]['symbols']):
             self.assertEqual(atom.symbol, symbol)
 
+    def test_embed_rdkit_does_not_return_a_conformer_less_molecule(self):
+        """Test that an embedding which yields no conformers returns None rather than an unusable molecule"""
+        spc = ARCSpecies(label='c-C3H2', smiles='C1#CC1')
+        with self.assertLogs('arc', level='WARNING') as captured:
+            rd_mol = conformers.embed_rdkit(label='c-C3H2', mol=spc.mol, num_confs=5)
+            if rd_mol is not None:
+                xyzs = conformers.read_rdkit_embedded_conformers(label='c-C3H2', rd_mol=rd_mol)
+                self.assertIsInstance(xyzs[0], dict)
+        self.assertIsNone(rd_mol)
+        self.assertIn('c-C3H2', '\n'.join(captured.output))
     def test_embed_rdkit_reports_why_embedding_failed(self):
         """Test that a failure to embed names the underlying error instead of swallowing it"""
         with unittest.mock.patch('rdkit.Chem.AllChem.EmbedMultipleConfs',
@@ -889,6 +899,15 @@ O       1.40839617    0.14303696    0.00000000"""
         self.assertEqual(torsions, [[5, 1, 2, 3], [1, 2, 3, 4], [2, 3, 4, 12]])
         self.assertEqual(sum(tops[0]), 19)
         self.assertEqual(sum(tops[1]), 40)
+
+    def test_get_wells_single_angle(self):
+        """Test that a single angle is reported as one zero-width well, not as no wells"""
+        wells = conformers.get_wells(label='', angles=[-59.1])
+        self.assertEqual(wells, [{'angles': [-59.1],
+                                  'end_angle': -59.1,
+                                  'end_idx': 0,
+                                  'start_angle': -59.1,
+                                  'start_idx': 0}])
 
     def test_get_wells(self):
         """Test determining wells characteristics from a list of angles"""
@@ -1283,6 +1302,39 @@ O       1.40839617    0.14303696    0.00000000"""
                              for angle in torsion_angles[tuple(torsions[0])]]))  # batch check almost equal
         self.assertTrue(all([int(round(angle / 5.0) * 5.0) in [60, 300]
                              for angle in torsion_angles[tuple(torsions[1])]]))  # batch check almost equal
+
+    def test_determine_torsion_symmetry_single_angle_scan(self):
+        """Test a torsion sampled at a single angle, which yields a single zero-width well"""
+        mol = Molecule(smiles='CCO')
+        mol.update()
+        self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=[2, 5, 6, 7],
+                                                               mol_list=[mol], torsion_scan=[-59.1]), 3)
+        # the hydroxyl side of the same torsion is not symmetric; a single angle must not inflate it
+        self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=[1, 9],
+                                                               mol_list=[mol], torsion_scan=[-59.1]), 1)
+
+    def test_determine_torsion_symmetry_degenerate_wells(self):
+        """Test a scan whose wells are all exactly repeated angles, so every well width is zero"""
+        mol = Molecule(smiles='CCO')
+        mol.update()
+        symmetry = conformers.determine_torsion_symmetry(
+            label='', top1=[2, 5, 6, 7], mol_list=[mol],
+            torsion_scan=[-120.0, -120.0, 0.0, 0.0, 120.0, 120.0])
+        self.assertEqual(symmetry, 3)
+
+    def test_determine_torsion_sampling_points_single_angle(self):
+        """Test the other consumer of the well count, which divides by it
+
+        With one well the symmetry is forced to one, so the sampling points are the scan itself.
+        """
+        sampling_points, wells = conformers.determine_torsion_sampling_points(label='',
+                                                                              torsion_angles=[-59.1])
+        self.assertEqual(sampling_points, [-59.1])
+        self.assertEqual(wells, [{'angles': [-59.1],
+                                  'end_angle': -59.1,
+                                  'end_idx': 0,
+                                  'start_angle': -59.1,
+                                  'start_idx': 0}])
 
     def test_determine_torsion_symmetry(self):
         """Test that we correctly determine the torsion symmetry"""

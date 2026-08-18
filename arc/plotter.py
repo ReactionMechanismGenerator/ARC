@@ -20,19 +20,22 @@ import py3Dmol as p3D
 from rdkit import Chem
 
 from arc.common import (NUMBER_BY_SYMBOL,
+                        TS_IRC_FAILED_MARKER,
                         calculate_arrhenius_rate_coefficient,
                         extremum_list,
                         get_angle_in_180_range,
                         get_close_tuple,
                         get_logger,
+                        get_ts_validation_comment,
                         is_notebook,
                         is_str_float,
                         read_yaml_file,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
                         )
-from arc.exceptions import InputError
+from arc.exceptions import InputError, InvalidAdjacencyListError
 from arc.level import Level
+from arc.molecule.molecule import Molecule
 from arc.parser.parser import parse_trajectory
 from arc.species.converter import (check_xyz_dict,
                                    get_xyz_radius,
@@ -555,7 +558,10 @@ def draw_kinetics_plots(rxn_list: list,
                                                                             T=T,
                                                                             )
                                        for T in temperatures]})
-            _draw_kinetics_plots(rxn.label, arc_k, temperatures, rmg_rxns, units, pp)
+            rxn_plot_label = rxn.label
+            if get_ts_validation_comment(rxn.ts_species) is not None:
+                rxn_plot_label = f'{rxn.label}\n{TS_IRC_FAILED_MARKER}'
+            _draw_kinetics_plots(rxn_plot_label, arc_k, temperatures, rmg_rxns, units, pp)
 
     if path is not None:
         pp.close()
@@ -762,6 +768,40 @@ def save_irc_traj_animation(irc_f_path, irc_r_path, out_path):
             f.write(' Normal termination of Gaussian 16\n')
 
 
+def _get_thermo_lib_duplicate(adjlist: str,
+                              written: list,
+                              ) -> str | None:
+    """
+    Return the label of an already written thermo library entry that RMG would reject
+    ``adjlist`` as a duplicate of, or ``None`` if there is none.
+
+    Applies the same test as ``rmgpy.data.thermo.ThermoLibrary.load_entry``: an isomorphic
+    molecule with an equal multiplicity. An adjacency list that cannot be parsed is reported
+    as not a duplicate, leaving the entry to be written as it was before this check existed.
+
+    Args:
+        adjlist (str): The adjacency list of the candidate entry.
+        written (list): Entries are (label, adjacency list) tuples already written.
+
+    Returns:
+        str | None: The label of the matching entry, or ``None``.
+    """
+    try:
+        mol = Molecule().from_adjacency_list(adjlist)
+    except (ValueError, InvalidAdjacencyListError):
+        logger.warning(f'Could not parse an adjacency list while checking the thermo library for '
+                       f'duplicates:\n{adjlist}')
+        return None
+    for label, written_adjlist in written:
+        try:
+            written_mol = Molecule().from_adjacency_list(written_adjlist)
+        except (ValueError, InvalidAdjacencyListError):
+            continue
+        if mol.multiplicity == written_mol.multiplicity and mol.is_isomorphic(written_mol):
+            return label
+    return None
+
+
 def save_thermo_lib(species_list: list,
                     path: str,
                     name: str,
@@ -769,6 +809,14 @@ def save_thermo_lib(species_list: list,
                     ) -> None:
     """
     Save an RMG thermo library of all species.
+
+    A species is written only if it has thermo data and ``include_in_thermo_lib`` is ``True``.
+    A species whose adjacency list and multiplicity match an already written entry is skipped
+    with a warning, because ``rmgpy.data.thermo.ThermoLibrary.load_entry`` raises
+    ``DatabaseError`` on such a pair and the whole library would then fail to load. This applies
+    to a reaction whose two reactants are the same species, which reaches this function as two
+    separately labeled entries. Skipping affects the library file only; every species keeps its
+    own computed thermo everywhere else it is reported.
 
     Args:
         species_list (list): Entries are ARCSpecies objects to be saved in the library.
@@ -784,15 +832,23 @@ shortDesc = ""
 longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
 """
     species_dict = dict()
+    written = list()
     if not len(species_list) or not any(spc.thermo for spc in species_list):
         logger.warning('No species to save in the thermo library.')
         return
 
     for i, spc in enumerate(species_list):
         if spc.thermo.data and spc.include_in_thermo_lib:
-            if spc.label not in species_dict:
-                adjlist = spc.adjlist or spc.mol_list[0].copy(deep=True).to_adjacency_list()
-                species_dict[spc.label] = adjlist
+            adjlist = species_dict.get(spc.label) \
+                or spc.adjlist or spc.mol_list[0].copy(deep=True).to_adjacency_list()
+            duplicate_of = _get_thermo_lib_duplicate(adjlist, written)
+            if duplicate_of is not None:
+                logger.warning(f'Species {spc.label} has the same adjacency list and multiplicity as '
+                               f'{duplicate_of}, which is already in the thermo library. Omitting '
+                               f'{spc.label} from the library, RMG cannot load a library containing both.')
+                continue
+            species_dict[spc.label] = adjlist
+            written.append((spc.label, adjlist))
             spc.long_thermo_description += (
                 f'\nExternal symmetry: {spc.external_symmetry}, '
                 f'optical isomers: {spc.optical_isomers}\n'
@@ -883,11 +939,18 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
                     f'TS optical isomers: {rxn.ts_species.optical_isomers}\n\n' \
                     f'Optimized TS geometry:\n{xyz_to_str(rxn.ts_species.final_xyz)}\n\n' \
                     f'{rxn.ts_species.long_thermo_description}'
+        ts_validation = get_ts_validation_comment(rxn.ts_species)
+        arrhenius_comment = ''
+        if ts_validation is not None:
+            long_desc = f'{ts_validation}\n\n{long_desc}'
+            arrhenius_comment = f",\n                         comment=\"{ts_validation}\""
+            logger.error(f'Saving a rate coefficient for reaction {rxn.label} in the kinetics library although its '
+                         f'TS failed the IRC check. {ts_validation}')
         rxn_txt = f"""entry(
     index = {i},
     label = "{rxn.label}",
     kinetics = Arrhenius(A=({rxn.kinetics['A'][0]:.2e}, '{rxn.kinetics['A'][1]}'), n={rxn.kinetics['n']:.2f}, Ea=({rxn.kinetics['Ea'][0]:.2f}, '{rxn.kinetics['Ea'][1]}'),
-                         T0=(1, 'K'), Tmin=({T_min}, 'K'), Tmax=({T_max}, 'K')),
+                         T0=(1, 'K'), Tmin=({T_min}, 'K'), Tmax=({T_max}, 'K'){arrhenius_comment}),
     longDesc = 
 \"\"\"
 {long_desc}

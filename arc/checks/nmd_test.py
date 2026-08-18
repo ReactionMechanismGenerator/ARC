@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.checks.nmd module
 """
 
+import copy
 import unittest
 import os
 import shutil
@@ -12,7 +13,8 @@ import shutil
 import numpy as np
 
 import arc.checks.nmd as nmd
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, get_test_project_directory
+from arc.exceptions import ReactionError
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.molecule import Molecule
@@ -32,12 +34,13 @@ class TestNMD(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.project_directory = get_test_project_directory('tmp_nmd_project')
         cls.generic_job = job_factory(job_adapter='gaussian',
                                       species=[ARCSpecies(label='SPC', smiles='C')],
                                       job_type='composite',
                                       level=Level(method='CBS-QB3'),
                                       project='test_project',
-                                      project_directory=os.path.join(ARC_PATH, 'Projects', 'tmp_nmd_project'),
+                                      project_directory=cls.project_directory,
                                       )
         cls.xyz_1 = {'symbols': ('C', 'N', 'H', 'H', 'H', 'H'),
                      'isotopes': (13, 14, 1, 1, 1, 1),
@@ -225,6 +228,84 @@ class TestNMD(unittest.TestCase):
                                          H       -1.951439    0.465285   -1.158262""")
         cls.rxn_3.ts_species = ARCSpecies(label='TS3', is_ts=True, xyz=cls.ts_3_xyz)
 
+    def test_get_repeated_species_atom_equivalences(self):
+        """Repeated identical reactants (e.g. OH + OH) must yield cross-copy atom-equivalence groups
+        (the two O's, the two H's) so NMD can try the alternative mapping when the atom map picks one
+        copy's atom but the TS uses the other's. Non-repeated reactions must yield none."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='H2O', smiles='O'),
+                                     ARCSpecies(label='O', smiles='[O]', multiplicity=3)],
+                          reactants=['OH', 'OH'], products=['H2O', 'O'])
+        groups = nmd.get_repeated_species_atom_equivalences(rxn, well=0)
+        self.assertEqual(sorted(sorted(g) for g in groups), [[0, 2], [1, 3]])
+        # A reaction with no repeated species yields no cross-copy groups.
+        self.assertEqual(nmd.get_repeated_species_atom_equivalences(self.rxn_1, well=0), [])
+
+    def test_get_bond_change_candidates(self):
+        """The family-recipe-derived reactive bonds must be the first candidate when a family is identified.
+        For HO2 elimination from ethylperoxy the atom map is valid but permutes the spectator H atoms among
+        the chemically equivalent H positions of the ethylene product, inflating the map-derived bond sets,
+        so the family recipe is the only reliable derivation."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5O2', smiles='CCO[O]', multiplicity=2)],
+                          p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                     ARCSpecies(label='HO2', smiles='[O]O', multiplicity=2)])
+        self.assertEqual(rxn.family, 'HO2_Elimination_from_PeroxyRadical')
+        candidates = nmd.get_bond_change_candidates(reaction=rxn)
+        self.assertGreaterEqual(len(candidates), 1)
+        formed, broken, changed = candidates[0]
+        self.assertEqual(sorted(formed), [(3, 4)])  # O-H (beta-H transferred to the terminal O)
+        self.assertEqual(sorted(broken), [(0, 4), (1, 2)])  # C-H (beta-H) and C-O (C_alpha-O)
+        self.assertEqual(sorted(changed), [(0, 1)])  # C-C -> C=C
+
+    def test_get_bond_change_candidates_reverse_discovered_family(self):
+        """
+        A family match discovered in reverse cannot supply reactant-space bonds, so it must not
+        become a candidate. Without an atom map there is then no candidate at all, and the
+        map-derived derivation must be skipped rather than raise for a missing atom map.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='ethene', smiles='C=C'),
+                                     ARCSpecies(label='propene', smiles='C=CC')],
+                          p_species=[ARCSpecies(label='pentene', smiles='C=CCCC')])
+        self.assertEqual(rxn.family, 'Retroene')
+        self.assertTrue(all(product_dict['discovered_in_reverse'] for product_dict in rxn.product_dicts))
+        self.assertIsNone(rxn.get_reactive_bonds_from_family())
+
+        original_atom_map = ARCReaction.atom_map
+        try:
+            ARCReaction.atom_map = property(lambda self: None, lambda self, value: None)
+            self.assertEqual(nmd.get_bond_change_candidates(reaction=rxn), list())
+        finally:
+            ARCReaction.atom_map = original_atom_map
+
+    def test_analyze_ts_normal_mode_displacement_ho2_elimination(self):
+        """
+        HO2 elimination from ethylperoxy: CCO[O] <=> C=C + [O]O (benchmark reaction 04 regression).
+
+        The atom map for this reaction maps the heavy atoms and the transferring beta-H correctly, but
+        crosses the four spectator H atoms between the two carbons (all four ethylene H positions are
+        chemically equivalent, so the map is valid-but-permuted). The map-derived bond changes are
+        therefore inflated to 5 formed + 6 broken bonds, which no genuine reactive mode can satisfy.
+        NMD must validate the real concerted elimination saddle (imag ~-1074 cm-1, dominated by the
+        beta-H transfer) via the family-recipe-derived bonds, and must still reject a wrong saddle
+        found on the same PES (imag ~-2144 cm-1).
+        """
+        good_saddle = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5O2_HO2_elimination.log')
+        wrong_saddle = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5O2_HO2_elimination_wrong_saddle.log')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5O2', smiles='CCO[O]', multiplicity=2)],
+                          p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                     ARCSpecies(label='HO2', smiles='[O]O', multiplicity=2)])
+
+        self.generic_job.local_path_to_output_file = good_saddle
+        rxn.ts_species = ARCSpecies(label='TS_HO2_elim', is_ts=True, xyz=good_saddle)
+        rxn.ts_species.populate_ts_checks()
+        self.assertTrue(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25))
+
+        self.generic_job.local_path_to_output_file = wrong_saddle
+        rxn.ts_species = ARCSpecies(label='TS_HO2_elim_wrong', is_ts=True, xyz=wrong_saddle)
+        rxn.ts_species.populate_ts_checks()
+        self.assertFalse(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25))
+
     def test_analyze_ts_normal_mode_displacement_simple_rxns(self):
         """Test the analyze_ts_normal_mode_displacement() function with simple reactions."""
         # CH4 + OH <=> CH3 + H2O
@@ -407,6 +488,25 @@ class TestNMD(unittest.TestCase):
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_file_paths['TS7'])
         valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=amplitude)
         self.assertFalse(valid)
+
+    def test_analyze_ts_normal_mode_displacement_when_the_bonds_are_undetermined(self):
+        """Test analyze_ts_normal_mode_displacement() when the bonds that change cannot be determined."""
+        def raise_reaction_error():
+            raise ReactionError('Cannot get bonds without an atom map.')
+
+        def raise_value_error():
+            raise ValueError('11 is not in list')
+
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        rxn = copy.deepcopy(self.rxn_1)
+        rxn.get_formed_and_broken_bonds = raise_reaction_error
+        valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
+        self.assertIsNone(valid)
+        self.assertIn(nmd.NMD_UNDETERMINED_BONDS_WARNING, rxn.ts_species.ts_checks['warnings'])
+
+        rxn.get_formed_and_broken_bonds = raise_value_error
+        with self.assertRaises(ValueError):
+            nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
 
     def test_analyze_ts_normal_mode_displacement_for_hypervalence_nitrogen(self):
         """Test the analyze_ts_normal_mode_displacement() function for a hypervalence nitrogen."""
@@ -941,10 +1041,7 @@ class TestNMD(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['tmp_nmd_project']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
+        shutil.rmtree(cls.project_directory, ignore_errors=True)
         file_paths = [os.path.join(ARC_PATH, 'arc', 'checks', 'nul'), os.path.join(ARC_PATH, 'arc', 'checks', 'run.out')]
         for file_path in file_paths:
             if os.path.isfile(file_path):

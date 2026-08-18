@@ -12,11 +12,13 @@ import unittest
 
 from arc.common import almost_equal_coords, almost_equal_lists, read_yaml_file
 from arc.job.adapters.torch_ani import TorchANIAdapter
-from arc.settings.settings import tani_default_options_dict
+from arc.settings.settings import TANI_PYTHON, tani_default_options_dict
 from arc.species import ARCSpecies
 from arc.species.vectors import calculate_distance, calculate_angle, calculate_dihedral_angle
 
 
+@unittest.skipUnless(TANI_PYTHON is not None,
+                     "tani_env conda environment not found; TorchANI adapter tests require it.")
 class TestTorchANIAdapter(unittest.TestCase):
     """
     Contains unit tests for the TorchANIAdapter class.

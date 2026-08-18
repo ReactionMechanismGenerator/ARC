@@ -556,6 +556,19 @@ class ARCSpecies(object):
         self.set_mol_list()
         if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
             self.populate_ts_checks()
+        self._init_monoatomic_geometry()
+
+    def _init_monoatomic_geometry(self) -> None:
+        """Populate ``final_xyz`` for a monoatomic species.
+
+        An atom has nothing to optimize, so ARC never runs an opt job for it and
+        ``final_xyz`` is simply the geometry it was given. Any geometry already on
+        the species is used as-is; otherwise a conformer is generated. TSs and
+        polyatomic species are left untouched.
+        """
+        if self.is_ts or self.final_xyz is not None or not self.is_monoatomic():
+            return
+        self.final_xyz = self.get_xyz(generate=True)
 
     def __str__(self) -> str:
         """Return a string representation of the object"""
@@ -962,6 +975,16 @@ class ARCSpecies(object):
                                  f'{self.multiplicity} (ignored mol.multiplicity)')
                 else:
                     self.multiplicity = self.mol.multiplicity
+            elif self.number_of_radicals is None and not self.is_ts and adjlist is None \
+                    and 'mol' not in species_dict and (smiles is not None or inchi is not None) \
+                    and self.mol.multiplicity != self.multiplicity:
+                # SMILES/InChI don't encode electron spin, so the perceived .mol may disagree with the
+                # declared multiplicity (e.g. [CH2] is perceived as triplet u2, but multiplicity: 1 is the
+                # singlet carbene u0 p1). Reconcile the graph to the declared spin state so downstream
+                # graph-based logic (RMG family determination, isomorphism checks) sees the correct species.
+                # Mirrors the kwargs __init__ path; skipped for adjlist/mol input (spin already encoded) and
+                # for open-shell states declared via number_of_radicals.
+                self.reconcile_mol_multiplicity()
             if self.charge is None:
                 self.charge = self.mol.get_net_charge()
         if 'conformers' in species_dict:
@@ -1376,6 +1399,7 @@ class ARCSpecies(object):
                                  'trsh_counter': 0,
                                  'trsh_methods': list(),
                                  'scan_path': '',
+                                 'scan_software': '',
                                  'directed_scan_type': key,
                                  'directed_scan': dict(),
                                  'dimensions': 0,
@@ -1459,7 +1483,7 @@ class ARCSpecies(object):
             deg_abs = calculate_dihedral_angle(coords=xyz, torsion=torsion) + deg_increment
         if is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[:3], index=0)) \
                 or is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[1:], index=0)):
-            logger.warning(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
+            logger.debug(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
             return None
         mol = self.mol
         if mol is None:
@@ -1468,6 +1492,7 @@ class ARCSpecies(object):
                                              multiplicity=self.multiplicity,
                                              n_radicals=self.number_of_radicals,
                                              n_fragments=self.get_n_fragments(),
+                                             is_ts=self.is_ts,
                                              )
         if chk_rotor_list:
             for rotor in self.rotors_dict.values():
@@ -1756,41 +1781,91 @@ class ARCSpecies(object):
 
     def cluster_tsgs(self):
         """
-        Cluster TSGuesses.
+        Cluster near-duplicate TSGuesses, keeping one representative per cluster.
+
+        The representative of each cluster is its lowest-``index`` member, and the guesses are
+        traversed in ascending ``index`` order, so both the cluster memberships and the surviving
+        representative are independent of the order in which the guesses were appended to
+        ``self.ts_guesses``. This matters because the representative's geometry is what gets
+        optimized downstream: with the previous first-seen rule, TS-search jobs completing in a
+        different queue order could hand a different geometry to the optimizer for the very same
+        input. ``index`` is used rather than energy because most guesses still have
+        ``energy is None`` at clustering time.
+
+        Guesses with no ``index`` (``None``) sort last and keep their relative order.
+        Surviving guesses are NOT renumbered: their indices are provenance, so the resulting
+        index sequence may have gaps.
+
+        This method is called repeatedly as queue TS-search jobs report back, so a survivor's
+        ``cluster`` list accumulates across passes instead of being reset to the survivor's own
+        index each time -- otherwise every pass would discard the indices absorbed by the previous
+        ones.
         """
         if not self.is_ts or not len(self.ts_guesses):
             return None
+        ordered_tsgs = sorted(self.ts_guesses,
+                              key=lambda tsg: (tsg.index is None, tsg.index if tsg.index is not None else 0))
         cluster_tsgs = list()
-        for tsg in self.ts_guesses:
+        for tsg in ordered_tsgs:
             for cluster_tsg in cluster_tsgs:
                 if cluster_tsg.almost_equal_tsgs(tsg):
                     logger.debug(f"Similar TSGuesses found: {tsg.index} is similar to {cluster_tsg.index}")
-                    cluster_tsg.cluster.append(tsg.index)
+                    for index in (tsg.cluster if tsg.cluster else [tsg.index]):
+                        if index not in cluster_tsg.cluster:
+                            cluster_tsg.cluster.append(index)
                     cluster_tsg.method_sources = TSGuess._normalize_method_sources(
                         (cluster_tsg.method_sources or []) + (tsg.method_sources or [])
                     )
+                    # Preserve per-source log paths on the winner so path-search provenance
+                    # (per-node energies / points) survives dedup even when a geometry-only
+                    # method is the winning (primary) source. Seed from each guess's live
+                    # method/log_path (the xtb_gsm / orca_neb / qst2 adapters assign
+                    # ``log_path`` *after* construction, so ``method_source_paths`` may still
+                    # be empty at clustering time), then merge any already-preserved entries.
+                    if getattr(cluster_tsg, 'method_source_paths', None) is None:
+                        cluster_tsg.method_source_paths = dict()
+                    for source_tsg in (cluster_tsg, tsg):
+                        for source, source_log in (getattr(source_tsg, 'method_source_paths', None) or dict()).items():
+                            cluster_tsg.method_source_paths.setdefault(source, source_log)
+                        source_method = getattr(source_tsg, 'method', None)
+                        source_log = getattr(source_tsg, 'log_path', None)
+                        if source_method and source_log:
+                            cluster_tsg.method_source_paths.setdefault(source_method, source_log)
                     break
             else:
-                tsg.cluster = [tsg.index]
+                if not tsg.cluster:
+                    tsg.cluster = [tsg.index]
+                elif tsg.index not in tsg.cluster:
+                    tsg.cluster.append(tsg.index)
                 cluster_tsgs.append(tsg)
-        n_before = len([tsg for tsg in self.ts_guesses])
+        n_before = len(self.ts_guesses)
         self.ts_guesses = cluster_tsgs
         if len(cluster_tsgs) < n_before:
+            absorbed = {tsg.index: sorted(index for index in (tsg.cluster or list())
+                                          if index is not None and index != tsg.index)
+                        for tsg in cluster_tsgs}
+            absorbed_str = ', '.join(f'{", ".join(str(index) for index in indices)} into {kept}'
+                                     for kept, indices in absorbed.items() if indices)
             logger.info(f'Clustered {n_before} TS guesses for {self.label} '
-                        f'into {len(cluster_tsgs)} unique conformers.')
+                        f'into {len(cluster_tsgs)} unique conformers'
+                        f'{f" (absorbed duplicates: {absorbed_str})" if absorbed_str else ""}. '
+                        f'Surviving guesses keep their original indices, so the numbering may have gaps.')
 
-    def process_completed_tsg_queue_jobs(self, path: str):
+    def process_completed_tsg_queue_jobs(self, path: str, method: str = 'orca_neb'):
         """
         Process YAML files which are the output of running a TS guess job in the queue.
 
         Args:
             path (str): The path to the output file.
+            method (str): The TS-search adapter that produced the output (e.g. ``'orca_neb'``,
+                          ``'qst2'``). Used to correctly attribute the resulting TS guess; several
+                          queue adapters emit a ``.log`` so this must not be hard-coded.
         """
         if not isinstance(path, str) or not os.path.isfile(path):
             return None
         if path.endswith('.log'):
             xyz = parse_geometry(path)
-            tsg = TSGuess(method='orca_neb',
+            tsg = TSGuess(method=method,
                           success=True,
                           xyz=xyz,
                           log_path=path,
@@ -1855,6 +1930,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=_n_rad_for_perception,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
             if perceived_mol is not None:
                 if self.is_ts:
@@ -1889,6 +1965,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
             if perceived_mol is None and self.is_ts:
                 perceived_mol = perceive_molecule_from_xyz(xyz,
@@ -1896,11 +1973,14 @@ class ARCSpecies(object):
                                                            multiplicity=self.multiplicity,
                                                            n_radicals=self.number_of_radicals,
                                                            n_fragments=2,
+                                                           is_ts=True,
                                                            )
             if perceived_mol is not None:
                 self.mol = perceived_mol
             else:
-                logger.error(f'Could not infer a 2D graph for species {self.label}')
+                logger.warning(f'Could not perceive a 2D graph from the geometry of species {self.label}. '
+                               f'Downstream checks which re-perceive the connectivity from the coordinates '
+                               f'may still succeed.')
 
     def process_xyz(self, xyz_list: list | str | dict):
         """
@@ -2073,6 +2153,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
 
             # 2. A. Check isomorphism with bond orders using b_mol
@@ -2464,6 +2545,9 @@ class TSGuess(object):
         t0 (datetime.datetime, optional): Initial time of spawning the guess job.
         execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.
         log_path (str, optional): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
+        level (dict, optional): A plain dictionary representation of the level of theory at which the guess-generating
+                                adapter ran its electronic structure calculations (e.g., the NEB level for orca_neb,
+                                GFN2-xTB for xtb_gsm). ``None`` for pure ML/template based guess methods.
         project_directory (str, optional): The path to the project directory.
 
     Attributes:
@@ -2490,6 +2574,12 @@ class TSGuess(object):
         errors (str): Problems experienced with this TSGuess. Used for logging.
         cluster (list[int]): Indices of TSGuess object instances clustered together.
         log_path (str): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
+        method_source_paths (dict[str, str]): Maps each method in ``method_sources`` to the ESS log path it produced,
+                                              preserved across equivalent-guess clustering. Lets path-search provenance
+                                              (per-node energies / points) survive dedup even when a geometry-only
+                                              method is the primary (winning) source of the merged guess.
+        level (dict): The level of theory the guess-generating adapter ran its electronic structure calculations at,
+                      as a plain dictionary. ``None`` for pure ML/template based guess methods.
     """
 
     def __init__(self,
@@ -2508,6 +2598,7 @@ class TSGuess(object):
                  energy: float | None = None,
                  cluster: list[int] | None = None,
                  log_path: str | None = None,
+                 level: dict | None = None,
                  project_directory: str | None = None,
                  ):
 
@@ -2531,6 +2622,10 @@ class TSGuess(object):
             self.energy = energy
             self.cluster = cluster
             self.log_path = log_path
+            self.level = level
+            self.method_source_paths = dict()
+            if self.log_path is not None:
+                self.method_source_paths[self.method] = self.log_path
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
@@ -2616,6 +2711,8 @@ class TSGuess(object):
         ts_dict['success'] = self.success
         if self.energy is not None:
             ts_dict['energy'] = self.energy
+        if self.level is not None:
+            ts_dict['level'] = self.level
         ts_dict['index'] = self.index
         if self.imaginary_freqs is not None:
             ts_dict['imaginary_freqs'] = [float(f) for f in self.imaginary_freqs]
@@ -2638,6 +2735,8 @@ class TSGuess(object):
                 ts_dict['errors'] = self.errors
             if self.log_path is not None:
                 ts_dict['log_path'] = self.log_path
+            if getattr(self, 'method_source_paths', None):
+                ts_dict['method_source_paths'] = dict(self.method_source_paths)
         return ts_dict
 
     def from_dict(self, ts_dict: dict):
@@ -2653,10 +2752,11 @@ class TSGuess(object):
         self.success = ts_dict['success'] if 'success' in ts_dict else None
         self.energy = ts_dict['energy'] if 'energy' in ts_dict else None
         self.cluster = ts_dict['cluster'] if 'cluster' in ts_dict else None
-        self.execution_time = timedelta_from_str(ts_dict['execution_time']) if 'execution_time' in ts_dict \
+        self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
+        self.execution_time = None if 'user guess' in self.method \
+            else timedelta_from_str(ts_dict['execution_time']) if 'execution_time' in ts_dict \
             and isinstance(ts_dict['execution_time'], str) \
             else ts_dict['execution_time'] if 'execution_time' in ts_dict else None
-        self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
         if 'method_sources' in ts_dict and isinstance(ts_dict['method_sources'], list):
             self.method_sources = self._normalize_method_sources(ts_dict['method_sources'])
         else:
@@ -2674,6 +2774,13 @@ class TSGuess(object):
             self.execution_time = datetime.timedelta(seconds=0)
         self.family = ts_dict['family'] if 'family' in ts_dict else None
         self.log_path = ts_dict['log_path'] if 'log_path' in ts_dict else None
+        if 'method_source_paths' in ts_dict and isinstance(ts_dict['method_source_paths'], dict):
+            self.method_source_paths = {str(k).lower(): v for k, v in ts_dict['method_source_paths'].items()}
+        else:
+            self.method_source_paths = dict()
+            if self.log_path is not None:
+                self.method_source_paths[self.method] = self.log_path
+        self.level = ts_dict['level'] if 'level' in ts_dict else None
         self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
 
     def process_xyz(self,
@@ -2775,7 +2882,7 @@ class ThermoData(object):
                  comment='',
                  nasa_low=None,
                  nasa_high=None,
-                 cp_data=None,
+                 thermo_points=None,
                  ):
         """
         Args:
@@ -2791,7 +2898,11 @@ class ThermoData(object):
             comment (str): Additional comments or description
             nasa_low (dict): Low-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
             nasa_high (dict): High-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
-            cp_data (list): Tabulated Cp: list of {temperature_k, cp_j_mol_k} dicts.
+            thermo_points (list): Tabulated per-temperature thermochemistry:
+                list of dicts with ``temperature_k``, ``cp_j_mol_k``,
+                ``h_kj_mol``, ``s_j_mol_k``, ``g_kj_mol``. Older field
+                name was ``cp_data`` (Cp-only); the field now carries
+                the full TCKDB ``thermo_point`` shape.
         """
         self.H298 = H298
         self.S298 = S298
@@ -2805,7 +2916,7 @@ class ThermoData(object):
         self.comment = comment
         self.nasa_low = nasa_low
         self.nasa_high = nasa_high
-        self.cp_data = cp_data
+        self.thermo_points = thermo_points
 
     def __repr__(self):
         """
@@ -2839,7 +2950,7 @@ class ThermoData(object):
         return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
                              self.Cp0, self.CpInf, self.Tmin, self.Tmax,
                              self.data, self.comment,
-                             self.nasa_low, self.nasa_high, self.cp_data))
+                             self.nasa_low, self.nasa_high, self.thermo_points))
 
     def update(self, data: dict):
         """

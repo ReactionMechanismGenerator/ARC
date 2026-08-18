@@ -27,8 +27,9 @@ class TestExternalAdapterSettingsExposed(unittest.TestCase):
             self.assertTrue(hasattr(settings_mod, name), f"settings module missing attribute {name}")
 
     def test_default_ts_adapters_list(self):
-        """The default ``ts_adapters`` list must match main's default exactly."""
-        self.assertEqual(settings_mod.ts_adapters, ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb'])
+        """The default ``ts_adapters`` list must hold exactly the adapters which need no opt-in."""
+        self.assertEqual(settings_mod.ts_adapters,
+                         ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb', 'qst2', 'crest'])
 
     def test_ts_adapters_does_not_include_goflow_by_default(self):
         """GoFlow's env (goflow_env + pretrained ckpt) is heavyweight, so it must

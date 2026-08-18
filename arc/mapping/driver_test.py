@@ -8,7 +8,7 @@ This module contains unit tests of the arc.mapping.driver module
 import os
 import unittest
 
-from arc.common import ARC_PATH
+from arc.common import ARC_PATH, logger
 from arc.family import get_reaction_family_products
 from arc.mapping.driver import *
 from arc.reaction import ARCReaction
@@ -480,6 +480,75 @@ class TestMappingDriver(unittest.TestCase):
         for index in [2, 3, 4, 5]:
             self.assertIn(atom_map[index], [0, 1, 3, 4, 5])
         self.assertTrue(any(atom_map[r_index] in [0, 1] for r_index in [2, 3, 4, 5]))
+        self.assertTrue(check_atom_map(rxn))
+
+    def test_map_retro_diels_alder_in_discovered_direction(self):
+        """Map a retro-Diels-Alder reaction without first trying its invalid template orientation."""
+        rxn = ARCReaction(
+            label='R1 <=> P1 + P2',
+            r_species=[ARCSpecies(label='R1', smiles='C1=CCCCC1', multiplicity=1)],
+            p_species=[ARCSpecies(label='P1', smiles='C=C', multiplicity=1),
+                       ARCSpecies(label='P2', smiles='C=CC=C', multiplicity=1)],
+            multiplicity=1,
+        )
+
+        self.assertEqual(rxn.family, 'Diels_alder_addition')
+        self.assertTrue(all(product_dict['discovered_in_reverse'] for product_dict in rxn.product_dicts))
+        with self.assertNoLogs(logger, level='ERROR'):
+            atom_map = rxn.atom_map
+
+        self.assertIsNotNone(atom_map)
+        self.assertTrue(check_atom_map(rxn))
+
+        mapped_reactant_bonds = dict()
+        reactant_atoms = rxn.r_species[0].mol.atoms
+        for i, atom in enumerate(reactant_atoms):
+            for bonded_atom, bond in atom.bonds.items():
+                j = reactant_atoms.index(bonded_atom)
+                if i < j and not atom.is_hydrogen() and not bonded_atom.is_hydrogen():
+                    mapped_reactant_bonds[tuple(sorted((atom_map[i], atom_map[j])))] = bond.order
+        product_bonds, offset = dict(), 0
+        for product in rxn.p_species:
+            for i, atom in enumerate(product.mol.atoms):
+                for bonded_atom, bond in atom.bonds.items():
+                    j = product.mol.atoms.index(bonded_atom)
+                    if i < j and not atom.is_hydrogen() and not bonded_atom.is_hydrogen():
+                        product_bonds[(i + offset, j + offset)] = bond.order
+            offset += product.number_of_atoms
+
+        removed_bond_orders = sorted(mapped_reactant_bonds[bond]
+                                     for bond in mapped_reactant_bonds.keys() - product_bonds.keys())
+        changed_bond_orders = sorted((mapped_reactant_bonds[bond], product_bonds[bond])
+                                     for bond in mapped_reactant_bonds.keys() & product_bonds.keys()
+                                     if mapped_reactant_bonds[bond] != product_bonds[bond])
+        self.assertEqual(removed_bond_orders, [1, 1])
+        self.assertEqual(changed_bond_orders, [(1, 2), (1, 2), (1, 2), (2, 1)])
+
+    def test_map_rxn_first_orientation_failure_is_quiet(self):
+        """A recoverable first-orientation template-order failure must not log at ERROR level.
+
+        For a reaction whose family was discovered in the reverse direction, the forward-orientation
+        ``map_rxn`` attempt fails on ``get_template_product_order`` and returns None. ``map_reaction``
+        then recovers via its flip fallback, so this intermediate failure is benign and should be logged
+        at DEBUG, not ERROR (which previously read as a false hard failure). The genuine total-failure
+        error is surfaced separately by ``ARCReaction.atom_map``.
+        """
+        rxn = ARCReaction(
+            label='R1 <=> P1 + P2',
+            r_species=[ARCSpecies(label='R1', smiles='C1=CCCCC1', multiplicity=1)],
+            p_species=[ARCSpecies(label='P1', smiles='C=C', multiplicity=1),
+                       ARCSpecies(label='P2', smiles='C=CC=C', multiplicity=1)],
+            multiplicity=1,
+        )
+        # The forward orientation genuinely fails (returns None) but must do so quietly (no ERROR log).
+        with self.assertNoLogs(logger, level='ERROR'):
+            raw_map = map_rxn(rxn)
+        self.assertIsNone(raw_map)
+
+        # map_reaction recovers via the flip fallback and returns a valid map (result unchanged by the fix).
+        atom_map = map_reaction(rxn=rxn, backend='ARC')
+        self.assertIsNotNone(atom_map)
+        rxn.atom_map = atom_map
         self.assertTrue(check_atom_map(rxn))
 
     def test_map_abstractions_h_plus_ch4_to_ch3_plus_h2(self):
