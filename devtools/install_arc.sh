@@ -147,8 +147,8 @@ cat >"$DEACTIVATE_DIR/arc_env.sh" <<'EOF'
 strip_path () {
     local needle="$1"; shift
     local joined=":$*:"
-    joined="\${joined//:$needle:/:}"
-    joined="\${joined#:}"; joined="\${joined%:}"
+    joined="${joined//:$needle:/:}"
+    joined="${joined#:}"; joined="${joined%:}"
     printf '%s' "$joined"
 }
 export PATH="$(strip_path "$ARC_ROOT" "$PATH")"
