@@ -1829,10 +1829,9 @@ class Scheduler(object):
                     logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
                 else:
                     rxn.ts_species.tsg_spawned = True
-                    tsg_index = 0
+                    tsg_index, eligible_methods = 0, list()
+                    family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
                     for method in self.ts_adapters:
-                        family_known = (rxn.family is not None
-                                        and rxn.family in ts_adapters_by_rmg_family)
                         admit_unknown_family = (not family_known
                                                 and method in ts_adapters_for_unknown_unimolecular
                                                 and rxn.is_unimolecular())
@@ -1844,12 +1843,70 @@ class Scheduler(object):
                                 logger.info(f'Admitting TS adapter {method!r} for reaction {rxn.label} '
                                             f'via ts_adapters_for_unknown_unimolecular '
                                             f'(RMG family is {rxn.family!r}).')
-                            self.run_job(job_type='tsg',
-                                         job_adapter=method,
-                                         reactions=[rxn],
-                                         tsg=tsg_index,
-                                         )
+                            eligible_methods.append(method)
+                            try:
+                                self.run_job(job_type='tsg',
+                                             job_adapter=method,
+                                             reactions=[rxn],
+                                             tsg=tsg_index,
+                                             )
+                            except FileNotFoundError as e:
+                                # Several TS adapters are optional and shell out to a separate conda
+                                # env and repo checkout. KinBot (kinbot_ts.py) and AutoTST
+                                # (autotst_ts.py) both signal "backend not installed" by raising
+                                # FileNotFoundError out of execute_incore -- and that exception
+                                # propagated through spawn_post_opt_jobs and terminated the whole ARC
+                                # run. A single missing optional dependency therefore destroyed every
+                                # result the run had already produced, including TS guesses other
+                                # adapters had just found successfully.
+                                #
+                                # Record it as an unsuccessful method and carry on: the remaining
+                                # adapters are exactly the redundancy that makes a multi-adapter TS
+                                # search worth running.
+                                logger.error(f'The {method!r} TS search adapter is not available and '
+                                             f'was skipped for reaction {rxn.label}: {e}')
+                                if method not in rxn.ts_species.unsuccessful_methods:
+                                    rxn.ts_species.unsuccessful_methods.append(method)
+                                # run_job() registers the job in running_jobs and in job_dict before
+                                # calling job.execute(), which is what raises here. Roll that back:
+                                # the entry describes a job that never ran, and both save_restart_dict()
+                                # and the main loop resolve a 'tsg<i>' entry through job_dict, so a
+                                # stale one is serialized and then parsed as a completed job.
+                                # Freeing the index also lets the next adapter reuse it cleanly
+                                # instead of appending a second entry under the same name.
+                                if f'tsg{tsg_index}' in self.running_jobs.get(rxn.ts_label, list()):
+                                    self.running_jobs[rxn.ts_label].remove(f'tsg{tsg_index}')
+                                self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict()).pop(tsg_index, None)
+                                continue
                             tsg_index += 1
+                    if not tsg_index and not rxn.ts_species.ts_guesses:
+                        # No adapter was eligible, and no guess was supplied by the user, so no TS
+                        # guess will ever be produced for this reaction: ``tsg_spawned`` was latched
+                        # True above, so this is not retried.
+                        # Without this warning the condition is entirely silent -- the run reports
+                        # only "TS did not converge" much later, which is indistinguishable from
+                        # having tried every adapter and failed. The TS guess report is equally
+                        # ambiguous: it comes back with successful_methods AND unsuccessful_methods
+                        # both empty, because nothing was ever attempted.
+                        eligible = ts_adapters_by_rmg_family.get(rxn.family) if family_known else None
+                        if eligible_methods:
+                            # The adapters were eligible, they just could not run: every one of them
+                            # is an optional backend that is not installed on this machine.
+                            reason = (f'all of its eligible adapters {eligible_methods} are unavailable '
+                                      f'on this machine (see the errors above). Install one of them, or add '
+                                      f'an eligible adapter that is installed')
+                        else:
+                            reason = (f'none of the configured ts_adapters {self.ts_adapters} is eligible for it. '
+                                      + (f'Its RMG family {rxn.family!r} admits {eligible}; the two lists do '
+                                         f'not intersect.' if eligible is not None else
+                                         f'Its RMG family {rxn.family!r} is not in ts_adapters_by_rmg_family, '
+                                         f'and it did not qualify for {ts_adapters_for_unknown_unimolecular} '
+                                         f'(is_unimolecular={rxn.is_unimolecular()}).')
+                                      + ' Add an eligible adapter to ts_adapters')
+                        logger.warning(f'Not spawning any TS search job for reaction {rxn.label}: {reason} '
+                                       f'(in the input file or in ~/.arc/settings.py) to compute this TS. '
+                                       f'No TS guess will be generated and this reaction will be reported '
+                                       f'as not converged.')
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
                     rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])

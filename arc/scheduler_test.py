@@ -1775,10 +1775,50 @@ H      -1.82570782    0.42754384   -0.56130718"""
             shutil.rmtree(project_directory, ignore_errors=True)
 
 
+class StubJob(object):
+    """
+    A stand-in for a job object, so that Scheduler.run_job() can be driven without executing anything.
+    A job of an unavailable adapter raises FileNotFoundError from execute(), as the KinBot and
+    AutoTST adapters do when their backend is not installed.
+    """
+
+    def __init__(self, job_type: str, job_adapter: str | None, unavailable: bool = False):
+        self.job_type = job_type
+        self.job_adapter = job_adapter
+        self.unavailable = unavailable
+        self.job_name = f'{job_type}_{job_adapter}'
+        self.job_id = None
+        self.server = None
+
+    def as_dict(self) -> dict:
+        """Return a dictionary representation of the job, used when saving the restart file."""
+        return {'job_type': self.job_type, 'job_adapter': self.job_adapter}
+
+    def execute(self) -> None:
+        """Execute the job, raising if its external backend is not installed."""
+        if self.unavailable:
+            raise FileNotFoundError(f'The {self.job_adapter} python executable was not found.')
+
+
 class TestSpawnTsJobsAdmission(unittest.TestCase):
     """
     Contains unit tests for the TS adapter admission logic of Scheduler.spawn_ts_jobs().
     """
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.ess_settings = {'gaussian': ['server1']}
+        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 6)]
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        A method that is run after all unit tests in this class, deleting the project directories.
+        """
+        for project in cls.projects:
+            shutil.rmtree(os.path.join(ARC_PATH, 'Projects', project), ignore_errors=True)
 
     def test_spawn_ts_jobs_unknown_family_admission_predicate(self):
         """Test the admission predicate for TS adapters of reactions with an unknown family."""
@@ -1818,6 +1858,145 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                                     and 'linear' in ts_adapters_for_unknown_unimolecular
                                     and rxn.is_unimolecular())
             self.assertEqual(admit_unknown_family, expected_admission)
+
+    def setup_hocho_scheduler(self,
+                              ts_adapters: list,
+                              project: str,
+                              unavailable_adapters: list | None = None,
+                              ) -> tuple:
+        """
+        Set up a Scheduler holding HOCHO <=> H2O + CO (family 1,2_Insertion_CO) with optimized wells.
+
+        Only ``job_factory()`` is replaced, by one handing back ``StubJob``, so that
+        ``spawn_ts_jobs()`` can be driven end to end without executing anything while ``run_job()``
+        still does its real bookkeeping. A job for an adapter named in ``unavailable_adapters``
+        raises ``FileNotFoundError`` from ``execute()``, exactly as the KinBot and AutoTST adapters
+        do when their backend is not installed -- that is, after ``run_job()`` has already
+        registered the job in ``running_jobs`` and in ``job_dict``.
+
+        Args:
+            ts_adapters (list): The TS adapters to configure the Scheduler with.
+            project (str): The project name, also the project directory name.
+            unavailable_adapters (list, optional): Adapters whose job raises ``FileNotFoundError``.
+
+        Returns:
+            tuple: The Scheduler, its ARCReaction, and the list accumulating the
+                   (job type, adapter) pairs jobs were created for.
+        """
+        unavailable_adapters = unavailable_adapters or list()
+        r_species = [ARCSpecies(label='HOCHO', smiles='OC=O')]
+        p_species = [ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')]
+        for spc in r_species + p_species:
+            spc.final_xyz = spc.get_xyz()  # Marks the well as optimized, gating spawn_ts_jobs().
+        rxn = ARCReaction(r_species=r_species, p_species=p_species)
+        self.assertEqual(rxn.family, '1,2_Insertion_CO')
+        sched = Scheduler(project=project,
+                          ess_settings=self.ess_settings,
+                          species_list=r_species + p_species,
+                          rxn_list=[rxn],
+                          project_directory=os.path.join(ARC_PATH, 'Projects', project),
+                          ts_adapters=ts_adapters,
+                          job_types=initialize_job_types(),
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          testing=True,
+                          )
+        spawned = list()
+
+        def stub_job_factory(job_type, job_adapter=None, **kwargs):
+            """Record the job being created and hand back a StubJob instead of a real job."""
+            spawned.append((job_type, job_adapter))
+            return StubJob(job_type=job_type, job_adapter=job_adapter,
+                           unavailable=job_adapter in unavailable_adapters)
+
+        patcher = patch('arc.scheduler.job_factory', new=stub_job_factory)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return sched, rxn, spawned
+
+    def test_spawn_ts_jobs_warns_when_no_adapter_is_eligible(self):
+        """Test that a reaction with no eligible configured adapter is reported, not skipped silently.
+
+        Regression test for a real campaign failure: ``~/.arc/settings.py`` pinned
+        ``ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']`` (predating 'linear'
+        joining ARC's own default list), while the reaction's family, ``1,2_Insertion_CO``, admits
+        only ``['kinbot', 'goflow', 'rits', 'linear']``. The intersection was empty, so zero TS guess
+        jobs were spawned -- silently. ``tsg_spawned`` latches True regardless, so nothing retried,
+        and the TS guess report came back with successful_methods AND unsuccessful_methods both
+        empty. The only user-visible symptom was 'TS did not converge', hours later.
+        """
+        configured = ['heuristics', 'autotst', 'gcn', 'xtb_gsm', 'orca_neb']
+        sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=configured,
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_1')
+        eligible = [a.lower() for a in ts_adapters_by_rmg_family[rxn.family]]
+        self.assertEqual([m for m in configured if m in eligible], list())
+        self.assertIn('linear', eligible)  # 'linear' bridges them, a correctly-configured run is unaffected.
+
+        with self.assertLogs('arc', level='WARNING') as captured:
+            sched.spawn_ts_jobs()
+        self.assertEqual([adapter for job_type, adapter in spawned if job_type == 'tsg'], list())
+        self.assertTrue(any('Not spawning any TS search job' in record.getMessage()
+                            and rxn.family in record.getMessage() for record in captured.records))
+        self.assertTrue(rxn.ts_species.tsg_spawned)  # Latched, hence the single chance to report this.
+
+    def test_spawn_ts_jobs_warns_when_ts_adapters_is_empty(self):
+        """Test that an empty ts_adapters list warns instead of raising."""
+        sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=list(),
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_2')
+        with self.assertLogs('arc', level='WARNING') as captured:
+            sched.spawn_ts_jobs()
+        self.assertEqual([adapter for job_type, adapter in spawned if job_type == 'tsg'], list())
+        self.assertTrue(any('Not spawning any TS search job' in record.getMessage()
+                            for record in captured.records))
+
+    def test_spawn_ts_jobs_does_not_warn_when_a_user_guess_exists(self):
+        """Test that a user-supplied TS guess suppresses the 'no TS guess will be generated' warning."""
+        sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=['heuristics'],
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_3')
+        rxn.ts_species.ts_guesses.append(TSGuess(method='user guess 0',
+                                                 xyz=rxn.r_species[0].get_xyz(),
+                                                 index=0))
+        with self.assertNoLogs('arc', level='WARNING'):
+            sched.spawn_ts_jobs()
+        self.assertEqual([adapter for job_type, adapter in spawned if job_type == 'tsg'], list())
+        self.assertTrue(len(spawned))  # The user guess itself does proceed, so nothing is lost here.
+        self.assertEqual(len(rxn.ts_species.ts_guesses), 1)
+
+    def test_spawn_ts_jobs_survives_an_uninstalled_optional_adapter(self):
+        """Test that an adapter whose backend is missing is recorded and skipped, not fatal.
+
+        Regression test for a real campaign failure. ``ts_adapters`` listed 'kinbot', whose backend
+        is optional and not installed on that host, so ``KinBotAdapter.execute_incore`` raised
+        ``FileNotFoundError('The KinBot python executable was not found...')``. That propagated
+        through ``run_job`` -> ``spawn_ts_jobs`` -> ``spawn_post_opt_jobs`` and terminated the whole
+        ARC run -- discarding the 7 TS guesses 'linear' had successfully produced for the same
+        reaction moments earlier. A missing optional dependency must cost that adapter, not the run.
+        """
+        sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=['kinbot', 'linear'],
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_4',
+                                                         unavailable_adapters=['kinbot'])
+        sched.spawn_ts_jobs()  # Must not raise: that is the whole point.
+        # 'linear' still ran, the run was not lost.
+        self.assertEqual([adapter for job_type, adapter in spawned if job_type == 'tsg'], ['kinbot', 'linear'])
+        self.assertEqual(rxn.ts_species.unsuccessful_methods, ['kinbot'])
+        # run_job() registers a job before executing it, so the failed adapter left bookkeeping behind
+        # that must be rolled back: exactly one 'tsg0' entry, holding the job that actually ran.
+        self.assertEqual(sched.running_jobs[rxn.ts_label], ['tsg0'])
+        self.assertEqual(list(sched.job_dict[rxn.ts_label]['tsg'].keys()), [0])
+        self.assertEqual(sched.job_dict[rxn.ts_label]['tsg'][0].job_adapter, 'linear')
+
+    def test_spawn_ts_jobs_warns_when_every_eligible_adapter_is_unavailable(self):
+        """Test that a reaction whose every eligible adapter is uninstalled is reported, and leaves no state."""
+        sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=['kinbot', 'linear'],
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_5',
+                                                         unavailable_adapters=['kinbot', 'linear'])
+        with self.assertLogs('arc', level='WARNING') as captured:
+            sched.spawn_ts_jobs()
+        self.assertEqual(rxn.ts_species.unsuccessful_methods, ['kinbot', 'linear'])
+        self.assertTrue(any("all of its eligible adapters ['kinbot', 'linear'] are unavailable" in record.getMessage()
+                            for record in captured.records))
+        self.assertEqual(sched.running_jobs.get(rxn.ts_label, list()), list())
+        self.assertEqual(sched.job_dict[rxn.ts_label].get('tsg', dict()), dict())
 
 
 class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
