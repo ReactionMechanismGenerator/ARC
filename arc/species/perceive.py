@@ -10,7 +10,8 @@ from typing import Any
 
 from openbabel import pybel
 
-from arc.common import NUMBER_BY_SYMBOL, distance_matrix, get_bonds_from_dmat, get_logger, get_single_bond_length
+from arc.common import NUMBER_BY_SYMBOL, count_electrons, distance_matrix, get_bonds_from_dmat, get_logger, \
+    get_single_bond_length
 from arc.exceptions import AtomTypeError, InputError, SanitizationError
 from arc.molecule.filtration import get_octet_deviation
 from arc.molecule.molecule import Atom, Bond, Molecule
@@ -441,6 +442,9 @@ def infer_multiplicity(symbols: tuple[str],
 
     Returns:
         int: Inferred spin multiplicity (2S+1).
+
+    Raises:
+        SpeciesError: If an atomic symbol is not a recognized element symbol.
     """
     if not total_charge and not n_radicals:
         # guess the multiplicity for some common small species if n_radicals is not provided
@@ -460,7 +464,7 @@ def infer_multiplicity(symbols: tuple[str],
             # hard code for some common triatomic species
             if symbols in [('C', 'H', 'H'), ('H', 'C', 'H'), ('H', 'H', 'C')]:
                 return 3
-    total_e = sum(NUMBER_BY_SYMBOL[s] for s in symbols) - total_charge
+    total_e = count_electrons(symbols=symbols, charge=total_charge)
     return 1 if total_e % 2 == 0 else 2
 
 

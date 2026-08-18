@@ -12,11 +12,12 @@ import subprocess
 import unittest
 from unittest import mock
 
-from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
+from arc.common import ARC_TESTING_PATH, get_logger, read_yaml_file, save_yaml_file
 import arc.job.adapters.ts.kinbot_ts as kinbot_ts
-from arc.job.adapters.ts.kinbot_ts import KinBotAdapter
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
+
+logger = get_logger()
 
 
 def kinbot_list_to_coords(structure: list) -> list:
@@ -56,13 +57,14 @@ class TestKinBotAdapter(unittest.TestCase):
         try:
             os.rmdir(self.project_dir)
         except OSError:
-            pass
+            logger.debug(f'Could not remove shared parent dir {self.project_dir} during teardown '
+                         f'(non-empty or already removed by a parallel worker).')
 
-    def get_adapter(self, dir_name: str) -> KinBotAdapter:
+    def get_adapter(self, dir_name: str) -> kinbot_ts.KinBotAdapter:
         """A helper function to instantiate a KinBotAdapter instance."""
         project_directory = os.path.join(self.project_dir, dir_name)
         self.addCleanup(self._remove_test_dir, project_directory)
-        return KinBotAdapter(job_type='tsg',
+        return kinbot_ts.KinBotAdapter(job_type='tsg',
                              reactions=[self.rxn_1],
                              testing=True,
                              project='test',

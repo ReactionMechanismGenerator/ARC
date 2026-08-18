@@ -7,16 +7,17 @@ import datetime
 import numpy as np
 import os
 from math import isclose
+from typing import Any
 
 import arc.molecule.element as elements
-from arc.common import (NUMBER_BY_SYMBOL,
-                        SYMBOL_BY_NUMBER,
-                        almost_equal_coords,
+from arc.common import (almost_equal_coords,
                         convert_list_index_0_to_1,
+                        count_electrons,
                         dfs,
                         get_logger,
                         get_single_bond_length,
                         is_angle_linear,
+                        is_multiplicity_parity_valid,
                         is_xyz_linear,
                         read_yaml_file,
                         timedelta_from_str,
@@ -390,6 +391,7 @@ class ARCSpecies(object):
         self.label = label
         self.symmetry_number = None
         self.index = None
+        check_smiles(smiles=smiles, label=label)
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
@@ -480,12 +482,6 @@ class ARCSpecies(object):
                         self.charge = self.mol.get_net_charge()
                     if multiplicity is not None and number_of_radicals is None and not adjlist \
                             and self.mol.multiplicity != multiplicity:
-                        # SMILES/InChI don't encode electron spin, so the perceived .mol may
-                        # disagree with an explicitly requested multiplicity (e.g. [CH2] is
-                        # perceived as triplet but the user asked for the singlet carbene).
-                        # Reconcile the graph to the requested spin state. Skipped when
-                        # number_of_radicals is given, since that declares an open-shell state
-                        # (e.g. a singlet biradical) where the radical count is intentional.
                         self.reconcile_mol_multiplicity()
             if regen_mol and not (self.mol is not None and self.keep_mol):
                 # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
@@ -920,6 +916,7 @@ class ARCSpecies(object):
             self.ts_checks = species_dict['ts_checks'] if 'ts_checks' in species_dict else dict()
             self.chosen_ts_list = species_dict['chosen_ts_list'] if 'chosen_ts_list' in species_dict else list()
             self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
+            self.renumber_ambiguous_ts_guesses()
         if 'xyz' in species_dict and self.initial_xyz is None and self.final_xyz is None:
             self.process_xyz(species_dict['xyz'])
         self.multiplicity = species_dict['multiplicity'] if 'multiplicity' in species_dict else None
@@ -951,6 +948,7 @@ class ARCSpecies(object):
         else:
             self.mol = None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
+        check_smiles(smiles=smiles, label=self.label)
         inchi = species_dict['inchi'] if 'inchi' in species_dict else None
         adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
         if self.mol is None:
@@ -960,11 +958,6 @@ class ARCSpecies(object):
             elif inchi is not None:
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
-                if isinstance(smiles, list):
-                    raise SpeciesError(f'Got a list value type for SMILES of species {self.label}:\n'
-                                       f'{smiles}, type: {type(smiles)}\n'
-                                       f'Did you mean to enter this as a string? Consider adding quotation marks '
-                                       f'before and after the SMILES value if entering through a YAML file.')
                 self.mol = Molecule(smiles=smiles)
         # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
         # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
@@ -1144,7 +1137,9 @@ class ARCSpecies(object):
         """
         if self.mol is not None and len(self.mol.atoms):
             return len(self.mol.atoms) == 2
-        xyz = self.get_xyz()
+        if self.mol_list is not None and len(self.mol_list):
+            return len(self.mol_list[0].atoms) == 2
+        xyz = self.get_xyz(generate=False)
         if xyz is not None:
             return len(xyz['symbols']) == 2
         return None
@@ -1546,14 +1541,11 @@ class ARCSpecies(object):
         """
         perceived_multiplicity = self.mol.multiplicity
         needed_pairs = (self.mol.get_radical_count() - (self.multiplicity - 1)) / 2
-        # Only a positive, whole number of same-atom pairings is meaningful here.
         if needed_pairs <= 0 or needed_pairs != int(needed_pairs):
             return
         needed_pairs = int(needed_pairs)
         available_pairs = sum(atom.radical_electrons // 2 for atom in self.mol.atoms)
         if available_pairs < needed_pairs:
-            # Not achievable by same-atom pairing (e.g. an open-shell biradical, or an impossible
-            # request). Leave the perceived structure as-is rather than corrupt it.
             return
         for atom in sorted(self.mol.atoms, key=lambda a: a.radical_electrons, reverse=True):
             while needed_pairs and atom.radical_electrons >= 2:
@@ -1563,10 +1555,6 @@ class ARCSpecies(object):
                 needed_pairs -= 1
         self.mol.multiplicity = self.multiplicity
         self.mol.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
-        # Same-atom pairing yields a valid graph, but when the radicals sat on atoms that are
-        # bonded, a localized lone pair is a poor representation (e.g. [N][N] quintet -> triplet
-        # should delocalize to N=N with a radical on each atom, not a nitride/nitrene pair).
-        # Normalize to the most representative resonance structure, which RMG places first.
         if all(atom.id == -1 for atom in self.mol.atoms):
             self.mol.assign_atom_ids()
         resonance = generate_resonance_structures_safely(self.mol.copy(deep=True), save_order=True)
@@ -1625,86 +1613,67 @@ class ARCSpecies(object):
     def determine_multiplicity_from_xyz(self):
         """
         Determine the spin multiplicity of the species from the xyz.
+
+        Counts electrons from the coordinates only, not from ``self.mol``.
         """
         xyz = self.get_xyz()
-        if xyz is None and len(self.conformers):
-            xyz = self.conformers[0]
-        if xyz:
-            electrons = 0
-            for symbol in xyz['symbols']:
-                for number, symb in SYMBOL_BY_NUMBER.items():
-                    if symbol == symb:
-                        electrons += number
-                        break
-                else:
-                    raise SpeciesError(f'Could not identify atom symbol {symbol}')
-            electrons -= self.charge
-            if electrons % 2 == 1:
-                self.multiplicity = 2
-                logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 2')
-            else:
-                self.multiplicity = 1
-                logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 1')
+        if xyz is None or not xyz.get('symbols'):
+            return
+        electrons = count_electrons(symbols=xyz['symbols'], charge=self.charge or 0, label=self.label)
+        if electrons % 2 == 1:
+            self.multiplicity = 2
+            logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 2')
+        else:
+            self.multiplicity = 1
+            logger.debug(f'\nMultiplicity not specified for {self.label}, assuming a value of 1')
 
     def get_number_of_electrons(self) -> int | None:
         """
-        Count the total number of electrons of the species, ignoring the net charge
-        (i.e., the sum of the atomic numbers of all atoms, as for the neutral species).
+        Count the number of electrons of the species.
+
+        Follows the convention of :func:`arc.common.count_electrons`. The composition is taken from
+        ``self.mol`` if available, otherwise from the coordinates. No conformer is generated.
 
         Returns:
-            Optional[int]: The total number of electrons, or ``None`` if the composition
+            Optional[int]: The number of electrons, or ``None`` if the composition
                            is not yet known (no Molecule and no xyz at this point).
+
+        Raises:
+            SpeciesError: If an xyz is present but contains an unrecognized atom symbol
+                          (a genuinely invalid composition, e.g. a typo'd element).
         """
+        charge = self.charge or 0
         if self.mol is not None:
-            return sum(atom.element.number for atom in self.mol.atoms)
-        xyz = self.get_xyz()
-        if xyz is None and len(self.conformers):
-            xyz = self.conformers[0]
+            return sum(atom.element.number for atom in self.mol.atoms) - charge
+        xyz = self.get_xyz(generate=False)
         if xyz and xyz.get('symbols'):
-            electrons = 0
-            for symbol in xyz['symbols']:
-                if symbol not in NUMBER_BY_SYMBOL:
-                    # Unknown/dummy atom symbol; cannot count electrons reliably.
-                    return None
-                electrons += NUMBER_BY_SYMBOL[symbol]
-            return electrons
+            return count_electrons(symbols=xyz['symbols'], charge=charge, label=self.label)
         return None
 
     def check_multiplicity_parity(self):
         """
         Verify that the requested spin multiplicity is consistent with the electron count.
 
-        For any species the parity relation
-        ``(total_electrons - net_charge) % 2 == (multiplicity - 1) % 2``
-        must hold (an even electron count requires an odd multiplicity and vice versa).
-        This is an inviolable parity relation, so this guard can only ever fire on a
-        genuinely impossible specification (zero false positives). It is skipped
-        gracefully when either the multiplicity or the electron count is not yet known
-        (e.g. a TS or an xyz-less species defined only by descriptors that failed to
-        perceive a Molecule).
+        Uses :func:`arc.common.is_multiplicity_parity_valid`. Does nothing when the multiplicity,
+        the charge, or the electron count is not yet known.
 
         Raises:
-            SpeciesError: If the requested multiplicity has the wrong parity for the
-                          species' electron count and net charge.
+            SpeciesError: If the requested multiplicity is inconsistent with the electron count.
         """
         if self.multiplicity is None or self.charge is None:
             return
-        total_electrons = self.get_number_of_electrons()
-        if total_electrons is None:
+        n_electrons = self.get_number_of_electrons()
+        if n_electrons is None or is_multiplicity_parity_valid(n_electrons=n_electrons, multiplicity=self.multiplicity):
             return
-        n_electrons = total_electrons - self.charge
-        if n_electrons % 2 != (self.multiplicity - 1) % 2:
-            # The requested multiplicity has the wrong parity. Suggest the nearest valid ones.
-            lower = self.multiplicity - 1
-            valid = [m for m in (lower, self.multiplicity + 1) if m >= 1]
-            parity_word = 'odd' if n_electrons % 2 == 0 else 'even'
-            raise SpeciesError(
-                f'Impossible multiplicity for species {self.label}: a species with '
-                f'{total_electrons} electrons and a net charge of {self.charge} has '
-                f'{n_electrons} electrons, which requires an {parity_word} multiplicity, '
-                f'but a multiplicity of {self.multiplicity} was requested. '
-                f'Valid nearby multiplicities would be {valid}. '
-                f'Check the multiplicity (2S+1), charge, and composition of this species.')
+        valid = [m for m in (self.multiplicity - 1, self.multiplicity + 1) if m >= 1]
+        parity_word = 'odd' if n_electrons % 2 == 0 else 'even'
+        count_phrase = f'has {n_electrons} electrons' if not self.charge else \
+            f'has {n_electrons} electrons ({n_electrons + self.charge} in its neutral composition, ' \
+            f'at a net charge of {self.charge})'
+        raise SpeciesError(f'Impossible multiplicity for species {self.label}: the species {count_phrase}, '
+                           f'which requires an {parity_word} multiplicity, but a multiplicity of '
+                           f'{self.multiplicity} was requested. The nearest valid multiplicities are {valid}. '
+                           f'Check the multiplicity (2S+1), the charge, and the composition of this species.')
 
     def make_ts_report(self):
         """A helper function to write content into the .ts_report attribute"""
@@ -1725,6 +1694,90 @@ class ARCSpecies(object):
             if not self.ts_guesses_exhausted:
                 self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
                                   f'optimization: {self.chosen_ts_method}\n'
+
+    def next_ts_guess_index(self) -> int:
+        """
+        Get the next available ``TSGuess.index`` identity for this species.
+
+        The returned index is one greater than the largest index in use by this species, counting
+        both the indices its TS guesses hold and the indices recorded in their ``cluster`` lists,
+        so an identity is never reused. It is deliberately not the length of the ``ts_guesses``
+        list: ``cluster_tsgs()`` shrinks that list while the surviving guesses retain their
+        original indices and record the indices they absorbed, so a length-based identity would
+        collide with an index that is still spoken for.
+
+        Returns:
+            int: The next available TSGuess index.
+        """
+        used = [tsg.index for tsg in self.ts_guesses if tsg.index is not None]
+        used += [index for tsg in self.ts_guesses for index in (tsg.cluster or []) if index is not None]
+        return max(used, default=-1) + 1
+
+    def append_ts_guess(self, tsg: 'TSGuess') -> 'TSGuess':
+        """
+        Append a TS guess to this species, assigning it a unique identity.
+
+        ``tsg.index`` is set from ``next_ts_guess_index()`` whenever it is missing or already taken
+        by another guess of this species, so that a caller cannot give two guesses the same
+        identity. An index that is free is left as it is.
+
+        Args:
+            tsg (TSGuess): The TS guess to append.
+
+        Returns:
+            TSGuess: The appended TS guess.
+        """
+        if tsg.index is None or any(guess.index == tsg.index for guess in self.ts_guesses):
+            tsg.index = self.next_ts_guess_index()
+        self.ts_guesses.append(tsg)
+        return tsg
+
+    def renumber_ambiguous_ts_guesses(self) -> None:
+        """
+        Assign fresh identities to TS guesses whose ``index`` is missing or duplicated.
+
+        A restart file written before TSGuess identities were allocated uniquely may hold guesses
+        that share an index or that have none, which makes a lookup by identity ambiguous. Only the
+        ambiguous guesses are re-indexed, so references to unambiguous identities remain valid.
+
+        A contested index is kept by the successful guess that holds it, because ``chosen_ts`` and
+        ``chosen_ts_list`` can only ever refer to a successful guess. An index contested by a single
+        successful guess is therefore resolved without touching either attribute. Only an index held
+        by several successful guesses stays ambiguous, and there ``chosen_ts`` is reset so that a TS
+        conformer is selected again rather than paired arbitrarily, and the index is dropped from
+        ``chosen_ts_list`` so that neither holder is barred from being selected.
+        """
+        if not self.is_ts or not len(self.ts_guesses):
+            return None
+        holders = dict()
+        for tsg in self.ts_guesses:
+            if tsg.index is not None:
+                holders.setdefault(tsg.index, list()).append(tsg)
+        ambiguous, unresolved = list(), list()
+        for index, guesses in holders.items():
+            if len(guesses) == 1:
+                continue
+            successful = [tsg for tsg in guesses if tsg.success]
+            keeper = successful[0] if successful else guesses[0]
+            ambiguous.extend(tsg for tsg in guesses if tsg is not keeper)
+            if len(successful) > 1:
+                unresolved.append(index)
+        ambiguous.extend(tsg for tsg in self.ts_guesses if tsg.index is None)
+        if not ambiguous:
+            return None
+        for tsg in ambiguous:
+            tsg.index = self.next_ts_guess_index()
+        logger.warning(f'{len(ambiguous)} TS guess(es) of {self.label} had a missing or a duplicated index '
+                       f'(duplicated indices: {sorted(index for index, g in holders.items() if len(g) > 1)}), '
+                       f'and were re-indexed to keep TS guess identities unique.')
+        if not unresolved:
+            return None
+        if self.chosen_ts in unresolved:
+            logger.warning(f'The chosen TS guess index {self.chosen_ts} of {self.label} was held by several '
+                           f'successful guesses, a TS conformer will be selected again.')
+            self.chosen_ts = None
+        if any(index in unresolved for index in self.chosen_ts_list):
+            self.chosen_ts_list = [index for index in self.chosen_ts_list if index not in unresolved]
 
     def cluster_tsgs(self):
         """
@@ -1798,25 +1851,6 @@ class ARCSpecies(object):
                         f'{f" (absorbed duplicates: {absorbed_str})" if absorbed_str else ""}. '
                         f'Surviving guesses keep their original indices, so the numbering may have gaps.')
 
-    def get_next_tsg_index(self) -> int:
-        """
-        Return the next unused TS guess index.
-
-        Not simply ``len(self.ts_guesses)``: clustering removes guesses while preserving the
-        indices of the survivors, so after a clustering pass ``len()`` can collide with an index
-        that is already in use (e.g. clustering 5 guesses down to indices [0, 2, 4] would hand out
-        index 3 and then 4 again). Duplicate indices would make the lowest-index cluster
-        representative ambiguous, and hence order-dependent again. Indices absorbed into a cluster
-        count as used too, so that a reused index cannot make an absorbed guess ambiguous either.
-
-        Returns:
-            int: An index greater than every index currently in use.
-        """
-        indices = list()
-        for tsg in self.ts_guesses:
-            indices.extend(index for index in [tsg.index] + list(tsg.cluster or list()) if index is not None)
-        return max(indices) + 1 if indices else 0
-
     def process_completed_tsg_queue_jobs(self, path: str, method: str = 'orca_neb'):
         """
         Process YAML files which are the output of running a TS guess job in the queue.
@@ -1837,9 +1871,7 @@ class ARCSpecies(object):
                           log_path=path,
                           )
             if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
-                if tsg.index is None:
-                    tsg.index = self.get_next_tsg_index()
-                self.ts_guesses.append(tsg)
+                self.append_ts_guess(tsg)
             else:
                 # The queue TS-search job produced no usable geometry (nothing parseable, or
                 # colliding atoms). Mark it failed and do NOT add it as a clusterable guess: a
@@ -1855,9 +1887,7 @@ class ARCSpecies(object):
             tsgs = [TSGuess(ts_dict=tsg_dict) for tsg_dict in tsg_list]
             for tsg in tsgs:
                 if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
-                    if tsg.index is None:
-                        tsg.index = self.get_next_tsg_index()
-                    self.ts_guesses.append(tsg)
+                    self.append_ts_guess(tsg)
         self.cluster_tsgs()
 
     def mol_from_xyz(self,
@@ -1956,14 +1986,11 @@ class ARCSpecies(object):
         """
         Process the user's input and add either to the .conformers attribute or to .ts_guesses.
 
-        For a TS, each user guess is given an explicit ``TSGuess.index``, continuing past the
-        highest index already in use. ``TSGuess.index`` is the guess's stable identity: it is what
+        For a TS, each user guess is given an explicit ``TSGuess.index`` allocated by
+        ``next_ts_guess_index()``. ``TSGuess.index`` is the guess's stable identity: it is what
         ``cluster_tsgs()`` orders by, what ``ARCSpecies.chosen_ts`` / ``chosen_ts_list`` refer to,
         and what keys the TS guess report. Leaving it ``None`` (the ``TSGuess`` default) makes a
-        user guess unselectable as the chosen TS. It is taken from ``get_next_tsg_index()`` rather
-        than from ``len(self.ts_guesses)`` because clustering removes guesses while preserving the
-        indices of the survivors (and of the guesses they absorbed), so the list length can collide
-        with an index already in use.
+        user guess unselectable as the chosen TS.
 
         Args:
             xyz_list (list, str, dict): Entries are either string-format, dict-format coordinates or file paths.
@@ -2016,15 +2043,14 @@ class ARCSpecies(object):
                 self.conformers.extend(xyzs)
                 self.conformer_energies.extend(energies)
             else:
-                tsg_index = self.get_next_tsg_index()
                 for xyz, energy in zip(xyzs, energies):
-                    self.ts_guesses.append(TSGuess(index=tsg_index,
-                                                   method=f'user guess {tsg_index}',
-                                                   xyz=remove_dummies(xyz),
-                                                   energy=energy,
-                                                   success=True,
-                                                   ))
-                    tsg_index += 1
+                    tsg_index = self.next_ts_guess_index()
+                    self.append_ts_guess(TSGuess(index=tsg_index,
+                                                 method=f'user guess {tsg_index}',
+                                                 xyz=remove_dummies(xyz),
+                                                 energy=energy,
+                                                 success=True,
+                                                 ))
             if self.multiplicity is not None and self.charge is not None:
                 for xyz in xyzs:
                     consistent = check_xyz(xyz=xyz, multiplicity=self.multiplicity, charge=self.charge)
@@ -2176,6 +2202,7 @@ class ARCSpecies(object):
 
     def scissors(self,
                  sort_atom_labels: bool = False,
+                 skip_conformers: bool = False,
                  ) -> list:
         """
         Cut chemical bonds to create new species from the original one according to the .bdes attribute,
@@ -2213,7 +2240,8 @@ class ARCSpecies(object):
             self.label_atoms()
         resulting_species = list()
         for index_tuple in self.bdes:
-            new_species_list = self._scissors(indices=index_tuple, sort_atom_labels=sort_atom_labels)
+            new_species_list = self._scissors(indices=index_tuple, sort_atom_labels=sort_atom_labels,
+                                              skip_conformers=skip_conformers)
             for new_species in new_species_list:
                 if new_species.label not in [existing_species.label for existing_species in resulting_species]:
                     # Mainly checks that the H species doesn't already exist.
@@ -2223,6 +2251,7 @@ class ARCSpecies(object):
     def _scissors(self,
                   indices: tuple,
                   sort_atom_labels: bool = True,
+                  skip_conformers: bool = False,
                   ) -> list:
         """
         Cut a chemical bond to create two new species from the original one, preserving the 3D geometry.
@@ -2274,7 +2303,8 @@ class ARCSpecies(object):
                               compute_thermo=False,
                               e0_only=True,
                               keep_mol=True)
-            spc1.generate_conformers(economic_generation=True)
+            if not skip_conformers:
+                spc1.generate_conformers(economic_generation=True)
             return [spc1]
         elif len(mol_splits) == 2:
             mol1, mol2 = mol_splits
@@ -2317,7 +2347,8 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc1.generate_conformers(economic_generation=True)
+        if not skip_conformers:
+            spc1.generate_conformers(economic_generation=True)
         spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
                           mol=mol2,
@@ -2327,7 +2358,8 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc2.generate_conformers(economic_generation=True)
+        if not skip_conformers:
+            spc2.generate_conformers(economic_generation=True)
         spc2.rotors_dict = None
 
         return [spc1, spc2]
@@ -2476,7 +2508,8 @@ class ARCSpecies(object):
         Args:
             other (ARCSpecies): The other species to compare to.
             map_ (list): A list of atom indices mapping atoms from this species to the other species. (i.e., if
-                         this species has atoms [A, B, C] and the other species has atoms [C, A, B], then map_ would be [1, 2, 0]
+                         this species has atoms [A, B, C] and the other species has atoms [C, A, B],
+                         then ``map_`` would be [1, 2, 0])
         Returns:
             float: The Kabsch RMSD value.
         """
@@ -2531,7 +2564,8 @@ class TSGuess(object):
         execution_time (str): Overall execution time for the TS guess method.
         success (bool): Whether the TS guess method succeeded in generating an XYZ guess or not.
         energy (float): Relative energy of all TS conformers in kJ/mol.
-        index (int): A running index of all TSGuess objects belonging to an ARCSpecies object.
+        index (int): A unique identity assigned to a TSGuess object when it is appended to an
+                     ARCSpecies object. It is not a position in a list.
         imaginary_freqs (list[float]): The imaginary frequencies of the TS guess after optimization.
         conformer_index (int): An index corresponding to the conformer jobs spawned for each TSGuess object.
                                Assigned only if self.success is ``True``.
@@ -2559,7 +2593,7 @@ class TSGuess(object):
                  success: bool | None = None,
                  family: str | None = None,
                  xyz: dict | str | None = None,
-                 arc_reaction: Optional = None,
+                 arc_reaction: 'ARCReaction | None' = None,
                  ts_dict: dict | None = None,
                  energy: float | None = None,
                  cluster: list[int] | None = None,
@@ -3189,18 +3223,12 @@ def check_xyz(xyz: dict,
 
     Returns:
         bool: Whether the input arguments are all in agreement. True if they are.
+
+    Raises:
+        SpeciesError: If the xyz contains an unrecognized atom symbol.
     """
-    symbols = xyz['symbols']
-    electrons = 0
-    for symbol in symbols:
-        for number, element_symbol in SYMBOL_BY_NUMBER.items():
-            if symbol == element_symbol:
-                electrons += number
-                break
-    electrons -= charge
-    if electrons % 2 ^ multiplicity % 2:
-        return True
-    return False
+    electrons = count_electrons(symbols=xyz['symbols'], charge=charge)
+    return is_multiplicity_parity_valid(n_electrons=electrons, multiplicity=multiplicity)
 
 
 def are_coords_compliant_with_graph(xyz: dict,
@@ -3269,6 +3297,32 @@ def colliding_atoms(xyz: dict,
             if actual_r < single_bond_r * threshold:
                 return True
     return False
+
+
+def check_smiles(smiles: Any,
+                 label: str | None = None,
+                 ) -> None:
+    """
+    Check that a SMILES descriptor is a string, and raise a descriptive error if it isn't.
+
+    A bare SMILES that spells a YAML 1.1 boolean alias (e.g., ``NO`` for hydroxylamine) used to
+    reach ARC as a bool, which cannot be translated into a molecule and eventually caused an
+    uninformative RecursionError. Fail here instead, naming the species.
+
+    Args:
+        smiles (Any): The SMILES descriptor to check.
+        label (str, optional): The species label, used in the error message.
+
+    Raises:
+        SpeciesError: If ``smiles`` is neither ``None`` nor a string.
+    """
+    if smiles is None or isinstance(smiles, str):
+        return
+    raise SpeciesError(f'The SMILES descriptor of species {label} must be a string, '
+                       f'got {smiles}, type: {type(smiles)}.\n'
+                       f'If entering through a YAML file, consider adding quotation marks before and after the '
+                       f'SMILES value, e.g., "NO". A bare list is read by YAML as a list, and a bare NO, ON, '
+                       f'YES, or OFF is read as a boolean.')
 
 
 def check_label(label: str,

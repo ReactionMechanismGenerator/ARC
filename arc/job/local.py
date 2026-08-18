@@ -152,7 +152,7 @@ def check_job_status(job_id: int) -> str:
         14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06
 
     PBS (taken from zeldo.dow.com)::
-                                                                                         Req'd       Req'd       Elap
+
         Job ID                  Username    Queue    Jobname         SessID  NDS   TSK   Memory      Time    S   Time
         ----------------------- ----------- -------- --------------- ------ ----- ------ --------- --------- - ---------
         2016614.zeldo.local     u780444     workq    scan.pbs         75380     1     10       --  730:00:00 R  00:00:20
@@ -206,6 +206,10 @@ def check_running_jobs_ids() -> list[str] | None:
                           case the queue must not be assumed to be empty.
     """
     cluster_soft = servers['local']['cluster_soft'].lower()
+    if cluster_soft == 'local':
+        # This machine has no queueing system, so there are no queue job IDs to report.
+        # Jobs here run in-core (e.g., PySCF) or as a local pipe worker pool.
+        return list()
     if cluster_soft not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
         raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
     cmd = check_status_command[servers['local']['cluster_soft']]

@@ -19,6 +19,7 @@ import uuid
 from arc.common import ARC_PATH, VERSION, get_git_commit, get_logger, read_yaml_file, save_yaml_file
 from arc.constants import E_h_kJmol
 from arc.imports import settings
+from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
 from arc.parser.parser import (
     parse_1d_scan_energies,
@@ -727,7 +728,6 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> tup
             bac_key = find_best_across_files(arkane_level_of_theory, qm_corr_files, bac_start, bac_end)
 
         script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_qm_corrections.py')
-        rmg_env = settings.get('RMG_ENV_NAME', 'rmg_env')
 
         fd_in, tmp_in = tempfile.mkstemp(suffix='.qm_input.yml')
         fd_out, tmp_out = tempfile.mkstemp(suffix='.qm_output.yml')
@@ -740,19 +740,8 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> tup
                 'bac_type': bac_type,
             })
 
-            commands = [
-                'bash -lc "set -euo pipefail; '
-                'if command -v micromamba >/dev/null 2>&1; then '
-                f'    micromamba run -n {rmg_env} python {script_path} {tmp_in} {tmp_out}; '
-                'elif command -v conda >/dev/null 2>&1; then '
-                f'    conda run -n {rmg_env} python {script_path} {tmp_in} {tmp_out}; '
-                'elif command -v mamba >/dev/null 2>&1; then '
-                f'    mamba run -n {rmg_env} python {script_path} {tmp_in} {tmp_out}; '
-                'else '
-                '    echo \'micromamba/conda/mamba required\' >&2; exit 1; '
-                'fi"',
-            ]
-            _, stderr = execute_command(command=commands, executable='/bin/bash')
+            command = rmg_env_command(py_args=[script_path, tmp_in, tmp_out])
+            _, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
             if stderr:
                 logger.warning(f'get_qm_corrections.py stderr: {stderr}')
 
@@ -1024,7 +1013,6 @@ def _compute_point_groups(species_dict: dict, project_directory: str) -> dict[st
     On any failure the function returns an empty dict so callers get ``None`` for
     every species rather than crashing the run.
     """
-    rmg_env = settings.get('RMG_ENV_NAME', 'rmg_env')
     script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_point_groups.py')
 
     # Build input dict: {label: {symbols: [...], coords: [...]}}
@@ -1050,19 +1038,8 @@ def _compute_point_groups(species_dict: dict, project_directory: str) -> dict[st
         os.close(fd_out)
         save_yaml_file(path=tmp_in, content=pg_input)
 
-        commands = [
-            'bash -lc "set -euo pipefail; '
-            'if command -v micromamba >/dev/null 2>&1; then '
-            f'    micromamba run -n {rmg_env} python {script_path} {tmp_in} {tmp_out}; '
-            'elif command -v conda >/dev/null 2>&1; then '
-            f'    conda run -n {rmg_env} python {script_path} {tmp_in} {tmp_out}; '
-            'elif command -v mamba >/dev/null 2>&1; then '
-            f'    mamba run -n {rmg_env} python {script_path} {tmp_in} {tmp_out}; '
-            'else '
-            '    echo \'micromamba/conda/mamba required\' >&2; exit 1; '
-            'fi"',
-        ]
-        _, stderr = execute_command(command=commands, executable='/bin/bash')
+        command = rmg_env_command(py_args=[script_path, tmp_in, tmp_out])
+        _, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
         if stderr:
             logger.warning(f'get_point_groups.py stderr: {stderr}')
 

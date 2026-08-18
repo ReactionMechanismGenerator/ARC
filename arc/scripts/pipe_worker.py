@@ -21,6 +21,7 @@ import time
 
 from arc.imports import settings
 from arc.job.factory import job_factory
+from arc.job.pipe.pipe_run import worker_cpu_cores
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE,
     TaskState,
@@ -377,6 +378,7 @@ def _run_adapter(spec: TaskSpec, scratch_dir: str, job_type: str, **extra_kwargs
         xyz=xyz,
         conformer=conformer,
         tsg=tsg,
+        cpu_cores=worker_cpu_cores(),
         testing=False,
         **extra_kwargs,
     )

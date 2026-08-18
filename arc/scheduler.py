@@ -3,7 +3,8 @@ A module for scheduling ARC jobs
 Includes spawning, terminating, checking, and troubleshooting various jobs
 """
 
-import copy
+from __future__ import annotations
+
 import datetime
 import itertools
 import os
@@ -133,6 +134,8 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
     settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], \
     settings['default_job_types'], settings['ts_adapters'], settings['max_ess_trsh'], settings['max_rotor_trsh'], \
     settings['rotor_scan_resolution'], settings['servers']
+
+WRONG_FREQ_MESSAGE = 'wrong number of negative frequencies; '
 
 
 def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> bool:
@@ -488,10 +491,9 @@ class Scheduler(object):
                 rxn.ts_species = ts_species
                 # 3. Generate TSGuess objects for all methods, start with the user guesses
                 for i, user_guess in enumerate(rxn.ts_xyz_guess):  # This is a list of user guesses, could be empty.
-                    ts_species.ts_guesses.append(
+                    ts_species.append_ts_guess(
                         TSGuess(method=f'user guess {i}',
                                 xyz=user_guess,
-                                index=len(rxn.ts_species.ts_guesses),
                                 success=True,
                                 project_directory=self.project_directory,
                                 )
@@ -665,6 +667,29 @@ class Scheduler(object):
                 f"your ts_adapters in input.yml / arc/settings/settings.py."
             )
         return kept
+
+    def has_pending_pipe_work(self, label: str) -> bool:
+        """
+        Whether a species still has work queued for, or running in, a pipe run.
+
+        A species whose jobs were routed to pipe mode holds no entries in ``running_jobs``, so an
+        empty entry does not mean that species is finished. It must be kept until its pipe work
+        terminates: dropping it leaves ``check_all_done()`` unreachable for that species, because
+        the main loop only reaches it through ``running_jobs``. The species would then never be
+        marked as converged even once every one of its piped jobs had succeeded.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: ``True`` if any pending batch or active pipe run still holds this species.
+        """
+        return (label in self._pending_pipe_sp
+                or label in self._pending_pipe_freq
+                or any(lbl == label for lbl, _ in self._pending_pipe_irc)
+                or label in self._pending_pipe_conf_sp
+                or any(label in {t.owner_key for t in p.tasks}
+                       for p in self.active_pipes.values()))
 
     def flush_pending_pipe_batches(self) -> None:
         """
@@ -939,17 +964,8 @@ class Scheduler(object):
                             self.timer = False
                             break
 
-                if not len(job_list):
-                    has_pending_pipe_work = (
-                        label in self._pending_pipe_sp
-                        or label in self._pending_pipe_freq
-                        or any(lbl == label for lbl, _ in self._pending_pipe_irc)
-                        or label in self._pending_pipe_conf_sp
-                        or any(label in {t.owner_key for t in p.tasks}
-                               for p in self.active_pipes.values())
-                    )
-                    if not has_pending_pipe_work:
-                        self.check_all_done(label)
+                if not len(job_list) and not self.has_pending_pipe_work(label):
+                    self.check_all_done(label)
                     if label in self.running_jobs and not self.running_jobs[label]:
                         # Delete the label only if it represents an empty entry.
                         # It might already be gone, e.g., an IRC species deleted when its TS was switched.
@@ -983,8 +999,8 @@ class Scheduler(object):
         e.g. ``a3129``), ``job_id`` (the queue's numeric id), the ``adapter`` (software), and the
         ``server``. Falls back to just ``{'name': job_name}`` if the Job object can't be located
         (e.g. the job was already popped, or a restart-loaded entry whose stored name doesn't
-        match any live ``job.job_name``). Resolved incore/local jobs still get an entry, just with
-        ``server``/``job_id`` possibly ``None``.
+        match any live ``job.job_name``). Resolved incore jobs still get an entry, carrying the
+        job number as their ``job_id``, while ``server`` may be ``None``.
 
         Args:
             label (str): The species/TS label the job belongs to.
@@ -1122,7 +1138,7 @@ class Scheduler(object):
         if scan_trsh:
             args['keyword']['scan_trsh'] = scan_trsh
         if isinstance(level_of_theory, Level) and level_of_theory.args is not None:
-            args.update(copy.deepcopy(level_of_theory.args))
+            args.update(level_of_theory.get_args())
 
         job = job_factory(job_adapter=job_adapter,
                           project=self.project,
@@ -2584,7 +2600,8 @@ class Scheduler(object):
             e_min, selected_i = None, None
             self.species_dict[label].ts_guesses_exhausted = True
             for tsg in self.species_dict[label].ts_guesses:
-                if tsg.success and tsg.energy is not None and (e_min is None or tsg.energy < e_min) \
+                if tsg.success and tsg.energy is not None and tsg.opt_xyz is not None \
+                        and (e_min is None or tsg.energy < e_min) \
                         and (tsg.imaginary_freqs is None or check_imaginary_frequencies(tsg.imaginary_freqs)) \
                         and tsg.index not in self.species_dict[label].chosen_ts_list:
                     e_min = tsg.energy
@@ -2737,7 +2754,7 @@ class Scheduler(object):
                                        project_directory=self.project_directory,
                                        method='draw_3d')
             frequencies = parser.parse_frequencies(job.local_path_to_output_file, job.job_adapter)
-            freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
+            freq_ok, _ = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
             if freq_ok:
                 # Update restart dictionary and save a restart file:
                 self.save_restart_dict()
@@ -2899,8 +2916,10 @@ class Scheduler(object):
         assigned to a TS guess when it is appended to the species. It is not a position in a list, and in
         particular it is not the ``TSGuess.conformer_index`` attribute, which is the index of the conformer
         optimization job spawned for the guess (i.e., a position in the list of *successful* TS guesses).
-        If ``chosen_ts`` is ``None``, no selection was made among several guesses, which happens when only a
-        single TS guess was successful and was sent directly to a geometry optimization.
+        If ``chosen_ts`` is ``None``, no selection was made among several guesses. That happens when only a
+        single TS guess was successful and was sent directly to a geometry optimization, in which case that
+        guess is returned, and after a restart file with ambiguous TS guess identities was repaired, in which
+        case there may be several successful guesses and ``None`` is returned.
 
         Args:
             label (str): The TS species label.
@@ -2926,70 +2945,114 @@ class Scheduler(object):
             label (str): The species label.
             job (JobAdapter): The frequency job object instance.
         """
-        freq_ok, switch_ts = False, False
-        wrong_freq_message = 'wrong number of negative frequencies; '
+        freq_ok = False
         if job.job_status[1]['status'] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
             vibfreqs = parser.parse_frequencies(log_file_path=str(job.local_path_to_output_file))
-            freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
-            if freq_ok and vibfreqs is not None:
-                self.species_dict[label].freqs = [float(f) for f in vibfreqs]
-            if freq_ok:
-                # Copy the frequency file to the species / TS output folder.
-                folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
-                freq_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry', 'freq.out')
-                safe_copy_file(source=job.local_path_to_output_file, destination=freq_path)
-                # Set species.polarizability.
-                polarizability = parser.parse_polarizability(job.local_path_to_output_file)
-                if polarizability is not None:
-                    self.species_dict[label].transport_data.polarizability = (polarizability, str('angstroms^3'))
-                    if self.species_dict[label].transport_data.comment:
-                        self.species_dict[label].transport_data.comment += \
-                            str(f'\nPolarizability calculated at the {self.freq_level.simple()} level of theory')
-                    else:
-                        self.species_dict[label].transport_data.comment = \
-                            str(f'Polarizability calculated at the {self.freq_level.simple()} level of theory')
-                if self.species_dict[label].is_ts:
-                    if self.species_dict[label].rxn_index in self.rxn_dict.keys():
-                        check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
-                                 job=job,
-                                 checks=['NMD'],
-                                 skip_nmd=self.skip_nmd,
-                                 )
-                    if self.species_dict[label].ts_checks['NMD'] is False:
-                        logger.info(f'TS {label} did not pass the normal mode displacement check. '
-                                    f'Status is:\n{self.species_dict[label].ts_checks}\n'
-                                    f'Searching for a better TS conformer...')
-                        self.switch_ts(label)
-                        switch_ts = True
-                if wrong_freq_message in self.output[label]['warnings']:
-                    self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(wrong_freq_message))
-            elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
-                # Only trsh neg freq here for non TS species, trsh TS species is done in check_negative_freq().
-                self.troubleshoot_negative_freq(label=label, job=job)
+            freq_ok, _ = self.post_freq_actions(label=label, job=job, vibfreqs=vibfreqs)
             if not freq_ok:
-                self.output[label]['warnings'] += wrong_freq_message
+                if not self.species_dict[label].is_ts and self.trsh_ess_jobs:
+                    # Only trsh neg freq here for non TS species, trsh TS species is done in check_negative_freq().
+                    self.troubleshoot_negative_freq(label=label, job=job)
+                self.output[label]['warnings'] += WRONG_FREQ_MESSAGE
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
-        if (job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts
-                and species_has_sp(self.output[label], self.species_dict[label].yml_path)):
+
+    def post_freq_actions(self,
+                          label: str,
+                          job: JobAdapter,
+                          vibfreqs: list | np.ndarray | None,
+                          ) -> tuple[bool, bool]:
+        """
+        Run the imaginary frequency QA and, if it passes, perform every action a converged freq job
+        is expected to leave behind.
+
+        Pipe mode computes a batch of freq tasks outside the Scheduler's job machinery and hands the
+        results back to be checked, so it is a second caller of this method. Both routes share it so
+        that a species cannot be reported as converged while missing the artifacts its consumers
+        read: ``species.freqs``, which carries the frequencies into the restart and output files, and
+        the ``freq.out`` copy under the species output folder, whose absence makes
+        ``compute_rxn_e0()`` give up on the reaction E0 check. For a TS this is also where the normal
+        mode displacement check runs, so skipping it would leave the TS permanently un-validated.
+
+        Troubleshooting a failed check is deliberately not done here: it resubmits jobs and therefore
+        needs a real job object, which only a Scheduler-submitted job has.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The frequency job object instance.
+            vibfreqs (list | np.ndarray | None): The vibrational frequencies,
+                                                 or ``None`` if they could not be parsed.
+
+        Returns:
+            tuple[bool, bool]: Whether the frequencies passed the check,
+                               and whether a different TS guess was selected as a result.
+        """
+        freq_ok, switch_ts = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
+        if not freq_ok:
+            return False, switch_ts
+        if vibfreqs is not None:
+            self.species_dict[label].freqs = [float(f) for f in vibfreqs]
+        # Copy the frequency file to the species / TS output folder.
+        folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
+        freq_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry', 'freq.out')
+        os.makedirs(os.path.dirname(freq_path), exist_ok=True)
+        safe_copy_file(source=job.local_path_to_output_file, destination=freq_path)
+        # Set species.polarizability.
+        polarizability = parser.parse_polarizability(job.local_path_to_output_file)
+        if polarizability is not None:
+            self.species_dict[label].transport_data.polarizability = (polarizability, str('angstroms^3'))
+            if self.species_dict[label].transport_data.comment:
+                self.species_dict[label].transport_data.comment += \
+                    str(f'\nPolarizability calculated at the {self.freq_level.simple()} level of theory')
+            else:
+                self.species_dict[label].transport_data.comment = \
+                    str(f'Polarizability calculated at the {self.freq_level.simple()} level of theory')
+        if self.species_dict[label].is_ts:
+            if self.species_dict[label].rxn_index in self.rxn_dict.keys():
+                check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
+                         job=job,
+                         checks=['NMD'],
+                         skip_nmd=self.skip_nmd,
+                         )
+            if self.species_dict[label].ts_checks['NMD'] is False:
+                logger.info(f'TS {label} did not pass the normal mode displacement check. '
+                            f'Status is:\n{self.species_dict[label].ts_checks}\n'
+                            f'Searching for a better TS conformer...')
+                self.switch_ts(label)
+                switch_ts = True
+        if WRONG_FREQ_MESSAGE in self.output[label]['warnings']:
+            self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(WRONG_FREQ_MESSAGE))
+        if not switch_ts and species_has_sp(self.output[label], self.species_dict[label].yml_path):
             self.check_rxn_e0_by_spc(label)
+        return True, switch_ts
 
     def check_negative_freq(self,
                             label: str,
                             job: JobAdapter,
-                            vibfreqs: list | np.ndarray,
-                            ):
+                            vibfreqs: list | np.ndarray | None,
+                            ) -> tuple[bool, bool]:
         """
         A helper function for determining the number of negative frequencies. Also logs appropriate errors.
-        Returns ``True`` if the number of negative frequencies is as excepted, ``False`` otherwise.
 
         Args:
             label (str): The species label.
             job (JobAdapter): The optimization job object.
-            vibfreqs (list): The vibrational frequencies.
+            vibfreqs (list | np.ndarray | None): The vibrational frequencies, or ``None`` if they could not be parsed.
+
+        Returns:
+            tuple[bool, bool]: Whether the number of negative frequencies is as expected,
+                               and whether a different TS guess was selected as a result.
         """
+        if vibfreqs is None:
+            logger.error(f'Could not parse frequencies for {label} from the freq job output file '
+                         f'{job.local_path_to_output_file}. Treating the freq job as unsuccessful.')
+            return False, False
+        if len(vibfreqs) == 0 and not self.species_dict[label].is_ts and self.species_dict[label].number_of_atoms > 1:
+            logger.error(f'The freq job for {label} yielded no frequencies, but {label} is a polyatomic non-TS '
+                         f'species and should have vibrational modes. Treating the freq job as unsuccessful.')
+            return False, False
         neg_freqs = list()
         for freq in vibfreqs:
             if freq < 0:
@@ -3001,18 +3064,28 @@ class Scheduler(object):
                 if f'{len(neg_freqs)} imaginary freq for' not in self.output[label]['warnings']:
                     self.output[label]['warnings'] += f'Warning: {len(neg_freqs)} imaginary freq for stable species ' \
                                                       f'({neg_freqs}); '
-                return False
+                return False, False
             else:
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
                 if not self.testing:
                     # Update restart dictionary and save the yaml restart file:
                     self.save_restart_dict()
-                return True
+                return True, False
         else:
             # This is a TS. Assign the imaginary frequencies to the respective TSGuess.
             chosen_tsg = self.get_chosen_tsg(label=label)
-            if chosen_tsg is None:
+            if chosen_tsg is None and self.species_dict[label].chosen_ts is None:
+                # No selection was made among the TS guesses, so the frequencies cannot be attributed to one.
+                # They still describe the geometry that was optimized, so the check is decided on them directly.
+                n_successful = len([tsg for tsg in self.species_dict[label].ts_guesses if tsg.success])
+                logger.warning(f'No TS guess is currently selected for {label} ({n_successful} successful TS '
+                               f'guesses), so the imaginary frequencies {neg_freqs} cannot be attributed to a '
+                               f'TS guess. Checking them against the optimized geometry of {label} itself.')
+                if 'imaginary freqs could not be attributed' not in self.output[label]['warnings']:
+                    self.output[label]['warnings'] += f'Warning: the imaginary freqs could not be attributed to a ' \
+                                                      f'TS guess ({neg_freqs}); '
+            elif chosen_tsg is None:
                 logger.warning(f'Could not match the chosen TS guess index {self.species_dict[label].chosen_ts} of '
                                f'{label} to any of its TS guesses (available TS guess indices: '
                                f'{[tsg.index for tsg in self.species_dict[label].ts_guesses]}). '
@@ -3023,9 +3096,10 @@ class Scheduler(object):
                     self.output[label]['warnings'] += f'Warning: the imaginary freqs could not be attributed to a ' \
                                                       f'TS guess ({neg_freqs}); '
                 self.switch_ts(label=label)
-                return False
-            chosen_tsg.imaginary_freqs = neg_freqs
-            if not check_imaginary_frequencies(chosen_tsg.imaginary_freqs):
+                return False, True
+            if chosen_tsg is not None:
+                chosen_tsg.imaginary_freqs = neg_freqs
+            if not check_imaginary_frequencies(neg_freqs):
                 # Imaginary frequencies are problematic, try choosing a different TSGuess, and optimize it.
                 add_text = f' major imaginary frequency between {LOWEST_MAJOR_TS_FREQ} and {HIGHEST_MAJOR_TS_FREQ}.' \
                     if len(neg_freqs) == 1 and (neg_freqs[0] < LOWEST_MAJOR_TS_FREQ
@@ -3035,36 +3109,43 @@ class Scheduler(object):
                 if f'{len(neg_freqs)} imaginary freqs for' not in self.output[label]['warnings']:
                     self.output[label]['warnings'] += f'Warning: {len(neg_freqs)} imaginary freqs for TS ({neg_freqs}); '
                     logger.info(f'TS {label} did not pass the negative frequency check. '
-                                f'Status is:\n{self.species_dict[label].ts_checks}\n'
-                                f'Searching for a better TS conformer...')
+                                f'Status is:\n{self.species_dict[label].ts_checks}\n')
+                if chosen_tsg is None:
+                    # The frequencies belong to no identifiable guess, so switching guesses would discard a
+                    # geometry that may already have passed every other check without knowing what replaces it.
+                    logger.warning(f'Not switching the TS guess of {label}: the frequencies could not be '
+                                   f'attributed to a TS guess. The frequency check is left unverified.')
+                    return False, False
+                logger.info(f'Searching for a better TS conformer for {label}...')
                 self.switch_ts(label=label)
-                return False
+                return False, True
             else:
                 logger.info(f'TS {label} has exactly one imaginary frequency: {neg_freqs[0]}')
                 self.output[label]['info'] += f'Imaginary frequency: {neg_freqs[0] if len(neg_freqs) == 1 else neg_freqs}; '
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
-                plotter.save_conformers_file(
-                    project_directory=self.project_directory,
-                    label=label,
-                    xyzs=[tsg.opt_xyz for tsg in self.species_dict[label].ts_guesses],
-                    level_of_theory=self.ts_guess_level,
-                    multiplicity=self.species_dict[label].multiplicity,
-                    charge=self.species_dict[label].charge,
-                    is_ts=True,
-                    energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
-                    ts_methods=[f'{tsg.method} '
-                                f'{tsg.method_direction if tsg.method_direction is not None else ""} '
-                                f'{tsg.method_index if tsg.method_index is not None else ""} '
-                                for tsg in self.species_dict[label].ts_guesses],
-                    im_freqs=[tsg.imaginary_freqs for tsg in self.species_dict[label].ts_guesses]
-                        if any(tsg.imaginary_freqs is not None for tsg in self.species_dict[label].ts_guesses) else None,
-                    before_optimization=False,
-                )
+                if len(self.species_dict[label].ts_guesses):
+                    plotter.save_conformers_file(
+                        project_directory=self.project_directory,
+                        label=label,
+                        xyzs=[tsg.opt_xyz for tsg in self.species_dict[label].ts_guesses],
+                        level_of_theory=self.ts_guess_level,
+                        multiplicity=self.species_dict[label].multiplicity,
+                        charge=self.species_dict[label].charge,
+                        is_ts=True,
+                        energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
+                        ts_methods=[f'{tsg.method} '
+                                    f'{tsg.method_direction if tsg.method_direction is not None else ""} '
+                                    f'{tsg.method_index if tsg.method_index is not None else ""} '
+                                    for tsg in self.species_dict[label].ts_guesses],
+                        im_freqs=[tsg.imaginary_freqs for tsg in self.species_dict[label].ts_guesses]
+                            if any(tsg.imaginary_freqs is not None for tsg in self.species_dict[label].ts_guesses) else None,
+                        before_optimization=False,
+                    )
                 if not self.testing:
                     self.save_restart_dict()
                 self.species_dict[label].ts_checks['freq'] = True
-                return True
+                return True, False
 
     def check_rxn_e0_by_spc(self, label: str):
         """
@@ -4066,12 +4147,18 @@ class Scheduler(object):
         """
         matched = False
         for tsg in self.species_dict[label].ts_guesses:
-            if tsg_method_matches_adapter(getattr(tsg, 'method', None), job.job_adapter):
+            if tsg.success:
+                # A guess that produced a geometry is not the casualty of this failure, and adapters
+                # merge their names into an equivalent guess (e.g. 'heuristics and gcn'), so matching
+                # a successful guess on the merged name would record the error on another method's work.
+                continue
+            sources = tsg.method_sources or [tsg.method]
+            if any(tsg_method_matches_adapter(source, job.job_adapter) for source in sources):
                 tsg.errors += f'; {output_error}'
                 matched = True
         if not matched:
-            logger.debug(f'TS-search job {job.job_name} of {label} ({job.job_adapter}) generated no TS guess '
-                         f'to record the error "{output_error}" on.')
+            logger.warning(f'TS-search job {job.job_name} of {label} ({job.job_adapter}) generated no TS guess '
+                           f'to record the error "{output_error}" on: {output_error}')
 
     def troubleshoot_ess(self,
                          label: str,

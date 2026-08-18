@@ -32,6 +32,7 @@ from arc.species.converter import check_molecule_list_order
 if TYPE_CHECKING:
     from arc.molecule.molecule import Molecule
     from arc.reaction import ARCReaction
+    from arc.species.species import ARCSpecies
 
 MAX_PDI = 25
 
@@ -131,6 +132,28 @@ def map_general_rxn(rxn: ARCReaction,
     return atom_map
 
 
+def flatten_bond_orders(*species: ARCSpecies) -> None:
+    """
+    Set all bond orders of the given species' molecules to single.
+
+    Also discards the localized structures, the rotors and the directed rotor scans of each species,
+    which were derived from the previous bond orders, so that they are re-determined from the
+    flattened molecule. Species marked to skip rotor scans (a ``None`` ``rotors_dict``) keep that mark.
+
+    Args:
+        species (ARCSpecies): The species to flatten.
+    """
+    for spc in species:
+        for atom in spc.mol.atoms:
+            for bond in atom.bonds.values():
+                bond.order = 1
+        spc.mol_list = None
+        if spc.rotors_dict is not None:
+            spc.rotors_dict = dict()
+            spc.number_of_rotors = 0
+            spc.directed_rotors = dict()
+
+
 def map_isomerization_reaction(rxn: ARCReaction) -> list[int] | None:
     """
     Map isomerization reaction that has no corresponding RMG family.
@@ -213,9 +236,7 @@ def map_isomerization_reaction(rxn: ARCReaction) -> list[int] | None:
                 success = False
 
             if success:
-                for atom in r_copy.mol.atoms + p_copy.mol.atoms:
-                    for bd in atom.bonds.values():
-                        bd.order = 1
+                flatten_bond_orders(r_copy, p_copy)
                 return map_two_species(r_copy, p_copy, map_type='list')
 
         # 3) If fingerprint branch *didn’t* yield pairs, still do a deterministic edge‐removal mapping for *any* ring opening
@@ -235,9 +256,7 @@ def map_isomerization_reaction(rxn: ARCReaction) -> list[int] | None:
             except ValueError:
                 pass
             else:
-                for atom in r_copy.mol.atoms + p_copy.mol.atoms:
-                    for bd in atom.bonds.values():
-                        bd.order = 1
+                flatten_bond_orders(r_copy, p_copy)
                 return map_two_species(r_copy, p_copy, map_type='list')
 
     # 4) Fallback to the general mapping

@@ -2,6 +2,7 @@
 A module for working with levels of theory.
 """
 
+import copy
 import os
 from collections.abc import Iterable
 
@@ -164,6 +165,15 @@ class Level(object):
             Level: A copy of the object.
         """
         return Level(repr=self.as_dict())
+
+    def get_args(self) -> dict:
+        """
+        A method to get the args of the object, detached from it.
+
+        Returns:
+            dict: A deep copy of the args, which can be mutated without affecting this object.
+        """
+        return copy.deepcopy(self.args)
 
     def simple(self) -> str:
         """

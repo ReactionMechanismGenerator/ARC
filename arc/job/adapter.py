@@ -69,7 +69,6 @@ class JobEnum(str, Enum):
     Consider adding the following adapters:
         - ESS:
             - cosmo
-            - PySCF (https://pyscf.org/user/geomopt.html)
             - TS opt via pysisyphus (https://pysisyphus.readthedocs.io/en/dev/tsoptimization.html)
             - onedmin
             - openbabel
@@ -99,6 +98,7 @@ class JobEnum(str, Enum):
     molpro = 'molpro'
     orca = 'orca'
     psi4 = 'psi4'
+    pyscf = 'pyscf'
     qchem = 'qchem'
     terachem = 'terachem'
     torchani = 'torchani'
@@ -112,6 +112,8 @@ class JobEnum(str, Enum):
     crest = 'crest'  # CREST conformer/TS search
     kinbot = 'kinbot'  # KinBot, 10.1016/j.cpc.2019.106947
     linear = 'linear'  # ARC's linear TS search
+    goflow = 'goflow'  # GoFlow, flow-matching E(3)-equivariant TS generator (Galustian et al., Digital Discovery 2025, 10.1039/D5DD00283D); https://github.com/heid-lab/goflow_lean
+    rits = 'rits'  # Right into the Saddle, flow-matching TS generator, https://github.com/isayevlab/RitS, 10.26434/chemrxiv.15001681/v1
     user = 'user'  # user guesses
     xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
     orca_neb = 'orca_neb'
@@ -907,6 +909,9 @@ class JobAdapter(ABC):
         """
         content = ''
         cluster_soft = servers[self.server]['cluster_soft'].lower()
+        if cluster_soft == 'local':
+            # No queueing system, so there are no scheduler stdout/stderr files to collect.
+            return
         if cluster_soft in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
             # job.log is HTCondor's native event log; other clusters don't produce one.
             include_job_log = cluster_soft == 'htcondor'

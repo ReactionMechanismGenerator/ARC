@@ -11,7 +11,7 @@ import unittest
 
 import arc.species.vectors as vectors
 import arc.species.zmat as zmat
-from arc.exceptions import ZMatError
+from arc.exceptions import VectorsError, ZMatError
 from arc.molecule.molecule import Molecule
 from arc.species.converter import str_to_xyz, zmat_to_xyz
 from arc.species.species import ARCSpecies
@@ -2582,6 +2582,33 @@ class TestCollinearReference(unittest.TestCase):
                                60.0, places=4)
         for value in coords[3]:
             self.assertFalse(math.isnan(value))
+
+    def test_coincident_reference_atoms_are_refused(self):
+        """
+        Coincident B and C reference atoms are refused rather than placed against an arbitrary frame.
+
+        A collinear A-B-C still leaves the B-C direction, so the requested distance and angle are
+        honoured and only the dihedral's zero is arbitrary. Coincident B and C leave no direction at
+        all, so neither the angle nor the dihedral of the atom being placed has a value.
+        """
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5)
+        coords = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 0.0)]
+        with self.assertRaises(VectorsError) as error:
+            zmat._add_nth_atom_to_coords(zmat=z, coords=coords, i=3)
+        self.assertIn('coincident', str(error.exception))
+
+    def test_coincident_reference_atoms_are_refused_by_zmat_to_coords(self):
+        """A zmat whose third atom sits on its own reference atom is refused by the public entry point."""
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5)
+        z['vars']['R_2_1'] = 0.0
+        with self.assertRaises(VectorsError):
+            zmat.zmat_to_coords(z)
+
+    def test_coincident_first_two_atoms_are_refused(self):
+        """The other documented refusal: atoms 0 and 1 coincident leave no axis for the third atom."""
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5)
+        with self.assertRaises(VectorsError):
+            zmat._add_nth_atom_to_coords(zmat=z, coords=[(0.0, 0.0, 0.0), (0.0, 0.0, 0.0)], i=2)
 
 
 class TestThirdAtomFrame(unittest.TestCase):

@@ -7,12 +7,13 @@ This module contains unit tests of the arc.job.trsh module
 
 import math
 import os
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import arc.job.trsh as trsh
-from arc.common import ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, save_yaml_file
 from arc.exceptions import TrshError
 from arc.imports import settings
 from arc.parser.parser import parse_1d_scan_energies
@@ -1460,6 +1461,81 @@ class TestTrsh(unittest.TestCase):
         self.assertAlmostEqual(memory, expected_targeted)
         self.assertNotAlmostEqual(memory, memory_gb * 3)
         self.assertEqual(cpu_cores, 12)  # below the (256 GB) cap: ranks unchanged
+    def test_determine_ess_status_memory_overallocation(self):
+        """
+        Test that a Gaussian galloc/malloc failure (a malloc failure inside an already-granted queue
+        allocation) is classified as 'GaussianMemoryAllocation'.
+        """
+        path = os.path.join(self.base_path['gaussian'], 'galloc.out')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label='CH3CHO', job_type='opt', software='gaussian')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['GaussianMemoryAllocation'])
+        self.assertIn('could not allocate memory', error)
+
+    def test_trsh_ess_job_memory_overallocation(self):
+        """
+        Test that a 'GaussianMemoryAllocation' keyword holds the memory request constant and instead
+        steps down the %mem headroom ladder, giving up with a clear, actionable message once the
+        ladder is exhausted.
+        """
+        label, level_of_theory, server = 'ethanol', {'method': 'wb97xd', 'basis': 'def2tzvp'}, 'server1'
+        job_type, software, fine, num_heavy_atoms, cpu_cores = 'opt', 'gaussian', False, 2, 8
+        job_status = {'keywords': ['GaussianMemoryAllocation'],
+                      'error': 'Gaussian could not allocate memory within its allocation.'}
+
+        # First galloc: memory is unchanged, and the ladder steps to its second rung. No other
+        # memory-related marker (e.g. 'memory', from the separate increase-memory branch) is added.
+        output_errors, ess_trsh_methods, *_, memory, shift, cpu_cores_out, couldnt_trsh = trsh.trsh_ess_job(
+            label, level_of_theory, server, job_status, job_type, software, fine, 32,
+            num_heavy_atoms, cpu_cores, [])
+        self.assertFalse(couldnt_trsh)
+        self.assertEqual(memory, 32)
+        memory_markers = [m for m in ess_trsh_methods if m.startswith('memory')]
+        self.assertEqual(memory_markers, ['memory_headroom_0.75'])
+
+        # Repeated galloc: feed the previous ess_trsh_methods back in; the ladder steps once more.
+        output_errors, ess_trsh_methods, *_, memory, shift, cpu_cores_out, couldnt_trsh = trsh.trsh_ess_job(
+            label, level_of_theory, server, job_status, job_type, software, fine, memory,
+            num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertFalse(couldnt_trsh)
+        self.assertEqual(memory, 32)
+        memory_markers = [m for m in ess_trsh_methods if m.startswith('memory')]
+        self.assertEqual(memory_markers, ['memory_headroom_0.75', 'memory_headroom_0.6'])
+
+        # Ladder exhausted: couldnt_trsh with an actionable message, terminated by the '; ' separator
+        # used throughout output_errors (entries are concatenated into output[label]['errors']).
+        output_errors, ess_trsh_methods, *_, memory, shift, cpu_cores_out, couldnt_trsh = trsh.trsh_ess_job(
+            label, level_of_theory, server, job_status, job_type, software, fine, memory,
+            num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertTrue(couldnt_trsh)
+        self.assertEqual(memory, 32)
+        ladder_exhausted_messages = [out for out in output_errors if 'job_total_memory_gb' in out]
+        self.assertEqual(len(ladder_exhausted_messages), 1)
+        self.assertTrue(ladder_exhausted_messages[0].endswith('; '))
+
+    def test_trsh_ess_job_gaussian_memory_alternation_terminates(self):
+        """
+        Test that alternating 'GaussianMemoryAllocation' and 'Memory' troubleshooting statuses
+        terminates within a bounded number of rounds rather than oscillating forever, since the
+        headroom-ladder marker ('memory_headroom_<fraction>') is distinct from the increase-memory
+        marker ('memory').
+        """
+        label, level_of_theory, server = 'ethanol', {'method': 'wb97xd', 'basis': 'def2tzvp'}, 'server1'
+        job_type, software, fine, num_heavy_atoms, cpu_cores = 'opt', 'gaussian', False, 2, 8
+        memory_status = {'keywords': ['GaussianMemoryAllocation'],
+                         'error': 'Gaussian could not allocate memory within its allocation.'}
+        increase_status = {'keywords': ['Memory'],
+                           'error': 'Insufficient job memory.'}
+        memory, ess_trsh_methods, couldnt_trsh = 32, [], False
+        for round_num in range(12):
+            job_status = memory_status if round_num % 2 == 0 else increase_status
+            result = trsh.trsh_ess_job(label, level_of_theory, server, job_status, job_type, software, fine,
+                                       memory, num_heavy_atoms, cpu_cores, ess_trsh_methods)
+            output_errors, ess_trsh_methods, memory, couldnt_trsh = result[0], result[1], result[8], result[-1]
+            if couldnt_trsh:
+                break
+        self.assertTrue(couldnt_trsh)
 
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""
@@ -1694,6 +1770,47 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('maytal_q', result.keys())
         self.assertIn('48:00:00', result.values())
         self.assertTrue(success)
+
+    def test_determine_ess_status_of_a_yaml_output(self):
+        """Test determining the status of an in-core adapter that reports results via YAML.
+
+        These adapters write ARC's internal schema rather than a text log, so the per-software
+        textual error signatures do not apply and the job's own ``success`` key is authoritative.
+        """
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            path = os.path.join(tmp_dir, 'output.yml')
+
+            save_yaml_file(path=path, content={'schema_version': 1, 'adapter': 'pyscf',
+                                               'success': True, 'sp': -397940.79})
+            status, keywords, error, line = trsh.determine_ess_status(
+                output_path=path, species_label='H2O2', job_type='opt', software='pyscf')
+            self.assertEqual(status, 'done')
+            self.assertEqual(keywords, list())
+            self.assertEqual(error, '')
+
+            save_yaml_file(path=path, content={'schema_version': 1, 'adapter': 'pyscf',
+                                               'success': False, 'error': 'SCF did not converge'})
+            status, keywords, error, line = trsh.determine_ess_status(
+                output_path=path, species_label='H2O2', job_type='opt', software='pyscf')
+            self.assertEqual(status, 'errored')
+            self.assertEqual(error, 'SCF did not converge')
+
+            # Adapters predating the ``success`` key (ase, torchani, openbabel) write an ``error``
+            # key only on failure, so a missing ``success`` must not be read as a failure.
+            save_yaml_file(path=path, content={'xyz': {'symbols': ('O', 'O')}, 'energy': -1.5})
+            status, keywords, error, line = trsh.determine_ess_status(
+                output_path=path, species_label='H2O2', job_type='opt', software='ase')
+            self.assertEqual(status, 'done')
+            self.assertEqual(error, '')
+
+            save_yaml_file(path=path, content={'error': 'Optimization failed: boom'})
+            status, keywords, error, line = trsh.determine_ess_status(
+                output_path=path, species_label='H2O2', job_type='opt', software='ase')
+            self.assertEqual(status, 'errored')
+            self.assertEqual(error, 'Optimization failed: boom')
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def _make_convergence_lines(cycles: list[dict]) -> list[str]:

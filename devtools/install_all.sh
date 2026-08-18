@@ -27,6 +27,8 @@ SKIP_CLEAN=false
 SKIP_EXT=false
 SKIP_ARC=false
 SKIP_RMG=false
+SKIP_GOFLOW=false
+SKIP_RITS=false
 RMG_ARGS=()
 ARC_ARGS=()
 EXT_ARGS=()
@@ -34,10 +36,12 @@ GENERIC_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --no-clean) SKIP_CLEAN=true ;;
-        --no-ext)   SKIP_EXT=true  ;;
-        --no-arc)   SKIP_ARC=true  ;;
-        --no-rmg)   SKIP_RMG=true  ;;
+        --no-clean)  SKIP_CLEAN=true ;;
+        --no-ext)    SKIP_EXT=true  ;;
+        --no-arc)    SKIP_ARC=true  ;;
+        --no-rmg)    SKIP_RMG=true  ;;
+        --no-goflow) SKIP_GOFLOW=true ;;
+        --no-rits)   SKIP_RITS=true ;;
         --rmg-*)    RMG_ARGS+=("--${1#--rmg-}") ;;
         --arc-*)    ARC_ARGS+=("--${1#--arc-}") ;;
         --ext-*)    EXT_ARGS+=("--${1#--ext-}") ;;
@@ -47,6 +51,8 @@ Usage: $0 [global-flags] [--rmg-xxx] [--arc-yyy] [--ext-zzz]
   --no-clean          Skip micromamba/conda cache cleanup
   --no-ext            Skip external tools (AutoTST, KinBot, …)
   --no-rmg            Skip RMG-Py entirely
+  --no-goflow         Skip the GoFlow installer (heavy ML stack — usually run in its own CI lane)
+  --no-rits           Skip the RitS installer (heavy ML stack — usually run in its own CI lane)
   --rmg-path          Forward '--path' to RMG installer
   --rmg-pip           Forward '--pip'  to RMG installer
   ...
@@ -105,12 +111,30 @@ if [[ $SKIP_EXT == false ]]; then
         [CREST]=install_crest.sh
         [Sella]=install_sella.sh
         [TorchANI]=install_torchani.sh
+        [GoFlow]=install_goflow.sh
+        [RitS]=install_rits.sh
+        [PySCF]=install_pyscf.sh
     )
+
+    # Optionally drop GoFlow — used by `make install-ci` since CI runs GoFlow in its own lane
+    if [[ $SKIP_GOFLOW == true ]]; then
+        unset 'EXT_INSTALLERS[GoFlow]'
+        echo "ℹ️  --no-goflow: skipping GoFlow installer (run \`make install-goflow\` or the goflow CI lane separately)"
+    fi
+
+    # Optionally drop RitS — used by `make install-ci` since CI runs RitS in its own lane
+    if [[ $SKIP_RITS == true ]]; then
+        unset 'EXT_INSTALLERS[RitS]'
+        echo "ℹ️  --no-rits: skipping RitS installer (run \`make install-rits\` or the rits CI lane separately)"
+    fi
 
         # installer-specific flag whitelists
     declare -A EXT_FLAG_WHITELIST=(
        [install_gcn.sh]="--conda"
        [install_autotst.sh]="--conda"
+       [install_goflow.sh]="--cpu --no-ckpt-check"
+       [install_rits.sh]="--cpu --no-ckpt-check"
+       [install_pyscf.sh]="--cuda --gpu"
         # add more later, e.g.  [install_xtb.sh]="--cuda --prefix"
     )
 

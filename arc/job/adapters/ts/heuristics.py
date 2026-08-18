@@ -308,7 +308,6 @@ class HeuristicsAdapter(JobAdapter):
                         break
                 if unique:
                     ts_guess = TSGuess(method=method_label,
-                                       index=len(rxn.ts_species.ts_guesses),
                                        method_index=method_index,
                                        t0=tsg.t0,
                                        execution_time=tsg.execution_time,
@@ -316,7 +315,7 @@ class HeuristicsAdapter(JobAdapter):
                                        family=family,
                                        xyz=xyz,
                                        )
-                    rxn.ts_species.ts_guesses.append(ts_guess)
+                    rxn.ts_species.append_ts_guess(ts_guess)
                     save_geo(xyz=xyz,
                              path=self.local_path,
                              filename=f'{method_label}_{method_index}',

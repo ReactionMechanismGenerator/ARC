@@ -118,8 +118,6 @@ def show_sticks(xyz=None, species=None, project_directory=None, show_atom_indice
         conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
     except (ValueError, AttributeError):
         return False
-    if conf is None:
-        return False
     mb = Chem.MolToMolBlock(rd_mol)
     p = p3D.view(width=400, height=400)
     p.addModel(mb, 'sdf')
@@ -1461,6 +1459,7 @@ def plot_2d_scan_bond_dihedral(results: dict,
         results (dict):
             The results dictionary, dihedrals are assumed to be in degrees (not radians).
             This dictionary has the following structure::
+
                 {'directed_scan_type': <str, used for the fig name>,
                  'scans': <list, entries are lists of torsion indices>,
                  'directed_scan': <dict>, keys are tuples of '{0:.2f}' formatted dihedrals,
@@ -1712,7 +1711,7 @@ def delete_multi_species_output_file(species_list: list[ARCSpecies],
         os.remove(multi_species_path_dict[spc_label])
 
 
-def get_rxn_units_and_conversion_factor(rxn: ARCReaction) -> tuple[str, float]:  # todo: add tests
+def get_rxn_units_and_conversion_factor(rxn: 'ARCReaction') -> tuple[str, float]:  # todo: add tests
     """
     Get the units and conversion factor for the reaction rate coefficient.
 

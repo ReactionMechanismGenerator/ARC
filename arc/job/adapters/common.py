@@ -3,13 +3,13 @@ This module contains functions which are shared across multiple Job modules.
 As such, it should not import any other ARC modules to avoid circular imports.
 """
 
-import copy
 import datetime
 import os
 import shutil
 import sys
 import re
 
+from pprint import pformat
 from typing import TYPE_CHECKING
 
 from arc.common import get_logger
@@ -27,68 +27,69 @@ logger = get_logger()
 default_job_settings, global_ess_settings, rotor_scan_resolution = \
     settings['default_job_settings'], settings['global_ess_settings'], settings['rotor_scan_resolution']
 
-ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             '1,2_Insertion_CO': ['kinbot', 'linear'],
-                             '1,2_Insertion_carbene': ['kinbot', 'linear'],
-                             '1,2_NH3_elimination': ['linear'],
-                             '1,2_XY_interchange': ['orca_neb', 'linear'],
-                             '1,2_shiftC': ['gcn', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
-                             '1,2_shiftS': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
-                             '1,3_Insertion_CO2': ['kinbot', 'linear'],
-                             '1,3_Insertion_ROR': ['kinbot', 'linear'],
-                             '1,3_Insertion_RSR': ['kinbot', 'linear'],
-                             '1,3_NH3_elimination': ['linear'],
-                             '1,3_sigmatropic_rearrangement': ['linear'],
-                             '1,4_Cyclic_birad_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             '1,4_Linear_birad_scission': ['linear'],
-                             '2+2_cycloaddition': ['kinbot', 'linear'],
-                             '6_membered_central_C-C_shift': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Baeyer-Villiger_step2': ['linear'],
-                             'Birad_recombination': ['linear'],
-                             'Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Cyclic_Ether_Formation': ['kinbot', 'linear'],
-                             'Cyclic_Thioether_Formation': ['linear'],
-                             'Cyclopentadiene_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Diels_alder_addition': ['kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Diels_alder_addition_Aromatic': ['linear'],
+ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             '1,2_Insertion_CO': ['kinbot', 'goflow', 'rits', 'linear'],
+                             '1,2_Insertion_carbene': ['kinbot', 'goflow', 'rits', 'linear'],
+                             '1,2_NH3_elimination': ['goflow', 'rits', 'linear'],
+                             '1,2_XY_interchange': ['orca_neb', 'goflow', 'rits', 'linear'],
+                             '1,2_shiftC': ['gcn', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
+                             '1,2_shiftS': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
+                             '1,3_Insertion_CO2': ['kinbot', 'goflow', 'rits', 'linear'],
+                             '1,3_Insertion_ROR': ['kinbot', 'goflow', 'rits', 'linear'],
+                             '1,3_Insertion_RSR': ['kinbot', 'goflow', 'rits', 'linear'],
+                             '1,3_NH3_elimination': ['goflow', 'rits', 'linear'],
+                             '1,3_sigmatropic_rearrangement': ['goflow', 'rits', 'linear'],
+                             '1,4_Cyclic_birad_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             '1,4_Linear_birad_scission': ['goflow', 'rits', 'linear'],
+                             '2+2_cycloaddition': ['kinbot', 'goflow', 'rits', 'linear'],
+                             '6_membered_central_C-C_shift': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Baeyer-Villiger_step2': ['goflow', 'rits', 'linear'],
+                             'Birad_recombination': ['goflow', 'rits', 'linear'],
+                             'Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Cyclic_Ether_Formation': ['kinbot', 'goflow', 'rits', 'linear'],
+                             'Cyclic_Thioether_Formation': ['goflow', 'rits', 'linear'],
+                             'Cyclopentadiene_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Diels_alder_addition': ['kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Diels_alder_addition_Aromatic': ['goflow', 'rits', 'linear'],
                              'Disproportionation': ['autotst'],
-                             'HO2_Elimination_from_PeroxyRadical': ['kinbot', 'linear'],
+                             'HO2_Elimination_from_PeroxyRadical': ['kinbot', 'goflow', 'rits', 'linear'],
                              'H_Abstraction': ['heuristics', 'autotst', 'crest'],
-                             'Intra_2+2_cycloaddition_Cd': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Intra_5_membered_conjugated_C=C_C=C_addition': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Intra_Diels_alder_monocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Intra_RH_Add_Endocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Intra_RH_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Intra_R_Add_Endocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Intra_R_Add_ExoTetCyclic': ['kinbot', 'linear'],
-                             'Intra_R_Add_Exo_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Intra_R_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Intra_Retro_Diels_alder_bicyclic': ['kinbot', 'linear'],
-                             'Intra_ene_reaction': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Ketoenol': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
-                             'Korcek_step1': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Korcek_step2': ['kinbot', 'linear'],
-                             'R_Addition_COm': ['kinbot', 'linear'],
-                             'R_Addition_CSm': ['kinbot', 'linear'],
-                             'R_Addition_MultipleBond': ['autotst', 'kinbot', 'linear'],
-                             'Retroene': ['kinbot', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'Singlet_Carbene_Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'XY_Addition_MultipleBond': ['heuristics', 'crest', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'XY_elimination_hydroxyl': ['xtb_gsm', 'orca_neb', 'linear'],
+                             'Intra_2+2_cycloaddition_Cd': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Intra_5_membered_conjugated_C=C_C=C_addition': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Intra_Diels_alder_monocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Intra_RH_Add_Endocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Intra_RH_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Intra_R_Add_Endocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Intra_R_Add_ExoTetCyclic': ['kinbot', 'goflow', 'rits', 'linear'],
+                             'Intra_R_Add_Exo_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Intra_R_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Intra_Retro_Diels_alder_bicyclic': ['kinbot', 'goflow', 'rits', 'linear'],
+                             'Intra_ene_reaction': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Ketoenol': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
+                             'Korcek_step1': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Korcek_step2': ['kinbot', 'goflow', 'rits', 'linear'],
+                             'R_Addition_COm': ['kinbot', 'goflow', 'rits', 'linear'],
+                             'R_Addition_CSm': ['kinbot', 'goflow', 'rits', 'linear'],
+                             'R_Addition_MultipleBond': ['autotst', 'kinbot', 'goflow', 'rits', 'linear'],
+                             'Retroene': ['kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Singlet_Carbene_Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'XY_Addition_MultipleBond': ['heuristics', 'crest', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'XY_elimination_hydroxyl': ['xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'carbonyl_based_hydrolysis': ['heuristics'],
                              'ether_hydrolysis': ['heuristics'],
-                             'halocarbene_recombination': ['linear'],
-                             'halocarbene_recombination_double': ['linear'],
-                             'intra_H_migration': ['autotst', 'gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
-                             'intra_NO2_ONO_conversion': ['gcn', 'xtb_gsm', 'orca_neb', 'qst2', 'linear', 'crest'],
-                             'intra_OH_migration': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'linear'],
-                             'intra_halogen_migration': ['xtb_gsm', 'orca_neb', 'qst2', 'linear'],
-                             'intra_substitutionCS_cyclization': ['linear'],
-                             'intra_substitutionCS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'intra_substitutionS_cyclization': ['linear'],
-                             'intra_substitutionS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb', 'linear'],
-                             'lone_electron_pair_bond': ['linear'],
+                             'halocarbene_recombination': ['goflow', 'rits', 'linear'],
+                             'halocarbene_recombination_double': ['goflow', 'rits', 'linear'],
+                             'intra_H_migration': ['autotst', 'gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
+                             'intra_NO2_ONO_conversion': ['gcn', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear', 'crest'],
+                             'intra_OH_migration': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
+                             'intra_halogen_migration': ['xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
+                             'intra_substitutionCS_cyclization': ['goflow', 'rits', 'linear'],
+                             'intra_substitutionCS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'intra_substitutionS_cyclization': ['goflow', 'rits', 'linear'],
+                             'intra_substitutionS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'lone_electron_pair_bond': ['goflow', 'rits', 'linear'],
+
                              'nitrile_hydrolysis': ['heuristics']
                              }
 
@@ -96,12 +97,13 @@ all_families_ts_adapters = []
 
 # Adapters that may run on any unimolecular reaction when RMG fails to assign a
 # family. These adapters must tolerate rxn.family being None or unknown.
-ts_adapters_for_unknown_unimolecular = ['linear']
+ts_adapters_for_unknown_unimolecular = ['goflow', 'rits', 'linear']
 
 adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani', 'ase']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
-default_incore_adapters = ['autotst', 'crest', 'gcn', 'heuristics', 'kinbot', 'linear', 'openbabel', 'torchani', 'psi4', 'xtb', 'xtb_gsm']
+default_incore_adapters = ['autotst', 'crest', 'gcn', 'goflow', 'heuristics', 'kinbot', 'linear', 'openbabel',
+                           'psi4', 'rits', 'torchani', 'xtb', 'xtb_gsm']
 
 
 def _initialize_adapter(obj: JobAdapter,
@@ -487,6 +489,33 @@ def input_dict_strip(input_dict: dict) -> dict:
     return stripped_dict
 
 
+def get_dropped_level_args(args: dict,
+                           level_args: dict,
+                           ) -> dict:
+    """
+    Get the options of a level of theory which the job args do not carry.
+
+    An option of ``level_args`` is dropped if ``args`` holds no entry under the same two keys or
+    holds a different value for it. An entry of ``args`` which is not a dictionary is treated as
+    carrying no options at all.
+
+    Args:
+        args (dict): The job specific arguments.
+        level_args (dict): The args of the level of theory, a dictionary of dictionaries.
+
+    Returns:
+        dict: The dropped options, keyed as ``level_args`` is, without the empty entries.
+    """
+    dropped_args = dict()
+    for key, val in level_args.items():
+        job_val = args.get(key, None)
+        job_val = job_val if isinstance(job_val, dict) else dict()
+        dropped = {key_2: val_2 for key_2, val_2 in val.items() if job_val.get(key_2, None) != val_2}
+        if dropped:
+            dropped_args[key] = dropped
+    return dropped_args
+
+
 def set_job_args(args: dict | None,
                  level: Level | None,
                  job_name: str,
@@ -494,8 +523,10 @@ def set_job_args(args: dict | None,
     """
     Set the job args considering args from ``level`` and from ``trsh``.
 
-    The args taken from ``level`` are deep-copied, so that keywords which the adapters later
-    inject into the returned dictionary do not reach the ``Level`` object itself.
+    The args of ``level`` are adopted when ``args`` carries no options, deep-copied so that keywords
+    which the adapters later inject into the returned dictionary do not reach the ``Level`` object
+    itself. When ``args`` does carry options it is used as given, and a warning reports the options
+    of ``level`` which it does not carry, i.e., only the options which are actually being dropped.
 
     Args:
         args (dict): The job specific arguments.
@@ -505,8 +536,14 @@ def set_job_args(args: dict | None,
     Returns:
         dict: The initialized job specific arguments.
     """
-    if not args and level is not None:
-        args = copy.deepcopy(level.args)
+    args_carry_options = args is not None and any(val for val in args.values())
+    if args_carry_options and level is not None and level.args and any(val for val in level.args.values()):
+        dropped_args = get_dropped_level_args(args=args, level_args=level.args)
+        if dropped_args:
+            logger.warning(f'ARC ignores the following user-specified level of theory options '
+                           f'in job {job_name}:\n{pformat(dropped_args)}')
+    elif not args_carry_options and level is not None:
+        args = {**(args or dict()), **level.get_args()}
     for key in ['keyword', 'block', 'trsh']:
         if key not in args.keys():
             args[key] = dict()

@@ -22,7 +22,6 @@ ARC's API
    parser
    plotter
    processor
-   rmgdb
    common
    level
    scale

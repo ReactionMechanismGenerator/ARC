@@ -229,6 +229,20 @@ class TestLocal(unittest.TestCase):
                 local.delete_job(4556708)
         self.assertTrue(any('unknown whether the job was deleted' in message for message in cm.output))
 
+    def test_check_running_jobs_ids_without_a_queueing_system(self):
+        """Test that a machine with no queueing system reports no queue job IDs"""
+        for cluster_soft in ['local', 'Local']:
+            with patch.dict(local.servers, {'local': {'cluster_soft': cluster_soft}}):
+                with patch('arc.job.local.execute_command') as mock_execute:
+                    self.assertEqual(local.check_running_jobs_ids(), list())
+                mock_execute.assert_not_called()
+
+    def test_check_running_jobs_ids_unsupported_cluster_software(self):
+        """Test that an unrecognized cluster software is still rejected"""
+        with patch.dict(local.servers, {'local': {'cluster_soft': 'no_such_scheduler'}}):
+            with self.assertRaises(ValueError):
+                local.check_running_jobs_ids()
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

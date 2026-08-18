@@ -3,182 +3,197 @@
 Examples
 ========
 
-ARC's examples folder (`ARC/examples`__) is an excellent resource for up-to-date sample input files,
-demonstrating different features. Below are examples for common basic tasks performed using ARC.
+This page shows compact, current input patterns. Use them as starting points,
+then adapt levels of theory, software routing, and server settings to your site.
 
-__ examplesGitHub_
+Minimal Species Thermochemistry
+-------------------------------
 
+.. code-block:: yaml
 
-Calculating thermodynamic properties
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   project: ethanol_thermo
 
-The example below shows how to set the levels of theory and job types.
-Multiple species are defined using SMILES / an XYZ list / InChI::
+   species:
+     - label: ethanol
+       smiles: CCO
 
-    project: arc_demo_1
+   level_of_theory: wb97xd/def2svp
+   ess_settings:
+     gaussian: local
 
-    ess_settings:
-      gaussian:
-      - local
-      - server1
-      molpro:
-      - server1
-      qchem:
-      - server2
+This asks ARC to use the default job types, which include conformer optimization,
+optimization, fine-grid optimization, frequency, single-point, rotor, and IRC
+where applicable.
 
-    job_types:
-      rotors: true
-      conf_opt: true
-      fine: true
-      freq: true
-      opt: true
-      sp: true
+Several Species and Coordinate Formats
+--------------------------------------
 
-    max_job_time: 24
+.. code-block:: yaml
 
-    level_of_theory: CCSD(T)-F12/cc-pVTZ-F12//wb97xd/def2tzvp
-    scan_level: wb97xd/def2tzvp
-    conformer_level:
-      method: b3lyp
-      basis: '6-311+g(d,p)'
-      dispersion: empiricaldispersion=gd3bj
+   project: species_inputs
 
-    species:
+   ess_settings:
+     gaussian:
+       - local
+       - server1
+     orca: local
 
-    - label: propane
-      smiles: CCC
+   job_types:
+     conf_opt: true
+     opt: true
+     fine: true
+     freq: true
+     sp: true
+     rotors: true
 
-    - label: vinoxy
-      xyz:
-      - |
-        O       1.35170118   -1.00275231   -0.48283333
-        C      -0.67437022    0.01989281    0.16029161
-        C       0.62797113   -0.03193934   -0.15151370
-        H      -1.14812497    0.95492850    0.42742905
-        H      -1.27300665   -0.88397696    0.14797321
-        H       1.11582953    0.94384729   -0.10134685
-      - |
-        O       1.49847909   -0.87864716    0.21971764
-        C      -0.69134542   -0.01812252    0.05076812
-        C       0.64534929    0.00412787   -0.04279617
-        H      -1.19713983   -0.90988817    0.40350584
-        H      -1.28488154    0.84437992   -0.22108130
-        H       1.02953840    0.95815005   -0.41011413
-      - |
-        O      -1.15888237    1.27653343    0.30527086
-        C       0.63650559   -0.15873769   -0.22478280
-        C      -0.59108268    0.16116823    0.20729283
-        H       1.31343166    0.61755575   -0.56336439
-        H       0.97181468   -1.18699193   -0.24372402
-        H      -1.17178687   -0.70952779    0.51930751
+   level_of_theory: CCSD(T)-F12/cc-pVTZ-F12//wb97xd/def2tzvp
 
-    - label: propanol
-      inchi: InChI=1S/C3H8O/c1-2-3-4/h4H,2-3H2,1H3
+   species:
+     - label: propane
+       smiles: CCC
 
-In the above example, ``level_of_theory`` is a directive that specifies in one line the
-``sp_method/sp_basis_set//opt_method/opt_basis_set``. Specifying the ``level_of_theory``
-also sets the ``freq_level`` as equal to the ``opt_level``. Note that if the ``scan_level``
-isn't set, and ARC will use the default in settings.py unless directed otherwise.
+     - label: propanol
+       inchi: InChI=1S/C3H8O/c1-2-3-4/h4H,2-3H2,1H3
 
-To specify a composite method, simply define something like::
+     - label: vinoxy
+       xyz: |
+         O       1.35170118   -1.00275231   -0.48283333
+         C      -0.67437022    0.01989281    0.16029161
+         C       0.62797113   -0.03193934   -0.15151370
+         H      -1.14812497    0.95492850    0.42742905
+         H      -1.27300665   -0.88397696    0.14797321
+         H       1.11582953    0.94384729   -0.10134685
 
-    level_of_theory: CBS-QB3
+Reaction with a TS Guess
+------------------------
 
-Note: Do not include year suffixes in ``level_of_theory`` (e.g., ``wb97xd32023``). Year suffixes are
-for Arkane database matching only and are not valid QC methods. If you need a specific correction year,
-specify a ``year`` key on ``arkane_level_of_theory``.
+This is a reaction-definition fragment. Add ``level_of_theory`` and
+``ess_settings`` for the ESS you intend to use before running it.
 
-If ``year`` is omitted, ARC will prefer the no-year Arkane entry for that method/basis; if none exists,
-ARC will fall back to the latest available year in the Arkane database.
+.. code-block:: yaml
 
-Note that for composite methods the ``freq_level`` and ``scan_level`` may have different
-default values than for non-composite methods (defined in settings.py). Note: an independent
-frequencies calculation job is automatically executed after a composite job just so that the Hamiltonian will
-be outputted.
+   project: reaction_demo
 
-For detailed discussion on specifying levels of theory (e.g., including auxiliary basis sets and DFT dispersions),
-see see :ref:`Levels of theory <levels>`.
+   species:
+     - label: N2H4
+       smiles: NN
+     - label: NH
+       smiles: '[NH]'
+     - label: N2H3
+       smiles: N[NH]
+     - label: NH2
+       smiles: '[NH2]'
 
-The same example as above ran via the API (e.g., in `Jupyter notebooks`__) would look like the following::
+   reactions:
+     - label: N2H4 + NH <=> N2H3 + NH2
+       ts_xyz_guess:
+         - |
+           N      -0.4465194713     0.6830090994    -0.0932618217
+           H      -0.4573825998     1.1483344874     0.8104886823
+           H       0.6773598975     0.3820642106    -0.2197000290
+           N      -1.2239012380    -0.4695695875    -0.0069891203
+           H      -1.8039356973    -0.5112019151     0.8166872835
+           H      -1.7837217777    -0.5685801608    -0.8405154279
+           N       1.9039017235    -0.1568337145    -0.0766247796
+           H       1.7333130781    -0.8468572038     0.6711695415
 
-    from arc import ARC
-    from arc.species import ARCSpecies
-    from IPython.display import display
-    %matplotlib notebook
+Transition-State Species
+------------------------
 
-    spc1 = ARCSpecies(label='propane', smiles='CCC')
+Use ``is_ts: true`` when the species entry itself is a transition state:
+This example is a fragment; add ``ess_settings`` for your configured ESS before
+running it.
 
-    xyz_list = ["""O       1.35170118   -1.00275231   -0.48283333
-                   C      -0.67437022    0.01989281    0.16029161
-                   C       0.62797113   -0.03193934   -0.15151370
-                   H      -1.14812497    0.95492850    0.42742905
-                   H      -1.27300665   -0.88397696    0.14797321
-                   H       1.11582953    0.94384729   -0.10134685""",
-                """O       1.49847909   -0.87864716    0.21971764
-                   C      -0.69134542   -0.01812252    0.05076812
-                   C       0.64534929    0.00412787   -0.04279617
-                   H      -1.19713983   -0.90988817    0.40350584
-                   H      -1.28488154    0.84437992   -0.22108130
-                   H       1.02953840    0.95815005   -0.41011413""",
-                """O      -1.15888237    1.27653343    0.30527086
-                   C       0.63650559   -0.15873769   -0.22478280
-                   C      -0.59108268    0.16116823    0.20729283
-                   H       1.31343166    0.61755575   -0.56336439
-                   H       0.97181468   -1.18699193   -0.24372402
-                   H      -1.17178687   -0.70952779    0.51930751"""]
+.. code-block:: yaml
 
-    spc2 = ARCSpecies(label='vinoxy', xyz=xyz_list)
+   project: ts_opt
 
-    spc3 = ARCSpecies(label='propanol', inchi='InChI=1S/C3H8O/c1-2-3-4/h4H,2-3H2,1H3')
+   level_of_theory: apfd/def2TZVPP
+   freq_scale_factor: 0.992
 
-    arc = ARC(project='arc_demo_1',
-              ess_settings={'gaussian': ['local', 'server1'], 'molpro': 'server1', 'qchem': 'server2'},
-              job_types={'rotors': True, 'conf_opt': True, 'conf_sp': True, 'fine': True, 'freq': True, 'opt': True, sp: True},
-              max_job_time=24,
-              level_of_theory='CCSD(T)-F12/cc-pVTZ-F12//wb97xd/def2tzvp',
-              scan_level='wb97xd/def2tzvp',
-              conformer_opt_level='b3lyp/6-311+g(d,p)',
-              species=[spc1, spc2, spc3],
-              )
+   species:
+     - label: TS1
+       is_ts: true
+       multiplicity: 2
+       xyz:
+         - TS1/guess_1.gjf
+         - TS1/guess_2.gjf
+         - TS1/guess_3.gjf
 
-    arc.execute()
+ARC can read coordinate guesses from multiline XYZ strings, XYZ files, Gaussian
+input files, and supported ESS output files.
 
-__ jupyter_
+Python API
+----------
 
+.. code-block:: python
 
-Optimizing transition states
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   from arc import ARC
+   from arc.species import ARCSpecies
+   from arc.reaction import ARCReaction
 
-Here's an example for optimizing a transition state (TS) after generating several guesses, say in GaussView::
+   n2h4 = ARCSpecies(label='N2H4', smiles='NN')
+   nh = ARCSpecies(label='NH', smiles='[NH]')
+   n2h3 = ARCSpecies(label='N2H3', smiles='N[NH]')
+   nh2 = ARCSpecies(label='NH2', smiles='[NH2]')
 
-    project: BNdTSs
+   reaction = ARCReaction(
+       label='N2H4 + NH <=> N2H3 + NH2',
+       r_species=[n2h4, nh],
+       p_species=[n2h3, nh2],
+   )
 
-    level_of_theory: apfd/def2TZVPP
-    freq_scale_factor: 0.992
+   arc = ARC(
+       project='api_reaction_demo',
+       species=[n2h4, nh, n2h3, nh2],
+       reactions=[reaction],
+       job_types={
+           'conf_opt': True,
+           'opt': True,
+           'fine': True,
+           'freq': True,
+           'sp': True,
+           'rotors': True,
+       },
+       level_of_theory='wb97xd/def2svp',
+       ess_settings={'gaussian': 'local'},
+   )
 
-    species:
-      - label: TS1
-        is_ts: true
-        multiplicity: 2
-        xyz:
-          - TS1/1.gjf
-          - TS1/2.gjf
-          - TS1/3.gjf
-          - TS1/4.gjf
-          - TS1/5.gjf
-          - TS1/6.gjf
-      - label: TS3
-        is_ts: true
-        multiplicity: 2
-        xyz:
-          - TS3/1.gjf
-          - TS3/2.gjf
-          - TS3/3.gjf
-          - TS3/4.gjf
+   arc.execute()
 
-In the above example we're using `.gjf` files (Gaussian job files) that contain the coordinate guesses.
-You could define ``xyz`` using various forms, see :ref:`Flexible coordinates (xyz) input <flexXYZ>`.
+Use ``ARCSpecies`` for species definitions, ``ARCReaction`` for reactions, and
+``ARC`` for project execution. The same keyword names used in YAML are generally
+accepted by the Python API.
 
-Note that the main difference is the ``is_ts`` flag which is set to `True` (it is `False` by default).
+Job-Type Shortcuts
+------------------
+
+To run only one job family, use ``specific_job_type``:
+This example is a fragment; add ``level_of_theory`` and ``ess_settings`` before
+running it.
+
+.. code-block:: yaml
+
+   project: bde_demo
+   specific_job_type: bde
+
+   species:
+     - label: ethanol
+       smiles: CCO
+
+For BDE workflows, ARC automatically enables the supporting optimization,
+fine-grid, frequency, and single-point jobs required by the workflow.
+
+Where to Find More Inputs
+-------------------------
+
+The repository includes more examples and fixtures:
+
+* ``examples`` - maintained YAML examples for minimal, stationary-species,
+  reaction, BDE, TS, and developer/mock workflows;
+* ``ipython/Demo`` - tutorial notebooks and YAML examples;
+* ``ipython/Tools`` - notebook tools that exercise ARC utilities;
+* ``arc/testing/yml_testing`` - YAML fixtures used by tests;
+* ``arc/testing/restart`` - restart-file examples.
 
 .. include:: links.txt

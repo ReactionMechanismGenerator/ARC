@@ -30,11 +30,13 @@ The launcher is detected at call time, with the active one (per
 """
 
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
 
 from arc.common import get_logger
+from arc.imports import settings
 
 logger = get_logger()
 
@@ -166,3 +168,107 @@ def run_in_conda_env(
             script_path, " ".join(argv), result.stdout, result.stderr,
         )
     return result
+
+
+# ── RMG env invocation ──────────────────────────────────────────────────────
+
+# Activation variables that ``arc_env`` exports into ARC's own process. A
+# launcher's ``run`` deactivates the caller env and re-binds these to the
+# target env, but invoking rmg_env's interpreter *directly* does not: they stay
+# pointed at arc_env's tree and make the child resolve shared-library plugins
+# against the wrong env, which is what silently kills Arkane's OpenBabel
+# import. Only the direct-interpreter branch below has to scrub them.
+# PYTHONPATH is included because the RMG helper scripts in arc/scripts/ import
+# only rmgpy/arkane/rdkit plus a sibling ``common`` module (found via the
+# script's own directory), so nothing there needs ARC on the path -- while a
+# stale entry would shadow rmg_env's site-packages.
+_ARC_ENV_ACTIVATION_VARS = (
+    'CONDA_PREFIX', 'CONDA_PREFIX_1', 'CONDA_DEFAULT_ENV', 'CONDA_PROMPT_MODIFIER',
+    'CONDA_SHLVL', 'LD_LIBRARY_PATH', 'BABEL_LIBDIR', 'BABEL_DATADIR',
+    'PYTHONPATH', 'PYTHONHOME',
+)
+
+_NO_LAUNCHER_MSG = 'micromamba, mamba, or conda is required to run RMG helper scripts'
+
+
+def rmg_env_command(py_args: str | list[str],
+                    cwd: str | None = None,
+                    env_vars: dict[str, str] | None = None,
+                    suffix: str = '',
+                    ) -> str:
+    """Build a bash script that runs ``python <py_args>`` inside RMG's env.
+
+    ARC shells out to RMG/Arkane helper scripts that must run under
+    ``rmg_env``. Every call site used to carry its own copy of the
+    launcher-selection ladder; they all go through this function instead.
+
+    Resolution order, preserved from the call sites this replaced:
+    ``MAMBA_EXE`` (exported by setup-micromamba in CI) → ``RMG_PYTHON`` from
+    ARC's settings (needed on conda/mambaforge installs where micromamba's
+    ``conda`` shim is broken) → a launcher found on PATH, hunted for under a
+    login shell so that a conda initialization block in the user's profile is
+    still honoured.
+
+    Args:
+        py_args (str | list[str]): Everything after ``python``. Passing a
+                       ``list[str]`` is the safe, recommended form: each
+                       element is one argv token, shell-quoted independently
+                       via ``shlex.quote`` before joining, so caller-derived
+                       values (e.g. paths from ``input.yml``) cannot break
+                       out of their token or trigger command substitution.
+                       Passing a plain ``str``, e.g. ``'-m arkane input.py'``
+                       or ``f'{script_path} {in_path} {out_path}'``, is
+                       spliced into the script verbatim as before; the caller
+                       is entirely responsible for shell-quoting it.
+        cwd (str, optional): A directory to change into before running.
+        env_vars (dict, optional): Extra variables to export, e.g. ``RMG_DB_PATH``.
+        suffix (str, optional): Appended verbatim to the python invocation, for
+                                redirections such as ``' | tee -a stdout.log'``.
+                                Process substitution is fine, the script is bash.
+                                Never pass externally-derived/untrusted data here.
+
+    Returns:
+        str: A bash script. Run it with
+             ``execute_command(command=..., shell=True, executable='/bin/bash')``.
+    """
+    env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
+    rmg_python = settings.get('RMG_PYTHON')
+    if isinstance(py_args, list):
+        py_args = ' '.join(shlex.quote(arg) for arg in py_args)
+
+    preamble = ['set -euo pipefail']
+    if cwd:
+        preamble.append(f'cd {shlex.quote(cwd)}')
+    for key, val in (env_vars or {}).items():
+        preamble.append(f'export {key}={shlex.quote(val)}')
+
+    mamba_exe = os.environ.get('MAMBA_EXE', '')
+    if mamba_exe and os.path.isfile(mamba_exe):
+        return '\n'.join(preamble + [
+            f'{shlex.quote(mamba_exe)} run -n {env_name} python {py_args}{suffix}',
+        ])
+
+    if rmg_python and os.path.isfile(rmg_python):
+        return '\n'.join(preamble + [
+            f'unset {" ".join(_ARC_ENV_ACTIVATION_VARS)}',
+            f'export PATH={shlex.quote(os.path.dirname(rmg_python))}:"$PATH"',
+            f'{shlex.quote(rmg_python)} {py_args}{suffix}',
+        ])
+
+    # No launcher pinned by an env var and no configured interpreter: hunt for a
+    # launcher on PATH. This runs under ``bash -l`` so the user's profile (where
+    # conda's init block usually lives) is sourced first. The script is fed on
+    # stdin via a quoted heredoc, which keeps it free of the nested shell
+    # quoting the per-call-site copies of this ladder each had to get right.
+    hunted = preamble + [
+        'for _launcher in micromamba mamba conda; do',
+        '    if command -v "$_launcher" >/dev/null 2>&1; then',
+        f'        "$_launcher" run -n {env_name} python {py_args}{suffix}',
+        '        exit $?',
+        '    fi',
+        'done',
+        f'echo "{_NO_LAUNCHER_MSG}" >&2',
+        'exit 1',
+    ]
+    body = '\n'.join(hunted)
+    return f"bash -l <<'ARC_RMG_ENV_EOF'\n{body}\nARC_RMG_ENV_EOF"

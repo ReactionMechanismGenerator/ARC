@@ -11,7 +11,7 @@ specific_job_type: bde
 level_of_theory: apfd/def2svp
 arkane_level_of_theory: bmk/cbsb7 # a dummy model_chemistry required for Arkane processing
                                   # this setting will not affect the BDE result which is a relative calculation
-use_bac: false
+bac_type: null
 freq_scale_factor: 0.990
 
 species:

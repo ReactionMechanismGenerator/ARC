@@ -7,12 +7,13 @@ Strategy:
     3) The atom map is returned to the driver.
 """
 
+import math
 import numpy as np
 from collections import deque
 from itertools import product
 from typing import TYPE_CHECKING
 
-from arc.common import convert_list_index_0_to_1, extremum_list, get_angle_in_180_range, is_angle_linear, logger, signed_angular_diff
+from arc.common import extremum_list, get_angle_in_180_range, is_angle_linear, logger, signed_angular_diff
 from arc.exceptions import AtomTypeError, ConformerError, InputError, SpeciesError
 from arc.family import ReactionFamily
 from arc.molecule import Molecule
@@ -20,13 +21,14 @@ from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, xyz_from_data
-from arc.species.vectors import calculate_angle, calculate_dihedral_angle, get_delta_angle
+from arc.species.vectors import apply_rodrigues_rotation, calculate_angle, calculate_dihedral_angle, get_delta_angle
 
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom
     from arc.reaction import ARCReaction
 
 RESERVED_FINGERPRINT_KEYS = ['self', 'chirality', 'label']
+RMSD_TIE_TOLERANCE = 1e-6
 
 
 def map_two_species(spc_1: ARCSpecies | Molecule,
@@ -42,6 +44,14 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
     All indices are 0-indexed.
     If a dict type atom map is returned, it could conveniently be used to map ``spc_2`` -> ``spc_1`` by doing::
         ordered_spc1.atoms = [spc_2.atoms[atom_map[i]] for i in range(len(spc_2.atoms))]
+
+    When several superimposable backbone candidates are identified, each is scored by the RMSD
+    between the two backbone distance matrices, so candidates tie within ``RMSD_TIE_TOLERANCE``
+    when the permutation leaves every backbone interatomic distance unchanged. That score covers
+    the backbone only, so the tied candidates are further scored by the Kabsch RMSD of the full
+    atom map each of them yields, and the last candidate that also ties on that displacement is
+    used. Both the backbone map and the dihedral-corrected geometries of that same candidate are
+    used to map the hydrogen atoms.
 
     Args:
         spc_1 (ARCSpecies | Molecule): Species 1.
@@ -109,7 +119,6 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
                 return None
         else:
             rmsds, fixed_spcs = list(), list()
-            candidate = None
             for candidate in candidates:
                 fixed_spc_1, fixed_spc_2 = fix_dihedrals_by_backbone_mapping(spc_1, spc_2, backbone_map=candidate)
                 fixed_spcs.append((fixed_spc_1, fixed_spc_2))
@@ -125,12 +134,23 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
                 xyz2 = sort_xyz_using_indices(xyz2, indices=[v for k, v in sorted(no_gap_candidate.items(),
                                                                                   key=lambda item: item[0])])
                 rmsds.append(compare_confs(xyz1=xyz1, xyz2=xyz2, rmsd_score=True))
-            chosen_candidate_index = rmsds.index(min(rmsds))
-            fixed_spc_1, fixed_spc_2 = fixed_spcs[chosen_candidate_index]
-            if candidate is not None:
-                atom_map = map_hydrogens(fixed_spc_1, fixed_spc_2, candidate)
-                if map_type == 'list':
-                    atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
+            lowest_rmsd = min(rmsds)
+            tied_indices = [i for i, rmsd in enumerate(rmsds) if rmsd - lowest_rmsd <= RMSD_TIE_TOLERANCE]
+            atom_maps = dict()
+            for i in tied_indices:
+                atom_maps[i] = map_hydrogens(fixed_spcs[i][0], fixed_spcs[i][1], candidates[i])
+            if len(tied_indices) > 1:
+                displacements = {i: fixed_spcs[i][0].kabsch(fixed_spcs[i][1],
+                                                            [v for k, v in sorted(atom_maps[i].items(),
+                                                                                  key=lambda item: item[0])])
+                                 for i in tied_indices}
+                lowest_displacement = min(displacements.values())
+                tied_indices = [i for i in tied_indices
+                                if displacements[i] - lowest_displacement <= RMSD_TIE_TOLERANCE]
+            chosen_candidate_index = max(tied_indices)
+            atom_map = atom_maps[chosen_candidate_index]
+            if map_type == 'list':
+                atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
 
     if inc_vals is not None:
         atom_map = [value + inc_vals for value in atom_map]
@@ -284,16 +304,20 @@ def identify_superimposable_candidates(fingerprint_1: dict[int, dict[str, str | 
         list[dict[int, int]]: Entries are superimposable candidate dicts. Keys are atom indices of heavy atoms
                               of species 1, values are potentially mapped atom indices of species 2.
     """
-    candidates = list()
     if not fingerprint_1:
         return []
     key_1 = list(fingerprint_1.keys())[0]
+    # Deduplicated inline rather than by a prune_identical_dicts() post-pass. The list is
+    # deliberately not truncated: the number of distinct candidates is bounded by the
+    # molecule's symmetry order (at most 6 across the aromatics, rings and cages tested),
+    # and dropping the tail discards the best-RMSD map for symmetric species -- for jittered
+    # benzene it lost the best candidate in half of the trials, by up to 0.04 A.
+    candidates: list[dict[int, int]] = []
     for key_2 in fingerprint_2.keys():
-        # Try all combinations of heavy atoms.
         result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2)
-        if result is not None:
+        if result is not None and result not in candidates:
             candidates.append(result)
-    return prune_identical_dicts(candidates)
+    return candidates
 
 
 def are_adj_elements_in_agreement(fingerprint_1: dict[str, str | list[int]],
@@ -407,23 +431,6 @@ def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
     return None
 
 
-def prune_identical_dicts(dicts_list: list[dict]) -> list[dict]:
-    """
-    Return a list of unique dictionaries.
-
-    Args:
-        dicts_list (list[dict]): A list of dicts to prune.
-
-    Returns:
-        list[dict]: A list of unique dicts.
-    """
-    new_dicts_list = list()
-    for new_dict in dicts_list:
-        if new_dict not in new_dicts_list:
-            new_dicts_list.append(new_dict)
-    return new_dicts_list
-
-
 def remove_gaps_from_values(data: dict[int, int]) -> dict[int, int]:
     """
     Return a dictionary of integer keys and values with consecutive values starting at 0.
@@ -440,6 +447,84 @@ def remove_gaps_from_values(data: dict[int, int]) -> dict[int, int]:
         new_data[key] = val
         val += 1
     return new_data
+
+
+def _build_adj(mol: Molecule) -> tuple:
+    """Build adjacency as tuple-of-tuples[int] from mol, 0-indexed. O(N+E)."""
+    atom_to_idx = {atom: i for i, atom in enumerate(mol.atoms)}
+    return tuple(tuple(atom_to_idx[nb] for nb in atom.edges) for atom in mol.atoms)
+
+
+def _downstream_atoms_adj(adj: tuple, pivot_i: int, pivot_j: int) -> list[int]:
+    """
+    BFS from pivot_j without crossing to pivot_i, using pre-built adjacency.
+    Returns all atom indices reachable from pivot_j when the pivot_i–pivot_j bond is cut.
+
+    Returns an empty list if the pivot_i–pivot_j bond lies in a ring, since cutting a ring
+    bond leaves the graph connected: the BFS wraps around and reaches everything except
+    pivot_i itself, and rotating that set about the pivot axis would tear the ring apart.
+    Rotor torsions never contain ring bonds (``find_internal_rotors`` filters on
+    ``not mol.is_bond_in_cycle(bond)``), so this is a guard for direct callers.
+    """
+    visited = {pivot_i}
+    queue = deque([pivot_j])
+    downstream = []
+    while queue:
+        atom = queue.popleft()
+        if atom in visited:
+            continue
+        visited.add(atom)
+        downstream.append(atom)
+        for nb in adj[atom]:
+            if nb not in visited:
+                queue.append(nb)
+    if any(nb in visited for nb in adj[pivot_i] if nb != pivot_j):
+        return []  # the pivot bond is in a ring, there is no well-defined downstream group
+    return downstream
+
+
+def _build_torsion_pairs(spc_1: ARCSpecies,
+                          spc_2: ARCSpecies,
+                          backbone_map: dict[int, int],
+                          ) -> list[tuple[list[int], list[int]]]:
+    """
+    Pre-compute torsion pairs (torsion_1, torsion_2) for use in the fast inner loop.
+    Filters out terminal torsions (where first or last atom is hydrogen in spc_1).
+    Returns list of (torsion_1_0idx, torsion_2_0idx) tuples.
+    """
+    pairs = []
+    if not spc_1.rotors_dict or not spc_2.rotors_dict:
+        return pairs
+    if spc_1.mol is None or spc_2.mol is None:
+        return pairs
+    for rotor_dict_1 in spc_1.rotors_dict.values():
+        torsion_1 = rotor_dict_1['torsion']
+        if not (spc_1.mol.atoms[torsion_1[0]].is_non_hydrogen()
+                and spc_1.mol.atoms[torsion_1[3]].is_non_hydrogen()):
+            continue
+        pi, pj = torsion_1[1], torsion_1[2]
+        if pi not in backbone_map or pj not in backbone_map:
+            continue
+        mapped_pi, mapped_pj = backbone_map[pi], backbone_map[pj]
+        for rotor_dict_2 in spc_2.rotors_dict.values():
+            t2 = rotor_dict_2['torsion']
+            if (t2[1] == mapped_pi and t2[2] == mapped_pj) or \
+               (t2[2] == mapped_pi and t2[1] == mapped_pj):
+                pairs.append((torsion_1, t2))
+                break
+    return pairs
+
+
+def _dihedral_deviation(coords_1: list, coords_2: list,
+                         torsion_pairs: list[tuple[list[int], list[int]]]) -> float:
+    """Sum of absolute dihedral differences (degrees) over all torsion pairs."""
+    total = 0.0
+    for t1, t2 in torsion_pairs:
+        a1 = calculate_dihedral_angle(coords=coords_1, torsion=t1, units='degs')
+        a2 = calculate_dihedral_angle(coords=coords_2, torsion=t2, units='degs')
+        if a1 is not None and a2 is not None:
+            total += abs(get_delta_angle(a1, a2))
+    return total
 
 
 def fix_dihedrals_by_backbone_mapping(spc_1: ARCSpecies,
@@ -460,20 +545,81 @@ def fix_dihedrals_by_backbone_mapping(spc_1: ARCSpecies,
     if not spc_1.rotors_dict or not spc_2.rotors_dict:
         spc_1.determine_rotors()
         spc_2.determine_rotors()
+
+    torsion_pairs = _build_torsion_pairs(spc_1, spc_2, backbone_map)
+    if not torsion_pairs:
+        # No backbone torsions to align — return cheap copies without the full ARCSpecies copy overhead.
+        spc_1_copy, spc_2_copy = spc_1.copy(), spc_2.copy()
+        return spc_1_copy, spc_2_copy
+
+    # Pre-build adjacency once (O(N), microseconds)
+    adj_1 = _build_adj(spc_1.mol)
+    adj_2 = _build_adj(spc_2.mol)
+
+    xyz_1 = spc_1.get_xyz()
+    xyz_2 = spc_2.get_xyz()
+    if xyz_1 is None or xyz_2 is None:
+        spc_1_copy, spc_2_copy = spc_1.copy(), spc_2.copy()
+        return spc_1_copy, spc_2_copy
+    coords_1 = list(xyz_1['coords'])
+    coords_2 = list(xyz_2['coords'])
+
+    # Cache downstream sets to avoid BFS per iteration
+    ds_cache_1: dict[tuple, list] = {}
+    ds_cache_2: dict[tuple, list] = {}
+
+    _MAX_ITER = 50
+    prev_dev = _dihedral_deviation(coords_1, coords_2, torsion_pairs)
+    for _iter in range(_MAX_ITER):
+        for t1, t2 in torsion_pairs:
+            a1 = calculate_dihedral_angle(coords=coords_1, torsion=t1, units='degs')
+            a2 = calculate_dihedral_angle(coords=coords_2, torsion=t2, units='degs')
+            if a1 is None or a2 is None:
+                continue
+            # Circular midpoint: rotate each species half-way *along the shorter arc*.
+            # A plain 0.5 * (a1 + a2) is wrong across the 0/360 wrap (350 and 10 would
+            # average to 180 instead of 0), which rotates both torsions the wrong way.
+            # Note: signed_angular_diff() is not used here because it rounds to 2 decimals,
+            # which would quantize every rotation to 0.01 deg and accumulate over iterations.
+            half = 0.5 * get_angle_in_180_range(a2 - a1, round_to=None)
+
+            # Rodrigues on coords_1
+            delta = math.radians(half)
+            pi, pj = t1[1], t1[2]
+            key1 = (pi, pj)
+            if key1 not in ds_cache_1:
+                ds_cache_1[key1] = _downstream_atoms_adj(adj_1, pi, pj)
+            pi_c = coords_1[pi]; pj_c = coords_1[pj]
+            dx = pj_c[0]-pi_c[0]; dy = pj_c[1]-pi_c[1]; dz = pj_c[2]-pi_c[2]
+            bl = math.sqrt(dx*dx+dy*dy+dz*dz)
+            if bl > 1e-8:
+                inv = 1.0/bl
+                apply_rodrigues_rotation(coords_1, pi_c, (dx*inv, dy*inv, dz*inv), delta, ds_cache_1[key1])
+
+            # Rodrigues on coords_2 (meets coords_1 at the midpoint from the other side)
+            delta2 = math.radians(-half)
+            pi2, pj2 = t2[1], t2[2]
+            key2 = (pi2, pj2)
+            if key2 not in ds_cache_2:
+                ds_cache_2[key2] = _downstream_atoms_adj(adj_2, pi2, pj2)
+            pi2_c = coords_2[pi2]; pj2_c = coords_2[pj2]
+            dx2 = pj2_c[0]-pi2_c[0]; dy2 = pj2_c[1]-pi2_c[1]; dz2 = pj2_c[2]-pi2_c[2]
+            bl2 = math.sqrt(dx2*dx2+dy2*dy2+dz2*dz2)
+            if bl2 > 1e-8:
+                inv2 = 1.0/bl2
+                apply_rodrigues_rotation(coords_2, pi2_c, (dx2*inv2, dy2*inv2, dz2*inv2), delta2, ds_cache_2[key2])
+
+        curr_dev = _dihedral_deviation(coords_1, coords_2, torsion_pairs)
+        if curr_dev >= prev_dev - 1.0:
+            break
+        prev_dev = curr_dev
+
+    # Build output ARCSpecies ONCE at the very end (one spc.copy() each)
     spc_1_copy, spc_2_copy = spc_1.copy(), spc_2.copy()
-    torsions = get_backbone_dihedral_angles(spc_1, spc_2, backbone_map)
-    deviations = [get_backbone_dihedral_deviation_score(spc_1, spc_2, backbone_map, torsions=torsions)]
-    # Loop while the deviation improves by more than 1 degree:
-    while len(torsions) and (len(deviations) < 2 or deviations[-2] - deviations[-1] > 1):
-        for torsion_dict in torsions:
-            angle = 0.5 * sum([torsion_dict['angle 1'], torsion_dict['angle 2']])
-            spc_1_copy.set_dihedral(scan=convert_list_index_0_to_1(torsion_dict['torsion 1']),
-                                    deg_abs=angle, count=False, chk_rotor_list=False, xyz=spc_1_copy.get_xyz())
-            spc_2_copy.set_dihedral(scan=convert_list_index_0_to_1(torsion_dict['torsion 2']),
-                                    deg_abs=angle, count=False, chk_rotor_list=False, xyz=spc_2_copy.get_xyz())
-            spc_1_copy.final_xyz, spc_2_copy.final_xyz = spc_1_copy.initial_xyz, spc_2_copy.initial_xyz
-        torsions = get_backbone_dihedral_angles(spc_1_copy, spc_2_copy, backbone_map)
-        deviations.append(get_backbone_dihedral_deviation_score(spc_1_copy, spc_2_copy, backbone_map, torsions=torsions))
+    spc_1_copy.initial_xyz = {**xyz_1, 'coords': tuple(coords_1)}
+    spc_1_copy.final_xyz = spc_1_copy.initial_xyz
+    spc_2_copy.initial_xyz = {**xyz_2, 'coords': tuple(coords_2)}
+    spc_2_copy.final_xyz = spc_2_copy.initial_xyz
     return spc_1_copy, spc_2_copy
 
 
@@ -1319,6 +1465,7 @@ def pairing_reactants_and_products_for_mapping(r_cuts: list[ARCSpecies],
                                                )-> list[tuple[ARCSpecies,ARCSpecies]]:
     """
     A function for matching reactants and products in scissored products.
+    The matched species are removed from p_cuts.
 
     Greedy two-pass pairing:
         1) Strict graph isomorphism — avoids pairing constitutional isomers that merely share a
@@ -1495,7 +1642,7 @@ def cut_species_based_on_atom_indices(species: list["ARCSpecies"],
                 if candidate.mol.copy(deep=True).smiles == "[H][H]":
                     labels = [atom.label for atom in candidate.mol.copy(deep=True).atoms]
                     try:
-                        h1 = candidate.scissors()[0]
+                        h1 = candidate.scissors(skip_conformers=True)[0]
                     except SpeciesError:
                         return None
                     h2 = h1.copy()
@@ -1503,7 +1650,7 @@ def cut_species_based_on_atom_indices(species: list["ARCSpecies"],
                     species += [h1, h2]
                 else:
                     try:
-                        species += candidate.scissors()
+                        species += candidate.scissors(skip_conformers=True)
                     except SpeciesError:
                         return None
                 break

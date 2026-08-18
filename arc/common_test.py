@@ -8,6 +8,7 @@ This module contains unit tests for ARC's common module
 import copy
 import datetime
 import os
+import tempfile
 import time
 import unittest
 
@@ -17,9 +18,10 @@ from random import shuffle
 
 import arc.common as common
 import arc.species.converter as converter
-from arc.exceptions import InputError, SettingsError
+from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.molecule import Molecule
+from arc.settings import external_paths
 from arc.species.species import ARCSpecies
 
 
@@ -83,6 +85,46 @@ class TestCommon(unittest.TestCase):
 
         with self.assertRaises(InputError):
             common.read_yaml_file('nopath')
+
+    def test_read_yaml_file_does_not_coerce_yaml_1_1_booleans(self):
+        """Test that YAML 1.1 boolean aliases are read as strings, not as booleans.
+
+        A bare SMILES that looks like a YAML 1.1 boolean (e.g., ``NO`` for hydroxylamine)
+        must survive as a string, while genuine ``true``/``false`` values must still load as bools.
+        """
+        content = ('smiles_1: NO\n'
+                   'smiles_2: ON\n'
+                   'word_1: yes\n'
+                   'word_2: Off\n'
+                   'word_3: n\n'
+                   'bool_1: true\n'
+                   'bool_2: False\n'
+                   'bool_3: TRUE\n')
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            f.write(content)
+            path = f.name
+        try:
+            loaded = common.read_yaml_file(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(loaded['smiles_1'], 'NO')
+        self.assertEqual(loaded['smiles_2'], 'ON')
+        self.assertEqual(loaded['word_1'], 'yes')
+        self.assertEqual(loaded['word_2'], 'Off')
+        self.assertEqual(loaded['word_3'], 'n')
+        self.assertIs(loaded['bool_1'], True)
+        self.assertIs(loaded['bool_2'], False)
+        self.assertIs(loaded['bool_3'], True)
+        self.assertEqual(common.from_yaml('smiles: NO\nkeep_files: true\n'),
+                         {'smiles': 'NO', 'keep_files': True})
+
+    def test_read_element_dicts_nobelium(self):
+        """Test that nobelium ('No') is not coerced into a boolean by the YAML loader."""
+        self.assertEqual(common.SYMBOL_BY_NUMBER[102], 'No')
+        self.assertEqual(common.NUMBER_BY_SYMBOL['No'], 102)
+        self.assertIn('No', common.MASS_BY_SYMBOL)
+        self.assertTrue(all(isinstance(symbol, str) for symbol in common.NUMBER_BY_SYMBOL.keys()))
+        self.assertTrue(all(isinstance(symbol, str) for symbol in common.MASS_BY_SYMBOL.keys()))
 
     def test_get_git_commit(self):
         """Test the get_git_commit() function"""
@@ -752,6 +794,36 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_element_mass('C', 13), (13.00335483507, 6))
         self.assertEqual(common.get_element_mass('O'), (15.99491461957, 8))
 
+    def test_count_electrons(self):
+        """Test counting the electrons of a chemical composition"""
+        self.assertEqual(common.count_electrons(('C', 'H', 'H', 'H', 'H')), 10)
+        self.assertEqual(common.count_electrons(('O', 'H')), 9)
+        self.assertEqual(common.count_electrons(tuple()), 0)
+        self.assertEqual(common.count_electrons(('O', 'H'), charge=-1), 10)
+        self.assertEqual(common.count_electrons(('C', 'H', 'H', 'H', 'H'), charge=1), 9)
+        self.assertEqual(common.count_electrons(('N', 'H', 'H', 'H', 'H'), charge=1), 10)
+        self.assertEqual(common.count_electrons(['C', 'C', 'H', 'H', 'H', 'H', 'H', 'H']), 18)
+
+    def test_count_electrons_unrecognized_symbol(self):
+        """Test that counting the electrons of an unrecognized atom symbol raises an error"""
+        with self.assertRaises(SpeciesError) as cm:
+            common.count_electrons(('O', 'Xx'))
+        self.assertIn('Could not identify atom symbol Xx.', str(cm.exception))
+        with self.assertRaises(SpeciesError) as cm:
+            common.count_electrons(('O', 'Xx'), label='spc1')
+        self.assertIn('Could not identify atom symbol Xx of species spc1.', str(cm.exception))
+
+    def test_is_multiplicity_parity_valid(self):
+        """Test checking the parity of an electron count against a spin multiplicity"""
+        self.assertTrue(common.is_multiplicity_parity_valid(n_electrons=16, multiplicity=1))
+        self.assertTrue(common.is_multiplicity_parity_valid(n_electrons=16, multiplicity=3))
+        self.assertFalse(common.is_multiplicity_parity_valid(n_electrons=16, multiplicity=2))
+        self.assertTrue(common.is_multiplicity_parity_valid(n_electrons=17, multiplicity=2))
+        self.assertTrue(common.is_multiplicity_parity_valid(n_electrons=17, multiplicity=4))
+        self.assertFalse(common.is_multiplicity_parity_valid(n_electrons=17, multiplicity=1))
+        self.assertTrue(common.is_multiplicity_parity_valid(n_electrons=7, multiplicity=4))
+        self.assertFalse(common.is_multiplicity_parity_valid(n_electrons=7, multiplicity=3))
+
     def test_get_atom_radius(self):
         """Test determining the covalent radius of an atom"""
         self.assertEqual(common.get_atom_radius('C'), 0.76)
@@ -773,6 +845,34 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_single_bond_length('N', 'N', 1, 0), 1.45)
         self.assertEqual(common.get_single_bond_length('N', 'N', 0, -1), 1.45)
         self.assertEqual(common.get_single_bond_length('Xx', 'Yy'), 1.75)  # default value for unknown elements
+
+    def test_distance_matrix(self):
+        """Test computing a Euclidean distance matrix between rows of two arrays"""
+        # trivial: a single atom
+        a = np.array([[0.0, 0.0, 0.0]])
+        np.testing.assert_array_equal(common.distance_matrix(a=a, b=a), np.zeros((1, 1)))
+
+        # trivial: two atoms
+        a = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+        np.testing.assert_array_equal(common.distance_matrix(a=a, b=a), np.array([[0.0, 1.0], [1.0, 0.0]]))
+
+        # normal case
+        a = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 2.0, 0.0]])
+        b = np.array([[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        expected = np.array([[0.0, 1.0], [1.0, np.sqrt(2)], [2.0, 1.0]])
+        np.testing.assert_allclose(common.distance_matrix(a=a, b=b), expected)
+
+        # non-square: a and b of different lengths (M != N)
+        a = np.random.rand(5, 3)
+        b = np.random.rand(3, 3)
+        dmat = common.distance_matrix(a=a, b=b)
+        self.assertEqual(dmat.shape, (5, 3))
+
+        # extreme/error case: ValueError on mismatched inner dimensions
+        a = np.array([[0.0, 0.0, 0.0]])
+        b = np.array([[0.0, 0.0]])
+        with self.assertRaises(ValueError):
+            common.distance_matrix(a=a, b=b)
 
     def test_get_bonds_from_dmat(self):
         """test getting bonds from a distance matrix"""
@@ -1643,6 +1743,37 @@ class TestCommon(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         """
         cls._clean_globalized_restart_artifact()
+
+
+class TestInitializeLogDeferredWarnings(unittest.TestCase):
+    """initialize_log() must flush any deferred import-time warnings
+    (queued in arc.settings.external_paths before handlers were attached
+    to the 'arc' logger) into the log once its handlers exist."""
+
+    def setUp(self):
+        external_paths.drain_deferred_warnings()
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp_dir.cleanup)
+        self.log_file = os.path.join(self.tmp_dir.name, 'arc.log')
+
+    def _read_log(self) -> str:
+        with open(self.log_file, 'r') as f:
+            return f.read()
+
+    def test_deferred_warning_is_flushed_into_the_log_file(self):
+        external_paths.queue_deferred_warning('a deferred warning that must reach arc.log')
+        common.initialize_log(log_file=self.log_file, project='test_deferred_warnings')
+        self.assertIn('a deferred warning that must reach arc.log', self._read_log())
+
+    def test_no_deferred_warnings_leaves_nothing_to_flush(self):
+        common.initialize_log(log_file=self.log_file, project='test_deferred_warnings')
+        self.assertNotIn('Warning: ', self._read_log())
+
+    def test_repeated_initialize_log_does_not_re_log_a_drained_warning(self):
+        external_paths.queue_deferred_warning('only flushed once')
+        common.initialize_log(log_file=self.log_file, project='test_deferred_warnings')
+        common.initialize_log(log_file=self.log_file, project='test_deferred_warnings')
+        self.assertEqual(self._read_log().count('only flushed once'), 1)
 
 
 if __name__ == '__main__':

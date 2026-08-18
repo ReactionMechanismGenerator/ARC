@@ -27,8 +27,9 @@ import numpy as np
 import pandas as pd
 
 # don't import any ARC module other than exceptions and imports, to avoid circular imports
-from arc.exceptions import InputError, SettingsError
+from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
+from arc.settings import external_paths
 
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom, Molecule
@@ -152,7 +153,7 @@ def check_ess_settings(ess_settings: dict | None = None) -> dict:
                                 f'strings. Got: {server_list} which is a {type(server_list)}')
     # run checks:
     for ess, server_list in settings_dict.items():
-        if ess.lower() not in supported_ess + ['gcn', 'heuristics', 'autotst', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2']:
+        if ess.lower() not in supported_ess + ['gcn', 'goflow', 'heuristics', 'autotst', 'kinbot', 'rits', 'xtb_gsm', 'orca_neb', 'qst2']:
             raise SettingsError(f'Recognized ESS software are {supported_ess}. Got: {ess}')
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in [s.lower() for s in servers.keys()]:
@@ -222,12 +223,37 @@ def initialize_log(log_file: str,
     warnings.filterwarnings(action='ignore', module='.*matplotlib.*')
     logging.captureWarnings(capture=False)
 
+    # Flush any import-time warnings that were queued before this file handler existed.
+    for msg in external_paths.drain_deferred_warnings():
+        logger.warning(msg)
+
 
 def get_logger():
     """
     Get the ARC logger (avoid having multiple entries of the logger).
     """
     return logger
+
+
+def get_memory_headroom_fraction(ess_trsh_methods: list[str] | None) -> float:
+    """
+    Determine the Gaussian %mem headroom fraction to use from accumulated ess_trsh_methods markers.
+
+    Args:
+        ess_trsh_methods (list[str] | None): The list of troubleshooting methods already attempted.
+
+    Returns:
+        float: The headroom fraction to use (the lowest of any `memory_headroom_<fraction>` markers
+               present, or the default first entry of `gaussian_memory_headroom_fractions` if none).
+    """
+    fractions = []
+    for method in ess_trsh_methods or list():
+        if method.startswith('memory_headroom_'):
+            try:
+                fractions.append(float(method.split('memory_headroom_')[1]))
+            except ValueError:
+                continue
+    return min(fractions) if fractions else settings['gaussian_memory_headroom_fractions'][0]
 
 
 def log_header(project: str,
@@ -391,6 +417,26 @@ def get_git_branch(path: str | None = None) -> str:
         return ''
 
 
+class ARCYAMLLoader(yaml.FullLoader):
+    """A YAML loader that does not coerce YAML 1.1 boolean aliases into booleans.
+
+    PyYAML implements YAML 1.1, in which ``yes``, ``no``, ``on``, and ``off`` (in any case) are
+    booleans just like ``true`` and ``false``. That silently turns a bare SMILES such as ``NO``
+    (hydroxylamine) or an element symbol such as ``No`` (nobelium) into ``False`` before ARC ever
+    sees it. Here only the YAML 1.2 spellings ``true`` and ``false`` resolve as booleans, and
+    every other alias loads as the string the user wrote.
+    """
+
+
+ARCYAMLLoader.yaml_implicit_resolvers = {
+    first_char: [(tag, regexp) for tag, regexp in resolvers if tag != 'tag:yaml.org,2002:bool']
+    for first_char, resolvers in yaml.FullLoader.yaml_implicit_resolvers.items()
+}
+ARCYAMLLoader.add_implicit_resolver('tag:yaml.org,2002:bool',
+                                    re.compile(r'^(?:true|True|TRUE|false|False|FALSE)$'),
+                                    list('tTfF'))
+
+
 def read_yaml_file(path: str,
                    project_directory: str | None = None,
                    ) -> dict | list:
@@ -412,7 +458,7 @@ def read_yaml_file(path: str,
     if not os.path.isfile(path):
         raise InputError(f'Could not find the YAML file {path}')
     with open(path, 'r') as f:
-        content = yaml.load(stream=f, Loader=yaml.FullLoader)
+        content = yaml.load(stream=f, Loader=ARCYAMLLoader)
     return content
 
 
@@ -443,7 +489,7 @@ def from_yaml(yaml_str: str) -> dict | list:
     Returns: dict | list
         The respective Python object.
     """
-    return yaml.load(stream=yaml_str, Loader=yaml.FullLoader)
+    return yaml.load(stream=yaml_str, Loader=ARCYAMLLoader)
 
 
 def to_yaml(py_content: list | dict) -> str:
@@ -634,6 +680,58 @@ def read_element_dicts() -> tuple[dict, dict, dict, dict]:
     return symbol_by_number, number_by_symbol, mass_by_symbol, covalent_radii
 
 SYMBOL_BY_NUMBER, NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, COVALENT_RADII = read_element_dicts()
+
+
+def count_electrons(symbols: Sequence[str],
+                    charge: int = 0,
+                    label: str | None = None,
+                    ) -> int:
+    """
+    Count the number of electrons of a chemical composition.
+
+    Returns the sum of the atomic numbers of all atoms minus the net charge, so a cation has fewer
+    electrons than its neutral composition and an anion has more. With the default ``charge=0`` the
+    returned value is the neutral-composition electron count.
+
+    Args:
+        symbols (Sequence[str]): The atomic symbols of the composition.
+        charge (int, optional): The net charge of the species.
+        label (str, optional): A species label to mention in an error message, if available.
+
+    Returns:
+        int: The number of electrons.
+
+    Raises:
+        SpeciesError: If an atomic symbol is not a recognized element symbol.
+    """
+    of_species = f' of species {label}' if label is not None else ''
+    electrons = 0
+    for symbol in symbols:
+        if symbol not in NUMBER_BY_SYMBOL:
+            raise SpeciesError(f'Could not identify atom symbol {symbol}{of_species}.')
+        electrons += NUMBER_BY_SYMBOL[symbol]
+    return electrons - charge
+
+
+def is_multiplicity_parity_valid(n_electrons: int,
+                                 multiplicity: int,
+                                 ) -> bool:
+    """
+    Check whether a spin multiplicity is consistent with a number of electrons.
+
+    ``n_electrons`` and ``multiplicity - 1`` must have the same parity, since each unpaired electron
+    contributes 1 to ``multiplicity - 1`` and the remaining electrons are paired. An even number of
+    electrons therefore requires an odd multiplicity, and an odd number requires an even one.
+
+    Args:
+        n_electrons (int): The number of electrons of the species, net charge included
+                           (as returned by :func:`count_electrons`).
+        multiplicity (int): The spin multiplicity (2S+1).
+
+    Returns:
+        bool: Whether the multiplicity is consistent with the electron count.
+    """
+    return n_electrons % 2 == (multiplicity - 1) % 2
 
 
 def get_atom_radius(symbol: str) -> float | None:
@@ -1233,9 +1331,10 @@ def is_equal_family_product_dicts(dicts1: list[dict],
     """
     Compare two lists of family‐product dictionaries for equality.
     Returns True if they have the same length and, for each corresponding entry:
-      - 'family', 'group_labels', 'own_reverse', 'discovered_in_reverse' are equal
-      - 'products' lists contain Molecules with the same SMILES in the same order
-      - 'r_label_map' and 'p_label_map' dicts are equal
+
+    - ``family``, ``group_labels``, ``own_reverse``, and ``discovered_in_reverse`` are equal.
+    - ``products`` lists contain Molecules with the same SMILES in the same order.
+    - ``r_label_map`` and ``p_label_map`` dicts are equal.
 
     Args:
         dicts1: First list of product‐dicts from determine_possible_reaction_products_from_family.
@@ -1581,8 +1680,8 @@ def distance_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     if a.shape[1] != b.shape[1]:
         raise ValueError(f"Inner dimensions must match. Got {a.shape[1]}D and {b.shape[1]}D")
     diff = a[:, np.newaxis, :] - b[np.newaxis, :, :]
-    sq_diff = diff ** 2
-    return np.sqrt(np.sum(sq_diff, axis=-1))
+    np.square(diff, out=diff)
+    return np.sqrt(np.sum(diff, axis=-1))
 
 
 def get_ordered_intersection_of_two_lists(l1: list,
@@ -1701,8 +1800,9 @@ def signed_angular_diff(phi_1: float, phi_2: float) -> float:
 
     This returns the value of (phi1 - phi2), wrapped into the interval (-180, 180],
     so that the result represents the smallest signed rotation from phi_2 to phi_1:
-      - A positive value means phi1 is ahead of phi2 in the counter-clockwise (CCW) direction.
-      - A negative value means phi1 trails phi2 (i.e., clockwise rotation).
+
+    - A positive value means phi1 is ahead of phi2 in the counter-clockwise (CCW) direction.
+    - A negative value means phi1 trails phi2 (i.e., clockwise rotation).
 
     Args:
         phi_1 (float): First angle in degrees.

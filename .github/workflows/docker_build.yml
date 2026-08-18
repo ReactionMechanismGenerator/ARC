@@ -11,9 +11,11 @@ on:
       - main
     paths:
       - "Dockerfile"
+      - ".dockerignore"
+      - "dockerfiles/**"
       - ".github/workflows/docker_build.yml"
     types: [opened, synchronize, reopened, ready_for_review]
-  #workflow_dispatch: # Add this line to enable manual trigger
+  workflow_dispatch: # manual trigger: builds and smoke-tests, never pushes
 
 env:
   BUILDKIT_PROGRESS: plain
@@ -39,10 +41,10 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4.1.0
       
-      # ----- PR and non-main branch steps -----
-      # For PRs: Build image but do not push and run smoke tests
+      # ----- PR / manual-dispatch steps -----
+      # Build the image and run smoke tests, but do not push
       - name: Build Docker Image (No Push)
-        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main')
+        if: ${{ !(github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
         uses: docker/build-push-action@v7.2.0
         with:
           context: .
@@ -52,43 +54,48 @@ jobs:
           tags: arc:test
           build-args: |
             ARC_BRANCH=${{ github.head_ref || github.ref_name }}
+            ARC_COMMIT=${{ github.event.pull_request.head.sha || github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Run Smoke Tests
-        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main')
+        if: ${{ !(github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
         run: |
           docker run --rm arc:test bash -lc \
             "cd /home/mambauser/Code/ARC && micromamba run -n arc_env pytest dockerfiles/docker_tests/test_docker_smoke.py -m smoke -q"
 
-      # ----- Main branch only steps -----
-      # For pushes to main: Build, run smoke tests, and push to Docker Hub
-      - name: Build test stage (main)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      # ----- Publishing steps (pushes to main, and the weekly schedule) -----
+      # Scheduled runs are on the default branch, so they are treated exactly like a push to main:
+      # build, run smoke tests, and push to Docker Hub. Previously no step matched a `schedule`
+      # event at all, so scheduled runs built nothing and still reported success.
+      - name: Build image (publish path)
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         uses: docker/build-push-action@v7.2.0
         with:
           context: .
           file: ./Dockerfile
           load: true
           tags: arc:final-${{ github.sha }}
+          build-args: |
+            ARC_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Run smoke (main, test stage)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Run Smoke Tests (publish path)
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         run: |
           docker run --rm arc:final-${{ github.sha }} bash -lc \
             "cd /home/mambauser/Code/ARC && micromamba run -n arc_env pytest dockerfiles/docker_tests/test_docker_smoke.py -m smoke -q"
 
       - name: Login to Docker Hub
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         uses: docker/login-action@v4.2.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build final and push (main)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Build final and push
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         uses: docker/build-push-action@v7.2.0
         with:
           context: .
@@ -97,5 +104,7 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/arc:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/arc:${{ github.sha }}
+          build-args: |
+            ARC_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

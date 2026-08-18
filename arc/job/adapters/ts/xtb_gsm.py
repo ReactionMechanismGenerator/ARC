@@ -395,7 +395,6 @@ class xTBGSMAdapter(JobAdapter):
         # The GSM run is driven by the ograd script which executes plain ``xtb --grad``,
         # i.e., GFN2-xTB (the xtb default), unless a level was explicitly set for this job.
         tsg = TSGuess(method='xTB-GSM',
-                      index=len(self.reactions[0].ts_species.ts_guesses),
                       success=False,
                       t0=self.initial_time,
                       level=plain_level_dict(self.level) if self.level is not None
@@ -413,7 +412,7 @@ class xTBGSMAdapter(JobAdapter):
             # to populate ``output[label]['paths']['gsm']`` (separate
             # from ``paths['neb']`` — distinct method, distinct slot).
             tsg.log_path = self.stringfile_path
-        self.reactions[0].ts_species.ts_guesses.append(tsg)
+        self.reactions[0].ts_species.append_ts_guess(tsg)
 
     def cleanup_files(self):
         """Remove unneeded files after run."""

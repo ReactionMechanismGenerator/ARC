@@ -127,7 +127,8 @@ class TestLevel(unittest.TestCase):
                          "solvent: water, solvation_scheme_level: 'apfd/def2-tzvp, software: gaussian', software: orca")
 
     def test_as_dict_preserves_args_when_one_slot_empty(self):
-        """Test that args round-trip through as_dict() when only one of 'keyword'/'block' is populated.
+        """
+        Test that args round-trip through as_dict() when only one of 'keyword'/'block' is populated.
 
         as_dict() retains the args entry when at least one slot holds content, so that
         ``Level(repr=level)`` reconstructs the same args. It omits args when both slots are empty.
@@ -152,6 +153,15 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(copied.args, level.args)
         self.assertEqual(copied.args['keyword']['opt'], 'opt=(verytight)')
         self.assertIsNot(copied.args['keyword'], level.args['keyword'])
+
+    def test_get_args(self):
+        """Test that get_args() returns args which can be mutated without affecting the Level"""
+        level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
+        args = level.get_args()
+        self.assertEqual(args, {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()})
+        args['keyword']['dft_grid'] = 'defgrid2'
+        args['block']['1'] = 'extra block'
+        self.assertEqual(level.args, {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()})
 
     def test_year_validation(self):
         """Test year validation for Level"""

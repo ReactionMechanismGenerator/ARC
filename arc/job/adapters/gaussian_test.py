@@ -11,7 +11,7 @@ import shutil
 import unittest
 
 from arc.common import ARC_TESTING_PATH, get_test_project_name
-from arc.job.adapters.gaussian import GaussianAdapter
+from arc.job.adapters.gaussian import GaussianAdapter, get_memory_headroom_fraction
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames, servers, submit_filenames
 from arc.species import ARCSpecies
@@ -531,6 +531,42 @@ class TestGaussianAdapter(unittest.TestCase):
         expected_memory = math.floor(math.ceil(14 * 1024 * 1.1) * 0.9)
         self.assertEqual(self.job_1.input_file_memory, expected_memory)
         self.assertEqual(self.job_2.input_file_memory, expected_memory)
+
+    def test_set_input_file_memory_with_headroom_marker(self):
+        """
+        Test that a 'memory_headroom_<fraction>' marker in ess_trsh_methods lowers %mem
+        while leaving the queue reservation (submit_script_memory_mib) unchanged.
+        """
+        jobs = [GaussianAdapter(execution_type='incore',
+                                job_type='opt',
+                                level=Level(method='wb97xd', basis='def2tzvp'),
+                                project='test',
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                species=[ARCSpecies(label='spc_headroom', xyz=['O 0 0 1'], multiplicity=3)],
+                                testing=True,
+                                ess_trsh_methods=ess_trsh_methods,
+                                ) for ess_trsh_methods in (None, ['memory_headroom_0.6'])]
+        self.assertEqual(jobs[0].submit_script_memory_mib, jobs[1].submit_script_memory_mib)
+        self.assertEqual(jobs[1].input_file_memory, math.floor(jobs[1].submit_script_memory_mib * 0.6))
+        self.assertLess(jobs[1].input_file_memory, jobs[0].input_file_memory)
+
+    def test_memory_headroom_marker_not_in_trsh_keyword(self):
+        """Test that a 'memory_headroom_<fraction>' marker never leaks into trsh_keyword / the
+        rendered Gaussian input file, since it is only used to compute %mem."""
+        job = GaussianAdapter(execution_type='incore',
+                              job_type='opt',
+                              level=Level(method='wb97xd', basis='def2tzvp'),
+                              project='test',
+                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                              species=[ARCSpecies(label='spc_headroom_marker', xyz=['O 0 0 1'], multiplicity=3)],
+                              testing=True,
+                              ess_trsh_methods=['memory_headroom_0.6'],
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertNotIn('memory_headroom', content)
+        shutil.rmtree(job.local_path, ignore_errors=True)
 
     def test_write_input_file_multi(self):
         """Test writing Gaussian input files"""
@@ -1191,7 +1227,8 @@ H       0.04768200    1.19305700   -0.88359100
             self.job_3.args = original_args
 
     def test_user_keyword_args_survive_a_level_round_trip(self):
-        """Test that user-specified keyword args reach the route section after a Level round-trip.
+        """
+        Test that user-specified keyword args reach the route section after a Level round-trip.
 
         The scheduler rebuilds the level via ``Level(repr=level)`` when re-running a job during
         troubleshooting, so a level which lost its args would drop the user's keywords.
@@ -1210,7 +1247,9 @@ H       0.04768200    1.19305700   -0.88359100
         job.write_input_file()
         with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
             content = f.read()
-        self.assertIn('verytight', content.splitlines()[4])
+        route_section = [line for line in content.splitlines() if line.startswith('#')]
+        self.assertEqual(len(route_section), 1)
+        self.assertIn('verytight', route_section[0])
 
     @classmethod
     def tearDownClass(cls):
@@ -1425,6 +1464,32 @@ class TestGaussianAdapterGuessMixGating(unittest.TestCase):
                             args={'trsh': {'trsh': ['guess=INDO']}})
         self.assertIn('guess=INDO', route)
         self.assertNotIn('guess=mix', route)
+
+
+class TestGetMemoryHeadroomFraction(unittest.TestCase):
+    """
+    Contains unit tests for the get_memory_headroom_fraction() function.
+    """
+
+    def test_no_markers(self):
+        """Test that with no markers present, the default fraction is returned."""
+        self.assertEqual(get_memory_headroom_fraction(None), 0.9)
+        self.assertEqual(get_memory_headroom_fraction([]), 0.9)
+        self.assertEqual(get_memory_headroom_fraction(['int=(Acc2E=14)']), 0.9)
+
+    def test_single_marker(self):
+        """Test that a single marker is used."""
+        self.assertEqual(get_memory_headroom_fraction(['memory_headroom_0.75']), 0.75)
+
+    def test_multiple_markers_lowest_wins(self):
+        """Test that with several markers present, the lowest one wins."""
+        self.assertEqual(get_memory_headroom_fraction(['memory_headroom_0.75', 'memory_headroom_0.6']), 0.6)
+        self.assertEqual(get_memory_headroom_fraction(['memory_headroom_0.6', 'memory_headroom_0.75']), 0.6)
+
+    def test_malformed_marker_is_ignored(self):
+        """Test that a malformed marker is ignored rather than raising."""
+        self.assertEqual(get_memory_headroom_fraction(['memory_headroom_notanumber']), 0.9)
+        self.assertEqual(get_memory_headroom_fraction(['memory_headroom_notanumber', 'memory_headroom_0.75']), 0.75)
 
 
 if __name__ == '__main__':

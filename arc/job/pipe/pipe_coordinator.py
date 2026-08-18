@@ -13,11 +13,16 @@ import os
 import time
 from typing import TYPE_CHECKING, Dict, List, Optional
 
+import arc.parser.parser as parser
 from arc.common import get_logger
 from arc.imports import settings
+from arc.level import Level
 
 from arc.job.factory import job_factory
-from arc.job.pipe.pipe_run import PipeRun, SCHEDULER_VISIBILITY_GRACE, ingest_completed_task
+from arc.job.pipe.pipe_run import (
+    PipeRun, SCHEDULER_VISIBILITY_GRACE, check_ess_convergence, find_output_file,
+    ingest_completed_task,
+)
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
     TaskStateRecord, get_task_attempt_dir, read_task_state,
@@ -30,6 +35,31 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 pipe_settings = settings['pipe_settings']
+
+SPECIES_LEAF_FAMILIES = ('species_sp', 'species_freq')
+
+
+class PipedJobView:
+    """
+    A minimal job-like view of a completed pipe task.
+
+    ``Scheduler.post_freq_actions()`` and the checks it calls read only
+    ``local_path_to_output_file`` from the job they are handed, so a piped task can be validated
+    by the very same code path as an individually submitted job without materializing a full
+    ``JobAdapter``. ``level`` and ``job_status`` are provided so the view stays usable if those
+    checks grow to consult them. Job-resubmitting troubleshooting is not reachable through this
+    view, which is why ``post_freq_actions()`` and not ``check_freq_job()`` is the shared entry
+    point: the former is the whole success path, the latter also owns the failure path.
+
+    Args:
+        output_file (str): Path to the task's canonical output file.
+        level (Level, optional): The level of theory the task ran at.
+    """
+
+    def __init__(self, output_file: str, level: Level | None = None):
+        self.local_path_to_output_file = output_file
+        self.level = level
+        self.job_status = ['done', {'status': 'done'}]
 
 
 class PipeCoordinator:
@@ -333,6 +363,8 @@ class PipeCoordinator:
             if state.status == TaskState.COMPLETED.value:
                 ingest_completed_task(pipe.run_id, pipe.pipe_root, spec, state,
                                       self.sched.species_dict, self.sched.output)
+                if spec.task_family in SPECIES_LEAF_FAMILIES:
+                    self._finalize_species_leaf_task(pipe, spec, state)
             elif state.status == TaskState.FAILED_ESS.value:
                 self._eject_to_scheduler(pipe, spec, state)
                 ejected_count += 1
@@ -388,6 +420,64 @@ class PipeCoordinator:
             'job_status': state.status,
         })
 
+    def _finalize_species_leaf_task(self, pipe: PipeRun, spec: TaskSpec, state: TaskStateRecord) -> None:
+        """
+        Run the Scheduler's post-job checks for a completed ``species_sp`` / ``species_freq`` task.
+
+        Per-task ingestion records the parsed results, but the ``output[label]['job_types']``
+        success flags are owned by the Scheduler's post-job logic, which also performs the QA that
+        those flags stand for and produces the artifacts that other parts of ARC then read: for a
+        freq job the imaginary-frequency check (exactly zero for a stable species, exactly one for
+        a TS), ``species.freqs``, the ``freq.out`` copy in the species output folder, the
+        polarizability and the TS normal mode displacement check; for an sp job the T1 diagnostic,
+        the solvation-scheme follow-ups and the reaction-E0 check. Routing piped tasks through the
+        same methods keeps piped and individually submitted jobs judged identically and equally
+        well equipped, instead of duplicating any of it here where the two could drift apart.
+
+        This runs per task rather than in ``_post_ingest_pipe_run`` because a cross-species batch
+        carries one species per task, and because ``_post_ingest_pipe_run`` is skipped entirely
+        when any sibling task is ejected for troubleshooting.
+
+        A task can reach ``COMPLETED`` and still hold a non-converged ESS output, so the same
+        convergence gate the ingestion helpers apply is repeated here before any success flag
+        can be set.
+
+        Args:
+            pipe (PipeRun): The owning pipe run.
+            spec (TaskSpec): The completed task's specification.
+            state (TaskStateRecord): The completed task's state record.
+        """
+        label = spec.owner_key
+        if not label or label not in self.sched.species_dict:
+            logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                           f'species "{label}" not in species_dict, not finalizing.')
+            return
+        attempt_dir = get_task_attempt_dir(pipe.pipe_root, spec.task_id, state.attempt_index)
+        try:
+            output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
+        except Exception as e:
+            logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                         f'output lookup failed while finalizing: {type(e).__name__}: {e}')
+            return
+        if output_file is None:
+            logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                           f'no output file found, not finalizing {spec.task_family} for {label}.')
+            return
+        if not check_ess_convergence(pipe.run_id, spec, output_file, label):
+            return
+        level = Level(repr=spec.level) if spec.level else None
+        try:
+            if spec.task_family == 'species_sp':
+                self.sched.post_sp_actions(label=label, sp_path=output_file, level=level)
+            elif spec.task_family == 'species_freq':
+                vibfreqs = parser.parse_frequencies(log_file_path=str(output_file))
+                self.sched.post_freq_actions(label=label,
+                                             job=PipedJobView(output_file, level),
+                                             vibfreqs=vibfreqs)
+        except Exception as e:
+            logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                         f'could not finalize {spec.task_family} for {label}: {type(e).__name__}: {e}')
+
     def _post_ingest_pipe_run(self, pipe: PipeRun) -> None:
         """
         Trigger family-specific post-processing after all tasks in a pipe run
@@ -399,7 +489,9 @@ class PipeCoordinator:
           - conf_sp: determine most stable conformer (sp_flag), then run opt job
 
         Other families (species_sp, species_freq, irc, rotor_scan_1d) are
-        leaf jobs with no batch-level post-processing.
+        leaf jobs with no batch-level post-processing. The species_sp and
+        species_freq families are finalized per task instead, in
+        ``_finalize_species_leaf_task``.
         """
         if not pipe.tasks:
             return

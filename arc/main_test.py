@@ -63,7 +63,7 @@ class TestARC(unittest.TestCase):
                    job_types=self.job_types1,
                    species=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
-                   ts_adapters=['heuristics', 'AutoTST', 'GCN', 'xtb_gsm'],
+                   ts_adapters=['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb'],
                    )
         arc0.freq_level.args['keyword']['general'] = 'scf=(NDamp=30)'
         restart_dict = arc0.as_dict()
@@ -91,14 +91,17 @@ class TestARC(unittest.TestCase):
                                           'openbabel': ['local'],
                                           'orca': ['local'],
                                           'orca_neb': ['local'],
+                                          'pyscf': ['local'],
                                           'qchem': ['server1'],
                                           'qst2': ['local'],
+                                          'rits': ['local'],
                                           'terachem': ['server1'],
                                           'torchani': ['local'],
                                           'xtb': ['local'],
                                           'xtb_gsm': ['local'],
                                           },
-                         'freq_level': {'args': {'block': {}, 'keyword': {'general': 'scf=(NDamp=30)'}},
+                         'freq_level': {'args': {'block': {},
+                                                 'keyword': {'general': 'scf=(NDamp=30)'}},
                                         'basis': '6-311+g(3df,2p)',
                                         'method': 'b3lyp',
                                         'method_type': 'dft',
@@ -140,7 +143,7 @@ class TestARC(unittest.TestCase):
                                               'props': {}},
                                       'multiplicity': 1,
                                       'number_of_rotors': 0}],
-                         'ts_adapters': ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm']}
+                         'ts_adapters': ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']}
         # import pprint  # left intentionally for debugging
         # print(pprint.pprint(restart_dict))
         self.assertEqual(restart_dict, expected_dict)
