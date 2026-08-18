@@ -175,6 +175,10 @@ if [[ $COMMAND_PKG == micromamba ]]; then
 else
     BASE=$(conda info --base)
     source "$BASE/etc/profile.d/conda.sh"
+    if [[ $COMMAND_PKG == mamba ]]; then
+        # mamba >= 2 refuses 'mamba activate' unless its own hook is loaded
+        eval "$(mamba shell hook --shell bash)"
+    fi
 fi
 
 # ── clone or update RitS ──────────────────────────────────────────────────

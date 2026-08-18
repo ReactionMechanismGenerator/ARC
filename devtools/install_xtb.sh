@@ -20,6 +20,10 @@ if [ "$COMMAND_PKG" = "micromamba" ]; then
 elif [ "$COMMAND_PKG" = "mamba" ] || [ "$COMMAND_PKG" = "conda" ]; then
     BASE=$(conda info --base)
     source "$BASE/etc/profile.d/conda.sh"
+    if [ "$COMMAND_PKG" = "mamba" ]; then
+        # mamba >= 2 refuses 'mamba activate' unless its own hook is loaded
+        eval "$(mamba shell hook --shell bash)"
+    fi
 fi
 
 
