@@ -9,6 +9,7 @@ Todo:
 import datetime
 import logging
 import os
+import shlex
 import time
 from typing import Any
 from collections.abc import Callable
@@ -59,16 +60,24 @@ class SSHClient(object):
 
     Args:
         server (str): The server name as specified in ARCs's settings file under ``servers`` as a key.
+        connection_attempts (int, optional): The number of times to try connecting to the server,
+                                             waiting a minute between attempts. The default keeps trying
+                                             for 24 hours, which is appropriate while jobs are running.
+                                             Pass a low number where blocking is worse than giving up.
 
     Attributes:
         server (str): The server name as specified in ARCs's settings file under ``servers`` as a key.
         address (str): The server's address.
         un (str): The username to use on the server.
         key (str): A path to a file containing the RSA SSH private key to the server.
+        connection_attempts (int): The number of times to try connecting to the server.
         _ssh (paramiko.SSHClient): A high-level representation of a session with an SSH server.
         _sftp (paramiko.sftp_client.SFTPClient): SFTP client used to perform remote file operations.
     """
-    def __init__(self, server: str = '') -> None:
+    def __init__(self,
+                 server: str = '',
+                 connection_attempts: int = 1440,  # Continue trying for 24 hrs (24 hr * 60 min/hr).
+                 ) -> None:
         if server == '':
             raise ValueError('A server name must be specified')
         if server not in servers.keys():
@@ -77,6 +86,7 @@ class SSHClient(object):
         self.address = servers[server]['address']
         self.un = servers[server]['un']
         self.key = servers[server]['key']
+        self.connection_attempts = connection_attempts
         self._sftp = None
         self._ssh = None
         logging.getLogger("paramiko").setLevel(logging.WARNING)
@@ -341,9 +351,8 @@ class SSHClient(object):
             ServerError: Cannot connect to the server with maximum times to try
         """
         times_tried = 0
-        max_times_to_try = 1440  # continue trying for 24 hrs (24 hr * 60 min/hr)...
         interval = 60  # wait 60 sec between trials
-        while times_tried < max_times_to_try:
+        while times_tried < self.connection_attempts:
             times_tried += 1
             try:
                 self._sftp, self._ssh = self._connect()
@@ -357,7 +366,8 @@ class SSHClient(object):
             else:
                 logger.debug(f'Successfully connected to {self.server} at the {times_tried} trial.')
                 return
-            time.sleep(interval)
+            if times_tried < self.connection_attempts:
+                time.sleep(interval)
         raise ServerError(f'Could not connect to server {self.server} even after {times_tried} trials.')
 
     def _connect(self) -> tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]:
@@ -489,6 +499,27 @@ class SSHClient(object):
         command = f'chmod{recursive} {mode} {file_name}'
         self._send_command_to_server(command, remote_path)
 
+    def delete_remote_check_files(self, remote_path: str) -> None:
+        """
+        Delete ESS checkfiles under a remote directory (recursively).
+        They usually take up lots of space and are not needed after ARC terminates.
+        Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
+        The local counterpart of this method is ``arc.common.delete_check_files()``.
+
+        Args:
+            remote_path (str): The remote directory path under which checkfiles will be deleted.
+        """
+        if not remote_path:
+            return
+        quoted_path = shlex.quote(remote_path)
+        # Both the existence test and the deletion are done in a single quoted command:
+        # a separate existence check would have to quote the path just as carefully,
+        # and a directory that isn't there is a no-op rather than an error worth reporting.
+        command = f'[ -d {quoted_path} ] && find {quoted_path} -type f -name "*.chk" -delete'
+        _, stderr = self._send_command_to_server(command)
+        if stderr:
+            logger.warning(f'Could not delete all check files under {remote_path} on {self.server}.\nGot: {stderr}')
+
     def _check_file_exists(self,
                            remote_file_path: str,
                            ) -> bool:
@@ -535,6 +566,28 @@ class SSHClient(object):
         if stderr:
             raise ServerError(
                 f'Cannot create dir for the given path ({remote_path}).\nGot: {stderr}')
+
+
+def delete_check_files_on_servers(remote_project_paths: dict) -> None:
+    """
+    Delete ESS checkfiles from an ARC project's directory on all servers it ran jobs on.
+    The local counterpart of this function is ``arc.common.delete_check_files()``.
+    Errors are only logged and never raised: this runs once ARC is done with the science,
+    an unreachable server at that point is an inconvenience, not a reason to lose a run.
+    Only a single connection attempt is made per server for the same reason.
+
+    Args:
+        remote_project_paths (dict): Keys are server names, values are the respective remote paths
+                                     of the project's directory on that server.
+    """
+    for server, remote_project_path in remote_project_paths.items():
+        if not server or server.lower() == 'local' or not remote_project_path:
+            continue
+        try:
+            with SSHClient(server, connection_attempts=1) as ssh:
+                ssh.delete_remote_check_files(remote_path=remote_project_path)
+        except Exception as e:
+            logger.warning(f'Could not delete the check files under {remote_project_path} on {server}.\nGot: {e}')
 
 
 def check_job_status_in_stdout(job_id: int,

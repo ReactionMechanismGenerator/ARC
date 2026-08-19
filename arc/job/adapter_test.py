@@ -256,6 +256,9 @@ class TestJobAdapter(unittest.TestCase):
                                                              self.job_1.species_label, self.job_1.job_name))
         self.assertEqual(self.job_1.remote_path, os.path.join('runs', 'ARC_Projects', self.job_1.project,
                                                               self.job_1.species_label, self.job_1.job_name))
+        # The project's remote path is the one the check file cleanup is scoped to, it must contain the job:
+        self.assertEqual(self.job_1.remote_project_path, os.path.join('runs', 'ARC_Projects', self.job_1.project))
+        self.assertTrue(self.job_1.remote_path.startswith(self.job_1.remote_project_path))
 
     def test_format_max_job_time(self):
         """Test that the maximum job time can be formatted properly, including days, minutes, and seconds"""

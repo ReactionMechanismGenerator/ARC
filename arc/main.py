@@ -31,7 +31,7 @@ from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.level import Level, assign_frequency_scale_factor
 from arc.job.factory import _registered_job_adapters
-from arc.job.ssh import SSHClient
+from arc.job.ssh import SSHClient, delete_check_files_on_servers
 from arc.output import write_output_yml
 from arc.processor import process_arc_project, resolve_neb_level
 from arc.reaction import ARCReaction
@@ -610,8 +610,7 @@ class ARC(object):
         self.output = self.scheduler.output
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.output)
 
-        if not self.keep_checks:
-            delete_check_files(self.project_directory)
+        self.clean_check_files(remote_project_paths=self.scheduler.remote_project_paths)
         self.delete_leftovers()
 
         self.save_project_info_file()
@@ -932,6 +931,20 @@ class ARC(object):
 
         logger.info(f'Using harmonic frequencies scaling factor: {self.freq_scale_factor} '
                     f'(source: {factor_source}).')
+
+    def clean_check_files(self, remote_project_paths: dict | None = None) -> None:
+        """
+        Delete ESS checkfiles, both locally and on the servers this project ran jobs on.
+        Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
+
+        Args:
+            remote_project_paths (dict, optional): Keys are server names, values are the respective remote
+                                                   paths of the project's directory on that server.
+        """
+        if self.keep_checks:
+            return
+        delete_check_files(self.project_directory)
+        delete_check_files_on_servers(remote_project_paths or dict())
 
     def delete_leftovers(self):
         """

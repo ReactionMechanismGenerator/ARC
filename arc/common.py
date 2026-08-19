@@ -510,8 +510,9 @@ def globalize_path(string: str,
 
 def delete_check_files(project_directory: str):
     """
-    Delete ESS checkfiles. They usually take up lots of space and are not needed after ARC terminates.
+    Delete local ESS checkfiles. They usually take up lots of space and are not needed after ARC terminates.
     Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
+    The remote counterpart of this function is ``arc.job.ssh.delete_check_files_on_servers()``.
 
     Args:
         project_directory (str): The path to the ARC project folder.

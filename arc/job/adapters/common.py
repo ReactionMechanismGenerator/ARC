@@ -197,6 +197,7 @@ def _initialize_adapter(obj: JobAdapter,
     obj.number_of_processes = 0
     obj.reactions = [reactions] if reactions is not None and not isinstance(reactions, list) else reactions
     obj.remote_path = None
+    obj.remote_project_path = None
     obj.restarted = bool(job_num)  # If job_num was given, this is a restarted job, don't save as initiated jobs.
     obj.rotor_index = rotor_index
     obj.run_time = None
