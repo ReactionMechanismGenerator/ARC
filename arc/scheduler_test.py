@@ -1214,6 +1214,79 @@ H      -1.82570782    0.42754384   -0.56130718"""
         # rotors_dict=None must be preserved — do not re-enable rotor scans.
         self.assertIsNone(sched2.species_dict[ts_label2].rotors_dict)
 
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_switch_ts_clears_stale_ts_energy(self, mock_run_opt):
+        """Test that switch_ts discards the energy data computed for the TS guess being abandoned."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+
+        ts_spc = ARCSpecies(label='TS_e0', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.ts_guesses = [
+            TSGuess(index=0, method='heuristics', success=True, energy=100.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+            TSGuess(index=1, method='heuristics', success=True, energy=110.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+        ]
+        ts_spc.ts_guesses[0].opt_xyz = ts_xyz
+        ts_spc.ts_guesses[0].imaginary_freqs = [-798.8]
+        ts_spc.ts_guesses[1].opt_xyz = ts_xyz
+        ts_spc.ts_guesses[1].imaginary_freqs = [-784.0]
+        ts_spc.chosen_ts = 0
+        ts_spc.chosen_ts_list = [0]
+        ts_spc.ts_guesses_exhausted = False
+        # Energy data computed for guess 0, all of it specific to that geometry.
+        ts_spc.e0 = 121.88
+        ts_spc.e_elect = -148340.0
+        ts_spc.freqs = [-798.8, 1042.3, 1626.7, 1642.1, 3396.4, 3512.9]
+
+        project_directory = os.path.join(ARC_PATH, 'Projects',
+                                         'arc_project_for_testing_delete_after_usage22')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        checkfile_path = os.path.join(project_directory, 'calcs', 'TSs', 'TS_e0', 'opt_a0',
+                                      'check.chk')
+        ts_spc.checkfile = checkfile_path
+        sched = Scheduler(project='test_switch_ts_e0', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+
+        ts_label = 'TS_e0'
+        sched.output[ts_label]['job_types']['opt'] = True
+        sched.output[ts_label]['job_types']['freq'] = True
+        sched.output[ts_label]['job_types']['sp'] = True
+        sched.job_dict[ts_label] = {'opt': {}, 'freq': {}, 'sp': {}}
+        sched.running_jobs[ts_label] = []
+
+        sched.switch_ts(ts_label)
+
+        self.assertEqual(sched.species_dict[ts_label].chosen_ts, 1)
+        self.assertIsNone(sched.species_dict[ts_label].e0)
+        self.assertIsNone(sched.species_dict[ts_label].e_elect)
+        self.assertIsNone(sched.species_dict[ts_label].freqs)
+        self.assertIsNone(sched.species_dict[ts_label].checkfile)
+
+        # The consequence: an E0 computed for the new guess must be adopted, not masked by the
+        # value belonging to guess 0. ``compute_rxn_e0`` returns a copy of the reaction that
+        # ``copy_e0_values`` merges back, and it only fills an E0 that is empty.
+        rxn = ARCReaction(label='NH2 + H <=> NH3',
+                          r_species=[ARCSpecies(label='NH2', smiles='[NH2]'),
+                                     ARCSpecies(label='H', smiles='[H]')],
+                          p_species=[ARCSpecies(label='NH3', smiles='N')])
+        rxn.ts_species = sched.species_dict[ts_label]
+        rxn_copy = rxn.copy()
+        rxn_copy.ts_species.e0 = 245.0
+        rxn.copy_e0_values(rxn_copy)
+        self.assertEqual(rxn.ts_species.e0, 245.0)
+
     def setup_ts_scheduler_for_freq_check(self, project, chosen_ts, chosen_ts_list=None):
         """
         Set up a Scheduler with a single TS species whose TSGuess ``index`` (identity) and
