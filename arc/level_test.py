@@ -247,11 +247,11 @@ class TestLevel(unittest.TestCase):
         """Test the assign_frequency_scale_factor() method with a string level argument."""
         self.assertEqual(assign_frequency_scale_factor('hf/sto3g, software: gaussian'), 0.817)
         self.assertEqual(assign_frequency_scale_factor('cbs-qb3'), 1.004)
-        self.assertIsNone(assign_frequency_scale_factor('g4, software: gaussian'))
+        self.assertIsNone(assign_frequency_scale_factor('g4mp2, software: gaussian'))
         self.assertIsNone(assign_frequency_scale_factor('no/such, software: nonesuch, solvent: water'))
         # Only assign_frequency_scale_factor() tolerates these strings, Level() itself still raises.
         for repr_ in ['hf/sto3g, software: gaussian',
-                      'g4, software: gaussian',
+                      'g4mp2, software: gaussian',
                       'no/such, software: nonesuch, solvent: water']:
             with self.assertRaises(ValueError):
                 Level(repr=repr_)
