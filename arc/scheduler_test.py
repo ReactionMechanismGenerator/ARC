@@ -175,6 +175,39 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                job_types=cls.job_types2,
                                )
 
+    def test_run_conformer_jobs_cheap_force_field_hands_over_a_conformer(self):
+        """Test that the 'cheap' force field path leaves its geometry where process_conformers() looks for it.
+
+        A graph-only species reaches this path once check_atom_balance() stopped seeding coordinates
+        onto reaction species. process_conformers() only spawns jobs while the geometry is still
+        unknown, so the geometry must arrive as a conformer rather than as initial_xyz; assigning
+        initial_xyz here instead silences that method and a species whose 'opt' job type is off
+        never gets its freq/sp/rotor jobs. The job spawning itself is not asserted here because it
+        requires testing=False, which submits jobs to a server.
+        """
+        spc = ARCSpecies(label='propane_cheap', smiles='CCC')
+        spc.force_field = 'cheap'
+        self.assertIsNone(spc.get_xyz(generate=False))
+        sched = Scheduler(project='project_test_cheap_ff', ess_settings=self.ess_settings,
+                          species_list=[spc], composite_method=None,
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=os.path.join(ARC_PATH, 'Projects', 'project_test_cheap_ff'),
+                          testing=True, job_types={'conf_opt': False, 'opt': False, 'freq': True, 'sp': True,
+                                                   'rotors': False, 'irc': False, 'fine': False},
+                          orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None,
+                          )
+        sched.run_conformer_jobs(labels=['propane_cheap'])
+        self.assertEqual(len(sched.species_dict['propane_cheap'].conformers), 1)
+        self.assertIsNone(sched.species_dict['propane_cheap'].initial_xyz)
+        self.assertEqual(sorted(sched.species_dict['propane_cheap'].conformers[0]['symbols']),
+                         sorted(('C', 'C', 'C') + ('H',) * 8))
+        shutil.rmtree(os.path.join(ARC_PATH, 'Projects', 'project_test_cheap_ff'), ignore_errors=True)
+
     def test_conformers(self):
         """Test the parse_conformer_energy() and determine_most_stable_conformer() methods"""
         label = 'methylamine'

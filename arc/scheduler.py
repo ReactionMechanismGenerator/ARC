@@ -1322,8 +1322,15 @@ class Scheduler(object):
                     log_info_printed = True
                 if self.species_dict[label].force_field == 'cheap':
                     # Just embed in RDKit and use MMFF94s for opt and energies.
-                    if self.species_dict[label].initial_xyz is None:
-                        self.species_dict[label].initial_xyz = self.species_dict[label].get_xyz()
+                    # The geometry is handed to process_conformers() as the single conformer rather
+                    # than assigned to initial_xyz here: that method only spawns jobs for a species
+                    # whose geometry is still unknown, so assigning initial_xyz first silences it
+                    # and a species reaching this branch with opt turned off never gets its
+                    # freq/sp/rotor jobs.
+                    if self.species_dict[label].initial_xyz is None and not self.species_dict[label].conformers:
+                        xyz = self.species_dict[label].get_xyz()
+                        if xyz is not None:
+                            self.species_dict[label].conformers = [xyz]
                 else:
                     # Run the combinatorial method w/o fitting a force field.
                     n_confs = self.n_confs if self.species_dict[label].multi_species is None else 1
