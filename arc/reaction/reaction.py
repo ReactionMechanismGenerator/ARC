@@ -154,9 +154,18 @@ class ARCReaction(object):
 
     @property
     def atom_map(self):
-        """The reactants to products atom map"""
+        """
+        The reactants to products atom map.
+
+        Warning:
+            Mapping requires 3D coordinates, so reading this property generates a cheap conformer
+            (an RDKit embedding followed by a force field optimization) for every reactant and
+            product that has none, storing it on the species. Until check_atom_balance() stopped
+            generating a conformer for every species this was guaranteed to be a no-op here, and
+            the cost merely moved rather than appeared.
+        """
         if self._atom_map is None \
-                and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
+                and all(species.get_xyz(generate=True) is not None for species in self.r_species + self.p_species):
             _atom_map = map_reaction(rxn=self, backend='ARC')
             if _atom_map is not None:
                 self._atom_map = _atom_map
@@ -770,18 +779,18 @@ class ARCReaction(object):
 
         for reactant in self.r_species:
             count = self.get_species_count(species=reactant, well=0)
-            xyz = reactant.get_xyz(generate=True)
-            if xyz is not None and xyz:
-                r_well += (xyz_to_str(xyz) + '\n') * count
+            entry = _get_atom_balance_entry(species=reactant)
+            if entry:
+                r_well += (entry + '\n') * count
             else:
                 r_well = ''
                 break
 
         for product in self.p_species:
             count = self.get_species_count(species=product, well=1)
-            xyz = product.get_xyz(generate=True)
-            if xyz is not None and xyz:
-                p_well += (xyz_to_str(xyz) + '\n') * count
+            entry = _get_atom_balance_entry(species=product)
+            if entry:
+                p_well += (entry + '\n') * count
             else:
                 p_well = ''
                 break
@@ -1256,6 +1265,47 @@ class ARCReaction(object):
                                  got: reactants: {smiles_r}
                                       products: {smiles_p}""")
         return ".".join(smiles_r)+">>"+".".join(smiles_p)
+
+
+def _get_atom_balance_entry(species: ARCSpecies) -> str:
+    """
+    Get an xyz string representation of a species to be used in an atom balance check.
+
+    An atom balance check only counts element symbols, it never uses the coordinates.
+    Therefore, an already available geometry is used if the species has one, and otherwise the
+    element symbols are read off the species' 2D graph and given placeholder coordinates.
+    This avoids cheaply generating a 3D conformer (an RDKit embedding followed by a force field
+    optimization, by far the most expensive step of an atom balance check) merely to count atoms.
+
+    Warning:
+        In the 2D graph case every atom is placed at the origin, so the returned string is a
+        fabricated geometry. It must only ever be used for counting elements, which is why this
+        function is private to this module.
+
+    Note:
+        The conditions under which coordinates and a 2D graph are considered mirror
+        ``ARCSpecies.get_xyz(generate=True)``: a TS species only ever reports the coordinates of
+        its TS guesses, the ``mol_list`` fallback matches that method's
+        ``self.mol is not None or self.mol_list is not None`` guard, and the resulting element
+        counts are identical to those of a generated conformer, which is embedded from the very
+        same 2D graph.
+
+    Args:
+        species (ARCSpecies): The species to represent.
+
+    Returns:
+        str: An xyz string representation of the species,
+             or an empty string if the species has neither coordinates nor a 2D graph.
+    """
+    xyz = species.get_xyz(generate=False)
+    if xyz is not None and xyz:
+        return xyz_to_str(xyz)
+    if species.is_ts:
+        return ''
+    mol = species.mol if species.mol is not None else (species.mol_list[0] if species.mol_list else None)
+    if mol is None or not len(mol.atoms):
+        return ''
+    return '\n'.join(f'{atom.element.symbol} 0.0 0.0 0.0' for atom in mol.atoms)
 
 
 def remove_dup_species(species_list: list[ARCSpecies]) -> list[ARCSpecies]:
