@@ -49,6 +49,10 @@ ARC_TESTING_PATH = os.path.join(ARC_PATH, 'arc', 'testing')
 
 VERSION = '1.1.0'
 
+# The input/restart file schema version. Bumped only when the input/restart contract changes,
+# NOT with ARC releases.
+ARC_INPUT_SCHEMA_VERSION = 1
+
 R = 8.31446261815324  # J/(mol*K)
 EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 4.184e+3}
 FULL_CIRCLE = 360.0
@@ -91,7 +95,7 @@ def initialize_job_types(job_types: dict | None = None,
     defaults_to_true = ['conf_opt', 'fine', 'freq', 'irc', 'opt', 'rotors', 'sp']
     defaults_to_false = ['conf_sp', 'bde', 'onedmin', 'orbitals']
     if job_types is None:
-        job_types = default_job_types
+        job_types = default_job_types.copy()
         logger.info("Job types were not specified, using ARC's defaults")
     else:
         logger.debug(f'the following job types were specified: {job_types}.')

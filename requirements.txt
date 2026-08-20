@@ -22,6 +22,7 @@ ffmpeg
 gprof2dot
 graphviz
 h5py
+pydantic>=2,<3
 pydot
 pytables
 sphinx

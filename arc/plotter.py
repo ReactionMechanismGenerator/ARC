@@ -523,7 +523,7 @@ def draw_kinetics_plots(rxn_list: list,
     if T_max is None:
         T_max = (3000, 'K')
     elif isinstance(T_max, (int, float)):
-        T_max = (T_min, 'K')
+        T_max = (T_max, 'K')
     temperatures = np.linspace(T_min[0], T_max[0], T_count)
 
     pp = None

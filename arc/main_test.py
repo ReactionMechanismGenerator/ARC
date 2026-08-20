@@ -5,11 +5,17 @@
 This module contains unit tests for the arc.main module
 """
 
+import io
 import os
 import shutil
 import unittest
+from contextlib import redirect_stderr
+from unittest.mock import patch
 
-from arc.common import ARC_PATH
+import yaml
+
+import ARC as arc_cli
+from arc.common import ARC_INPUT_SCHEMA_VERSION, ARC_PATH, VERSION
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.level import Level
@@ -68,7 +74,9 @@ class TestARC(unittest.TestCase):
         self.assertIn("'C-C': 1", long_thermo_description)
         self.assertIn("'C-H': 6", long_thermo_description)
         # mol.atoms are not tested since all id's (including connectivity) changes depending on how the test is run.
-        expected_dict = {'arkane_level_of_theory': {'basis': 'cc-pvdz-f12',
+        expected_dict = {'schema_version': ARC_INPUT_SCHEMA_VERSION,
+                         'arc_version': VERSION,
+                         'arkane_level_of_theory': {'basis': 'cc-pvdz-f12',
                                                     'method': 'ccsd(t)-f12',
                                                     'method_type': 'wavefunction',
                                                     'software': 'molpro'},
@@ -525,6 +533,31 @@ class TestARC(unittest.TestCase):
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestARCCliMain(unittest.TestCase):
+    """
+    Contains unit tests for the ARC.py CLI entry point's input validation seam
+    """
+
+    def test_main_exits_cleanly_on_invalid_input(self):
+        """Test that an invalid input file exits with a formatted pydantic error instead of a
+        raw traceback"""
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_cli_invalid_input_test')
+        os.makedirs(project_directory, exist_ok=True)
+        input_file = os.path.join(project_directory, 'input.yml')
+        try:
+            with open(input_file, 'w') as f:
+                yaml.dump({'project': 'arc_cli_invalid_input_test', 'verbose': 15}, f)
+            stderr = io.StringIO()
+            with patch('sys.argv', ['ARC.py', input_file]):
+                with redirect_stderr(stderr):
+                    with self.assertRaises(SystemExit) as excinfo:
+                        arc_cli.main()
+            self.assertEqual(excinfo.exception.code, 1)
+            self.assertIn('verbose', stderr.getvalue())
+        finally:
+            shutil.rmtree(project_directory, ignore_errors=True)
 
 
 if __name__ == '__main__':

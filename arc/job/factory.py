@@ -34,6 +34,16 @@ def register_job_adapter(job_adapter_label: str,
     _registered_job_adapters[JobEnum(job_adapter_label.lower())] = job_adapter_class
 
 
+def get_registered_job_adapters() -> dict:
+    """
+    Get the registry of currently registered job adapters.
+
+    Returns:
+        dict: A mapping of ``JobEnum`` keys to their registered ``JobAdapter`` subclasses.
+    """
+    return _registered_job_adapters
+
+
 def job_factory(job_adapter: str,
                 project: str,
                 project_directory: str,
