@@ -654,6 +654,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">set_mol_list</span><span class="p">()</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_ts</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_checks</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span> <span class="o">!=</span> <span class="s1">&#39;warnings&#39;</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">populate_ts_checks</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_final_xyz_for_monoatomic</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a string representation of the object&quot;&quot;&quot;</span>
@@ -677,6 +678,20 @@
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_final_xyz_for_monoatomic</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set ``final_xyz`` for a monoatomic species.</span>
+
+<span class="sd">        An atom has nothing to optimize, so ARC never runs an opt job for it and</span>
+<span class="sd">        ``final_xyz`` is simply the geometry it was given. Any geometry already on</span>
+<span class="sd">        the species is used as-is; otherwise a conformer is generated, which also</span>
+<span class="sd">        sets ``initial_xyz`` and ``cheap_conformer``. TSs and polyatomic species</span>
+<span class="sd">        are left untouched.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_ts</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">final_xyz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_monoatomic</span><span class="p">():</span>
+            <span class="k">return</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">final_xyz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_xyz</span><span class="p">(</span><span class="n">generate</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">number_of_atoms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
