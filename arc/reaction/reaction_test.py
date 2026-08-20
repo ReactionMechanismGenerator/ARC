@@ -877,6 +877,38 @@ H       1.12853146   -0.86793870    0.06973060"""
         rxn_2.check_done_opt_r_n_p()
         self.assertEqual(rxn_2.done_opt_r_n_p, False)
 
+    def test_check_done_opt_r_n_p_with_atomic_species_given_xyz(self):
+        """
+        Test that an atomic reactant given an explicit geometry does not block TS search.
+
+        Replays the Scheduler.__init__ sequence: rebind r_species/p_species to the run's own
+        ARCSpecies objects, then check_atom_balance() and check_done_opt_r_n_p().
+        """
+        xyz = {'symbols': ('H',), 'isotopes': (1,), 'coords': ((0.0, 0.0, 0.0),)}
+        rxn = ARCReaction(reactants=['CH4', 'H'], products=['CH3', 'H2'],
+                          r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='H', smiles='[H]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2', smiles='[H][H]')])
+        species_list = [ARCSpecies(label='CH4', smiles='C'),
+                        ARCSpecies(label='H', smiles='[H]', xyz=xyz),
+                        ARCSpecies(label='CH3', smiles='[CH3]'),
+                        ARCSpecies(label='H2', smiles='[H][H]')]
+        rxn.r_species, rxn.p_species = list(), list()
+        for spc in species_list:
+            if spc.label in rxn.reactants:
+                rxn.r_species.append(spc)
+            if spc.label in rxn.products:
+                rxn.p_species.append(spc)
+        rxn.check_atom_balance()
+        rxn.check_done_opt_r_n_p()
+        self.assertFalse(rxn.done_opt_r_n_p)
+        for spc in species_list:
+            if not spc.is_monoatomic():
+                spc.final_xyz = spc.get_xyz(generate=True)
+        rxn.check_done_opt_r_n_p()
+        self.assertTrue(rxn.done_opt_r_n_p)
+
     def tests_white_space_in_reaction_label(self):
         """Test that an extra white space in the reaction label does not confuse ARC."""
         hno = ARCSpecies(label='HNO', smiles='N=O')
