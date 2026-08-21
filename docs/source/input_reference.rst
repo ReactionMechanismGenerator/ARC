@@ -71,7 +71,7 @@ Job selection and resources:
 * ``specific_job_type`` - run one job family; takes precedence over ``job_types``.
 * ``job_memory`` - memory per job in GB.
 * ``max_job_time`` - wall-time limit in hours.
-* ``keep_checks`` - keep ESS checkfiles.
+* ``keep_checks`` - keep ESS checkfiles, both locally and on the servers.
 * ``trsh_ess_jobs`` - troubleshoot failed ESS jobs. Default: ``true``.
 * ``trsh_rotors`` - troubleshoot failed rotor scans. Default: ``true``.
 * ``skip_nmd`` - skip normal-mode-displacement checks.

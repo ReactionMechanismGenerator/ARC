@@ -206,6 +206,8 @@ class Scheduler(object):
     Attributes:
         project (str): The project's name. Used for naming the working directory.
         servers (list): A list of servers used for the present project.
+        remote_project_paths (dict): Keys are servers used for the present project, values are the respective
+                                     remote paths of the project's directory on that server.
         species_list (list): Contains input :ref:`ARCSpecies <species>` objects (both species and TSs).
         species_dict (dict): Keys are labels, values are :ref:`ARCSpecies <species>` objects.
         rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
@@ -349,6 +351,7 @@ class Scheduler(object):
         self.report_time = time.time()  # init time for reporting status every 1 hr
         self._last_status_payload: dict | None = None
         self.servers = list()
+        self.remote_project_paths = dict()
         self.composite_method = composite_method
         self.conformer_opt_level = conformer_opt_level
         self.conformer_sp_level = conformer_sp_level
@@ -1105,8 +1108,11 @@ class Scheduler(object):
             if 'tsg' not in self.job_dict[label]:
                 self.job_dict[label]['tsg'] = dict()
             self.job_dict[label]['tsg'][tsg] = job  # save job object
-        if job.server is not None and job.server not in self.servers:
-            self.servers.append(job.server)
+        if job.server is not None:
+            if job.server not in self.servers:
+                self.servers.append(job.server)
+            if job.remote_project_path and not self.remote_project_paths.get(job.server):
+                self.remote_project_paths[job.server] = job.remote_project_path
         self.check_max_simultaneous_jobs_limit(job.server)
         job.execute()
         self.save_restart_dict()
