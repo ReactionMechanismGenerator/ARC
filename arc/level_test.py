@@ -83,6 +83,20 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level.solvent, 'water')
         self.assertEqual(level.args, {'keyword': {'general': 'iop(99/33=1)'}, 'block': {}})
 
+    def test_lower_preserves_case_sensitive_block_args(self):
+        """Test that Level.lower() keeps the case of the ASE execution block args (paths, commands, queues)"""
+        level = Level(method='UMA',
+                      args={'block': {'python': '/home/User/.conda/envs/UMA_env/bin/python',
+                                      'env_setup': 'module load CUDA/12.1; conda activate UMA_env',
+                                      'queue': 'GPU_Long',
+                                      'general': 'Extra Block'}})
+        self.assertEqual(level.method, 'uma')
+        self.assertEqual(level.args['block']['python'], '/home/User/.conda/envs/UMA_env/bin/python')
+        self.assertEqual(level.args['block']['env_setup'], 'module load CUDA/12.1; conda activate UMA_env')
+        self.assertEqual(level.args['block']['queue'], 'GPU_Long')
+        # a non-execution block arg is still lowercased as before
+        self.assertEqual(level.args['block']['general'], 'extra block')
+
     def test_equal(self):
         """Test identifying equal levels."""
         level_1 = Level(method='b3lyp', basis='def2tzvp', auxiliary_basis='aug-def2-svp',
