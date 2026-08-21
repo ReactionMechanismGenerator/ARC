@@ -116,12 +116,15 @@ def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1):
 def apply_constraints(atoms: Atoms, constraints_data: list):
     """
     Apply internal constraints to the Atoms object.
+
+    ARC's constraint atom indices are 1-indexed (that is what Gaussian's modredundant section and
+    xTB's $constrain block consume); ASE's FixInternals is 0-indexed.
     """
     if not constraints_data:
         return
     bonds, angles, dihedrals = list(), list(), list()
     for constraint in constraints_data:
-        indices = constraint[0]
+        indices = [index - 1 for index in constraint[0]]
         if len(indices) == 2:
             bonds.append([constraint[1], indices])
         elif len(indices) == 3:

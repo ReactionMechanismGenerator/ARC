@@ -11,8 +11,12 @@ from arc.common import get_logger, read_yaml_file, save_yaml_file
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
-from arc.imports import settings
+from arc.imports import ase_submit, settings
 from arc.settings.settings import ARC_PYTHON, UMA_LATEST_MODEL, find_executable
+
+servers = settings['servers']
+submit_filenames = settings['submit_filenames']
+t_max_format = settings['t_max_format']
 
 if TYPE_CHECKING:
     from arc.level import Level
@@ -188,6 +192,25 @@ class ASEAdapter(JobAdapter):
             
         return ARC_PYTHON or 'python'
 
+    def determine_constraints(self) -> List[Tuple[List[int], float]]:
+        """
+        Determine the internal coordinate constraints to apply.
+
+        A directed rotor scan is spawned by the Scheduler as one constrained optimization per
+        dihedral point, but ``Scheduler.run_job()`` always passes ``constraints=None`` and hands the
+        adapter ``torsions`` + ``dihedrals`` instead. Without translating those into a constraint the
+        "scan" is an unconstrained optimization repeated at every point, and every point relaxes back
+        to the same minimum, giving a flat V(phi). Torsions are 0-indexed; ARC constraints are
+        1-indexed (as in the xTB and Gaussian adapters).
+
+        Returns:
+            List[Tuple[List[int], float]]: The constraints, as (1-indexed atom indices, value) pairs.
+        """
+        if self.constraints or self.job_type != 'directed_scan' or not self.torsions or not self.dihedrals:
+            return self.constraints
+        return [([index + 1 for index in torsion], dihedral)
+                for torsion, dihedral in zip(self.torsions, self.dihedrals)]
+
     def write_input_file(self) -> None:
         """
         Write the input file for ase_script.py.
@@ -198,7 +221,7 @@ class ASEAdapter(JobAdapter):
             'charge': self.charge,
             'multiplicity': self.multiplicity,
             'is_ts': self.species[0].is_ts if self.species else False,
-            'constraints': self.constraints,
+            'constraints': self.determine_constraints(),
             'irc_direction': self.irc_direction,
             'settings': self.determine_settings(),
         }
@@ -242,23 +265,26 @@ class ASEAdapter(JobAdapter):
     def execute_queue(self) -> None:
         """
         Execute a job to the server's queue.
+
+        ``set_files()`` wrote the files and ``JobAdapter.execute()`` uploaded them, so all that is
+        left here is the submission itself, through the same path every other adapter uses.
         """
-        self.write_input_file()
-        self.write_submit_script()
-        self.set_files()
-        if self.server_adapter is not None:
-            for file_dict in self.files_to_upload:
-                self.server_adapter.upload_file(remote_path=file_dict['remote'],
-                                               local_path=file_dict['local'])
-            self.server_adapter.submit_job(self.remote_path)
+        self.legacy_queue_execution()
 
     def set_files(self) -> None:
         """
-        Set files to be uploaded and downloaded.
+        Set files to be uploaded and downloaded. Writes the files if needed.
         """
         # 1. Upload
         if self.execution_type != 'incore':
-            self.files_to_upload.append(self.get_file_property_dictionary(file_name='submit.sh'))
+            # ``JobAdapter.execute()`` calls ``upload_files()`` *before* ``execute_queue()``, and
+            # ``_initialize_adapter()`` calls this method while the job is being constructed, so a
+            # queue job's files have to be written here - as the Gaussian, Orca and xTB adapters do
+            # - or the upload raises "InputError: Cannot upload a non-existing file".
+            # An incore job is not uploaded and writes its input in ``execute_incore()``.
+            self.write_submit_script()
+            self.files_to_upload.append(self.get_file_property_dictionary(file_name=self.determine_submit_filename()))
+            self.write_input_file()
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='input.yml'))
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='ase_script.py',
                                                                          local=self.script_path))
@@ -277,14 +303,119 @@ class ASEAdapter(JobAdapter):
         """
         pass
 
+    def determine_submit_config(self) -> dict:
+        """
+        Determine the cluster submission knobs for this job, taken from the level's ``args['block']``.
+
+        Recognized keys (all optional):
+
+        - ``env_setup``: shell lines to run on the compute node before the ASE script, e.g.
+          ``conda activate uma_env``. Note that ARC lowercases level args, so a case-sensitive
+          module name must be sourced from a file on the server rather than written inline.
+        - ``gpu_resource``: a scheduler GPU request, appended to the PBS ``select`` statement
+          (e.g. ``ngpus=1``) or used as the Slurm ``--gres`` value (e.g. ``gpu:1``).
+        - ``python``: the python executable **on the server**. ``self.python_executable`` is
+          resolved against the ARC host's conda envs and generally does not exist on a remote server.
+        - ``queue``: the queue to submit to, if not already set on the job or in the server settings.
+
+        Returns:
+            dict: The resolved submit configuration.
+        """
+        block = (self.args or dict()).get('block', dict()) or dict()
+        default_queue, _ = next(iter(servers.get(self.server, dict()).get('queues', dict()).items()), (None, None))
+        return {'queue': self.queue or block.get('queue') or default_queue,
+                'env_setup': block.get('env_setup', ''),
+                'gpu_resource': block.get('gpu_resource', ''),
+                'python': block.get('python', ''),
+                }
+
+    def determine_submit_filename(self) -> str:
+        """
+        Return the filename ARC will submit for this job.
+
+        A queue-executed PBS/Slurm job must be written under the scheduler-specific name that
+        ``submit_job()`` invokes (``submit_filenames``, e.g. ``submit.sl`` for Slurm), or the
+        submission fails because the file it names is not on disk. Everything else uses the plain
+        ``submit.sh`` the bare script is written to.
+
+        Returns:
+            str: The submit-script filename.
+        """
+        cluster_soft = servers.get(self.server, dict()).get('cluster_soft', '') if self.server is not None else ''
+        if self.execution_type != 'incore' and cluster_soft.lower() in ('pbs', 'slurm'):
+            return submit_filenames[cluster_soft]
+        return 'submit.sh'
+
+    def get_queue_submit_script(self, command: str, config: dict, cluster_soft: str) -> str:
+        """
+        Compose a cluster submit script for a queue-executed ASE job.
+
+        Formats the server-independent ``ase_submit`` template (in ``arc/settings/submit.py``,
+        keyed by cluster software) with this job's resources and submit config. The thread-pool
+        exports pin the numerical libraries (torch, NumPy) to the cores the scheduler granted, so a
+        shared node is not oversubscribed.
+
+        Args:
+            command (str): The command running the ASE script on the compute node.
+            config (dict): The output of ``determine_submit_config()``.
+            cluster_soft (str): The lowercased cluster software name ('pbs' or 'slurm').
+
+        Returns:
+            str: The submit script content.
+        """
+        if cluster_soft not in ase_submit:
+            raise NotImplementedError(f"No ASE submit template for cluster software '{cluster_soft}'. "
+                                      f"Available templates: {list(ase_submit.keys())}")
+        memory = int(self.submit_script_memory) if isinstance(self.submit_script_memory, (int, float)) \
+            else self.submit_script_memory
+        time_format = next((v for k, v in t_max_format.items() if k.lower() == cluster_soft), 'hours')
+        pwd = self.local_path if self.server is None or str(self.server).lower() == 'local' else self.remote_path
+        queue, gpu_resource = config['queue'], config['gpu_resource']
+        format_kwargs = {'name': self.job_server_name, 'cpus': self.cpu_cores, 'memory': memory,
+                         't_max': self.format_max_job_time(time_format=time_format), 'pwd': pwd,
+                         'env_setup': config['env_setup'], 'command': command}
+        if cluster_soft == 'pbs':
+            format_kwargs['queue_directive'] = f'#PBS -q {queue}\n' if queue else ''
+            format_kwargs['gpu_select'] = f':{gpu_resource}' if gpu_resource else ''
+        else:
+            format_kwargs['queue_directive'] = f'#SBATCH -p {queue}\n' if queue else ''
+            format_kwargs['gpu_directive'] = f'#SBATCH --gres={gpu_resource}\n' if gpu_resource else ''
+        return ase_submit[cluster_soft].format(**format_kwargs)
+
     def write_submit_script(self) -> None:
         """
         Write the submission script.
+
+        An incore job only has to invoke the ASE script. A queue job additionally needs cluster
+        scheduler directives, an environment setup preamble (``conda activate uma_env`` for UMA), a
+        server-side python executable, and - for a GPU run - a GPU resource request; a bare
+        ``#!/bin/bash`` script carries none of those and lands on the queue's defaults with a python
+        path that only exists on the ARC host. See ``determine_submit_config()`` for the knobs.
         """
-        remote_script_path = os.path.join(self.remote_path, 'ase_script.py')
-        command = f"{self.python_executable} {remote_script_path} --yml_path {self.remote_path}"
-        content = f"#!/bin/bash\n\n{command}\n"
-        with open(os.path.join(self.local_path, 'submit.sh'), 'w') as f:
+        config = self.determine_submit_config()
+        cluster_soft = servers.get(self.server, dict()).get('cluster_soft', '').lower() \
+            if self.server is not None else ''
+        queue_job = self.execution_type != 'incore' and cluster_soft in ('pbs', 'slurm')
+        if queue_job and not config['python']:
+            logger.warning(f"Job {self.job_name} is submitted to {self.server}, but no server-side python "
+                           f"was given in args['block']['python']; falling back to {self.python_executable}, "
+                           f"which was resolved on this machine and may not exist there.")
+        python_executable = config['python'] or self.python_executable
+        if queue_job:
+            # trsh_job_queue() skips queues already in attempted_queues; record the one we submit to
+            # here, as JobAdapter.write_submit_script() does, so a failed submission moves on.
+            if config['queue'] and config['queue'] not in self.attempted_queues:
+                self.attempted_queues.append(config['queue'])
+            # The script cd's into the job directory, so address the ASE script relative to it.
+            command = f'{python_executable} "$JOB_DIR/ase_script.py" --yml_path "$JOB_DIR"'
+            content = self.get_queue_submit_script(command=command, config=config, cluster_soft=cluster_soft)
+        else:
+            # A job with no server (and hence no remote path) runs out of its local directory.
+            path = self.remote_path or self.local_path
+            remote_script_path = os.path.join(path, 'ase_script.py')
+            command = f"{python_executable} {remote_script_path} --yml_path {path}"
+            content = f"#!/bin/bash\n\n{command}\n"
+        with open(os.path.join(self.local_path, self.determine_submit_filename()), 'w') as f:
             f.write(content)
 
     def parse_results(self) -> None:
