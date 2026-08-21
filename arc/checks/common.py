@@ -43,7 +43,7 @@ def get_i_from_job_name(job_name: str) -> int | None:
     Get the conformer or tsg index from the job name.
 
     Args:
-        job_name (str): The job name, e.g., 'conformer12' or 'tsg5'.
+        job_name (str): The job name, e.g., 'conf_opt_12', 'conf_sp_3', or 'tsg5'.
 
     Returns:
         int | None: The corresponding conformer or tsg index.
