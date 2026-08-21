@@ -150,6 +150,29 @@ For multiline blocks:
              MaxIter 500
            end
 
+Running ASE / UMA jobs on a cluster
+-----------------------------------
+
+For an ASE-backed level (e.g. a UMA/fairchem MLIP), the ``block`` args also carry the knobs ARC
+needs to submit the job to a compute server's queue: ``python`` (the server-side interpreter of the
+calculator's environment), ``env_setup`` (shell commands run before the job, e.g. loading modules
+and activating the conda env), ``queue`` (the queue/partition to submit to), and ``gpu_resource``
+(the scheduler's GPU request, e.g. ``gpu:1`` on Slurm or ``ngpus=1`` on PBS):
+
+.. code-block:: yaml
+
+   level:
+     method: uma
+     args:
+       block:
+         python: /home/User/.conda/envs/UMA_env/bin/python
+         env_setup: module load CUDA/12.1; conda activate UMA_env
+         queue: GPU_Long
+         gpu_resource: gpu:1
+
+Unlike other args, the values of these four keys keep their original case, since they are
+filesystem paths, shell commands, and queue names.
+
 Multireference Methods (MRCI)
 -----------------------------
 

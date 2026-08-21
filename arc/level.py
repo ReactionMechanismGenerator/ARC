@@ -14,6 +14,11 @@ logger = get_logger()
 
 levels_ess, supported_ess = settings['levels_ess'], settings['supported_ess']
 
+# ``block`` args whose values are case-sensitive (filesystem paths, shell commands, queue names) and
+# must not be lowercased along with the rest of a level's args. Consumed by the ASE job adapter when
+# running queue jobs (see ASEAdapter.determine_submit_config).
+CASE_SENSITIVE_BLOCK_ARGS = ('python', 'env_setup', 'queue', 'gpu_resource')
+
 
 class Level(object):
     """
@@ -312,7 +317,8 @@ class Level(object):
                     if not isinstance(new_val2, str):
                         raise ValueError(f'All entries in the args argument must be str, int, or float types.\n'
                                          f'Got {new_val2} which is a {type(new_val2)} in {self.args}.')
-                    args[key1.lower()][key2.lower()] = new_val2.lower()
+                    keep_case = key1.lower() == 'block' and key2.lower() in CASE_SENSITIVE_BLOCK_ARGS
+                    args[key1.lower()][key2.lower()] = new_val2 if keep_case else new_val2.lower()
             elif isinstance(val1, str):
                 args[key1.lower()]['general'] = val1.lower()
             elif isinstance(val1, (list, tuple)):

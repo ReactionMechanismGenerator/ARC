@@ -125,6 +125,68 @@ wait
 }
 
 
+# Submission scripts for queue-executed ASE (e.g. UMA/fairchem MLIP) jobs, keyed by cluster
+# scheduler type. These are server-independent templates. ASEAdapter.get_queue_submit_script()
+# formats them with: name, cpus, memory, t_max, pwd, env_setup, command, and the optional
+# directive fields queue_directive/gpu_directive (Slurm) or queue_directive/gpu_select (PBS),
+# each rendered as an empty string when the job does not request it. ``pwd`` is the job's
+# submission directory (the remote path, or the local path for a 'local' server).
+ase_submit = {
+    'slurm': """#!/bin/bash -l
+
+#SBATCH -J {name}
+{queue_directive}#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -t {t_max}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
+{gpu_directive}
+. ~/.bashrc
+
+cd "{pwd}"
+JOB_DIR="$(pwd)"  # resolve the submission directory to an absolute path for the ASE script below
+
+export OMP_NUM_THREADS={cpus}
+export MKL_NUM_THREADS={cpus}
+export OPENBLAS_NUM_THREADS={cpus}
+
+{env_setup}
+
+touch initial_time
+
+{command}
+
+touch final_time
+""",
+    'pbs': """#!/bin/bash -l
+
+#PBS -N {name}
+{queue_directive}#PBS -l select=1:ncpus={cpus}:mem={memory}mb{gpu_select}
+#PBS -l walltime={t_max}
+#PBS -o out.txt
+#PBS -e err.txt
+
+. ~/.bashrc
+
+cd "{pwd}"
+JOB_DIR="$(pwd)"  # resolve the submission directory to an absolute path for the ASE script below
+
+export OMP_NUM_THREADS={cpus}
+export MKL_NUM_THREADS={cpus}
+export OPENBLAS_NUM_THREADS={cpus}
+
+{env_setup}
+
+touch initial_time
+
+{command}
+
+touch final_time
+""",
+}
+
+
 # Submission scripts stored as a dictionary with server and software as primary and secondary keys
 submit_scripts = {
     'local': {
