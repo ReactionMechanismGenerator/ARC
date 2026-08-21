@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import arc.parser.parser as parser
 from arc import plotter
-from arc.checks.common import get_i_from_job_name, is_conformer_job, sum_time_delta
+from arc.checks.common import get_conformer_job_name, get_i_from_job_name, is_conformer_job, sum_time_delta
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
@@ -1098,7 +1098,7 @@ class Scheduler(object):
         elif conformer is not None:
             # Running a conformer DFT job. Append differently to job_dict.
             self.running_jobs[label] = list() if label not in self.running_jobs else self.running_jobs[label]
-            self.running_jobs[label].append(f'{job_type}_{conformer}')  # mark as a running job
+            self.running_jobs[label].append(get_conformer_job_name(job_type, conformer))  # mark as a running job
             if 'conf_opt' not in self.job_dict[label]:
                 self.job_dict[label]['conf_opt'] = dict()
             if 'conf_sp' not in self.job_dict[label] and job_type == 'conf_sp':
@@ -4131,7 +4131,10 @@ class Scheduler(object):
                             and ('tsg' not in job_description or job_description['tsg'] is None):
                         self.running_jobs[spc_label].append(job_description['job_name'])
                     elif 'conformer' in job_description:
-                        self.running_jobs[spc_label].append(f'conformer{job_description["conformer"]}')
+                        # Emit the same name the live path uses (e.g. 'conf_opt_0'),
+                        # not the fossil 'conformer{i}' that no consumer of running_jobs accepts.
+                        self.running_jobs[spc_label].append(get_conformer_job_name(job_description['job_type'],
+                                                                                   job_description['conformer']))
                     elif 'tsg' in job_description:
                         self.running_jobs[spc_label].append(f'tsg{job_description["tsg"]}')
                     for species in self.species_list:
@@ -4162,9 +4165,16 @@ class Scheduler(object):
                             and ('tsg' not in job_description or job_description['tsg'] is None):
                         self.job_dict[spc_label][job_description['job_type']][job_description['job_name']] = job
                     elif 'conformer' in job_description and job_description['conformer'] is not None:
+                        # File the job under its actual job_type ('conf_opt' or 'conf_sp'), the same
+                        # key the live path uses (see run_job) and the same key get_completed_incore_jobs
+                        # reads back -- filing a conf_sp job under 'conf_opt' would crash the first sweep
+                        # with KeyError: 'conf_sp'.
+                        conf_job_type = job_description['job_type']
                         if 'conf_opt' not in self.job_dict[spc_label].keys():
                             self.job_dict[spc_label]['conf_opt'] = dict()
-                        self.job_dict[spc_label]['conf_opt'][int(job_description['conformer'])] = job
+                        if conf_job_type == 'conf_sp' and 'conf_sp' not in self.job_dict[spc_label].keys():
+                            self.job_dict[spc_label]['conf_sp'] = dict()
+                        self.job_dict[spc_label][conf_job_type][int(job_description['conformer'])] = job
                         # don't generate additional conformers for this species
                         self.dont_gen_confs.append(spc_label)
                     elif 'tsg' in job_description and job_description['tsg'] is not None:
