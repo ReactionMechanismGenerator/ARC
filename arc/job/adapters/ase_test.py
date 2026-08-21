@@ -16,10 +16,11 @@ from ase import Atoms
 from ase.calculators.emt import EMT
 
 from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
-from arc.job.adapters.ase_adapter import ASEAdapter
+from arc.job.adapters.ase_adapter import ASEAdapter, servers
 from arc.parser.parser import parse_1d_scan_coords, parse_1d_scan_energies
 from arc.species.species import ARCSpecies
-from arc.job.adapters.scripts.ase_script import (is_linear,
+from arc.job.adapters.scripts.ase_script import (apply_constraints,
+                                                 is_linear,
                                                  merge_scan_branches,
                                                  numpy_vibrational_analysis,
                                                  relaxed_torsion_scan,
@@ -122,6 +123,71 @@ class TestASEAdapter(unittest.TestCase):
         self.assertTrue(any('input.yml' in f['local'] for f in self.job_2.files_to_upload))
         self.assertTrue(any('ase_script.py' in f['local'] for f in self.job_2.files_to_upload))
         self.assertTrue(any('output.yml' in f['local'] for f in self.job_2.files_to_download))
+
+    def test_set_files_writes_the_files_of_a_queue_job(self):
+        """Test that constructing a queue job already writes its submit script and input file"""
+        # JobAdapter.execute() calls upload_files() before execute_queue(), so the files must be on
+        # disk once the job object exists, not when it is executed.
+        xyz = {'symbols': ('O', 'H', 'H'),
+               'isotopes': (16, 1, 1),
+               'coords': ((0.0, 0.0, 0.0), (0.0, 0.75, 0.58), (0.0, -0.75, 0.58))}
+        fake_server = {'test_server': {'cluster_soft': 'PBS', 'un': 'test_user'}}
+        # arc.job.adapter and arc.job.adapters.ase_adapter share this one dict object.
+        with patch.dict(servers, fake_server):
+            job_3 = ASEAdapter(execution_type='queue',
+                               job_type='directed_scan',
+                               project='test_3',
+                               project_directory=os.path.join(self.project_directory, 'test_3'),
+                               species=[ARCSpecies(label='H2O', xyz=xyz)],
+                               args={'keyword': {'calculator': 'xtb'},
+                                     'block': {'queue': 'test_q',
+                                               'env_setup': 'conda activate uma_env',
+                                               'python': '/remote/python'}},
+                               server='test_server',
+                               testing=True)
+        submit_path = os.path.join(job_3.local_path, 'submit.sh')
+        self.assertTrue(os.path.isfile(submit_path))
+        self.assertTrue(os.path.isfile(os.path.join(job_3.local_path, 'input.yml')))
+        # Every file the job says it will upload must exist, or ssh.upload_file() raises an InputError.
+        for file_dict in job_3.files_to_upload:
+            self.assertTrue(os.path.isfile(file_dict['local']), msg=f"missing {file_dict['file_name']}")
+        with open(submit_path, 'r') as f:
+            content = f.read()
+        self.assertIn('#PBS -q test_q', content)
+        self.assertIn('conda activate uma_env', content)
+        self.assertIn('/remote/python', content)
+
+    def test_set_files_does_not_write_for_an_incore_job(self):
+        """Test that an incore job writes no submit script (it writes its input when it executes)"""
+        self.assertFalse(os.path.isfile(os.path.join(self.job_1.local_path, 'submit.sh')))
+        self.assertTrue(all('submit.sh' not in f['local'] for f in self.job_1.files_to_upload))
+
+    def test_determine_constraints(self):
+        """Test that a directed scan derives a 1-indexed dihedral constraint from torsions/dihedrals"""
+        xyz = {'symbols': ('O', 'H', 'H'),
+               'isotopes': (16, 1, 1),
+               'coords': ((0.0, 0.0, 0.0), (0.0, 0.75, 0.58), (0.0, -0.75, 0.58))}
+        job = ASEAdapter(execution_type='incore',
+                         job_type='directed_scan',
+                         project='test_c',
+                         project_directory=os.path.join(self.project_directory, 'test_c'),
+                         species=[ARCSpecies(label='H2O', xyz=xyz)],
+                         torsions=[[0, 1, 2, 3]],
+                         dihedrals=[60.0],
+                         args={'keyword': {'calculator': 'xtb'}},
+                         testing=True)
+        # torsions are 0-indexed; the returned constraint must be 1-indexed, as xTB/Gaussian expect.
+        self.assertEqual(job.determine_constraints(), [([1, 2, 3, 4], 60.0)])
+
+    def test_apply_constraints_converts_to_zero_indexed(self):
+        """Test that apply_constraints translates ARC's 1-indexed dihedral to ASE's 0-indexed FixInternals"""
+        from ase import Atoms
+        atoms = Atoms('C4', positions=[(0.0, 0.0, 0.0), (1.5, 0.0, 0.0),
+                                       (2.0, 1.4, 0.0), (3.5, 1.4, 0.0)])
+        apply_constraints(atoms, [([1, 2, 3, 4], 90.0)])
+        self.assertEqual(len(atoms.constraints), 1)
+        dihedrals = atoms.constraints[0].todict()['kwargs']['dihedrals_deg']
+        self.assertEqual(dihedrals, [[90.0, [0, 1, 2, 3]]])
 
     def test_parse_results(self):
         """Test parsing dummy output YAML back into object attributes"""
