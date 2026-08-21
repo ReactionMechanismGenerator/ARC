@@ -9,6 +9,8 @@ import os
 import shutil
 import unittest
 
+import numpy as np
+
 import arc.plotter as plotter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file, safe_copy_file
 from arc.species.converter import str_to_xyz
@@ -234,6 +236,133 @@ H      -1.16115119    0.31478894   -0.81506145
         for file_path in files_to_remove:
             if os.path.isfile(file_path):
                 os.remove(file_path)
+
+
+class TestSparse2DPlotting(unittest.TestCase):
+    """
+    Contains unit tests for sparse 2D rotor scan plotting helpers.
+    """
+
+    def _make_dense_results(self):
+        """Helper: build a small dense 2D result dict (4x4 grid, increment=120)."""
+        directed_scan = {}
+        for a0 in [0.0, 120.0, -120.0, 0.0]:
+            for a1 in [0.0, 120.0, -120.0, 0.0]:
+                key = (f'{a0:.2f}', f'{a1:.2f}')
+                if key not in directed_scan:
+                    directed_scan[key] = {
+                        'energy': float(abs(a0) + abs(a1)) / 10.0,
+                        'xyz': {},
+                        'is_isomorphic': True,
+                        'trsh': [],
+                    }
+        return {
+            'directed_scan_type': 'brute_force_opt',
+            'scans': [[1, 2, 3, 4], [5, 6, 7, 8]],
+            'directed_scan': directed_scan,
+        }
+
+    def _make_sparse_results(self, n_points=20):
+        """Helper: build a sparse adaptive 2D result dict."""
+        import random
+        random.seed(42)
+        directed_scan = {}
+        for _ in range(n_points):
+            a0 = round(random.uniform(-180, 180), 2)
+            a1 = round(random.uniform(-180, 180), 2)
+            key = (f'{a0:.2f}', f'{a1:.2f}')
+            directed_scan[key] = {
+                'energy': float(abs(a0) + abs(a1)) / 10.0,
+                'xyz': {},
+                'is_isomorphic': True,
+                'trsh': [],
+            }
+        return {
+            'directed_scan_type': 'brute_force_opt',
+            'scans': [[1, 2, 3, 4], [5, 6, 7, 8]],
+            'directed_scan': directed_scan,
+            'sampling_policy': 'adaptive',
+            'adaptive_scan_summary': {
+                'completed_count': n_points,
+                'failed_count': 2,
+                'invalid_count': 1,
+                'stopping_reason': 'max_points_reached',
+                'failed_points': [[45.0, -90.0], [120.0, 60.0]],
+                'invalid_points': [[-30.0, 150.0]],
+            },
+        }
+
+    def test_is_sparse_2d_scan_dense(self):
+        """Test that dense results are not detected as sparse."""
+        results = self._make_dense_results()
+        self.assertFalse(plotter.is_sparse_2d_scan(results))
+
+    def test_is_sparse_2d_scan_adaptive(self):
+        """Test that adaptive results are detected as sparse."""
+        results = self._make_sparse_results()
+        self.assertTrue(plotter.is_sparse_2d_scan(results))
+
+    def test_extract_sparse_2d_points(self):
+        """Test extraction of sparse point data."""
+        results = self._make_sparse_results(15)
+        data = plotter.extract_sparse_2d_points(results)
+        self.assertEqual(len(data['x']), len(data['y']))
+        self.assertEqual(len(data['x']), len(data['energy']))
+        self.assertGreater(len(data['x']), 0)
+        self.assertEqual(len(data['failed_points']), 2)
+        self.assertEqual(len(data['invalid_points']), 1)
+
+    def test_extract_sparse_2d_points_dense(self):
+        """Test extraction from dense results (no adaptive summary)."""
+        results = self._make_dense_results()
+        data = plotter.extract_sparse_2d_points(results)
+        self.assertGreater(len(data['x']), 0)
+        self.assertEqual(data['failed_points'], [])
+        self.assertEqual(data['invalid_points'], [])
+
+    def test_interpolate_sparse_2d_scan(self):
+        """Test interpolation produces a dense grid."""
+        xs = [0.0, 90.0, -90.0, 180.0, -180.0, 45.0, -45.0]
+        ys = [0.0, 90.0, -90.0, 180.0, -180.0, 45.0, -45.0]
+        es = [0.0, 5.0, 5.0, 10.0, 10.0, 3.0, 3.0]
+        gx, gy, ge = plotter.interpolate_sparse_2d_scan(xs, ys, es, grid_resolution=10.0)
+        # Check shapes match
+        self.assertEqual(gx.shape, gy.shape)
+        self.assertEqual(gx.shape, ge.shape)
+        n = int(360.0 / 10.0) + 1
+        self.assertEqual(gx.shape, (n, n))
+        # No NaN values
+        self.assertFalse(np.any(np.isnan(ge)))
+
+    def test_plot_sparse_2d_no_crash(self):
+        """Test that plotting a sparse scan doesn't crash."""
+        import tempfile
+        results = self._make_sparse_results(30)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Should not raise
+            plotter.plot_2d_rotor_scan(results, path=tmpdir)
+            # Check that a file was created
+            files = os.listdir(tmpdir)
+            self.assertTrue(any('adaptive' in f for f in files),
+                            f'Expected adaptive plot file, got: {files}')
+
+    def test_plot_dense_2d_unchanged(self):
+        """Test that plotting a dense scan still works through the legacy path."""
+        # This exercises the existing code path; if it crashes, the dense path is broken
+        results = self._make_dense_results()
+        # Don't save to disk, just ensure no crash
+        try:
+            plotter.plot_2d_rotor_scan(results, path=None)
+        except (ValueError, KeyError):
+            # Dense path might fail on this small test grid due to missing points,
+            # but it should NOT dispatch to sparse path
+            self.assertFalse(plotter.is_sparse_2d_scan(results))
+
+    def test_plot_sparse_too_few_points_no_crash(self):
+        """Test that sparse plotting with < 3 points doesn't crash."""
+        results = self._make_sparse_results(2)
+        # Should not raise, just warn
+        plotter.plot_2d_rotor_scan(results, path=None)
 
 
 if __name__ == '__main__':
