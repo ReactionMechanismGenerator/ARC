@@ -1527,6 +1527,47 @@ H      -1.82570782    0.42754384   -0.56130718"""
         recorded = sched.species_dict['TS_dirscan'].rotors_dict[0]['directed_scan'][('45.00',)]
         self.assertTrue(recorded['is_isomorphic'])
 
+    def test_check_directed_scan_job_parses_energy_from_a_real_log(self):
+        """check_directed_scan_job must record a float energy parsed from the real ESS output file.
+
+        The parsers made by parser.make_parser() take a ``log_file_path`` argument; calling one with
+        ``path=`` raises a TypeError that leaves every rotor unsuccessful, so no HinderedRotor block
+        reaches Arkane and the thermo silently degrades to RRHO. No parser is mocked here.
+        """
+        h2o2_xyz = str_to_xyz("""O       0.68416100    0.00000000    0.02026600
+        O      -0.68416100    0.00000000    0.02026600
+        H       0.87768200    0.75828100   -0.44584400
+        H      -0.87768200   -0.75828100   -0.44584400""")
+        ts_spc = ARCSpecies(label='TS_dirscan_e', is_ts=True, xyz=h2o2_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'directed_scan': {}}}
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_dirscan_e_elect')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_dirscan_e_elect', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+
+        job_mock = MagicMock()
+        job_mock.job_status = [None, {'status': 'done'}]
+        job_mock.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2.out')
+        job_mock.pivots = [1, 2]
+        job_mock.dihedrals = [45.0]
+        job_mock.ess_trsh_methods = []
+
+        sched.check_directed_scan_job(label='TS_dirscan_e', job=job_mock)
+
+        recorded = sched.species_dict['TS_dirscan_e'].rotors_dict[0]['directed_scan'][('45.00',)]
+        self.assertIsInstance(recorded['energy'], float)
+        self.assertAlmostEqual(recorded['energy'], -398031.18523281615, places=3)
+
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_troubleshoot_scan_job_skips_isomorphism_for_ts(self, mock_run_opt):
         """troubleshoot_scan_job must not call check_xyz_isomorphism for a TS when applying 'change conformer'."""

@@ -3399,7 +3399,7 @@ class Scheduler(object):
                 if rotor_dict['pivots'] == job.pivots:
                     key = tuple(f'{dihedral:.2f}' for dihedral in job.dihedrals)
                     rotor_dict['directed_scan'][key] = {'energy': parser.parse_e_elect(
-                        path=job.local_path_to_output_file),
+                        log_file_path=job.local_path_to_output_file),
                         'xyz': xyz,
                         'is_isomorphic': is_isomorphic,
                         'trsh': job.ess_trsh_methods,
