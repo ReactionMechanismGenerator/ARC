@@ -127,7 +127,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.imports</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.level</span><span class="w"> </span><span class="kn">import</span> <span class="n">Level</span><span class="p">,</span> <span class="n">assign_frequency_scale_factor</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">_registered_job_adapters</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.ssh</span><span class="w"> </span><span class="kn">import</span> <span class="n">SSHClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.ssh</span><span class="w"> </span><span class="kn">import</span> <span class="n">SSHClient</span><span class="p">,</span> <span class="n">delete_check_files_on_servers</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.output</span><span class="w"> </span><span class="kn">import</span> <span class="n">write_output_yml</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.processor</span><span class="w"> </span><span class="kn">import</span> <span class="n">process_arc_project</span><span class="p">,</span> <span class="n">resolve_neb_level</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.reaction</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCReaction</span>
@@ -716,8 +716,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">output</span>
         <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">,</span> <span class="s1">&#39;output&#39;</span><span class="p">,</span> <span class="s1">&#39;status.yml&#39;</span><span class="p">),</span> <span class="n">content</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
 
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">keep_checks</span><span class="p">:</span>
-            <span class="n">delete_check_files</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">clean_check_files</span><span class="p">(</span><span class="n">remote_project_paths</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">remote_project_paths</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">delete_leftovers</span><span class="p">()</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">save_project_info_file</span><span class="p">()</span>
@@ -1053,6 +1052,23 @@
 
         <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Using harmonic frequencies scaling factor: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span><span class="si">}</span><span class="s1"> &#39;</span>
                     <span class="sa">f</span><span class="s1">&#39;(source: </span><span class="si">{</span><span class="n">factor_source</span><span class="si">}</span><span class="s1">).&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ARC.clean_check_files">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.clean_check_files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean_check_files</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_project_paths</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Delete ESS checkfiles, both locally and on the servers this project ran jobs on.</span>
+<span class="sd">        Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            remote_project_paths (dict, optional): Keys are server names, values are the respective remote</span>
+<span class="sd">                                                   paths of the project&#39;s directory on that server.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">keep_checks</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">delete_check_files</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">)</span>
+        <span class="n">delete_check_files_on_servers</span><span class="p">(</span><span class="n">remote_project_paths</span> <span class="ow">or</span> <span class="nb">dict</span><span class="p">())</span></div>
 
 
 <div class="viewcode-block" id="ARC.delete_leftovers">

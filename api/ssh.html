@@ -76,6 +76,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.address"><code class="docutils literal notranslate"><span class="pre">SSHClient.address</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.un"><code class="docutils literal notranslate"><span class="pre">SSHClient.un</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.key"><code class="docutils literal notranslate"><span class="pre">SSHClient.key</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.connection_attempts"><code class="docutils literal notranslate"><span class="pre">SSHClient.connection_attempts</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient._ssh"><code class="docutils literal notranslate"><span class="pre">SSHClient._ssh</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient._sftp"><code class="docutils literal notranslate"><span class="pre">SSHClient._sftp</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.change_mode"><code class="docutils literal notranslate"><span class="pre">SSHClient.change_mode()</span></code></a></li>
@@ -85,6 +86,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.connect"><code class="docutils literal notranslate"><span class="pre">SSHClient.connect()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.delete_job"><code class="docutils literal notranslate"><span class="pre">SSHClient.delete_job()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.delete_jobs"><code class="docutils literal notranslate"><span class="pre">SSHClient.delete_jobs()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.delete_remote_check_files"><code class="docutils literal notranslate"><span class="pre">SSHClient.delete_remote_check_files()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.download_file"><code class="docutils literal notranslate"><span class="pre">SSHClient.download_file()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.find_package"><code class="docutils literal notranslate"><span class="pre">SSHClient.find_package()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.list_available_nodes"><code class="docutils literal notranslate"><span class="pre">SSHClient.list_available_nodes()</span></code></a></li>
@@ -96,6 +98,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.check_connections"><code class="docutils literal notranslate"><span class="pre">check_connections()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.check_job_status_in_stdout"><code class="docutils literal notranslate"><span class="pre">check_job_status_in_stdout()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.delete_all_arc_jobs"><code class="docutils literal notranslate"><span class="pre">delete_all_arc_jobs()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.delete_check_files_on_servers"><code class="docutils literal notranslate"><span class="pre">delete_check_files_on_servers()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="local.html">arc.job.local</a></li>
@@ -150,11 +153,17 @@
 Used for giving commands, uploading, and downloading files.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">SSHClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient" title="Link to this definition"></a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">SSHClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connection_attempts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1440</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient" title="Link to this definition"></a></dt>
 <dd><p>This is a class for communicating with remote servers via SSH.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>server</strong> (<em>str</em>) – The server name as specified in ARCs’s settings file under <code class="docutils literal notranslate"><span class="pre">servers</span></code> as a key.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>server</strong> (<em>str</em>) – The server name as specified in ARCs’s settings file under <code class="docutils literal notranslate"><span class="pre">servers</span></code> as a key.</p></li>
+<li><p><strong>connection_attempts</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of times to try connecting to the server,
+waiting a minute between attempts. The default keeps trying
+for 24 hours, which is appropriate while jobs are running.
+Pass a low number where blocking is worse than giving up.</p></li>
+</ul>
 </dd>
 </dl>
 <dl class="py attribute">
@@ -197,6 +206,17 @@ Used for giving commands, uploading, and downloading files.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.job.ssh.SSHClient.connection_attempts">
+<span class="sig-name descname"><span class="pre">connection_attempts</span></span><a class="headerlink" href="#arc.job.ssh.SSHClient.connection_attempts" title="Link to this definition"></a></dt>
+<dd><p>The number of times to try connecting to the server.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
 </dd>
 </dl>
 </dd></dl>
@@ -301,6 +321,20 @@ under a directory.``True`` for recursively change.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>jobs</strong> (<em>list</em><em>[</em><em>str</em><em> | </em><em>int</em><em>]</em><em>, </em><em>optional</em>) – Specific ARC job IDs to delete.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.job.ssh.SSHClient.delete_remote_check_files">
+<span class="sig-name descname"><span class="pre">delete_remote_check_files</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.delete_remote_check_files"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.delete_remote_check_files" title="Link to this definition"></a></dt>
+<dd><p>Delete ESS checkfiles under a remote directory (recursively).
+They usually take up lots of space and are not needed after ARC terminates.
+Pass <code class="docutils literal notranslate"><span class="pre">True</span></code> to the <code class="docutils literal notranslate"><span class="pre">keep_checks</span></code> flag in ARC to avoid deleting check files.
+The local counterpart of this method is <code class="docutils literal notranslate"><span class="pre">arc.common.delete_check_files()</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>remote_path</strong> (<em>str</em>) – The remote directory path under which checkfiles will be deleted.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -449,6 +483,22 @@ Useful when terminating ARC while some (ghost) jobs are still running.</p>
 <li><p><strong>server_list</strong> (<em>list</em>) – List of servers to delete ARC jobs from.</p></li>
 <li><p><strong>jobs</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – Specific ARC job IDs to delete.</p></li>
 </ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.ssh.delete_check_files_on_servers">
+<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">delete_check_files_on_servers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_project_paths</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#delete_check_files_on_servers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.delete_check_files_on_servers" title="Link to this definition"></a></dt>
+<dd><p>Delete ESS checkfiles from an ARC project’s directory on all servers it ran jobs on.
+The local counterpart of this function is <code class="docutils literal notranslate"><span class="pre">arc.common.delete_check_files()</span></code>.
+Errors are only logged and never raised: this runs once ARC is done with the science,
+an unreachable server at that point is an inconvenience, not a reason to lose a run.
+Only a single connection attempt is made per server for the same reason.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>remote_project_paths</strong> (<em>dict</em>) – Keys are server names, values are the respective remote paths
+of the project’s directory on that server.</p>
 </dd>
 </dl>
 </dd></dl>

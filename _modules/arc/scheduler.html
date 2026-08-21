@@ -307,6 +307,8 @@
 <span class="sd">    Attributes:</span>
 <span class="sd">        project (str): The project&#39;s name. Used for naming the working directory.</span>
 <span class="sd">        servers (list): A list of servers used for the present project.</span>
+<span class="sd">        remote_project_paths (dict): Keys are servers used for the present project, values are the respective</span>
+<span class="sd">                                     remote paths of the project&#39;s directory on that server.</span>
 <span class="sd">        species_list (list): Contains input :ref:`ARCSpecies &lt;species&gt;` objects (both species and TSs).</span>
 <span class="sd">        species_dict (dict): Keys are labels, values are :ref:`ARCSpecies &lt;species&gt;` objects.</span>
 <span class="sd">        rxn_list (list): Contains input :ref:`ARCReaction &lt;reaction&gt;` objects.</span>
@@ -450,6 +452,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">report_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>  <span class="c1"># init time for reporting status every 1 hr</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_last_status_payload</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">servers</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">remote_project_paths</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="o">=</span> <span class="n">composite_method</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">conformer_opt_level</span> <span class="o">=</span> <span class="n">conformer_opt_level</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">conformer_sp_level</span> <span class="o">=</span> <span class="n">conformer_sp_level</span>
@@ -1220,8 +1223,11 @@
             <span class="k">if</span> <span class="s1">&#39;tsg&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">job_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">job_dict</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="s1">&#39;tsg&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">job_dict</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="s1">&#39;tsg&#39;</span><span class="p">][</span><span class="n">tsg</span><span class="p">]</span> <span class="o">=</span> <span class="n">job</span>  <span class="c1"># save job object</span>
-        <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">server</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">job</span><span class="o">.</span><span class="n">server</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">server</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">server</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">server</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">server</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">remote_project_path</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">remote_project_paths</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">server</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">remote_project_paths</span><span class="p">[</span><span class="n">job</span><span class="o">.</span><span class="n">server</span><span class="p">]</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">remote_project_path</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">check_max_simultaneous_jobs_limit</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">server</span><span class="p">)</span>
         <span class="n">job</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span></div>

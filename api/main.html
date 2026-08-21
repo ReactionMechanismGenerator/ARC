@@ -121,6 +121,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.main.ARC.check_arkane_level_of_theory"><code class="docutils literal notranslate"><span class="pre">ARC.check_arkane_level_of_theory()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.main.ARC.check_freq_scaling_factor"><code class="docutils literal notranslate"><span class="pre">ARC.check_freq_scaling_factor()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.main.ARC.check_project_name"><code class="docutils literal notranslate"><span class="pre">ARC.check_project_name()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.main.ARC.clean_check_files"><code class="docutils literal notranslate"><span class="pre">ARC.clean_check_files()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.main.ARC.delete_leftovers"><code class="docutils literal notranslate"><span class="pre">ARC.delete_leftovers()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.main.ARC.determine_ess_settings"><code class="docutils literal notranslate"><span class="pre">ARC.determine_ess_settings()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.main.ARC.determine_unique_species_labels"><code class="docutils literal notranslate"><span class="pre">ARC.determine_unique_species_labels()</span></code></a></li>
@@ -924,6 +925,19 @@ otherwise, and if <code class="docutils literal notranslate"><span class="pre">c
 <dt class="sig sig-object py" id="arc.main.ARC.check_project_name">
 <span class="sig-name descname"><span class="pre">check_project_name</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/main.html#ARC.check_project_name"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.main.ARC.check_project_name" title="Link to this definition"></a></dt>
 <dd><p>Check the validity of the project name.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.main.ARC.clean_check_files">
+<span class="sig-name descname"><span class="pre">clean_check_files</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_project_paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/main.html#ARC.clean_check_files"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.main.ARC.clean_check_files" title="Link to this definition"></a></dt>
+<dd><p>Delete ESS checkfiles, both locally and on the servers this project ran jobs on.
+Pass <code class="docutils literal notranslate"><span class="pre">True</span></code> to the <code class="docutils literal notranslate"><span class="pre">keep_checks</span></code> flag in ARC to avoid deleting check files.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>remote_project_paths</strong> (<em>dict</em><em>, </em><em>optional</em>) – Keys are server names, values are the respective remote
+paths of the project’s directory on that server.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">

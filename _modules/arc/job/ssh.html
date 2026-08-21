@@ -105,6 +105,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shlex</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
@@ -160,16 +161,24 @@
 
 <span class="sd">    Args:</span>
 <span class="sd">        server (str): The server name as specified in ARCs&#39;s settings file under ``servers`` as a key.</span>
+<span class="sd">        connection_attempts (int, optional): The number of times to try connecting to the server,</span>
+<span class="sd">                                             waiting a minute between attempts. The default keeps trying</span>
+<span class="sd">                                             for 24 hours, which is appropriate while jobs are running.</span>
+<span class="sd">                                             Pass a low number where blocking is worse than giving up.</span>
 
 <span class="sd">    Attributes:</span>
 <span class="sd">        server (str): The server name as specified in ARCs&#39;s settings file under ``servers`` as a key.</span>
 <span class="sd">        address (str): The server&#39;s address.</span>
 <span class="sd">        un (str): The username to use on the server.</span>
 <span class="sd">        key (str): A path to a file containing the RSA SSH private key to the server.</span>
+<span class="sd">        connection_attempts (int): The number of times to try connecting to the server.</span>
 <span class="sd">        _ssh (paramiko.SSHClient): A high-level representation of a session with an SSH server.</span>
 <span class="sd">        _sftp (paramiko.sftp_client.SFTPClient): SFTP client used to perform remote file operations.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">server</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">server</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
+                 <span class="n">connection_attempts</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1440</span><span class="p">,</span>  <span class="c1"># Continue trying for 24 hrs (24 hr * 60 min/hr).</span>
+                 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">server</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;A server name must be specified&#39;</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">server</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">servers</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
@@ -178,6 +187,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">address</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">][</span><span class="s1">&#39;address&#39;</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">un</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">][</span><span class="s1">&#39;un&#39;</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">key</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">][</span><span class="s1">&#39;key&#39;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection_attempts</span> <span class="o">=</span> <span class="n">connection_attempts</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_sftp</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;paramiko&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">WARNING</span><span class="p">)</span>
@@ -465,9 +475,8 @@
 <span class="sd">            ServerError: Cannot connect to the server with maximum times to try</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">times_tried</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="n">max_times_to_try</span> <span class="o">=</span> <span class="mi">1440</span>  <span class="c1"># continue trying for 24 hrs (24 hr * 60 min/hr)...</span>
         <span class="n">interval</span> <span class="o">=</span> <span class="mi">60</span>  <span class="c1"># wait 60 sec between trials</span>
-        <span class="k">while</span> <span class="n">times_tried</span> <span class="o">&lt;</span> <span class="n">max_times_to_try</span><span class="p">:</span>
+        <span class="k">while</span> <span class="n">times_tried</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection_attempts</span><span class="p">:</span>
             <span class="n">times_tried</span> <span class="o">+=</span> <span class="mi">1</span>
             <span class="k">try</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_sftp</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_connect</span><span class="p">()</span>
@@ -481,7 +490,8 @@
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Successfully connected to </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1"> at the </span><span class="si">{</span><span class="n">times_tried</span><span class="si">}</span><span class="s1"> trial.&#39;</span><span class="p">)</span>
                 <span class="k">return</span>
-            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">interval</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">times_tried</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection_attempts</span><span class="p">:</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">interval</span><span class="p">)</span>
         <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not connect to server </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1"> even after </span><span class="si">{</span><span class="n">times_tried</span><span class="si">}</span><span class="s1"> trials.&#39;</span><span class="p">)</span></div>
 
 
@@ -629,6 +639,30 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">)</span></div>
 
 
+<div class="viewcode-block" id="SSHClient.delete_remote_check_files">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.delete_remote_check_files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete_remote_check_files</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Delete ESS checkfiles under a remote directory (recursively).</span>
+<span class="sd">        They usually take up lots of space and are not needed after ARC terminates.</span>
+<span class="sd">        Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.</span>
+<span class="sd">        The local counterpart of this method is ``arc.common.delete_check_files()``.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            remote_path (str): The remote directory path under which checkfiles will be deleted.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">remote_path</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">quoted_path</span> <span class="o">=</span> <span class="n">shlex</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">remote_path</span><span class="p">)</span>
+        <span class="c1"># Both the existence test and the deletion are done in a single quoted command:</span>
+        <span class="c1"># a separate existence check would have to quote the path just as carefully,</span>
+        <span class="c1"># and a directory that isn&#39;t there is a no-op rather than an error worth reporting.</span>
+        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;[ -d </span><span class="si">{</span><span class="n">quoted_path</span><span class="si">}</span><span class="s1"> ] &amp;&amp; find </span><span class="si">{</span><span class="n">quoted_path</span><span class="si">}</span><span class="s1"> -type f -name &quot;*.chk&quot; -delete&#39;</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">stderr</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not delete all check files under </span><span class="si">{</span><span class="n">remote_path</span><span class="si">}</span><span class="s1"> on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">.</span><span class="se">\n</span><span class="s1">Got: </span><span class="si">{</span><span class="n">stderr</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
+
+
     <span class="k">def</span><span class="w"> </span><span class="nf">_check_file_exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                            <span class="n">remote_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
@@ -675,6 +709,31 @@
         <span class="k">if</span> <span class="n">stderr</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span>
                 <span class="sa">f</span><span class="s1">&#39;Cannot create dir for the given path (</span><span class="si">{</span><span class="n">remote_path</span><span class="si">}</span><span class="s1">).</span><span class="se">\n</span><span class="s1">Got: </span><span class="si">{</span><span class="n">stderr</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="delete_check_files_on_servers">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.delete_check_files_on_servers">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">delete_check_files_on_servers</span><span class="p">(</span><span class="n">remote_project_paths</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Delete ESS checkfiles from an ARC project&#39;s directory on all servers it ran jobs on.</span>
+<span class="sd">    The local counterpart of this function is ``arc.common.delete_check_files()``.</span>
+<span class="sd">    Errors are only logged and never raised: this runs once ARC is done with the science,</span>
+<span class="sd">    an unreachable server at that point is an inconvenience, not a reason to lose a run.</span>
+<span class="sd">    Only a single connection attempt is made per server for the same reason.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        remote_project_paths (dict): Keys are server names, values are the respective remote paths</span>
+<span class="sd">                                     of the project&#39;s directory on that server.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">server</span><span class="p">,</span> <span class="n">remote_project_path</span> <span class="ow">in</span> <span class="n">remote_project_paths</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">server</span> <span class="ow">or</span> <span class="n">server</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;local&#39;</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">remote_project_path</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">SSHClient</span><span class="p">(</span><span class="n">server</span><span class="p">,</span> <span class="n">connection_attempts</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="k">as</span> <span class="n">ssh</span><span class="p">:</span>
+                <span class="n">ssh</span><span class="o">.</span><span class="n">delete_remote_check_files</span><span class="p">(</span><span class="n">remote_path</span><span class="o">=</span><span class="n">remote_project_path</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not delete the check files under </span><span class="si">{</span><span class="n">remote_project_path</span><span class="si">}</span><span class="s1"> on </span><span class="si">{</span><span class="n">server</span><span class="si">}</span><span class="s1">.</span><span class="se">\n</span><span class="s1">Got: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
 
 
 

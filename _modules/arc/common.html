@@ -656,8 +656,9 @@
 <a class="viewcode-back" href="../../api/common.html#arc.common.delete_check_files">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">delete_check_files</span><span class="p">(</span><span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Delete ESS checkfiles. They usually take up lots of space and are not needed after ARC terminates.</span>
+<span class="sd">    Delete local ESS checkfiles. They usually take up lots of space and are not needed after ARC terminates.</span>
 <span class="sd">    Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.</span>
+<span class="sd">    The remote counterpart of this function is ``arc.job.ssh.delete_check_files_on_servers()``.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        project_directory (str): The path to the ARC project folder.</span>

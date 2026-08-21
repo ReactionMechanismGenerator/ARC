@@ -521,7 +521,9 @@ you need strict no-resubmission behavior:
    trsh_rotors: false
 
 Use ``keep_checks: true`` when Gaussian checkfiles or other retained files are
-needed for manual diagnosis.
+needed for manual diagnosis. Otherwise ARC deletes checkfiles when it terminates,
+both under the local project directory and under the project's directory on each
+server it ran jobs on.
 
 At times a user might know in advance that a particular additional keyword is
 required for the calculation. In such cases, pass the relevant keyword in the
