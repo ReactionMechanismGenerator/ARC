@@ -67,11 +67,12 @@ def _make_spec(task_id, task_family='conf_opt', engine='mockter', level=None,
     )
 
 
-def _make_mock_sched(project_directory):
+def _make_mock_sched(project_directory, ess_settings=None):
     """Create a mock Scheduler with the attributes PipeCoordinator needs."""
     sched = MagicMock()
     sched.project_directory = project_directory
     sched.server_job_ids = list()
+    sched.ess_settings = ess_settings if ess_settings is not None else {'mockter': ['local']}
     spc = ARCSpecies(label='H2O', smiles='O')
     spc.conformers = [None] * 5
     spc.conformer_energies = [None] * 5
@@ -130,6 +131,62 @@ class TestShouldUsePipe(unittest.TestCase):
     def test_false_when_disabled(self):
         tasks = [_make_spec(f't_{i}') for i in range(15)]
         self.assertFalse(self.coord.should_use_pipe(tasks))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'zeus': {'cluster_soft': 'PBS', 'address': 'z.example.edu', 'un': 'u'}}})
+    def test_false_when_engine_resolves_to_remote_server(self):
+        coord = PipeCoordinator(_make_mock_sched(self.tmpdir, ess_settings={'mockter': ['zeus']}))
+        tasks = [_make_spec(f't_{i}') for i in range(15)]
+        self.assertFalse(coord.should_use_pipe(tasks))
+
+    def _should_use_pipe(self, ess_settings, tasks=None):
+        """Return should_use_pipe() for a scheduler whose ESS settings are ``ess_settings``."""
+        coord = PipeCoordinator(_make_mock_sched(self.tmpdir, ess_settings=ess_settings))
+        return coord.should_use_pipe(tasks if tasks is not None
+                                     else [_make_spec(f't_{i}') for i in range(15)])
+
+    def test_true_when_the_engine_is_not_an_ess(self):
+        """TS-guess methods run in this process and are given no server, which is this machine."""
+        self.assertTrue(self._should_use_pipe({'gaussian': ['local']}))
+
+    def test_false_when_the_engine_names_an_empty_server_list(self):
+        """An ESS available nowhere resolves to nothing, and used to raise IndexError."""
+        self.assertFalse(self._should_use_pipe({'mockter': []}))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'zeus': {'cluster_soft': 'PBS', 'address': 'z.example.edu', 'un': 'u'}}})
+    def test_false_when_the_resolved_server_is_not_configured(self):
+        """An unconfigured server is not known to be this machine, so the pipe is refused."""
+        self.assertFalse(self._should_use_pipe({'mockter': ['not_a_configured_server']}))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'zeus': {'cluster_soft': 'PBS', 'address': 'z.example.edu', 'un': 'u'},
+                        'local': {'cluster_soft': 'PBS', 'un': 'u'}}})
+    def test_the_first_server_decides_even_when_a_later_one_is_local(self):
+        """ARC submits to the first server named, so that is the one the pipe must be judged on."""
+        self.assertFalse(self._should_use_pipe({'mockter': ['zeus', 'local']}))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'local': {'cluster_soft': 'PBS', 'un': 'u'}}})
+    def test_true_when_the_server_is_local_in_another_case(self):
+        """A server name is a settings key whose casing the user chose."""
+        self.assertTrue(self._should_use_pipe({'mockter': ['LOCAL']}))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'local': {'cluster_soft': 'PBS', 'un': 'u'}}})
+    def test_true_when_the_server_is_named_as_a_bare_string(self):
+        """The ESS settings allow one server as a string rather than a one-item list."""
+        self.assertTrue(self._should_use_pipe({'mockter': 'local'}))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'zeus': {'cluster_soft': 'PBS', 'address': 'z.example.edu', 'un': 'u'},
+                        'local': {'cluster_soft': 'PBS', 'un': 'u'}}})
+    def test_a_troubleshooting_server_override_is_honoured(self):
+        """A job moved to another server by troubleshooting does not go through the pipe."""
+        tasks = [_make_spec(f't_{i}') for i in range(15)]
+        for task in tasks:
+            task.args = {'trsh': {'server': 'zeus'}}
+        self.assertFalse(self._should_use_pipe({'mockter': ['local']}, tasks=tasks))
 
 
 class TestSubmitPipeRun(unittest.TestCase):
