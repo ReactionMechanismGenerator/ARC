@@ -67,6 +67,7 @@ class TestArkaneAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.tmpdir = tempfile.mkdtemp(prefix='test_Arkane_')
+        cls.addClassCleanup(shutil.rmtree, cls.tmpdir, ignore_errors=True)
         output_path_1 = os.path.join(cls.tmpdir, 'output_1')
         calcs_path_1 = os.path.join(cls.tmpdir, 'calcs_1')
         output_path_2 = os.path.join(cls.tmpdir, 'output_2')
@@ -390,7 +391,7 @@ class TestArkaneAdapter(unittest.TestCase):
 
     def test_generate_arkane_input(self):
         """Test generating Arkane input"""
-        statmech_dir = os.path.join(ARC_TESTING_PATH, 'arkane_input_tests_delete')
+        statmech_dir = os.path.join(self.tmpdir, 'arkane_input_tests_delete')
         os.makedirs(statmech_dir, exist_ok=True)
         self.arkane_1.generate_arkane_input(statmech_dir=statmech_dir)
         input_path = os.path.join(statmech_dir, 'input.py')
@@ -425,14 +426,6 @@ class TestArkaneAdapter(unittest.TestCase):
         self.assertIn('1 C u0 p1', content)              # correct singlet-carbene adjlist
         self.assertNotIn("SMILES('[CH2]')", content)     # must NOT use the lossy SMILES
         self.assertIn("structure=SMILES('O')", content)  # normal species unchanged
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        """
-        shutil.rmtree(cls.tmpdir, ignore_errors=True)
-        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'arkane_input_tests_delete'), ignore_errors=True)
 
 
 class TestArkaneOutputParsing(unittest.TestCase):
