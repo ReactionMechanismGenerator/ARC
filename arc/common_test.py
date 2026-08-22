@@ -8,6 +8,7 @@ This module contains unit tests for ARC's common module
 import copy
 import datetime
 import os
+import shutil
 import tempfile
 import time
 import unittest
@@ -33,32 +34,10 @@ class TestCommon(unittest.TestCase):
     Contains unit tests for ARC's common module
     """
     @classmethod
-    def _clean_globalized_restart_artifact(cls):
-        """Remove the globalized restart-paths artifact written by
-        :meth:`test_globalize_paths`.
-
-        Called from BOTH ``setUpClass`` (defensive: wipes a stale
-        artifact left behind by a previously interrupted run) and
-        ``tearDownClass`` (the normal cleanup path).  This makes the
-        cleanup self-healing: a Ctrl+C, ``kill``, or hard error during
-        a previous run cannot leave the next run inheriting the prior
-        ``restart_paths_globalized.yml``.
-        """
-        globalized_restart_path = os.path.join(
-            common.ARC_TESTING_PATH, 'restart', '4_globalized_paths',
-            'restart_paths_globalized.yml')
-        if os.path.isfile(globalized_restart_path):
-            try:
-                os.remove(path=globalized_restart_path)
-            except OSError as e:
-                print(f'Could not remove stale globalized restart artifact {globalized_restart_path}: {e}')
-
-    @classmethod
     def setUpClass(cls):
         """
         A method that is run before all unit tests in this class.
         """
-        cls._clean_globalized_restart_artifact()
         cls.maxDiff = None
         cls.default_job_types = {'conf_opt': True,
                                  'opt': True,
@@ -991,19 +970,21 @@ class TestCommon(unittest.TestCase):
 
     def test_globalize_paths(self):
         """Test modifying a file's contents to correct absolute file paths"""
-        project_directory = os.path.join(common.ARC_TESTING_PATH, 'restart', '4_globalized_paths')
+        project_directory = os.path.join(tempfile.mkdtemp(prefix='arc_test_globalize_'), '4_globalized_paths')
+        self.addCleanup(shutil.rmtree, os.path.dirname(project_directory), ignore_errors=True)
+        shutil.copytree(os.path.join(common.ARC_TESTING_PATH, 'restart', '4_globalized_paths'), project_directory)
         restart_path = os.path.join(project_directory, 'restart_paths.yml')
         common.globalize_paths(file_path=restart_path, project_directory=project_directory)
         globalized_restart_path = os.path.join(project_directory, 'restart_paths_globalized.yml')
         content = common.read_yaml_file(globalized_restart_path)
         self.assertEqual(content['output']['restart'], 'Restarted ARC at 2020-02-28 12:51:14.446086; ')
-        self.assertIn('arc/testing/restart/4_globalized_paths/calcs/Species/HCN/freq_a38229/output.out',
+        self.assertIn(os.path.join(project_directory, 'calcs', 'Species', 'HCN', 'freq_a38229', 'output.out'),
                       content['output']['spc']['paths']['freq'])
         self.assertNotIn('gpfs/workspace/users/user', content['output']['spc']['paths']['freq'])
 
         path = '/home/user/runs/ARC/ARC_Project/calcs/Species/H/sp_a4339/output.out'
         new_path = common.globalize_path(path, project_directory)
-        self.assertIn('arc/testing/restart/4_globalized_paths/calcs/Species/H/sp_a4339/output.out', new_path)
+        self.assertIn(os.path.join(project_directory, 'calcs', 'Species', 'H', 'sp_a4339', 'output.out'), new_path)
 
     def test_globalize_path(self):
         """Test rebasing a single path to the current ARC project"""
@@ -1340,13 +1321,14 @@ class TestCommon(unittest.TestCase):
 
     def test_safe_copy_file(self):
         """tests the safe_copy_file() function."""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_safe_copy_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
         source_path = os.path.join(common.ARC_TESTING_PATH, 'freq', 'CO2_xtb.out')
-        destination_path = os.path.join(common.ARC_TESTING_PATH, 'freq', 'CO2_xtb_copy.out')
+        destination_path = os.path.join(scratch_dir, 'CO2_xtb_copy.out')
         common.safe_copy_file(source=source_path, destination=destination_path)
         self.assertTrue(os.path.isfile(destination_path))
         # Check that no error is being raised if we attempt to copy to the same destination.
         common.safe_copy_file(source=source_path, destination=destination_path)
-        os.remove(destination_path)
 
     def test_sort_atoms_in_descending_label_order(self):
         """tests the sort_atoms_in_descending_label_order function"""
@@ -1513,13 +1495,6 @@ class TestCommon(unittest.TestCase):
         for bad_T in (0, -100):
             with self.assertRaises(ValueError):
                 common.calculate_arrhenius_rate_coefficient(A=1e12, n=0.5, Ea=10, T=bad_T, Ea_units='kJ/mol')
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        """
-        cls._clean_globalized_restart_artifact()
 
 
 class TestInitializeLogDeferredWarnings(unittest.TestCase):
