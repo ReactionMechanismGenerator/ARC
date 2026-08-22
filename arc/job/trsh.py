@@ -24,7 +24,7 @@ from arc.exceptions import InputError, SpeciesError, TrshError
 from arc.imports import settings
 from arc.level import Level
 from arc.job.local import execute_command
-from arc.job.ssh import SSHClient
+from arc.job.ssh_pool import borrow_ssh_client
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_smallest_atom_index_in_scan
 from arc.species.converter import (displace_xyz, ics_to_scan_constraints)
@@ -1480,13 +1480,13 @@ def trsh_job_on_server(server: str,
         execute_command(cmd)
         return None, True
     else:
-        with SSHClient(server) as ssh:
+        with borrow_ssh_client(server) as ssh:
             ssh.delete_job(job_id)
 
     # find available node
     logger.error('Troubleshooting by changing node.')
-    ssh = SSHClient(server)
-    nodes = ssh.list_available_nodes()
+    with borrow_ssh_client(server) as ssh:
+        nodes = ssh.list_available_nodes()
     for node in nodes:
         if node not in server_nodes:
             server_nodes.append(node)
@@ -1499,7 +1499,7 @@ def trsh_job_on_server(server: str,
 
     # modify the submit file
     remote_submit_file = os.path.join(remote_path, submit_filenames[cluster_soft])
-    with SSHClient(server) as ssh:
+    with borrow_ssh_client(server) as ssh:
         content = ssh.read_remote_file(remote_file_path=remote_submit_file)
     if cluster_soft.lower() == 'oge':
         node_assign = '#$ -l h='
@@ -1521,7 +1521,7 @@ def trsh_job_on_server(server: str,
     content = ''.join(content)  # convert list into a single string, not to upset paramiko
 
     # resubmit
-    with SSHClient(server) as ssh:
+    with borrow_ssh_client(server) as ssh:
         ssh.upload_file(remote_file_path=os.path.join(remote_path,
                         submit_filenames[cluster_soft]), file_string=content)
     return node, True
