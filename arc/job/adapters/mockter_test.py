@@ -7,9 +7,10 @@ This module contains unit tests of the arc.job.adapters.mockter module
 
 import os
 import shutil
+import tempfile
 import unittest
 
-from arc.common import ARC_TESTING_PATH, read_yaml_file
+from arc.common import read_yaml_file
 from arc.job.adapters.mockter import MockAdapter
 from arc.level import Level
 from arc.reaction.reaction import ARCReaction
@@ -26,32 +27,34 @@ class TestMockAdapter(unittest.TestCase):
         """
         A method that is run before all unit tests in this class.
         """
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_mockter_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
         cls.job_1 = MockAdapter(execution_type='incore',
                                 job_type='sp',
                                 level=Level(method='CCMockSD(T)', basis='cc-pVmockZ'),
                                 project='test',
-                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_MockAdapter_1'),
+                                project_directory=os.path.join(cls.scratch_dir, 'test_MockAdapter_1'),
                                 species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                 testing=True,
                                 )
         cls.job_2 = MockAdapter(job_type='opt',
                                 level=Level(method='CCMockSD(T)', basis='cc-pVmockZ'),
                                 project='test',
-                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_MockAdapter_2'),
+                                project_directory=os.path.join(cls.scratch_dir, 'test_MockAdapter_2'),
                                 species=[ARCSpecies(label='spc2', xyz=['O 0 0 1'], multiplicity=3)],
                                 testing=True,
                                 )
         cls.job_3 = MockAdapter(job_type='freq',
                                 level=Level(method='CCMockSD(T)', basis='cc-pVmockZ'),
                                 project='test',
-                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_MockAdapter_3'),
+                                project_directory=os.path.join(cls.scratch_dir, 'test_MockAdapter_3'),
                                 species=[ARCSpecies(label='spc3', xyz=['O 0 0 1\nH 0 0 0\nH 1 0 0'], is_ts=True)],
                                 testing=True,
                                 )
         cls.job_4 = MockAdapter(job_type='tsg',
                                 level=Level(method='mock)', basis='cc-pVmockZ'),
                                 project='test',
-                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_MockAdapter_4'),
+                                project_directory=os.path.join(cls.scratch_dir, 'test_MockAdapter_4'),
                                 reactions=[ARCReaction(r_species=[ARCSpecies(label='O', smiles='[O]'),
                                                                   ARCSpecies(label='CCC', smiles='CCC')],
                                                        p_species=[ARCSpecies(label='OH', smiles='[OH]'),
@@ -180,7 +183,7 @@ class TestMockAdapter(unittest.TestCase):
             job = MockAdapter(job_type='freq',
                               level=Level(method='mock', basis='cc-pVmockZ'),
                               project='test',
-                              project_directory=os.path.join(ARC_TESTING_PATH, f'test_MockAdapter_freq_{name}'),
+                              project_directory=os.path.join(self.scratch_dir, f'test_MockAdapter_freq_{name}'),
                               species=[ARCSpecies(label=name, xyz=[xyz], multiplicity=multiplicity)],
                               testing=True,
                               )
@@ -189,17 +192,6 @@ class TestMockAdapter(unittest.TestCase):
             self.assertEqual(len(output['freqs']), expected_num_freqs,
                              msg=f'Expected {expected_num_freqs} freqs for the {name} case, '
                                  f'got {output["freqs"]}.')
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
-        """
-        for folder in ['test_MockAdapter_1', 'test_MockAdapter_2', 'test_MockAdapter_3', 'test_MockAdapter_4',
-                       'test_MockAdapter_freq_mono', 'test_MockAdapter_freq_diatomic',
-                       'test_MockAdapter_freq_nonlinear', 'test_MockAdapter_freq_linear']:
-            shutil.rmtree(os.path.join(ARC_TESTING_PATH, folder), ignore_errors=True)
 
 
 if __name__ == '__main__':
