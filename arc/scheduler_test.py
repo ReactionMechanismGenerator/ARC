@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import os
 import shutil
+import tempfile
 from types import SimpleNamespace
 
 
@@ -75,14 +76,34 @@ class TestScheduler(unittest.TestCase):
     """
     Contains unit tests for the Scheduler class
     """
-    @classmethod
-    def setUpClass(cls):
+    def make_project_directory(self, name):
         """
-        A method that is run before all unit tests in this class.
+        Create a unique project directory for the running test and schedule its removal.
+
+        Args:
+            name (str): A descriptive name, used as the directory name prefix.
+
+        Returns:
+            str: The path of the created directory.
         """
-        cls.maxDiff = None
-        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
-        cls.project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage3')
+        projects_path = os.path.join(ARC_PATH, 'Projects')
+        os.makedirs(projects_path, exist_ok=True)
+        project_directory = tempfile.mkdtemp(prefix=f'{name}_', dir=projects_path)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        return project_directory
+
+    def setUp(self):
+        """
+        A method that is run before each unit test in this class.
+
+        The fixtures below are rebuilt per test: many of these tests mutate the schedulers,
+        the species and the jobs they are handed, so a fixture shared across tests (or across
+        xdist workers, each of which runs its own class-level setup) would make the outcome of
+        one test depend on which other tests ran before it.
+        """
+        self.maxDiff = None
+        self.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
+        self.project_directory = self.make_project_directory('arc_project_for_testing_delete_after_usage3')
         xyz1 = str_to_xyz("""C      -0.57422867   -0.01669771    0.01229213
 N       0.82084044    0.08279104   -0.37769346
 H      -1.05737005   -0.84067772   -0.52007494
@@ -90,90 +111,90 @@ H      -1.10211468    0.90879867   -0.23383011
 H      -0.66133128   -0.19490562    1.08785111
 H       0.88047852    0.26966160   -1.37780789
 H       1.27889520   -0.81548721   -0.22940984""")
-        cls.spc1 = ARCSpecies(label='methylamine', smiles='CN', xyz=xyz1)
-        cls.spc2 = ARCSpecies(label='C2H6', smiles='CC')
+        self.spc1 = ARCSpecies(label='methylamine', smiles='CN', xyz=xyz1)
+        self.spc2 = ARCSpecies(label='C2H6', smiles='CC')
         xyz3 = """C       1.11424367   -0.01231165   -0.11493630
 C      -0.07257945   -0.17830906   -0.16010022
 O      -1.38500471   -0.36381519   -0.20928090
 H       2.16904830    0.12689206   -0.07152274
 H      -1.82570782    0.42754384   -0.56130718"""
-        cls.spc3 = ARCSpecies(label='CtripCO', smiles='C#CO', xyz=xyz3)
-        cls.job1 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
-                               species=[cls.spc1], xyz=xyz1, job_type='conf_opt',
-                               conformer=0, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
-                               project_directory=cls.project_directory, job_num=101)
-        cls.job2 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
-                               species=[cls.spc1], xyz=xyz1, job_type='conf_opt',
-                               conformer=1, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
-                               project_directory=cls.project_directory, job_num=102)
-        cls.job3 = job_factory(job_adapter='qchem', project='project_test', ess_settings=cls.ess_settings,
-                               species=[cls.spc2], job_type='freq',
-                               level=Level(repr={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'}),
-                               project_directory=cls.project_directory, job_num=103)
-        cls.job4 = job_factory(job_adapter='gaussian', project='project_test_4', ess_settings=cls.ess_settings,
-                               species=[cls.spc1], xyz=xyz1, job_type='scan', torsions=[[3, 1, 2, 6]], rotor_index=0,
-                               level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
-                               project_directory=cls.project_directory, job_num=104)
-        cls.job_types1 = {'conf_opt': True,
-                          'conf_sp': False,
-                          'opt': True,
-                          'fine': False,
-                          'freq': True,
-                          'sp': True,
-                          'rotors': False,
-                          'orbitals': False,
-                          'lennard_jones': False,
-                          }
-        cls.job_types2 = {'conf_opt': True,
-                          'conf_sp': False,
-                          'opt': True,
-                          'fine': False,
-                          'freq': True,
-                          'sp': True,
-                          'rotors': True,
-                          }
-        cls.sched1 = Scheduler(project='project_test_1', ess_settings=cls.ess_settings,
-                               species_list=[cls.spc1, cls.spc2, cls.spc3],
-                               composite_method=None,
-                               conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
-                               opt_level=Level(repr=default_levels_of_theory['opt']),
-                               freq_level=Level(repr=default_levels_of_theory['freq']),
-                               sp_level=Level(repr=default_levels_of_theory['sp']),
-                               scan_level=Level(repr=default_levels_of_theory['scan']),
-                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
-                               project_directory=cls.project_directory,
-                               testing=True,
-                               job_types=cls.job_types1,
-                               orbitals_level=default_levels_of_theory['orbitals'],
-                               adaptive_levels=None,
-                               )
-        cls.sched2 = Scheduler(project='project_test_2', ess_settings=cls.ess_settings,
-                               species_list=[cls.spc1, cls.spc2, cls.spc3],
-                               composite_method=None,
-                               conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
-                               opt_level=Level(repr=default_levels_of_theory['opt']),
-                               freq_level=Level(repr=default_levels_of_theory['freq']),
-                               sp_level=Level(repr=default_levels_of_theory['sp']),
-                               scan_level=Level(repr=default_levels_of_theory['scan']),
-                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
-                               project_directory=cls.project_directory,
-                               testing=True,
-                               job_types=cls.job_types1,
-                               orbitals_level=default_levels_of_theory['orbitals'],
-                               adaptive_levels=None,
-                               )
-        cls.sched3 = Scheduler(project='project_test_4', ess_settings=cls.ess_settings,
-                               species_list=[cls.spc1],
-                               composite_method=Level(repr='CBS-QB3'),
-                               conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
-                               opt_level=Level(repr=default_levels_of_theory['freq_for_composite']),
-                               freq_level=Level(repr=default_levels_of_theory['freq_for_composite']),
-                               scan_level=Level(repr=default_levels_of_theory['scan_for_composite']),
-                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
-                               project_directory=cls.project_directory,
-                               testing=True,
-                               job_types=cls.job_types2,
-                               )
+        self.spc3 = ARCSpecies(label='CtripCO', smiles='C#CO', xyz=xyz3)
+        self.job1 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
+                                species=[self.spc1], xyz=xyz1, job_type='conf_opt',
+                                conformer=0, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
+                                project_directory=self.project_directory, job_num=101)
+        self.job2 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
+                                species=[self.spc1], xyz=xyz1, job_type='conf_opt',
+                                conformer=1, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
+                                project_directory=self.project_directory, job_num=102)
+        self.job3 = job_factory(job_adapter='qchem', project='project_test', ess_settings=self.ess_settings,
+                                species=[self.spc2], job_type='freq',
+                                level=Level(repr={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'}),
+                                project_directory=self.project_directory, job_num=103)
+        self.job4 = job_factory(job_adapter='gaussian', project='project_test_4', ess_settings=self.ess_settings,
+                                species=[self.spc1], xyz=xyz1, job_type='scan', torsions=[[3, 1, 2, 6]], rotor_index=0,
+                                level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
+                                project_directory=self.project_directory, job_num=104)
+        self.job_types1 = {'conf_opt': True,
+                           'conf_sp': False,
+                           'opt': True,
+                           'fine': False,
+                           'freq': True,
+                           'sp': True,
+                           'rotors': False,
+                           'orbitals': False,
+                           'lennard_jones': False,
+                           }
+        self.job_types2 = {'conf_opt': True,
+                           'conf_sp': False,
+                           'opt': True,
+                           'fine': False,
+                           'freq': True,
+                           'sp': True,
+                           'rotors': True,
+                           }
+        self.sched1 = Scheduler(project='project_test_1', ess_settings=self.ess_settings,
+                                species_list=[self.spc1, self.spc2, self.spc3],
+                                composite_method=None,
+                                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                                opt_level=Level(repr=default_levels_of_theory['opt']),
+                                freq_level=Level(repr=default_levels_of_theory['freq']),
+                                sp_level=Level(repr=default_levels_of_theory['sp']),
+                                scan_level=Level(repr=default_levels_of_theory['scan']),
+                                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                                project_directory=self.project_directory,
+                                testing=True,
+                                job_types=self.job_types1,
+                                orbitals_level=default_levels_of_theory['orbitals'],
+                                adaptive_levels=None,
+                                )
+        self.sched2 = Scheduler(project='project_test_2', ess_settings=self.ess_settings,
+                                species_list=[self.spc1, self.spc2, self.spc3],
+                                composite_method=None,
+                                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                                opt_level=Level(repr=default_levels_of_theory['opt']),
+                                freq_level=Level(repr=default_levels_of_theory['freq']),
+                                sp_level=Level(repr=default_levels_of_theory['sp']),
+                                scan_level=Level(repr=default_levels_of_theory['scan']),
+                                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                                project_directory=self.project_directory,
+                                testing=True,
+                                job_types=self.job_types1,
+                                orbitals_level=default_levels_of_theory['orbitals'],
+                                adaptive_levels=None,
+                                )
+        self.sched3 = Scheduler(project='project_test_4', ess_settings=self.ess_settings,
+                                species_list=[self.spc1],
+                                composite_method=Level(repr='CBS-QB3'),
+                                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                                opt_level=Level(repr=default_levels_of_theory['freq_for_composite']),
+                                freq_level=Level(repr=default_levels_of_theory['freq_for_composite']),
+                                scan_level=Level(repr=default_levels_of_theory['scan_for_composite']),
+                                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                                project_directory=self.project_directory,
+                                testing=True,
+                                job_types=self.job_types2,
+                                )
 
     def test_conformers(self):
         """Test the parse_conformer_energy() and determine_most_stable_conformer() methods"""
@@ -347,6 +368,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
 
     def test_initialize_output_dict(self):
         """Test Scheduler.initialize_output_dict"""
+        self.sched1.output['C2H6']['info'] = 'some text'
         self.assertTrue(self.sched1._does_output_dict_contain_info())
         self.sched1.output = dict()
         self.assertEqual(self.sched1.output, dict())
@@ -745,7 +767,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           'job_types': {'conf_opt': True, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
                             },
                   }
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage6')
+        project_directory = self.make_project_directory('arc_project_for_testing_delete_after_usage6')
         os.makedirs(os.path.join(project_directory, 'output', 'Species', 'nC3H7', 'geometry'), exist_ok=True)
         os.makedirs(os.path.join(project_directory, 'output', 'Species', 'iC3H7', 'geometry'), exist_ok=True)
         os.makedirs(os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry'), exist_ok=True)
@@ -757,7 +779,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                     dst=os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry', 'freq.out'))
         sched = Scheduler(project='test_rxn_e0_check',
                           ess_settings=self.ess_settings,
-                          project_directory=os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage6'),
+                          project_directory=project_directory,
                           rxn_list=[rxn],
                           species_list=rxn.r_species + rxn.p_species + [rxn.ts_species],
                           kinetics_adapter='arkane',
@@ -774,9 +796,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                             job_type='freq',
                             level=Level(repr='B3LYP/6-31G(d,p)'),
                             project='test_project',
-                            project_directory=os.path.join(ARC_PATH,
-                                                           'Projects',
-                                                           'arc_project_for_testing_delete_after_usage6'),
+                            project_directory=project_directory,
                             )
         job_1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_nC3H7-iC3H7.out')
         check_ts(reaction=rxn, verbose=True, job=job_1, checks=['NMD'])
@@ -784,10 +804,8 @@ H      -1.82570782    0.42754384   -0.56130718"""
 
     def test_save_e_elect(self):
         """Test the save_e_elect() method."""
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'save_e_elect')
+        project_directory = self.make_project_directory('save_e_elect')
         e_elect_summary_path = os.path.join(project_directory, 'output', 'e_elect_summary.yml')
-        if os.path.isfile(os.path.join(project_directory, 'output', 'e_elect_summary.yml')):
-            os.remove(os.path.join(project_directory, 'output', 'e_elect_summary.yml'))
         sched = Scheduler(project='test_save_e_elect',
                           ess_settings=self.ess_settings,
                           project_directory=project_directory,
@@ -811,7 +829,6 @@ H      -1.82570782    0.42754384   -0.56130718"""
                               sp_path=os.path.join(ARC_TESTING_PATH, 'sp', 'mehylamine_CCSD(T).out'))
         content = read_yaml_file(e_elect_summary_path)
         self.assertEqual(content, {'formaldehyde': -300621.95378630824, 'mehylamine': -251360.00924747565})
-        shutil.rmtree(project_directory, ignore_errors=True)
 
     def test_species_has_geo_sp_freq(self):
         """Test the species_has_geo() / species_has_sp() / species_has_freq() functions."""
@@ -1762,17 +1779,6 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertIsNot(args['keyword'], level.args['keyword'])
         args['keyword']['dft_grid'] = 'defgrid2'
         self.assertEqual(level.args, {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()})
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
-        """
-        projects = ['arc_project_for_testing_delete_after_usage3', 'arc_project_for_testing_delete_after_usage6']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
 
 
 class TestSpawnTsJobsAdmission(unittest.TestCase):
