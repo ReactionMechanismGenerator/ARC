@@ -3431,6 +3431,17 @@ R1=1.0912"""
         rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
         self._check_atom_connectivity_in_rd_mol_block(spc3.mol, rd_mol_block)
 
+    def test_to_rdkit_mol_reports_a_sanitization_failure(self):
+        """Test that a molecule RDKit refuses to sanitize is reported and still returned"""
+        spc = ARCSpecies(label='CO', smiles='[C-]#[O+]')
+        with self.assertLogs('arc', level='WARNING') as captured:
+            rd_mol = converter.to_rdkit_mol(spc.mol)
+        self.assertIsInstance(rd_mol, rdchem.Mol)
+        log = '\n'.join(captured.output)
+        self.assertIn('AtomValenceException', log)
+        self.assertIn('Explicit valence', log)
+        self.assertIn('unsanitized', log)
+
     def test_xyz_to_ase(self):
         """Test the xyz_to_ase function"""
         atoms_1 = converter.xyz_to_ase(self.xyz1['dict'])
