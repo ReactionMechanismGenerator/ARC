@@ -9,6 +9,7 @@ import numpy as np
 from typing import TYPE_CHECKING
 
 from arc.parser import parser
+from arc.checks.common import is_ts_check_exempt
 from arc.checks.nmd import analyze_ts_normal_mode_displacement
 from arc.common import (ARC_PATH,
                         convert_list_index_0_to_1,
@@ -52,10 +53,8 @@ def check_ts(reaction: ARCReaction,
     """
     Check the TS in terms of energy, normal mode displacement, and IRC.
     Populates the ``TS.ts_checks`` dictionary.
-    Note that the 'freq' check is done in Scheduler.check_negative_freq() and not here.
-
-    Todo:
-        check IRC
+    Note that the 'freq' check is done in Scheduler.check_negative_freq() and not here,
+    and that the 'IRC' check is done in check_irc_species_and_rxn() and not here.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
@@ -97,7 +96,7 @@ def check_ts(reaction: ARCReaction,
             logger.warning(f'Skipping failed normal mode displacement check for TS {reaction.ts_species.label}')
             reaction.ts_species.ts_checks['NMD'] = True
 
-    if 'rotors' in checks or (ts_passed_checks(species=reaction.ts_species, exemptions=['E0', 'warnings', 'IRC'])
+    if 'rotors' in checks or (ts_passed_checks(species=reaction.ts_species, exemptions=['E0', 'warnings'])
                               and job is not None):
         invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction, job,
                                                               rxn_zone_atom_indices=rxn_zone_atom_indices)
@@ -110,6 +109,13 @@ def ts_passed_checks(species: ARCSpecies,
     """
     Check whether the TS species passes all checks other than ones specified in ``exemptions``.
 
+    The 'IRC' check is three-valued: ``True`` means the IRC endpoints correspond to the requested wells,
+    ``False`` means they positively do not, and ``None`` means the check was not performed
+    (e.g., IRC jobs were not requested). Only a ``False`` IRC verdict is considered a failure here.
+
+    A failed 'e_elect' check is excused once 'E0' passed, as determined by
+    ``checks.common.is_ts_check_exempt()``.
+
     Args:
         species (ARCSpecies): The TS species.
         exemptions (list[str], optional): Keys of the TS.ts_checks dict to pass.
@@ -120,7 +126,9 @@ def ts_passed_checks(species: ARCSpecies,
     """
     exemptions = exemptions or list()
     for check, value in species.ts_checks.items():
-        if check not in exemptions and not value and not (check == 'e_elect' and species.ts_checks['E0']):
+        if check in exemptions or (check == 'IRC' and value is None):
+            continue
+        if not value and not is_ts_check_exempt(check, species.ts_checks):
             if verbose:
                 logger.warning(f'TS {species.label} did not pass the all checks, status is:\n{species.ts_checks}')
             return False
@@ -507,6 +515,20 @@ def check_irc_species_and_rxn(xyz_1: dict,
     bond-list comparison if perception fails for either endpoint or if the expected
     reactant/product ``Molecule`` objects are unavailable.
 
+    Sets ``rxn.ts_species.ts_checks['IRC']`` to ``True`` if the endpoints match the reactants
+    and products, to ``False`` only if a comparison was actually performed and the endpoints
+    did not match, and leaves it as ``None`` (unknown) if no comparison could be performed
+    (e.g., the expected connectivity of the reaction is unavailable). ``False`` means
+    "checked and failed", never "could not check".
+
+    A negative isomorphism result alone does not set ``False``: it is treated as inconclusive
+    and the bond-list comparison decides. The verdict remains ``None`` if that comparison
+    cannot be carried out.
+
+    The bond-list comparison perceives bonds without assuming that an endpoint is a single
+    connected molecule, so a dissociated fragment stays dissociated instead of being bonded
+    to its nearest neighbour regardless of distance.
+
     Args:
         xyz_1 (dict): The coordinates of IRC species 1.
         xyz_2 (dict): The coordinates of IRC species 2.
@@ -514,7 +536,7 @@ def check_irc_species_and_rxn(xyz_1: dict,
     """
     if rxn is None:
         return None
-    rxn.ts_species.ts_checks['IRC'] = False
+    rxn.ts_species.ts_checks['IRC'] = None
     xyz_1, xyz_2 = check_xyz_dict(xyz_1), check_xyz_dict(xyz_2)
 
     # Primary check: molecular graph isomorphism
@@ -541,15 +563,19 @@ def check_irc_species_and_rxn(xyz_1: dict,
     # Fallback: bond-list connectivity comparison
     try:
         r_bonds, p_bonds = rxn.get_bonds()
-    except Exception:
-        logger.debug('Could not get reaction bonds for IRC fallback check.')
+    except Exception as e:
+        logger.warning(f'Could not get the reaction bonds of {rxn} for the IRC fallback check, '
+                       f'got:\n{e.__class__.__name__}: {e}\n'
+                       f'The IRC check of {rxn.ts_species.label} is therefore left undetermined.')
         return
     dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
-    dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1, elements=xyz_1['symbols'])
-    dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2, elements=xyz_2['symbols'])
+    dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1, elements=xyz_1['symbols'], n_fragments=0)
+    dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2, elements=xyz_2['symbols'], n_fragments=0)
     if _check_equal_bonds_list(dmat_bonds_1, r_bonds) and _check_equal_bonds_list(dmat_bonds_2, p_bonds) \
             or _check_equal_bonds_list(dmat_bonds_2, r_bonds) and _check_equal_bonds_list(dmat_bonds_1, p_bonds):
         rxn.ts_species.ts_checks['IRC'] = True
+    else:
+        rxn.ts_species.ts_checks['IRC'] = False
 
 
 def _perceive_irc_fragments(xyz: dict,
