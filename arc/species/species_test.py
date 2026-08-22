@@ -829,6 +829,25 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertIsNone(spc.cheap_conformer)
         self.assertEqual(spc.conformers, list())
 
+    def test_get_cheap_conformer_from_mol_list_only(self):
+        """Test that a polyatomic species holding only a ``mol_list`` still gets a cheap conformer.
+
+        ``is_monoatomic()``, ``is_diatomic()`` and the ``generate`` branch of ``get_xyz()`` all
+        accept this state, so the polyatomic branch must accept it too rather than raise.
+        """
+        spc = ARCSpecies(label='propane', smiles='CCC', compute_thermo=False)
+        spc.mol_list = spc.mol_list or [spc.mol]
+        spc.mol = None
+        xyz = spc.get_xyz(generate=True)
+        self.assertIsNotNone(xyz)
+        self.assertEqual(sorted(xyz['symbols']), sorted(('C', 'C', 'C') + ('H',) * 8))
+
+        # Neither a graph nor coordinates: a warning, not an exception.
+        no_structure = ARCSpecies(label='propane', smiles='CCC', compute_thermo=False)
+        no_structure.mol, no_structure.mol_list = None, None
+        no_structure.get_cheap_conformer()
+        self.assertIsNone(no_structure.cheap_conformer)
+
     def test_as_dict(self):
         """Test Species.as_dict()"""
         spc_dict = self.spc3.as_dict()
