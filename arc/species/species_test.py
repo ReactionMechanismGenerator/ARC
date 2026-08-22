@@ -1821,7 +1821,8 @@ H      -1.99779884    0.76292039   -1.08682170"""
 
     def test_append_conformers(self):
         """Test that ARC correctly parses its own conformer files"""
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage4')
+        project_directory = tempfile.mkdtemp(prefix='arc_test_species_conformers_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         xyzs = [{'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
                  'coords': ((1.090687, 0.265168, -0.167063), (2.922041, -1.183357, -0.388849),
                             (2.276555, -0.003739, 0.085435), (2.365448, -1.88781, -0.999146),
@@ -3348,14 +3349,8 @@ H      -1.47626400   -0.10694600   -1.88883800"""
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
+        Delete files created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage4',
-                    os.path.join(ARC_TESTING_PATH, 'gcn_tst')]
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
-
         file_paths = [os.path.join(ARC_PATH, 'nul'), os.path.join(ARC_PATH, 'run.out'),
                       os.path.join(ARC_PATH, 'arc', 'species', 'nul'), os.path.join(ARC_PATH, 'arc', 'species', 'run.out')]
         for file_path in file_paths:

@@ -8,6 +8,7 @@ This module contains unit tests for the arc.checks.nmd module
 import unittest
 import os
 import shutil
+import tempfile
 
 import numpy as np
 
@@ -32,12 +33,14 @@ class TestNMD(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_nmd_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
         cls.generic_job = job_factory(job_adapter='gaussian',
                                       species=[ARCSpecies(label='SPC', smiles='C')],
                                       job_type='composite',
                                       level=Level(method='CBS-QB3'),
                                       project='test_project',
-                                      project_directory=os.path.join(ARC_PATH, 'Projects', 'tmp_nmd_project'),
+                                      project_directory=os.path.join(cls.scratch_dir, 'tmp_nmd_project'),
                                       )
         cls.xyz_1 = {'symbols': ('C', 'N', 'H', 'H', 'H', 'H'),
                      'isotopes': (13, 14, 1, 1, 1, 1),
@@ -939,12 +942,8 @@ class TestNMD(unittest.TestCase):
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
+        Delete files created during these unit tests
         """
-        projects = ['tmp_nmd_project']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
         file_paths = [os.path.join(ARC_PATH, 'arc', 'checks', 'nul'), os.path.join(ARC_PATH, 'arc', 'checks', 'run.out')]
         for file_path in file_paths:
             if os.path.isfile(file_path):

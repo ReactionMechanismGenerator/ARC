@@ -9,9 +9,10 @@ import copy
 import itertools
 import os
 import shutil
+import tempfile
 import unittest
 
-from arc.common import ARC_TESTING_PATH, almost_equal_coords
+from arc.common import almost_equal_coords
 from arc.family import get_reaction_family_products
 from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             are_h_abs_wells_reversed,
@@ -52,6 +53,8 @@ class TestHeuristicsAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_heuristics_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
         cls.oh_xyz = """O 0.0000000 0.0000000 0.1078170
                         H 0.0000000 0.0000000 -0.8625320"""
         cls.h2o_xyz = """O      -0.00032832    0.39781490    0.00000000
@@ -467,7 +470,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn1],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=10,
                                          )
         heuristics_1.execute_incore()
@@ -486,7 +489,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn2],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=10,
                                          )
         heuristics_2.execute_incore()
@@ -504,7 +507,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn3],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=10,
                                          )
         heuristics_3.execute_incore()
@@ -530,7 +533,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn4],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=120,
                                          )
         heuristics_4.execute_incore()
@@ -589,7 +592,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn5],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=120,
                                          )
         heuristics_5.execute_incore()
@@ -641,7 +644,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn6],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=20,
                                          )
         heuristics_6.execute_incore()
@@ -676,7 +679,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn7],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=120,
                                          )
         heuristics_7.execute_incore()
@@ -710,7 +713,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn8],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=120,
                                          )
         heuristics_8.execute_incore()
@@ -849,7 +852,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn9],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=120,
                                          )
         heuristics_9.execute_incore()
@@ -865,7 +868,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                           reactions=[rxn10],
                                           testing=True,
                                           project='test',
-                                          project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                          project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                           dihedral_increment=120,
                                           )
         heuristics_10.execute_incore()
@@ -918,7 +921,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                           reactions=[rxn11],
                                           testing=True,
                                           project='test',
-                                          project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                          project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                           dihedral_increment=30,
                                           )
         heuristics_11.execute_incore()
@@ -941,7 +944,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                           reactions=[rxn12],
                                           testing=True,
                                           project='test',
-                                          project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                          project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                           dihedral_increment=60,
                                           )
         heuristics_12.execute_incore()
@@ -961,7 +964,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                           reactions=[rxn13],
                                           testing=True,
                                           project='test',
-                                          project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                          project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                           dihedral_increment=180,
                                           )
         heuristics_13.execute_incore()
@@ -979,7 +982,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                           reactions=[rxn14],
                                           testing=True,
                                           project='test',
-                                          project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                          project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                           dihedral_increment=180,
                                           )
         heuristics_14.execute_incore()
@@ -997,7 +1000,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                           reactions=[rxn15],
                                           testing=True,
                                           project='test',
-                                          project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                          project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                           dihedral_increment=180,
                                           )
         heuristics_15.execute_incore()
@@ -1022,7 +1025,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                           reactions=[rxn16],
                                           testing=True,
                                           project='test',
-                                          project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                          project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                           dihedral_increment=360,
                                           )
         heuristics_16.execute_incore()
@@ -1049,7 +1052,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                           reactions=[rxn17],
                                           testing=True,
                                           project='test',
-                                          project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                          project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                           dihedral_increment=60,
                                           )
         heuristics_16.execute_incore()
@@ -1069,7 +1072,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn1],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=60,
                                          )
         heuristics_1.execute_incore()
@@ -1088,7 +1091,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn1],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=60,
                                          )
         heuristics_1.execute_incore()
@@ -1107,7 +1110,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn1],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=60,
                                          )
         heuristics_1.execute_incore()
@@ -1123,7 +1126,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn1],
                                          testing=True,
                                          project='test',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics'),
                                          dihedral_increment=120,
                                          )
         heuristics_1.execute_incore()
@@ -1140,7 +1143,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                     reactions=[rxn],
                                     testing=True,
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_carbonyl'))
+                                    project_directory=os.path.join(self.scratch_dir, 'heuristics_carbonyl'))
         adapter.execute_incore()
         self.assertEqual(rxn.family, 'carbonyl_based_hydrolysis')
         self.assertTrue(rxn.ts_species.is_ts)
@@ -1158,7 +1161,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                     reactions=[rxn],
                                     testing=True,
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_ether'))
+                                    project_directory=os.path.join(self.scratch_dir, 'heuristics_ether'))
         adapter.execute_incore()
         self.assertEqual(rxn.family, 'ether_hydrolysis')
         self.assertTrue(rxn.ts_species.is_ts)
@@ -1176,7 +1179,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                     reactions=[rxn],
                                     testing=True,
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_nitrile'))
+                                    project_directory=os.path.join(self.scratch_dir, 'heuristics_nitrile'))
         adapter.execute_incore()
         self.assertEqual(rxn.family, 'nitrile_hydrolysis')
         self.assertTrue(rxn.ts_species.is_ts)
@@ -1201,7 +1204,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn_1],
                                          testing=True,
                                          project='test_1',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_1'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics_1'),
                                          dihedral_increment=120,
                                          )
         heuristics_1.execute_incore()
@@ -1225,7 +1228,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn_2],
                                          testing=True,
                                          project='test_1',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_1'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics_1'),
                                          dihedral_increment=120,
                                          )
         heuristics_2.execute_incore()
@@ -1249,7 +1252,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn_3],
                                          testing=True,
                                          project='test_1',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_1'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics_1'),
                                          dihedral_increment=120,
                                          )
         heuristics_3.execute_incore()
@@ -1272,7 +1275,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                          reactions=[rxn_4],
                                          testing=True,
                                          project='test_1',
-                                         project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_1'),
+                                         project_directory=os.path.join(self.scratch_dir, 'heuristics_1'),
                                          dihedral_increment=120,
                                          )
         heuristics_4.execute_incore()
@@ -2242,15 +2245,6 @@ H      -0.30139889    0.23142254    3.12085495"""
         initial_xyz = str_to_xyz(initial_xyz_str1)
         result = check_ts_bonds(initial_xyz, [7, 8, 9, 2, 4])
         self.assertTrue(result)
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests.
-        """
-        for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile'):
-            shutil.rmtree(os.path.join(ARC_TESTING_PATH, sub), ignore_errors=True)
 
 
 if __name__ == '__main__':
