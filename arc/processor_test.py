@@ -7,11 +7,12 @@ This module contains unit tests for the arc.processor module
 
 import os
 import shutil
+import tempfile
 import unittest
 
 import arc.processor as processor
 from arc.checks.common import TS_IRC_FAILED_MARKER
-from arc.common import ARC_TESTING_PATH, read_yaml_file
+from arc.common import read_yaml_file
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 
@@ -27,6 +28,8 @@ class TestProcessor(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_processor_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
         cls.ch4 = ARCSpecies(label='CH4', smiles='C')
         cls.nh3 = ARCSpecies(label='NH3', smiles='N')
         cls.h = ARCSpecies(label='H', smiles='[H]')
@@ -57,7 +60,7 @@ class TestProcessor(unittest.TestCase):
                             kinetics={'A': 7.18e5, 'n': 2.05, 'Ea': 151.88},
                             )
         rxn_2.ts_species = ARCSpecies(label='TS2', is_ts=True)
-        output_directory = os.path.join(ARC_TESTING_PATH, 'process_kinetics')
+        output_directory = os.path.join(self.scratch_dir, 'process_kinetics')
         reactions_to_compare = processor.compare_rates(rxns_for_kinetics_lib=[rxn_1, rxn_2],
                                                        output_directory=output_directory,
                                                        )
@@ -77,18 +80,6 @@ class TestProcessor(unittest.TestCase):
         content = read_yaml_file(path=kinetics_yml_path)
         self.assertIn(TS_IRC_FAILED_MARKER, content[0]['ts_validation'])
         self.assertNotIn('ts_validation', content[1])
-
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        """
-        directories = [os.path.join(ARC_TESTING_PATH, 'process_kinetics'),
-                      ]
-        for dir_path in directories:
-            if os.path.isdir(dir_path):
-                shutil.rmtree(dir_path)
 
 
 if __name__ == '__main__':
