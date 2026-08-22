@@ -12,10 +12,11 @@ model are available and UMA_RUN_MODEL is set) run the real default uma-s-1p2 mod
 import os
 import shutil
 import sys
+import tempfile
 import unittest
 import unittest.mock
 
-from arc.common import ARC_TESTING_PATH, almost_equal_coords, read_yaml_file, save_yaml_file
+from arc.common import almost_equal_coords, read_yaml_file, save_yaml_file
 from arc.job.adapters.ase_adapter import ASEAdapter
 from arc.level import Level
 from arc.parser.parser import (parse_1d_scan_coords, parse_e_elect, parse_frequencies,
@@ -51,8 +52,8 @@ class TestUMAViaASEAdapter(unittest.TestCase):
     def setUpClass(cls):
         """A method that is run before all unit tests in this class."""
         cls.maxDiff = None
-        cls.base = os.path.join(ARC_TESTING_PATH, 'test_UMA_via_ASE')
-        os.makedirs(cls.base, exist_ok=True)
+        cls.base = tempfile.mkdtemp(prefix='arc_test_uma_')
+        cls.addClassCleanup(shutil.rmtree, cls.base, ignore_errors=True)
         # UMA selected implicitly via the level method.
         cls.job_method = ASEAdapter(execution_type='incore', job_type='sp', project='p',
                                     project_directory=os.path.join(cls.base, 'method'),
@@ -65,11 +66,6 @@ class TestUMAViaASEAdapter(unittest.TestCase):
                                   species=[ARCSpecies(label='EtOH', smiles='CCO')], testing=True)
         for job in (cls.job_method, cls.job_args):
             os.makedirs(job.local_path, exist_ok=True)
-
-    @classmethod
-    def tearDownClass(cls):
-        """A method that is run after all unit tests in this class."""
-        shutil.rmtree(cls.base, ignore_errors=True)
 
     def test_determine_calculator_name(self):
         """Test that the UMA calculator is detected from the level method or from args."""
@@ -153,12 +149,8 @@ class TestUMAViaASEWithModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """A method that is run before all unit tests in this class."""
-        cls.base = os.path.join(ARC_TESTING_PATH, 'test_UMA_via_ASE_model')
-
-    @classmethod
-    def tearDownClass(cls):
-        """A method that is run after all unit tests in this class."""
-        shutil.rmtree(cls.base, ignore_errors=True)
+        cls.base = tempfile.mkdtemp(prefix='arc_test_uma_model_')
+        cls.addClassCleanup(shutil.rmtree, cls.base, ignore_errors=True)
 
     def _job(self, label, job_type, species, **kwargs):
         """Build an incore UMA-via-ASE job."""
