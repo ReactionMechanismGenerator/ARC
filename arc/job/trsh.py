@@ -270,17 +270,26 @@ def determine_ess_status(output_path: str,
             for i, line in enumerate(reverse_lines):
                 if 'ORCA TERMINATED NORMALLY' in line:
                     scf_energy_initial_iteration = None
+                    scf_energy_last_iteration = None
                     # not done yet, things can still go wrong (e.g., SCF energy might blow up)
                     for j, info in enumerate(forward_lines):
                         if 'Starting incremental Fock matrix formation' in info:
-                            while not is_str_float(forward_lines[j + 1].split()[1]):
-                                j += 1
-                            scf_energy_initial_iteration = float(forward_lines[j + 1].split()[1])
+                            # The first SCF iteration line does not necessarily follow immediately: Orca may
+                            # print a SOSCF (or similar) header in between, and such header lines can hold
+                            # fewer than two whitespace-separated tokens. Scan forward for the first line that
+                            # actually holds an iteration energy, and give up quietly if there is none.
+                            k = j + 1
+                            while k < len_forward_lines:
+                                splits = forward_lines[k].split()
+                                if len(splits) > 1 and is_str_float(splits[1]):
+                                    scf_energy_initial_iteration = float(splits[1])
+                                    break
+                                k += 1
                         if 'TOTAL SCF ENERGY' in info:
                             # this value is very close to the scf energy at last iteration and is easier to parse
                             scf_energy_last_iteration = float(forward_lines[j + 3].split()[3])
                             break
-                    if scf_energy_initial_iteration is not None:
+                    if scf_energy_initial_iteration is not None and scf_energy_last_iteration is not None:
                         # Check if final SCF energy makes sense
                         scf_energy_ratio = scf_energy_last_iteration / scf_energy_initial_iteration
                         scf_energy_ratio_threshold = 2  # it is rare that this ratio > 2
@@ -296,7 +305,10 @@ def determine_ess_status(output_path: str,
                         else:
                             done = True
                         break
-                    if scf_energy_initial_iteration is None:
+                    if scf_energy_initial_iteration is None or scf_energy_last_iteration is None:
+                        # Nothing to compare: either no parseable SCF iteration line, or no
+                        # 'TOTAL SCF ENERGY' block was emitted. The run terminated normally,
+                        # so treat it as done rather than raising on an unassigned energy.
                         done = True
                 elif 'ORCA finished by error termination in SCF' in line:
                     keywords = ['SCF']

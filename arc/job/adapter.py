@@ -207,6 +207,17 @@ class JobAdapter(ABC):
         """
         pass
 
+    @property
+    def ess_software(self) -> str:
+        """
+        The electronic-structure software whose output format this adapter's log follows.
+
+        Defaults to the adapter's own name, which is correct for adapters that ARE an ESS.
+        An adapter that wraps an ESS (e.g. a TS-search adapter driving Orca) must override
+        this so that the ESS log parsers, which dispatch on the software name, recognize it.
+        """
+        return self.job_adapter
+
     def execute(self):
         """
         Execute a job.
@@ -847,7 +858,7 @@ class JobAdapter(ABC):
                                                                  species_label=self.species_label,
                                                                  job_type=self.job_type,
                                                                  job_log=self.additional_job_info,
-                                                                 software=self.job_adapter,
+                                                                 software=self.ess_software,
                                                                  )
             if status != 'done' and self.final_time is not None \
                     and datetime.datetime.now() - self.final_time < datetime.timedelta(seconds=30):
@@ -857,7 +868,7 @@ class JobAdapter(ABC):
                                                                      species_label=self.species_label,
                                                                      job_type=self.job_type,
                                                                      job_log=self.additional_job_info,
-                                                                     software=self.job_adapter,
+                                                                     software=self.ess_software,
                                                                      )
         else:
             status, keywords, error, line = '', '', '', ''
