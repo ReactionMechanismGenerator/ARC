@@ -9,6 +9,7 @@ import glob
 import os
 import string
 import sys
+from arc.settings.crest import get_crest_paths
 
 from arc.settings.external_paths import (
     find_goflow_ckpt,
@@ -108,9 +109,14 @@ global_ess_settings = {
 supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase', 'pyscf']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
-# Note: 'goflow' and 'rits' are intentionally NOT in the default — their envs
-# (goflow_env / rits_env + pretrained checkpoints) are heavyweight, so users
-# opt in explicitly via ``ts_adapters: ['goflow', ...]`` in their input.yml.
+# An adapter runs only if it is both registered for the reaction's family in
+# ts_adapters_by_rmg_family (arc/job/adapters/common.py) and listed here.
+# 'goflow', 'rits' and 'crest' are registered per family but are not in this default list,
+# so they are opt-in via ``ts_adapters: ['crest', ...]`` in the input file.
+# 'heuristics' is in this default list, and it is registered for H_Abstraction,
+# XY_Addition_MultipleBond, carbonyl_based_hydrolysis, ether_hydrolysis and nitrile_hydrolysis,
+# so it runs by default for all of those families. XY_Addition_MultipleBond is newly
+# registered for 'heuristics' and 'crest'; of the two, only 'heuristics' is on by default.
 ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
 
 # List here job types to execute by default
@@ -571,3 +577,9 @@ for path in rmg_db_candidates:
     if path and os.path.isdir(path):
         RMG_DB_PATH = path
         break
+
+# CREST is located once and cached. Standalone builds are looked for under /Local/ce_dana;
+# set ARC_CREST_STANDALONE_DIR to another directory to move that search, or to an empty
+# string to skip it.
+CREST_PATH, CREST_ENV_PATH = get_crest_paths()
+
