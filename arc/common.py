@@ -1615,20 +1615,22 @@ def is_xyz_linear(xyz: dict | None) -> bool | None:
     return True
 
 
-def get_angle_in_180_range(angle: float,
+def get_angle_in_180_range(angle: int | float | str,
                            round_to: int | None = 2,
                            ) -> float:
     """
     Get the corresponding angle in the -180 to +180 degree range, [-180, 180)
 
     Args:
-        angle (float): An angle in degrees.
+        angle (int | float | str): An angle in degrees. Accepts a string too, since the Scheduler
+                                   stores rotor dihedrals as ':.2f' strings for YAML restart serialization.
         round_to (int, optional): The number of decimal figures to round the result to.
                                   ``None`` to not round. Default: 2.
 
     Returns:
         float: The corresponding angle in the -180 to +180 degree range.
     """
+    angle = float(angle)
     wrapped = (angle + HALF_CIRCLE) % FULL_CIRCLE - HALF_CIRCLE
     return round(wrapped, round_to) if round_to is not None else wrapped
 

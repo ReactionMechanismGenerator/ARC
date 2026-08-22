@@ -1211,6 +1211,12 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_angle_in_180_range(362), 2)
         self.assertEqual(common.get_angle_in_180_range(1000), -80)
         self.assertEqual(common.get_angle_in_180_range(-1000), 80)
+        # Angles round-tripped through the restart YAML are stored as strings (e.g. the Scheduler's
+        # rotors_dict[i]['original_dihedrals'], saved as ':.2f' strings), so the function must
+        # accept a string angle too.
+        self.assertEqual(common.get_angle_in_180_range('60.00'), 60)
+        self.assertEqual(common.get_angle_in_180_range('181'), -179)
+        self.assertAlmostEqual(common.get_angle_in_180_range('-5.364589', round_to=None), -5.364589)
         self.assertEqual(common.get_angle_in_180_range(247.62), -112.38)
         self.assertEqual(common.get_angle_in_180_range(0), 0)
         self.assertEqual(common.get_angle_in_180_range(180), -180)
