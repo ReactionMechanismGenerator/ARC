@@ -1049,8 +1049,15 @@ def build_ts_opt_tasks(species, label: str, xyzs: list[dict],
 
 def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: list[int],
                               level_dict: dict, job_adapter: str,
-                              memory_mb: int) -> list[TaskSpec]:
-    """Build TaskSpec objects for 1D rotor scan tasks."""
+                              memory_mb: int, scan_res: float | None = None) -> list[TaskSpec]:
+    """
+    Build TaskSpec objects for 1D rotor scan tasks.
+
+    The scan resolution is captured here, at staging time on the ARC host, and carried in each
+    task's payload so the worker runs the resolution ARC intended rather than re-reading whatever
+    ``rotor_scan_resolution`` the worker node's settings happen to hold. When ``scan_res`` is
+    ``None`` the payload omits it and the worker falls back to its own settings default.
+    """
     cores = default_job_settings.get('job_cpu_cores', 8)
     species_dict_payload = species.as_dict()
     tasks = []
@@ -1059,6 +1066,13 @@ def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: list[int],
         torsions = rotor['torsion']
         if isinstance(torsions[0], int):
             torsions = [torsions]
+        input_payload = {
+            'species_dicts': [species_dict_payload],
+            'torsions': torsions,
+            'rotor_index': ri,
+        }
+        if scan_res is not None:
+            input_payload['scan_res'] = scan_res
         tasks.append(TaskSpec(
             task_id=f'{label}_scan_r{ri}',
             task_family='rotor_scan_1d',
@@ -1069,11 +1083,7 @@ def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: list[int],
             level=level_dict,
             required_cores=cores,
             required_memory_mb=memory_mb,
-            input_payload={
-                'species_dicts': [species_dict_payload],
-                'torsions': torsions,
-                'rotor_index': ri,
-            },
+            input_payload=input_payload,
             ingestion_metadata={'rotor_index': ri},
         ))
     return tasks
