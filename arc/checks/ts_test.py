@@ -8,6 +8,7 @@ This module contains unit tests for the arc.checks.ts module
 import unittest
 import os
 import shutil
+import tempfile
 
 import numpy as np
 
@@ -31,6 +32,8 @@ class TestTSChecks(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_ts_checks_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
 
         cls.rms_list_1 = [0.01414213562373095, 0.05, 0.04, 0.5632938842203065, 0.7993122043357026, 0.08944271909999159,
                           0.10677078252031312, 0.09000000000000001, 0.05, 0.09433981132056604]
@@ -103,9 +106,7 @@ class TestTSChecks(unittest.TestCase):
                                job_type='composite',
                                level=Level(method='CBS-QB3'),
                                project='test_project',
-                               project_directory=os.path.join(ARC_PATH,
-                                                              'Projects',
-                                                              'arc_project_for_testing_delete_after_usage4'),
+                               project_directory=os.path.join(cls.scratch_dir, 'job1_project'),
                                )
 
         cls.rxn_3 = ARCReaction(r_species=[ARCSpecies(label='NH3', smiles='N'), ARCSpecies(label='H', smiles='[H]')],
@@ -213,7 +214,7 @@ class TestTSChecks(unittest.TestCase):
                                    (-1.1265684046717404, -0.2344009055503307, -1.0127644068816903))}
 
         cls.species_dict_8 = {spc.label: spc for spc in cls.rxn_8.r_species + cls.rxn_8.p_species + [cls.rxn_8.ts_species]}
-        cls.project_directory_8 = os.path.join(ts.ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage5')
+        cls.project_directory_8 = os.path.join(cls.scratch_dir, 'rxn_8_project')
         cls.output_dict_8 = {'iC3H7': {'paths': {'freq': os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out'),
                                                  'sp': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'),
                                                  'opt': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'),
@@ -856,12 +857,8 @@ class TestTSChecks(unittest.TestCase):
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
+        Delete files created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage4', 'arc_project_for_testing_delete_after_usage5']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
         file_paths = [os.path.join(ARC_PATH, 'arc', 'checks', 'nul'), os.path.join(ARC_PATH, 'arc', 'checks', 'run.out')]
         for file_path in file_paths:
             if os.path.isfile(file_path):
