@@ -48,6 +48,114 @@ ARC recognizes these current job type keys:
 * ``rotors`` - rotor scans;
 * ``irc`` - intrinsic reaction coordinate;
 * ``orbitals`` - molecular orbitals;
+* ``stability`` - wavefunction stability analysis (Gaussian and ORCA, off by default). It runs for
+  a TS and for any other species whose optimization ran with a restricted reference, which is
+  the only reference it can inform: a restricted solution gives the same energy as an
+  unrestricted one if and only if it is stable.
+
+  IT RUNS FROM THE OPTIMIZATION, before the frequency job, the single point, the IRC and the rotor
+  scans of that species, all of which inherit the SCF reference and the geometry the optimization
+  converged to. Those jobs are held until the verdict is in, and it is a single point, so the
+  wait is one job. For a TS an external instability of a restricted reference re-optimizes the
+  species unrestricted, starting from the geometry the first optimization reached, and everything
+  that follows then runs on that one reference and that one geometry - unless ``number_of_radicals``
+  was declared for it, which always wins. Re-optimizing is what makes the change correct: the
+  restricted geometry is a stationary point of the restricted surface only, and a Hessian computed
+  there on the broken-symmetry reference can report imaginary modes belonging to the mismatch
+  rather than to the molecule. At most one re-optimization is run per species, and ARC records it
+  in the restart file so a resumed run does not spawn another. For any other species the verdict
+  is reported in the log and in ``output.yml`` and nothing acts on it; declare
+  ``number_of_radicals = 2`` to run such a species unrestricted throughout, since ARC reads a
+  declaration as open-shell character only above one.
+
+  THE ORBITALS THE RE-OPTIMIZATION STARTS FROM are the analysis' own where the ESS relaxed into the
+  lower solution, and none otherwise. ORCA follows an instability it finds and writes the relaxed
+  orbitals to the analysis job's ``input.gbw``, which is the broken-symmetry solution the
+  re-optimization is meant to sit on. Gaussian's ``stable=(rext,noopt)`` reports an instability
+  without following it, so its checkfile still holds the restricted orbitals; handing those to an
+  unrestricted SCF returns it to the very solution the analysis rejected, since a restricted
+  solution is a stationary point of the unrestricted equations too. ARC therefore drops the
+  checkfile in that case and the job runs ``guess=mix``, whose deliberately symmetry-broken guess
+  is what finds the lower solution.
+
+  On a species that is not a TS the analysis is expected to report ``stable`` nearly every time:
+  well under a few per cent of closed-shell equilibrium geometries are RHF -> UHF unstable. That
+  is the point of running it. A well verified stable has identical restricted and unrestricted
+  energies, so a barrier taken between it and a TS that ARC has made unrestricted is a difference
+  on one surface rather than across two, which cannot otherwise be asserted; and an undeclared
+  singlet biradical, whose restricted energy is simply wrong, is caught by nothing else in ARC.
+
+  Adopting a verdict for a TS changes which biased number is used, not which correct one. The
+  broken-symmetry solution ARC moves to is not a spin eigenfunction; it is spin-contaminated and
+  biased low, while the restricted energy it replaces is biased high, so the true low-spin energy
+  lies between the two. ARC does not project the contamination out. ``arc/checks/spin.py`` holds
+  the Yamaguchi approximate spin-projection arithmetic intended for that, estimating the projected
+  energy from the broken-symmetry and high-spin energies and their ``S**2`` values; no part of the
+  workflow consumes it yet, so the residual error after an adoption is the contamination itself.
+
+  THE ERROR IS ONE-SIDED, and this is the practical consequence. Adoption acts for a TS only, so
+  a TS whose restricted reference was unstable runs unrestricted while the reactants and products
+  it is compared against stay restricted. The contaminated TS energy is the one biased low, and
+  nothing lowers the wells to match, so the barrier the run reports is systematically
+  UNDERestimated by roughly the contamination of the TS. Declaring ``number_of_radicals`` for the
+  wells too, where their character warrants it, is what puts both ends on the same footing;
+
+  IN ORCA the analysis is requested with ``STABPerform``, and ARC always pairs it with
+  ``STABRestartUHFifUnstable true``. With the key set to ``false`` ORCA 6.0.0 prints the verdict
+  and the stability-matrix roots and then aborts in LEANSCF with a BLAS incompatible-matrices
+  error, measured at one and at eight processes and at three and at six roots, so ORCA has no
+  equivalent of Gaussian's ``noopt``, which reports an instability without following it. With the
+  key ``true`` the job terminates normally: ORCA rotates the orbitals of an unstable wavefunction,
+  re-converges the SCF and analyses the result again, so the log holds two analyses with opposite
+  verdicts. ARC reads the verdict of the FIRST one, which is the wavefunction under test; whether
+  the second reached a stable solution is reported separately as ``followed_to_stable``, and the
+  spin expectation value of that relaxed solution as ``s_squared_after_follow``. Only the verdict,
+  the roots and the reference describe the tested wavefunction; every energy and spin value in
+  that log describes the followed one. The ORCA analysis is an SCF post-step rather than a re-read
+  of a converged wavefunction, so ARC hands it the orbitals of the job under test: ORCA names its
+  own orbitals after the input file (``input.gbw``) and cannot read and write one file the way
+  Gaussian reuses a single checkfile, so the previous orbitals are uploaded as ``guess.gbw`` and
+  read with ``!MORead`` and ``%moinp``, while the job's own ``input.gbw`` is what is downloaded
+  and becomes the next job's guess. The ORCA submit templates copy ``guess.gbw`` into the scratch
+  directory and ``input.gbw`` back out; a site running its own ``~/.arc/submit.py`` must do the
+  same or any ORCA job reading a guess will abort on a missing guess file.
+
+  THE TWO CODES TEST THE SAME SPACE. ORCA analyses an RHF/RKS reference in UHF/UKS space and a
+  UHF/UKS reference in UHF/UKS space, both Ms-conserving, and Gaussian's ``stable=(rext,noopt)``
+  uses the same Ms-conserving ``<AA,BB:AA,BB>`` singles matrix for both references. Neither code
+  reaches the spin-flip (GHF) sector, so neither verdict is the weaker one. Measured on four
+  systems the two agreed on every verdict, and at matched functional - ORCA's ``B3LYP/G`` is
+  Gaussian's VWN3 parameterisation, while plain ORCA ``B3LYP`` uses VWN-5 - their lowest roots
+  agreed to under 0.4% on the three systems where both converged to the same SCF solution. On the
+  fourth, a near-dissociated O(3P)...CH3 pair, the two codes converged to DIFFERENT UHF solutions
+  (total energies 0.025 Hartree apart, ``<S**2>`` 1.7488 against 1.700055), so its roots compare
+  two wavefunctions rather than two codes and support no cross-code conclusion.
+
+  ORCA DOES NOT LABEL THE ROOT it reports, so for a restricted reference, whose single matrix
+  spans both the internal and the external sector, the sector is measured rather than assumed: a
+  nominal singlet that relaxes to a stable solution carrying a non-zero ``<S**2>`` broke the spin
+  symmetry, which is an external (RHF -> UHF) instability, while one that relaxes to a stable
+  solution still at ``<S**2>`` of zero moved within the spin-conserving sector, which is an
+  internal instability. A restart that never reached a stable solution measures nothing, and such
+  a verdict is recorded as ``unattributed_instability`` with both flags left undetermined - never
+  as a stable wavefunction, and never as grounds for changing a TS's reference.
+
+  WHICH WAVEFUNCTION IS TESTED is the optimization's, in both ESSs, and the analysis reads it from
+  the orbitals that optimization wrote. Gaussian appends ``guess=read`` and ORCA emits ``!MORead``
+  and ``%moinp`` for every job that holds a checkfile, so in both codes the analysis converges from
+  those orbitals rather than from a fresh guess. Gaussian writes an optimization's converged
+  orbitals to its ``check.chk`` and ORCA writes them to its ``input.gbw``; ARC adopts that file
+  from an ``opt``, ``optfreq`` or ``composite`` job as the species' checkfile, and the analysis is
+  spawned only while the species still holds the one its own optimization wrote. ORCA projects a
+  guess onto the basis set of the job reading it,
+  reporting the projection per atom in the log, so the chain crosses the basis change ARC makes
+  between the optimization and the single point without ARC tracking a level or a basis. A guess
+  reaches every ORCA job that runs an SCF on one starting structure - ``opt``, ``conf_opt``,
+  ``optfreq``, ``scan``, ``freq``, ``sp``, ``conf_sp`` and ``stability`` - and no other, since
+  ARC writes no ORCA input for the remaining job types for a guess to seed. What a chained guess
+  buys is measured: on a C5H10 TS at ``UKS B3LYP/def2-TZVP``, a fresh guess collapsed to the
+  closed-shell solution at ``<S**2>`` of zero while ``!MORead`` held the broken-symmetry solution
+  at ``<S**2>`` of 0.86, 12.7 kcal/mol lower;
 * ``onedmin`` - Lennard-Jones / OneDMin workflow;
 * ``bde`` - bond dissociation energy workflow.
 
@@ -595,6 +703,7 @@ input::
                                'rotors': True,
                                'conf_sp': False,
                                'orbitals': False,
+                               'stability': False,
                                'lennard_jones': False,
                               }
 
@@ -642,6 +751,7 @@ The above code generates the following input file::
       lennard_jones: false
       opt: true
       orbitals: false
+      stability: false
       sp: true
 
     species:
