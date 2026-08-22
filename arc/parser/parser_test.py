@@ -345,6 +345,27 @@ class TestParser(unittest.TestCase):
              [-0.16184923713199378, -0.3376354950974596, 0.787886990928027]], np.float64)
         np.testing.assert_almost_equal(normal_modes_disp[0], expected_normal_modes_disp_4_0)
 
+    def test_get_normal_mode_displacement_returns_the_parsed_displacements(self):
+        """Test that the frequencies and normal mode displacements are returned unchanged."""
+        for log_file_path in [os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log'),
+                              os.path.join(ARC_TESTING_PATH, 'freq', 'output.yml'),
+                              os.path.join(ARC_TESTING_PATH, 'normal_mode', 'TS_0', 'output.out')]:
+            expected_freqs, expected_disp = parser.parse_normal_mode_displacement(log_file_path=log_file_path)
+            parsed_modes = parser.get_normal_mode_displacement(log_file_path=log_file_path, label='TS')
+            self.assertIsNotNone(parsed_modes, msg=log_file_path)
+            np.testing.assert_array_equal(parsed_modes[0], expected_freqs)
+            np.testing.assert_array_equal(parsed_modes[1], expected_disp)
+
+    def test_get_normal_mode_displacement_returns_none_when_no_modes_are_reported(self):
+        """Test that an output file yielding no normal mode displacements returns None, not the (None, None) sentinel."""
+        for file_name in ['orca_neg_freq_ts.out', 'orca_example_freq.log', 'orca6_example.out',
+                          'CH2O_freq_molpro.out', 'C2H6_freq_QChem.out', 'CH2O_freq_terachem.dat',
+                          'yml_no_freqs.yml']:
+            log_file_path = os.path.join(ARC_TESTING_PATH, 'freq', file_name)
+            self.assertEqual(parser.parse_normal_mode_displacement(log_file_path=log_file_path), (None, None))
+            self.assertIsNone(parser.get_normal_mode_displacement(log_file_path=log_file_path), msg=file_name)
+            self.assertIsNone(parser.get_normal_mode_displacement(log_file_path=log_file_path, label='TS'))
+
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""
         path1 = os.path.join(ARC_TESTING_PATH, 'xyz', 'CH3C(O)O.gjf')
