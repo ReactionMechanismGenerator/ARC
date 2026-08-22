@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from mako.template import Template
 
 import arc.plotter as plotter
+from arc.checks.common import get_ts_validation_comment
 from arc.common import ARC_PATH, get_logger, read_yaml_file
 from arc.exceptions import AtomTypeError, InputError
 from arc.imports import incore_commands, settings
@@ -254,6 +255,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.parse_arkane_kinetics_output(statmech_dir)
         for reaction in self.reactions:
             plotter.log_kinetics(reaction.ts_species.label, path=statmech_dir)
+            ts_validation = get_ts_validation_comment(reaction.ts_species)
+            if ts_validation is not None:
+                logger.error(f'The above rate coefficient of reaction {reaction.label} is not validated. '
+                             f'{ts_validation}')
             clean_output_directory(species_path=os.path.join(self.output_directory, 'rxns', reaction.ts_species.label),
                                    is_ts=True)
 
@@ -1325,7 +1330,32 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
         if m_dea:
             kinetics['dEa'] = float(m_dea.group(1))
             kinetics['dEa_units'] = m_dea.group(2) or 'kJ/mol'
+    mark_ts_validation_in_kinetics(reaction=reaction, kinetics=kinetics)
     reaction.kinetics = kinetics
+
+
+def mark_ts_validation_in_kinetics(reaction, kinetics: dict) -> None:
+    """
+    Stamp the TS validation verdict onto a parsed kinetics dictionary.
+
+    Adds a ``ts_validation`` key and appends the marker to the Arrhenius ``comment``. The rate
+    coefficient values are not modified. A TS for which the IRC check was not performed
+    (``None``) or was passed (``True``) leaves ``kinetics`` untouched.
+
+    Args:
+        reaction: The reaction object the kinetics were computed for.
+        kinetics (dict): The parsed Arrhenius kinetics dictionary, modified in place.
+    """
+    ts_species = getattr(reaction, 'ts_species', None)
+    marker = get_ts_validation_comment(ts_species)
+    if marker is None:
+        return
+    kinetics['ts_validation'] = marker
+    comment = kinetics.get('comment', None) or ''
+    kinetics['comment'] = f'{comment}\n{marker}' if comment else marker
+    logger.error(f'Computed a rate coefficient for reaction {reaction.label} although its TS '
+                 f'{ts_species.label} failed the IRC check. {marker}\n'
+                 f'TS checks: {ts_species.ts_checks}')
 
 
 def _parse_conformer_statmech(species, content: str) -> None:

@@ -8,11 +8,13 @@ This module contains unit tests for the arc.checks.ts module
 import unittest
 import os
 import shutil
+from unittest.mock import patch
 
 import numpy as np
 
 import arc.checks.ts as ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists
+from arc.exceptions import ReactionError
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
@@ -271,6 +273,23 @@ class TestTSChecks(unittest.TestCase):
         self.assertFalse(ts.ts_passed_checks(spc))
         self.assertTrue(ts.ts_passed_checks(spc, exemptions=['NMD', 'warnings']))
         spc.ts_checks['e_elect'] = False
+
+    def test_ts_passed_checks_irc(self):
+        """Test that ts_passed_checks() treats the three-valued IRC check correctly."""
+        spc = ARCSpecies(label='TS', is_ts=True)
+        spc.populate_ts_checks()
+        for key in ['E0', 'e_elect', 'freq', 'NMD']:
+            spc.ts_checks[key] = True
+
+        spc.ts_checks['IRC'] = True
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
+        spc.ts_checks['IRC'] = None
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
+        spc.ts_checks['IRC'] = False
+        self.assertFalse(ts.ts_passed_checks(spc, exemptions=['warnings']))
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings', 'IRC']))
 
     def test_check_rxn_e_elect(self):
         """Test the check_rxn_e_elect() function."""
@@ -850,7 +869,82 @@ class TestTSChecks(unittest.TestCase):
                           p_species=[ARCSpecies(label='P_wrong', smiles='O=C(O)C[O]', multiplicity=2)])
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
         ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
-        self.assertFalse(rxn.ts_species.ts_checks['IRC'])
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], False)
+
+    def test_check_irc_bond_list_tier_does_not_bond_a_dissociated_atom(self):
+        """
+        Test that the bond-list tier does not bond a dissociated fragment to its nearest neighbor.
+
+        The bond-list tier is the only tier allowed to reject a TS, so it must perceive bonds
+        without assuming a single connected molecule. Otherwise a bare H in an endpoint is bonded
+        to whatever atom happens to be closest, no matter how far away, and correct IRC endpoints
+        are rejected. Both reactions below reach the bond-list tier because the triplet atom is
+        not perceived as a triplet, so the isomorphism tier cannot match it.
+        """
+        for r_smiles, r_multiplicity, p_smiles, symbols, coords_r, coords_p in [
+                ('[O]', 3, '[OH]', ('O', 'H', 'H'),
+                 ((0.0, 0.0, 0.0), (5.0, 0.0, 0.0), (5.0, 0.0, 0.74)),
+                 ((0.0, 0.0, 0.0), (3.2, 0.0, 0.0), (0.0, 0.0, 0.97))),
+                ('[S]', 3, '[SH]', ('S', 'H', 'H'),
+                 ((0.0, 0.0, 0.0), (5.0, 0.0, 0.0), (5.0, 0.0, 0.74)),
+                 ((0.0, 0.0, 0.0), (4.0, 0.0, 0.0), (0.0, 0.0, 1.34)))]:
+            with self.subTest(r_smiles=r_smiles):
+                rxn = ARCReaction(r_species=[ARCSpecies(label='X', smiles=r_smiles, multiplicity=r_multiplicity),
+                                             ARCSpecies(label='H2', smiles='[H][H]')],
+                                  p_species=[ARCSpecies(label='XH', smiles=p_smiles),
+                                             ARCSpecies(label='H', smiles='[H]')])
+                rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+                xyz_1 = xyz_from_data(coords=coords_r, symbols=symbols)
+                xyz_2 = xyz_from_data(coords=coords_p, symbols=symbols)
+                ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+                self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+
+    def test_check_irc_identical_endpoints(self):
+        """
+        Test that two identical IRC endpoints are a positive IRC failure (False, not None).
+
+        Both endpoints re-perceive as the product, i.e., the "TS" connects P <=> P.
+        """
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        ts.check_irc_species_and_rxn(xyz_1=xyz_2, xyz_2=xyz_2, rxn=rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], False)
+
+    def test_check_irc_unknown_if_no_comparison_was_performed(self):
+        """
+        Test that the IRC check is None (unknown), not False, if no comparison could be performed.
+
+        Neither the isomorphism check nor the bond-list fallback can be carried out here.
+        """
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        with patch.object(ts, '_perceive_irc_fragments', return_value=None), \
+                patch.object(rxn, 'get_bonds', side_effect=ReactionError('Cannot get bonds without an atom map.')):
+            ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+        self.assertIsNone(rxn.ts_species.ts_checks['IRC'])
+
+    def test_check_irc_isomorphism_mismatch_alone_is_not_a_failure(self):
+        """
+        Test that a negative isomorphism result alone leaves the IRC check undetermined.
+
+        The isomorphism check is only the first tier, and the code falls back to the bond-list
+        comparison whenever it does not match. If that fallback cannot run, nothing was
+        conclusively compared, so the verdict must stay None rather than reject the TS.
+        """
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        with patch.object(rxn, 'get_bonds', side_effect=ReactionError('Cannot get bonds without an atom map.')):
+            ts.check_irc_species_and_rxn(xyz_1=xyz_2, xyz_2=xyz_2, rxn=rxn)
+        self.assertIsNone(rxn.ts_species.ts_checks['IRC'])
 
     @classmethod
     def tearDownClass(cls):
