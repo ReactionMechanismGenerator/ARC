@@ -402,6 +402,14 @@ kinbot_uma_settings = {
 # ARC families folder path
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
+# The RMG reaction family set ARC uses to determine and validate reaction families whenever a
+# family set is not given explicitly. 'default' considers only RMG's recommended families, as is
+# appropriate for mechanism generation. Any other family set defined in
+# RMG-database/input/kinetics/families/recommended.py may be used (e.g. 'halogens'), as may 'all',
+# which unions the sets whose label does not contain 'surface' with the families that exist as RMG
+# database directories.
+rmg_family_set = 'default'
+
 # Default environment names for sister repos
 TS_GCN_PYTHON, TANI_PYTHON, UMA_PYTHON, AUTOTST_PYTHON, KINBOT_PYTHON, GOFLOW_PYTHON, GOFLOW_REPO_PATH, \
     GOFLOW_CKPT_PATH, GOFLOW_FEAT_DICT_PATH, RITS_PYTHON, RITS_REPO_PATH, RITS_CKPT_PATH, \
