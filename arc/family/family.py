@@ -56,6 +56,8 @@ REACTANTS_PATTERN = re.compile(r'reactants\s*=\s*\[(.*?)\]', re.DOTALL)
 PRODUCTS_PATTERN = re.compile(r'products\s*=\s*\[(.*?)\]', re.DOTALL)
 ACTIONS_PATTERN = re.compile(r'actions\s*=\s*\[(.*?)\]', re.DOTALL)
 
+RADICAL_RECIPE_ACTIONS = ('GAIN_RADICAL', 'LOSE_RADICAL')
+
 
 def get_reaction_family(label: str, consider_arc_families: bool = True) -> 'ReactionFamily':
     """
@@ -517,7 +519,13 @@ def get_reaction_family_products(rxn: ARCReaction,
                                                           RMG-database/input/kinetics/families/recommended.py.
                                                           Can be a name of a defined set, or a list
                                                           of explicit family labels to consider.
-                                                          Note that surface families are excluded if 'all' is used.
+                                                          Note that 'all' skips family sets whose label contains
+                                                          'surface' and surface family directories, but still
+                                                          includes an individual surface family that a set with a
+                                                          non-surface label lists (e.g. the electrochem set's
+                                                          Surface_Proton_Electron_Reduction_* families).
+                                                          ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                          read on every call.
         consider_rmg_families (bool, optional): Whether to consider RMG's families.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
         discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover reactions belonging to a family
@@ -526,10 +534,17 @@ def get_reaction_family_products(rxn: ARCReaction,
                                                                ``True`` will cause the function to discover reactions
                                                                in both directions, ``False`` will cause the function
                                                                to discover reactions only in the forward direction.
+                                                               Reverse-discovered matches that this flag admits are
+                                                               still dropped by prioritize_family_product_dicts()
+                                                               whenever a forward match exists, so the flag only
+                                                               widens the result for a reaction that no family
+                                                               matches in the forward direction.
 
     Returns:
-        list[dict]: The list of product dictionaries with the reaction family label.
-                    Keys are: 'family', 'group_labels', 'products', 'own_reverse', 'discovered_in_reverse', 'actions'.
+        list[dict]: The list of product dictionaries with the reaction family label, ordered and filtered
+                    by prioritize_family_product_dicts(), so that the first entry is the family match to use.
+                    Keys are: 'family', 'group_labels', 'products', 'r_label_map', 'p_label_map',
+                    'own_reverse', 'discovered_in_reverse'.
     """
     family_labels = get_all_families(rmg_family_set=rmg_family_set,
                                      consider_rmg_families=consider_rmg_families,
@@ -587,7 +602,95 @@ def get_reaction_family_products(rxn: ARCReaction,
                     product_dicts.extend(filtered_products)
         except (KeyError, ValueError, InvalidAdjacencyListError) as e:
             logger.debug(f'Skipping family {family_label} due to unsupported group definition: {type(e).__name__}: {e}')
-    return product_dicts
+    return prioritize_family_product_dicts(rxn=rxn,
+                                           product_dicts=product_dicts,
+                                           consider_arc_families=consider_arc_families,
+                                           )
+
+
+def has_radical_recipe_action(actions: list[list]) -> bool:
+    """
+    Determine whether a family recipe changes the number of unpaired electrons of any of its labeled atoms.
+
+    Args:
+        actions (list[list]): The recipe actions of a reaction family.
+
+    Returns:
+        bool: Whether the recipe contains a ``GAIN_RADICAL`` or a ``LOSE_RADICAL`` action.
+    """
+    return any(action[0] in RADICAL_RECIPE_ACTIONS for action in actions)
+
+
+def count_recipe_bond_changes(actions: list[list]) -> tuple[int, int]:
+    """
+    Count the bond changes a family recipe prescribes.
+
+    Args:
+        actions (list[list]): The recipe actions of a reaction family.
+
+    Returns:
+        tuple[int, int]: The number of bonds the recipe forms or breaks,
+                         and the number of bonds the recipe changes the order of.
+    """
+    formed_or_broken = len([action for action in actions if action[0] in ('FORM_BOND', 'BREAK_BOND')])
+    changed = len([action for action in actions if action[0] == 'CHANGE_BOND'])
+    return formed_or_broken, changed
+
+
+def prioritize_family_product_dicts(rxn: ARCReaction,
+                                    product_dicts: list[dict],
+                                    consider_arc_families: bool = True,
+                                    ) -> list[dict]:
+    """
+    Order family product dictionaries so that the first entry is the family match to use,
+    and drop the entries that must not be used.
+
+    An entry discovered in the reverse direction carries an atom label map in the index space of the
+    flipped reaction, so all such entries are dropped whenever at least one entry was discovered in the
+    forward direction. This gate reads only ``discovered_in_reverse`` and is therefore applied even when a
+    family recipe cannot be read. If any of the reactants carries unpaired electrons, only the entries whose
+    family recipe gains or loses a radical are kept, provided that this keeps at least one entry and drops at
+    least one. The remaining entries are then ordered by the number of bonds their family recipe forms or
+    breaks, then by the number of bonds it changes the order of, then by the order in which the families
+    were considered, which is the order of ``get_all_families()``. Entries of the same family keep their
+    relative order. The radical gate and the ordering both need the family recipes, so an unreadable recipe
+    leaves the direction-gated entries in the order they were discovered in.
+
+    Args:
+        rxn (ARCReaction): The ARC reaction object.
+        product_dicts (list[dict]): The family product dictionaries to order.
+        consider_arc_families (bool, optional): Whether ARC's custom families were considered.
+
+    Returns:
+        list[dict]: The ordered product dictionaries.
+    """
+    forward_dicts = [product_dict for product_dict in product_dicts
+                     if not product_dict['discovered_in_reverse']]
+    if len(forward_dicts):
+        product_dicts = forward_dicts
+    if len(product_dicts) < 2:
+        return product_dicts
+    family_order, actions_by_family = dict(), dict()
+    for product_dict in product_dicts:
+        family_label = product_dict['family']
+        if family_label in family_order:
+            continue
+        try:
+            actions_by_family[family_label] = get_reaction_family(
+                label=family_label, consider_arc_families=consider_arc_families).actions
+        except (FileNotFoundError, KeyError, ValueError, InvalidAdjacencyListError) as e:
+            logger.warning(f'Could not read the recipe of the {family_label} family, so the family match of '
+                           f'reaction {rxn.label} is chosen by the discovery order alone: {type(e).__name__}: {e}')
+            return product_dicts
+        family_order[family_label] = len(family_order)
+    if any(spc.multiplicity is not None and spc.multiplicity > 1 for spc in rxn.r_species):
+        radical_dicts = [product_dict for product_dict in product_dicts
+                         if has_radical_recipe_action(actions_by_family[product_dict['family']])]
+        if len(radical_dicts) and len(radical_dicts) < len(product_dicts):
+            product_dicts = radical_dicts
+    return sorted(product_dicts,
+                  key=lambda product_dict: (*count_recipe_bond_changes(actions_by_family[product_dict['family']]),
+                                            family_order[product_dict['family']]))
 
 
 def _product_graph_key(mols: list[Molecule]) -> tuple:
@@ -763,8 +866,15 @@ def check_product_isomorphism(products: list[Molecule],
                               ) -> bool:
     """
     Check whether the products are isomorphic to the given species.
-    Falls back to InChI comparison when graph isomorphism fails
+    Falls back to comparing the standard InChI, the multiplicity, and the electron-agnostic
+    connectivity (elements and explicit hydrogen positions, ignoring bond orders, charges and
+    radical electrons) when graph isomorphism fails
     (e.g., different Lewis structures perceived from XYZ vs SMILES).
+    Tautomers, which share a standard InChI but place their hydrogens on different heavy atoms,
+    are rejected.
+    The connectivity comparison is made first, so an InChI is only ever generated for a
+    candidate/species pair that it admits.
+    Neither the given molecules nor the molecules of the given species are modified.
 
     Args:
         products (list[Molecule]): The products to check.
@@ -802,85 +912,152 @@ def check_product_isomorphism(products: list[Molecule],
     # Fall back to InChI comparison for unmatched products.
     # Different Lewis structures perceived from XYZ vs SMILES (e.g., O=C=C(O)C=O vs O=C[C-](O)C#[O+])
     # may not be graph-isomorphic but share the same InChI.
-    # InChI does not encode radical electrons, so also require matching multiplicity
-    # to avoid false matches between biradicals and closed-shell species
-    # (e.g., [CH2][CH2] vs C=C both give InChI=1S/C2H4/c1-2/h1-2H2).
-    # Gate behind molecular-formula check to avoid expensive InChI generation
-    # for products that can't possibly match.
-    species_fingerprints = {spc.mol.fingerprint for spc in p_species if spc.mol is not None}
-    needs_inchi = False
-    for i in range(len(products)):
-        if not isomorphic[i] and products[i].fingerprint in species_fingerprints:
-            needs_inchi = True
-            break
-    if not needs_inchi:
-        return False
-    # Precompute p_species InChIs once (not per candidate product).
-    try:
-        species_inchi_mult = [(spc.mol.to_inchi(), spc.mol.multiplicity) for spc in p_species]
-    except Exception:
-        return False
-    for i in range(len(products)):
-        if not isomorphic[i]:
-            if products[i].fingerprint not in species_fingerprints:
+    inchi_cache: dict[int, str | None] = dict()
+    for i, product in enumerate(products):
+        if isomorphic[i]:
+            continue
+        for spc in p_species:
+            if not product.is_isomorphic(spc.mol, save_order=True, strict=False):
                 continue
-            try:
-                inchi_a = products[i].to_inchi()
-                mult_a = products[i].multiplicity
-            except Exception:
-                continue
-            if any(inchi_a == inchi_b and mult_a == mult_b
-                   for inchi_b, mult_b in species_inchi_mult):
+            inchi_a = _get_inchi(product, inchi_cache)
+            if inchi_a is None:
+                break
+            if inchi_a == _get_inchi(spc.mol, inchi_cache):
                 isomorphic[i] = True
+                break
     return all(isomorphic)
 
 
-def get_all_families(rmg_family_set: list[str] | str = 'default',
+def _get_inchi(mol: Molecule,
+               cache: dict[int, str | None],
+               ) -> str | None:
+    """
+    Get the standard InChI of a molecule.
+
+    ``mol`` is not modified: the conversion, which reorders the atoms of the molecule it is
+    given, is run on a deep copy.
+    Results, including failures, are memoized in ``cache`` keyed by the identity of ``mol``,
+    so that no molecule is converted more than once per cache. Every molecule passed with a
+    given ``cache`` must be kept alive for as long as that ``cache`` is in use.
+
+    Args:
+        mol (Molecule): The molecule to convert.
+        cache (dict): An identity-keyed InChI cache to read from and populate.
+
+    Returns:
+        str | None: The standard InChI, or ``None`` if no backend could generate one.
+    """
+    key = id(mol)
+    if key not in cache:
+        try:
+            cache[key] = mol.copy(deep=True).to_inchi()
+        except Exception as e:
+            logger.debug(f'Could not generate an InChI for:\n{mol.to_adjacency_list()}\nGot: {e}')
+            cache[key] = None
+    return cache[key]
+
+
+def get_all_families(rmg_family_set: list[str] | str | None = None,
                      consider_rmg_families: bool = True,
                      consider_arc_families: bool = True,
                      ) -> list[str]:
     """
     Get all available RMG and ARC families.
-    If ``rmg_family_set`` is a list of family labels and does not contain family sets, it will be returned as is.
+    If ``rmg_family_set`` is a list of family labels and does not contain family sets, it will be returned as is
+    (an explicitly given list defines its own order).
+
+    ``'all'`` considers every recommended family set whose label does not contain 'surface' together
+    with every family that exists as a directory in the RMG database.
+
+    Otherwise the result is assembled from three tiers, concatenated in this order: the families the
+    requested recommended family set(s) contribute, then the families that exist as an RMG database
+    directory, then ARC's families. Each tier is sorted by label, and duplicates are removed while
+    keeping the first occurrence, so a family a recommended set contributes stays in the recommended
+    tier and is always positioned before a family reachable only as a database directory. Callers
+    that take the first matching family therefore resolve to a recommended family whenever one
+    matches, and resolve to the same family in every process: the order depends neither on
+    ``PYTHONHASHSEED`` nor on dict, set or file system iteration. Both properties are part of the
+    contract: sorting across the tiers, appending the directories first, or de-duplicating the
+    result through a set would break the first, and leaving a tier unsorted would break the second.
 
     Args:
         rmg_family_set (list[str] | str, optional): The RMG family set to use.
+                                                    ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                    read on every call.
         consider_rmg_families (bool, optional): Whether to consider RMG's families.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
 
     Returns:
         list[str]: A list of all available families.
     """
-    rmg_family_set = rmg_family_set or 'default'
+    rmg_family_set = rmg_family_set or settings['rmg_family_set']
     family_sets = get_rmg_recommended_family_sets()
     if isinstance(rmg_family_set, list) and all(fam not in family_sets for fam in rmg_family_set):
         return rmg_family_set
-    rmg_families, arc_families = list(), list()
+    recommended_families, directory_families, arc_families = list(), list(), list()
     if consider_rmg_families:
         if not isinstance(rmg_family_set, list) and rmg_family_set not in list(family_sets) + ['all']:
             raise ValueError(f'Invalid RMG family set: {rmg_family_set}')
         if rmg_family_set == 'all':
             for family_set_label, families in family_sets.items():
                 if 'surface' not in family_set_label:
-                    rmg_families.extend(list(families))
+                    recommended_families.extend(families)
+            directory_families = list(get_rmg_family_directories())
         else:
-            rmg_families = list(family_sets[rmg_family_set]) \
-                if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else [rmg_family_set]
+            recommended_families = list(family_sets[rmg_family_set]) \
+                if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else list(rmg_family_set)
     if consider_arc_families:
         for family in os.listdir(ARC_FAMILIES_PATH):
             if family.startswith('.') or family.startswith('_'):
                 continue
             arc_families.append(os.path.splitext(family)[0])
-    return rmg_families + arc_families if rmg_families is not None else arc_families
+    ordered, seen = list(), set()
+    for family in sorted(recommended_families) + sorted(directory_families) + sorted(arc_families):
+        if family not in seen:
+            seen.add(family)
+            ordered.append(family)
+    return ordered
 
 
 @functools.lru_cache(maxsize=1)
-def get_rmg_recommended_family_sets() -> dict[str, str]:
+def get_rmg_family_directories() -> list[str]:
+    """
+    List every reaction family that exists as a directory in the RMG database, whether or not it
+    belongs to a recommended family set. A directory counts as a family only if it holds a
+    ``groups.py`` template. Directories whose name contains 'surface' are skipped; a surface family
+    that a recommended set lists still reaches ``get_all_families`` through that set.
+    An empty list is returned if the RMG database is unavailable.
+
+    Returns:
+        list[str]: The family directory names available in the RMG database, sorted by name.
+    """
+    if RMG_DB_PATH is None:
+        return list()
+    families_dir = get_rmg_db_subpath('kinetics', 'families', must_exist=True)
+    if not os.path.isdir(families_dir):
+        return list()
+    families = list()
+    for name in sorted(os.listdir(families_dir)):
+        if name.startswith('.') or name.startswith('_') or 'surface' in name.lower():
+            continue
+        family_path = os.path.join(families_dir, name)
+        if os.path.isdir(family_path) and os.path.isfile(os.path.join(family_path, 'groups.py')):
+            families.append(name)
+    return families
+
+
+@functools.lru_cache(maxsize=1)
+def get_rmg_recommended_family_sets() -> dict[str, tuple[str, ...]]:
     """
     Get the recommended RMG family sets from RMG-database/input/kinetics/families/recommended.py.
 
+    The family labels of each set are returned as a tuple in the order in which they are written
+    in ``recommended.py``, since the sets are declared there as Python set literals whose iteration
+    order depends on ``PYTHONHASHSEED``. A set whose elements are not all plain string literals
+    is sorted instead, so that the returned order never depends on the hash seed.
+
     Returns:
-        dict[str, str]: The recommended RMG family sets.
+        dict[str, tuple[str, ...]]: The recommended RMG family sets.
     """
     family_sets = dict()
     recommended_path = get_rmg_db_subpath('kinetics', 'families', 'recommended.py', must_exist=True)
@@ -888,13 +1065,20 @@ def get_rmg_recommended_family_sets() -> dict[str, str]:
         raise FileNotFoundError(f'Could not find the recommended RMG families file at {recommended_path}')
     with open(recommended_path, 'r') as f:
         recommended_content = f.read()
-    dict_strings = re.findall(r'(\w+)\s*=\s*\{[^}]*\}', recommended_content, re.DOTALL)
-    for dict_name in dict_strings:
-        pattern = rf'{dict_name}\s*=\s*(\{{[^}}]*\}})'
-        match = re.search(pattern, recommended_content, re.DOTALL)
-        if match:
-            dict_str = match.group(1)
-            family_sets[dict_name] = ast.literal_eval(dict_str)
+    for node in ast.parse(recommended_content).body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, (ast.Set, ast.List, ast.Tuple)):
+            continue
+        elements = [element.value for element in node.value.elts
+                    if isinstance(element, ast.Constant) and isinstance(element.value, str)]
+        if len(elements) != len(node.value.elts):
+            try:
+                elements = sorted(ast.literal_eval(node.value))
+            except ValueError:
+                logger.debug(f'Could not parse a family set from {recommended_path}, skipping it.')
+                continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                family_sets[target.id] = tuple(elements)
     return family_sets
 
 
