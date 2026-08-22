@@ -39,13 +39,13 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v4.1.0
+        uses: docker/setup-buildx-action@v4.3.0
       
       # ----- PR / manual-dispatch steps -----
       # Build the image and run smoke tests, but do not push
       - name: Build Docker Image (No Push)
         if: ${{ !(github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
-        uses: docker/build-push-action@v7.2.0
+        uses: docker/build-push-action@v7.3.0
         with:
           context: .
           file: ./Dockerfile
@@ -70,7 +70,7 @@ jobs:
       # event at all, so scheduled runs built nothing and still reported success.
       - name: Build image (publish path)
         if: ${{ github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
-        uses: docker/build-push-action@v7.2.0
+        uses: docker/build-push-action@v7.3.0
         with:
           context: .
           file: ./Dockerfile
@@ -89,14 +89,14 @@ jobs:
 
       - name: Login to Docker Hub
         if: ${{ github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
-        uses: docker/login-action@v4.2.0
+        uses: docker/login-action@v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build final and push
         if: ${{ github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
-        uses: docker/build-push-action@v7.2.0
+        uses: docker/build-push-action@v7.3.0
         with:
           context: .
           file: ./Dockerfile
