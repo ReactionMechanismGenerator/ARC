@@ -17,9 +17,12 @@ from typing import Any
 from arc.common import ARC_PATH, VERSION, get_git_commit, get_logger, read_yaml_file, save_yaml_file
 from arc.constants import E_h_kJmol
 from arc.imports import settings
+from arc.job.adapters.common import open_shell_character_source
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
-from arc.parser.parser import parse_1d_scan_energies, parse_e_elect, parse_ess_version, parse_opt_steps, parse_zpe_correction
+from arc.parser.parser import (parse_1d_scan_energies, parse_e_elect, parse_ess_version, parse_opt_steps,
+                               parse_s_squared, parse_wavefunction_stability, parse_zpe_correction,
+                               s_squared_expected_from_multiplicity)
 from arc.species.converter import xyz_to_str
 from arc.statmech.arkane import (
     AEC_SECTION_START, AEC_SECTION_END,
@@ -227,6 +230,180 @@ def _parse_zpe(freq_path: str | None, project_directory: str) -> float | None:
         return zpe_kj / E_h_kJmol if zpe_kj is not None else None
     except Exception:
         return None
+
+
+def _parse_wavefunction_stability(stability_path: str | None, project_directory: str) -> dict | None:
+    """
+    Parse the wavefunction stability verdict from a stability analysis log.
+
+    Returns ``None`` when no stability analysis was run, when its log is missing,
+    or when the log holds no verdict. Otherwise returns the parsed verdict with the
+    log's run-relative path added under ``'log'``.
+
+    ``'log'`` names the analysis log, and every other key of an ESS that follows an
+    instability rather than only reporting it describes one of TWO wavefunctions:
+    ``verdict``, ``lowest_eigenvalue``, ``negative_eigenvectors`` and ``restricted``
+    belong to the wavefunction under TEST, while the energies and spin expectation values
+    that log also holds belong to the FOLLOWED solution the ESS relaxed into, which is a
+    different wavefunction. A consumer reading a quantity out of that log rather than out
+    of this block is reading the followed solution.
+
+    Returns: dict | None
+        ``{'verdict': 'stable' | 'internal_instability' | 'external_instability'
+                      | 'unattributed_instability' | 'unknown',
+           'internal_instability': bool | None, 'external_instability': bool | None,
+           'relaxations': list[str], 'negative_eigenvectors': list[dict],
+           'lowest_eigenvalue': float | None, 'restricted': bool | None,
+           'invalidates_analytic_freq': bool | None, 'log': str}``, plus the keys an
+        individual ESS reader adds. The ORCA reader adds ``'n_analyses'`` (int), the number
+        of analyses the log holds, ``'followed_to_stable'`` (bool), whether the last of
+        several ended stable, and ``'s_squared_after_follow'`` (float | None), the spin
+        expectation value of the followed solution, from which the sector of a restricted
+        reference's instability is measured.
+        ``'unknown'`` means an analysis ran but its verdict could not be read, and is
+        never to be treated as ``'stable'``. ``'unattributed_instability'`` means the
+        wavefunction is unstable but the ESS did not report which sector the instability
+        lies in, and is likewise never to be treated as ``'stable'``.
+    """
+    if not stability_path:
+        return None
+    path = stability_path if os.path.isabs(stability_path) else os.path.join(project_directory, stability_path)
+    if not os.path.isfile(path):
+        return None
+    try:
+        result = parse_wavefunction_stability(path)
+    except Exception:
+        logger.debug(f'Failed to parse a wavefunction stability verdict from {path!r}', exc_info=True)
+        return None
+    if not result:
+        return None
+    result = dict(result)
+    result['log'] = _make_rel_path(path, project_directory)
+    return result
+
+
+def _scf_reference_block(spc, stability: dict | None) -> dict:
+    """
+    Report which source decided a species' open-shell character and which SCF references its jobs used.
+
+    ``source`` is ``'declared'`` when the user gave a ``number_of_radicals``, which always wins
+    and is reported even where it contradicts the measured verdict; ``'derived'`` when the user
+    gave nothing and a measured wavefunction-stability verdict made the species unrestricted;
+    and ``None`` when the spin multiplicity alone decided. ``verdict`` and ``verdict_restricted``
+    carry the measured picture whether or not it was the deciding one, and ``log`` names the
+    stability analysis they were read from, following ``_parse_wavefunction_stability``.
+
+    The analysis is run for a transition state and for any other species whose optimization ran
+    restricted, but only a transition state's verdict is acted on. So a species carrying an
+    external instability under a ``source`` of ``None`` is one whose restricted energy sits above
+    a lower symmetry-broken solution that ARC measured and left alone, which the entry's ``is_ts``
+    separates from a transition state whose identical verdict reads ``'derived'`` and did decide.
+
+    ``sp_reference`` and ``freq_reference`` are the references those two jobs declared in the
+    inputs they actually ran, and ``reference_mismatch`` is ``True`` when they differ, which
+    means the species' E0 sums an electronic energy and a ZPE taken from two different surfaces.
+    It is ``None``, not ``False``, whenever either reference is unknown: an sp job that was never
+    submitted because the sp level equals the opt level, or a job carrying no memo, leaves nothing
+    to compare, and reporting that as ``False`` would be indistinguishable from two references
+    checked and found to agree.
+
+    ``source`` is ``None`` where a declared ``number_of_radicals`` of zero or one blocked a measured
+    verdict without itself attributing open-shell character. ``declared_number_of_radicals`` still
+    carries the declaration, so the pair says what happened.
+
+    ``measured_on_ts_guess`` is set only on a verdict carried over from an abandoned TS guess,
+    and names the guess it was measured on; the guess reported elsewhere in the entry is a
+    different one.
+
+    ``verdict`` falls back to the stability log when the species carries none, as a restart
+    written before the species held one does, while ``source`` never does: the reference
+    decision reads the species and only the species, so a verdict that reached the log but not
+    the species decided nothing and is reported without being credited with the decision.
+
+    The block is emitted whether or not the species converged, like the ``wavefunction_stability``
+    entry it explains and unlike the parsed results around it. It records a decision ARC made
+    rather than a quantity a job produced, and a species that adopted a verdict and then failed to
+    converge is exactly the case where knowing ARC changed its reference explains the failure.
+
+    Returns: dict
+        A flat mapping of scalars; keys are always present, with ``None`` where unknown.
+    """
+    verdict = getattr(spc, 'derived_stability_verdict', None)
+    if not isinstance(verdict, dict):
+        verdict = stability if isinstance(stability, dict) else None
+    references = getattr(spc, 'scf_references', None)
+    references = references if isinstance(references, dict) else dict()
+    sp_reference, freq_reference = references.get('sp'), references.get('freq')
+    return {'source': open_shell_character_source(spc),
+            'declared_number_of_radicals': getattr(spc, 'number_of_radicals', None),
+            'verdict': verdict.get('verdict') if verdict else None,
+            'verdict_restricted': verdict.get('restricted') if verdict else None,
+            'measured_on_ts_guess': verdict.get('measured_on_ts_guess') if verdict else None,
+            'sp_reference': sp_reference,
+            'freq_reference': freq_reference,
+            'reference_mismatch': sp_reference != freq_reference
+                                  if sp_reference is not None and freq_reference is not None else None,
+            'log': stability.get('log') if isinstance(stability, dict) else None,
+            }
+
+
+def _parse_spin_diagnostic(sp_path: str | None,
+                           freq_path: str | None,
+                           opt_path: str | None,
+                           multiplicity: int | None,
+                           project_directory: str,
+                           ) -> dict | None:
+    """
+    Parse the S**2 spin-contamination diagnostic for a species' single-point calc.
+
+    The diagnostic is a property of the (unrestricted) wavefunction, so it is
+    parsed from the sp job's log; when the sp energy reused the optimization
+    output the sp log may be absent, so the first of the sp, freq and opt/geo
+    logs that exists is the one read. A log that exists but yields no
+    ``<S**2>`` ends the search: an ESS with no ``<S**2>`` reader, or a
+    restricted reference, means this calc has no diagnostic, and reading a
+    different job's wavefunction in its place would attribute another level of
+    theory's value to the sp calc. The log actually read is recorded under
+    ``'log'`` so the value can be traced to it.
+
+    Restricted / closed-shell logs print no ``<S**2>`` and this returns ``None``
+    for them, so the caller omits the block rather than emitting an all-null one.
+
+    ``s_squared_expected`` is recomputed from ARC's own ``multiplicity`` when
+    available, falling back to the value the ESS log reported.
+
+    Returns: dict | None
+        ``{'s_squared': float, 's_squared_expected': float | None (omitted if
+        None), 's_squared_annihilated': float | None (omitted if None),
+        'log': str}`` or ``None`` when no ``<S**2>`` could be parsed.
+    """
+    parsed, source_path = None, None
+    for candidate in (sp_path, freq_path, opt_path):
+        if not candidate:
+            continue
+        path = candidate if os.path.isabs(candidate) else os.path.join(project_directory, candidate)
+        if not os.path.isfile(path):
+            continue
+        source_path = path
+        try:
+            parsed = parse_s_squared(path)
+        except Exception:
+            logger.debug(f'Failed to parse an S**2 spin diagnostic from {path!r}', exc_info=True)
+            parsed = None
+        break
+    if parsed is None or parsed.get('s_squared') is None:
+        return None
+    result: dict = {'s_squared': float(parsed['s_squared'])}
+    expected = s_squared_expected_from_multiplicity(multiplicity)
+    if expected is None:
+        expected = parsed.get('s_squared_expected')
+    if expected is not None:
+        result['s_squared_expected'] = float(expected)
+    annihilated = parsed.get('s_squared_annihilated')
+    if annihilated is not None:
+        result['s_squared_annihilated'] = float(annihilated)
+    result['log'] = _make_rel_path(source_path, project_directory)
+    return result
 
 
 def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
@@ -491,6 +668,22 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     d['opt_log'] = _make_rel_path(paths.get('geo') or None, project_directory)
     d['freq_log'] = _make_rel_path(paths.get('freq') or None, project_directory)
     d['sp_log'] = _make_rel_path(paths.get('sp') or None, project_directory)
+
+    # ── wavefunction stability diagnostic (null unless the job ran) ──────────
+    stability = _parse_wavefunction_stability(paths.get('stability') or None, project_directory)
+    d['wavefunction_stability'] = stability
+
+    # ── which source decided the open-shell character, and the references used ──
+    d['scf_reference'] = _scf_reference_block(spc, stability)
+
+    # ── S**2 spin-contamination diagnostic (sp calc, open-shell only) ───────
+    d['sp_spin_diagnostic'] = _parse_spin_diagnostic(
+        paths.get('sp') or None,
+        paths.get('freq') or None,
+        paths.get('geo') or None,
+        spc.multiplicity,
+        project_directory,
+    ) if converged else None
 
     # ── ESS software version (from SP log, or fall back to geo/freq log) ──
     d['ess_versions'] = _get_ess_versions(paths, project_directory) if converged else None
