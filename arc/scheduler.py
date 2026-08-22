@@ -2989,6 +2989,10 @@ class Scheduler(object):
         """
         Try the next optimized TS guess in line if a previous TS guess was found to be wrong.
 
+        The energy data cached on the TS species (``e0``, ``e_elect`` and ``freqs``) and the
+        ``checkfile`` are discarded: all four belong to the abandoned guess's geometry and
+        wavefunction, and are repopulated by the jobs run for the new guess.
+
         Args:
             label (str): The TS species label.
         """
@@ -2999,6 +3003,10 @@ class Scheduler(object):
         if os.path.isfile(freq_path):
             os.remove(freq_path)
         self.species_dict[label].populate_ts_checks()  # Restart the TS checks dict.
+        self.species_dict[label].e0 = None
+        self.species_dict[label].e_elect = None
+        self.species_dict[label].freqs = None
+        self.species_dict[label].checkfile = None
         if self.job_types['rotors'] and self.species_dict[label].rotors_dict is not None:
             # Reset rotors so they are re-determined from the new TS geometry.
             # rotors_dict=None is a sentinel meaning "skip rotor scans"; preserve it.
