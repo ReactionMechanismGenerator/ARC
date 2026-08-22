@@ -1208,5 +1208,48 @@ class TestTrsh(unittest.TestCase):
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+class TestTrshJobOnServerConnections(unittest.TestCase):
+    """Troubleshooting a server must not leave an SSH connection open behind it."""
+
+    def _trsh(self, nodes=None):
+        """Troubleshoot a job on a remote server, and return the borrow mock and the result."""
+        client = patch.object(trsh, 'borrow_ssh_client')
+        borrow = client.start()
+        self.addCleanup(client.stop)
+        ssh = borrow.return_value.__enter__.return_value
+        ssh.list_available_nodes.return_value = nodes if nodes is not None else ['node01']
+        ssh.read_remote_file.return_value = ['#!/bin/bash\n'] * 10
+        result = trsh.trsh_job_on_server(server='server1',
+                                         job_name='opt_a103',
+                                         job_id=123,
+                                         job_server_status='errored',
+                                         remote_path='/home/u/runs/job',
+                                         server_nodes=list())
+        return borrow, ssh, result
+
+    def test_every_connection_is_borrowed_and_released(self):
+        """The node lookup used to open a client with no context manager, and never close it."""
+        borrow, _, _ = self._trsh()
+        self.assertEqual(borrow.call_count, 4)
+        self.assertEqual(borrow.return_value.__exit__.call_count, borrow.call_count)
+
+    def test_every_connection_is_for_the_troubleshooted_server(self):
+        borrow, _, _ = self._trsh()
+        self.assertEqual({call.args[0] for call in borrow.call_args_list}, {'server1'})
+
+    def test_the_node_lookup_still_picks_a_node(self):
+        """The leak fix must not change what troubleshooting decides."""
+        _, ssh, result = self._trsh(nodes=['node01', 'node02'])
+        ssh.list_available_nodes.assert_called_once()
+        self.assertEqual(result, ('node01', True))
+
+    def test_no_node_available_gives_up_without_uploading(self):
+        """With nothing to switch to there is nothing to resubmit, and no third connection."""
+        borrow, ssh, result = self._trsh(nodes=list())
+        self.assertEqual(result, (None, False))
+        ssh.upload_file.assert_not_called()
+        self.assertEqual(borrow.return_value.__exit__.call_count, borrow.call_count)
+
+
 if __name__ == "__main__":
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

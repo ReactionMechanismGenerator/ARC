@@ -9,6 +9,8 @@ import math
 import os
 import shutil
 import unittest
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from arc.common import ARC_TESTING_PATH
 from arc.job.adapters.cfour import CFourAdapter
@@ -145,6 +147,47 @@ R8=0.9724
         Delete all project directories created during these unit tests
         """
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_CFourAdapter'), ignore_errors=True)
+
+
+class TestCFourQueueSubmissionSharesAConnection(unittest.TestCase):
+    """CFour overrides execute_queue(), so it needs the shared borrow path of its own accord."""
+
+    @staticmethod
+    def _adapter(server):
+        """A stand-in carrying only what execute_queue() reads, with the borrow path mocked."""
+        return SimpleNamespace(server=server,
+                               remote_path='/remote/job',
+                               local_path='/local/job',
+                               job_status=['initializing', {'status': 'initializing'}],
+                               job_id=0,
+                               _log_job_execution=lambda: None,
+                               _open_or_borrow_ssh=MagicMock())
+
+    def test_a_remote_submission_borrows_its_connection(self):
+        """Submitting used to open a second connection right after the upload used one."""
+        adapter = self._adapter('zeus')
+        ssh = MagicMock()
+        ssh.submit_job.return_value = ('running', 4242)
+        adapter._open_or_borrow_ssh.return_value.__enter__.return_value = ssh
+        CFourAdapter.execute_queue(adapter)
+        adapter._open_or_borrow_ssh.assert_called_once()
+        ssh.submit_job.assert_called_once_with(remote_path='/remote/job')
+        self.assertEqual((adapter.job_status[0], adapter.job_id), ('running', 4242))
+
+    def test_the_borrowed_connection_is_released(self):
+        adapter = self._adapter('zeus')
+        adapter._open_or_borrow_ssh.return_value.__enter__.return_value.submit_job.return_value = \
+            ('running', 1)
+        CFourAdapter.execute_queue(adapter)
+        adapter._open_or_borrow_ssh.return_value.__exit__.assert_called_once()
+
+    def test_a_local_submission_opens_no_connection(self):
+        """A local queue job is submitted with a local command and must not touch SSH."""
+        adapter = self._adapter('local')
+        with patch('arc.job.adapters.cfour.submit_job', return_value=('running', 9)) as submitted:
+            CFourAdapter.execute_queue(adapter)
+        adapter._open_or_borrow_ssh.assert_not_called()
+        submitted.assert_called_once_with(path='/local/job')
 
 
 if __name__ == '__main__':

@@ -59,7 +59,9 @@ Open an interactive shell::
         laxzal/arc:latest
 
 For job submission, the scheduler client tools must be available in the container
-or accessed via SSH on a remote host.
+or accessed via SSH on a remote host. To submit to a remote cluster you also need
+to mount your personal ARC settings and your SSH material into the container; see
+:ref:`remote_submission` for the required mounts and the two authentication routes.
 
 Aliases in interactive shells
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

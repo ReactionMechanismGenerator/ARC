@@ -347,6 +347,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
 
     def test_initialize_output_dict(self):
         """Test Scheduler.initialize_output_dict"""
+        self.sched1.output['C2H6']['info'] = 'some text'
         self.assertTrue(self.sched1._does_output_dict_contain_info())
         self.sched1.output = dict()
         self.assertEqual(self.sched1.output, dict())
@@ -1763,6 +1764,39 @@ H      -1.82570782    0.42754384   -0.56130718"""
         args['keyword']['dft_grid'] = 'defgrid2'
         self.assertEqual(level.args, {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()})
 
+    @patch('arc.scheduler.Scheduler.check_max_simultaneous_jobs_limit')
+    @patch('arc.scheduler.job_factory')
+    def test_run_job_records_the_remote_project_path_of_each_server(self, mock_job_factory, mock_limit):
+        """Test that run_job() records where the project lives on every server it spawns a job on."""
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_run_job_remote_paths')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_run_job_remote_paths', ess_settings=self.ess_settings,
+                          species_list=[ARCSpecies(label='C2H6', smiles='CC')],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        self.assertEqual(sched.remote_project_paths, dict())
+
+        for job_name, server, remote_project_path in [('opt_a0000', 'server1', 'runs/ARC_Projects/a_project'),
+                                                      ('opt_a0001', 'server1', 'a_later_job_does_not_overwrite'),
+                                                      ('opt_a0002', 'server2', 'runs/ARC_Projects/a_project'),
+                                                      ('opt_a0003', 'local', None),
+                                                      ('opt_a0004', None, 'no_server_is_not_recorded')]:
+            job_mock = MagicMock()
+            job_mock.job_name, job_mock.server = job_name, server
+            job_mock.remote_project_path = remote_project_path
+            mock_job_factory.return_value = job_mock
+            sched.run_job(label='C2H6', job_type='opt',
+                          level_of_theory=Level(repr=default_levels_of_theory['opt']), job_adapter='gaussian')
+
+        self.assertEqual(sched.remote_project_paths, {'server1': 'runs/ARC_Projects/a_project',
+                                                      'server2': 'runs/ARC_Projects/a_project'})
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -2011,6 +2045,59 @@ class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
         collider = ARCSpecies(label='CH4_TS0', smiles='O')
         with self.assertRaises(SchedulerError):
             self.build_scheduler(rxn, r + p + [collider], 'adaptive_collision')
+
+
+class TestGetServerJobIds(unittest.TestCase):
+    """The status poll runs every cycle for every job, so it is the hottest SSH caller there is."""
+
+    @staticmethod
+    def _sched(servers):
+        """A stand-in carrying only what get_server_job_ids() reads."""
+        return SimpleNamespace(servers=servers, server_job_ids=None)
+
+    def test_a_remote_server_is_polled_through_a_pooled_client(self):
+        """Opening a connection per poll is what the pool exists to stop."""
+        sched = self._sched(['zeus'])
+        client = MagicMock()
+        client.check_running_jobs_ids.return_value = ['101', '102']
+        with patch('arc.scheduler.borrow_ssh_client') as borrow:
+            borrow.return_value.__enter__.return_value = client
+            Scheduler.get_server_job_ids(sched)
+        borrow.assert_called_once_with('zeus')
+        self.assertEqual(sched.server_job_ids, ['101', '102'])
+
+    def test_the_borrowed_client_is_released(self):
+        """A borrow that is not exited would hold the pool's client for the rest of the run."""
+        sched = self._sched(['zeus'])
+        with patch('arc.scheduler.borrow_ssh_client') as borrow:
+            borrow.return_value.__enter__.return_value = MagicMock()
+            Scheduler.get_server_job_ids(sched)
+        borrow.return_value.__exit__.assert_called_once()
+
+    def test_every_poll_of_one_server_goes_through_one_borrow(self):
+        """Each cycle borrows once per server, which is one pooled client for the whole run."""
+        sched = self._sched(['zeus'])
+        with patch('arc.scheduler.borrow_ssh_client') as borrow:
+            borrow.return_value.__enter__.return_value = MagicMock()
+            for _ in range(50):
+                Scheduler.get_server_job_ids(sched)
+        self.assertEqual(borrow.call_count, 50)
+
+    def test_a_local_server_is_not_polled_over_ssh(self):
+        """The local queue is read with a local command, and must not touch the pool."""
+        sched = self._sched(['local'])
+        with patch('arc.scheduler.borrow_ssh_client') as borrow, \
+                patch('arc.scheduler.check_running_jobs_ids', return_value=['7']):
+            Scheduler.get_server_job_ids(sched)
+        borrow.assert_not_called()
+        self.assertEqual(sched.server_job_ids, ['7'])
+
+    def test_a_specific_server_limits_the_poll_to_it(self):
+        sched = self._sched(['zeus', 'atlas'])
+        with patch('arc.scheduler.borrow_ssh_client') as borrow:
+            borrow.return_value.__enter__.return_value = MagicMock()
+            Scheduler.get_server_job_ids(sched, specific_server='atlas')
+        borrow.assert_called_once_with('atlas')
 
 
 if __name__ == '__main__':

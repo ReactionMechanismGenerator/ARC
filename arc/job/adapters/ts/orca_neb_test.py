@@ -40,12 +40,15 @@ class TestOrcaNEB(unittest.TestCase):
         # Mock objects for both orca_neb and orca/adapter modules
         mock_input_filenames = {'orca_neb': 'input.in', 'orca': 'input.in'}
         mock_output_filenames = {'orca_neb': 'input.log', 'orca': 'input.log'}
-        mock_servers = {'local': {'cluster_soft': 'local', 'un': 'user', 'queues': {}}}
-        mock_submit_filenames = {'local': 'submit.sub'}
+        mock_servers = {'local': {'cluster_soft': 'local', 'un': 'user', 'queues': {}},
+                        'remote_server': {'cluster_soft': 'PBS', 'un': 'user', 'path': '/home/user',
+                                          'address': 'remote.host.edu', 'queues': {'q': '24:00:00'}}}
+        mock_submit_filenames = {'local': 'submit.sub', 'PBS': 'submit.sub'}
         mock_orca_neb_settings = {'keyword': {'interpolation': 'IDPP', 'nnodes': 15, 'preopt': 'true'}}
         mock_default_job_settings = {'job_total_memory_gb': 14, 'job_cpu_cores': 8}
-        mock_t_max_format = {'local': 'hours'}
-        mock_submit_scripts = {'local': {'orca': 'mock submit script content'}}
+        mock_t_max_format = {'local': 'hours', 'PBS': 'hours'}
+        mock_submit_scripts = {'local': {'orca': 'mock submit script content'},
+                               'remote_server': {'orca': 'mock submit script content'}}
 
         # 1. Mock settings in orca_neb module
         cls.settings_patcher = unittest.mock.patch('arc.job.adapters.ts.orca_neb.settings', {
@@ -88,6 +91,13 @@ class TestOrcaNEB(unittest.TestCase):
         # Also need to mock output_filenames in orca_neb global scope if it was imported as such
         cls.orca_neb_output_filenames_patcher = unittest.mock.patch('arc.job.adapters.ts.orca_neb.output_filenames', mock_output_filenames)
         cls.mock_orca_neb_output_filenames = cls.orca_neb_output_filenames_patcher.start()
+
+        cls.orca_neb_servers_patcher = unittest.mock.patch('arc.job.adapters.ts.orca_neb.servers', mock_servers)
+        cls.mock_orca_neb_servers = cls.orca_neb_servers_patcher.start()
+
+        cls.orca_neb_submit_filenames_patcher = unittest.mock.patch('arc.job.adapters.ts.orca_neb.submit_filenames',
+                                                                    mock_submit_filenames)
+        cls.mock_orca_neb_submit_filenames = cls.orca_neb_submit_filenames_patcher.start()
 
         # 4. Setup species and reaction
         cls.r_species = ARCSpecies(label='i-C3H7', smiles='C[CH]C')
@@ -138,6 +148,42 @@ class TestOrcaNEB(unittest.TestCase):
             self.assertIn('reactant.xyz', content)
             self.assertIn('product.xyz', content)
 
+    def test_task_1b_a_remote_server_resolves_the_endpoint_files_on_the_server(self):
+        """Orca reads reactant.xyz and product.xyz on the machine the job runs on."""
+        job = OrcaNEBAdapter(project='test_orca_neb',
+                             job_type='tsg',
+                             project_directory=self.project_directory,
+                             reactions=[self.reaction],
+                             level=self.level,
+                             server='remote_server')
+        abs_path = job._get_abs_path()
+        self.assertEqual(abs_path, job.remote_path)
+        self.assertNotEqual(abs_path, job.local_path)
+        self.assertTrue(os.path.isabs(abs_path))
+        job.write_input_file()
+        with open(os.path.join(job.local_path, 'input.in'), 'r') as f:
+            content = f.read()
+        self.assertIn(f'{job.remote_path}/reactant.xyz', content)
+        self.assertIn(f'{job.remote_path}/product.xyz', content)
+        self.assertNotIn(job.local_path, content)
+
+    def test_task_1c_a_relative_remote_path_is_refused(self):
+        """A server without a configured path yields a relative remote path Orca cannot follow."""
+        job = OrcaNEBAdapter(project='test_orca_neb',
+                             job_type='tsg',
+                             project_directory=self.project_directory,
+                             reactions=[self.reaction],
+                             level=self.level,
+                             server='remote_server')
+        job.remote_path = os.path.join('runs', 'ARC_Projects', 'test_orca_neb')
+        with self.assertRaises(ValueError):
+            job.write_input_file()
+
+    def test_task_1d_the_local_server_still_resolves_locally(self):
+        """A local job reads the endpoint files from the directory ARC wrote them to."""
+        self.assertTrue(os.path.isabs(self.job.remote_path))
+        self.assertEqual(self.job._get_abs_path(), self.job.local_path)
+
     def test_task_2_post_processing(self):
         """
         Task 2: Post processing parts.
@@ -181,6 +227,8 @@ class TestOrcaNEB(unittest.TestCase):
         cls.adapter_t_max_format_patcher.stop()
         cls.adapter_output_filenames_patcher.stop()
         cls.orca_neb_output_filenames_patcher.stop()
+        cls.orca_neb_servers_patcher.stop()
+        cls.orca_neb_submit_filenames_patcher.stop()
 
 
 if __name__ == '__main__':

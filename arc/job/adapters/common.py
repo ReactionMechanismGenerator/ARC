@@ -258,13 +258,9 @@ def _initialize_adapter(obj: JobAdapter,
 
     obj.args = set_job_args(args=obj.args, level=obj.level, job_name=obj.job_name)
     if obj.execution_type != 'incore' and obj.job_adapter in obj.ess_settings.keys() and obj.server is None:
-        if 'server' in obj.args['trsh']:
-            obj.server = obj.args['trsh']['server']
-        elif obj.job_adapter in obj.ess_settings.keys():
-            if isinstance(obj.ess_settings[obj.job_adapter], list):
-                obj.server = obj.ess_settings[obj.job_adapter][0]
-            else:
-                obj.server = obj.ess_settings[obj.job_adapter]
+        obj.server = resolve_job_server(ess_settings=obj.ess_settings,
+                                        job_adapter=obj.job_adapter,
+                                        args=obj.args)
 
     obj.set_file_paths()
     obj.set_cpu_and_mem()
@@ -279,6 +275,40 @@ def _initialize_adapter(obj: JobAdapter,
 
     obj.set_files()
     check_argument_consistency(obj)
+
+
+def resolve_job_server(ess_settings: dict,
+                       job_adapter: str,
+                       args: dict | None = None,
+                       ) -> str | None:
+    """
+    Determine the server a job for ``job_adapter`` will be sent to.
+
+    A troubleshooting override in ``args['trsh']['server']`` wins, since it is set precisely to
+    move a job off the server that failed it, and it is honoured even when it is empty so that
+    the caller sees the same server the job itself would be given. Otherwise the server is the
+    first one the ESS settings name for the adapter, which is the entry ARC submits to; a bare
+    string there is read as a single server.
+
+    Args:
+        ess_settings (dict): The ESS settings, mapping an adapter to the server or the list of
+                             servers it is available on.
+        job_adapter (str): The job adapter to resolve a server for.
+        args (dict, optional): The job's arguments, whose ``'trsh'`` entry may carry a
+                               ``'server'`` override.
+
+    Returns: str | None
+        The server name, or ``None`` when neither an override nor the ESS settings name one.
+    """
+    trsh_args = (args or dict()).get('trsh') or dict()
+    if isinstance(trsh_args, dict) and 'server' in trsh_args:
+        return trsh_args['server']
+    servers_for_adapter = (ess_settings or dict()).get(job_adapter)
+    if isinstance(servers_for_adapter, str):
+        return servers_for_adapter or None
+    if isinstance(servers_for_adapter, (list, tuple)) and len(servers_for_adapter):
+        return servers_for_adapter[0]
+    return None
 
 
 def is_restricted(obj: JobAdapter) -> bool | list[bool]:

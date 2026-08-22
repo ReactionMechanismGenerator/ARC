@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from unittest import mock
+from unittest.mock import patch
 
 from arc.common import ARC_PATH, get_logger
 from arc.exceptions import InputError
@@ -533,6 +533,82 @@ class TestARC(unittest.TestCase):
                 shutil.rmtree(project_directory, ignore_errors=True)
 
 
+class TestExecuteReleasesPooledConnections(unittest.TestCase):
+    """The SSH connections a run holds open must be released by the run, not by interpreter exit."""
+
+    @staticmethod
+    def _arc():
+        """An ARC object without the project setup __init__ does, which this does not need."""
+        return ARC.__new__(ARC)
+
+    def test_the_pool_is_released_when_the_run_finishes(self):
+        """A consumer that never goes through ARC.py must still release its connections."""
+        with patch.object(ARC, '_execute', return_value={'spc': 'converged'}), \
+                patch('arc.main.reset_default_pool') as released:
+            status = self._arc().execute()
+        self.assertEqual(status, {'spc': 'converged'})
+        released.assert_called_once()
+
+    def test_the_pool_is_released_when_the_run_raises(self):
+        """An interrupted or failed run is exactly when connections would otherwise be left open."""
+        with patch.object(ARC, '_execute', side_effect=ValueError('the run went wrong')), \
+                patch('arc.main.reset_default_pool') as released:
+            self.assertRaises(ValueError, self._arc().execute)
+        released.assert_called_once()
+
+    def test_the_pool_is_released_on_a_keyboard_interrupt(self):
+        """Ctrl-C is how a long run usually ends, and it is not an Exception."""
+        with patch.object(ARC, '_execute', side_effect=KeyboardInterrupt), \
+                patch('arc.main.reset_default_pool') as released:
+            self.assertRaises(KeyboardInterrupt, self._arc().execute)
+        released.assert_called_once()
+
+
+class TestServerMappingBorrowsItsConnection(unittest.TestCase):
+    """The connection the ESS survey opens is the one the run's jobs then need."""
+
+    REMOTE = {'zeus': {'cluster_soft': 'PBS', 'address': 'z.example.edu', 'un': 'u'}}
+
+    def _map_servers(self, found):
+        """Survey the remote servers with every find_package() answering ``found``."""
+        arc_object = ARC.__new__(ARC)
+        arc_object.ess_settings = dict()
+        with patch('arc.main.servers', self.REMOTE), \
+                patch('arc.main.borrow_ssh_client') as borrow:
+            borrow.return_value.__enter__.return_value.find_package.return_value = found
+            arc_object.determine_ess_settings()
+        return arc_object, borrow
+
+    def test_one_connection_is_borrowed_per_server(self):
+        """The survey asks after five packages, and used to open one connection for all of them."""
+        _, borrow = self._map_servers(found=[])
+        borrow.assert_called_once_with('zeus')
+
+    def test_the_borrowed_connection_is_released(self):
+        _, borrow = self._map_servers(found=[])
+        borrow.return_value.__exit__.assert_called_once()
+
+    def test_what_the_survey_finds_is_unchanged(self):
+        """Borrowing instead of opening must not change the answer the survey gives."""
+        arc_object, _ = self._map_servers(found=['/usr/bin/g16'])
+        self.assertEqual(arc_object.ess_settings['gaussian'], ['zeus'])
+        self.assertEqual(arc_object.ess_settings['orca'], ['zeus'])
+
+
+class ReachedTheCleanup(Exception):
+    """Raised to stop a run right after its check file cleanup, so the rest of the run is not needed."""
+
+
+class SchedulerStub(object):
+    """Stands in for a Scheduler that has finished running a project's jobs on a server."""
+
+    def __init__(self, remote_project_paths: dict):
+        self.remote_project_paths = remote_project_paths
+        self.output = dict()
+        self.species_dict = dict()
+        self.rxn_list = list()
+
+
 class TestCheckFileCleanup(unittest.TestCase):
     """
     Contains unit tests for deleting ESS checkfiles when ARC terminates, both locally and on the servers.
@@ -558,19 +634,19 @@ class TestCheckFileCleanup(unittest.TestCase):
         A method that is run before each unit test in this class.
         Set up a fake remote server: a temporary directory in which the commands ARC would have sent
         to a server are actually executed, so that the real cleanup code path is exercised.
+        The server definition is pinned so that neither a user settings file nor a missing 'server2'
+        entry can change the remote path this test builds and cleans.
         """
         self.remote_root = tempfile.mkdtemp()
         self.project_directory = os.path.join(tempfile.mkdtemp(), self.project)
-        # Pin the server definition so that neither a user settings file nor a missing 'server2'
-        # entry can change the remote path this test builds and cleans.
-        for patch in [mock.patch.dict('arc.job.adapter.servers', {self.server: self.server_settings}),
-                      mock.patch.dict('arc.job.ssh.servers', {self.server: self.server_settings}),
-                      mock.patch.object(SSHClient, 'connect', lambda ssh_client: None),
-                      mock.patch.object(SSHClient, '_send_command_to_server',
-                                        lambda ssh_client, command, remote_path='':
-                                        self.send_command_to_fake_server(command, remote_path))]:
-            patch.start()
-            self.addCleanup(patch.stop)
+        for patcher in [patch.dict('arc.job.adapter.servers', {self.server: self.server_settings}),
+                        patch.dict('arc.job.ssh.servers', {self.server: self.server_settings}),
+                        patch.object(SSHClient, 'connect', lambda ssh_client: None),
+                        patch.object(SSHClient, '_send_command_to_server',
+                                     lambda ssh_client, command, remote_path='':
+                                     self.send_command_to_fake_server(command, remote_path))]:
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def send_command_to_fake_server(self, command: str, remote_path: str = '') -> tuple:
         """
@@ -645,12 +721,12 @@ class TestCheckFileCleanup(unittest.TestCase):
         return arc0
 
     def test_check_files_are_deleted_locally_and_remotely(self):
-        """Test that check files are deleted on the server as well as locally when keep_checks is False"""
+        """Test that check files are deleted on the server as well as locally when keep_checks is False,
+        and that only check files, and only those under this project's own remote directory, are deleted"""
         arc0 = self.set_up_arc_and_check_files(keep_checks=False)
         arc0.clean_check_files(remote_project_paths=self.remote_project_paths)
         self.assertFalse(os.path.isfile(self.local_check_path))
         self.assertFalse(os.path.isfile(self.remote_check_path))
-        # Only check files, and only under this project's own remote directory, are deleted:
         self.assertTrue(os.path.isfile(self.remote_output_path))
         self.assertTrue(os.path.isfile(self.other_project_check_path))
 
@@ -669,6 +745,19 @@ class TestCheckFileCleanup(unittest.TestCase):
         arc0.clean_check_files()
         self.assertFalse(os.path.isfile(self.local_check_path))
         self.assertTrue(os.path.isfile(self.remote_check_path))
+
+    def test_a_run_reaches_the_remote_cleanup_with_the_scheduler_remote_paths(self):
+        """Test that executing a project actually deletes the server's check files, the cleanup is wired"""
+        arc0 = self.set_up_arc_and_check_files(keep_checks=False)
+        scheduler = SchedulerStub(remote_project_paths=self.remote_project_paths)
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch.object(ARC, 'delete_leftovers', side_effect=ReachedTheCleanup):
+            with self.assertRaises(ReachedTheCleanup):
+                arc0.execute()
+        self.assertFalse(os.path.isfile(self.local_check_path))
+        self.assertFalse(os.path.isfile(self.remote_check_path))
+        self.assertTrue(os.path.isfile(self.remote_output_path))
+        self.assertTrue(os.path.isfile(self.other_project_check_path))
 
     def tearDown(self):
         """

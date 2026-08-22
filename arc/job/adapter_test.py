@@ -16,9 +16,16 @@ import unittest
 from unittest.mock import patch
 
 from arc.common import ARC_TESTING_PATH
+from arc.exceptions import ServerError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter, JobEnum, JobTypeEnum, JobExecutionTypeEnum
 from arc.job.adapters.gaussian import GaussianAdapter
+from arc.job.ssh_pool import (
+    SSHConnectionPool,
+    get_default_pool,
+    reset_default_pool,
+    set_default_pool,
+)
 from arc.level import Level
 from arc.species import ARCSpecies
 
@@ -89,8 +96,11 @@ class TestJobAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        for dir_name in ('test_JobAdapter', 'test_JobAdapter_scan', 'test_JobAdapter_ServerTimeLimit'):
-            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, dir_name), ignore_errors=True)
+        # Register project-dir cleanups before any fixture creation so they
+        # still fire if a constructor below raises mid-setUpClass — that's
+        # how leftover scratch files end up committed to the repo.
+        for subdir in ('test_JobAdapter', 'test_JobAdapter_scan', 'test_JobAdapter_ServerTimeLimit'):
+            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, subdir), ignore_errors=True)
         cls.job_1 = GaussianAdapter(execution_type='queue',
                                     job_type='conf_opt',
                                     level=Level(method='cbs-qb3'),
@@ -401,6 +411,507 @@ class TestRotateCSV(unittest.TestCase):
             self.assertFalse(os.path.isfile(csv_path))
             archives = glob.glob(os.path.join(tmp, 'jobs.old.*.csv'))
             self.assertEqual(len(archives), 2)
+
+
+# ---------------------------------------------------------------------------
+# SSH connection sharing & pooling (Options 1 + 2).
+#
+# Option 1 (per-job share): one SSHClient covers both upload and submit
+# inside a single execute() call — collapses 2N connections to N.
+# Option 2 (process-lifetime pool): the SSHClient for a given server is
+# kept alive across jobs — collapses N to a small constant.
+# ---------------------------------------------------------------------------
+
+
+class _SSHClientStub:
+    """In-memory SSHClient lookalike for the pool to hand out.
+
+    Records every upload/submit so tests can assert which calls landed
+    on which (shared) client. The pool calls ``connect()`` after
+    instantiation; we no-op that since there's no real socket.
+    """
+
+    def __init__(self, server):
+        self.server = server
+        self.uploaded = []
+        self.submits = []
+        self.downloaded = []
+        self._closed = False
+        # Mimic SSHClient's ``_ssh`` attribute so ssh_pool._is_alive()
+        # finds an active fake-Transport.
+        self._ssh = _FakeParamikoSSH()
+
+    def connect(self):
+        pass  # the real one opens TCP+auth; we no-op for tests
+
+    def close(self):
+        self._closed = True
+        self._ssh = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def upload_file(self, *, remote_file_path, local_file_path=None, file_string=None):
+        self.uploaded.append(remote_file_path)
+
+    def submit_job(self, remote_path, recursion=False):
+        self.submits.append(remote_path)
+        return 'initializing', 12345
+
+    def change_mode(self, *, mode, file_name, remote_path):
+        pass
+
+    # Methods that the post-submit lifecycle paths exercise.
+    def check_job_status(self, job_id):
+        return 'running'
+
+    def download_file(self, *, remote_file_path, local_file_path):
+        self.downloaded.append(remote_file_path)
+
+    def remove_dir(self, *, remote_path):
+        pass
+
+    def delete_job(self, job_id):
+        pass
+
+
+class _FakeParamikoSSH:
+    """Stand-in for paramiko.SSHClient — _is_alive checks Transport.is_active()."""
+    def get_transport(self):
+        return _FakeTransport()
+
+
+class _FakeTransport:
+    def is_active(self):
+        return True
+
+
+class _StubFactoryPool:
+    """A pool whose factory builds _SSHClientStub instead of real SSHClient.
+
+    Wraps the production ``SSHConnectionPool`` so reuse + lifecycle
+    semantics are exactly the production behavior — only the
+    underlying object is faked.
+    """
+
+    def __init__(self):
+        self.created = []  # log of every server name we built a client for
+        def factory(server):
+            client = _SSHClientStub(server)
+            self.created.append(server)
+            return client
+        self._inner = SSHConnectionPool(factory=factory)
+
+    def borrow(self, server):
+        return self._inner.borrow(server)
+
+    def close_all(self):
+        self._inner.close_all()
+
+    @property
+    def opens(self):
+        return self._inner.opens
+
+    @property
+    def borrows(self):
+        return self._inner.borrows
+
+
+class _MinimalAdapter(JobAdapter):
+    """Concrete JobAdapter with just enough state to exercise execute().
+
+    Skips the heavyweight construction the GaussianAdapter does — we
+    only need ``server``, ``execution_type``, ``files_to_upload``,
+    ``remote_path``, and ``testing=False`` for the SSH-share path.
+    """
+
+    job_adapter = 'mockter'
+
+    def __init__(self, *, server, execution_type='queue'):
+        # Bypass JobAdapter.__init__ entirely — all of its real work
+        # (file paths, settings, csv setup) is unrelated to the SSH
+        # share contract we're testing here.
+        self.server = server
+        self.execution_type = execution_type
+        self.testing = False
+        self.restarted = True   # skip _write_initiated_job_to_csv_file
+        self.files_to_upload = [
+            {'file_name': 'input.gjf', 'source': 'path',
+             'local': '/local/input.gjf', 'remote': '/remote/input.gjf', 'make_x': False},
+            {'file_name': 'submit.sh', 'source': 'path',
+             'local': '/local/submit.sh', 'remote': '/remote/submit.sh', 'make_x': True},
+        ]
+        self.remote_path = '/remote'
+        self.local_path = '/local'
+        self.job_status = ['initializing', {'status': 'initializing'}]
+        self.job_id = 0
+        self.initial_time = None
+        self.final_time = None
+        self.job_name = 'job_test'
+        self.species_label = 'spc_test'
+
+    # JobAdapter requires these abstracts; trivial bodies are fine.
+    def execute_incore(self): pass
+    def execute_queue(self): self.legacy_queue_execution()
+    def write_input_file(self): pass
+    def set_files(self): pass
+    def set_additional_file_paths(self): pass
+    def set_input_file_memory(self): pass
+    def upload_during_execution(self): pass
+    def _log_job_execution(self): pass
+
+
+class TestSSHConnectionSharing(unittest.TestCase):
+    """``execute()`` shares one SSHClient per remote-queue job, and the
+    pool reuses it across jobs."""
+
+    def setUp(self):
+        # Inject a pool whose factory builds stubs, so the test never
+        # tries to open a real SSH connection to a server that isn't
+        # in this user's settings (e.g., 'server2').
+        self._stub_pool = _StubFactoryPool()
+        set_default_pool(self._stub_pool)
+        # Also stub the one-shot fallback: when a lease fails,
+        # ssh_pool.borrow_ssh_client() opens an SSHClient itself, so
+        # patch that name with a context-manager wrapper around our stub.
+        self._direct_patch = patch(
+            'arc.job.ssh_pool.SSHClient',
+            _SSHClientStub,
+        )
+        self._direct_patch.start()
+
+    def tearDown(self):
+        reset_default_pool()
+        self._direct_patch.stop()
+
+    def test_remote_queue_opens_one_ssh_per_job(self):
+        """Upload + submit share a single SSHClient inside one execute()."""
+        adapter = _MinimalAdapter(server='server2', execution_type='queue')
+        adapter.execute()
+        # One SSHClient created (the pool's first borrow), one borrow.
+        self.assertEqual(self._stub_pool.opens, 1)
+        self.assertEqual(self._stub_pool.borrows, 1)
+
+    def test_remote_queue_clears_shared_ssh_after_dispatch(self):
+        """``self._shared_ssh`` is None after execute() returns."""
+        adapter = _MinimalAdapter(server='server2', execution_type='queue')
+        adapter.execute()
+        self.assertIsNone(getattr(adapter, '_shared_ssh', None))
+
+    def test_local_server_opens_no_ssh(self):
+        """local-server queue jobs use the host's queue, no SSH at all."""
+        adapter = _MinimalAdapter(server='local', execution_type='queue')
+        with patch('arc.job.adapter.submit_job', return_value=('initializing', 99)):
+            adapter.execute()
+        self.assertEqual(self._stub_pool.opens, 0)
+        self.assertEqual(self._stub_pool.borrows, 0)
+
+    def test_incore_opens_no_ssh(self):
+        """incore execution runs in-process — never touches SSH."""
+        adapter = _MinimalAdapter(server='server2', execution_type='incore')
+        adapter.execute()
+        self.assertEqual(self._stub_pool.opens, 0)
+
+    def test_legacy_queue_execution_routes_through_pool_when_called_directly(self):
+        """Even when called bare (outside execute()), legacy_queue_execution
+        now reuses the pool — that's Option 2's payoff for adapter
+        ``execute_queue`` overrides that call ``self.legacy_queue_execution()``
+        from inside their own custom flow.
+        """
+        adapter = _MinimalAdapter(server='server2', execution_type='queue')
+        adapter.legacy_queue_execution()  # bare — no execute() wrapper
+        self.assertEqual(self._stub_pool.opens, 1)
+        self.assertEqual(self._stub_pool.borrows, 1)
+
+    def test_shared_ssh_carries_uploads_and_submit(self):
+        """The pooled SSHClient sees both upload calls AND the submit call."""
+        adapter = _MinimalAdapter(server='server2', execution_type='queue')
+        adapter.execute()
+        # Inspect the stub the pool kept.
+        self.assertEqual(self._stub_pool.opens, 1)
+        client = self._stub_pool._inner._clients['server2']
+        self.assertEqual(len(client.uploaded), 2)
+        self.assertEqual(len(client.submits), 1)
+
+
+class TestSSHConnectionDefaultPool(unittest.TestCase):
+    """Remote-queue jobs borrow from the process-global pool that ARC.py resets on exit."""
+
+    def setUp(self):
+        reset_default_pool()
+        self.addCleanup(reset_default_pool)
+
+    def test_execute_borrows_from_the_process_global_pool(self):
+        """With no pool passed in, execute() uses the instance get_default_pool() returns."""
+        set_default_pool(SSHConnectionPool(factory=_SSHClientStub))
+        _MinimalAdapter(server='server2', execution_type='queue').execute()
+        pool = get_default_pool()
+        self.assertEqual(pool.opens, 1)
+        self.assertEqual(sorted(pool._clients.keys()), ['server2'])
+
+    def test_reset_default_pool_closes_clients_opened_by_execute(self):
+        """ARC.py's exit hook must close the connections the adapters opened."""
+        set_default_pool(SSHConnectionPool(factory=_SSHClientStub))
+        _MinimalAdapter(server='server2', execution_type='queue').execute()
+        client = get_default_pool()._clients['server2']
+        reset_default_pool()
+        self.assertTrue(client._closed)
+
+    def test_the_default_pool_is_recreated_empty_after_a_reset(self):
+        """A reset must leave a usable pool behind, not a closed one."""
+        set_default_pool(SSHConnectionPool(factory=_SSHClientStub))
+        _MinimalAdapter(server='server2', execution_type='queue').execute()
+        reset_default_pool()
+        self.assertEqual(get_default_pool().opens, 0)
+        self.assertEqual(get_default_pool()._clients, {})
+
+
+class TestSSHConnectionPoolReuse(unittest.TestCase):
+    """The process-lifetime pool reuses one SSHClient across many jobs."""
+
+    def setUp(self):
+        self._stub_pool = _StubFactoryPool()
+        set_default_pool(self._stub_pool)
+
+    def tearDown(self):
+        reset_default_pool()
+
+    def test_one_open_for_many_jobs_same_server(self):
+        """100 jobs against one server → 1 SSHClient, 100 borrows."""
+        for _ in range(100):
+            adapter = _MinimalAdapter(server='server2', execution_type='queue')
+            adapter.execute()
+        self.assertEqual(self._stub_pool.opens, 1, "should reuse the same client")
+        self.assertEqual(self._stub_pool.borrows, 100)
+
+    def test_separate_clients_per_distinct_server(self):
+        """Different servers → different clients, each opened once."""
+        for _ in range(5):
+            _MinimalAdapter(server='server2', execution_type='queue').execute()
+        for _ in range(3):
+            _MinimalAdapter(server='server3', execution_type='queue').execute()
+        self.assertEqual(self._stub_pool.opens, 2)
+        self.assertEqual(self._stub_pool.borrows, 8)
+        self.assertEqual(sorted(self._stub_pool._inner._clients.keys()),
+                         ['server2', 'server3'])
+
+    def test_dead_client_is_reaped_and_reopened(self):
+        """If the underlying Transport reports inactive, pool reopens."""
+        # First borrow → opens stub #1.
+        _MinimalAdapter(server='server2', execution_type='queue').execute()
+        client1 = self._stub_pool._inner._clients['server2']
+        # Simulate a dead Transport (remote rebooted, etc.).
+        client1._ssh = None
+        # Next borrow should detect the dead client and open a fresh one.
+        _MinimalAdapter(server='server2', execution_type='queue').execute()
+        client2 = self._stub_pool._inner._clients['server2']
+        self.assertIs(client1._closed, True, "stale client should be closed before reopen")
+        self.assertIsNot(client1, client2)
+        self.assertEqual(self._stub_pool.opens, 2)
+
+    def test_close_all_closes_every_pooled_client(self):
+        for srv in ('server2', 'server3'):
+            _MinimalAdapter(server=srv, execution_type='queue').execute()
+        clients = list(self._stub_pool._inner._clients.values())
+        self._stub_pool.close_all()
+        self.assertEqual(self._stub_pool._inner._clients, {})
+        for c in clients:
+            self.assertTrue(c._closed)
+
+    def test_close_all_is_idempotent(self):
+        _MinimalAdapter(server='server2', execution_type='queue').execute()
+        self._stub_pool.close_all()
+        # Second call must not raise or mutate state.
+        self._stub_pool.close_all()
+        self.assertEqual(self._stub_pool._inner._clients, {})
+
+    def test_status_poll_reuses_pooled_client(self):
+        """The hot path: hundreds of status checks open exactly one client.
+
+        ARC polls a job's queue status every poll cycle for the entire
+        duration of the job. Pre-pool, each call opened a fresh
+        SSHClient. After Option 2, all polls reuse the pool's client
+        for that server — the dominant SSH-cost reducer in a real run.
+        """
+        adapter = _MinimalAdapter(server='server2', execution_type='queue')
+        # Simulate 200 poll cycles (~1.5 hour run at 30s polling).
+        for _ in range(200):
+            adapter._check_job_server_status()
+        self.assertEqual(self._stub_pool.opens, 1, "pool should reuse one client")
+        self.assertEqual(self._stub_pool.borrows, 200)
+
+    def test_download_files_reuses_pooled_client(self):
+        """download_files (called once per finished job) uses the pool too."""
+        adapter = _MinimalAdapter(server='server2', execution_type='queue')
+        adapter.files_to_download = [
+            {'remote': '/r/output.log', 'local': '/l/output.log'},
+        ]
+        # set_initial_and_final_times reads file mtimes — stub it.
+        adapter.set_initial_and_final_times = lambda ssh=None: None
+        adapter.download_files()
+        client = self._stub_pool._inner._clients['server2']
+        self.assertIn('/r/output.log', client.downloaded)
+        self.assertEqual(self._stub_pool.opens, 1)
+
+    def test_full_lifecycle_one_open_per_server(self):
+        """Submit + many polls + download + cleanup all share one pooled client.
+
+        End-to-end view of one job's life: this collapses what was
+        previously ~(2 + N_polls + 1 + 1) ≈ N+4 individual SSH
+        connections into a single reused client.
+        """
+        adapter = _MinimalAdapter(server='server2', execution_type='queue')
+        adapter.files_to_download = [{'remote': '/r/o.log', 'local': '/l/o.log'}]
+        adapter.set_initial_and_final_times = lambda ssh=None: None
+
+        adapter.execute()                  # upload + submit (1 borrow)
+        for _ in range(50):                # 50 status polls
+            adapter._check_job_server_status()
+        adapter.download_files()           # 1 download borrow
+        adapter.remove_remote_files()      # 1 cleanup borrow
+        adapter.delete()                   # 1 delete borrow
+
+        # All phases share the same pooled client.
+        self.assertEqual(self._stub_pool.opens, 1)
+        # 1 execute + 50 polls + 1 download + 1 cleanup + 1 delete = 54 borrows.
+        self.assertEqual(self._stub_pool.borrows, 54)
+
+
+class TestSSHPoolFallback(unittest.TestCase):
+    """When the pool itself cannot lease a client, the job still gets one."""
+
+    def setUp(self):
+        """Start from a clean pool, with every one-shot SSHClient stubbed and recorded."""
+        reset_default_pool()
+        self.addCleanup(reset_default_pool)
+        self.opened = list()
+
+        def _factory(server):
+            client = _SSHClientStub(server)
+            self.opened.append(client)
+            return client
+        client_patch = patch('arc.job.ssh_pool.SSHClient', side_effect=_factory)
+        client_patch.start()
+        self.addCleanup(client_patch.stop)
+
+    def _borrow(self, adapter):
+        """Return the client the adapter's SSH context manager yields."""
+        with adapter._open_or_borrow_ssh() as client:
+            return client
+
+    def test_a_factory_failure_falls_back_to_a_one_shot_client(self):
+        """The pool builds its client on the first borrow, which is where a dead server shows."""
+        def _factory(server):
+            raise ServerError(f'Could not connect to server {server}')
+        set_default_pool(SSHConnectionPool(factory=_factory))
+        client = self._borrow(_MinimalAdapter(server='server2', execution_type='queue'))
+        self.assertEqual(len(self.opened), 1)
+        self.assertIs(client, self.opened[0])
+        self.assertEqual(client.server, 'server2')
+
+    def test_an_unusable_pool_falls_back_too(self):
+        """Any failure to lease is a failure to lease, whatever the pool object is."""
+        class _PoolWithoutBorrow:
+            """A process-global pool object that cannot lease a client."""
+
+            def close_all(self):
+                """Tear down nothing, since nothing was ever leased."""
+        set_default_pool(_PoolWithoutBorrow())
+        client = self._borrow(_MinimalAdapter(server='server2', execution_type='queue'))
+        self.assertEqual(len(self.opened), 1)
+        self.assertIs(client, self.opened[0])
+
+    def test_a_leased_client_is_still_yielded(self):
+        """A working pool is used as it was, without opening anything private."""
+        set_default_pool(_StubFactoryPool())
+        client = self._borrow(_MinimalAdapter(server='server2', execution_type='queue'))
+        self.assertIsInstance(client, _SSHClientStub)
+        self.assertEqual(client.server, 'server2')
+        self.assertEqual(self.opened, list())
+
+    @staticmethod
+    def _borrow_and_raise(adapter):
+        """Borrow a client for ``adapter`` and fail inside the with-block, as a job would."""
+        with adapter._open_or_borrow_ssh():
+            raise ValueError('the job, not the connection, went wrong')
+
+    def test_an_error_raised_by_the_caller_is_not_treated_as_a_pool_failure(self):
+        """The fallback covers leasing only: the caller's own failure must reach the caller."""
+        set_default_pool(_StubFactoryPool())
+        adapter = _MinimalAdapter(server='server2', execution_type='queue')
+        self.assertRaises(ValueError, self._borrow_and_raise, adapter)
+        self.assertEqual(self.opened, list())
+
+    def test_the_pool_stays_usable_after_a_caller_raised(self):
+        """A borrow that ended in an exception must not leave the pool holding a lease."""
+        pool = _StubFactoryPool()
+        set_default_pool(pool)
+        adapter = _MinimalAdapter(server='server2', execution_type='queue')
+        self.assertRaises(ValueError, self._borrow_and_raise, adapter)
+        with adapter._open_or_borrow_ssh() as client:
+            self.assertIsInstance(client, _SSHClientStub)
+        self.assertEqual(pool.opens, 1)
+        self.assertEqual(pool.borrows, 2)
+
+
+class TestRemoteJobPaths(unittest.TestCase):
+    """set_file_paths() decides where a job's files live on the server."""
+
+    def setUp(self):
+        """Work in a temporary project directory, with no server warned about yet."""
+        self.tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
+        warned = patch('arc.job.adapter._SERVERS_WARNED_ABOUT_A_RELATIVE_REMOTE_PATH', set())
+        warned.start()
+        self.addCleanup(warned.stop)
+
+    def _remote_path(self, server_cfg, server='srv'):
+        """Return the remote path set_file_paths() builds for a job on ``server``."""
+        adapter = _MinimalAdapter(server=server, execution_type='queue')
+        adapter.reactions = None
+        adapter.species = [ARCSpecies(label='spc', smiles='C')]
+        adapter.run_multi_species = False
+        adapter.project = 'proj'
+        adapter.project_directory = self.tmp_dir
+        adapter.species_label = 'spc'
+        adapter.job_name = 'job_1'
+        with patch('arc.job.adapter.servers', {server: server_cfg}):
+            adapter.set_file_paths()
+        return adapter.remote_path
+
+    def test_a_configured_path_is_used_verbatim(self):
+        """Remote file systems are case-sensitive, so the configured path must not be lowercased."""
+        remote_path = self._remote_path({'cluster_soft': 'PBS', 'un': 'MyUser', 'path': '/Home/Users'})
+        self.assertEqual(remote_path,
+                         os.path.join('/Home/Users', 'MyUser', 'runs', 'ARC_Projects', 'proj',
+                                      'spc', 'job_1'))
+        self.assertTrue(os.path.isabs(remote_path))
+
+    def test_a_server_without_a_path_stays_relative_to_the_login_directory(self):
+        """That is where the remote shell and SFTP resolve it, and it is reported as such."""
+        with self.assertLogs('arc', level='WARNING') as logged:
+            remote_path = self._remote_path({'cluster_soft': 'PBS', 'un': 'user'})
+        self.assertEqual(remote_path,
+                         os.path.join('runs', 'ARC_Projects', 'proj', 'spc', 'job_1'))
+        self.assertFalse(os.path.isabs(remote_path))
+        self.assertEqual(len(logged.output), 1)
+        self.assertIn('srv', logged.output[0])
+        self.assertIn('path', logged.output[0])
+
+    def test_the_report_is_made_once_per_server(self):
+        """One line per run, not one per job, or a large run buries its own log."""
+        with self.assertLogs('arc', level='WARNING'):
+            self._remote_path({'cluster_soft': 'PBS', 'un': 'user'})
+        with self.assertNoLogs('arc', level='WARNING'):
+            self._remote_path({'cluster_soft': 'PBS', 'un': 'user'})
+
+    def test_the_local_server_is_not_reported(self):
+        """The local server runs in the project directory and has no remote path to configure."""
+        with self.assertNoLogs('arc', level='WARNING'):
+            self._remote_path({'cluster_soft': 'local', 'un': 'user'}, server='local')
 
 
 if __name__ == '__main__':
