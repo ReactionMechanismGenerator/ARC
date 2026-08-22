@@ -94,7 +94,7 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
 # options: additional keywords to control job (e.g., TightSCF, NormalPNO ...)
 input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary_basis}${cabs} ${keywords}
 !${job_type_1} 
-${job_type_2}
+${job_type_2}${orbital_guess}
 %%maxcore ${memory}
 %%pal nprocs ${cpus} end
 
@@ -103,10 +103,14 @@ ${xyz}
 *
 
 %%scf
-MaxIter 999
+MaxIter 999${scf_keys}
 end${scan}
 ${block}
 """
+
+
+ORBITALS_DOWNLOAD_JOB_TYPES = ['composite', 'opt', 'optfreq', 'stability']
+ORBITALS_GUESS_JOB_TYPES = ['conf_opt', 'conf_sp', 'freq', 'opt', 'optfreq', 'scan', 'sp', 'stability']
 
 
 class OrcaAdapter(JobAdapter):
@@ -124,7 +128,7 @@ class OrcaAdapter(JobAdapter):
                                block to the input file (e.g., change server or change scan resolution).
         bath_gas (str, optional): A bath gas. Currently only used in OneDMin to calculate L-J parameters. Allowed values
                                   are: ``'He'``, ``'Ne'``, ``'Ar'``, ``'Kr'``, ``'H2'``, ``'N2'``, or ``'O2'``.
-        checkfile (str, optional): The path to a previous Gaussian checkfile to be used in the current job.
+        checkfile (str, optional): The path to a previous job's orbitals file (``.gbw``) to be used in the current job.
         conformer (int, optional): Conformer number if optimizing conformers.
         constraints (list, optional): A list of constraints to use during an optimization or scan.
         cpu_cores (int, optional): The total number of cpu cores requested for a job.
@@ -158,6 +162,9 @@ class OrcaAdapter(JobAdapter):
         tsg (int, optional): TSGuess number if optimizing TS guesses.
         xyz (dict, optional): The 3D coordinates to use. If not give, species.get_xyz() will be used.
     """
+
+    check_file_name = 'input.gbw'
+    guess_file_name = 'guess.gbw'
 
     def __init__(self,
                  project: str,
@@ -252,9 +259,66 @@ class OrcaAdapter(JobAdapter):
                             xyz=xyz,
                             )
 
+        if self.checkfile is None:
+            if os.path.isfile(os.path.join(self.local_path, self.check_file_name)):
+                self.checkfile = os.path.join(self.local_path, self.check_file_name)
+            elif self.species[0].checkfile is not None and os.path.isfile(self.species[0].checkfile):
+                self.checkfile = self.readable_checkfile(self.species[0].checkfile)
+
+    def reads_orbital_guess(self) -> bool:
+        """
+        Report whether this job starts its SCF from a previous job's orbitals.
+
+        The single predicate behind both halves of reading a guess: the ``!MORead`` and
+        ``%moinp`` keywords ``write_input_file`` emits and the ``guess.gbw`` upload
+        ``set_files`` adds. Emitting the keywords without uploading the file aborts the job on
+        a missing guess, so the two are answered here rather than tested twice.
+
+        ``ORBITALS_GUESS_JOB_TYPES`` holds the job types this adapter writes an SCF on one
+        starting structure for: the ``opt``, ``conf_opt``, ``optfreq`` and ``scan`` jobs, whose
+        first SCF is the one the guess seeds and whose later points ORCA propagates orbitals
+        through itself, and the ``freq``, ``sp``, ``conf_sp`` and ``stability`` jobs, which run
+        a single SCF. The job types absent from it are those ``write_input_file`` writes no
+        keyword for, so ORCA is handed no calculation for a guess to seed: ``composite``, for
+        which ORCA offers no composite method; ``irc`` and ``orbitals``, for which this adapter
+        writes neither a path-following nor an orbital-printing input; ``directed_scan``, for
+        which it writes neither the scan block nor the constraints such a job needs; and
+        ``gen_confs``, ``tsg`` and ``onedmin``, which belong to other adapters entirely.
+
+        A job array writes no input file at all and its members share one remote path, where a
+        single uploaded guess would stand in for every member; this is the reason its orbitals
+        are not downloaded either. A monatomic species is excluded as it is in Gaussian: ARC
+        spawns it neither an optimization nor a frequency job, so there is no chain to hold.
+
+        ORCA names its own orbitals after the input file and cannot read and write one file the
+        way Gaussian reuses a single checkfile, so the guess is uploaded under a name the job
+        will not overwrite. ORCA projects a guess written in another basis set onto this job's
+        basis, so no level or basis is tracked here and the question is only whether a checkfile
+        this adapter's ESS wrote exists.
+
+        Returns: bool
+            Whether this job reads a previous job's orbitals as its initial guess.
+        """
+        return self.job_type in ORBITALS_GUESS_JOB_TYPES \
+            and not self.iterate_by \
+            and self.species[0].number_of_atoms > 1 \
+            and self.checkfile is not None \
+            and os.path.isfile(self.checkfile)
+
     def write_input_file(self) -> None:
         """
         Write the input file to execute the job on the server.
+
+        Where ``reads_orbital_guess`` holds, the input carries ``!MORead`` and a ``%moinp``
+        naming the uploaded ``guess.gbw``, so the SCF starts from the orbitals a previous job
+        converged and a species' jobs describe one wavefunction rather than whichever solution
+        each fresh SCF happens to reach.
+
+        A ``stability`` job is a single point that adds ``STABPerform`` and
+        ``STABRestartUHFifUnstable true`` to the ``%scf`` block. ORCA follows an instability it
+        finds and analyses the relaxed solution again, so such a log holds two analyses; the
+        verdict of the wavefunction under test is the first of them.
+        ``docs/source/advanced.rst`` records why the follow is not optional.
         """
         if 'f12' in self.level.method and not self.level.cabs:
             raise ValueError(
@@ -264,7 +328,9 @@ class OrcaAdapter(JobAdapter):
             )
         input_dict = dict()
         for key in ['block',
+                    'orbital_guess',
                     'scan',
+                    'scf_keys',
                     'job_type_1',
                     'job_type_2',
                     'keywords',
@@ -294,7 +360,7 @@ class OrcaAdapter(JobAdapter):
             # Use a consistent DFT grid for fine_opt jobs and for any job with a frequency calculation
             # (`freq` and `optfreq`), so `optfreq` is treated like `freq` here and defaults to `defgrid3`.
             # Users can override by setting `dft_grid` in args.keyword (e.g. dft_grid: DEFGRID1).
-            self.args['keyword'].setdefault('dft_grid', 'defgrid3' if self.fine or self.job_type in ['freq', 'optfreq'] else 'defgrid2')
+            self.args['keyword'].setdefault('dft_grid', 'defgrid3' if self.fine or self.job_type in ['freq', 'optfreq', 'stability'] else 'defgrid2')
         elif self.level.method_type == 'wavefunction':
             input_dict['method_class'] = 'HF'
             if 'dlpno' in self.level.method:
@@ -360,6 +426,10 @@ end
                             block += f'\n\n%mrci\n    citype MRCI\n    davidsonopt true\n    maxiter 999\nend\n'
                     input_dict['block'] += block
 
+        elif self.job_type == 'stability':
+            input_dict['job_type_1'] = 'sp'
+            input_dict['scf_keys'] = '\nSTABPerform true\nSTABRestartUHFifUnstable true'
+
         elif self.job_type == 'scan':
             scans, torsion_strings = list(), list()
             if self.rotor_index is not None:
@@ -394,6 +464,10 @@ end
 """,
                                 key1='block')
 
+        if self.reads_orbital_guess():
+            orbital_guess = f'!MORead\n%moinp "{self.guess_file_name}"'
+            input_dict['orbital_guess'] = f'\n{orbital_guess}' if input_dict['job_type_2'] else orbital_guess
+
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
@@ -412,6 +486,18 @@ end
         Else if ``'source'`` = ``'input_files'``, then the value in ``'local'`` will be taken
         from the respective entry in inputs.py
         If ``'make_x'`` is ``True``, the file will be made executable.
+
+        THE ORBITALS FILE. Where ``reads_orbital_guess`` holds, the checkfile the job holds is
+        uploaded as ``guess.gbw``, a name ORCA will not overwrite with the ``input.gbw`` the
+        job itself writes; that same predicate decides the ``!MORead`` and ``%moinp`` keywords
+        of the input file, so the file is uploaded for exactly the jobs that read it.
+        ``input.gbw`` is downloaded only for the job types something later reads it from: the
+        ``opt``, ``optfreq`` and ``composite`` jobs ``Scheduler.end_job`` adopts a checkfile
+        from, and the ``stability`` job, whose own orbitals are the relaxed solution. Every
+        other job type would download tens of MB that nothing consumes; a job reading a guess
+        is not thereby a job whose own orbitals anything reads. A job array takes the
+        ``data.hdf5`` branch and downloads no orbitals at all, since its members share one
+        remote path and would overwrite one another's.
         """
         # 1. ** Upload **
         # 1.1. submit file
@@ -425,10 +511,14 @@ end
             # if this is not a job array, we need the ESS input file
             self.write_input_file()
             self.files_to_upload.append(self.get_file_property_dictionary(file_name=input_filenames[self.job_adapter]))
-        # 1.3. HDF5 file
+        # 1.3. orbitals file, uploaded under a name the job will not overwrite with its own
+        if self.reads_orbital_guess():
+            self.files_to_upload.append(self.get_file_property_dictionary(file_name=self.guess_file_name,
+                                                                          local=self.checkfile))
+        # 1.4. HDF5 file
         if self.iterate_by and os.path.isfile(os.path.join(self.local_path, 'data.hdf5')):
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='data.hdf5'))
-        # 1.4 job.sh
+        # 1.5 job.sh
         job_sh_dict = self.set_job_shell_file_to_upload()  # Set optional job.sh files if relevant.
         if job_sh_dict is not None:
             self.files_to_upload.append(job_sh_dict)
@@ -440,7 +530,10 @@ end
             # 2.2. log file
             self.files_to_download.append(self.get_file_property_dictionary(
                 file_name=output_filenames[self.job_adapter]))
-            # 2.3. Hessian file generated by frequency calculations
+            # 2.3. orbitals file, the guess of any job that follows
+            if self.job_type in ORBITALS_DOWNLOAD_JOB_TYPES:
+                self.files_to_download.append(self.get_file_property_dictionary(file_name=self.check_file_name))
+            # 2.4. Hessian file generated by frequency calculations
             # The Hessian file is useful when the user would like to project out the rotors
             if self.job_type in ['freq', 'optfreq']:
                 self.files_to_download.append(self.get_file_property_dictionary(file_name='input.hess'))
