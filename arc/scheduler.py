@@ -44,7 +44,7 @@ from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
-from arc.job.ssh import SSHClient
+from arc.job.ssh_pool import borrow_ssh_client
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
                           trsh_ess_job,
@@ -3559,7 +3559,7 @@ class Scheduler(object):
         for server in self.servers:
             if specific_server is None or server == specific_server:
                 if server != 'local':
-                    with SSHClient(server) as ssh:
+                    with borrow_ssh_client(server) as ssh:
                         self.server_job_ids.extend(ssh.check_running_jobs_ids())
                 else:
                     self.server_job_ids.extend(check_running_jobs_ids())
