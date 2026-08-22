@@ -1,16 +1,78 @@
-version: '3.8'
+# ARC / RMG container.
+#
+# The image entrypoint is dockerfiles/entrywrapper.sh, which accepts:
+#   arc <input.yml>   run ARC in arc_env
+#   rmg <input.py>    run RMG in rmg_env
+#   <any command>     pass-through
+#   (no arguments)    interactive login shell
+#
+# Note that this service defines a `command`, and `docker compose run` falls back to it
+# whenever no command is given on the command line. Running the service with no arguments
+# therefore runs ARC, not the entrypoint's interactive shell; ask for a shell explicitly.
+#
+# Usage:
+#   ARC_INPUT=my_case/input.yml docker compose run --rm arc   # run ARC on that input
+#   docker compose run --rm arc                               # same, on ${ARC_INPUT:-input.yml}
+#   docker compose run --rm arc rmg my_case/input.py          # run RMG instead
+#   docker compose run --rm arc bash                          # interactive shell
 services:
-  rmg_container:
-    image: laxzal/arc:latest
+  arc:
+    image: ${ARC_IMAGE:-laxzal/arc:latest}
     platform: linux/amd64
-    container_name: rmg_container
-    volumes:
-    # Mount a local directory to the container. Replace <local_path_to_mount> with your actual local directory path.
-    # Ensure to use absolute paths. Examples of directory formats for different operating systems:
-    # Windows: C:/Users/YourUsername/Documents/MyFolder
-    # macOS: /Users/YourUsername/Documents/MyFolder
-    # Linux: /home/YourUsername/Documents/MyFolder
-      - <path-to-local-folder>:/home/rmguser/KMClass
+    # Uncomment to build the image from this repository instead of pulling it.
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    working_dir: /work
+    stdin_open: true
+    tty: true
     environment:
-    # Set the mode of the container. Replace with either "interactive" or "non-interactive".
-      - CONTAINER_MODE=interactive
+      # Remap the in-container mambauser account to your host UID/GID so files written to
+      # the bind mounts below are owned by you, and so mounts owned by you stay readable.
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Path of the forwarded SSH agent socket *inside* the container. The entrypoint keeps
+      # this variable across its privilege drop; if nothing is forwarded it warns and
+      # continues without an agent.
+      - SSH_AUTH_SOCK=/ssh-agent
+      # The ~/.arc overlay below is mounted read-only, so keep Python from trying to drop
+      # __pycache__ next to it. Python ignores the failure, but the attempt is pointless.
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      # Working directory: inputs are read from here and all ARC/RMG output lands here.
+      - ${ARC_WORKDIR:-.}:/work
+      # ARC personal settings, read-only. ARC reads settings.py, submit.py and inputs.py from
+      # here; submit.py in particular holds the cluster's PBS/Slurm submit templates, so a
+      # remote run needs this mount as much as it needs the SSH material below.
+      # Each file replaces the repository default for the top-level names it defines - the
+      # overlay is a name-level replacement, not a deep merge - and note that ARC forces
+      # global_ess_settings to None whenever a local settings.py exists unless that file
+      # defines a truthy value of its own.
+      # The entrypoint refuses to start ARC if this settings.py cannot be imported, because
+      # ARC itself would ignore it silently and fall back to its dummy servers.
+      - ${HOME}/.arc:/home/mambauser/.arc:ro
+      # SSH agent forwarding for remote job submission - keys never enter the container.
+      # Falls back to /dev/null when no agent is running, which the entrypoint detects and
+      # reports instead of failing. On macOS use /run/host-services/ssh-auth.sock instead.
+      # Beware a *stale* SSH_AUTH_SOCK, pointing at a socket of an agent that has since died:
+      # Docker creates any missing bind-mount source, so it will silently make a root-owned
+      # directory at that path on the host, and the entrypoint then reports a non-socket.
+      # The same applies to the ${HOME}/.arc source above if that directory does not exist.
+      - ${SSH_AUTH_SOCK:-/dev/null}:/ssh-agent
+      # Fallback for headless runs with no agent: mount your key material read-only, and point
+      # the server's 'key' at the in-container path. Read-only is fine - ARC uses paramiko,
+      # which does not enforce 0600 on key files.
+      # - ${HOME}/.ssh:/home/mambauser/.ssh:ro
+      # Host keys, read-only. paramiko reads them from its default location, so the target path
+      # must be exactly this one. Required for servers with 'strict_host_key_checking': True,
+      # which refuse any host that is not listed here; without it, unknown hosts are only warned
+      # about - once by ARC's startup check and again on every connection.
+      # The source defaults to /dev/null rather than to ${HOME}/.ssh/known_hosts because Docker
+      # creates any missing bind-mount source: on a host that has never written a known_hosts
+      # file, naming that path directly would leave a root-owned *directory* at
+      # ${HOME}/.ssh/known_hosts, which then breaks ssh on the host itself. /dev/null always
+      # exists and reads as an empty key list, so the container simply starts with no host keys.
+      # Point ARC_KNOWN_HOSTS at your file to share it:
+      #   ARC_KNOWN_HOSTS=$HOME/.ssh/known_hosts docker compose run --rm arc
+      - ${ARC_KNOWN_HOSTS:-/dev/null}:/home/mambauser/.ssh/known_hosts:ro
+    command: ["arc", "${ARC_INPUT:-input.yml}"]
