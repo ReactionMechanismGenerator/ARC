@@ -7,6 +7,7 @@ This module contains unit tests for the arc.main module related to the restart f
 
 import os
 import shutil
+import tempfile
 import unittest
 import warnings
 
@@ -14,14 +15,6 @@ from arc.molecule.molecule import Molecule
 
 from arc.common import ARC_PATH, read_yaml_file
 from arc.main import ARC
-
-
-def _project_name(base: str) -> str:
-    """Return a per-xdist-worker project name to avoid parallel cleanup collisions."""
-    worker_id = os.environ.get('PYTEST_XDIST_WORKER')
-    if worker_id:
-        return f'{base}_{worker_id}'
-    return base
 
 
 class TestRestart(unittest.TestCase):
@@ -37,6 +30,12 @@ class TestRestart(unittest.TestCase):
         cls.maxDiff = None
         warnings.filterwarnings(action='ignore', module='.*matplotlib.*')
 
+    def make_project_directory(self, project: str) -> str:
+        """Get a path to a temporary project directory that is deleted when the test ends."""
+        project_directory = os.path.join(tempfile.mkdtemp(prefix='arc_test_restart_'), project)
+        self.addCleanup(shutil.rmtree, os.path.dirname(project_directory), ignore_errors=True)
+        return project_directory
+
     def test_restart_thermo(self):
         """
         Test restarting ARC through the ARC class in main.py via the input_dict argument of the API
@@ -44,8 +43,8 @@ class TestRestart(unittest.TestCase):
         """
         restart_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '1_restart_thermo')
         restart_path = os.path.join(restart_dir, 'restart.yml')
-        project = _project_name('arc_project_for_testing_delete_after_usage_restart_thermo')
-        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        project = 'arc_project_for_testing_delete_after_usage_restart_thermo'
+        project_directory = self.make_project_directory(project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs', 'Species'), dirs_exist_ok=True)
         input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
@@ -141,8 +140,8 @@ class TestRestart(unittest.TestCase):
         """Test restarting ARC and attaining a reaction rate coefficient"""
         restart_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '2_restart_rate')
         restart_path = os.path.join(restart_dir, 'restart.yml')
-        project = _project_name('arc_project_for_testing_delete_after_usage_restart_rate_1')
-        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        project = 'arc_project_for_testing_delete_after_usage_restart_rate_1'
+        project_directory = self.make_project_directory(project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs'), dirs_exist_ok=True)
         input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
@@ -162,8 +161,8 @@ class TestRestart(unittest.TestCase):
 
     def test_restart_rate_2(self):
         """Test restarting ARC and attaining a reaction rate coefficient"""
-        project = _project_name('arc_project_for_testing_delete_after_usage_restart_rate_2')
-        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        project = 'arc_project_for_testing_delete_after_usage_restart_rate_2'
+        project_directory = self.make_project_directory(project)
         base_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '5_TS1')
         restart_path = os.path.join(base_path, 'restart.yml')
         input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
@@ -191,8 +190,8 @@ class TestRestart(unittest.TestCase):
         """Test restarting ARC and attaining a BDE for anilino_radical."""
         restart_dir   = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '3_restart_bde')
         restart_path  = os.path.join(restart_dir, 'restart.yml')
-        project = _project_name('test_restart_bde')
-        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        project = 'test_restart_bde'
+        project_directory = self.make_project_directory(project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs'), dirs_exist_ok=True)
         input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
@@ -200,7 +199,7 @@ class TestRestart(unittest.TestCase):
         arc1 = ARC(**input_dict)
         arc1.execute()
 
-        report_path = os.path.join(ARC_PATH, 'Projects', project, 'output', 'BDE_report.txt')
+        report_path = os.path.join(project_directory, 'output', 'BDE_report.txt')
         with open(report_path, 'r') as f:
             lines = f.readlines()
         self.assertIn(' BDE report for anilino_radical:\n', lines)
@@ -224,17 +223,8 @@ class TestRestart(unittest.TestCase):
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
+        Delete all files and directories created during these unit tests
         """
-        projects = [_project_name('arc_project_for_testing_delete_after_usage_restart_thermo'),
-                    _project_name('arc_project_for_testing_delete_after_usage_restart_rate_1'),
-                    _project_name('arc_project_for_testing_delete_after_usage_restart_rate_2'),
-                    _project_name('test_restart_bde'),
-                    ]
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
-
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '4_globalized_paths',
                                    'log_and_restart_archive'), ignore_errors=True)
         for file_name in ['arc.log', 'restart_paths_globalized.yml']:
