@@ -31,7 +31,8 @@ from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.level import Level, assign_frequency_scale_factor
 from arc.job.factory import _registered_job_adapters
-from arc.job.ssh import SSHClient, delete_check_files_on_servers
+from arc.job.ssh import check_servers_known_hosts, delete_check_files_on_servers
+from arc.job.ssh_pool import borrow_ssh_client, reset_default_pool
 from arc.output import write_output_yml
 from arc.processor import process_arc_project, resolve_neb_level
 from arc.reaction import ARCReaction
@@ -316,6 +317,7 @@ class ARC(object):
         self.adaptive_levels = process_adaptive_levels(adaptive_levels)
         initialize_log(log_file=os.path.join(self.project_directory, 'arc.log'), project=self.project,
                        project_directory=self.project_directory, verbose=self.verbose)
+        check_servers_known_hosts()
         self.dont_gen_confs = dont_gen_confs or list()
         self.t0 = time.time()  # init time
         self.execution_time = None
@@ -554,7 +556,24 @@ class ARC(object):
 
     def execute(self) -> dict:
         """
-        Execute ARC.
+        Execute ARC, releasing the SSH connections the run opened once it ends.
+
+        The pooled connections (:mod:`arc.job.ssh_pool`) are held open for the lifetime of the
+        run and closed here, in a ``finally``, so they are also released when the run raises or
+        is interrupted, and so a consumer that drives ARC in-process rather than through
+        ``ARC.py`` -- a library caller, a test, a pipe worker -- releases them too.
+
+        Returns: dict
+            Status dictionary indicating which species converged successfully.
+        """
+        try:
+            return self._execute()
+        finally:
+            reset_default_pool()
+
+    def _execute(self) -> dict:
+        """
+        Run the project: schedule every job, process the results and write the output.
 
         Returns: dict
             Status dictionary indicating which species converged successfully.
@@ -827,7 +846,7 @@ class ARC(object):
                 continue
             if diagnostics:
                 logger.info('\nTrying {0}'.format(server))
-            with SSHClient(server) as ssh:
+            with borrow_ssh_client(server) as ssh:
 
                 g03 = ssh.find_package('g03')
                 g09 = ssh.find_package('g09')
