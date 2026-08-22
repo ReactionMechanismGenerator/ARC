@@ -250,8 +250,17 @@ class GaussianAdapter(JobAdapter):
         input_dict['method'] = self.level.method
         input_dict['multiplicity'] = self.multiplicity
         input_dict['scan_trsh'] = self.args['keyword']['scan_trsh'] if 'scan_trsh' in self.args['keyword'] else ''
-        integral_algorithm = 'Acc2E=14' if 'Acc2E=14' in input_dict['trsh'] else 'Acc2E=12'
-        input_dict['trsh'] = input_dict['trsh'].replace('int=(Acc2E=14)', '') if 'Acc2E=14' in input_dict['trsh'] else input_dict['trsh']
+        acc2e_requested = 'Acc2E=14' in input_dict['trsh']  # troubleshooting asked to tighten integrals
+        integral_algorithm = 'Acc2E=14' if acc2e_requested else 'Acc2E=12'
+        input_dict['trsh'] = input_dict['trsh'].replace('int=(Acc2E=14)', '') if acc2e_requested else input_dict['trsh']
+        # The InaccurateQuadrature remedy escalates to a finer DFT integration grid (recorded as
+        # 'int=grid=NNNMMM'). Fold that grid into the single integral=() keyword (replacing the
+        # default ultrafine) rather than emitting a second, conflicting Int keyword - ultrafine is
+        # (99,590), the remedy grid e.g. 300590 = (300,590) is finer. Sourced from ess_trsh_methods
+        # so the finer grid persists across retries, and the standalone int=grid= token is dropped.
+        grid_remedy = next((m for m in (self.ess_trsh_methods or []) if m.startswith('int=grid=')), None)
+        integration_grid = grid_remedy.split('int=grid=', 1)[1] if grid_remedy else 'ultrafine'
+        input_dict['trsh'] = re.sub(r'\s*int=grid=\S+', '', input_dict['trsh']) if grid_remedy else input_dict['trsh']
         input_dict['xyz'] = [xyz_to_str(xyz) for xyz in self.xyz] if self.run_multi_species else xyz_to_str(self.xyz)
 
         if self.level.basis is not None:
@@ -267,9 +276,12 @@ class GaussianAdapter(JobAdapter):
 
         if self.level.method[:2] == 'ro':
             self.add_to_args(val='use=L506')
-        elif not('no_xqc' in list(self.args['trsh'].values())) and 'qc' in input_dict['trsh']:
+        elif 'no_xqc' not in self.ess_trsh_methods \
+                and not('no_xqc' in list(self.args['trsh'].values())) and 'qc' in input_dict['trsh']:
             # xqc will do qc (quadratic convergence) if the job fails w/o it, so use it by default.
-            # replace qc with xqc if it's not already there
+            # replace qc with xqc if it's not already there.
+            # 'no_xqc' in ess_trsh_methods records that the xqc algorithm itself already failed
+            # (Gaussian l508), so don't upgrade qc to xqc in that case (see arc.job.trsh.trsh_keyword_no_qc).
             input_dict['trsh'] = input_dict['trsh'].replace('qc', 'xqc')
 
         if self.level.method == 'cbs-qb3-paraskevas':
@@ -293,7 +305,7 @@ class GaussianAdapter(JobAdapter):
             if self.fine:
                 if self.level.method_type in ['dft', 'composite']:
                     # Note that the Acc2E argument is not available in Gaussian03
-                    input_dict['fine'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+                    input_dict['fine'] = f'integral=(grid={integration_grid}, {integral_algorithm})'
                     # input_dict['trsh'] may have scf=(...) in it, so we need to add the tight and direct keywords to it
                     scf_start = input_dict['trsh'].find('scf=(')
                     scf_end = input_dict['trsh'].find(')', scf_start)
@@ -317,13 +329,13 @@ class GaussianAdapter(JobAdapter):
                 else f"opt=({', '.join(key for key in keywords)})"
 
         elif self.job_type == 'freq':
-            input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
+            input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) integral=(grid={integration_grid}, {integral_algorithm})'
 
         elif self.job_type == 'optfreq':
             input_dict['job_type_2'] = 'freq IOp(7/33=1)'
 
         elif self.job_type in ['sp', 'conf_sp']:
-            input_dict['job_type_1'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+            input_dict['job_type_1'] = f'integral=(grid={integration_grid}, {integral_algorithm})'
             if input_dict['trsh']:
                 input_dict['trsh'] += ' '
             input_dict['trsh'] += 'scf=(tight, direct)'
@@ -344,7 +356,7 @@ class GaussianAdapter(JobAdapter):
 
             ts = 'ts, ' if self.is_ts else ''
             input_dict['job_type_1'] = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5)' \
-                                       f'integral=(grid=ultrafine, {integral_algorithm})'
+                                       f'integral=(grid={integration_grid}, {integral_algorithm})'
             if input_dict['trsh']:
                 input_dict['trsh'] += ' '
             input_dict['trsh'] += 'scf=(tight, direct)'
@@ -355,7 +367,7 @@ class GaussianAdapter(JobAdapter):
         elif self.job_type == 'irc':
             if self.fine:
                 # Note that the Acc2E argument is not available in Gaussian03
-                input_dict['fine'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+                input_dict['fine'] = f'integral=(grid={integration_grid}, {integral_algorithm})'
                 # We need to add scf=(direct) to the trsh argument
                 # But we to check if it's already there, and
                 if 'direct' not in input_dict['trsh']:
@@ -376,6 +388,16 @@ class GaussianAdapter(JobAdapter):
                 
             input_dict['job_type_1'] = f'irc=(CalcAll, {self.irc_direction}, maxpoints=50, stepsize=7)'
 
+        if (acc2e_requested or grid_remedy) and not self.fine and not input_dict['fine'] \
+                and self.job_type in ['opt', 'conf_opt', 'optfreq', 'composite', 'irc']:
+            # Fine jobs fold Acc2E=14 (and any InaccurateQuadrature grid remedy) into integral=(...).
+            # A non-fine opt/IRC job would otherwise silently drop those troubleshooting requests
+            # (no integral= in the route), producing a byte-identical resubmit. Emit the integral=()
+            # keyword so the tightened accuracy and/or finer grid actually take effect (the default
+            # ultrafine grid stays a fine-only concern - only an explicit grid remedy is emitted here).
+            grid_part = f'grid={integration_grid}, ' if grid_remedy else ''
+            input_dict['fine'] = f'integral=({grid_part}{integral_algorithm})'
+
         for constraint_tuple in self.constraints:
             constraint_type = constraint_type_dict[len(constraint_tuple[0])]
             constraint_atom_indices = ' '.join([str(atom_index) for atom_index in constraint_tuple[0]])
@@ -387,21 +409,32 @@ class GaussianAdapter(JobAdapter):
             input_dict['job_type_1'] += f' SCRF=({self.level.solvation_method}, Solvent={self.level.solvent})'
 
         if self.species[0].number_of_atoms > 1:
-            if input_dict['job_type_1']:
-                input_dict['job_type_1'] += ' '
+            guess_keyword = ''
             if 'guess=INDO' in input_dict['trsh']:
-                input_dict['job_type_1'] += 'guess=INDO'
+                guess_keyword = 'guess=INDO'
                 input_dict['trsh'] = input_dict['trsh'].replace('guess=INDO', '')
-            else:
-                input_dict['job_type_1'] += ' guess=read' if self.checkfile is not None and os.path.isfile(self.checkfile) \
-                    else ' guess=mix'
+            elif self.checkfile is not None and os.path.isfile(self.checkfile):
+                guess_keyword = ' guess=read'
+            elif any(spc.multiplicity == 1 and spc.number_of_radicals is not None and spc.number_of_radicals > 1
+                     for spc in self.species):
+                guess_keyword = ' guess=mix'
+            if guess_keyword:
+                if input_dict['job_type_1']:
+                    input_dict['job_type_1'] += ' '
+                input_dict['job_type_1'] += guess_keyword
 
         # Fix OPT
         terms_opt = [r'opt=\((.*?)\)', r'opt=(\w+)']
         input_dict, parameters_opt = combine_parameters(input_dict, terms_opt)
         # If 'opt' parameters are found, concatenate and reinsert them
         if parameters_opt:
-            # Remove duplicate parameters
+            # Keep a single force-constant recompute directive (calcall > recalcfc=* > calcfc) so a
+            # troubleshot opt=() clause never carries conflicting Hessian options - the base route
+            # always contributes 'calcfc', while the MaxOptCycles ladder may add recalcfc/calcall.
+            if 'calcall' in parameters_opt:
+                parameters_opt = [p for p in parameters_opt if p != 'calcfc' and not p.startswith('recalcfc')]
+            elif any(p.startswith('recalcfc') for p in parameters_opt):
+                parameters_opt = [p for p in parameters_opt if p != 'calcfc']
             combined_opt_params = ','.join(parameters_opt)
             input_dict['job_type_1'] = f"opt=({combined_opt_params}) {input_dict['job_type_1']}"
 

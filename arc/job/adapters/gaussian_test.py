@@ -8,6 +8,7 @@ This module contains unit tests of the arc.job.adapters.gaussian module
 import math
 import os
 import shutil
+import tempfile
 import unittest
 
 from arc.common import ARC_TESTING_PATH
@@ -464,7 +465,8 @@ class TestGaussianAdapter(unittest.TestCase):
                                             )
         
         # Gaussian MaxOptCycles error - Part 2
-        # Intend to troubleshoot a MaxOptCycles error by adding opt=(RFO) to the input file
+        # Intend to troubleshoot a MaxOptCycles error by recomputing the Hessian (opt=(recalcfc=5),
+        # which supersedes the base calcfc) before any step-algorithm flip.
         job_status = {'keywords': ['MaxOptCycles']}
         ess_trsh_methods = ['opt=(maxcycle=200)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
@@ -487,7 +489,8 @@ class TestGaussianAdapter(unittest.TestCase):
                                             )
         
         # Gaussian MaxOptCycles error - Part 3
-        # Intend to troubleshoot a MaxOptCycles error by adding opt=(GDIIS) and removing opt=(RFO) to the input file
+        # With maxcycle+RFO already tried, the next remedy is the Hessian recompute opt=(recalcfc=5)
+        # (it precedes the DIIS accelerators); RFO is retained as the single step algorithm.
         job_status = {'keywords': ['MaxOptCycles']}
         ess_trsh_methods = ['opt=(maxcycle=200)', 'opt=(RFO)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
@@ -666,7 +669,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxStep=5,modredundant,noeigentest) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000)    scf=(direct,tight)
+#P opt=(calcfc,maxStep=5,modredundant,noeigentest) integral=(grid=ultrafine, Acc2E=12) wb97xd/def2tzvp   IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -796,7 +799,7 @@ O       0.00000000    0.00000000    1.00000000
     def test_trsh_write_input_file(self):
         """Test writing a trsh input file
         10. Create an input file for a job with int=(Acc2E=14) included
-        11. Create an input file for a job with guess=mix included (removal of Checkfile via ess_trsh_methods)
+        11. Create an input file for a job after checkfile removal via ess_trsh_methods (no guess keyword: closed-shell)
         12. Create an input file for a job with nosymm included, and also the first pass of SCF error troubleshooting
         13. Create an input file for a job with NDamp=30 included, and also the previous pass of SCF error troubleshooting
         14. Create an input file for a job with NoDIIS included, and also previous passes of SCF error troubleshooting
@@ -808,8 +811,8 @@ O       0.00000000    0.00000000    1.00000000
         20. Create an input file for a job with L502 error but had already been troubleshooted with L502 error and InaccurateQuadrature
         21. Create an input file for a job with L502 error but had already been troubleshooted with L502 error and InaccurateQuadrature
         22. Create an input file for a job with MaxOptCycles error - changes maxcycle to 200 from 100
-        23. Create an input file for a job with MaxOptCycles error - Add RFO to the input file
-        24. Create an input file for a job with MaxOptCycles error - Add GDIIS and remove RFO from the input file
+        23. Create an input file for a job with MaxOptCycles error - recompute the Hessian (recalcfc=5), superseding calcfc
+        24. Create an input file for a job with MaxOptCycles error - recalcfc=5 with RFO retained as the step algorithm
         """
         self.job_10.write_input_file()
         with open(os.path.join(self.job_10.local_path, input_filenames[self.job_10.job_adapter]), 'r') as f:
@@ -836,7 +839,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -862,7 +865,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(direct,tight,xqc)
 
 ethanol
 
@@ -888,7 +891,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,direct,tight,xqc)
 
 ethanol
 
@@ -914,7 +917,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -940,7 +943,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,cartesian,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,cartesian,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -994,7 +997,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       scf=(direct,tight,xqc)
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       scf=(direct,tight,xqc)
 
 ethanol
 
@@ -1020,7 +1023,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=300590, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -1046,7 +1049,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
 
 ethanol
 
@@ -1072,7 +1075,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=300590, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
 
 ethanol
 
@@ -1099,7 +1102,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight) guess=INDO wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     int=grid=300590   scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=300590, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
 
 ethanol
 
@@ -1126,7 +1129,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
@@ -1153,7 +1156,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(RFO,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(maxcycle=200,maxstep=5,recalcfc=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
@@ -1180,7 +1183,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(RFO,maxcycle=200,maxstep=5,recalcfc=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
@@ -1258,6 +1261,258 @@ class TestGetMemoryHeadroomFraction(unittest.TestCase):
         """Test that a malformed marker is ignored rather than raising."""
         self.assertEqual(get_memory_headroom_fraction(['memory_headroom_notanumber']), 0.9)
         self.assertEqual(get_memory_headroom_fraction(['memory_headroom_notanumber', 'memory_headroom_0.75']), 0.75)
+
+
+class TestGaussianAdapterNoXqc(unittest.TestCase):
+    """
+    Contains unit tests for the GaussianAdapter qc -> xqc upgrade and its 'no_xqc' opt-out.
+
+    Self-contained (does not depend on the server settings used by TestGaussianAdapter's fixtures).
+    """
+
+    def write_input(self, ess_trsh_methods: list) -> str:
+        """Render a Gaussian input with scf=(qc) requested via trsh args and return its content."""
+        project_directory = os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapterNoXqc')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job = GaussianAdapter(execution_type='incore',
+                              job_type='opt',
+                              level=Level(method='wb97xd', basis='def2tzvp'),
+                              project='test',
+                              project_directory=project_directory,
+                              species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
+                              testing=True,
+                              ess_trsh_methods=ess_trsh_methods,
+                              # the scheduler passes the trsh keywords as a list under args['trsh']['trsh']
+                              args={'trsh': {'trsh': ['scf=(qc)']}},
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return f.read()
+
+    def test_write_input_file_upgrades_qc_to_xqc_by_default(self):
+        """By default, a requested scf=(qc) is upgraded to scf=(xqc)."""
+        content = self.write_input(ess_trsh_methods=['scf=(qc)'])
+        self.assertIn('scf=(xqc)', content)
+        self.assertNotIn('scf=(qc)', content)
+
+    def test_write_input_file_no_xqc_blocks_qc_upgrade(self):
+        """Once 'no_xqc' is recorded (Gaussian l508 failed), qc must not be upgraded to xqc."""
+        content = self.write_input(ess_trsh_methods=['no_xqc'])
+        self.assertIn('scf=(qc)', content)
+        self.assertNotIn('xqc', content)
+
+
+class TestGaussianAdapterAcc2E(unittest.TestCase):
+    """
+    P2: int=(Acc2E=14) must take effect on non-fine opt/IRC jobs (self-contained).
+    """
+
+    def render(self, fine, trsh_list, job_type='opt'):
+        project_directory = os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapterAcc2E')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        kwargs = dict(execution_type='incore', job_type=job_type,
+                      level=Level(method='wb97xd', basis='def2tzvp'), project='test',
+                      project_directory=project_directory,
+                      species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
+                      testing=True, fine=fine, args={'trsh': {'trsh': trsh_list}})
+        if job_type == 'irc':
+            kwargs['irc_direction'] = 'forward'
+        job = GaussianAdapter(**kwargs)
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return next(line for line in f if line.startswith('#'))
+
+    def test_non_fine_opt_emits_acc2e(self):
+        """A non-fine opt with int=(Acc2E=14) in trsh must actually emit the integral setting."""
+        route = self.render(fine=False, trsh_list=['int=(Acc2E=14)'])
+        self.assertIn('integral=(Acc2E=14)', route)
+        self.assertIn('Acc2E=14', route)
+
+    def test_non_fine_opt_without_acc2e_unchanged(self):
+        """A normal non-fine opt (no Acc2E trsh) must not gain any integral= setting."""
+        route = self.render(fine=False, trsh_list=[])
+        self.assertNotIn('integral=', route)
+        self.assertNotIn('Acc2E', route)
+
+    def test_fine_opt_still_folds_acc2e_into_ultrafine(self):
+        """A fine opt keeps folding Acc2E=14 into the ultrafine integral grid (unchanged)."""
+        route = self.render(fine=True, trsh_list=['int=(Acc2E=14)'])
+        self.assertIn('integral=(grid=ultrafine, Acc2E=14)', route)
+
+    def test_non_fine_irc_emits_acc2e(self):
+        """A non-fine IRC with int=(Acc2E=14) in trsh must emit the integral setting too."""
+        route = self.render(fine=False, trsh_list=['int=(Acc2E=14)'], job_type='irc')
+        self.assertIn('integral=(Acc2E=14)', route)
+
+
+class TestGaussianAdapterOptLadder(unittest.TestCase):
+    """
+    P3: the opt=() clause the adapter renders from the MaxOptCycles remedy ladder must carry a
+    single, non-conflicting force-constant directive, and a TS route must never receive GDIIS.
+    """
+
+    def render(self, trsh_list, is_ts):
+        project_directory = os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapterOptLadder')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        # GaussianAdapter derives self.is_ts from species[0].is_ts.
+        if is_ts:
+            spc = ARCSpecies(label='TS0', is_ts=True,
+                             xyz=['O 0.0 0.0 0.0', 'H 0.0 0.0 0.97', 'H 0.94 0.0 -0.24'])
+        else:
+            spc = ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)
+        job = GaussianAdapter(execution_type='incore', job_type='opt',
+                              level=Level(method='wb97xd', basis='def2tzvp'), project='test',
+                              project_directory=project_directory, species=[spc], testing=True,
+                              fine=False, args={'trsh': {'trsh': trsh_list}})
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return next(line for line in f if line.startswith('#'))
+
+    def test_recalcfc_supersedes_base_calcfc(self):
+        """When the ladder adds recalcfc, the base calcfc must be dropped (no conflicting FC opts)."""
+        route = self.render(['opt=(maxcycle=200)', 'opt=(recalcfc=5)'], is_ts=False)
+        self.assertIn('recalcfc=5', route)
+        self.assertNotIn('calcfc,', route.replace('recalcfc', ''))  # no standalone calcfc token
+
+    def test_calcall_supersedes_recalcfc_and_calcfc(self):
+        """calcall is most aggressive: it must drop both recalcfc and calcfc."""
+        route = self.render(['opt=(recalcfc=5)', 'opt=(calcall)'], is_ts=False)
+        self.assertIn('calcall', route)
+        self.assertNotIn('recalcfc', route)
+        self.assertNotIn('calcfc', route)
+
+    def test_ts_route_renders_rfo_ladder(self):
+        """
+        A TS opt route built from the (TS-aware) ladder renders with ts + RFO + Hessian recompute,
+        with the base calcfc superseded by recalcfc. (GDIIS is never produced for a TS - that guard
+        lives in arc.job.trsh.prioritize_opt_methods, covered by the trsh tests.)
+        """
+        route = self.render(['opt=(maxcycle=200)', 'opt=(recalcfc=5)', 'opt=(RFO)'], is_ts=True)
+        self.assertIn('ts', route)
+        self.assertIn('RFO', route)
+        self.assertIn('recalcfc=5', route)
+        self.assertNotIn('GDIIS', route)
+
+
+class TestGaussianAdapterGuessMixGating(unittest.TestCase):
+    """
+    Contains unit tests for the guess keyword rendered into the Gaussian route.
+
+    guess=mix is rendered only for a species with multiplicity 1 and more than one radical.
+    guess=read (checkfile present) and guess=INDO (troubleshooting) take precedence over it.
+    """
+
+    OH_XYZ = ['O 0.0 0.0 0.0\nH 0.0 0.0 0.97']
+    C2H4_XYZ = ["""C -0.6 0.0 0.0
+                   C 0.6 0.0 0.0
+                   H -1.2 0.9 0.0
+                   H -1.2 -0.9 0.0
+                   H 1.2 0.9 0.0
+                   H 1.2 -0.9 0.0"""]
+    O2_XYZ = ['O 0.0 0.0 0.0\nO 0.0 0.0 1.2']
+    TS_XYZ = ['O 0.0 0.0 0.0\nH 0.0 0.0 0.97\nH 0.94 0.0 -0.24']
+    TS_DOUBLET_XYZ = ['H 0.0 0.0 0.0\nH 0.0 0.0 0.93\nH 0.0 0.0 1.86']
+
+    def render(self, species, checkfile=None, args=None, level=None):
+        """Render the Gaussian route line for ``species`` and return it."""
+        project_directory = os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapterGuessMixGating')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        level = level if level is not None else Level(method='wb97xd', basis='def2tzvp')
+        job = GaussianAdapter(execution_type='incore', job_type='opt',
+                              level=level, project='test',
+                              project_directory=project_directory, species=[species], testing=True,
+                              checkfile=checkfile, args=args)
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return next(line for line in f if line.startswith('#'))
+
+    def test_singlet_biradical_gets_guess_mix(self):
+        """A multiplicity 1 species with two radicals gets guess=mix."""
+        route = self.render(ARCSpecies(label='O2_singlet', xyz=self.O2_XYZ,
+                                       multiplicity=1, number_of_radicals=2))
+        self.assertIn('guess=mix', route)
+        self.assertIn('uwb97xd', route)
+
+    def test_closed_shell_singlet_has_no_guess_mix(self):
+        """A multiplicity 1 species with no declared radicals gets no guess keyword."""
+        route = self.render(ARCSpecies(label='C2H4', xyz=self.C2H4_XYZ, multiplicity=1))
+        self.assertNotIn('guess=', route)
+        self.assertIn(' wb97xd', route)
+
+    def test_doublet_radical_has_no_guess_mix(self):
+        """A multiplicity 2 species gets no guess keyword."""
+        route = self.render(ARCSpecies(label='OH', xyz=self.OH_XYZ, multiplicity=2))
+        self.assertNotIn('guess=', route)
+        self.assertIn('uwb97xd', route)
+
+    def test_triplet_has_no_guess_mix(self):
+        """A multiplicity 3 species gets no guess keyword."""
+        route = self.render(ARCSpecies(label='O2', xyz=self.O2_XYZ, multiplicity=3))
+        self.assertNotIn('guess=', route)
+        self.assertIn('uwb97xd', route)
+
+    def test_singlet_ts_without_number_of_radicals_has_no_guess_mix(self):
+        """A multiplicity 1 TS with an undeclared number_of_radicals gets no guess keyword."""
+        ts = ARCSpecies(label='TS0', is_ts=True, multiplicity=1, xyz=self.TS_XYZ)
+        self.assertIsNone(ts.number_of_radicals)
+        route = self.render(ts)
+        self.assertNotIn('guess=', route)
+        self.assertIn('ts', route)
+
+    def test_doublet_ts_has_no_guess_mix(self):
+        """A multiplicity 2 TS gets no guess keyword.
+
+        Uses the H + H2 abstraction TS (three electrons), since a doublet requires
+        an odd electron count.
+        """
+        route = self.render(ARCSpecies(label='TS0', is_ts=True, multiplicity=2, xyz=self.TS_DOUBLET_XYZ))
+        self.assertNotIn('guess=', route)
+        self.assertIn('ts', route)
+
+    def test_singlet_biradical_ts_gets_guess_mix(self):
+        """A multiplicity 1 TS with two declared radicals gets guess=mix."""
+        route = self.render(ARCSpecies(label='TS0', is_ts=True, multiplicity=1,
+                                       number_of_radicals=2, xyz=self.TS_XYZ))
+        self.assertIn('guess=mix', route)
+
+    def test_composite_method_is_gated_by_multiplicity_not_method_type(self):
+        """At a composite method the guess keyword follows the multiplicity, not is_species_restricted.
+
+        is_species_restricted returns True for every composite job, so it cannot be the gate:
+        a doublet at CBS-QB3 carries no 'u' prefix yet Gaussian runs UB3LYP for it.
+        """
+        composite = Level(method='cbs-qb3')
+        doublet_route = self.render(ARCSpecies(label='OH', xyz=self.OH_XYZ, multiplicity=2),
+                                    level=composite)
+        self.assertNotIn('guess=', doublet_route)
+        self.assertIn('cbs-qb3', doublet_route)
+        self.assertNotIn('ucbs-qb3', doublet_route)
+        biradical_route = self.render(ARCSpecies(label='O2_singlet', xyz=self.O2_XYZ,
+                                                 multiplicity=1, number_of_radicals=2),
+                                      level=composite)
+        self.assertIn('guess=mix', biradical_route)
+
+    def test_checkfile_guess_read_takes_precedence(self):
+        """With a checkfile present, guess=read is rendered instead of guess=mix."""
+        checkfile_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, checkfile_dir, ignore_errors=True)
+        checkfile = os.path.join(checkfile_dir, 'check.chk')
+        with open(checkfile, 'w') as f:
+            f.write('dummy')
+        for spc in [ARCSpecies(label='O2_singlet', xyz=self.O2_XYZ, multiplicity=1, number_of_radicals=2),
+                    ARCSpecies(label='OH', xyz=self.OH_XYZ, multiplicity=2)]:
+            route = self.render(spc, checkfile=checkfile)
+            self.assertIn('guess=read', route)
+            self.assertNotIn('guess=mix', route)
+
+    def test_trsh_guess_indo_takes_precedence(self):
+        """guess=INDO requested via troubleshooting is rendered instead of guess=mix."""
+        route = self.render(ARCSpecies(label='O2_singlet', xyz=self.O2_XYZ,
+                                       multiplicity=1, number_of_radicals=2),
+                            args={'trsh': {'trsh': ['guess=INDO']}})
+        self.assertIn('guess=INDO', route)
+        self.assertNotIn('guess=mix', route)
+        self.assertNotIn('guess=read', route)
 
 
 if __name__ == '__main__':
