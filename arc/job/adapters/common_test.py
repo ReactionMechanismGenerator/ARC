@@ -9,6 +9,8 @@ import os
 import shutil
 import unittest
 
+from types import SimpleNamespace
+
 import arc.job.adapters.common as common
 from arc.common import ARC_TESTING_PATH
 from arc.job.adapters.gaussian import GaussianAdapter
@@ -76,6 +78,204 @@ class TestJobCommon(unittest.TestCase):
         self.assertFalse(common.is_restricted(self.job_3))
         benchmark_list = [False, True]
         self.assertEqual(common.is_restricted(self.job_multi),benchmark_list)
+
+    WATER_XYZ = """O      0.00000000    0.00000000    0.11815400
+H      0.00000000    0.76336400   -0.47261500
+H      0.00000000   -0.76336400   -0.47261500"""
+
+    def _singlet_job(self, number_of_radicals=None, method='wb97xd', multiplicity=1, is_ts=False):
+        """Build a Gaussian adapter whose species is restricted unless something else says otherwise."""
+        species = ARCSpecies(label='spc1', xyz=self.WATER_XYZ, multiplicity=multiplicity,
+                             number_of_radicals=number_of_radicals)
+        species.is_ts = is_ts
+        return GaussianAdapter(execution_type='incore',
+                               job_type='sp',
+                               level=Level(method=method, basis='def2tzvp'),
+                               project='test',
+                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                               species=[species],
+                               testing=True,
+                               )
+
+    def test_a_derived_external_instability_makes_a_silent_ts_unrestricted(self):
+        """Test that a measured external instability flips the reference when the user declared nothing"""
+        job = self._singlet_job(is_ts=True)
+        self.assertTrue(common.is_species_restricted(job))
+        job.species[0].derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertFalse(common.is_species_restricted(job))
+
+    def test_a_derived_external_instability_does_not_flip_a_well(self):
+        """Test that a species that is not a TS keeps its reference under a measured external instability"""
+        job = self._singlet_job()
+        self.assertFalse(job.species[0].is_ts)
+        job.species[0].derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertTrue(common.is_species_restricted(job))
+        self.assertTrue(common.derived_reference_is_unrestricted(job.species[0]))
+        self.assertFalse(common.adopted_reference_is_unrestricted(job.species[0]))
+
+    def test_an_internal_instability_does_not_flip_the_reference(self):
+        """Test that only an external instability of a restricted reference makes a species unrestricted"""
+        job = self._singlet_job(is_ts=True)
+        for verdict in [{'verdict': 'internal_instability', 'restricted': True},
+                        {'verdict': 'stable', 'restricted': True},
+                        {'verdict': 'unknown', 'restricted': None},
+                        {'verdict': 'external_instability', 'restricted': None},
+                        {'verdict': 'external_instability', 'restricted': False},
+                        None,
+                        ]:
+            job.species[0].derived_stability_verdict = verdict
+            self.assertTrue(common.is_species_restricted(job),
+                            msg=f'{verdict} should not have made the species unrestricted')
+
+    def test_a_declared_number_of_radicals_wins_over_a_contradicting_verdict(self):
+        """Test that a declared closed-shell character is not overridden by a measured instability"""
+        job = self._singlet_job(number_of_radicals=1, is_ts=True)
+        job.species[0].derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertTrue(common.is_species_restricted(job))
+
+    def test_a_declared_biradical_stays_unrestricted_under_a_stable_verdict(self):
+        """Test that a declared biradical singlet is not made restricted by a stable verdict"""
+        job = self._singlet_job(number_of_radicals=2)
+        job.species[0].derived_stability_verdict = {'verdict': 'stable', 'restricted': True}
+        self.assertFalse(common.is_species_restricted(job))
+
+    def test_a_derived_verdict_is_read_off_the_species_that_was_passed(self):
+        """Test that the per-species entry point consults the species it was given, not the job's first"""
+        job = self._singlet_job()
+        other = ARCSpecies(label='spc2', xyz=self.WATER_XYZ, multiplicity=1)
+        other.is_ts = True
+        other.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertTrue(common.is_species_restricted(job))
+        self.assertFalse(common.is_species_restricted(job, other))
+
+    def test_a_composite_level_ignores_a_derived_verdict(self):
+        """Test that the composite early return still short-circuits every other consideration"""
+        job = self._singlet_job(method='cbs-qb3', is_ts=True)
+        job.species[0].derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertEqual(job.level.method_type, 'composite')
+        self.assertTrue(common.is_species_restricted(job))
+
+    def test_derived_reference_is_unrestricted(self):
+        """Test that only an external instability of a restricted reference reads as unrestricted"""
+        species = ARCSpecies(label='spc1', xyz=self.WATER_XYZ, multiplicity=1)
+        self.assertFalse(common.derived_reference_is_unrestricted(species))
+        self.assertFalse(common.derived_reference_is_unrestricted(None))
+        species.derived_stability_verdict = 'external_instability'
+        self.assertFalse(common.derived_reference_is_unrestricted(species))
+        species.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertTrue(common.derived_reference_is_unrestricted(species))
+        species.derived_stability_verdict = {'verdict': 'internal_instability', 'restricted': True}
+        self.assertFalse(common.derived_reference_is_unrestricted(species))
+
+    def test_adopted_reference_is_unrestricted(self):
+        """Test that a verdict is acted on for a transition state and reported only for anything else"""
+        species = ARCSpecies(label='spc1', xyz=self.WATER_XYZ, multiplicity=1)
+        species.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertFalse(common.adopted_reference_is_unrestricted(species))
+        species.is_ts = True
+        self.assertTrue(common.adopted_reference_is_unrestricted(species))
+        species.derived_stability_verdict = {'verdict': 'internal_instability', 'restricted': True}
+        self.assertFalse(common.adopted_reference_is_unrestricted(species))
+        self.assertFalse(common.adopted_reference_is_unrestricted(None))
+
+    def test_a_declared_number_of_radicals_blocks_the_adoption_of_a_ts_verdict(self):
+        """Test that a declaration of any value stops a TS verdict from being one ARC acts on"""
+        species = ARCSpecies(label='spc1', xyz=self.WATER_XYZ, multiplicity=1)
+        species.is_ts = True
+        species.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertTrue(common.adopted_reference_is_unrestricted(species))
+        for number_of_radicals in [0, 1, 2, 3]:
+            species.number_of_radicals = number_of_radicals
+            self.assertFalse(common.adopted_reference_is_unrestricted(species),
+                             msg=f'number_of_radicals = {number_of_radicals} did not block the adoption')
+        species.number_of_radicals = None
+        self.assertTrue(common.adopted_reference_is_unrestricted(species))
+
+    def test_the_reference_memo_round_trips_through_a_restart(self):
+        """Test that a job's SCF reference is persisted rather than recomputed on restore"""
+        job = self._singlet_job(is_ts=True)
+        self.assertTrue(common.is_restricted(job))
+        job_dict = job.as_dict()
+        self.assertIs(job_dict['restricted_used'], True)
+        job.species[0].derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertFalse(common.is_restricted(job))
+        self.assertIs(job.as_dict()['restricted_used'], False)
+        piped = SimpleNamespace(level=Level(method='wb97xd', basis='def2tzvp'))
+        self.assertIsNone(common.job_scf_reference_is_restricted(piped))
+
+    def test_an_unadopted_well_verdict_is_credited_to_no_source(self):
+        """Test that a verdict ARC reports without acting on it is not named as the deciding source"""
+        species = ARCSpecies(label='spc1', xyz=self.WATER_XYZ, multiplicity=1)
+        species.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertIsNone(common.open_shell_character_source(species))
+        species.is_ts = True
+        self.assertEqual(common.open_shell_character_source(species), 'derived')
+
+    def test_job_scf_reference_is_restricted_reads_the_memo(self):
+        """Test that the reference reported is the one the job's own memo holds"""
+        job = self._singlet_job()
+        self.assertTrue(common.is_restricted(job))
+        self.assertIs(common.job_scf_reference_is_restricted(job), True)
+        triplet = self._singlet_job(multiplicity=3)
+        common.is_restricted(triplet)
+        self.assertIs(common.job_scf_reference_is_restricted(triplet), False)
+        piped = SimpleNamespace(level=Level(method='wb97xd', basis='def2tzvp'))
+        self.assertIsNone(common.job_scf_reference_is_restricted(piped))
+
+    def test_job_scf_reference_is_restricted_declines_a_reference_agnostic_level(self):
+        """Test that a level ARC writes no r/u prefix for reports no reference"""
+        for method in ['cbs-qb3', 'am1', 'mmff94s']:
+            job = self._singlet_job(method=method)
+            common.is_restricted(job)
+            self.assertIn(job.level.method_type, ['force_field', 'composite', 'semiempirical'])
+            self.assertIsNone(common.job_scf_reference_is_restricted(job),
+                              msg=f'{method} reported a reference')
+
+    def test_job_scf_reference_is_restricted_declines_a_multi_species_memo(self):
+        """Test that a per-species memo is not read as a single decision"""
+        self.assertEqual(common.is_restricted(self.job_multi), [False, True])
+        self.assertIsNone(common.job_scf_reference_is_restricted(self.job_multi))
+
+    def test_open_shell_character_source(self):
+        """Test that only a declaration that attributes open-shell character is named as the source"""
+        species = ARCSpecies(label='spc1', xyz=self.WATER_XYZ, multiplicity=1)
+        species.is_ts = True
+        self.assertIsNone(common.open_shell_character_source(species))
+        species.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertEqual(common.open_shell_character_source(species), 'derived')
+        species.number_of_radicals = 2
+        self.assertEqual(common.open_shell_character_source(species), 'declared')
+        species.derived_stability_verdict = None
+        self.assertEqual(common.open_shell_character_source(species), 'declared')
+
+    def test_a_declaration_that_attributes_no_open_shell_character_is_not_a_source(self):
+        """Test that a declared 0 or 1 blocks the verdict without being credited with the decision"""
+        species = ARCSpecies(label='spc1', xyz=self.WATER_XYZ, multiplicity=1)
+        species.is_ts = True
+        species.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        for number_of_radicals in [0, 1]:
+            species.number_of_radicals = number_of_radicals
+            self.assertIsNone(common.open_shell_character_source(species),
+                              msg=f'number_of_radicals = {number_of_radicals} was named as the source')
+            self.assertFalse(common.adopted_reference_is_unrestricted(species),
+                             msg=f'number_of_radicals = {number_of_radicals} did not block the adoption')
+            self.assertTrue(common.derived_reference_is_unrestricted(species))
+
+    def test_is_restricted_memoizes_the_decision_it_made(self):
+        """Test that the reference a job's input declared stays readable off the job afterwards"""
+        job = self._singlet_job(is_ts=True)
+        self.assertTrue(common.is_restricted(job))
+        self.assertIs(job.restricted_used, True)
+        job.species[0].derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        self.assertIs(job.restricted_used, True)
+        self.assertFalse(common.is_restricted(job))
+        self.assertIs(job.restricted_used, False)
+        self.assertEqual(common.is_restricted(self.job_multi), [False, True])
+        self.assertEqual(self.job_multi.restricted_used, [False, True])
+
+    def test_reference_agnostic_method_types(self):
+        """Test the method types whose reference ARC does not prefix"""
+        self.assertEqual(common.REFERENCE_AGNOSTIC_METHOD_TYPES, ['force_field', 'composite', 'semiempirical'])
 
     def test_check_argument_consistency(self):
         """Test the check_argument_consistency() function"""

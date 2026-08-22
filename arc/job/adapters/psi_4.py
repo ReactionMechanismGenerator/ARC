@@ -209,7 +209,7 @@ class Psi4Adapter(JobAdapter):
         self.job_type = job_type if isinstance(job_type, str) else job_type[0]  # always a string
         self.args = args or dict()
         self.bath_gas = bath_gas
-        self.checkfile = checkfile
+        self.checkfile = self.readable_checkfile(checkfile)
         self.conformer = conformer
         self.constraints = constraints or list()
         self.cpu_cores = cpu_cores

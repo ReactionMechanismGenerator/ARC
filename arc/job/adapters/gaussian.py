@@ -46,6 +46,8 @@ default_job_settings, gaussian_memory_headroom_fractions, global_ess_settings, i
 # reservation constant.
 GAUSSIAN_MEMORY_HEADROOM_FRACTION = gaussian_memory_headroom_fractions[0]
 
+STABILITY_KEYWORD = 'stable=(rext,noopt)'
+
 
 # job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',
 # job_type_2: '' or 'freq iop(7/33=1)' (cannot be combined with CBS-QB3)
@@ -219,7 +221,7 @@ class GaussianAdapter(JobAdapter):
             if os.path.isfile(os.path.join(self.local_path, 'check.chk')):
                 self.checkfile = os.path.join(self.local_path, 'check.chk')
             elif self.species[0].checkfile is not None and os.path.isfile(self.species[0].checkfile):
-                self.checkfile = self.species[0].checkfile
+                self.checkfile = self.readable_checkfile(self.species[0].checkfile)
 
     def write_input_file(self) -> None:
         """
@@ -324,6 +326,13 @@ class GaussianAdapter(JobAdapter):
 
         elif self.job_type in ['sp', 'conf_sp']:
             input_dict['job_type_1'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+            if input_dict['trsh']:
+                input_dict['trsh'] += ' '
+            input_dict['trsh'] += 'scf=(tight, direct)'
+
+        elif self.job_type == 'stability':
+            input_dict['job_type_1'] = f'{STABILITY_KEYWORD} ' \
+                                       f'integral=(grid=ultrafine, {integral_algorithm})'
             if input_dict['trsh']:
                 input_dict['trsh'] += ' '
             input_dict['trsh'] += 'scf=(tight, direct)'
